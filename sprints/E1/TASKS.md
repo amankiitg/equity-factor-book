@@ -101,7 +101,7 @@ deliverable.
     direction follows the negative lag-1 ACF of -0.103, documented).
     Max drawdown -34.4%, hit rate 54.4%, slugging 0.952.
 
-- [ ] Task 6: Hygiene Ledger and detection rules (P0)
+- [x] Task 6: Hygiene Ledger and detection rules (P0)
   - Acceptance: `efb/hygiene.py` detects stale prices (zero-return runs of
     5 or more business days), flags outliers (|r| > 0.50, never winsorized
     in raw), marks delisting rows, and writes `data/processed/events.parquet`
@@ -114,16 +114,23 @@ deliverable.
     expected stale, outlier and delisting flags).
   - Files: efb/hygiene.py, tests/test_hygiene.py, docs/hygiene_ledger.md,
     data/processed/events.parquet
+  - Completed: 2026-09-04. 874 stale runs across 13 tickers flagged,
+    226 outliers flagged, never winsorized. events.parquet holds
+    membership changes, splits, large dividends, outliers and stale
+    starts. Ledger entries for stale, outlier, warm-up, alignment and
+    delisting policies.
 
-- [ ] Task 7: Artifact assembly, versioning and one-command rebuild (P0)
+- [x] Task 7: Artifact assembly, versioning and one-command rebuild (P0)
   - Acceptance: `efb/build.py` orchestrates Tasks 1 to 6 end to end, writes
     `data/VERSION.json` with a SHA-256 content hash of every artifact, and
     `make rebuild-e1` rebuilds everything in one command.
   - Test: `tests/test_version.py` (hashes match file content; rebuild writes
     all artifacts and a VERSION entry per artifact).
   - Files: efb/build.py, tests/test_version.py, data/VERSION.json, Makefile
+  - Completed: 2026-09-04. make rebuild-e1 runs 7 steps end to end and
+    writes a SHA-256 per artifact into data/VERSION.json.
 
-- [ ] Task 8: Dashboard D0 Data Health and global sidebar (P0)
+- [x] Task 8: Dashboard D0 Data Health and global sidebar (P0)
   - Acceptance: `dashboard/app.py` provides the global sidebar with the data
     version hash and a tab router; `dashboard/tabs/d00_data.py` renders the
     six D0 panels from parquet only (coverage heatmap, missing and stale
@@ -135,16 +142,24 @@ deliverable.
     server).
   - Files: dashboard/app.py, dashboard/tabs/d00_data.py,
     dashboard/tabs/methodology.py, tests/test_dashboard_d0.py
+  - Completed: 2026-09-04. D0 renders in the browser with the six
+    panels; parquet loads in 0.55s (limit 3s); sidebar shows the data
+    version hash; Methodology tab links the evidence artifacts.
 
-- [ ] Task 9: Evaluate F1.1 to F1.5 and store numbers in RESULTS.json (P0)
+- [x] Task 9: Evaluate F1.1 to F1.5 and store numbers in RESULTS.json (P0)
   - Acceptance: `sprints/E1/RESULTS.json` contains every F1.x criterion with
     threshold, stored number, verdict (pass, fail, or pending with reason)
     and a note; the numbers are computed from the artifacts, not retyped.
   - Test: `tests/test_results.py` (RESULTS.json exists, has all five keys,
     numbers are floats, verdicts are valid).
   - Files: sprints/E1/RESULTS.json, tests/test_results.py
+  - Completed: 2026-09-04. All five criteria stored with numbers:
+    F1.1 fail (yfinance 77.2% of all requested, 100% of current),
+    F1.2 fail (302 interior NaNs), F1.3 pass (0.9557), F1.4 fail (max
+    221.25 bp on one merger day, mean 0.018 bp), F1.5 fail (fraction
+    0.4479, naive minus point-in-time 349.4 bp per year).
 
-- [ ] Task 10: Research deliverable: Data Quality and Universe Note (P0)
+- [x] Task 10: Research deliverable: Data Quality and Universe Note (P0)
   - Acceptance: `docs/research/E1_data_note.md` answers the sprint's PM
     question in one paragraph at the top, contains the methodology, the
     stored numbers, the practitioner conclusion, and a section titled
@@ -154,6 +169,10 @@ deliverable.
   - Test: `tests/test_data_note.py` (file exists, required sections present
     with the required title, no em dash characters).
   - Files: docs/research/E1_data_note.md, tests/test_data_note.py
+  - Completed: 2026-09-04. Note written for a senior quant or risk
+    manager with the PM answer, methodology, stored numbers, the
+    practitioner conclusion and "What would falsify this?"; linked from
+    the Methodology tab; no em dashes.
 
 ## Exit criteria (roadmap)
 

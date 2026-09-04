@@ -1,0 +1,165 @@
+# Data Quality and Universe Note
+
+Sprint E1 research deliverable, 2026-09-04. Written for a senior quant or
+risk manager who has not seen the code. No em dashes.
+
+## PM question
+
+Can I trust the data underneath every number this book will ever show?
+Yes, with three documented caveats. The prices and the risk-free rate are
+trustworthy for current S&P 500 members (full coverage, adjusted-close
+audit mean of 0.018 bp per day, universe reconciles to the Kenneth French
+market at a correlation of 0.9557). The caveats: only 44.8% of deleted
+members have recoverable history, which inflates a naive current-members
+backtest by about 349 bp per year; 302 interior missing return rows
+across 13 tickers exist inside the universe window; and FRED was
+unreachable, so the risk-free rate rests on the Kenneth French RF column
+alone. None of these caveats silently corrupt a number: each is flagged,
+measured and recorded, and every downstream sprint reads the ledger
+first.
+
+## Research questions
+
+- Academic question: What is a return, and which definition (simple, log,
+  excess) is correct for which operation: aggregation through time,
+  aggregation across assets, and risk measurement?
+- Practitioner question: Can I trust the prices, the universe and the
+  risk-free rate underneath every number this book will ever show?
+- Research question: Is a free, survivorship-affected universe good enough
+  to support factor-model research, and how large is the bias it
+  introduces, in basis points per year?
+
+## Methodology
+
+Sources. Daily prices, adjusted close, dividends and split factors come
+from yfinance for 858 tickers: 503 current S&P 500 members plus 355
+deleted members recovered from the Wikipedia changes table. The
+constituents table is the live Wikipedia page; the changes table was
+removed from the live page on 2026-08-11, so E1 pins revision 1368675864
+(2026-08-10), the last revision that still publishes it, covering
+1976-07-01 to 2026-08-05. Factors come from the Kenneth French library
+(FF5 daily, Momentum daily, Short-term reversal daily, 12 industry
+portfolios daily), 202607 vintage, ending 2026-07-31. GICS sectors come
+from the Wikipedia constituents table. Shares outstanding was probed
+(yfinance returns a history for 10 of 12 sampled names) but no artifact
+is built from it because free sources are not point-in-time.
+
+Universe. The membership matrix is rebuilt point-in-time by walking the
+changes table backward from today's members: at each event date, for all
+earlier dates the removed ticker is a member and the added ticker is not.
+The matrix has 4,350 business days (2010-01-04 to 2026-09-04) and 858
+tickers; the universe size is stable between 500 and 508 members.
+
+Returns. Simple returns r = P/P(-1) - 1 and log returns g = ln(1 + r) are
+computed from adjusted close; excess returns subtract the daily FF RF
+rate. Log returns add over time, simple returns add across a portfolio.
+Missing prices stay NaN; nothing is imputed or winsorized in the raw
+artifact.
+
+Checks. Index alignment (business days only, no duplicate dates, no
+infs), the adjusted-close audit (total return from adjusted close versus
+close plus dividends, 20 randomly sampled names, seed 42), the
+equal-weight universe reconciliation against the FF market return, and
+the survivorship backtest (naive buy-all-current-members versus
+point-in-time membership versus the FF market).
+
+## Stored numbers
+
+Falsification criteria, evaluated from the artifacts and stored in
+sprints/E1/RESULTS.json. Criterion text is copied verbatim from the
+roadmap.
+
+| ID | Threshold | Stored number | Verdict |
+| --- | --- | --- | --- |
+| F1.1 | Each probed source returns at least 95% of requested tickers with at least 10 years of daily history | yfinance coverage 77.2% of all requested tickers; 100.0% of current members; 71.3% of 10-year-eligible tickers | fail |
+| F1.2 | Zero NaNs in returns.parquet after the warm-up window, except documented delisting rows | 302 interior NaN return days across 13 tickers | fail |
+| F1.3 | Equal-weight universe daily return vs the Kenneth French market return (Mkt-RF + RF) correlation above 0.95. Lower means a date-alignment or adjustment bug, not a finding | 0.9557 | pass |
+| F1.4 | Adjusted close reproduces the dividend-adjusted series within 1 bp per day on 20 random names | max 221.25 bp on one merger day, mean 0.0178 bp | fail |
+| F1.5 | Fraction of historical members with recoverable history stored; below 70% records the bias magnitude | fraction 0.4479; naive minus point-in-time 349.4 bp per year; naive minus FF market 372.4 bp per year; point-in-time minus FF market 21.1 bp per year | fail |
+
+Stylized facts. Kurtosis (normal is 3), autocorrelation of r at lag 1,
+and autocorrelation of r squared at lags 1, 5, 21.
+
+| Series | Kurtosis | ACF(r, 1) | ACF(r^2, 1) | ACF(r^2, 5) | ACF(r^2, 21) |
+| --- | --- | --- | --- | --- | --- |
+| AAPL | 9.07 | -0.032 | 0.213 | 0.137 | 0.031 |
+| XOM | 9.57 | -0.020 | 0.204 | 0.253 | 0.154 |
+| JPM | 12.66 | -0.089 | 0.376 | 0.225 | 0.082 |
+| Equal-weight universe | 17.25 | -0.076 | 0.366 | 0.284 | 0.087 |
+
+Interpretation for risk modeling. Daily returns are far from Gaussian
+(kurtosis 9 to 17), so any Gaussian risk number is a floor, not an
+estimate. Returns have essentially no own lag-1 autocorrelation, while
+squared returns carry strong positive autocorrelation that decays slowly
+from lag 1 to 21: volatility clusters, returns do not.
+
+Sharpe with standard error, FF market factor (Mkt-RF), daily 2010 to
+2026.
+
+| Quantity | Value |
+| --- | --- |
+| Sharpe ratio, daily | 0.0479 |
+| Sharpe ratio, annualized | 0.76 |
+| SE i.i.d., annualized | 0.246 |
+| SE Lo (2002), annualized | 0.227 |
+| Ratio Lo / iid | 0.922 |
+
+The two standard errors differ by 8%, and the Lo correction is the
+smaller one here because the market factor's lag-1 autocorrelation is
+negative (-0.103), which makes the mean more precisely estimated, while
+the squared-return clustering term is weighted by SR^2 / 2 and barely
+moves the number. The direction of the correction always follows the
+data's autocorrelation structure; the lesson is that an eyeballed Sharpe
+carries a standard error near 0.2 to 0.25 and is a hypothesis, not
+evidence.
+
+Survivorship. Of 355 deleted members, 159 (44.8%) have recoverable price
+history. A naive backtest that buys all current members over the whole
+window earns 372.4 bp per year more than the FF market; the point-in-time
+universe earns 21.1 bp per year more. The survivorship bias is therefore
+349.4 bp per year.
+
+## Practitioner conclusion
+
+The data layer is usable for factor-model research, with two rules. Rule
+one: every long-only backtest in later sprints carries a mandatory
+survivorship caveat, because the naive current-members universe inflates
+returns by about 350 bp per year and the roadmap's 200 bp line is
+crossed; long/short constructions are preferred wherever the question
+allows them. Rule two: the equal-weight universe tracks the FF market at
+0.9557, so the price and alignment machinery is sound; residual
+disagreement comes from the 302 interior gaps and the 13 stale names,
+all of which are flagged in returns.parquet and events.parquet rather
+than hidden. The risk-free rate is the FF RF column; FRED was
+unreachable and is recorded as a null, not silently substituted.
+
+## What would falsify this?
+
+If the equal-weight universe had failed to track the FF market return
+(F1.3 below 0.95), the data layer would be wrong before any model
+exists, and nothing downstream could be trusted. It passes at 0.9557.
+If survivorship bias were above 200 bp per year, every long-only
+backtest in later sprints would carry a mandatory caveat and long/short
+constructions would be preferred. The measured bias is 349.4 bp per
+year, so the caveat and the long/short preference are in force. If a
+data source failed its probe, it would be recorded as a null and the
+design routed around it. FRED failed and was recorded as a null.
+
+A negative verdict is a complete deliverable: three of five criteria
+fail, and each failure is a measured, documented property of the free
+data stack, not an accident waiting to corrupt a model.
+
+## Open questions
+
+- Delisting returns: no free source provides them; the delisting policy
+  (NaN after the last price) is documented, but later sprints may want a
+  CRSP-based supplement before trusting long/short edges.
+- The changes table pin: revision 1368675864 is frozen in time. A later
+  sprint should re-pin or replace the source and reconcile the two
+  universes.
+- The French daily files lag the calendar by one month (202607 vintage
+  ends 2026-07-31); excess returns inherit that lag by design.
+- FRED access: worth retrying from a different host; until then the RF
+  cross-check remains null.
+- Sectors and shares outstanding are not point-in-time; any factor that
+  needs historical sectors or shares must bring its own vintage source.

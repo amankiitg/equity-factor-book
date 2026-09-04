@@ -63,8 +63,13 @@ def rebuild(
     start: str = START,
     end: str | None = None,
     as_of: str | None = None,
+    results_path: Path | None = None,
 ) -> dict[str, object]:
-    """Rebuild all E1 artifacts from sources and version them."""
+    """Rebuild all E1 artifacts from sources and version them.
+
+    When results_path is given (the real sprints/E1/RESULTS.json), the F1
+    criteria are recomputed from the fresh artifacts and stored there.
+    """
     as_of = as_of or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     end = end or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     raw_dir = data_root / "raw"
@@ -111,11 +116,20 @@ def rebuild(
         data_root / "VERSION.json",
         note="Built by make rebuild-e1 (Sprint E1). Every data artifact carries a content hash here; the dashboard sidebar shows this version.",
     )
+
+    # 8. F criteria, stored so the numbers and the artifacts always agree
+    if results_path is not None:
+        from efb import evaluate
+
+        inputs = evaluate.compute_from_artifacts(data_root=data_root)
+        criteria = evaluate.evaluate_criteria(**inputs)
+        evaluate.write_results(criteria, results_path)
+
     return {"n_steps": 7, "version": payload, "n_tickers": len(tickers)}
 
 
 def main() -> None:
-    summary = rebuild()
+    summary = rebuild(results_path=ROOT / "sprints" / "E1" / "RESULTS.json")
     print(json.dumps({"n_steps": summary["n_steps"], "n_tickers": summary["n_tickers"]}, indent=2))
 
 
