@@ -44,7 +44,9 @@ def test_build_membership_point_in_time() -> None:
     assert members.loc[after_c, "C"].all()
     assert not members.loc[after_c, "A"].any()
     # D joins on 2018-06-01.
-    assert not members.loc[(d >= pd.Timestamp("2015-01-02")) & (d < pd.Timestamp("2018-06-01")), "D"].any()
+    assert not members.loc[
+        (d >= pd.Timestamp("2015-01-02")) & (d < pd.Timestamp("2018-06-01")), "D"
+    ].any()
     assert members.loc[d >= pd.Timestamp("2018-06-01"), "D"].all()
     # B is always in.
     assert members["B"].all()
@@ -68,10 +70,16 @@ def test_build_membership_respects_rejoin() -> None:
             "date_added": pd.to_datetime(["2018-06-01"]),
         }
     )
-    members = build_membership(changes, constituents, start="2014-01-02", end="2019-12-31")
+    members = build_membership(
+        changes, constituents, start="2014-01-02", end="2019-12-31"
+    )
     d = members.index
-    assert members.loc[(d >= pd.Timestamp("2014-01-02")) & (d < pd.Timestamp("2015-01-02")), "A"].all()
-    assert not members.loc[(d >= pd.Timestamp("2015-01-02")) & (d < pd.Timestamp("2018-06-01")), "A"].any()
+    assert members.loc[
+        (d >= pd.Timestamp("2014-01-02")) & (d < pd.Timestamp("2015-01-02")), "A"
+    ].all()
+    assert not members.loc[
+        (d >= pd.Timestamp("2015-01-02")) & (d < pd.Timestamp("2018-06-01")), "A"
+    ].any()
     assert members.loc[d >= pd.Timestamp("2018-06-01"), "A"].all()
 
 
@@ -84,7 +92,9 @@ def test_membership_changes_events() -> None:
     left = events[events["event_type"] == "removed"]
     assert set(joined["ticker"]) == {"C", "D"}
     assert set(left["ticker"]) == {"A"}
-    assert joined.loc[joined["ticker"] == "C", "date"].iloc[0] >= pd.Timestamp("2015-01-02")
+    assert joined.loc[joined["ticker"] == "C", "date"].iloc[0] >= pd.Timestamp(
+        "2015-01-02"
+    )
 
 
 def test_survivorship_stats_fraction() -> None:
@@ -101,5 +111,11 @@ def test_survivorship_stats_fraction() -> None:
 
 def test_build_sectors() -> None:
     sectors = build_sectors(CONSTITUENTS, as_of="2026-09-04")
-    assert set(sectors.columns) == {"ticker", "gics_sector", "gics_sub_industry", "source", "as_of"}
+    assert set(sectors.columns) == {
+        "ticker",
+        "gics_sector",
+        "gics_sub_industry",
+        "source",
+        "as_of",
+    }
     assert sectors.loc[sectors["ticker"] == "B", "gics_sector"].iloc[0] == "Financials"

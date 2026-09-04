@@ -12,7 +12,6 @@ import io
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
@@ -21,7 +20,6 @@ from efb import factors, prices
 from efb.universe import (
     WIKI_CHANGES_OLDID,
     all_tickers,
-    deleted_tickers,
     fetch_changes,
     fetch_constituents,
 )
@@ -77,8 +75,13 @@ def probe_wikipedia() -> tuple[list[ProbeReport], pd.DataFrame, pd.DataFrame]:
             first_date=first,
             last_date=last,
             coverage=None,
-            nan_share=float(constituents[["symbol", "gics_sector"]].isna().mean().mean()),
-            notes="live page; columns symbol, security, gics_sector, gics_sub_industry, date_added, cik, founded",
+            nan_share=float(
+                constituents[["symbol", "gics_sector"]].isna().mean().mean()
+            ),
+            notes=(
+                "live page; columns symbol, security, gics_sector, "
+                "gics_sub_industry, date_added, cik, founded"
+            ),
         )
     )
     changes = fetch_changes()
@@ -191,7 +194,13 @@ def probe_shares_outstanding(tickers: list[str], n: int = 12) -> ProbeReport:
                 }
             )
         except Exception as exc:  # noqa: BLE001 - probe must never die
-            rows.append({"ticker": ticker, "history_rows": -1, "current_shares": f"error: {exc}"})
+            rows.append(
+                {
+                    "ticker": ticker,
+                    "history_rows": -1,
+                    "current_shares": f"error: {exc}",
+                }
+            )
     frame = pd.DataFrame(rows)
     n_with_history = int((frame["history_rows"] > 1).sum())
     return ProbeReport(
@@ -276,7 +285,9 @@ def run_all() -> list[ProbeReport]:
     reports.extend(wiki)
     tickers = all_tickers(constituents, changes)
     reports.append(
-        probe_yfinance_prices(tickers, start="2009-12-15", end=pd.Timestamp.today().strftime("%Y-%m-%d"))
+        probe_yfinance_prices(
+            tickers, start="2009-12-15", end=pd.Timestamp.today().strftime("%Y-%m-%d")
+        )
     )
     frames = factors.load_french_factors()
     reports.extend(probe_french(frames))

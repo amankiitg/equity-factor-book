@@ -9,10 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
-import pandas as pd
 
 from efb import factors, hygiene, prices, returns, universe
 
@@ -50,7 +48,7 @@ def write_version(artifact_paths: list[Path], out_path: Path, note: str) -> dict
         }
     payload = {
         "note": note,
-        "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "artifacts": artifacts,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -70,8 +68,8 @@ def rebuild(
     When results_path is given (the real sprints/E1/RESULTS.json), the F1
     criteria are recomputed from the fresh artifacts and stored there.
     """
-    as_of = as_of or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    end = end or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    as_of = as_of or datetime.now(UTC).strftime("%Y-%m-%d")
+    end = end or datetime.now(UTC).strftime("%Y-%m-%d")
     raw_dir = data_root / "raw"
     processed_dir = data_root / "processed"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -84,7 +82,9 @@ def rebuild(
 
     # 2. Prices
     cache_path = raw_dir / "yf_cache.parquet"
-    raw_prices = prices.load_or_download(tickers, cache_path, start=WARMUP_START, end=end)
+    raw_prices = prices.load_or_download(
+        tickers, cache_path, start=WARMUP_START, end=end
+    )
     prices_artifact = prices.build_prices_artifact(raw_prices, start=start)
     prices.save_prices(prices_artifact, raw_dir / "prices.parquet")
 
@@ -114,7 +114,11 @@ def rebuild(
     payload = write_version(
         artifact_paths,
         data_root / "VERSION.json",
-        note="Built by make rebuild-e1 (Sprint E1). Every data artifact carries a content hash here; the dashboard sidebar shows this version.",
+        note=(
+            "Built by make rebuild-e1 (Sprint E1). Every data artifact "
+            "carries a content hash here; the dashboard sidebar shows "
+            "this version."
+        ),
     )
 
     # 8. F criteria, stored so the numbers and the artifacts always agree
@@ -130,7 +134,11 @@ def rebuild(
 
 def main() -> None:
     summary = rebuild(results_path=ROOT / "sprints" / "E1" / "RESULTS.json")
-    print(json.dumps({"n_steps": summary["n_steps"], "n_tickers": summary["n_tickers"]}, indent=2))
+    print(
+        json.dumps(
+            {"n_steps": summary["n_steps"], "n_tickers": summary["n_tickers"]}, indent=2
+        )
+    )
 
 
 if __name__ == "__main__":

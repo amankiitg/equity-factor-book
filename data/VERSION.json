@@ -1,30 +1,30 @@
 {
   "note": "Built by make rebuild-e1 (Sprint E1). Every data artifact carries a content hash here; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-04T17:11:54+00:00",
+  "built_at": "2026-09-04T17:34:55+00:00",
   "artifacts": {
     "events.parquet": {
-      "sha256": "6174e2ce6b2cf6c82415fe50d36b2a67f2c7420ed7c5346b96cada5d57f0b360",
-      "bytes": 96866
+      "sha256": "71341ea6cfca3daa1851afc44d3d15929f68aec222bdf294f5d90a048657388d",
+      "bytes": 94479
     },
     "returns.parquet": {
-      "sha256": "e8f7b00629e8c8020deb4dae9e5a0148e0c054e7319cde1b7a35db0f59a171d9",
-      "bytes": 63778600
+      "sha256": "fa52e8bba82803c40e9b3aae56deb6ae28ff6bebfd74ae2a4f763e637336604d",
+      "bytes": 63462804
     },
     "sectors.parquet": {
-      "sha256": "cdbc03367cddb20c0c8434e89e05619c83c4dcc7806b917ec38284803bcd11d7",
-      "bytes": 9498
+      "sha256": "2d9efee0ac8bbdc73f9f15c3c9633ba84cfad4a9eb5eda660174526cad50bc54",
+      "bytes": 9549
     },
     "universe_membership.parquet": {
-      "sha256": "da9f921fc34df1df41c126be92d900645576f07925e9a08c95019c2e4d957f6a",
-      "bytes": 424942
+      "sha256": "3b9beac271d5435fa6305266f34e222eddcb9fb452c91143f845577b7835e1e3",
+      "bytes": 426949
     },
     "factors_ff.parquet": {
-      "sha256": "28de30c96ecd80f820f71f7c62098114bbbfb271d9f0b2f0b96feaf5d336361f",
-      "bytes": 200759
+      "sha256": "17dcfdb52f74a05bd3894f01b02ac0628a702f73eec1658408aae53483937540",
+      "bytes": 199378
     },
     "prices.parquet": {
-      "sha256": "870b88f4db63c5af9e4b3dbf24547708190543aca4130253c77bccc90d71cfe8",
-      "bytes": 61486451
+      "sha256": "302b86ef12e555fb31ec6851dad5d5e8b472f150b9ffa0331486fd49665a510b",
+      "bytes": 61093009
     }
   }
 }

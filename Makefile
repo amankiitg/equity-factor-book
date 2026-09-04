@@ -1,6 +1,6 @@
 SHELL := /bin/bash
-PYTHON ?= python
-PYTEST ?= pytest
+PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo python; fi)
+PYTEST ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python -m pytest; else echo pytest; fi)
 
 .PHONY: help test lint format dashboard rebuild-e1 rebuild-e2 rebuild-e3 clean
 

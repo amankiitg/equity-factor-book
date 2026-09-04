@@ -74,7 +74,16 @@ def _synthetic_wide() -> pd.DataFrame:
     cols = pd.MultiIndex.from_product(
         [
             ["AAPL", "XOM"],
-            ["Open", "High", "Low", "Close", "Adj Close", "Volume", "Dividends", "Stock Splits"],
+            [
+                "Open",
+                "High",
+                "Low",
+                "Close",
+                "Adj Close",
+                "Volume",
+                "Dividends",
+                "Stock Splits",
+            ],
         ],
         names=["ticker", "field"],
     )
@@ -97,13 +106,15 @@ def test_wide_to_long_layout() -> None:
         "dividend",
         "split_factor",
     ]
-    assert long_df.loc[(pd.Timestamp("2026-08-04"), "AAPL"), "adj_close"] == pytest.approx(101.0)
+    assert long_df.loc[
+        (pd.Timestamp("2026-08-04"), "AAPL"), "adj_close"
+    ] == pytest.approx(101.0)
 
 
 def test_clean_prices_drops_weekends_and_duplicates() -> None:
     long_df = wide_to_long(_synthetic_wide())
     weekend = pd.Timestamp("2026-08-02")  # Sunday, not in bdate_range frame
-    extra = long_df.loc[[(long_df.index[0])]].copy()
+    extra = long_df.loc[[long_df.index[0]]].copy()
     dirty = pd.concat([long_df, extra])
     cleaned = clean_prices(dirty)
     assert cleaned.index.is_unique

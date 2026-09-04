@@ -57,16 +57,28 @@ def test_simple_returns_add_across_portfolio() -> None:
     out = returns.compute_returns(frame, _rf(pd.bdate_range("2026-07-01", periods=4)))
     r = out["r"].unstack("ticker")
     port = 0.5 * r["AAA"] + 0.5 * r["BBB"]
-    per_day_ew = returns.equal_weight_universe_return(out, pd.DataFrame(True, index=port.index, columns=["AAA", "BBB"]))
-    pd.testing.assert_series_equal(port.dropna(), per_day_ew.dropna(), check_names=False)
+    per_day_ew = returns.equal_weight_universe_return(
+        out, pd.DataFrame(True, index=port.index, columns=["AAA", "BBB"])
+    )
+    pd.testing.assert_series_equal(
+        port.dropna(), per_day_ew.dropna(), check_names=False
+    )
 
 
 def test_stylized_facts_shape() -> None:
     rng = np.random.default_rng(7)
     n = 500
-    series = pd.Series(rng.standard_t(4, size=n), index=pd.bdate_range("2020-01-02", periods=n))
+    series = pd.Series(
+        rng.standard_t(4, size=n), index=pd.bdate_range("2020-01-02", periods=n)
+    )
     facts = returns.stylized_facts(series)
-    assert set(facts) == {"kurtosis", "acf_r_lag1", "acf_r2_lag1", "acf_r2_lag5", "acf_r2_lag21"}
+    assert set(facts) == {
+        "kurtosis",
+        "acf_r_lag1",
+        "acf_r2_lag1",
+        "acf_r2_lag5",
+        "acf_r2_lag21",
+    }
     assert facts["kurtosis"] > 3.0  # fat tails on t(4)
     assert -1.0 < facts["acf_r_lag1"] < 1.0
 

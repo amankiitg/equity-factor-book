@@ -19,7 +19,10 @@ LINKS = [
     ("Sprint E1 probes", "sprints/E1/PROBES.md"),
     ("Sprint E1 results (F criteria)", "sprints/E1/RESULTS.json"),
     ("Hygiene Ledger", "docs/hygiene_ledger.md"),
-    ("Research deliverable: Data Quality and Universe Note", "docs/research/E1_data_note.md"),
+    (
+        "Research deliverable: Data Quality and Universe Note",
+        "docs/research/E1_data_note.md",
+    ),
     ("Walkthrough notebook", "notebooks/E1_walkthrough.html"),
 ]
 

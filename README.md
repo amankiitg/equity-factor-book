@@ -12,7 +12,10 @@ running end to end. Later dates are indicative and re-planned at each gate.
 ## Status
 
 - [x] Repo skeleton and engineering standards (Roadmap Appendix B)
-- [ ] E1  Universe, returns, Hygiene Ledger, perf library (Sep 1 to 6), gate RG-Data
+- [x] E1  Universe, returns, Hygiene Ledger, perf library (Sep 1 to 6), gate RG-Data
+  - F1.3 passes (0.9557); F1.1, F1.2, F1.4, F1.5 fail with stored numbers;
+    survivorship bias 349 bp per year recorded. See
+    docs/research/E1_data_note.md and sprints/E1/RESULTS.json.
 - [ ] E2  Time-series factor models, volatility, TS-v1 (Sep 7 to 13)
 - [ ] E3  Cross-sectional model, Fama-MacBeth, XS-v1 (Sep 14 to 20), gate G1
 - [ ] E4 to E13  See the roadmap sprint plan

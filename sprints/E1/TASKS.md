@@ -1,13 +1,13 @@
 # Sprint E1: Tasks
 
-## Status: In Progress
+## Status: Complete
 
 Rules: Task 0 precedes the ten atomic tasks and must complete before any
 data-dependent work. Tasks 1 to 10 are the ten atomic tasks, each with a
 test. Task 9 evaluates every F criterion; Task 10 produces the research
 deliverable.
 
-- [ ] Task 0: Probe every data source and paste printed rows into PROBES.md (P0)
+- [x] Task 0: Probe every data source and paste printed rows into PROBES.md (P0)
   - Acceptance: `efb/probes.py` prints row count, first and last date, ticker
     coverage and NaN share for yfinance prices, the Wikipedia constituents and
     changes tables, the four French library files, GICS sectors, shares
@@ -22,7 +22,7 @@ deliverable.
     table is pinned to Wikipedia revision 1368675864. yfinance coverage
     662 of 858 requested tickers (current members 503 of 503).
 
-- [ ] Task 1: yfinance price pipeline with adjusted-close audit (P0)
+- [x] Task 1: yfinance price pipeline with adjusted-close audit (P0)
   - Acceptance: `efb/prices.py` downloads daily OHLCV, adjusted close and
     dividends for every requested ticker from 2010 to today, cleans and
     deduplicates, writes `data/raw/prices.parquet`, and runs the
@@ -38,7 +38,7 @@ deliverable.
     on one merger day (BKR 2017-07-05 special distribution), logged in the
     ledger and events; adj_close kept authoritative.
 
-- [ ] Task 2: Universe membership matrix and sectors from Wikipedia (P0)
+- [x] Task 2: Universe membership matrix and sectors from Wikipedia (P0)
   - Acceptance: `efb/universe.py` parses the current constituents table and
     the changes table, rebuilds the point-in-time membership matrix from
     2010 to today, counts historical members recovered vs listed (stored for
@@ -53,7 +53,7 @@ deliverable.
     removals. Survivorship: 355 deleted members, 159 with recoverable
     price history, fraction 0.4479 stored for F1.5.
 
-- [ ] Task 3: Kenneth French factors and risk-free rate cross-check (P0)
+- [x] Task 3: Kenneth French factors and risk-free rate cross-check (P0)
   - Acceptance: `efb/factors.py` downloads and parses FF5 daily, Momentum
     daily, Short-term reversal daily and 12 industry portfolios daily,
     converts to decimal units, aligns to business days, writes
@@ -68,7 +68,7 @@ deliverable.
     FRED DTB3 confirmed unreachable; cross-check stored as null per F1.1.
     mkt_rf mean 5.34 bp/day, rf annualized 1.45%.
 
-- [ ] Task 4: Returns and stylized facts (P0)
+- [x] Task 4: Returns and stylized facts (P0)
   - Acceptance: `efb/returns.py` computes simple, log and excess returns
     from `prices.parquet` and `factors_ff.parquet`, writes
     `data/processed/returns.parquet`, checks index alignment (business days,
@@ -86,7 +86,7 @@ deliverable.
     tickers, documented in ledger and events. F1.3: EW universe vs FF
     market correlation 0.9557, passes.
 
-- [ ] Task 5: Performance metrics library efb/perf.py (P0)
+- [x] Task 5: Performance metrics library efb/perf.py (P0)
   - Acceptance: `efb/perf.py` implements Sharpe with i.i.d. and Lo (2002)
     standard errors, annualization, max drawdown, hit rate and slugging per
     the PRD formulas, all typed and documented; on the FF market factor the

@@ -8,10 +8,10 @@ from the roadmap and never reworded after the numbers are seen.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from efb import returns
@@ -99,7 +99,7 @@ def evaluate_criteria(
     bias_bp_per_year: float,
     naive_mkt_bp_per_year: float = float("nan"),
     pit_mkt_bp_per_year: float = float("nan"),
-) -> dict[str, dict[str, object]]:
+) -> dict[str, dict[str, Any]]:
     f11 = {
         "criterion": CRITERIA_TEXT["F1.1"],
         "threshold": THRESHOLDS["F1.1"],
@@ -109,7 +109,9 @@ def evaluate_criteria(
             "ten_year_history_fraction_eligible": ten_year_coverage,
         },
         "verdict": _verdict(
-            yf_coverage >= 0.95 and current_coverage >= 0.95 and ten_year_coverage >= 0.95
+            yf_coverage >= 0.95
+            and current_coverage >= 0.95
+            and ten_year_coverage >= 0.95
         ),
         "note": (
             "yfinance coverage of current members is full after the BF.B and "
@@ -135,7 +137,10 @@ def evaluate_criteria(
         "threshold": THRESHOLDS["F1.3"],
         "stored_number": f13_corr,
         "verdict": _verdict(f13_corr > 0.95),
-        "note": "Correlation over common business days with the FF market return (Mkt-RF + RF).",
+        "note": (
+            "Correlation over common business days with the FF market "
+            "return (Mkt-RF + RF)."
+        ),
     }
     f14 = {
         "criterion": CRITERIA_TEXT["F1.4"],
@@ -168,17 +173,17 @@ def evaluate_criteria(
     return {"F1.1": f11, "F1.2": f12, "F1.3": f13, "F1.4": f14, "F1.5": f15}
 
 
-def write_results(criteria: dict[str, dict[str, object]], path: Path) -> None:
+def write_results(criteria: dict[str, dict[str, Any]], path: Path) -> None:
     payload = {
         "sprint": "E1",
-        "evaluated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "evaluated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "criteria": criteria,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n")
 
 
-def compute_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, object]:
+def compute_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
     """Compute every stored number from the artifacts and return the inputs
     needed by evaluate_criteria."""
     prices_frame = pd.read_parquet(data_root / "raw" / "prices.parquet")
@@ -190,9 +195,7 @@ def compute_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, object]
     from efb import prices as prices_mod
 
     raw_cache = data_root / "raw" / "yf_cache.parquet"
-    raw_prices = (
-        pd.read_parquet(raw_cache) if raw_cache.exists() else prices_frame
-    )
+    raw_prices = pd.read_parquet(raw_cache) if raw_cache.exists() else prices_frame
     covered = prices_mod.covered_tickers(raw_prices)
     all_requested = set(prices_frame.index.get_level_values("ticker").unique())
     current = set(constituents["ticker"].unique())
@@ -202,7 +205,11 @@ def compute_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, object]
     first_valid = (
         raw_prices["adj_close"]
         .groupby(level="ticker")
-        .apply(lambda s: s.first_valid_index()[0] if s.first_valid_index() is not None else None)
+        .apply(
+            lambda s: (
+                s.first_valid_index()[0] if s.first_valid_index() is not None else None
+            )
+        )
     ).dropna()
     starts = pd.Series(
         {
@@ -229,7 +236,9 @@ def compute_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, object]
 
     ew = returns.equal_weight_universe_return(returns_frame, members)
     mkt = factors_frame["mkt_rf"] + factors_frame["rf"]
-    both = pd.concat([ew.rename("ew"), mkt.rename("mkt")], axis=1, join="inner").dropna()
+    both = pd.concat(
+        [ew.rename("ew"), mkt.rename("mkt")], axis=1, join="inner"
+    ).dropna()
     f13_corr = float(both["ew"].corr(both["mkt"]))
 
     audit = prices_mod.audit_adjusted_close(

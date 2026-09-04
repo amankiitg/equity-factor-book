@@ -38,14 +38,18 @@ def fetch_constituents() -> pd.DataFrame:
     html = _get(WIKI_PAGE)
     tables = pd.read_html(io.StringIO(html))
     raw = tables[0]
-    raw.columns = [re.sub(r"[^a-z0-9]+", "_", str(c).strip().lower()) for c in raw.columns]
+    raw.columns = [
+        re.sub(r"[^a-z0-9]+", "_", str(c).strip().lower()) for c in raw.columns
+    ]
     out = pd.DataFrame(
         {
             "symbol": raw["symbol"].astype(str).str.strip(),
             "security": raw["security"].astype(str).str.strip(),
             "gics_sector": raw["gics_sector"].astype(str).str.strip(),
             "gics_sub_industry": raw["gics_sub_industry"].astype(str).str.strip(),
-            "headquarters": raw.get("headquarters_location", pd.Series([""] * len(raw))),
+            "headquarters": raw.get(
+                "headquarters_location", pd.Series([""] * len(raw))
+            ),
             "date_added": pd.to_datetime(raw.get("date_added"), errors="coerce"),
             "cik": raw.get("cik"),
             "founded": raw.get("founded"),
@@ -80,7 +84,9 @@ def fetch_changes() -> pd.DataFrame:
 
     out = pd.DataFrame(
         {
-            "effective_date": pd.to_datetime(_col("Effective Date", "Effective Date"), errors="coerce"),
+            "effective_date": pd.to_datetime(
+                _col("Effective Date", "Effective Date"), errors="coerce"
+            ),
             "added_ticker": _col("Added", "Ticker"),
             "added_security": _col("Added", "Security"),
             "removed_ticker": _col("Removed", "Ticker"),
@@ -185,8 +191,13 @@ def membership_changes(members: pd.DataFrame) -> pd.DataFrame:
         series = diff[ticker]
         added = series[series == 1]
         removed = series[series == -1]
-        rows.extend({"date": d, "ticker": ticker, "event_type": "added"} for d in added.index)
-        rows.extend({"date": d, "ticker": ticker, "event_type": "removed"} for d in removed.index)
+        rows.extend(
+            {"date": d, "ticker": ticker, "event_type": "added"} for d in added.index
+        )
+        rows.extend(
+            {"date": d, "ticker": ticker, "event_type": "removed"}
+            for d in removed.index
+        )
     if not rows:
         return pd.DataFrame(columns=["date", "ticker", "event_type"])
     return pd.DataFrame(rows).sort_values(["date", "ticker"]).reset_index(drop=True)
@@ -194,7 +205,7 @@ def membership_changes(members: pd.DataFrame) -> pd.DataFrame:
 
 def survivorship_stats(
     members: pd.DataFrame, price_tickers: set[str]
-) -> dict[str, object]:
+) -> dict[str, float | int]:
     """Fraction of deleted members with recoverable price history (F1.5)."""
     current = set(members.columns[members.iloc[-1]])
     deleted = set(members.columns) - current

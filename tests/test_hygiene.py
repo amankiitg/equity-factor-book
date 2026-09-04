@@ -8,7 +8,8 @@ from efb import hygiene
 
 def _returns_frame(ticker: str, r: list[float]) -> pd.DataFrame:
     idx = pd.MultiIndex.from_product(
-        [pd.bdate_range("2026-07-01", periods=len(r)), [ticker]], names=["date", "ticker"]
+        [pd.bdate_range("2026-07-01", periods=len(r)), [ticker]],
+        names=["date", "ticker"],
     )
     arr = np.asarray(r, dtype=float)
     return pd.DataFrame({"r": arr, "g": arr, "excess": arr}, index=idx)
@@ -58,7 +59,9 @@ def test_build_events_corporate_actions_and_flags() -> None:
     )
     ret = _returns_frame("AAA", [0.001, 0.02, 0.6, -0.0099])
     ret = hygiene.apply_flags(ret)
-    events = hygiene.build_events(prices, ret, pd.DataFrame(columns=["date", "ticker", "event_type"]))
+    events = hygiene.build_events(
+        prices, ret, pd.DataFrame(columns=["date", "ticker", "event_type"])
+    )
     types = events["event_type"].tolist()
     assert "dividend_large" in types  # 1.5 / 101.0 > 1%
     assert "split" in types  # split factor 2.0 on the last day

@@ -62,7 +62,8 @@ def test_audit_adjusted_close_handles_split() -> None:
     dividend = [0.0, 0.0, 0.0, 0.0, 0.0]
     frame = _frame("AAA", close, dividend)
     frame.loc[
-        frame.index.get_level_values("date") == pd.Timestamp("2026-07-06"), "split_factor"
+        frame.index.get_level_values("date") == pd.Timestamp("2026-07-06"),
+        "split_factor",
     ] = 4.0
     frame["adj_close"] = _total_return_index(close, dividend)
     result = prices.audit_adjusted_close(frame, ["AAA"], n_names=1, seed=0)
@@ -94,7 +95,9 @@ def test_load_or_download_uses_complete_cache(tmp_path: Path, monkeypatch) -> No
     assert list(out.columns) == prices.FIELDS
 
 
-def test_load_or_download_downloads_when_ticker_missing(tmp_path: Path, monkeypatch) -> None:
+def test_load_or_download_downloads_when_ticker_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
     cache = tmp_path / "cache.parquet"
     frame = _frame("AAA", [100.0, 101.0], [0.0, 0.0])
     frame["adj_close"] = frame["close"]

@@ -59,17 +59,26 @@ def coverage_matrix(prices: pd.DataFrame) -> pd.DataFrame:
     return present.groupby(["month", "ticker"]).mean().unstack("ticker")
 
 
-def missing_tickers(returns_frame: pd.DataFrame, as_of: str, window: int = 5) -> list[str]:
+def missing_tickers(
+    returns_frame: pd.DataFrame, as_of: str, window: int = 5
+) -> list[str]:
     """Tickers with no return in the last `window` business days."""
     cutoff = pd.Timestamp(as_of)
-    recent = returns_frame[returns_frame.index.get_level_values("date") >= cutoff - pd.Timedelta(days=window * 2)]
+    recent = returns_frame[
+        returns_frame.index.get_level_values("date")
+        >= cutoff - pd.Timedelta(days=window * 2)
+    ]
     have = recent.groupby(level="ticker")["r"].apply(lambda s: s.notna().any())
     return sorted(have[~have].index.tolist())
 
 
 def stale_counts(returns_frame: pd.DataFrame) -> pd.Series:
     """Stale-flag days per ticker."""
-    return returns_frame.groupby(level="ticker")["stale"].sum().sort_values(ascending=False)
+    return (
+        returns_frame.groupby(level="ticker")["stale"]
+        .sum()
+        .sort_values(ascending=False)
+    )
 
 
 def universe_size(members: pd.DataFrame) -> pd.Series:
@@ -116,10 +125,23 @@ def render() -> None:
     st.subheader("Missing and stale counts")
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Tickers with no data in the last 5 business days", len(missing_tickers(returns_frame, as_of=str(returns_frame.index.get_level_values("date").max()))))
+        st.metric(
+            "Tickers with no data in the last 5 business days",
+            len(
+                missing_tickers(
+                    returns_frame,
+                    as_of=str(returns_frame.index.get_level_values("date").max()),
+                )
+            ),
+        )
     with col2:
-        st.metric("Stale zero-return runs (>= 5 days)", int(events["event_type"].eq("stale_start").sum()) if len(events) else 0)
-    st.dataframe(stale_counts(returns_frame).rename("stale_days"), use_container_width=True)
+        st.metric(
+            "Stale zero-return runs (>= 5 days)",
+            int(events["event_type"].eq("stale_start").sum()) if len(events) else 0,
+        )
+    st.dataframe(
+        stale_counts(returns_frame).rename("stale_days"), use_container_width=True
+    )
 
     st.subheader("Universe size over time")
     size = universe_size(members)
@@ -130,7 +152,9 @@ def render() -> None:
 
     st.subheader("Corporate-action and outlier event log")
     st.dataframe(event_counts(events).rename("count"), use_container_width=True)
-    st.dataframe(events.sort_values("date", ascending=False).head(200), use_container_width=True)
+    st.dataframe(
+        events.sort_values("date", ascending=False).head(200), use_container_width=True
+    )
 
     st.subheader("Hygiene Ledger")
     st.markdown(LEDGER.read_text())

@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 from efb import build
 
@@ -55,18 +54,36 @@ def test_rebuild_runs_end_to_end_offline(tmp_path: Path, monkeypatch) -> None:
         "load_french_factors",
         lambda: {
             "ff5": pd.DataFrame(
-                {"mkt_rf": [0.001], "smb": [0.0], "hml": [0.0], "rmw": [0.0], "cma": [0.0], "rf": [0.0001]},
+                {
+                    "mkt_rf": [0.001],
+                    "smb": [0.0],
+                    "hml": [0.0],
+                    "rmw": [0.0],
+                    "cma": [0.0],
+                    "rf": [0.0001],
+                },
                 index=pd.bdate_range("2015-01-02", periods=1, name="date"),
             ),
-            "mom": pd.DataFrame({"mom": [0.0]}, index=pd.bdate_range("2015-01-02", periods=1, name="date")),
-            "strev": pd.DataFrame({"st_rev": [0.0]}, index=pd.bdate_range("2015-01-02", periods=1, name="date")),
-            "ind12": pd.DataFrame({f"ind{i}": [0.0] for i in range(1, 13)}, index=pd.bdate_range("2015-01-02", periods=1, name="date")),
+            "mom": pd.DataFrame(
+                {"mom": [0.0]},
+                index=pd.bdate_range("2015-01-02", periods=1, name="date"),
+            ),
+            "strev": pd.DataFrame(
+                {"st_rev": [0.0]},
+                index=pd.bdate_range("2015-01-02", periods=1, name="date"),
+            ),
+            "ind12": pd.DataFrame(
+                {f"ind{i}": [0.0] for i in range(1, 13)},
+                index=pd.bdate_range("2015-01-02", periods=1, name="date"),
+            ),
         },
     )
     dates = pd.bdate_range("2015-01-01", periods=6)
     cache = pd.DataFrame(
         {
-            "open": 1.0, "high": 1.0, "low": 1.0,
+            "open": 1.0,
+            "high": 1.0,
+            "low": 1.0,
             "close": [1.0, 1.01, 1.02, 1.03, 1.04, 1.05] * 3,
             "adj_close": [1.0, 1.01, 1.02, 1.03, 1.04, 1.05] * 3,
             "volume": 100,

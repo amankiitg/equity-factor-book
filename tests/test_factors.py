@@ -7,20 +7,48 @@ import pytest
 from efb import factors
 
 
-def _frame(columns: list[str], periods: int = 10, start: str = "2020-01-02") -> pd.DataFrame:
+def _frame(
+    columns: list[str], periods: int = 10, start: str = "2020-01-02"
+) -> pd.DataFrame:
     idx = pd.bdate_range(start=start, periods=periods, name="date")
     rng = np.random.default_rng(1)
-    return pd.DataFrame(rng.normal(0.0005, 0.01, (periods, len(columns))), index=idx, columns=columns)
+    return pd.DataFrame(
+        rng.normal(0.0005, 0.01, (periods, len(columns))), index=idx, columns=columns
+    )
 
 
 def test_merge_factors_aligns_union_of_dates() -> None:
     ff5 = _frame(["mkt_rf", "smb", "hml", "rmw", "cma", "rf"], periods=10)
     mom = _frame(["mom"], periods=8, start="2020-01-06")
-    merged = factors.merge_factors({"ff5": ff5, "mom": mom, "strev": _frame(["st_rev"]), "ind12": _frame([f"ind{i}" for i in range(1, 13)])})
+    merged = factors.merge_factors(
+        {
+            "ff5": ff5,
+            "mom": mom,
+            "strev": _frame(["st_rev"]),
+            "ind12": _frame([f"ind{i}" for i in range(1, 13)]),
+        }
+    )
     assert set(merged.columns) == {
-        "mkt_rf", "smb", "hml", "rmw", "cma", "rf", "mom", "st_rev",
-        "ind1", "ind2", "ind3", "ind4", "ind5", "ind6",
-        "ind7", "ind8", "ind9", "ind10", "ind11", "ind12",
+        "mkt_rf",
+        "smb",
+        "hml",
+        "rmw",
+        "cma",
+        "rf",
+        "mom",
+        "st_rev",
+        "ind1",
+        "ind2",
+        "ind3",
+        "ind4",
+        "ind5",
+        "ind6",
+        "ind7",
+        "ind8",
+        "ind9",
+        "ind10",
+        "ind11",
+        "ind12",
     }
     assert len(merged) == 10
     assert merged.index.is_monotonic_increasing

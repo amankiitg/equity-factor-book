@@ -75,7 +75,9 @@ def parse_french_csv(text: str) -> pd.DataFrame:
             rows.append([float(x) for x in parts[1:]])
         except ValueError:
             break
-    frame = pd.DataFrame(rows, index=pd.DatetimeIndex(dates, name="date"), columns=columns)
+    frame = pd.DataFrame(
+        rows, index=pd.DatetimeIndex(dates, name="date"), columns=columns
+    )
     return frame
 
 
@@ -112,7 +114,9 @@ def load_french_factors() -> dict[str, pd.DataFrame]:
     mom = mom.rename(columns={c: "mom" for c in mom.columns}).iloc[:, [0]]
     strev = to_decimal(parse_french_csv(download_french_zip(FF_URLS["strev"])))
     strev = strev.rename(columns={c: "st_rev" for c in strev.columns}).iloc[:, [0]]
-    ind12 = to_decimal(_industry_columns(parse_french_csv(download_french_zip(FF_URLS["ind12"]))))
+    ind12 = to_decimal(
+        _industry_columns(parse_french_csv(download_french_zip(FF_URLS["ind12"])))
+    )
     for frame in (ff5, mom, strev, ind12):
         frame.index = pd.DatetimeIndex(frame.index, name="date")
     return {"ff5": ff5, "mom": mom, "strev": strev, "ind12": ind12}
@@ -125,9 +129,26 @@ def merge_factors(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
     later leave NaN before their first row. Column order is fixed.
     """
     columns = [
-        "mkt_rf", "smb", "hml", "rmw", "cma", "rf", "mom", "st_rev",
-        "ind1", "ind2", "ind3", "ind4", "ind5", "ind6",
-        "ind7", "ind8", "ind9", "ind10", "ind11", "ind12",
+        "mkt_rf",
+        "smb",
+        "hml",
+        "rmw",
+        "cma",
+        "rf",
+        "mom",
+        "st_rev",
+        "ind1",
+        "ind2",
+        "ind3",
+        "ind4",
+        "ind5",
+        "ind6",
+        "ind7",
+        "ind8",
+        "ind9",
+        "ind10",
+        "ind11",
+        "ind12",
     ]
     out = pd.concat([frames[key] for key in ("ff5", "mom", "strev", "ind12")], axis=1)
     out = out.reindex(columns=columns)

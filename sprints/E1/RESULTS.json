@@ -1,6 +1,6 @@
 {
   "sprint": "E1",
-  "evaluated_at": "2026-09-04T17:23:00+00:00",
+  "evaluated_at": "2026-09-04T17:35:38+00:00",
   "criteria": {
     "F1.1": {
       "criterion": "Each probed source returns at least 95% of requested tickers with at least 10 years of daily history. A failing source is recorded in the ledger and the design adapts; it is never silently dropped.",
@@ -23,7 +23,7 @@
     "F1.3": {
       "criterion": "Equal-weight universe daily return vs the Kenneth French market return (Mkt-RF + RF) correlation above 0.95. Lower means a date-alignment or adjustment bug, not a finding.",
       "threshold": "correlation > 0.95",
-      "stored_number": 0.955748150461512,
+      "stored_number": 0.9557479246515004,
       "verdict": "pass",
       "note": "Correlation over common business days with the FF market return (Mkt-RF + RF)."
     },
@@ -42,9 +42,9 @@
       "threshold": "recoverable fraction >= 70%",
       "stored_numbers": {
         "fraction_recovered": 0.447887323943662,
-        "naive_minus_pit_bp_per_year": 349.37445114731264,
-        "naive_minus_ff_market_bp_per_year": 372.37340382486224,
-        "pit_minus_ff_market_bp_per_year": 21.089485428531482
+        "naive_minus_pit_bp_per_year": 349.6680097180469,
+        "naive_minus_ff_market_bp_per_year": 372.35603885887093,
+        "pit_minus_ff_market_bp_per_year": 20.750941059644266
       },
       "verdict": "fail",
       "note": "Fraction of deleted members with recoverable price history. Below 70%, so the bias magnitude is recorded via a naive buy-all-current-members backtest against point-in-time membership and against the FF market return."

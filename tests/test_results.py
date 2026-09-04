@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -93,13 +92,23 @@ def test_write_results_json_valid(tmp_path: Path) -> None:
 
 def test_ten_year_history_fraction() -> None:
     first_possible = pd.Series(
-        [pd.Timestamp("2010-01-04"), pd.Timestamp("2020-01-02"), pd.Timestamp("2016-06-01")],
+        [
+            pd.Timestamp("2010-01-04"),
+            pd.Timestamp("2020-01-02"),
+            pd.Timestamp("2016-06-01"),
+        ],
         index=["A", "B", "C"],
     )
     first_available = pd.Series(
-        [pd.Timestamp("2010-01-04"), pd.Timestamp("2020-01-02"), pd.Timestamp("2016-10-01")],
+        [
+            pd.Timestamp("2010-01-04"),
+            pd.Timestamp("2020-01-02"),
+            pd.Timestamp("2016-10-01"),
+        ],
         index=["A", "B", "C"],
     )
-    frac = evaluate.ten_year_history_fraction(first_possible, first_available, cutoff="2016-09-02")
+    frac = evaluate.ten_year_history_fraction(
+        first_possible, first_available, cutoff="2016-09-02"
+    )
     # B joined after the cutoff and is not eligible; of A and C only A has 10 years
     assert frac == pytest.approx(0.5)

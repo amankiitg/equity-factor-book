@@ -66,7 +66,9 @@ def index_alignment_report(frame: pd.DataFrame) -> dict[str, int]:
     return {
         "rows": len(frame),
         "duplicate_rows": int(frame.index.duplicated().sum()),
-        "infs": int(np.isinf(frame.select_dtypes(include=[np.number]).to_numpy()).sum()),
+        "infs": int(
+            np.isinf(frame.select_dtypes(include=[np.number]).to_numpy()).sum()
+        ),
         "non_business_days": int((dates.dayofweek >= 5).sum()),
         "nans": int(frame["r"].isna().sum()),
     }
