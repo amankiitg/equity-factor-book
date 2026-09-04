@@ -32,6 +32,11 @@ deliverable.
   - Test: `tests/test_prices.py` (cleaning, dedupe, audit on synthetic
     prices).
   - Files: efb/prices.py, tests/test_prices.py, data/raw/prices.parquet
+  - Completed: 2026-09-04. prices.parquet: 3,597,594 rows, 858 tickers,
+    2010-01-04 to 2026-09-03, 0 weekend rows, 0 duplicate dates, 0 infs.
+    F1.4 audit on 20 random names: mean abs diff 0.0178 bp, max 221.25 bp
+    on one merger day (BKR 2017-07-05 special distribution), logged in the
+    ledger and events; adj_close kept authoritative.
 
 - [ ] Task 2: Universe membership matrix and sectors from Wikipedia (P0)
   - Acceptance: `efb/universe.py` parses the current constituents table and
@@ -43,6 +48,10 @@ deliverable.
     correct point-in-time matrix).
   - Files: efb/universe.py, tests/test_universe.py,
     data/processed/universe_membership.parquet, data/processed/sectors.parquet
+  - Completed: 2026-09-04. Membership matrix 4350 business days x 858
+    tickers, universe size 503 to 506 over time, 328 additions and 329
+    removals. Survivorship: 355 deleted members, 159 with recoverable
+    price history, fraction 0.4479 stored for F1.5.
 
 - [ ] Task 3: Kenneth French factors and risk-free rate cross-check (P0)
   - Acceptance: `efb/factors.py` downloads and parses FF5 daily, Momentum

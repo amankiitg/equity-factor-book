@@ -136,3 +136,85 @@ def membership_start_dates(changes: pd.DataFrame) -> dict[str, pd.Timestamp]:
         if removed is not None:
             starts.pop(removed, None)  # removal ends a stint; re-add will reinsert
     return {t: starts.get(t, first_event) for t in starts}
+
+
+def build_membership(
+    changes: pd.DataFrame,
+    constituents: pd.DataFrame,
+    start: str = "2010-01-04",
+    end: str | None = None,
+) -> pd.DataFrame:
+    """Rebuild the point-in-time membership matrix (date x ticker).
+
+    Walks the changes table backward from today's members: at each event
+    date, for all earlier dates the removed ticker is a member and the
+    added ticker is not. The walk handles re-entries and removals exactly
+    within the table's window; before the earliest event, membership is
+    extended backward unchanged. Events fall on the next business day at
+    or after their calendar date.
+    """
+    end = end or pd.Timestamp.today().strftime("%Y-%m-%d")
+    dates = pd.bdate_range(start=start, end=end)
+    current = set(current_tickers(constituents))
+    deleted = set(deleted_tickers(changes))
+    columns = sorted(current | deleted)
+    members = pd.DataFrame(False, index=dates, columns=columns)
+    members[list(current)] = True
+    events = changes.dropna(subset=["effective_date"]).sort_values(
+        "effective_date", ascending=False
+    )
+    for row in events.itertuples(index=False):
+        added, removed, date = row.added_ticker, row.removed_ticker, row.effective_date
+        eff = dates[dates >= pd.Timestamp(date)]
+        if len(eff) == 0:
+            continue
+        cutoff = eff[0]
+        earlier = members.index < cutoff
+        if removed is not None and removed in members.columns:
+            members.loc[earlier, removed] = True
+        if added is not None and added in members.columns:
+            members.loc[earlier, added] = False
+    return members
+
+
+def membership_changes(members: pd.DataFrame) -> pd.DataFrame:
+    """Per-date additions and removals implied by the membership matrix."""
+    diff = members.astype(int).diff()
+    rows: list[dict[str, object]] = []
+    for ticker in members.columns:
+        series = diff[ticker]
+        added = series[series == 1]
+        removed = series[series == -1]
+        rows.extend({"date": d, "ticker": ticker, "event_type": "added"} for d in added.index)
+        rows.extend({"date": d, "ticker": ticker, "event_type": "removed"} for d in removed.index)
+    if not rows:
+        return pd.DataFrame(columns=["date", "ticker", "event_type"])
+    return pd.DataFrame(rows).sort_values(["date", "ticker"]).reset_index(drop=True)
+
+
+def survivorship_stats(
+    members: pd.DataFrame, price_tickers: set[str]
+) -> dict[str, object]:
+    """Fraction of deleted members with recoverable price history (F1.5)."""
+    current = set(members.columns[members.iloc[-1]])
+    deleted = set(members.columns) - current
+    recovered = deleted & price_tickers
+    return {
+        "n_deleted": len(deleted),
+        "n_recovered": len(recovered),
+        "fraction": len(recovered) / len(deleted) if deleted else float("nan"),
+    }
+
+
+def build_sectors(constituents: pd.DataFrame, as_of: str) -> pd.DataFrame:
+    """Build sectors.parquet rows from the constituents snapshot."""
+    out = pd.DataFrame(
+        {
+            "ticker": constituents["symbol"],
+            "gics_sector": constituents["gics_sector"],
+            "gics_sub_industry": constituents["gics_sub_industry"],
+            "source": "wikipedia",
+            "as_of": pd.Timestamp(as_of),
+        }
+    )
+    return out.sort_values("ticker").reset_index(drop=True)

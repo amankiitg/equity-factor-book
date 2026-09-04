@@ -110,6 +110,19 @@ def save_prices(frame: pd.DataFrame, path: Path) -> None:
     frame.to_parquet(path)
 
 
+def build_prices_artifact(
+    frame: pd.DataFrame, start: str = "2010-01-04"
+) -> pd.DataFrame:
+    """Clip the long price frame to the universe window and clean it.
+
+    Prices before start are the warm-up window for the first return; they
+    stay in the cache but are excluded from data/raw/prices.parquet.
+    """
+    cleaned = clean_prices(frame, start=start)
+    dates = cleaned.index.get_level_values("date")
+    return cleaned.loc[dates >= pd.Timestamp(start)].sort_index()
+
+
 def covered_tickers(frame: pd.DataFrame) -> set[str]:
     """Tickers with at least one non-null adjusted close in the frame."""
     adj = frame["adj_close"]
@@ -151,10 +164,12 @@ def audit_adjusted_close(
 ) -> dict[str, float]:
     """Audit adjusted close against the dividend-adjusted raw series.
 
-    For n_names randomly sampled tickers, the daily total return implied by
-    adj_close is compared with (close + dividend) / prior close. Returns the
-    max absolute difference across all sampled names in basis points, and
-    the mean absolute difference in basis points.
+    For n_names randomly sampled tickers, the daily total return implied
+    by adj_close is compared with (close + dividend) / prior close. Note
+    that the yfinance Close column is already split-adjusted, so split
+    factors must not be reapplied here; the Stock Splits action column is
+    informational. Returns the max and mean absolute difference across
+    all sampled names in basis points.
     """
     rng = np.random.default_rng(seed)
     sample = sorted(rng.choice(tickers, size=min(n_names, len(tickers)), replace=False))
@@ -163,7 +178,11 @@ def audit_adjusted_close(
         sub = frame.xs(ticker, level="ticker")
         sub = sub.dropna(subset=["close", "adj_close"])
         r_adj = sub["adj_close"].pct_change()
-        r_div = (sub["close"] + sub["dividend"].fillna(0.0)).div(sub["close"].shift(1)) - 1.0
+        r_div = (
+            (sub["close"] + sub["dividend"].fillna(0.0))
+            .div(sub["close"].shift(1))
+            - 1.0
+        )
         both = pd.concat([r_adj, r_div], axis=1).dropna()
         if both.empty:
             continue
