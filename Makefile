@@ -1,4 +1,5 @@
 SHELL := /bin/bash
+PYTHON ?= python
 PYTEST ?= pytest
 
 .PHONY: help test lint format dashboard rebuild-e1 rebuild-e2 rebuild-e3 clean
@@ -21,8 +22,8 @@ format: ## Auto-format with black and ruff
 dashboard: ## Run the EFB Console (Streamlit)
 	streamlit run dashboard/app.py
 
-rebuild-e1: ## Rebuilds the E1 data layer; implemented in Sprint E1
-	@echo "make rebuild-e1 is implemented in Sprint E1." && exit 1
+rebuild-e1: ## Rebuilds the E1 data layer end to end (Sprint E1)
+	$(PYTHON) -m efb.build
 
 rebuild-e2: ## Rebuilds E2 artifacts; implemented in Sprint E2
 	@echo "make rebuild-e2 is implemented in Sprint E2." && exit 1

@@ -116,3 +116,64 @@ def load_french_factors() -> dict[str, pd.DataFrame]:
     for frame in (ff5, mom, strev, ind12):
         frame.index = pd.DatetimeIndex(frame.index, name="date")
     return {"ff5": ff5, "mom": mom, "strev": strev, "ind12": ind12}
+
+
+def merge_factors(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Merge the four French files into one wide decimal DataFrame.
+
+    Index is the union of business days across the files; files that start
+    later leave NaN before their first row. Column order is fixed.
+    """
+    columns = [
+        "mkt_rf", "smb", "hml", "rmw", "cma", "rf", "mom", "st_rev",
+        "ind1", "ind2", "ind3", "ind4", "ind5", "ind6",
+        "ind7", "ind8", "ind9", "ind10", "ind11", "ind12",
+    ]
+    out = pd.concat([frames[key] for key in ("ff5", "mom", "strev", "ind12")], axis=1)
+    out = out.reindex(columns=columns)
+    out = out.sort_index()
+    out.index.name = "date"
+    return out
+
+
+FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTB3"
+
+
+def download_dtb3(timeout: int = 90) -> pd.Series | None:
+    """Download the FRED DTB3 daily series; None when unreachable."""
+    try:
+        resp = requests.get(FRED_URL, headers=HEADERS, timeout=timeout)
+        resp.raise_for_status()
+    except requests.RequestException:
+        return None
+    frame = pd.read_csv(io.StringIO(resp.text), parse_dates=["observation_date"])
+    out = frame.set_index("observation_date")["DTB3"]
+    return pd.to_numeric(out, errors="coerce").dropna()
+
+
+def cross_check_rf(rf: pd.Series, dtb3: pd.Series) -> dict[str, float] | None:
+    """Cross-check the FF RF daily rate against FRED DTB3.
+
+    rf and dtb3 are daily decimals. Returns correlation and mean absolute
+    difference in basis points per day, or None when either series is
+    empty (the documented null for an unavailable source).
+    """
+    both = pd.concat(
+        [rf.rename("rf"), dtb3.rename("dtb3")], axis=1, join="inner"
+    ).dropna()
+    if len(both) < 10:
+        return None
+    diff_bp = ((both["rf"] - both["dtb3"]).abs() * 10_000.0).mean()
+    return {
+        "correlation": float(both["rf"].corr(both["dtb3"])),
+        "mean_diff_bp": float(diff_bp),
+        "n_obs": int(len(both)),
+    }
+
+
+def build_factors_artifact(
+    frames: dict[str, pd.DataFrame], start: str = "2010-01-04"
+) -> pd.DataFrame:
+    """Clip the merged factors to the universe window."""
+    merged = merge_factors(frames)
+    return merged.loc[merged.index >= pd.Timestamp(start)]

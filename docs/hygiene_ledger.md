@@ -100,3 +100,49 @@ last price are documented delisting rows under F1.2.
 Reason. CRSP-style delisting returns are not available from free
 sources. Recording the policy prevents later sprints from confusing
 post-delisting NaN with missing data.
+
+## 2026-09-04: Stale-price detection
+
+Decision. A zero-return run of 5 or more consecutive business days is
+flagged stale in returns.parquet (column stale) and the first day of the
+run is logged in events.parquet as stale_start. The raw return is never
+overwritten.
+
+Reason. Zero-return runs show up later as spurious low volatility and
+must be visible before any volatility model reads the file. Measured on
+the E1 data: 874 runs across 13 tickers (mostly delisted names with flat
+closing prints; AMCR and FERG are current members and are called out in
+the research note).
+
+## 2026-09-04: Outlier policy
+
+Decision. Any |r| > 0.50 is flagged (column outlier) and logged in
+events.parquet; the raw return is never silently winsorized. 226 such
+days exist in the E1 data, concentrated in a few delisted names (CPWR,
+EP and others).
+
+Reason. Winsorizing raw data is a modeling choice, not a data choice; a
+later sprint that wants winsorized returns adds its own explicit step.
+The raw artifact stays faithful to the source.
+
+## 2026-09-04: Warm-up window
+
+Decision. Prices are downloaded from 2009-12-15, eleven business days
+before the 2010-01-04 universe start, so the first 2010 return has a
+prior price. returns.parquet begins on 2010-01-04. F1.2 evaluates NaNs
+after the warm-up window and outside documented delisting tails.
+
+Reason. A return needs two prices; without a warm-up the first day of
+the window would be NaN by construction.
+
+## 2026-09-04: Timezone and date alignment
+
+Decision. All artifacts use a business-day DatetimeIndex on the New
+York calendar with no timezone attached. Weekend rows are dropped,
+duplicates are dropped keeping the last, and returns are aligned to the
+French daily files by date only (both are US-close series).
+
+Reason. Mixing calendars or keeping timestamps invites one-day shifts
+between the French library and yfinance, which would destroy every later
+regression. Alignment was verified by the F1.3 correlation of 0.9557
+between the equal-weight universe return and the FF market return.

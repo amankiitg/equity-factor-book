@@ -63,6 +63,10 @@ deliverable.
     around it.
   - Test: `tests/test_factors.py` (parser on synthetic CSV text).
   - Files: efb/factors.py, tests/test_factors.py, data/raw/factors_ff.parquet
+  - Completed: 2026-09-04. factors_ff.parquet: 4169 business days x 20
+    columns, 2010-01-04 to 2026-07-31 (202607 vintage), zero NaNs.
+    FRED DTB3 confirmed unreachable; cross-check stored as null per F1.1.
+    mkt_rf mean 5.34 bp/day, rf annualized 1.45%.
 
 - [ ] Task 4: Returns and stylized facts (P0)
   - Acceptance: `efb/returns.py` computes simple, log and excess returns
@@ -75,6 +79,12 @@ deliverable.
     prices match to 1e-10; aggregation rules: log adds over time, simple
     adds across assets).
   - Files: efb/returns.py, tests/test_returns.py, data/processed/returns.parquet
+  - Completed: 2026-09-04. returns.parquet: 3,597,594 rows, 0 duplicate
+    dates, 0 infs, 0 weekend rows. Stylized facts for AAPL, XOM, JPM and
+    EW universe stored (kurtosis 9.1 to 17.3, ACF(r) near zero, ACF(r^2)
+    positive and decaying). F1.2: 302 interior missing rows across 13
+    tickers, documented in ledger and events. F1.3: EW universe vs FF
+    market correlation 0.9557, passes.
 
 - [ ] Task 5: Performance metrics library efb/perf.py (P0)
   - Acceptance: `efb/perf.py` implements Sharpe with i.i.d. and Lo (2002)
@@ -86,6 +96,10 @@ deliverable.
     Gaussian draws vs sqrt((1 + SR^2 / 2) / T); Lo SE reduces to iid SE when
     autocorrelation is zero).
   - Files: efb/perf.py, tests/test_perf.py
+  - Completed: 2026-09-04. FF market factor: SR 0.0479 daily (0.76
+    annualized), SE iid 0.01550 daily, SE Lo 0.01429 daily (ratio 0.922;
+    direction follows the negative lag-1 ACF of -0.103, documented).
+    Max drawdown -34.4%, hit rate 54.4%, slugging 0.952.
 
 - [ ] Task 6: Hygiene Ledger and detection rules (P0)
   - Acceptance: `efb/hygiene.py` detects stale prices (zero-return runs of

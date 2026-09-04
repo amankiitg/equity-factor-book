@@ -177,7 +177,7 @@ def audit_adjusted_close(
     for ticker in sample:
         sub = frame.xs(ticker, level="ticker")
         sub = sub.dropna(subset=["close", "adj_close"])
-        r_adj = sub["adj_close"].pct_change()
+        r_adj = sub["adj_close"].pct_change(fill_method=None)
         r_div = (
             (sub["close"] + sub["dividend"].fillna(0.0))
             .div(sub["close"].shift(1))
