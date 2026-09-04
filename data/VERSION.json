@@ -1,0 +1,4 @@
+{
+  "note": "Populated by make rebuild-e1 (Sprint E1). Every data artifact gets a content hash here; the dashboard sidebar shows this version.",
+  "artifacts": {}
+}

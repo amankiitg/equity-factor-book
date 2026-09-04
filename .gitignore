@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Notebooks
+.ipynb_checkpoints/
+notebooks/**/*.html
+
+# Data artifacts are rebuilt by make; VERSION.json is tracked
+data/**/*.parquet
+data/**/*.csv
+data/**/*.feather
+
+# Secrets and local config
+.env
+.env.*
+
+# OS
+.DS_Store
