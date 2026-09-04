@@ -42,6 +42,7 @@ include = ["efb*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.black]
 line-length = 88
