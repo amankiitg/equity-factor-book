@@ -12,7 +12,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from dashboard.tabs import d00_data, methodology
+from dashboard.tabs import d00_data, d01_exposures, methodology
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION_PATH = ROOT / "data" / "VERSION.json"
@@ -37,10 +37,12 @@ def main() -> None:
         st.markdown("---")
         st.caption("Links live on the Methodology tab.")
 
-    tabs = st.tabs(["D0 Data Health", "Methodology"])
+    tabs = st.tabs(["D0 Data Health", "D1 Exposures", "Methodology"])
     with tabs[0]:
         d00_data.render()
     with tabs[1]:
+        d01_exposures.render()
+    with tabs[2]:
         methodology.render()
 
 

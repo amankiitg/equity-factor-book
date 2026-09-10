@@ -194,7 +194,9 @@ def build_e2_artifacts(
     multi = ts.select_factors(fac)
     fit = ts.fit_factor_model(y_raw, multi, flags=flags)
 
-    loadings = fit["loadings"]
+    loadings = fit["loadings"].copy()
+    loadings["r_squared"] = fit["r_squared"]
+    loadings["n_obs"] = fit["n_obs"]
     loadings.to_parquet(model_dir / "loadings.parquet")
     se = pd.concat(
         {"ols": fit["loadings_ols_se"], "nw_l5": fit["loadings_nw_se"]}, axis=1

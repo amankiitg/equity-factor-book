@@ -86,7 +86,7 @@ first when the four-day schedule tightens; the date never moves.
   - Files: efb/registry.py, efb/build.py, Makefile, tests/test_registry.py,
     data/models/registry.json, data/VERSION.json
 
-- [ ] Task 7: Dashboard tab D1 Exposures (P0)
+- [x] Task 7: Dashboard tab D1 Exposures (P0)
   - Acceptance: dashboard/tabs/d01_exposures.py renders the seven D1
     panels from parquet only; loads in under 3 seconds; a regression
     test imports every tab and D0 still renders.

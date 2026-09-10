@@ -89,6 +89,9 @@ def test_build_e2_artifacts_writes_everything_and_registers_ts_v1(tmp_path: Path
     assert list(se.columns.names) == ["method", "statistic"]
     assert set(se.columns.get_level_values("method")) == {"ols", "nw_l5"}
 
+    loadings = pd.read_parquet(data_root / "models/TS-v1/loadings.parquet")
+    assert {"alpha", "mkt_rf", "mom", "r_squared", "n_obs"} <= set(loadings.columns)
+
     registry = json.loads((data_root / "models/registry.json").read_text())
     assert "champion_rule" in registry and "family_notes" in registry
     entry = registry["models"]["TS-v1"]
