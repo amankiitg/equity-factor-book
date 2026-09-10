@@ -22,15 +22,22 @@ def _inputs(**overrides):
         f22_n_names=150,
         f23_garch_win_share=0.47,
         f23_ewma094_win_share=0.36,
+        f23_garch_names_fitted=45,
+        f23_paired_n=38,
+        f23_paired_garch_win_share=0.47,
+        f23_paired_ewma_win_share=0.29,
+        f23_garch_beats_ewma_share=0.74,
         f24_bias_mean=1.05,
         f24_bias_by_year={"2025": 1.0, "2026": 1.1},
         f25_nw_gt_ols_share=0.9,
+        f26_breaks=[],
+        f26_break_rows=0,
     )
     base.update(overrides)
     return base
 
 
-def test_all_eight_criteria_present_with_valid_verdicts() -> None:
+def test_all_nine_criteria_present_with_valid_verdicts() -> None:
     criteria = evaluate.evaluate_e2_criteria(**_inputs())
     assert set(criteria) == {
         "F2.0a",
@@ -41,10 +48,20 @@ def test_all_eight_criteria_present_with_valid_verdicts() -> None:
         "F2.3",
         "F2.4",
         "F2.5",
+        "F2.6",
     }
     for key, value in criteria.items():
         assert value["verdict"] in {"pass", "fail"}, key
         assert value["criterion"] and value["threshold"], key
+
+
+def test_f26_fails_when_a_symbol_was_reused() -> None:
+    criteria = evaluate.evaluate_e2_criteria(
+        **_inputs(f26_breaks=["CPWR", "MI"], f26_break_rows=7)
+    )
+    assert criteria["F2.6"]["verdict"] == "fail"
+    assert criteria["F2.6"]["stored_numbers"]["break_tickers"] == ["CPWR", "MI"]
+    assert "not pre-registered" in criteria["F2.6"]["criterion"]
 
 
 def test_thresholds_decide_the_verdicts() -> None:
@@ -86,6 +103,20 @@ def test_criteria_are_verbatim() -> None:
     )
 
 
+def test_f23_reports_the_paired_sample_not_just_the_win_shares() -> None:
+    # GARCH fits only part of the universe, so a bare win share beside the
+    # EWMA one reads as "GARCH is worse" when the opposite holds on the names
+    # where both are available.
+    criteria = evaluate.evaluate_e2_criteria(**_inputs())
+    stored = criteria["F2.3"]["stored_numbers"]
+    assert stored["garch_names_fitted"] == 45
+    assert stored["paired_n"] == 38
+    assert stored["garch_beats_ewma_094_share"] == pytest.approx(0.74)
+    note = criteria["F2.3"]["note"]
+    assert "45" in note and "38" in note
+    assert f"{0.74:.1%}" in note
+
+
 def test_write_results_records_the_sprint(tmp_path: Path) -> None:
     criteria = evaluate.evaluate_e2_criteria(**_inputs())
     path = tmp_path / "RESULTS.json"
@@ -109,4 +140,5 @@ def test_real_results_file_has_every_criterion_if_present() -> None:
         "F2.3",
         "F2.4",
         "F2.5",
+        "F2.6",
     }

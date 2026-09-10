@@ -186,6 +186,14 @@ def build_e2_artifacts(
     members = pd.read_parquet(processed_dir / "universe_membership.parquet")
     sectors = pd.read_parquet(processed_dir / "sectors.parquet")
 
+    # Symbols reused by a later listing splice two companies into one price
+    # history, so those names leave the estimation panel entirely; a mask on
+    # the break date would leave the wrong company's returns in place.
+    prices_frame = pd.read_parquet(raw_dir / "prices.parquet")
+    broken = hygiene.series_break_tickers(prices_frame)
+    if broken:
+        returns_frame = returns_frame[~returns_frame.index.isin(broken, level="ticker")]
+
     y_raw, fac, flags = ts.panel_from_artifacts(
         returns_frame, factors_frame, start=start, exclude_flags=False
     )
@@ -233,7 +241,9 @@ def build_e2_artifacts(
 
     beta_race = ts.beta_horse_race(y, fac["mkt_rf"])
     beta_race.to_parquet(eval_dir / "beta_horse_race.parquet", index=False)
-    returns_wide = returns_frame["r"].unstack("ticker")
+    # Volatility, momentum and portfolio risk read the flagged returns: a
+    # single 95x day for one name dominates a mean QLIKE and a realized vol.
+    returns_wide = hygiene.clean_returns(returns_frame).unstack("ticker")
     oos_start = (returns_wide.index.max() - pd.DateOffset(years=2)).strftime("%Y-%m-%d")
     vol_table = vol.vol_horse_race(
         returns_wide,
@@ -242,6 +252,12 @@ def build_e2_artifacts(
         garch_tickers=garch_tickers,
     )
     vol_table.to_parquet(eval_dir / "vol_horse_race.parquet", index=False)
+
+    # the seed books are also built from usable names only, so a spliced
+    # series cannot sit in a portfolio while its returns are missing
+    if broken:
+        members = members.drop(columns=[c for c in members.columns if c in broken])
+        sectors = sectors[~sectors["ticker"].isin(broken)]
 
     ew_weights = pf.ew_seed_weights(members)
     ls_weights = pf.momentum_ls_weights(returns_wide, members, sectors)
@@ -295,6 +311,7 @@ def build_e2_artifacts(
                 key: int(fit["exclusions"][key].sum())
                 for key in ("stale", "outlier", "nan")
             },
+            "series_break_tickers_dropped": broken,
         },
         universe_path=processed_dir / "universe_membership.parquet",
         data_paths=[raw_dir / "factors_ff.parquet", processed_dir / "returns.parquet"],

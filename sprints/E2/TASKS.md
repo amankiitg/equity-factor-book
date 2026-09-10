@@ -95,15 +95,30 @@ first when the four-day schedule tightens; the date never moves.
   - Files: dashboard/tabs/d01_exposures.py, dashboard/app.py,
     tests/test_dashboard_d1.py
 
-- [x] Task 8: Evaluate F2.0a, F2.0b, F2.0c and F2.1 to F2.5 (P0)
+- [x] Task 8: Evaluate F2.0a, F2.0b, F2.0c and F2.1 to F2.6 (P0)
   - Acceptance: every criterion stored in sprints/E2/RESULTS.json with
     threshold, stored number and verdict (pass, fail, or pending with a
     reason); numbers computed from artifacts, never retyped; F2.0c
     includes the events.parquet audit check.
-  - Test: tests/test_e2_results.py (all eight keys present, verdicts
+  - Test: tests/test_e2_results.py (all nine keys present, verdicts
     valid).
   - Files: sprints/E2/RESULTS.json, efb/evaluate.py extension,
     tests/test_e2_results.py
+
+- [x] Task 8b: Exclude flagged rows and reused symbols from the E2 panel (P0)
+  - Origin: F2.3 investigation. One flagged row, MI's +9542.9% on
+    2026-05-18, moved the trailing 252d mean QLIKE from -6.61 to -1.82,
+    and the same name turned out to be a spliced series rather than a bad
+    day. CPWR, EP and POM are spliced in the same way.
+  - Acceptance: volatility, momentum and portfolio code reads returns
+    through hygiene.clean_returns; names with reused symbols leave the
+    estimation panel and the exclusion is recorded in the TS-v1 registry;
+    the successor criterion F2.6 is evaluated, records the four names and
+    the 20 offending rows, and fails.
+  - Test: tests/test_hygiene.py (clean_returns, series_break_tickers),
+    tests/test_build_e2.py (the panel drops a spliced name).
+  - Files: efb/hygiene.py, efb/build.py, efb/evaluate.py,
+    docs/hygiene_ledger.md, docs/open_items.md
 
 - [x] Task 9: Research deliverable: Beta and Volatility Estimation Study (P0)
   - Acceptance: docs/research/E2_exposure_study.md answers the PM

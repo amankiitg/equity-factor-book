@@ -1,6 +1,6 @@
 {
   "sprint": "E2",
-  "evaluated_at": "2026-09-10T23:12:17+00:00",
+  "evaluated_at": "2026-09-10T23:34:18+00:00",
   "criteria": {
     "F2.0a": {
       "criterion": "coverage is reported per universe rather than as one threshold: current members 100%, point-in-time members with prices by year (the Task 0 table); the criterion passes if the table is stored and MODEL_START is recorded.",
@@ -37,7 +37,7 @@
     "F2.1": {
       "criterion": "Full-sample OLS beta vs mean of rolling 252d betas: cross-sectional correlation above 0.9.",
       "threshold": "cross-sectional correlation > 0.9",
-      "stored_number": 0.9123362805217569,
+      "stored_number": 0.9135409599040305,
       "verdict": "pass",
       "note": "Full-sample OLS market beta vs the time mean of the rolling 252d beta."
     },
@@ -45,7 +45,7 @@
       "criterion": "Mean pairwise correlation of FF5+MOM residuals across the universe below 0.05. Higher means a missing common factor; carry the finding into E3.",
       "threshold": "mean pairwise residual correlation < 0.05",
       "stored_numbers": {
-        "mean_pairwise_correlation": 0.018258986870831325,
+        "mean_pairwise_correlation": 0.01595330640639573,
         "n_names_sampled": 150
       },
       "verdict": "pass",
@@ -55,35 +55,40 @@
       "criterion": "GARCH(1,1) and EWMA(0.94) each beat trailing 252d vol on out-of-sample QLIKE for more than 60% of names.",
       "threshold": "GARCH and EWMA(0.94) each beat trailing 252d for > 60% of names",
       "stored_numbers": {
-        "garch_win_share": 0.4666666666666667,
-        "ewma_094_win_share": 0.3638132295719844
+        "garch_win_share": 0.4444444444444444,
+        "ewma_094_win_share": 0.3604887983706721,
+        "garch_names_fitted": 45,
+        "paired_n": 37,
+        "paired_garch_win_share": 0.43243243243243246,
+        "paired_ewma_094_win_share": 0.2972972972972973,
+        "garch_beats_ewma_094_share": 0.7297297297297297
       },
       "verdict": "fail",
-      "note": "Win share is the fraction of names whose out-of-sample QLIKE beats trailing 252d vol."
+      "note": "Win share is the fraction of names whose out-of-sample QLIKE beats trailing 252d vol. GARCH fits only 45 of the names, so the two win shares are not on the same sample: on the 37 names where both are available, GARCH beats EWMA (0.94) for 73.0% of them."
     },
     "F2.4": {
       "criterion": "For the equal-weight seed portfolio, bias statistic (realized 63d forward vol over model-predicted vol) averages between 0.8 and 1.2 across calendar years.",
       "threshold": "mean bias ratio in [0.8, 1.2] across calendar years",
       "stored_numbers": {
-        "bias_mean": 1.0226800058112024,
+        "bias_mean": 1.0224312677527996,
         "bias_by_year": {
-          "2010": 0.6859115954324202,
-          "2011": 1.242771195973736,
-          "2012": 0.6822397331330204,
-          "2013": 0.8705912132614173,
-          "2014": 1.0365131931520244,
-          "2015": 1.207190117171419,
-          "2016": 0.774960300331026,
+          "2010": 0.6881476560122989,
+          "2011": 1.2417155826249766,
+          "2012": 0.6825759616142605,
+          "2013": 0.8705920411009266,
+          "2014": 1.0363612495104018,
+          "2015": 1.2070836378009315,
+          "2016": 0.7754995143476977,
           "2017": 0.9287084102887949,
-          "2018": 1.3185654665846687,
-          "2019": 1.2354867579780675,
-          "2020": 1.3951743889570072,
-          "2021": 0.826661866456968,
-          "2022": 1.2300871893273067,
+          "2018": 1.3182036680618363,
+          "2019": 1.2345922007443855,
+          "2020": 1.3936366610120254,
+          "2021": 0.8266618664569682,
+          "2022": 1.2300871893273064,
           "2023": 0.7581192064919214,
-          "2024": 1.0338930235013306,
-          "2025": 1.2568991697012468,
-          "2026": 0.9017872710480693
+          "2024": 1.0338517161542102,
+          "2025": 1.2568644773714814,
+          "2026": 0.8986305128771696
         }
       },
       "verdict": "pass",
@@ -92,9 +97,25 @@
     "F2.5": {
       "criterion": "Newey-West SE exceeds OLS SE at lag 5 for more than 80% of names. If not, document the direction and why.",
       "threshold": "Newey-West SE > OLS SE for > 80% of names",
-      "stored_number": 0.9541984732824428,
+      "stored_number": 0.956989247311828,
       "verdict": "pass",
       "note": "Share of names where the Newey-West market-beta SE exceeds the OLS SE at lag 5."
+    },
+    "F2.6": {
+      "criterion": "Successor to F2.3, added on 2026-09-10 after the flagged MI row turned out to be a series break rather than a bad return: no name in the panel has an adjusted-close move above 5x that no recorded split explains. A name above that level has to leave the panel, not just lose the row, because every earlier date carries a different company's returns. This one is not pre-registered, and it is recorded as such.",
+      "threshold": "0 names with an unexplained adjusted-close move above 5x",
+      "stored_numbers": {
+        "names_with_breaks": 4,
+        "break_tickers": [
+          "CPWR",
+          "EP",
+          "MI",
+          "POM"
+        ],
+        "break_rows": 20
+      },
+      "verdict": "fail",
+      "note": "Ticker reuse: a later listing takes the old symbol and the vendor splices both histories, so one company's returns are attributed to another. Fixing it needs a security-identity source (FIGI or PERMNO) and is tracked in docs/open_items.md."
     }
   }
 }

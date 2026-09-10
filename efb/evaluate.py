@@ -8,6 +8,7 @@ from the roadmap and never reworded after the numbers are seen.
 from __future__ import annotations
 
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from efb import returns
+from efb import hygiene, returns
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS_PATH = ROOT / "sprints" / "E1" / "RESULTS.json"
@@ -280,7 +281,17 @@ def _naive_buy_all_current(
     return wide[cols].mean(axis=1).rename("naive_buy_all")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    """Evaluate the sprint criteria; `--e2` selects the E2 set.
+
+    Without the flag this is the E1 evaluation, so passing `--e2` used to
+    rewrite sprints/E1/RESULTS.json with a fresh timestamp while the caller
+    believed it had regenerated E2.
+    """
+    args = sys.argv[1:] if argv is None else list(argv)
+    if "--e2" in args:
+        main_e2()
+        return
     inputs = compute_from_artifacts()
     criteria = evaluate_criteria(**inputs)
     write_results(criteria, RESULTS_PATH)
@@ -327,6 +338,15 @@ E2_CRITERIA_TEXT = {
         "Newey-West SE exceeds OLS SE at lag 5 for more than 80% of names. "
         "If not, document the direction and why."
     ),
+    "F2.6": (
+        "Successor to F2.3, added on 2026-09-10 after the flagged MI row "
+        "turned out to be a series break rather than a bad return: no name "
+        "in the panel has an adjusted-close move above 5x that no recorded "
+        "split explains. A name above that level has to leave the panel, "
+        "not just lose the row, because every earlier date carries a "
+        "different company's returns. This one is not pre-registered, and "
+        "it is recorded as such."
+    ),
 }
 
 E2_THRESHOLDS = {
@@ -338,6 +358,7 @@ E2_THRESHOLDS = {
     "F2.3": "GARCH and EWMA(0.94) each beat trailing 252d for > 60% of names",
     "F2.4": "mean bias ratio in [0.8, 1.2] across calendar years",
     "F2.5": "Newey-West SE > OLS SE for > 80% of names",
+    "F2.6": "0 names with an unexplained adjusted-close move above 5x",
 }
 
 
@@ -354,9 +375,16 @@ def evaluate_e2_criteria(
     f22_n_names: int,
     f23_garch_win_share: float,
     f23_ewma094_win_share: float,
+    f23_garch_names_fitted: int,
+    f23_paired_n: int,
+    f23_paired_garch_win_share: float,
+    f23_paired_ewma_win_share: float,
+    f23_garch_beats_ewma_share: float,
     f24_bias_mean: float,
     f24_bias_by_year: dict[str, float],
     f25_nw_gt_ols_share: float,
+    f26_breaks: list[str],
+    f26_break_rows: int,
 ) -> dict[str, dict[str, Any]]:
     """Store the E2 criteria with numbers computed from the artifacts."""
 
@@ -436,11 +464,20 @@ def evaluate_e2_criteria(
             "stored_numbers": {
                 "garch_win_share": f23_garch_win_share,
                 "ewma_094_win_share": f23_ewma094_win_share,
+                "garch_names_fitted": f23_garch_names_fitted,
+                "paired_n": f23_paired_n,
+                "paired_garch_win_share": f23_paired_garch_win_share,
+                "paired_ewma_094_win_share": f23_paired_ewma_win_share,
+                "garch_beats_ewma_094_share": f23_garch_beats_ewma_share,
             },
             "verdict": v(f23_garch_win_share > 0.6 and f23_ewma094_win_share > 0.6),
             "note": (
                 "Win share is the fraction of names whose out-of-sample QLIKE "
-                "beats trailing 252d vol."
+                "beats trailing 252d vol. GARCH fits only "
+                f"{f23_garch_names_fitted} of the names, so the two win shares "
+                f"are not on the same sample: on the {f23_paired_n} names where "
+                "both are available, GARCH beats EWMA (0.94) for "
+                f"{f23_garch_beats_ewma_share:.1%} of them."
             ),
         },
         "F2.4": {
@@ -466,7 +503,47 @@ def evaluate_e2_criteria(
                 "the OLS SE at lag 5."
             ),
         },
+        "F2.6": {
+            "criterion": E2_CRITERIA_TEXT["F2.6"],
+            "threshold": E2_THRESHOLDS["F2.6"],
+            "stored_numbers": {
+                "names_with_breaks": len(f26_breaks),
+                "break_tickers": f26_breaks,
+                "break_rows": f26_break_rows,
+            },
+            "verdict": v(len(f26_breaks) == 0),
+            "note": (
+                "Ticker reuse: a later listing takes the old symbol and the "
+                "vendor splices both histories, so one company's returns are "
+                "attributed to another. Fixing it needs a security-identity "
+                "source (FIGI or PERMNO) and is tracked in docs/open_items.md."
+            ),
+        },
     }
+
+
+def _series_breaks(
+    prices_frame: pd.DataFrame, ratio: float = 5.0
+) -> tuple[list[str], int]:
+    """Series-break tickers and how many offending rows they contribute.
+
+    The rule itself lives in efb.hygiene.series_break_tickers, which the
+    build also uses to drop those names from the estimation panel, so the
+    criterion and the mitigation cannot drift apart.
+    """
+    tickers = hygiene.series_break_tickers(prices_frame, ratio=ratio)
+    frame = prices_frame.sort_index()
+    adjusted = frame["adj_close"].astype(float)
+    previous = adjusted.groupby(level="ticker").shift(1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio_series = adjusted.div(previous)
+    split = frame["split_factor"].astype(float)
+    suspects = (
+        ((ratio_series > ratio) | (ratio_series < 1.0 / ratio))
+        & (split == 0.0)
+        & ratio_series.notna()
+    )
+    return tickers, int(suspects.sum())
 
 
 def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
@@ -581,6 +658,29 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         if "ewma_094" in win_shares.index
         else 0.0
     )
+    # GARCH only fits a fraction of the universe, so the two win shares are
+    # not measured on the same names. Store the paired sample too, otherwise
+    # "GARCH fails" reads as "GARCH is worse", which is not what the data says.
+    paired = wins.pivot(index="ticker", columns="method", values="qlike").dropna(
+        subset=["garch", "ewma_094", "trailing_252"]
+    )
+    f23_paired_n = int(len(paired))
+    f23_garch_names_fitted = int(
+        wins.loc[wins["method"] == "garch", "ticker"].nunique()
+    )
+    f23_garch_beats_ewma = (
+        float((paired["garch"] < paired["ewma_094"]).mean()) if f23_paired_n else 0.0
+    )
+    f23_paired_garch = (
+        float((paired["garch"] < paired["trailing_252"]).mean())
+        if f23_paired_n
+        else 0.0
+    )
+    f23_paired_ewma = (
+        float((paired["ewma_094"] < paired["trailing_252"]).mean())
+        if f23_paired_n
+        else 0.0
+    )
 
     # F2.4: bias by calendar year for the equal-weight seed book
     bias = ew_risk["bias_ratio"].dropna()
@@ -593,6 +693,9 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     nw_se = se["nw_l5"]["mkt_rf"]
     comparison = pd.concat([ols_se.rename("ols"), nw_se.rename("nw")], axis=1).dropna()
     f25_share = float((comparison["nw"] > comparison["ols"]).mean())
+
+    # F2.6: series breaks, a close-to-close ratio above 5x with no split
+    f26_breaks, f26_rows = _series_breaks(prices_frame)
 
     return {
         "model_start": model_start,
@@ -607,9 +710,16 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "f22_n_names": int(len(sample)),
         "f23_garch_win_share": f23_garch,
         "f23_ewma094_win_share": f23_ewma,
+        "f23_garch_names_fitted": f23_garch_names_fitted,
+        "f23_paired_n": f23_paired_n,
+        "f23_paired_garch_win_share": f23_paired_garch,
+        "f23_paired_ewma_win_share": f23_paired_ewma,
+        "f23_garch_beats_ewma_share": f23_garch_beats_ewma,
         "f24_bias_mean": f24_mean,
         "f24_bias_by_year": f24_by_year,
         "f25_nw_gt_ols_share": f25_share,
+        "f26_breaks": f26_breaks,
+        "f26_break_rows": f26_rows,
     }
 
 

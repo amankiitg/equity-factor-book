@@ -15,6 +15,38 @@ def _returns_frame(ticker: str, r: list[float]) -> pd.DataFrame:
     return pd.DataFrame({"r": arr, "g": arr, "excess": arr}, index=idx)
 
 
+def test_clean_returns_nans_flagged_rows_only() -> None:
+    r = [0.01, 0.01, 95.4286, 0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    frame = hygiene.apply_flags(_returns_frame("MI", r))
+    cleaned = hygiene.clean_returns(frame)
+    # the 95x day and the stale run go NaN
+    assert np.isnan(cleaned.iloc[2])
+    assert cleaned.iloc[5:].isna().all()
+    # the untouched days are unchanged
+    assert cleaned.iloc[0] == 0.01 and cleaned.iloc[3] == 0.01
+    # the raw column and the flags are never rewritten
+    assert frame["r"].iloc[2] == 95.4286
+    assert bool(frame["outlier"].iloc[2]) is True
+
+
+def test_clean_returns_keeps_the_index_shape() -> None:
+    frame = hygiene.apply_flags(_returns_frame("MI", [0.01, 0.02, 95.4286]))
+    cleaned = hygiene.clean_returns(frame)
+    assert cleaned.index.equals(frame.index)
+    assert len(cleaned) == 3
+
+
+def test_clean_returns_rejects_a_wide_frame() -> None:
+    frame = hygiene.apply_flags(_returns_frame("MI", [0.01, 0.02]))
+    wide = frame[["r"]].unstack("ticker").rename(columns={"MI": "X"})
+    try:
+        hygiene.clean_returns(wide)
+    except TypeError as exc:
+        assert "r column" in str(exc)
+    else:  # pragma: no cover - the message is the point of the branch
+        raise AssertionError("a wide frame should not pass as a returns frame")
+
+
 def test_detect_stale_flags_zero_runs() -> None:
     r = [0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.002, 0.0, 0.001, 0.0, 0.0]
     frame = _returns_frame("AAA", r)

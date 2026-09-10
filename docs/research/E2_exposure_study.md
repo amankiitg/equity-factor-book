@@ -45,6 +45,29 @@ from every estimation window: 9,542 stale rows and 220 outlier rows. NaN
 rows, which include the 302 interior gaps and the delisting tails, are
 dropped and never forward-filled; 1,138,521 rows in total.
 
+Series breaks. Four symbols were reused by later listings, so the vendor
+history splices two companies: CPWR (a real member from 2010 to 2011),
+EP (2010 to 2012), MI (2010 to 2011) and POM (2010 to 2016). Their
+adjusted closes move by more than 5x in a day with no split to explain
+it, which is the F2.6 test. A flagged day is not enough here, because
+the whole history after the break belongs to a different company, so the
+four names leave the estimation panel. F2.6 is a successor criterion
+written after the fact, not a pre-registered one, and it fails: the
+names are dropped rather than repaired, and repairing them needs a
+security-identity source (FIGI or PERMNO) tracked in docs/open_items.md.
+
+One flagged row nearly decided a headline number. Ticker MI has a single
+day of +9542.9% on 2026-05-18, of which a 96x jump in the adjusted close
+from 0.196 to 18.90 is the visible part, flagged by the E1 hygiene layer
+and left in the raw artifact as the ledger requires. The volatility and
+portfolio code first read raw returns, so that one row pushed the
+trailing 252d mean QLIKE from -6.61 to -1.82 and made it look as though
+every adaptive method crushed the baseline by five QLIKE units. All
+volatility, momentum and portfolio code now reads returns through
+efb.hygiene.clean_returns, which sets stale and outlier rows to NaN
+without touching the raw column or the flags. The ledger entry of
+2026-09-10 records the correction in full.
+
 Estimators. OLS with an intercept, standard errors from the classical
 formula and Newey-West HAC at lag 5 with weights 1 - j/6. Shrinkage:
 Vasicek toward the cross-sectional mean with weight sigma_xs^2 /
@@ -66,16 +89,17 @@ sprints/E2/RESULTS.json.
 | F2.0a | coverage table stored and MODEL_START recorded | MODEL_START 2010, 17 years stored, current members 100% | pass |
 | F2.0b | NaN rows dropped, never imputed | 302 interior NaN rows, dropped by the fit (n_obs equals valid count) | pass |
 | F2.0c | audit mean below 0.1 bp, every day above 50 bp in events with a cause | mean 0.0178 bp, 1 day above 50 bp, 1 matched (BKR 2017-07-05 special distribution) | pass |
-| F2.1 | full-sample vs mean rolling beta correlation above 0.9 | 0.9123 | pass |
-| F2.2 | mean pairwise FF5+MOM residual correlation below 0.05 | 0.0183 on 150 names | pass |
-| F2.3 | GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of names | GARCH 46.7% of 45 names, EWMA(0.94) 36.4% of 514 names | fail |
-| F2.4 | equal-weight seed book bias ratio between 0.8 and 1.2 across calendar years | mean 1.023, per-year range 0.68 (2012) to 1.40 (2020) | pass |
-| F2.5 | Newey-West SE exceeds OLS SE for more than 80% of names | 95.4% | pass |
+| F2.1 | full-sample vs mean rolling beta correlation above 0.9 | 0.9135 | pass |
+| F2.2 | mean pairwise FF5+MOM residual correlation below 0.05 | 0.0160 on 150 names | pass |
+| F2.3 | GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of names | GARCH 44.4% of 45 names, EWMA(0.94) 36.0% of 491 names, paired 37 names where both fit: GARCH 43.2%, EWMA(0.94) 29.7% | fail |
+| F2.4 | equal-weight seed book bias ratio between 0.8 and 1.2 across calendar years | mean 1.0224, per-year range 0.68 (2012) to 1.39 (2020) | pass |
+| F2.5 | Newey-West SE exceeds OLS SE for more than 80% of names | 95.7% | pass |
+| F2.6 | no name has an unexplained adjusted-close move above 5x (successor to F2.3, not pre-registered) | 4 names: CPWR, EP, MI, POM, 20 rows | fail |
 
 Reference loadings, full sample. AAPL beta 1.074 (OLS SE 0.0182, Newey-West
 SE 0.0265), alpha 0.00046, R squared 0.455. XOM beta 0.777 (0.0183,
 0.0335), R squared 0.302. JPM beta 1.130 (0.0165, 0.0293), R squared
-0.529. Mean R squared across the universe is 0.364, in the expected 0.2
+0.529. Mean R squared across the universe is 0.366, in the expected 0.2
 to 0.4 range. Newey-West widens the market beta standard error by roughly
 45 to 80 percent for these names, so autocorrelated residuals are the
 norm, not the exception.
@@ -90,65 +114,70 @@ target.
 
 | Method | RMSE | Mean bias |
 | --- | --- | --- |
-| Vasicek | 0.4228 | +0.0072 |
-| Raw rolling 252d | 0.4272 | +0.0182 |
-| EWMA 126d | 0.4280 | +0.0258 |
-| Blume | 0.4338 | +0.0156 |
-| EWMA 63d | 0.4385 | +0.0165 |
+| EWMA 126d | 0.3992 | +0.0264 |
+| EWMA 63d | 0.3999 | +0.0170 |
+| Vasicek | 0.4052 | +0.0063 |
+| Raw rolling 252d | 0.4090 | +0.0177 |
+| Blume | 0.4165 | +0.0150 |
 
-Read this table carefully. Vasicek is the best on both RMSE and bias: it
-cuts the bias by 60 percent relative to the raw rolling beta, which is
-what a hedge cares about. But the RMSE advantage is small, 1 percent, and
-the raw rolling beta is only 1 percent behind; shrinkage is not
-decoration, but it is not a large effect either. The 63-day EWMA beta is
-the worst of the five, which is the horizon lesson: a short half-life
-fits recent noise and forecasts the next quarter worse than a 126-day or
-252-day window.
+Read this table carefully, and do not over-read it. Every method beats
+the raw rolling beta on RMSE by 1 to 2.4 percent, and the ordering among
+the winners is inside the noise of one 63-day target. What separates them
+is bias. Vasicek has the smallest bias, +0.0063 against +0.0177 raw, a 64
+percent cut, because its weight falls as the estimate's own standard
+error rises. EWMA(126) has the best RMSE and the worst bias, so it is the
+better forecast and the worse hedge. For hedging, where a systematic
+over-hedge compounds, bias is what matters and Vasicek wins; for
+forecasting a realized beta, use EWMA(126). Neither claim is strong, and
+the narrow margins are stated rather than dressed up.
 
 ## Volatility horse race
 
-Out of sample from 2024-09-03 to 2026-09-03, QLIKE lower is better.
+Out of sample from 2024-09-03 to 2026-09-03, QLIKE lower is better. Every
+number below excludes flagged stale and outlier rows.
 
 | Method | Mean QLIKE | Names | Win share vs trailing 252d |
 | --- | --- | --- | --- |
-| EWMA(0.97) | -6.676 | 514 | 52.7% |
-| GARCH(1,1) | -6.661 | 45 | 46.7% |
-| EWMA(0.94) | -6.621 | 514 | 36.4% |
-| Trailing 63d | -4.622 | 638 | 37.2% |
-| Trailing 252d (baseline) | -1.823 | 632 | baseline |
-| Trailing 21d | +3.019 | 644 | 16.3% |
+| EWMA(0.97) | -6.735 | 491 | 52.3% |
+| EWMA(0.94) | -6.693 | 491 | 36.0% |
+| GARCH(1,1) | -6.687 | 45 | 44.4% |
+| Trailing 252d (baseline) | -6.612 | 627 | baseline |
+| Trailing 63d | -6.588 | 633 | 36.8% |
+| Trailing 21d | -6.494 | 640 | 15.8% |
 
-Two readings, and they disagree. On the average loss, every adaptive
-method crushes trailing volatility, and EWMA(0.97) is the best; the mean
-QLIKE gap between EWMA(0.97) and trailing 252d is nearly 5 units, which
-is enormous. On the name-by-name win share, no method clears 60 percent:
-EWMA(0.97) wins on 52.7 percent of names, GARCH on 46.7 percent, and
-EWMA(0.94) on only 36.4 percent. The gap between the two readings comes
-from a small number of names where a stale trailing estimate is very
-wrong and QLIKE is unbounded above; those names dominate the mean. The
-pre-registered F2.3 threshold was written on the win share, so F2.3
-fails, and the study reports that rather than switching to the friendlier
-statistic after the fact.
+EWMA(0.97) is the best method on both readings: best mean QLIKE and the
+best win share, though the win share still stops at 52.3 percent. GARCH
+is close on the mean and, where it can be fitted, slightly better than
+EWMA(0.94): on the 37 names where both are available GARCH wins 73.0
+percent of the head-to-head comparisons. The problem with GARCH is
+coverage rather than accuracy, since arch fits only 45 of the names that
+have enough history. No method clears 60 percent name by name, so the
+pre-registered F2.3 threshold fails. The earlier draft of this section
+reported a five unit mean gap between EWMA and the trailing baseline;
+that gap was the MI outlier, not a property of the estimators, and it is
+corrected here rather than removed from the record.
 
 ## Recommended estimator per use
 
 - Hedging: Vasicek-shrunk rolling 252-day market beta, refit monthly,
-  with the Newey-West standard error attached. It has the lowest forecast
-  RMSE and the lowest bias, and the shrink weight uses the estimate's own
-  standard error, so a noisy name is pulled toward the cross-section.
+  with the Newey-West standard error attached. It has the lowest bias of
+  the five methods and the second lowest RMSE, and the shrink weight uses
+  the estimate's own standard error, so a noisy name is pulled toward the
+  cross-section. If the goal is forecasting realized beta rather than
+  hedging it, EWMA(126) has the lowest RMSE and should be used instead.
   Treat betas older than a quarter as stale: XOM's rolling beta moved
   from 0.78 full sample to -0.49 over the last year.
 - Risk: EWMA(0.97) for volatility, EWMA half-life 90 days for the factor
-  covariance. EWMA has the best average QLIKE, is refreshable daily from
-  EFB's own returns with no external feed, and needs one parameter.
-  GARCH(1,1) does not beat it on the mean or on the win share, so per the
-  pre-registered falsification test, production uses EWMA and simplicity
-  wins.
+  covariance. EWMA has the best mean QLIKE and the best win share, is
+  refreshable daily from EFB's own returns with no external feed, and
+  needs one parameter. GARCH beats EWMA(0.94) where both are estimable but
+  fits only 45 of the names, so it cannot be the production default; the
+  pre-registered falsification test is what decides this, and it failed.
 - Sizing: the FF5 plus momentum decomposition, with idiosyncratic
   variance from the TS-v1 residuals. For the equal-weight seed book the
   factor share of variance is 99.2 percent, so the book is a factor
   position, not a collection of idio bets; for the sector-neutral
-  momentum long/short seed book the factor share is only 9.4 percent, so
+  momentum long/short seed book the factor share is only 10.1 percent, so
   its risk is almost entirely idiosyncratic and must be sized on the
   residual. Carry the E1 caveat: the short side's specific risk is biased
   downward because missing deletions are disproportionately failures.
@@ -157,18 +186,18 @@ Portfolio risk at the last date, from sigma_p^2 = w' B F B' w + w' D w:
 
 | Book | Predicted vol (ann) | Factor variance | Idio variance | Factor share |
 | --- | --- | --- | --- | --- |
-| Equal-weight seed (survivorship caveat true) | 13.4% | 7.10e-05 | 1.00e-06 | 99.2% |
-| Momentum long/short seed (caveat false) | 2.5% | 1.04e-06 | 1.00e-05 | 9.4% |
+| Equal-weight seed (survivorship caveat true) | 13.4% | 7.12e-05 | 5.66e-07 | 99.2% |
+| Momentum long/short seed (caveat false) | 2.5% | 2.58e-07 | 2.30e-06 | 10.1% |
 
-The bias statistic for the equal-weight seed book averages 1.023 across
+The bias statistic for the equal-weight seed book averages 1.0224 across
 calendar years, inside the 0.8 to 1.2 band, but the yearly values swing
-from 0.68 in 2012 to 1.40 in 2020. The model is right on average and
+from 0.68 in 2012 to 1.39 in 2020. The model is right on average and
 wrong in any given year, which is the honest summary of a one-factor
 scaled covariance on a long-only equity book.
 
 ## Residual correlation structure
 
-The mean pairwise correlation of FF5 plus momentum residuals is 0.0183 on
+The mean pairwise correlation of FF5 plus momentum residuals is 0.0160 on
 a seeded sample of 150 names with at least 500 overlapping observations,
 well below the 0.05 bar. The observed factor set is adequate for this
 universe: there is no dominant missing common factor, and idiosyncratic
@@ -183,15 +212,20 @@ CMA and MOM once the market factor is included.
 ## What would falsify this?
 
 If shrunk betas did not beat raw betas out of sample, shrinkage would be
-decoration and TS-v2 would drop it. Measured: Vasicek RMSE 0.4228 against
-raw 0.4272 and bias +0.0072 against +0.0182. The claim survives, but
-narrowly, and a single quarter of different data could flip the RMSE
-ordering; the bias improvement is the more robust result. If residual
+decoration and TS-v2 would drop it. Measured: Vasicek RMSE 0.4052 against
+raw 0.4090 and bias +0.0063 against +0.0177. The claim survives on both,
+but narrowly on RMSE, and a single quarter of different data could flip
+the RMSE ordering; the bias improvement is the more robust result. The
+stronger version of the same test does not survive: EWMA(126) beats
+Vasicek on RMSE, 0.3992 against 0.4052, so shrinkage is not the best
+forecast of next-quarter beta, only the least biased one. If residual
 correlations exceeded 0.05, the observed-factor set would be inadequate
-and the finding would carry into E3; at 0.0183 the test does not fire. If
+and the finding would carry into E3; at 0.0160 the test does not fire. If
 GARCH did not beat EWMA meaningfully on QLIKE, production would use EWMA
-and simplicity would win; that is exactly what happened, with EWMA(0.97)
-ahead of GARCH on both the mean and the win share. And if the
+and simplicity would win. The answer is split and the split is reported
+rather than resolved in favour of either side: GARCH beats EWMA(0.94) on
+the 37 names where both are estimable, and EWMA(0.97) has the best mean
+QLIKE and win share across the universe. And if the
 pre-registered F2.3 threshold failed, the study must say so: it failed,
 and the deliverable records that no volatility method beat trailing
 volatility on a name-by-name majority, which is a negative verdict and a
@@ -202,9 +236,15 @@ complete one.
 - The beta horse race uses month-end rebalancing and a 63-day target. A
   quarter is the hedging horizon assumed here; a weekly or annual horizon
   could reorder the methods.
-- GARCH was fit on 60 names, of which 45 are usable out of sample, so its
-  win share is noisier than the EWMA numbers. A full-universe fit would
-  settle whether GARCH's average advantage is real.
+- GARCH was fit on 60 names, of which 45 are usable out of sample and 37
+  overlap with EWMA, so its win share is noisier than the EWMA numbers and
+  the two win shares are not measured on the same names. A full-universe
+  fit would settle whether GARCH's advantage on the paired sample holds.
+- Four names are dropped rather than repaired. CPWR, EP, MI and POM have
+  reused symbols, so their price histories splice two companies and the
+  original issuers' real histories are missing from the panel entirely.
+  Dropping them is a mitigation, not a fix, and it is recorded as F2.6
+  failing; a security-identity source in docs/open_items.md is the fix.
 - Shrinkage targets the cross-sectional beta mean. A sector-conditional
   or volatility-scaled target is the natural TS-v2 improvement.
 - The predicted portfolio vol uses a single market factor in the history

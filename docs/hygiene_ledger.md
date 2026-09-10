@@ -176,3 +176,35 @@ downward, and any long/short construction that shorts distressed names
 will look safer than it is. E2's seed long/short momentum book inherits
 this caveat. Fixing it requires a delisting-return source, tracked in
 docs/open_items.md.
+
+## 2026-09-10: Flagged rows and reused symbols must not enter the estimator
+
+Decision. Volatility, momentum and portfolio risk code reads returns
+through efb.hygiene.clean_returns, which sets stale and outlier rows to
+NaN. Tickers whose price history splices two companies leave the
+estimation panel entirely. The raw returns, the flags, the raw prices and
+the events log are unchanged.
+
+Reason. Ticker MI moves from an adjusted close of 0.196 to 18.90 on
+2026-05-18, a 96x jump with no split in the vendor data and an outlier
+flag from E1 as the policy requires. The volatility horse race and the
+portfolio risk history still read the raw r column at that point, so this
+one row pushed the trailing 252d mean QLIKE from -6.61 to -1.82 and turned
+the study's headline claim into "adaptive methods beat trailing
+volatility by five QLIKE units". After the fix the mean is -6.61 and the
+largest per-name QLIKE is -3.77 instead of +2989.39.
+
+Chasing that row found the bigger problem. MI is not a bad return, it is
+a reused symbol: the 2026 listing took the ticker of a 2010 to 2011 S&P
+500 member. CPWR, EP and POM are the same, and all four were real members
+whose genuine issuer histories are missing from the vendor data. Masking a
+single day would have left eleven years of another company's returns in
+place, so the four names are dropped from the E2 estimation panel and the
+drop is recorded in the TS-v1 registry entry. They were not dropped
+silently: the successor criterion F2.6 tests for exactly this pattern,
+stores the four names and the 20 offending rows, and fails, because
+dropping a name is a mitigation and not a repair. The repair needs a
+security-identity source and is tracked in docs/open_items.md.
+
+The F2.3 verdict does not change, since it was already a fail, but the
+size of the effect and the claim built on it do.

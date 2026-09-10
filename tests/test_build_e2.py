@@ -62,6 +62,40 @@ def _write_inputs(data_root: Path, periods: int = 420) -> None:
     )
     sectors.to_parquet(data_root / "processed" / "sectors.parquet", index=False)
 
+    prices = []
+    for ticker in TICKERS:
+        level = pd.Series(50.0, index=dates)
+        prices.append(
+            pd.DataFrame(
+                {
+                    "close": level,
+                    "adj_close": level,
+                    "split_factor": 0.0,
+                    "ticker": ticker,
+                },
+                index=dates,
+            )
+        )
+    price_frame = (
+        pd.concat(prices)
+        .set_index("ticker", append=True)
+        .reorder_levels(["date", "ticker"])
+    )
+    price_frame.index.name = "date"
+    price_frame.to_parquet(data_root / "raw" / "prices.parquet")
+
+
+def _splice(data_root: Path, ticker: str) -> None:
+    """Make `ticker`'s adjusted close jump 100x, the reused-symbol pattern."""
+    path = data_root / "raw" / "prices.parquet"
+    frame = pd.read_parquet(path)
+    dates = frame.index.get_level_values("date")
+    rows = (frame.index.get_level_values("ticker") == ticker) & (
+        dates > dates.unique()[200]
+    )
+    frame.loc[rows, "adj_close"] = frame.loc[rows, "adj_close"] * 100.0
+    frame.to_parquet(path)
+
 
 def test_build_e2_artifacts_writes_everything_and_registers_ts_v1(
     tmp_path: Path,
@@ -116,3 +150,26 @@ def test_build_e2_artifacts_writes_everything_and_registers_ts_v1(
 def test_build_e2_artifact_list_includes_registry() -> None:
     assert "models/registry.json" in build.E2_ARTIFACTS
     assert "portfolios/seed_mom_ls.parquet" in build.E2_ARTIFACTS
+
+
+def test_a_reused_symbol_leaves_the_panel(tmp_path: Path) -> None:
+    # CPWR, EP, MI and POM are real members whose symbols were later taken by
+    # unrelated listings. Masking the break date is not enough: every earlier
+    # date would still carry the wrong company's returns.
+    data_root = tmp_path / "data"
+    _write_inputs(data_root)
+    _splice(data_root, "T05")
+    summary = build.build_e2_artifacts(
+        data_root=data_root, start=2024, include_garch=False, garch_tickers=0
+    )
+    assert summary["n_names"] == len(TICKERS) - 1
+
+    loadings = pd.read_parquet(data_root / "models/TS-v1/loadings.parquet")
+    assert "T05" not in set(loadings.index)
+
+    registry = json.loads((data_root / "models/registry.json").read_text())
+    dropped = registry["models"]["TS-v1"]["parameters"]["series_break_tickers_dropped"]
+    assert dropped == ["T05"]
+
+    ew = pd.read_parquet(data_root / "portfolios/seed_ew.parquet")
+    assert "T05" not in set(ew["ticker"])

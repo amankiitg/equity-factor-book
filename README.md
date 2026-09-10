@@ -17,12 +17,18 @@ running end to end. Later dates are indicative and re-planned at each gate.
     survivorship bias 349 bp per year recorded. See
     docs/research/E1_data_note.md and sprints/E1/RESULTS.json.
 - [x] E2  Time-series factor models, volatility, TS-v1 (Sep 7 to 13)
-  - F2.0a, F2.0b, F2.0c, F2.1, F2.2, F2.4, F2.5 pass; F2.3 fails with stored
-    numbers (GARCH 46.7% and EWMA(0.94) 36.4% of names beat trailing 252d vol on
-    out-of-sample QLIKE, against a 60% bar). EWMA stays the production default.
-    TS-v1 is registered as diagnostic only and is ineligible for champion under
-    the pre-registered rule. See docs/research/E2_exposure_study.md and
-    sprints/E2/RESULTS.json.
+  - F2.0a, F2.0b, F2.0c, F2.1, F2.2, F2.4 and F2.5 pass; F2.3 and F2.6 fail
+    with stored numbers. F2.3: GARCH 44.4% and EWMA(0.94) 36.0% of names
+    beat trailing 252d vol on out-of-sample QLIKE, against a 60% bar, so
+    EWMA stays the production default. F2.6 is a successor criterion added
+    after the fact: four tickers (CPWR, EP, MI, POM) have reused symbols
+    and spliced price histories, so they are dropped from the estimation
+    panel and the missing issuer histories are an open item. Bias: Vasicek
+    is the least biased beta forecast (RMSE 0.4052, bias +0.0063 against
+    raw 0.4090 and +0.0177), EWMA(126) is the most accurate (0.3992) but
+    the most biased. TS-v1 is registered as diagnostic only and is
+    ineligible for champion under the pre-registered rule. See
+    docs/research/E2_exposure_study.md and sprints/E2/RESULTS.json.
 - [ ] E3  Cross-sectional model, Fama-MacBeth, XS-v1 (Sep 14 to 20), gate G1
 - [ ] E4 to E13  See the roadmap sprint plan
 

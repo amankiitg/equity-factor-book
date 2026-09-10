@@ -59,6 +59,55 @@ def apply_flags(
     return out
 
 
+def series_break_tickers(prices: pd.DataFrame, ratio: float = 5.0) -> list[str]:
+    """Tickers whose history splices two companies together.
+
+    Adjusting for splits and dividends leaves genuine corporate actions
+    smoothed out, so a ratio between consecutive adjusted closes above
+    `ratio` (or below its reciprocal) is a series break: the symbol was
+    reused by a later listing and the vendor spliced both histories. Every
+    date before the break then carries a different company's returns, so
+    the name has to leave the estimation panel rather than lose one row.
+    """
+    frame = prices.sort_index()
+    adjusted = frame["adj_close"].astype(float)
+    previous = adjusted.groupby(level="ticker").shift(1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio_series = adjusted.div(previous)
+    split = frame["split_factor"].astype(float)
+    suspects = (
+        ((ratio_series > ratio) | (ratio_series < 1.0 / ratio))
+        & (split == 0.0)
+        & ratio_series.notna()
+    )
+    return sorted(frame.loc[suspects].index.get_level_values("ticker").unique())
+
+
+def clean_returns(returns_frame: pd.DataFrame) -> pd.Series:
+    """Return the r column with stale and outlier rows set to NaN.
+
+    The flag columns say which rows are unusable; nothing downstream should
+    consume raw r without consulting them. A 95x day for one name is enough
+    to dominate a mean QLIKE, a momentum signal and a realized volatility,
+    so volatility, beta and portfolio code all read returns through here.
+    The flags themselves are never rewritten; the raw r column stays intact
+    in returns.parquet.
+    """
+    r = _frame_r(returns_frame)
+    for flag in ("stale", "outlier"):
+        if flag in returns_frame.columns:
+            r = r.mask(returns_frame[flag].astype(bool))
+    return r
+
+
+def _frame_r(returns_frame: pd.DataFrame) -> pd.Series:
+    """The r column as a Series on the (date, ticker) index."""
+    r = returns_frame["r"]
+    if isinstance(r, pd.DataFrame):
+        raise TypeError("clean_returns expects a single r column")
+    return r.astype(float)
+
+
 def build_events(
     prices: pd.DataFrame,
     returns_frame: pd.DataFrame,
