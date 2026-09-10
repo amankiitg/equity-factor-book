@@ -12,6 +12,7 @@ import io
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
@@ -276,6 +277,51 @@ def probe_risk_free(frames: dict[str, pd.DataFrame] | None = None) -> list[Probe
             )
         )
     return reports
+
+
+def coverage_by_year(
+    members: pd.DataFrame, prices: pd.DataFrame, min_fraction: float = 0.5
+) -> pd.DataFrame:
+    """Point-in-time members with price coverage, by calendar year (E2 Task 0).
+
+    A member counts as covered in a year when at least min_fraction of the
+    business days on which it was a member have a non-null adjusted close.
+    The denominator is the ticker's own membership window, so a mid-year
+    joiner is not penalized for the months before it joined.
+    """
+    adj = prices["adj_close"].unstack("ticker")
+    dates = pd.DatetimeIndex(sorted(members.index))
+    adj = adj.reindex(index=dates)
+    member_bool = members.astype(bool).reindex(index=dates, columns=adj.columns, fill_value=False)
+    present = adj.notna().where(member_bool, False)
+    rows: list[dict[str, float]] = []
+    for year, group in present.groupby(present.index.year):
+        mem_year = member_bool.loc[group.index]
+        days_member = mem_year.sum(axis=0)
+        days_covered = group.sum(axis=0)
+        frac = (days_covered / days_member.replace(0, np.nan)).fillna(0.0)
+        n_members = int(mem_year.any(axis=0).sum())
+        n_covered = int((frac >= min_fraction).sum())
+        rows.append(
+            {
+                "year": int(year),
+                "n_members": n_members,
+                "n_covered": n_covered,
+                "coverage": (n_covered / n_members) if n_members else 0.0,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def select_model_start(table: pd.DataFrame, min_names: int = 300) -> int:
+    """First calendar year whose covered-name count reaches min_names."""
+    eligible = table[table["n_covered"] >= min_names]
+    if eligible.empty:
+        raise ValueError(
+            f"no year reaches {min_names} covered members; "
+            f"max is {int(table['n_covered'].max())}"
+        )
+    return int(eligible["year"].iloc[0])
 
 
 def run_all() -> list[ProbeReport]:

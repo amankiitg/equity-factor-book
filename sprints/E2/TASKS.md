@@ -7,7 +7,7 @@ evaluates every F criterion; Task 9 produces the research deliverable.
 OPTIONAL work sits in the Optional backlog at the end and is dropped
 first when the four-day schedule tightens; the date never moves.
 
-- [ ] Task 0: Coverage probe by calendar year and MODEL_START (P0)
+- [x] Task 0: Coverage probe by calendar year and MODEL_START (P0)
   - Acceptance: count point-in-time members with price coverage by
     calendar year (a member counts when at least half of the year's
     business days have a non-null adjusted close), print the table into

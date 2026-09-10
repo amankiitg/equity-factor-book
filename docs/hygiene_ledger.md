@@ -146,3 +146,33 @@ Reason. Mixing calendars or keeping timestamps invites one-day shifts
 between the French library and yfinance, which would destroy every later
 regression. Alignment was verified by the F1.3 correlation of 0.9557
 between the equal-weight universe return and the FF market return.
+
+## 2026-09-10: MODEL_START = 2010 for every E2 regression
+
+Decision. Every E2 regression starts at 2010-01-04, the start of the E1
+window. MODEL_START is the first calendar year with at least 300
+point-in-time members that have price coverage; the Task 0 probe shows
+2010 already has 354 covered members, so the threshold does not shorten
+the window.
+
+Reason. E1 measured survivorship bias of 349 bp per year (F1.5) and the
+coverage gradient by year: 68.9% of point-in-time members are covered in
+2010, rising to 99.2% in 2026. Starting later would improve coverage but
+discard more than a third of the sample; 300 names is enough for
+cross-sectional statistics and is the pre-registered threshold. The full
+table is in sprints/E2/PROBES.md.
+
+## 2026-09-10: Missing deletions bias the loser-side residual tail down
+
+Decision. No correction is applied in E2. The following is recorded as
+context for E3 and E5.
+
+Only 44.8% of deleted S&P 500 names have recoverable price history, and
+the deletions that are missing are disproportionately failures (mergers
+and spin-offs survive in vendor data more often than bankruptcies). The
+practical consequence is one-sided: the lower tail of residual returns
+is thin, so measured specific risk on the loser side is biased
+downward, and any long/short construction that shorts distressed names
+will look safer than it is. E2's seed long/short momentum book inherits
+this caveat. Fixing it requires a delisting-return source, tracked in
+docs/open_items.md.
