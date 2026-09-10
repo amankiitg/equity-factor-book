@@ -1,0 +1,6 @@
+{
+  "note": "Pre-registered before any E2 estimator was written (2026-09-10). The champion rule is fixed before the numbers are seen so that E5 cannot be accused of choosing the rule after seeing the results.",
+  "champion_rule": "min mean |bias-1| across portfolio families; ties to fewer parameters; a champion must be refreshable daily from EFB's own data",
+  "family_notes": "timeseries models on external factors are diagnostic only and ineligible for champion",
+  "models": {}
+}
