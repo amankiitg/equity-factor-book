@@ -60,7 +60,7 @@ first when the four-day schedule tightens; the date never moves.
     synthetic GARCH data).
   - Files: efb/vol.py, tests/test_vol.py, data/eval/vol_horse_race.parquet
 
-- [ ] Task 5: Portfolio risk decomposition and the two seed books (P0)
+- [x] Task 5: Portfolio risk decomposition and the two seed books (P0)
   - Acceptance: sigma_p^2 = w' B F B' w + w' D w with F the EWMA
     half-life 90d factor covariance, computed for the equal-weight seed
     portfolio (long-only, survivorship_caveat true) and for a
