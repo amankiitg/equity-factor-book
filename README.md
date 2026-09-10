@@ -16,7 +16,13 @@ running end to end. Later dates are indicative and re-planned at each gate.
   - F1.3 passes (0.9557); F1.1, F1.2, F1.4, F1.5 fail with stored numbers;
     survivorship bias 349 bp per year recorded. See
     docs/research/E1_data_note.md and sprints/E1/RESULTS.json.
-- [ ] E2  Time-series factor models, volatility, TS-v1 (Sep 7 to 13)
+- [x] E2  Time-series factor models, volatility, TS-v1 (Sep 7 to 13)
+  - F2.0a, F2.0b, F2.0c, F2.1, F2.2, F2.4, F2.5 pass; F2.3 fails with stored
+    numbers (GARCH 46.7% and EWMA(0.94) 36.4% of names beat trailing 252d vol on
+    out-of-sample QLIKE, against a 60% bar). EWMA stays the production default.
+    TS-v1 is registered as diagnostic only and is ineligible for champion under
+    the pre-registered rule. See docs/research/E2_exposure_study.md and
+    sprints/E2/RESULTS.json.
 - [ ] E3  Cross-sectional model, Fama-MacBeth, XS-v1 (Sep 14 to 20), gate G1
 - [ ] E4 to E13  See the roadmap sprint plan
 

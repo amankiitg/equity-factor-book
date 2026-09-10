@@ -184,6 +184,18 @@ def _as_series(out: pd.DataFrame, was_series: bool) -> pd.Series | pd.DataFrame:
     return out.iloc[:, 0] if was_series else out
 
 
+def _align_factor(yf: pd.DataFrame, x: pd.Series) -> pd.Series:
+    """Reindex the factor to the return panel so windows see every observation.
+
+    Without this, a factor series that ends earlier than the return panel
+    (the Kenneth French files lag by about a month) aligns away the tail in
+    the rolling covariance and silently returns NaN betas.
+    """
+    if x.index.equals(yf.index):
+        return x
+    return x.reindex(yf.index)
+
+
 def rolling_beta(
     y: pd.Series | pd.DataFrame,
     x: pd.Series,
@@ -196,7 +208,7 @@ def rolling_beta(
     (factors_ff.parquet mkt_rf). The shift(1) is the look-ahead guard.
     """
     yf = _as_frame(y)
-    xs = x.shift(1)
+    xs = _align_factor(yf, x).shift(1)
     ys = yf.shift(1)
     cov = ys.rolling(window, min_periods=min_obs).cov(xs)
     var = xs.rolling(window, min_periods=min_obs).var()
@@ -216,7 +228,7 @@ def rolling_beta_se(
     RSS = (var_y - beta^2 var_x) * (n - 1) and Sxx = var_x * (n - 1).
     """
     yf = _as_frame(y)
-    xs = x.shift(1)
+    xs = _align_factor(yf, x).shift(1)
     ys = yf.shift(1)
     n = ys.rolling(window, min_periods=min_obs).count()
     var_y = ys.rolling(window, min_periods=min_obs).var()
@@ -248,7 +260,7 @@ def ewma_beta(
     """
     yf = _as_frame(y)
     yy = yf.to_numpy(dtype=float)
-    xx = x.to_numpy(dtype=float)
+    xx = _align_factor(yf, x).to_numpy(dtype=float)
     lam = 0.5 ** (1.0 / half_life)
     n_dates, n_assets = yy.shape
     sw = np.zeros(n_assets)

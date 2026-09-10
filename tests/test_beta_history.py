@@ -103,6 +103,29 @@ def test_ewma_beta_recovers_known_beta_and_is_shifted() -> None:
     assert betas.loc[t] == pytest.approx(betas_shocked.loc[t], abs=1e-12)
 
 
+def test_rolling_beta_handles_factor_series_shorter_than_panel() -> None:
+    # the French factor files lag the return panel by about a month; the
+    # estimator must reindex to the panel and still use every observation
+    y, x = _market(n=400, beta=1.0)
+    aligned = ts.rolling_beta(y, x, window=252, min_obs=200)
+    truncated = x.iloc[:-30]
+    out = ts.rolling_beta(y, truncated, window=252, min_obs=200)
+    assert len(out) == len(y)
+    # the tail beta is finite: the window still holds enough factor rows
+    assert np.isfinite(out.iloc[-1])
+    # and it uses the same observations as an explicitly reindexed factor
+    manual = ts.rolling_beta(y, truncated.reindex(y.index), window=252, min_obs=200)
+    assert out.iloc[-1] == pytest.approx(manual.iloc[-1], rel=1e-12)
+    # the value is close to the fully aligned estimate, not identical
+    assert out.iloc[-1] == pytest.approx(aligned.iloc[-1], rel=0.1)
+
+
+def test_ewma_beta_handles_factor_series_shorter_than_panel() -> None:
+    y, x = _market(n=400, beta=1.0)
+    out = ts.ewma_beta(y, x.iloc[:-30], half_life=63, min_obs=200)
+    assert np.isfinite(out.iloc[-1])
+
+
 def test_beta_history_frames_shapes() -> None:
     rng = np.random.default_rng(9)
     idx = pd.bdate_range("2015-01-02", periods=600)
