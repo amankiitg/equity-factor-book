@@ -1,17 +1,28 @@
-"""Methodology tab: links to every E1 evidence artifact (Sprint E1, Task 8).
+"""Methodology tab: links to every E1 and E2 evidence artifact (Task 8).
 
-Points at the Hygiene Ledger, the research deliverable, the walkthrough
-notebook (rendered HTML) and the sprint PRD and probes. Later sprints add
-their own links here.
+Points at the Hygiene Ledger, the research deliverables, the walkthrough
+notebooks (rendered HTML), the sprint PRDs and probes and the model
+registry. Later sprints add their own links here.
+
+Links go through Streamlit's static route, not the repository path: a bare
+relative link falls through to the app shell, so clicking it just reloads
+the dashboard. `dashboard/publish.py` copies these files into
+`dashboard/static/docs/` and `make dashboard` runs it first.
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parents[2]
+
+if str(ROOT) not in sys.path:  # see the note in dashboard/app.py
+    sys.path.insert(0, str(ROOT))
+
+from dashboard.publish import LINK_PREFIX  # noqa: E402
 
 LINKS = [
     ("Sprint E1 PRD", "sprints/E1/PRD.md"),
@@ -45,9 +56,12 @@ def render() -> None:
         "dashboard reads parquet only; the documents here record why each "
         "number is what it is."
     )
+    missing: list[str] = []
     for label, rel in LINKS:
         target = ROOT / rel
-        if target.exists():
-            st.markdown(f"- [{label}]({rel})")
-        else:
-            st.markdown(f"- {label} (not generated yet: {rel})")
+        if not target.exists():
+            missing.append(rel)
+            continue
+        st.markdown(f"- [{label}](/{LINK_PREFIX}/{rel})")
+    if missing:
+        st.caption("Not generated yet: " + ", ".join(missing))

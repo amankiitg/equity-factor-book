@@ -1,8 +1,13 @@
 SHELL := /bin/bash
-PYTHON ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo python; fi)
-PYTEST ?= $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python -m pytest; else echo pytest; fi)
+VENV_BIN := $(shell if [ -x .venv/bin/python ]; then echo .venv/bin; fi)
+PYTHON ?= $(if $(VENV_BIN),$(VENV_BIN)/python,python)
+PYTEST ?= $(PYTHON) -m pytest
+STREAMLIT ?= $(if $(VENV_BIN),$(VENV_BIN)/streamlit,streamlit)
+RUFF ?= $(if $(VENV_BIN),$(VENV_BIN)/ruff,ruff)
+MYPY ?= $(if $(VENV_BIN),$(VENV_BIN)/mypy,mypy)
+BLACK ?= $(if $(VENV_BIN),$(VENV_BIN)/black,black)
 
-.PHONY: help test lint format dashboard rebuild-e1 rebuild-e2 rebuild-e3 clean
+.PHONY: help test lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-15s %s\n", $$1, $$2}'
@@ -11,16 +16,19 @@ test: ## Run the test suite (it never shrinks)
 	$(PYTEST) tests/ -q
 
 lint: ## Static checks: ruff, mypy, black
-	ruff check efb dashboard live tests
-	mypy efb
-	black --check efb dashboard live tests
+	$(RUFF) check efb dashboard live tests
+	$(MYPY) efb
+	$(BLACK) --check efb dashboard live tests
 
 format: ## Auto-format with black and ruff
-	black efb dashboard live tests
-	ruff check --fix efb dashboard live tests
+	$(BLACK) efb dashboard live tests
+	$(RUFF) check --fix efb dashboard live tests
 
-dashboard: ## Run the EFB Console (Streamlit)
-	streamlit run dashboard/app.py
+dashboard: publish ## Run the EFB Console (Streamlit)
+	$(STREAMLIT) run dashboard/app.py --server.headless true
+
+publish: ## Copy the linked sprint documents into the dashboard static folder
+	$(PYTHON) -m dashboard.publish
 
 rebuild-e1: ## Rebuilds the E1 data layer end to end (Sprint E1)
 	$(PYTHON) -m efb.build

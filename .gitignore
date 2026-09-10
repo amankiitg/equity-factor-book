@@ -24,6 +24,10 @@ data/**/*.feather
 # Secrets and local config
 .env
 .env.*
+.streamlit/credentials.toml
+
+# Copies of the sprint documents and notebooks served by the Methodology tab
+dashboard/static/docs/
 
 # OS
 .DS_Store

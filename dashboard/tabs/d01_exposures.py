@@ -116,20 +116,20 @@ def render() -> None:
 
     st.subheader("Loadings with Newey-West standard errors")
     table = loadings_table(loadings, se)
-    st.dataframe(table.head(300), use_container_width=True)
+    st.dataframe(table.head(300), width="stretch")
 
     st.subheader("Rolling beta: raw, Vasicek, Blume")
     ticker = st.selectbox("Ticker", sorted(loadings.index))
     overlay = beta_overlay(history, ticker)
     fig = px.line(overlay, labels={"value": "beta", "date": "date"})
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("R squared distribution")
         st.plotly_chart(
             px.histogram(r2_distribution(loadings), nbins=40),
-            use_container_width=True,
+            width="stretch",
         )
     with col2:
         st.subheader("Idio vs total vol")
@@ -140,11 +140,11 @@ def render() -> None:
                 y="idio_vol_ann",
                 hover_name="ticker",
             ),
-            use_container_width=True,
+            width="stretch",
         )
 
     st.subheader("Volatility estimator comparison (out-of-sample QLIKE)")
-    st.dataframe(vol_summary(vol_table), use_container_width=True)
+    st.dataframe(vol_summary(vol_table), width="stretch")
 
     st.subheader("Portfolio exposure panel")
     book = st.selectbox("Seed portfolio", ["seed_ew", "seed_mom_ls"])
@@ -152,9 +152,9 @@ def render() -> None:
     last_date = pd.to_datetime(weights_long["date"]).max()
     st.dataframe(
         portfolio_exposure(weights_long, loadings, str(last_date.date())),
-        use_container_width=True,
+        width="stretch",
     )
-    st.dataframe(snapshot, use_container_width=True)
+    st.dataframe(snapshot, width="stretch")
 
     st.subheader("Beta horse race: next-quarter realized beta")
-    st.dataframe(beta_race_table(beta_race), use_container_width=True)
+    st.dataframe(beta_race_table(beta_race), width="stretch")

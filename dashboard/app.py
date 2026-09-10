@@ -8,13 +8,20 @@ extended with model and portfolio selectors in E4 and E3.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import streamlit as st
 
-from dashboard.tabs import d00_data, d01_exposures, methodology
-
 ROOT = Path(__file__).resolve().parents[1]
+
+# `streamlit run dashboard/app.py` puts the dashboard folder, not the repo
+# root, first on sys.path, so the package import below fails without this.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from dashboard.tabs import d00_data, d01_exposures, methodology  # noqa: E402
+
 VERSION_PATH = ROOT / "data" / "VERSION.json"
 
 

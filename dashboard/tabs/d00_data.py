@@ -120,7 +120,7 @@ def render() -> None:
         zmax=1.0,
     )
     fig.update_layout(height=520)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     st.subheader("Missing and stale counts")
     col1, col2 = st.columns(2)
@@ -139,22 +139,18 @@ def render() -> None:
             "Stale zero-return runs (>= 5 days)",
             int(events["event_type"].eq("stale_start").sum()) if len(events) else 0,
         )
-    st.dataframe(
-        stale_counts(returns_frame).rename("stale_days"), use_container_width=True
-    )
+    st.dataframe(stale_counts(returns_frame).rename("stale_days"), width="stretch")
 
     st.subheader("Universe size over time")
     size = universe_size(members)
     changes = membership_change_summary(members)
     fig2 = px.line(size, labels=dict(index="date", value="members"))
-    st.plotly_chart(fig2, use_container_width=True)
-    st.dataframe(changes[changes.any(axis=1)], use_container_width=True)
+    st.plotly_chart(fig2, width="stretch")
+    st.dataframe(changes[changes.any(axis=1)], width="stretch")
 
     st.subheader("Corporate-action and outlier event log")
-    st.dataframe(event_counts(events).rename("count"), use_container_width=True)
-    st.dataframe(
-        events.sort_values("date", ascending=False).head(200), use_container_width=True
-    )
+    st.dataframe(event_counts(events).rename("count"), width="stretch")
+    st.dataframe(events.sort_values("date", ascending=False).head(200), width="stretch")
 
     st.subheader("Hygiene Ledger")
     st.markdown(LEDGER.read_text())

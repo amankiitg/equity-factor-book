@@ -1,0 +1,13 @@
+# Streamlit reads this from the working directory, so run the dashboard with
+# `make dashboard` from the repository root.
+#
+# enableStaticServing makes files under dashboard/static/ available over HTTP
+# at /app/static/. The Methodology tab links to the sprint documents through
+# that route, because a bare relative link such as sprints/E2/PRD.md would
+# fall through to the app shell and just reload the dashboard.
+
+[server]
+enableStaticServing = true
+
+[browser]
+gatherUsageStats = false
