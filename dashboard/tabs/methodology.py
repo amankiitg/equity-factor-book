@@ -18,12 +18,23 @@ LINKS = [
     ("Sprint E1 tasks", "sprints/E1/TASKS.md"),
     ("Sprint E1 probes", "sprints/E1/PROBES.md"),
     ("Sprint E1 results (F criteria)", "sprints/E1/RESULTS.json"),
+    ("Sprint E2 PRD", "sprints/E2/PRD.md"),
+    ("Sprint E2 tasks", "sprints/E2/TASKS.md"),
+    ("Sprint E2 probes (coverage by year)", "sprints/E2/PROBES.md"),
+    ("Sprint E2 results (F criteria)", "sprints/E2/RESULTS.json"),
     ("Hygiene Ledger", "docs/hygiene_ledger.md"),
+    ("Open items", "docs/open_items.md"),
+    ("Model registry (TS-v1)", "data/models/registry.json"),
     (
         "Research deliverable: Data Quality and Universe Note",
         "docs/research/E1_data_note.md",
     ),
+    (
+        "Research deliverable: Beta and Volatility Estimation Study",
+        "docs/research/E2_exposure_study.md",
+    ),
     ("Walkthrough notebook", "notebooks/E1_walkthrough.html"),
+    ("Walkthrough notebook E2", "notebooks/E2_walkthrough.html"),
 ]
 
 

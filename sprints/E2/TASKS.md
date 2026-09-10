@@ -105,7 +105,7 @@ first when the four-day schedule tightens; the date never moves.
   - Files: sprints/E2/RESULTS.json, efb/evaluate.py extension,
     tests/test_e2_results.py
 
-- [ ] Task 9: Research deliverable: Beta and Volatility Estimation Study (P0)
+- [x] Task 9: Research deliverable: Beta and Volatility Estimation Study (P0)
   - Acceptance: docs/research/E2_exposure_study.md answers the PM
     question in one paragraph at the top, contains the methodology, the
     stored numbers, the beta and volatility horse-race tables with a
