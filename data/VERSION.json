@@ -1,6 +1,6 @@
 {
   "note": "Built by make rebuild-e2 (Sprint E2). E1 and E2 artifacts, each with a content hash; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-10T22:56:14+00:00",
+  "built_at": "2026-09-10T22:59:18+00:00",
   "artifacts": {
     "beta_horse_race.parquet": {
       "sha256": "67ab37d3322fdd2c6a2a8b5f2d4ed31030a7f047b0027409cbe86922886cb2e9",
@@ -39,7 +39,7 @@
       "bytes": 21344206
     },
     "registry.json": {
-      "sha256": "7716b7dd97b80c37b82e7d72bdb35bace70d00201eee1f8c6fd10e132b40bfd4",
+      "sha256": "fa9cdac29f0cd7fb2c679179e515508e6088ccf671bc1c33e371549ec52b8c38",
       "bytes": 1486
     },
     "seed_ew.parquet": {

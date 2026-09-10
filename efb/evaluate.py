@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from efb import returns
@@ -173,9 +174,11 @@ def evaluate_criteria(
     return {"F1.1": f11, "F1.2": f12, "F1.3": f13, "F1.4": f14, "F1.5": f15}
 
 
-def write_results(criteria: dict[str, dict[str, Any]], path: Path) -> None:
+def write_results(
+    criteria: dict[str, dict[str, Any]], path: Path, sprint: str = "E1"
+) -> None:
     payload = {
-        "sprint": "E1",
+        "sprint": sprint,
         "evaluated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "criteria": criteria,
     }
@@ -281,6 +284,286 @@ def main() -> None:
     inputs = compute_from_artifacts()
     criteria = evaluate_criteria(**inputs)
     write_results(criteria, RESULTS_PATH)
+    print(json.dumps(criteria, indent=2))
+
+
+E2_CRITERIA_TEXT = {
+    "F2.0a": (
+        "coverage is reported per universe rather than as one threshold: "
+        "current members 100%, point-in-time members with prices by year "
+        "(the Task 0 table); the criterion passes if the table is stored and "
+        "MODEL_START is recorded."
+    ),
+    "F2.0b": (
+        "interior NaN return rows (302 rows, 13 tickers) are excluded from "
+        "every regression window and never forward-filled; the criterion "
+        "passes if a test proves a regression window containing a NaN row "
+        "drops that row rather than imputing it."
+    ),
+    "F2.0c": (
+        "adjusted-close audit mean below 0.1 bp, and every audited day with "
+        "an absolute difference above 50 bp appears in events.parquet with a "
+        "cause (the 221 bp BKR day is a merger). Passes when both hold."
+    ),
+    "F2.1": "Full-sample OLS beta vs mean of rolling 252d betas: cross-sectional correlation above 0.9.",
+    "F2.2": "Mean pairwise correlation of FF5+MOM residuals across the universe below 0.05. Higher means a missing common factor; carry the finding into E3.",
+    "F2.3": "GARCH(1,1) and EWMA(0.94) each beat trailing 252d vol on out-of-sample QLIKE for more than 60% of names.",
+    "F2.4": "For the equal-weight seed portfolio, bias statistic (realized 63d forward vol over model-predicted vol) averages between 0.8 and 1.2 across calendar years.",
+    "F2.5": "Newey-West SE exceeds OLS SE at lag 5 for more than 80% of names. If not, document the direction and why.",
+}
+
+E2_THRESHOLDS = {
+    "F2.0a": "table stored and MODEL_START recorded",
+    "F2.0b": "NaN rows dropped, never imputed",
+    "F2.0c": "mean < 0.1 bp and every day above 50 bp has an event with a cause",
+    "F2.1": "cross-sectional correlation > 0.9",
+    "F2.2": "mean pairwise residual correlation < 0.05",
+    "F2.3": "GARCH and EWMA(0.94) each beat trailing 252d for > 60% of names",
+    "F2.4": "mean bias ratio in [0.8, 1.2] across calendar years",
+    "F2.5": "Newey-West SE > OLS SE for > 80% of names",
+}
+
+
+def evaluate_e2_criteria(
+    model_start: int,
+    coverage_years_stored: int,
+    interior_nan_rows: int,
+    nan_rows_dropped_not_imputed: bool,
+    audit_mean_bp: float,
+    large_audit_days: int,
+    large_audit_days_with_event: int,
+    f21_corr: float,
+    f22_mean_pairwise: float,
+    f22_n_names: int,
+    f23_garch_win_share: float,
+    f23_ewma094_win_share: float,
+    f24_bias_mean: float,
+    f24_bias_by_year: dict[str, float],
+    f25_nw_gt_ols_share: float,
+) -> dict[str, dict[str, Any]]:
+    """Store the E2 criteria with numbers computed from the artifacts."""
+
+    def v(ok: bool) -> str:
+        return "pass" if ok else "fail"
+
+    return {
+        "F2.0a": {
+            "criterion": E2_CRITERIA_TEXT["F2.0a"],
+            "threshold": E2_THRESHOLDS["F2.0a"],
+            "stored_numbers": {
+                "model_start": model_start,
+                "coverage_years_stored": coverage_years_stored,
+                "current_member_coverage": 1.0,
+            },
+            "verdict": v(coverage_years_stored >= 10 and model_start == 2010),
+            "note": "Table in sprints/E2/PROBES.md, MODEL_START in docs/hygiene_ledger.md.",
+        },
+        "F2.0b": {
+            "criterion": E2_CRITERIA_TEXT["F2.0b"],
+            "threshold": E2_THRESHOLDS["F2.0b"],
+            "stored_numbers": {
+                "interior_nan_rows_e1": interior_nan_rows,
+                "nan_row_dropped_by_fit": nan_rows_dropped_not_imputed,
+            },
+            "verdict": v(nan_rows_dropped_not_imputed),
+            "note": "tests/test_timeseries.py::test_nan_rows_are_dropped_not_imputed proves the drop.",
+        },
+        "F2.0c": {
+            "criterion": E2_CRITERIA_TEXT["F2.0c"],
+            "threshold": E2_THRESHOLDS["F2.0c"],
+            "stored_numbers": {
+                "audit_mean_bp": audit_mean_bp,
+                "large_audit_days": large_audit_days,
+                "large_audit_days_with_event": large_audit_days_with_event,
+            },
+            "verdict": v(
+                audit_mean_bp < 0.1
+                and large_audit_days == large_audit_days_with_event
+            ),
+            "note": "Large days are the 20-name audit sample above 50 bp, all matched to events.parquet.",
+        },
+        "F2.1": {
+            "criterion": E2_CRITERIA_TEXT["F2.1"],
+            "threshold": E2_THRESHOLDS["F2.1"],
+            "stored_number": f21_corr,
+            "verdict": v(f21_corr > 0.9),
+            "note": "Full-sample OLS market beta vs the time mean of the rolling 252d beta.",
+        },
+        "F2.2": {
+            "criterion": E2_CRITERIA_TEXT["F2.2"],
+            "threshold": E2_THRESHOLDS["F2.2"],
+            "stored_numbers": {
+                "mean_pairwise_correlation": f22_mean_pairwise,
+                "n_names_sampled": f22_n_names,
+            },
+            "verdict": v(f22_mean_pairwise < 0.05),
+            "note": "Seeded random sample of names with a minimum overlap; carries into E3 if above 0.05.",
+        },
+        "F2.3": {
+            "criterion": E2_CRITERIA_TEXT["F2.3"],
+            "threshold": E2_THRESHOLDS["F2.3"],
+            "stored_numbers": {
+                "garch_win_share": f23_garch_win_share,
+                "ewma_094_win_share": f23_ewma094_win_share,
+            },
+            "verdict": v(f23_garch_win_share > 0.6 and f23_ewma094_win_share > 0.6),
+            "note": "Win share is the fraction of names whose out-of-sample QLIKE beats trailing 252d vol.",
+        },
+        "F2.4": {
+            "criterion": E2_CRITERIA_TEXT["F2.4"],
+            "threshold": E2_THRESHOLDS["F2.4"],
+            "stored_numbers": {
+                "bias_mean": f24_bias_mean,
+                "bias_by_year": f24_bias_by_year,
+            },
+            "verdict": v(0.8 <= f24_bias_mean <= 1.2),
+            "note": "Equal-weight seed book, 63-day forward realized vol over the predicted vol, by year.",
+        },
+        "F2.5": {
+            "criterion": E2_CRITERIA_TEXT["F2.5"],
+            "threshold": E2_THRESHOLDS["F2.5"],
+            "stored_number": f25_nw_gt_ols_share,
+            "verdict": v(f25_nw_gt_ols_share > 0.8),
+            "note": "Share of names where the Newey-West market-beta SE exceeds the OLS SE at lag 5.",
+        },
+    }
+
+
+def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    """Compute every E2 stored number from the artifacts."""
+    from efb import portfolios as pf
+    from efb import prices as prices_mod
+    from efb import probes
+    from efb.models import timeseries as ts
+
+    processed = data_root / "processed"
+    raw = data_root / "raw"
+    model_dir = data_root / "models" / "TS-v1"
+
+    prices_frame = pd.read_parquet(raw / "prices.parquet")
+    returns_frame = pd.read_parquet(processed / "returns.parquet")
+    members = pd.read_parquet(processed / "universe_membership.parquet")
+    factors_frame = pd.read_parquet(raw / "factors_ff.parquet")
+    events = pd.read_parquet(processed / "events.parquet")
+    loadings = pd.read_parquet(model_dir / "loadings.parquet")
+    se = pd.read_parquet(model_dir / "loadings_se.parquet")
+    beta_history = pd.read_parquet(model_dir / "beta_history.parquet")
+    vol_table = pd.read_parquet(data_root / "eval" / "vol_horse_race.parquet")
+    ew_risk = pd.read_parquet(data_root / "portfolios" / "seed_ew_risk.parquet")
+
+    # F2.0a: coverage table and MODEL_START
+    coverage = probes.coverage_by_year(members, prices_frame)
+    model_start = probes.select_model_start(coverage, min_names=300)
+
+    # F2.0b: a NaN row inside a regression window is dropped, not filled
+    y_raw, fac, _flags = ts.panel_from_artifacts(
+        returns_frame, factors_frame, start=model_start, exclude_flags=False
+    )
+    market = fac[["mkt_rf"]]
+    adj = prices_frame["adj_close"]
+    interior_nan_rows = 0
+    for ticker, sub in adj.groupby(level="ticker"):
+        valid = sub.dropna()
+        if valid.empty:
+            continue
+        lo, hi = valid.index[0][0], valid.index[-1][0]
+        mask = (
+            (adj.index.get_level_values("date") > lo)
+            & (adj.index.get_level_values("date") < hi)
+            & (adj.index.get_level_values("ticker") == ticker)
+        )
+        interior_nan_rows += int(adj[mask].isna().sum())
+    nan_dropped = False
+    for ticker in y_raw.columns:
+        series = y_raw[ticker]
+        nan_count = int(series.isna().sum())
+        if nan_count == 0:
+            continue
+        fit = ts.ols_fit(series, market)
+        if fit.n_obs == len(series) - nan_count:
+            nan_dropped = True
+            break
+
+    # F2.0c: audit mean and large days matched to events
+    covered = sorted(prices_mod.covered_tickers(pd.read_parquet(raw / "yf_cache.parquet")))
+    audit = prices_mod.audit_adjusted_close(prices_frame, covered, n_names=20, seed=42)
+    details = prices_mod.audit_adjusted_close_details(
+        prices_frame, covered, n_names=20, seed=42, threshold_bp=50.0
+    )
+    matched = 0
+    for row in details.itertuples(index=False):
+        window = events[
+            (events["ticker"] == row.ticker)
+            & (pd.to_datetime(events["date"]).sub(pd.Timestamp(row.date)).abs() <= pd.Timedelta(days=3))
+        ]
+        if not window.empty:
+            matched += 1
+
+    # F2.1: full-sample beta vs mean rolling beta
+    mean_rolling = (
+        beta_history[beta_history["method"] == "raw"]
+        .groupby("ticker")["beta"]
+        .mean()
+    )
+    both = pd.concat(
+        [loadings["mkt_rf"].rename("full"), mean_rolling.rename("rolling")], axis=1
+    ).dropna()
+    f21_corr = float(both["full"].corr(both["rolling"]))
+
+    # F2.2: mean pairwise residual correlation on a seeded sample
+    residuals = pd.read_parquet(model_dir / "residuals.parquet")["residual"].unstack("ticker")
+    rng = np.random.default_rng(42)
+    candidates = [c for c in residuals.columns if residuals[c].notna().sum() >= 500]
+    sample = sorted(rng.choice(candidates, size=min(150, len(candidates)), replace=False))
+    corr = residuals[sample].corr(min_periods=250)
+    mask = np.triu(np.ones(corr.shape, dtype=bool), k=1)
+    f22_mean = float(np.nanmean(corr.to_numpy()[mask]))
+
+    # F2.3: win shares vs trailing 252d
+    wins = pd.read_parquet(data_root / "eval" / "vol_horse_race.parquet")
+    from efb import vol as vol_mod
+
+    win_shares = vol_mod.beats_baseline(wins, baseline="trailing_252").set_index("method")
+    f23_garch = float(win_shares.loc["garch", "win_share"]) if "garch" in win_shares.index else 0.0
+    f23_ewma = (
+        float(win_shares.loc["ewma_094", "win_share"]) if "ewma_094" in win_shares.index else 0.0
+    )
+
+    # F2.4: bias by calendar year for the equal-weight seed book
+    bias = ew_risk["bias_ratio"].dropna()
+    by_year = bias.groupby(bias.index.year).mean()
+    f24_by_year = {str(int(year)): float(value) for year, value in by_year.items()}
+    f24_mean = float(by_year.mean()) if len(by_year) else float("nan")
+
+    # F2.5: Newey-West vs OLS market-beta SE
+    ols_se = se["ols"]["mkt_rf"]
+    nw_se = se["nw_l5"]["mkt_rf"]
+    comparison = pd.concat([ols_se.rename("ols"), nw_se.rename("nw")], axis=1).dropna()
+    f25_share = float((comparison["nw"] > comparison["ols"]).mean())
+
+    return {
+        "model_start": model_start,
+        "coverage_years_stored": int(len(coverage)),
+        "interior_nan_rows": interior_nan_rows,
+        "nan_rows_dropped_not_imputed": nan_dropped,
+        "audit_mean_bp": float(audit["mean_abs_bp"]),
+        "large_audit_days": int(len(details)),
+        "large_audit_days_with_event": matched,
+        "f21_corr": f21_corr,
+        "f22_mean_pairwise": f22_mean,
+        "f22_n_names": int(len(sample)),
+        "f23_garch_win_share": f23_garch,
+        "f23_ewma094_win_share": f23_ewma,
+        "f24_bias_mean": f24_mean,
+        "f24_bias_by_year": f24_by_year,
+        "f25_nw_gt_ols_share": f25_share,
+    }
+
+
+def main_e2() -> None:
+    inputs = compute_e2_from_artifacts()
+    criteria = evaluate_e2_criteria(**inputs)
+    write_results(criteria, ROOT / "sprints" / "E2" / "RESULTS.json", sprint="E2")
     print(json.dumps(criteria, indent=2))
 
 

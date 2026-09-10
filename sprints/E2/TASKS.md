@@ -95,7 +95,7 @@ first when the four-day schedule tightens; the date never moves.
   - Files: dashboard/tabs/d01_exposures.py, dashboard/app.py,
     tests/test_dashboard_d1.py
 
-- [ ] Task 8: Evaluate F2.0a, F2.0b, F2.0c and F2.1 to F2.5 (P0)
+- [x] Task 8: Evaluate F2.0a, F2.0b, F2.0c and F2.1 to F2.5 (P0)
   - Acceptance: every criterion stored in sprints/E2/RESULTS.json with
     threshold, stored number and verdict (pass, fail, or pending with a
     reason); numbers computed from artifacts, never retyped; F2.0c

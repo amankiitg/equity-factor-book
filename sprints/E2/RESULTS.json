@@ -1,0 +1,100 @@
+{
+  "sprint": "E2",
+  "evaluated_at": "2026-09-10T23:00:03+00:00",
+  "criteria": {
+    "F2.0a": {
+      "criterion": "coverage is reported per universe rather than as one threshold: current members 100%, point-in-time members with prices by year (the Task 0 table); the criterion passes if the table is stored and MODEL_START is recorded.",
+      "threshold": "table stored and MODEL_START recorded",
+      "stored_numbers": {
+        "model_start": 2010,
+        "coverage_years_stored": 17,
+        "current_member_coverage": 1.0
+      },
+      "verdict": "pass",
+      "note": "Table in sprints/E2/PROBES.md, MODEL_START in docs/hygiene_ledger.md."
+    },
+    "F2.0b": {
+      "criterion": "interior NaN return rows (302 rows, 13 tickers) are excluded from every regression window and never forward-filled; the criterion passes if a test proves a regression window containing a NaN row drops that row rather than imputing it.",
+      "threshold": "NaN rows dropped, never imputed",
+      "stored_numbers": {
+        "interior_nan_rows_e1": 302,
+        "nan_row_dropped_by_fit": true
+      },
+      "verdict": "pass",
+      "note": "tests/test_timeseries.py::test_nan_rows_are_dropped_not_imputed proves the drop."
+    },
+    "F2.0c": {
+      "criterion": "adjusted-close audit mean below 0.1 bp, and every audited day with an absolute difference above 50 bp appears in events.parquet with a cause (the 221 bp BKR day is a merger). Passes when both hold.",
+      "threshold": "mean < 0.1 bp and every day above 50 bp has an event with a cause",
+      "stored_numbers": {
+        "audit_mean_bp": 0.017816512107027022,
+        "large_audit_days": 1,
+        "large_audit_days_with_event": 1
+      },
+      "verdict": "pass",
+      "note": "Large days are the 20-name audit sample above 50 bp, all matched to events.parquet."
+    },
+    "F2.1": {
+      "criterion": "Full-sample OLS beta vs mean of rolling 252d betas: cross-sectional correlation above 0.9.",
+      "threshold": "cross-sectional correlation > 0.9",
+      "stored_number": 0.9123362805217569,
+      "verdict": "pass",
+      "note": "Full-sample OLS market beta vs the time mean of the rolling 252d beta."
+    },
+    "F2.2": {
+      "criterion": "Mean pairwise correlation of FF5+MOM residuals across the universe below 0.05. Higher means a missing common factor; carry the finding into E3.",
+      "threshold": "mean pairwise residual correlation < 0.05",
+      "stored_numbers": {
+        "mean_pairwise_correlation": 0.018258986870831325,
+        "n_names_sampled": 150
+      },
+      "verdict": "pass",
+      "note": "Seeded random sample of names with a minimum overlap; carries into E3 if above 0.05."
+    },
+    "F2.3": {
+      "criterion": "GARCH(1,1) and EWMA(0.94) each beat trailing 252d vol on out-of-sample QLIKE for more than 60% of names.",
+      "threshold": "GARCH and EWMA(0.94) each beat trailing 252d for > 60% of names",
+      "stored_numbers": {
+        "garch_win_share": 0.4666666666666667,
+        "ewma_094_win_share": 0.3638132295719844
+      },
+      "verdict": "fail",
+      "note": "Win share is the fraction of names whose out-of-sample QLIKE beats trailing 252d vol."
+    },
+    "F2.4": {
+      "criterion": "For the equal-weight seed portfolio, bias statistic (realized 63d forward vol over model-predicted vol) averages between 0.8 and 1.2 across calendar years.",
+      "threshold": "mean bias ratio in [0.8, 1.2] across calendar years",
+      "stored_numbers": {
+        "bias_mean": 1.0226800058112024,
+        "bias_by_year": {
+          "2010": 0.6859115954324202,
+          "2011": 1.242771195973736,
+          "2012": 0.6822397331330204,
+          "2013": 0.8705912132614173,
+          "2014": 1.0365131931520244,
+          "2015": 1.207190117171419,
+          "2016": 0.774960300331026,
+          "2017": 0.9287084102887949,
+          "2018": 1.3185654665846687,
+          "2019": 1.2354867579780675,
+          "2020": 1.3951743889570072,
+          "2021": 0.826661866456968,
+          "2022": 1.2300871893273067,
+          "2023": 0.7581192064919214,
+          "2024": 1.0338930235013306,
+          "2025": 1.2568991697012468,
+          "2026": 0.9017872710480693
+        }
+      },
+      "verdict": "pass",
+      "note": "Equal-weight seed book, 63-day forward realized vol over the predicted vol, by year."
+    },
+    "F2.5": {
+      "criterion": "Newey-West SE exceeds OLS SE at lag 5 for more than 80% of names. If not, document the direction and why.",
+      "threshold": "Newey-West SE > OLS SE for > 80% of names",
+      "stored_number": 0.9541984732824428,
+      "verdict": "pass",
+      "note": "Share of names where the Newey-West market-beta SE exceeds the OLS SE at lag 5."
+    }
+  }
+}

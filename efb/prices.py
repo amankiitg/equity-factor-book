@@ -191,3 +191,35 @@ def audit_adjusted_close(
         "max_abs_bp": float(np.nanmax(diffs)),
         "mean_abs_bp": float(np.nanmean(diffs)),
     }
+
+
+def audit_adjusted_close_details(
+    frame: pd.DataFrame,
+    tickers: list[str],
+    n_names: int = 20,
+    seed: int = 42,
+    threshold_bp: float = 50.0,
+) -> pd.DataFrame:
+    """Audited days whose adjusted-close difference exceeds a threshold.
+
+    Returns ticker, date and diff_bp rows for the same random sample used
+    by audit_adjusted_close. Used by F2.0c to require every large audited
+    difference to appear in events.parquet with a cause.
+    """
+    rng = np.random.default_rng(seed)
+    sample = sorted(rng.choice(tickers, size=min(n_names, len(tickers)), replace=False))
+    rows: list[dict[str, object]] = []
+    for ticker in sample:
+        sub = frame.xs(ticker, level="ticker")
+        sub = sub.dropna(subset=["close", "adj_close"])
+        r_adj = sub["adj_close"].pct_change(fill_method=None)
+        r_div = (
+            (sub["close"] + sub["dividend"].fillna(0.0)).div(sub["close"].shift(1)) - 1.0
+        )
+        both = pd.concat([r_adj, r_div], axis=1).dropna()
+        if both.empty:
+            continue
+        diff = (both.iloc[:, 0] - both.iloc[:, 1]).abs() * 10_000.0
+        for date, value in diff[diff > threshold_bp].items():
+            rows.append({"ticker": ticker, "date": date, "diff_bp": float(value)})
+    return pd.DataFrame(rows, columns=["ticker", "date", "diff_bp"])
