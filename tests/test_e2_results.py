@@ -32,6 +32,14 @@ def _inputs(**overrides):
         f25_nw_gt_ols_share=0.9,
         f26_breaks=[],
         f26_break_rows=0,
+        f26b_rows=373,
+        f26b_matched=369,
+        f26b_reused=4,
+        f26b_reused_tickers=["CPWR", "EP", "MI", "POM"],
+        f26b_dropped=["CPWR", "EP", "MI", "POM"],
+        f26b_truncated={},
+        f26b_gaps=["CPWR"],
+        f26b_leaks=[],
     )
     base.update(overrides)
     return base
@@ -49,10 +57,45 @@ def test_all_nine_criteria_present_with_valid_verdicts() -> None:
         "F2.4",
         "F2.5",
         "F2.6",
+        "F2.6b",
     }
     for key, value in criteria.items():
         assert value["verdict"] in {"pass", "fail"}, key
         assert value["criterion"] and value["threshold"], key
+
+
+def test_f26b_passes_only_when_the_build_applied_the_exclusions() -> None:
+    good = evaluate.evaluate_e2_criteria(**_inputs())
+    assert good["F2.6b"]["verdict"] == "pass"
+    assert good["F2.6b"]["stored_numbers"]["reused_tickers"] == [
+        "CPWR",
+        "EP",
+        "MI",
+        "POM",
+    ]
+
+    # a name the table flagged is still in the estimated panel
+    leaked = evaluate.evaluate_e2_criteria(**_inputs(f26b_leaks=["MI"]))
+    assert leaked["F2.6b"]["verdict"] == "fail"
+
+    # the table was never produced
+    missing = evaluate.evaluate_e2_criteria(**_inputs(f26b_rows=0, f26b_leaks=[]))
+    assert missing["F2.6b"]["verdict"] == "fail"
+
+    # the table exists but the build excluded nothing
+    idle = evaluate.evaluate_e2_criteria(**_inputs(f26b_dropped=[]))
+    assert idle["F2.6b"]["verdict"] == "fail"
+
+
+def test_f26b_does_not_reword_f26() -> None:
+    criteria = evaluate.evaluate_e2_criteria(**_inputs())
+    assert criteria["F2.6"]["criterion"].startswith(
+        "Successor to F2.3, added on 2026-09-10"
+    )
+    assert criteria["F2.6b"]["criterion"].startswith("Close-out C1")
+    # F2.6 keeps its recorded fail even when its own list is empty here
+    assert criteria["F2.6"]["verdict"] == "pass"
+    assert "F2.6" in criteria and "F2.6b" in criteria
 
 
 def test_f26_fails_when_a_symbol_was_reused() -> None:
@@ -141,4 +184,5 @@ def test_real_results_file_has_every_criterion_if_present() -> None:
         "F2.4",
         "F2.5",
         "F2.6",
+        "F2.6b",
     }

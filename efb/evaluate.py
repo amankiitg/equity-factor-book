@@ -11,7 +11,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -347,6 +347,22 @@ E2_CRITERIA_TEXT = {
         "different company's returns. This one is not pre-registered, and "
         "it is recorded as such."
     ),
+    "F2.6b": (
+        "Close-out C1, added 2026-09-10 and not pre-registered: every "
+        "ticker on the Wikipedia changes table's removed list is compared "
+        "with the current holder of that symbol on yfinance, matched by "
+        "name token overlap after stripping legal suffixes, punctuation "
+        "and share class letters. A name match means the history is "
+        "legitimate even if prices continue past the removal; no match "
+        "means the symbol was reused and rows before the current company's "
+        "first valid date are dropped, or the ticker is dropped when that "
+        "date cannot be determined. Tickers with a gap above 60 business "
+        "days between two live price segments are flagged separately. The "
+        "criterion passes when the flagged list is stored in "
+        "data/processed/ticker_identity.parquet and efb/build.py applies "
+        "the exclusions itself, which is checked against the estimated "
+        "panel rather than asserted."
+    ),
 }
 
 E2_THRESHOLDS = {
@@ -359,6 +375,9 @@ E2_THRESHOLDS = {
     "F2.4": "mean bias ratio in [0.8, 1.2] across calendar years",
     "F2.5": "Newey-West SE > OLS SE for > 80% of names",
     "F2.6": "0 names with an unexplained adjusted-close move above 5x",
+    "F2.6b": (
+        "identity table stored and the reused-symbol exclusions applied by the build"
+    ),
 }
 
 
@@ -385,6 +404,14 @@ def evaluate_e2_criteria(
     f25_nw_gt_ols_share: float,
     f26_breaks: list[str],
     f26_break_rows: int,
+    f26b_rows: int,
+    f26b_matched: int,
+    f26b_reused: int,
+    f26b_reused_tickers: list[str],
+    f26b_dropped: list[str],
+    f26b_truncated: dict[str, str],
+    f26b_gaps: list[str],
+    f26b_leaks: list[str],
 ) -> dict[str, dict[str, Any]]:
     """Store the E2 criteria with numbers computed from the artifacts."""
 
@@ -519,6 +546,37 @@ def evaluate_e2_criteria(
                 "source (FIGI or PERMNO) and is tracked in docs/open_items.md."
             ),
         },
+        "F2.6b": {
+            "criterion": E2_CRITERIA_TEXT["F2.6b"],
+            "threshold": E2_THRESHOLDS["F2.6b"],
+            "stored_numbers": {
+                "identity_table_rows": f26b_rows,
+                "names_matched": f26b_matched,
+                "names_reused": f26b_reused,
+                "reused_tickers": f26b_reused_tickers,
+                "dropped_by_build": f26b_dropped,
+                "truncated": f26b_truncated,
+                "gap_tickers": f26b_gaps,
+                "dropped_still_in_panel": f26b_leaks,
+            },
+            # application is the point: the table existing is not enough,
+            # and a reused name still in the panel is the failure mode. The
+            # counts need not match, because a reused symbol with no price
+            # history cannot leak into a panel in the first place.
+            "verdict": v(
+                f26b_rows > 0
+                and not f26b_leaks
+                and (f26b_reused == 0 or bool(f26b_dropped))
+            ),
+            "note": (
+                "Compared the removed-security name in the changes table "
+                "with the current holder of the symbol on yfinance. "
+                f"{f26b_reused} of {f26b_rows} removed tickers are held by "
+                "an unrelated company today, and the panel the estimate "
+                f"ran on contains none of the {len(f26b_dropped)} dropped "
+                "names."
+            ),
+        },
     }
 
 
@@ -544,6 +602,68 @@ def _series_breaks(
         & ratio_series.notna()
     )
     return tickers, int(suspects.sum())
+
+
+class IdentityFindings(TypedDict):
+    """What the F2.6b check found, and what the build did about it."""
+
+    rows: int
+    matched: int
+    reused: int
+    reused_tickers: list[str]
+    dropped: list[str]
+    truncated: dict[str, str]
+    gaps: list[str]
+    leaks: list[str]
+
+
+def _identity_findings(data_root: Path, loadings: pd.DataFrame) -> IdentityFindings:
+    """Identity table summary plus proof the build acted on it.
+
+    The point of storing the table is that the build excludes what it
+    flags, so the check is not that the table exists but that none of the
+    names it flagged still appear in the panel the estimates were fitted
+    on.
+    """
+    empty: IdentityFindings = {
+        "rows": 0,
+        "matched": 0,
+        "reused": 0,
+        "reused_tickers": [],
+        "dropped": [],
+        "truncated": {},
+        "gaps": [],
+        "leaks": [],
+    }
+    path = data_root / "processed" / "ticker_identity.parquet"
+    if not path.exists():
+        return empty
+
+    table = pd.read_parquet(path)
+    dropped: list[str] = []
+    truncated: dict[str, str] = {}
+    registry_path = data_root / "models" / "registry.json"
+    if registry_path.exists():
+        registry = json.loads(registry_path.read_text())
+        params = registry.get("models", {}).get("TS-v1", {}).get("parameters", {})
+        dropped = list(params.get("identity_dropped", []))
+        truncated = dict(params.get("identity_truncated", {}))
+
+    reused = sorted(table.loc[table["reused"].astype(bool), "ticker"].tolist())
+    in_panel = set(loadings.index)
+    # a reused name that is still in the estimated panel means the build
+    # did not apply the exclusion, whether or not it recorded the list
+    flagged = sorted(set(dropped) | set(reused))
+    return {
+        "rows": int(len(table)),
+        "matched": int((~table["reused"].astype(bool)).sum()),
+        "reused": len(reused),
+        "reused_tickers": reused,
+        "dropped": dropped,
+        "truncated": truncated,
+        "gaps": sorted(table.loc[table["has_gap"].astype(bool), "ticker"].tolist()),
+        "leaks": sorted(t for t in flagged if t in in_panel),
+    }
 
 
 def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
@@ -697,6 +817,9 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     # F2.6: series breaks, a close-to-close ratio above 5x with no split
     f26_breaks, f26_rows = _series_breaks(prices_frame)
 
+    # F2.6b: ticker identity, and proof the build acted on it
+    f26b = _identity_findings(data_root, loadings)
+
     return {
         "model_start": model_start,
         "coverage_years_stored": int(len(coverage)),
@@ -720,6 +843,14 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "f25_nw_gt_ols_share": f25_share,
         "f26_breaks": f26_breaks,
         "f26_break_rows": f26_rows,
+        "f26b_rows": f26b["rows"],
+        "f26b_matched": f26b["matched"],
+        "f26b_reused": f26b["reused"],
+        "f26b_reused_tickers": f26b["reused_tickers"],
+        "f26b_dropped": f26b["dropped"],
+        "f26b_truncated": f26b["truncated"],
+        "f26b_gaps": f26b["gaps"],
+        "f26b_leaks": f26b["leaks"],
     }
 
 

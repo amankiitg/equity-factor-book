@@ -147,6 +147,58 @@ def test_build_e2_artifacts_writes_everything_and_registers_ts_v1(
     assert bool(ls["survivorship_caveat"].iloc[0]) is False
 
 
+def test_the_build_applies_the_identity_exclusions(tmp_path: Path) -> None:
+    # C1: with a changes table and a name cache present, the build runs the
+    # identity check itself and drops what it flags. No step is manual.
+    data_root = tmp_path / "data"
+    _write_inputs(data_root)
+    _splice(data_root, "T05")
+    changes = pd.DataFrame(
+        {
+            "effective_date": pd.to_datetime(["2024-06-03"]),
+            "added_ticker": [None],
+            "added_security": [None],
+            "removed_ticker": ["T05"],
+            "removed_security": ["Old Member Corp"],
+            "reason": ["test"],
+        }
+    )
+    changes.to_parquet(
+        data_root / "processed" / "universe_changes.parquet", index=False
+    )
+    pd.DataFrame(
+        {
+            "ticker": ["T05"],
+            "symbol": ["T05"],
+            "long_name": ["Brand New Listing Inc"],
+            "short_name": ["Brand New"],
+        }
+    ).to_parquet(data_root / "raw" / "yf_names.parquet", index=False)
+
+    summary = build.build_e2_artifacts(
+        data_root=data_root, start=2024, include_garch=False, garch_tickers=0
+    )
+    assert summary["identity_check"] == "applied"
+    assert summary["identity_dropped"] == ["T05"]
+
+    table = pd.read_parquet(data_root / "processed" / "ticker_identity.parquet")
+    assert set(table["ticker"]) == {"T05"}
+    assert bool(table.iloc[0]["reused"]) is True
+
+    loadings = pd.read_parquet(data_root / "models/TS-v1/loadings.parquet")
+    assert "T05" not in set(loadings.index)
+
+
+def test_the_build_records_when_the_identity_check_cannot_run(tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    _write_inputs(data_root)  # no changes table on disk
+    summary = build.build_e2_artifacts(
+        data_root=data_root, start=2024, include_garch=False, garch_tickers=0
+    )
+    assert summary["identity_check"].startswith("skipped")
+    assert summary["identity_dropped"] == []
+
+
 def test_build_e2_artifact_list_includes_registry() -> None:
     assert "models/registry.json" in build.E2_ARTIFACTS
     assert "portfolios/seed_mom_ls.parquet" in build.E2_ARTIFACTS

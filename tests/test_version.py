@@ -104,6 +104,7 @@ def test_rebuild_runs_end_to_end_offline(tmp_path: Path, monkeypatch) -> None:
     assert (data_root / "processed" / "universe_membership.parquet").exists()
     assert (data_root / "processed" / "sectors.parquet").exists()
     assert (data_root / "processed" / "events.parquet").exists()
+    assert (data_root / "processed" / "universe_changes.parquet").exists()
     version = json.loads((data_root / "VERSION.json").read_text())
-    assert len(version["artifacts"]) == 6
+    assert len(version["artifacts"]) == len(build.ARTIFACTS)
     assert "n_steps" in summary

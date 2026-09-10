@@ -149,3 +149,81 @@ All F2 criteria evaluated with stored numbers in sprints/E2/RESULTS.json;
 registry contains TS-v1 with a data hash; D1 loads under 3 seconds;
 walkthrough rendered; research deliverable written and linked from the
 Methodology tab.
+
+## Close-out tasks (added 2026-09-10)
+
+Rules for C1 to C4: no criterion already stored in RESULTS.json is
+reworded or re-scored; a new finding gets a new ID; every number that
+changes is written to docs/hygiene_ledger.md as old value, new value,
+date, reason.
+
+- [x] C1: Ticker identity check, registered as F2.6b
+  - Acceptance: every ticker on the Wikipedia changes table's removed
+    list is compared with the current holder of that symbol on yfinance,
+    cached once to data/raw/yf_names.parquet and matched by name token
+    overlap after stripping Inc, Corp, Co, Ltd, plc, Class A/B and
+    punctuation; the table prints ticker, removed name, current name,
+    match score, first and last valid price date and removal date. A
+    match means the history is legitimate even if prices continue past
+    the removal. No match means the symbol was reused: drop rows before
+    the first valid date that belongs to the current company, or drop the
+    ticker entirely when that date cannot be determined, and say so. Also
+    flag any ticker with a gap above 60 business days between two live
+    price segments. CPWR, EP, MI and POM must all be caught. F2.6b passes
+    when the flagged list is stored in data/processed/ticker_identity.parquet
+    and efb/build.py applies the exclusions itself. F2.6 keeps its
+    recorded fail.
+  - Test: tests/test_identity.py (token match, reused symbol detected,
+    gap detection, exclusions applied by the build, F2.6b stored)
+  - Files: efb/identity.py, efb/prices.py, efb/build.py, efb/evaluate.py,
+    data/processed/ticker_identity.parquet, sprints/E2/PROBES.md
+
+- [x] C2: Re-store E1 on the corrected data
+  - Acceptance: make rebuild-e1 runs, F1.1 to F1.5 and F2.0a to F2.0c are
+    re-evaluated, and sprints/E1/RESULTS.json carries a "revisions" key
+    with old and new values side by side plus the data hash of each;
+    notebooks/E1_walkthrough.ipynb re-executes against the new artifacts
+    and re-renders; docs/research/E1_data_note.md gains an Addendum
+    section stating what changed and why, with the original sections left
+    untouched; the F1.3 and F1.5 numbers print before and after.
+  - Test: tests/test_e1_revisions.py (revisions key present, old and new
+    recorded, data hashes differ or match explicitly)
+  - Files: efb/evaluate.py, sprints/E1/RESULTS.json,
+    notebooks/E1_walkthrough.ipynb, docs/research/E1_data_note.md
+
+- [x] C3: F2.3 diagnostic before the verdict is accepted
+  - Acceptance: print the exact QLIKE target and the forecast horizon of
+    each estimator; whether returns were scaled by 100 before the arch fit
+    and how many names failed to converge; the win rate by calendar year
+    and with 2020 excluded. Then run the aligned evaluation, one-step
+    forecasts against next-day r^2 and 21-day forecasts (GARCH
+    multi-step, EWMA flat, trailing flat) against 21-day realized
+    variance, both over the same out-of-sample window with flagged rows
+    excluded, and register it as F2.3b with the same 60% threshold.
+    EWMA(0.97) stays the production estimator unless F2.3b shows GARCH
+    winning for more than 70% of names, which becomes an open decision
+    for E5 rather than a change now.
+  - Test: tests/test_vol_alignment.py (one-step target, 21-day target,
+    both stored with the same window and exclusions)
+  - Files: efb/vol.py, efb/evaluate.py, sprints/E2/RESULTS.json,
+    sprints/E2/PROBES.md
+
+- [x] C4: MOM loading sanity check on the long/short momentum seed book
+  - Acceptance: the book's TS-v1 loadings print with Newey-West SEs and
+    t-stats; the MOM loading must be positive with |t| > 2, and if it is
+    not, the factor share prints with and without MOM in the regressor set
+    and the finding goes to the ledger and the deliverable. The seed book
+    construction is not changed in E2.
+  - Test: tests/test_portfolio_risk.py (MOM loading sign and t-stat on
+    the seeded book, factor share both ways)
+  - Files: efb/portfolios.py, sprints/E2/PROBES.md,
+    docs/research/E2_exposure_study.md
+
+- [x] C5: Close-out
+  - Acceptance: make rebuild-e2 runs, VERSION.json and the TS-v1 registry
+    entry carry the new data hash, the full test suite passes, and
+    docs/research/E2_exposure_study.md gains a Close-out section with the
+    C1 to C4 numbers.
+  - Files: data/VERSION.json, data/models/registry.json,
+    docs/research/E2_exposure_study.md, docs/hygiene_ledger.md
+

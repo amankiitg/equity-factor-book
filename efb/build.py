@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from efb import factors, hygiene, prices, returns, universe
+from efb import factors, hygiene, identity, prices, returns, universe
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
@@ -28,6 +28,7 @@ ARTIFACTS = [
     "raw/factors_ff.parquet",
     "processed/returns.parquet",
     "processed/universe_membership.parquet",
+    "processed/universe_changes.parquet",
     "processed/sectors.parquet",
     "processed/events.parquet",
 ]
@@ -113,6 +114,7 @@ def rebuild(
     prices.save_prices(prices_artifact, raw_dir / "prices.parquet")
 
     # 3. Universe membership and sectors
+    changes.to_parquet(processed_dir / "universe_changes.parquet", index=False)
     members = universe.build_membership(changes, constituents, start=start, end=end)
     members.to_parquet(processed_dir / "universe_membership.parquet")
     sectors = universe.build_sectors(constituents, as_of=as_of)
@@ -186,13 +188,42 @@ def build_e2_artifacts(
     members = pd.read_parquet(processed_dir / "universe_membership.parquet")
     sectors = pd.read_parquet(processed_dir / "sectors.parquet")
 
-    # Symbols reused by a later listing splice two companies into one price
-    # history, so those names leave the estimation panel entirely; a mask on
-    # the break date would leave the wrong company's returns in place.
+    # Ticker identity (close-out C1, criterion F2.6b). The symbol on the
+    # other end of the name is the direct test for a reused ticker; the
+    # level-shift check below stays as a safety net for names that were
+    # never on the removed list.
     prices_frame = pd.read_parquet(raw_dir / "prices.parquet")
     broken = hygiene.series_break_tickers(prices_frame)
-    if broken:
-        returns_frame = returns_frame[~returns_frame.index.isin(broken, level="ticker")]
+    identity_status = "skipped, no changes artifact"
+    identity_table = pd.DataFrame()
+    changes_path = processed_dir / "universe_changes.parquet"
+    if changes_path.exists():
+        changes = pd.read_parquet(changes_path)
+        tickers = sorted(set(identity.removal_names(changes)))
+        names = identity.fetch_symbol_names(
+            tickers, cache_path=raw_dir / "yf_names.parquet"
+        )
+        identity_table = identity.identity_table(
+            changes,
+            prices_frame,
+            names,
+            members=members,
+            breaks=set(broken),
+        )
+        identity_table.to_parquet(
+            processed_dir / "ticker_identity.parquet", index=False
+        )
+        identity_status = "applied"
+
+    identity_drops, identity_truncations = identity.exclusions(identity_table)
+    if identity_truncations:
+        returns_frame = identity.drop_truncated(returns_frame, identity_truncations)
+
+    dropped = sorted(set(identity_drops) | set(broken))
+    if dropped:
+        returns_frame = returns_frame[
+            ~returns_frame.index.isin(dropped, level="ticker")
+        ]
 
     y_raw, fac, flags = ts.panel_from_artifacts(
         returns_frame, factors_frame, start=start, exclude_flags=False
@@ -312,6 +343,11 @@ def build_e2_artifacts(
                 for key in ("stale", "outlier", "nan")
             },
             "series_break_tickers_dropped": broken,
+            "identity_check": identity_status,
+            "identity_dropped": identity_drops,
+            "identity_truncated": {
+                ticker: str(cutoff) for ticker, cutoff in identity_truncations.items()
+            },
         },
         universe_path=processed_dir / "universe_membership.parquet",
         data_paths=[raw_dir / "factors_ff.parquet", processed_dir / "returns.parquet"],
@@ -324,6 +360,8 @@ def build_e2_artifacts(
         "n_names": int(loadings.shape[0]),
         "n_dates": int(y.shape[0]),
         "exclusions": entry["parameters"]["exclusions"],
+        "identity_check": identity_status,
+        "identity_dropped": identity_drops,
         "oos_start": oos_start,
     }
 
