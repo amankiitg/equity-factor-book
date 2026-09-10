@@ -20,7 +20,7 @@ first when the four-day schedule tightens; the date never moves.
   - Files: efb/probes.py (extended), sprints/E2/PROBES.md,
     docs/hygiene_ledger.md, tests/test_e2_probe.py
 
-- [ ] Task 1: Single-factor market model with OLS and Newey-West SEs (P0)
+- [x] Task 1: Single-factor market model with OLS and Newey-West SEs (P0)
   - Acceptance: efb/models/timeseries.py fits the market model per stock
     (beta, alpha, R^2, residual vol) from MODEL_START with OLS SEs and
     Newey-West HAC SEs at lag 5; synthetic data with a known beta is
@@ -30,7 +30,7 @@ first when the four-day schedule tightens; the date never moves.
     autocorrelated residuals, NaN-drop proof).
   - Files: efb/models/timeseries.py, tests/test_timeseries.py
 
-- [ ] Task 2: Multi-factor FF5 + MOM loadings, residuals, idio vol (P0)
+- [x] Task 2: Multi-factor FF5 + MOM loadings, residuals, idio vol (P0)
   - Acceptance: loadings B (N x K) for mkt_rf, smb, hml, rmw, cma, mom
     from MODEL_START with both SE types, residual matrix, idio vol per
     stock; the excluded stale/outlier/NaN row count is printed; short
@@ -39,7 +39,7 @@ first when the four-day schedule tightens; the date never moves.
     count).
   - Files: efb/models/timeseries.py, tests/test_timeseries.py
 
-- [ ] Task 3: Beta shrinkage, rolling and EWMA betas, shift audit (P0)
+- [x] Task 3: Beta shrinkage, rolling and EWMA betas, shift audit (P0)
   - Acceptance: Vasicek (w = sigma_xs^2 / (sigma_xs^2 + SE^2) toward the
     cross-sectional mean) and Blume (0.67/0.33) betas; rolling 252d and
     EWMA-weighted (half-lives 63 and 126) beta histories stored under
