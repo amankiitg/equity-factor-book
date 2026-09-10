@@ -25,8 +25,8 @@ dashboard: ## Run the EFB Console (Streamlit)
 rebuild-e1: ## Rebuilds the E1 data layer end to end (Sprint E1)
 	$(PYTHON) -m efb.build
 
-rebuild-e2: ## Rebuilds E2 artifacts; implemented in Sprint E2
-	@echo "make rebuild-e2 is implemented in Sprint E2." && exit 1
+rebuild-e2: ## Rebuilds E1 and E2 artifacts end to end (Sprint E2)
+	$(PYTHON) -m efb.build --e2
 
 rebuild-e3: ## Rebuilds E3 artifacts; implemented in Sprint E3
 	@echo "make rebuild-e3 is implemented in Sprint E3." && exit 1

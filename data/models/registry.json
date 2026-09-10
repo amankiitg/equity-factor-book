@@ -2,5 +2,42 @@
   "note": "Pre-registered before any E2 estimator was written (2026-09-10). The champion rule is fixed before the numbers are seen so that E5 cannot be accused of choosing the rule after seeing the results.",
   "champion_rule": "min mean |bias-1| across portfolio families; ties to fewer parameters; a champion must be refreshable daily from EFB's own data",
   "family_notes": "timeseries models on external factors are diagnostic only and ineligible for champion",
-  "models": {}
+  "models": {
+    "TS-v1": {
+      "version": "TS-v1",
+      "family": "timeseries",
+      "parameters": {
+        "factors": [
+          "mkt_rf",
+          "smb",
+          "hml",
+          "rmw",
+          "cma",
+          "mom"
+        ],
+        "model_start": 2010,
+        "nw_lag": 5,
+        "window": 252,
+        "ewma_half_lives": [
+          63,
+          126
+        ],
+        "factor_cov_half_life": 90,
+        "min_obs": 60,
+        "exclusions": {
+          "stale": 9542,
+          "outlier": 220,
+          "nan": 1138521
+        }
+      },
+      "universe_hash": "7b7a8a165aa0bd9fb8d365da5c3b0fe823b62ed8c7aec619d5cb47672c1e3710",
+      "data_hash": "69643e08ca94abefe49cdfc42a91bfe5b43c639bdd41ad7b4e9f90e3e31f1025",
+      "built_at": "2026-09-10T22:53:15+00:00",
+      "champion": false,
+      "eligible_for_champion": false,
+      "walkthrough": "notebooks/E2_walkthrough.html",
+      "deliverable": "docs/research/E2_exposure_study.md",
+      "results": "sprints/E2/RESULTS.json"
+    }
+  }
 }

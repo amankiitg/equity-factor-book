@@ -75,7 +75,7 @@ first when the four-day schedule tightens; the date never moves.
     tests/test_portfolio_risk.py, data/portfolios/seed_ew.parquet,
     data/portfolios/seed_mom_ls.parquet
 
-- [ ] Task 6: TS-v1 artifacts, registry entry, rebuild and versioning (P0)
+- [x] Task 6: TS-v1 artifacts, registry entry, rebuild and versioning (P0)
   - Acceptance: data/models/TS-v1/{loadings, loadings_se, residuals,
     idio_vol, factor_cov}.parquet written per the PRD schemas;
     efb/registry.py writes the TS-v1 entry (family timeseries, champion

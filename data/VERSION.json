@@ -1,7 +1,63 @@
 {
-  "note": "Built by make rebuild-e1 (Sprint E1). Every data artifact carries a content hash here; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-04T17:34:55+00:00",
+  "note": "Built by make rebuild-e2 (Sprint E2). E1 and E2 artifacts, each with a content hash; the dashboard sidebar shows this version.",
+  "built_at": "2026-09-10T22:53:15+00:00",
   "artifacts": {
+    "beta_horse_race.parquet": {
+      "sha256": "67ab37d3322fdd2c6a2a8b5f2d4ed31030a7f047b0027409cbe86922886cb2e9",
+      "bytes": 3487
+    },
+    "portfolio_risk_snapshot.parquet": {
+      "sha256": "bb3e05933ad4b75d5c8e757d563f2e7c92500678c539ab64004dab62ec2e514a",
+      "bytes": 8804
+    },
+    "vol_horse_race.parquet": {
+      "sha256": "d5b90f5b1fb51acb309e4a4a590232e5da8b028f7ef075a90f052403ccb8c9f0",
+      "bytes": 38266
+    },
+    "beta_history.parquet": {
+      "sha256": "518a278b1244dd62bcb5e0122a23b60e36f5f834cede363834490c3d0f64d0db",
+      "bytes": 5020294
+    },
+    "factor_cov.parquet": {
+      "sha256": "a3b21352f65eebf96a04fcd7e349cd331e275d31c85b75c137fc65b8abe5e4b9",
+      "bytes": 4973
+    },
+    "idio_vol.parquet": {
+      "sha256": "5ec6fb31b4c27bf6bb662f0c12aa78cbac98f4b22cf2af9d9615e01a6733b8da",
+      "bytes": 28845
+    },
+    "loadings.parquet": {
+      "sha256": "7b02f55809a32021eb1e9919e4d96413b7edd683b2877a9ba483d0f1934bdabf",
+      "bytes": 53710
+    },
+    "loadings_se.parquet": {
+      "sha256": "30b5f372ff85188f80babcbf7db30c145a799d6123e61f87efda7a7f6c2dff80",
+      "bytes": 102467
+    },
+    "residuals.parquet": {
+      "sha256": "db5f5ffa4b7656dde4cfa95c217a54f815708116897c4adbed7251bef4fe2ed4",
+      "bytes": 21344206
+    },
+    "registry.json": {
+      "sha256": "9799ece65925679ffd9352a1bce2ef9a6358f3bc47797bc3ee74324edc81a2d7",
+      "bytes": 1486
+    },
+    "seed_ew.parquet": {
+      "sha256": "062ba1527339281781283b27380fedd0d0f345d5f8c2b997f394b7639f998e48",
+      "bytes": 474628
+    },
+    "seed_ew_risk.parquet": {
+      "sha256": "258372fdbd561d5f4dff887e177cea70290fac08813931ba978e853a2c534139",
+      "bytes": 18518
+    },
+    "seed_mom_ls.parquet": {
+      "sha256": "805a6c04ef708b7b2dfa15b1b71b31fd61d531cf96aceabb6226f610be4619d0",
+      "bytes": 242435
+    },
+    "seed_mom_ls_risk.parquet": {
+      "sha256": "f26abf08a477014a4017911318f1d9fbc74afe674db34d14fb5a3952ffad7cc7",
+      "bytes": 18615
+    },
     "events.parquet": {
       "sha256": "71341ea6cfca3daa1851afc44d3d15929f68aec222bdf294f5d90a048657388d",
       "bytes": 94479
@@ -11,12 +67,12 @@
       "bytes": 63462804
     },
     "sectors.parquet": {
-      "sha256": "2d9efee0ac8bbdc73f9f15c3c9633ba84cfad4a9eb5eda660174526cad50bc54",
+      "sha256": "381f7649131adb82db01a7516120813440413c4564993041b99da4f327b099be",
       "bytes": 9549
     },
     "universe_membership.parquet": {
-      "sha256": "3b9beac271d5435fa6305266f34e222eddcb9fb452c91143f845577b7835e1e3",
-      "bytes": 426949
+      "sha256": "7b7a8a165aa0bd9fb8d365da5c3b0fe823b62ed8c7aec619d5cb47672c1e3710",
+      "bytes": 426987
     },
     "factors_ff.parquet": {
       "sha256": "17dcfdb52f74a05bd3894f01b02ac0628a702f73eec1658408aae53483937540",
