@@ -28,7 +28,9 @@ def _se() -> pd.DataFrame:
         [["ols", "nw_l5"], ["mkt_rf", "smb"]], names=["method", "statistic"]
     )
     return pd.DataFrame(
-        [[0.02, 0.03, 0.04, 0.05], [0.02, 0.04, 0.025, 0.045]], index=["AAA", "BBB"], columns=cols
+        [[0.02, 0.03, 0.04, 0.05], [0.02, 0.04, 0.025, 0.045]],
+        index=["AAA", "BBB"],
+        columns=cols,
     )
 
 
@@ -67,7 +69,8 @@ def test_r2_distribution_and_idio_vs_total() -> None:
         {"AAA": rng.normal(0, 0.01, 300), "BBB": rng.normal(0, 0.02, 300)}, index=dates
     )
     idio = pd.DataFrame(
-        {"idio_vol": [0.008, 0.015], "idio_vol_ann": [0.127, 0.238]}, index=["AAA", "BBB"]
+        {"idio_vol": [0.008, 0.015], "idio_vol_ann": [0.127, 0.238]},
+        index=["AAA", "BBB"],
     )
     out = d01_exposures.idio_vs_total(idio, returns)
     assert {"ticker", "idio_vol_ann", "total_vol_ann"} <= set(out.columns)

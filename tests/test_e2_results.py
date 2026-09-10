@@ -32,7 +32,16 @@ def _inputs(**overrides):
 
 def test_all_eight_criteria_present_with_valid_verdicts() -> None:
     criteria = evaluate.evaluate_e2_criteria(**_inputs())
-    assert set(criteria) == {"F2.0a", "F2.0b", "F2.0c", "F2.1", "F2.2", "F2.3", "F2.4", "F2.5"}
+    assert set(criteria) == {
+        "F2.0a",
+        "F2.0b",
+        "F2.0c",
+        "F2.1",
+        "F2.2",
+        "F2.3",
+        "F2.4",
+        "F2.5",
+    }
     for key, value in criteria.items():
         assert value["verdict"] in {"pass", "fail"}, key
         assert value["criterion"] and value["threshold"], key
@@ -58,7 +67,11 @@ def test_thresholds_decide_the_verdicts() -> None:
 
 def test_passing_configuration() -> None:
     criteria = evaluate.evaluate_e2_criteria(
-        **_inputs(f23_garch_win_share=0.7, f23_ewma094_win_share=0.65, f25_nw_gt_ols_share=0.95)
+        **_inputs(
+            f23_garch_win_share=0.7,
+            f23_ewma094_win_share=0.65,
+            f25_nw_gt_ols_share=0.95,
+        )
     )
     assert all(value["verdict"] == "pass" for value in criteria.values())
 

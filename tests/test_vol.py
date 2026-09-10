@@ -8,7 +8,9 @@ from efb import vol
 
 
 def _series(values, start="2020-01-02") -> pd.Series:
-    return pd.Series(values, index=pd.bdate_range(start, periods=len(values)), dtype=float)
+    return pd.Series(
+        values, index=pd.bdate_range(start, periods=len(values)), dtype=float
+    )
 
 
 def test_ewma_recursion_matches_manual() -> None:
@@ -130,7 +132,13 @@ def test_vol_horse_race_table_shape() -> None:
     )
     table = vol.vol_horse_race(r, oos_start="2025-01-01", include_garch=False)
     assert {"ticker", "method", "qlike"} <= set(table.columns)
-    assert set(table["method"]) >= {"ewma_094", "ewma_097", "realized_21", "realized_63", "trailing_252"}
+    assert set(table["method"]) >= {
+        "ewma_094",
+        "ewma_097",
+        "realized_21",
+        "realized_63",
+        "trailing_252",
+    }
     wins = vol.beats_baseline(table, baseline="trailing_252")
     assert set(wins["method"]) >= {"ewma_094", "ewma_097"}
     assert wins["win_share"].between(0, 1).all()

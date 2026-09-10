@@ -77,8 +77,14 @@ def momentum_ls_weights(
         row_signal = signal.loc[date] if date in signal.index else None
         if row_signal is None:
             continue
-        member_row = members.loc[date] if date in members.index else pd.Series(False, index=members.columns)
-        active = row_signal[member_row.reindex(row_signal.index).fillna(False).astype(bool)].dropna()
+        member_row = (
+            members.loc[date]
+            if date in members.index
+            else pd.Series(False, index=members.columns)
+        )
+        active = row_signal[
+            member_row.reindex(row_signal.index).fillna(False).astype(bool)
+        ].dropna()
         if len(active) < min_names:
             continue
         active_sectors = sector_map.reindex(active.index)
@@ -236,12 +242,16 @@ def portfolio_risk_history(
                 "date": date,
                 "predicted_vol_ann": predicted,
                 "realized_vol_ann": realized,
-                "bias_ratio": realized / predicted if predicted and predicted > 0 else np.nan,
+                "bias_ratio": (
+                    realized / predicted if predicted and predicted > 0 else np.nan
+                ),
                 "factor_variance": factor_var_t,
                 "idio_variance": idio_var_t,
-                "factor_share": factor_var_t / (factor_var_t + idio_var_t)
-                if (factor_var_t + idio_var_t) > 0
-                else np.nan,
+                "factor_share": (
+                    factor_var_t / (factor_var_t + idio_var_t)
+                    if (factor_var_t + idio_var_t) > 0
+                    else np.nan
+                ),
                 "gross": float(w.abs().sum()),
                 "net": float(w.sum()),
             }

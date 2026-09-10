@@ -292,7 +292,9 @@ def coverage_by_year(
     adj = prices["adj_close"].unstack("ticker")
     dates = pd.DatetimeIndex(sorted(members.index))
     adj = adj.reindex(index=dates)
-    member_bool = members.astype(bool).reindex(index=dates, columns=adj.columns, fill_value=False)
+    member_bool = members.astype(bool).reindex(
+        index=dates, columns=adj.columns, fill_value=False
+    )
     present = adj.notna().where(member_bool, False)
     rows: list[dict[str, float]] = []
     for year, group in present.groupby(present.index.year):

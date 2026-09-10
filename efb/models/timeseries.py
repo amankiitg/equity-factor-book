@@ -338,7 +338,9 @@ def beta_history(
     method is raw, ewma_<half_life>, vasicek and blume. The raw method
     feeds the Vasicek and Blume shrinkage.
     """
-    frames: dict[str, pd.DataFrame] = {"raw": _as_frame(rolling_beta(y, x, window, min_obs))}
+    frames: dict[str, pd.DataFrame] = {
+        "raw": _as_frame(rolling_beta(y, x, window, min_obs))
+    }
     for half_life in half_lives:
         frames[f"ewma_{half_life}"] = _as_frame(
             ewma_beta(y, x, half_life=half_life, min_obs=252)
@@ -357,9 +359,7 @@ def beta_history(
     return out
 
 
-def _beta_window(
-    y: np.ndarray, x: np.ndarray, min_obs: int
-) -> np.ndarray:
+def _beta_window(y: np.ndarray, x: np.ndarray, min_obs: int) -> np.ndarray:
     """Vectorized single-factor beta over one window (columns are names)."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -421,7 +421,9 @@ def beta_horse_race(
                         "method": method,
                         "date": t,
                         "n_obs": int(len(pair)),
-                        "rmse": float(np.sqrt(((pair["pred"] - pair["real"]) ** 2).mean())),
+                        "rmse": float(
+                            np.sqrt(((pair["pred"] - pair["real"]) ** 2).mean())
+                        ),
                         "mean_bias": float((pair["pred"] - pair["real"]).mean()),
                     }
                 )
@@ -431,8 +433,12 @@ def beta_horse_race(
         .apply(
             lambda g: pd.Series(
                 {
-                    "rmse": float(np.sqrt((g["rmse"] ** 2 * g["n_obs"]).sum() / g["n_obs"].sum())),
-                    "mean_bias": float((g["mean_bias"] * g["n_obs"]).sum() / g["n_obs"].sum()),
+                    "rmse": float(
+                        np.sqrt((g["rmse"] ** 2 * g["n_obs"]).sum() / g["n_obs"].sum())
+                    ),
+                    "mean_bias": float(
+                        (g["mean_bias"] * g["n_obs"]).sum() / g["n_obs"].sum()
+                    ),
                     "n_obs": int(g["n_obs"].sum()),
                     "n_dates": int(len(g)),
                 }
@@ -455,11 +461,15 @@ def panel_from_artifacts(
     returns_frame: returns.parquet long frame with excess, stale, outlier.
     factors_frame: factors_ff.parquet wide frame.
     """
-    dates = pd.DatetimeIndex(sorted(returns_frame.index.get_level_values("date").unique()))
+    dates = pd.DatetimeIndex(
+        sorted(returns_frame.index.get_level_values("date").unique())
+    )
     dates = dates[dates.year >= start]
     y = returns_frame["excess"].unstack("ticker").reindex(index=dates)
     stale = returns_frame["stale"].unstack("ticker").reindex(index=dates).fillna(False)
-    outlier = returns_frame["outlier"].unstack("ticker").reindex(index=dates).fillna(False)
+    outlier = (
+        returns_frame["outlier"].unstack("ticker").reindex(index=dates).fillna(False)
+    )
     # columns are a MultiIndex (flag, ticker); flags["stale"] is a date x ticker frame
     flags = pd.concat({"stale": stale, "outlier": outlier}, axis=1)
     factors = factors_frame.reindex(index=dates)
@@ -511,10 +521,7 @@ def fit_factor_model(
             residual_frames.append(fit.residuals.rename(ticker))
     loadings_df = pd.DataFrame(loadings).T
     residuals = (
-        pd.concat(residual_frames, axis=1)
-        .stack()
-        .rename("residual")
-        .to_frame()
+        pd.concat(residual_frames, axis=1).stack().rename("residual").to_frame()
         if residual_frames
         else pd.DataFrame(columns=["residual"])
     )

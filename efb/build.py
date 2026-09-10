@@ -270,7 +270,11 @@ def build_e2_artifacts(
             w_last, loadings[ts.MULTI_FACTORS], factor_cov, idio["idio_var"]
         )
         rows.append(
-            {"portfolio": name, "survivorship_caveat": name == "seed_ew", **decomposition}
+            {
+                "portfolio": name,
+                "survivorship_caveat": name == "seed_ew",
+                **decomposition,
+            }
         )
     pd.DataFrame(rows).to_parquet(
         eval_dir / "portfolio_risk_snapshot.parquet", index=False
@@ -288,7 +292,8 @@ def build_e2_artifacts(
             "factor_cov_half_life": 90,
             "min_obs": ts.MIN_OBS,
             "exclusions": {
-                key: int(fit["exclusions"][key].sum()) for key in ("stale", "outlier", "nan")
+                key: int(fit["exclusions"][key].sum())
+                for key in ("stale", "outlier", "nan")
             },
         },
         universe_path=processed_dir / "universe_membership.parquet",
@@ -318,7 +323,10 @@ def rebuild_e2(
     payload = write_version(
         artifact_paths,
         data_root / "VERSION.json",
-        note="Built by make rebuild-e2 (Sprint E2). E1 and E2 artifacts, each with a content hash; the dashboard sidebar shows this version.",
+        note=(
+            "Built by make rebuild-e2 (Sprint E2). E1 and E2 artifacts, each "
+            "with a content hash; the dashboard sidebar shows this version."
+        ),
     )
     if results_path is not None:
         from efb import evaluate

@@ -48,7 +48,11 @@ def _write_inputs(data_root: Path, periods: int = 420) -> None:
         )
         frame.index.name = "date"
         rows.append(frame)
-    returns = pd.concat(rows).set_index("ticker", append=True).reorder_levels(["date", "ticker"])
+    returns = (
+        pd.concat(rows)
+        .set_index("ticker", append=True)
+        .reorder_levels(["date", "ticker"])
+    )
     returns.to_parquet(data_root / "processed" / "returns.parquet")
 
     members = pd.DataFrame(True, index=dates, columns=TICKERS)
@@ -59,7 +63,9 @@ def _write_inputs(data_root: Path, periods: int = 420) -> None:
     sectors.to_parquet(data_root / "processed" / "sectors.parquet", index=False)
 
 
-def test_build_e2_artifacts_writes_everything_and_registers_ts_v1(tmp_path: Path) -> None:
+def test_build_e2_artifacts_writes_everything_and_registers_ts_v1(
+    tmp_path: Path,
+) -> None:
     data_root = tmp_path / "data"
     _write_inputs(data_root)
     summary = build.build_e2_artifacts(

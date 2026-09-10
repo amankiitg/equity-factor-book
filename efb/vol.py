@@ -58,7 +58,7 @@ def ewma_vol(
         if i == min_obs - 1:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
-                state = np.nanvar(values[: min_obs], axis=0)
+                state = np.nanvar(values[:min_obs], axis=0)
         elif i >= min_obs:
             state = np.where(
                 np.isfinite(state),
@@ -123,9 +123,7 @@ class MZResult:
     n_obs: int
 
 
-def mincer_zarnowitz(
-    r2: pd.Series, sigma2_hat: pd.Series
-) -> MZResult:
+def mincer_zarnowitz(r2: pd.Series, sigma2_hat: pd.Series) -> MZResult:
     """Mincer-Zarnowitz regression of r^2 on the forecast variance."""
     frame = pd.concat([r2.rename("r2"), sigma2_hat.rename("s2")], axis=1).dropna()
     if len(frame) < 10:
@@ -155,7 +153,9 @@ def fit_garch(r: pd.Series) -> dict[str, float] | None:
     if len(series) < 250:
         return None
     try:
-        model = arch_model(series, vol="Garch", p=1, q=1, mean="Constant", dist="normal")
+        model = arch_model(
+            series, vol="GARCH", p=1, q=1, mean="Constant", dist="normal"
+        )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             result = model.fit(disp="off", show_warning=False)
@@ -175,7 +175,9 @@ def fit_garch(r: pd.Series) -> dict[str, float] | None:
     }
 
 
-def garch_forecast(r: pd.Series, oos_start: str, params: dict[str, float] | None = None):
+def garch_forecast(
+    r: pd.Series, oos_start: str, params: dict[str, float] | None = None
+):
     """One-step GARCH variance forecasts over the out-of-sample window.
 
     Parameters are fit on the data before oos_start and held fixed; the
@@ -234,10 +236,15 @@ def vol_horse_race(
             if len(values) < 100:
                 continue
             rows.append(
-                {"ticker": ticker, "method": name, "qlike": float(values.mean()), "n_obs": int(len(values))}
+                {
+                    "ticker": ticker,
+                    "method": name,
+                    "qlike": float(values.mean()),
+                    "n_obs": int(len(values)),
+                }
             )
     if include_garch:
-        names = list(rf.columns[: garch_tickers]) if garch_tickers else list(rf.columns)
+        names = list(rf.columns[:garch_tickers]) if garch_tickers else list(rf.columns)
         for ticker in names:
             series = rf[ticker].dropna()
             forecast = garch_forecast(series, oos_start=oos_start)
@@ -271,5 +278,11 @@ def beats_baseline(table: pd.DataFrame, baseline: str = "trailing_252") -> pd.Da
             rows.append({"method": method, "win_share": float("nan"), "n_names": 0})
             continue
         wins = (both[method] < both[baseline]).mean()
-        rows.append({"method": method, "win_share": float(wins), "n_names": int(len(both))})
-    return pd.DataFrame(rows).sort_values("win_share", ascending=False).reset_index(drop=True)
+        rows.append(
+            {"method": method, "win_share": float(wins), "n_names": int(len(both))}
+        )
+    return (
+        pd.DataFrame(rows)
+        .sort_values("win_share", ascending=False)
+        .reset_index(drop=True)
+    )

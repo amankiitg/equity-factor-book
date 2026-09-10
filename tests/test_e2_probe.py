@@ -7,7 +7,9 @@ import pytest
 from efb.probes import coverage_by_year, select_model_start
 
 
-def _members(columns: list[str], periods: int = 252, start: str = "2010-01-01") -> pd.DataFrame:
+def _members(
+    columns: list[str], periods: int = 252, start: str = "2010-01-01"
+) -> pd.DataFrame:
     idx = pd.bdate_range(start, periods=periods)
     return pd.DataFrame(True, index=idx, columns=columns)
 
@@ -21,7 +23,6 @@ def _prices(adj: pd.DataFrame) -> pd.DataFrame:
 
 def test_coverage_by_year_counts_members_with_data() -> None:
     dates = pd.bdate_range("2010-01-01", "2011-12-31")
-    n = len(dates)
     wide = pd.DataFrame(
         {
             "AAA": np.where(dates.year == 2010, 1.0, np.nan),

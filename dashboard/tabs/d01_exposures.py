@@ -16,7 +16,6 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from efb import portfolios as pf
 from efb import vol as vol_mod
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -42,7 +41,9 @@ def loadings_table(loadings: pd.DataFrame, se: pd.DataFrame) -> pd.DataFrame:
     """Loadings next to Newey-West standard errors for every factor."""
     table = loadings.copy()
     if isinstance(se.columns, pd.MultiIndex):
-        nw = se["nw_l5"] if "nw_l5" in se.columns.get_level_values(0) else se.iloc[:, :0]
+        nw = (
+            se["nw_l5"] if "nw_l5" in se.columns.get_level_values(0) else se.iloc[:, :0]
+        )
     else:
         nw = se
     for column in nw.columns:

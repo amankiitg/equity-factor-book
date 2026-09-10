@@ -7,7 +7,9 @@ import pytest
 from efb import portfolios as pf
 
 
-def _members(tickers: list[str], periods: int = 60, start: str = "2024-01-02") -> pd.DataFrame:
+def _members(
+    tickers: list[str], periods: int = 60, start: str = "2024-01-02"
+) -> pd.DataFrame:
     idx = pd.bdate_range(start, periods=periods)
     return pd.DataFrame(True, index=idx, columns=tickers)
 
@@ -44,13 +46,18 @@ def test_momentum_ls_is_dollar_and_sector_neutral() -> None:
     )
     members = pd.DataFrame(True, index=dates, columns=r.columns)
     sectors = pd.DataFrame(
-        {"ticker": ["AAA", "BBB", "CCC", "DDD"], "gics_sector": ["Tech", "Tech", "Energy", "Energy"]}
+        {
+            "ticker": ["AAA", "BBB", "CCC", "DDD"],
+            "gics_sector": ["Tech", "Tech", "Energy", "Energy"],
+        }
     )
-    w = pf.momentum_ls_weights(r, members, sectors, lookback=126, quantile=0.5, min_names=4)
+    w = pf.momentum_ls_weights(
+        r, members, sectors, lookback=126, quantile=0.5, min_names=4
+    )
     active = w.loc[w.abs().sum(axis=1) > 0]
     assert not active.empty
     assert active.sum(axis=1).abs().max() < 1e-9  # dollar neutral
-    for sector, names in [("Tech", ["AAA", "BBB"]), ("Energy", ["CCC", "DDD"])]:
+    for names in (["AAA", "BBB"], ["CCC", "DDD"]):
         sector_net = active[names].sum(axis=1)
         assert sector_net.abs().max() < 1e-9  # sector neutral
     # the momentum winners are long, losers short
@@ -62,7 +69,9 @@ def test_momentum_ls_is_dollar_and_sector_neutral() -> None:
 def test_risk_decomposition_matches_hand_computation() -> None:
     w = pd.Series({"AAA": 0.6, "BBB": 0.4})
     B = pd.DataFrame({"mkt_rf": [1.0, 0.5], "smb": [0.0, 0.5]}, index=["AAA", "BBB"])
-    F = pd.DataFrame(np.eye(2) * 0.0004, index=["mkt_rf", "smb"], columns=["mkt_rf", "smb"])
+    F = pd.DataFrame(
+        np.eye(2) * 0.0004, index=["mkt_rf", "smb"], columns=["mkt_rf", "smb"]
+    )
     idio_var = pd.Series({"AAA": 0.0009, "BBB": 0.0001})
     out = pf.risk_decomposition(w, B, F, idio_var)
     beta_p = B.T @ w
@@ -71,7 +80,9 @@ def test_risk_decomposition_matches_hand_computation() -> None:
     assert out["factor_variance"] == pytest.approx(factor_var, rel=1e-12)
     assert out["idio_variance"] == pytest.approx(idio, rel=1e-12)
     assert out["total_variance"] == pytest.approx(factor_var + idio, rel=1e-12)
-    assert out["factor_share"] == pytest.approx(factor_var / (factor_var + idio), rel=1e-12)
+    assert out["factor_share"] == pytest.approx(
+        factor_var / (factor_var + idio), rel=1e-12
+    )
     assert out["portfolio_beta_mkt_rf"] == pytest.approx(0.8, rel=1e-12)
 
 
@@ -107,13 +118,26 @@ def test_predict_portfolio_vol_known_numbers() -> None:
 def test_portfolio_risk_history_bias_ratio() -> None:
     dates = pd.bdate_range("2023-01-02", periods=400)
     rng = np.random.default_rng(5)
-    r = pd.DataFrame({"AAA": rng.normal(0, 0.01, len(dates)), "BBB": rng.normal(0, 0.01, len(dates))}, index=dates)
+    r = pd.DataFrame(
+        {
+            "AAA": rng.normal(0, 0.01, len(dates)),
+            "BBB": rng.normal(0, 0.01, len(dates)),
+        },
+        index=dates,
+    )
     weights = pd.DataFrame(0.5, index=dates, columns=["AAA", "BBB"])
     betas = pd.DataFrame(1.0, index=dates, columns=["AAA", "BBB"])
     factor_var = pd.Series(0.0001, index=dates)
     idio_var = pd.DataFrame(0.0001, index=dates, columns=["AAA", "BBB"])
-    history = pf.portfolio_risk_history(weights, r, betas, factor_var, idio_var, forward=63)
+    history = pf.portfolio_risk_history(
+        weights, r, betas, factor_var, idio_var, forward=63
+    )
     assert not history.empty
-    assert {"predicted_vol_ann", "realized_vol_ann", "bias_ratio", "factor_share"} <= set(history.columns)
+    assert {
+        "predicted_vol_ann",
+        "realized_vol_ann",
+        "bias_ratio",
+        "factor_share",
+    } <= set(history.columns)
     # with no factor structure the idio term dominates and bias is finite
     assert np.isfinite(history["bias_ratio"]).all()

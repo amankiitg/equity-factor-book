@@ -53,7 +53,9 @@ def test_write_registry_preserves_rules_and_upserts(tmp_path: Path) -> None:
         json.dumps(
             {
                 "champion_rule": "min mean |bias-1| across portfolio families",
-                "family_notes": "timeseries models on external factors are diagnostic only",
+                "family_notes": (
+                    "timeseries models on external factors are diagnostic only"
+                ),
                 "models": {},
             }
         )
@@ -64,7 +66,10 @@ def test_write_registry_preserves_rules_and_upserts(tmp_path: Path) -> None:
     )
     payload = registry.write_registry(path, entry)
     assert payload["champion_rule"] == "min mean |bias-1| across portfolio families"
-    assert payload["family_notes"] == "timeseries models on external factors are diagnostic only"
+    assert (
+        payload["family_notes"]
+        == "timeseries models on external factors are diagnostic only"
+    )
     assert set(payload["models"]) == {"TS-v1"}
     # updating the same version keeps one entry
     registry.write_registry(path, {**entry, "parameters": {"window": 252}})

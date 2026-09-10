@@ -305,11 +305,28 @@ E2_CRITERIA_TEXT = {
         "an absolute difference above 50 bp appears in events.parquet with a "
         "cause (the 221 bp BKR day is a merger). Passes when both hold."
     ),
-    "F2.1": "Full-sample OLS beta vs mean of rolling 252d betas: cross-sectional correlation above 0.9.",
-    "F2.2": "Mean pairwise correlation of FF5+MOM residuals across the universe below 0.05. Higher means a missing common factor; carry the finding into E3.",
-    "F2.3": "GARCH(1,1) and EWMA(0.94) each beat trailing 252d vol on out-of-sample QLIKE for more than 60% of names.",
-    "F2.4": "For the equal-weight seed portfolio, bias statistic (realized 63d forward vol over model-predicted vol) averages between 0.8 and 1.2 across calendar years.",
-    "F2.5": "Newey-West SE exceeds OLS SE at lag 5 for more than 80% of names. If not, document the direction and why.",
+    "F2.1": (
+        "Full-sample OLS beta vs mean of rolling 252d betas: cross-sectional "
+        "correlation above 0.9."
+    ),
+    "F2.2": (
+        "Mean pairwise correlation of FF5+MOM residuals across the universe "
+        "below 0.05. Higher means a missing common factor; carry the finding "
+        "into E3."
+    ),
+    "F2.3": (
+        "GARCH(1,1) and EWMA(0.94) each beat trailing 252d vol on "
+        "out-of-sample QLIKE for more than 60% of names."
+    ),
+    "F2.4": (
+        "For the equal-weight seed portfolio, bias statistic (realized 63d "
+        "forward vol over model-predicted vol) averages between 0.8 and 1.2 "
+        "across calendar years."
+    ),
+    "F2.5": (
+        "Newey-West SE exceeds OLS SE at lag 5 for more than 80% of names. "
+        "If not, document the direction and why."
+    ),
 }
 
 E2_THRESHOLDS = {
@@ -356,7 +373,10 @@ def evaluate_e2_criteria(
                 "current_member_coverage": 1.0,
             },
             "verdict": v(coverage_years_stored >= 10 and model_start == 2010),
-            "note": "Table in sprints/E2/PROBES.md, MODEL_START in docs/hygiene_ledger.md.",
+            "note": (
+                "Table in sprints/E2/PROBES.md, MODEL_START in "
+                "docs/hygiene_ledger.md."
+            ),
         },
         "F2.0b": {
             "criterion": E2_CRITERIA_TEXT["F2.0b"],
@@ -366,7 +386,10 @@ def evaluate_e2_criteria(
                 "nan_row_dropped_by_fit": nan_rows_dropped_not_imputed,
             },
             "verdict": v(nan_rows_dropped_not_imputed),
-            "note": "tests/test_timeseries.py::test_nan_rows_are_dropped_not_imputed proves the drop.",
+            "note": (
+                "tests/test_timeseries.py::test_nan_rows_are_dropped_not_imputed "
+                "proves the drop."
+            ),
         },
         "F2.0c": {
             "criterion": E2_CRITERIA_TEXT["F2.0c"],
@@ -377,17 +400,22 @@ def evaluate_e2_criteria(
                 "large_audit_days_with_event": large_audit_days_with_event,
             },
             "verdict": v(
-                audit_mean_bp < 0.1
-                and large_audit_days == large_audit_days_with_event
+                audit_mean_bp < 0.1 and large_audit_days == large_audit_days_with_event
             ),
-            "note": "Large days are the 20-name audit sample above 50 bp, all matched to events.parquet.",
+            "note": (
+                "Large days are the 20-name audit sample above 50 bp, all "
+                "matched to events.parquet."
+            ),
         },
         "F2.1": {
             "criterion": E2_CRITERIA_TEXT["F2.1"],
             "threshold": E2_THRESHOLDS["F2.1"],
             "stored_number": f21_corr,
             "verdict": v(f21_corr > 0.9),
-            "note": "Full-sample OLS market beta vs the time mean of the rolling 252d beta.",
+            "note": (
+                "Full-sample OLS market beta vs the time mean of the rolling "
+                "252d beta."
+            ),
         },
         "F2.2": {
             "criterion": E2_CRITERIA_TEXT["F2.2"],
@@ -397,7 +425,10 @@ def evaluate_e2_criteria(
                 "n_names_sampled": f22_n_names,
             },
             "verdict": v(f22_mean_pairwise < 0.05),
-            "note": "Seeded random sample of names with a minimum overlap; carries into E3 if above 0.05.",
+            "note": (
+                "Seeded random sample of names with a minimum overlap; carries "
+                "into E3 if above 0.05."
+            ),
         },
         "F2.3": {
             "criterion": E2_CRITERIA_TEXT["F2.3"],
@@ -407,7 +438,10 @@ def evaluate_e2_criteria(
                 "ewma_094_win_share": f23_ewma094_win_share,
             },
             "verdict": v(f23_garch_win_share > 0.6 and f23_ewma094_win_share > 0.6),
-            "note": "Win share is the fraction of names whose out-of-sample QLIKE beats trailing 252d vol.",
+            "note": (
+                "Win share is the fraction of names whose out-of-sample QLIKE "
+                "beats trailing 252d vol."
+            ),
         },
         "F2.4": {
             "criterion": E2_CRITERIA_TEXT["F2.4"],
@@ -417,21 +451,26 @@ def evaluate_e2_criteria(
                 "bias_by_year": f24_bias_by_year,
             },
             "verdict": v(0.8 <= f24_bias_mean <= 1.2),
-            "note": "Equal-weight seed book, 63-day forward realized vol over the predicted vol, by year.",
+            "note": (
+                "Equal-weight seed book, 63-day forward realized vol over the "
+                "predicted vol, by year."
+            ),
         },
         "F2.5": {
             "criterion": E2_CRITERIA_TEXT["F2.5"],
             "threshold": E2_THRESHOLDS["F2.5"],
             "stored_number": f25_nw_gt_ols_share,
             "verdict": v(f25_nw_gt_ols_share > 0.8),
-            "note": "Share of names where the Newey-West market-beta SE exceeds the OLS SE at lag 5.",
+            "note": (
+                "Share of names where the Newey-West market-beta SE exceeds "
+                "the OLS SE at lag 5."
+            ),
         },
     }
 
 
 def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
     """Compute every E2 stored number from the artifacts."""
-    from efb import portfolios as pf
     from efb import prices as prices_mod
     from efb import probes
     from efb.models import timeseries as ts
@@ -448,7 +487,6 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     loadings = pd.read_parquet(model_dir / "loadings.parquet")
     se = pd.read_parquet(model_dir / "loadings_se.parquet")
     beta_history = pd.read_parquet(model_dir / "beta_history.parquet")
-    vol_table = pd.read_parquet(data_root / "eval" / "vol_horse_race.parquet")
     ew_risk = pd.read_parquet(data_root / "portfolios" / "seed_ew_risk.parquet")
 
     # F2.0a: coverage table and MODEL_START
@@ -485,7 +523,9 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
             break
 
     # F2.0c: audit mean and large days matched to events
-    covered = sorted(prices_mod.covered_tickers(pd.read_parquet(raw / "yf_cache.parquet")))
+    covered = sorted(
+        prices_mod.covered_tickers(pd.read_parquet(raw / "yf_cache.parquet"))
+    )
     audit = prices_mod.audit_adjusted_close(prices_frame, covered, n_names=20, seed=42)
     details = prices_mod.audit_adjusted_close_details(
         prices_frame, covered, n_names=20, seed=42, threshold_bp=50.0
@@ -494,16 +534,17 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     for row in details.itertuples(index=False):
         window = events[
             (events["ticker"] == row.ticker)
-            & (pd.to_datetime(events["date"]).sub(pd.Timestamp(row.date)).abs() <= pd.Timedelta(days=3))
+            & (
+                pd.to_datetime(events["date"]).sub(pd.Timestamp(row.date)).abs()
+                <= pd.Timedelta(days=3)
+            )
         ]
         if not window.empty:
             matched += 1
 
     # F2.1: full-sample beta vs mean rolling beta
     mean_rolling = (
-        beta_history[beta_history["method"] == "raw"]
-        .groupby("ticker")["beta"]
-        .mean()
+        beta_history[beta_history["method"] == "raw"].groupby("ticker")["beta"].mean()
     )
     both = pd.concat(
         [loadings["mkt_rf"].rename("full"), mean_rolling.rename("rolling")], axis=1
@@ -511,10 +552,14 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     f21_corr = float(both["full"].corr(both["rolling"]))
 
     # F2.2: mean pairwise residual correlation on a seeded sample
-    residuals = pd.read_parquet(model_dir / "residuals.parquet")["residual"].unstack("ticker")
+    residuals = pd.read_parquet(model_dir / "residuals.parquet")["residual"].unstack(
+        "ticker"
+    )
     rng = np.random.default_rng(42)
     candidates = [c for c in residuals.columns if residuals[c].notna().sum() >= 500]
-    sample = sorted(rng.choice(candidates, size=min(150, len(candidates)), replace=False))
+    sample = sorted(
+        rng.choice(candidates, size=min(150, len(candidates)), replace=False)
+    )
     corr = residuals[sample].corr(min_periods=250)
     mask = np.triu(np.ones(corr.shape, dtype=bool), k=1)
     f22_mean = float(np.nanmean(corr.to_numpy()[mask]))
@@ -523,10 +568,18 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     wins = pd.read_parquet(data_root / "eval" / "vol_horse_race.parquet")
     from efb import vol as vol_mod
 
-    win_shares = vol_mod.beats_baseline(wins, baseline="trailing_252").set_index("method")
-    f23_garch = float(win_shares.loc["garch", "win_share"]) if "garch" in win_shares.index else 0.0
+    win_shares = vol_mod.beats_baseline(wins, baseline="trailing_252").set_index(
+        "method"
+    )
+    f23_garch = (
+        float(win_shares.loc["garch", "win_share"])
+        if "garch" in win_shares.index
+        else 0.0
+    )
     f23_ewma = (
-        float(win_shares.loc["ewma_094", "win_share"]) if "ewma_094" in win_shares.index else 0.0
+        float(win_shares.loc["ewma_094", "win_share"])
+        if "ewma_094" in win_shares.index
+        else 0.0
     )
 
     # F2.4: bias by calendar year for the equal-weight seed book

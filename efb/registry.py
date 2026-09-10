@@ -55,7 +55,11 @@ def model_entry(
         "family": family,
         "parameters": parameters,
         "universe_hash": file_hash(universe_path),
-        "data_hash": file_hash(data_paths[0]) if len(data_paths) == 1 else _combined_hash(data_paths),
+        "data_hash": (
+            file_hash(data_paths[0])
+            if len(data_paths) == 1
+            else _combined_hash(data_paths)
+        ),
         "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "champion": champion,
         "eligible_for_champion": eligible_for_champion,
