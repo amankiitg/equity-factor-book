@@ -49,7 +49,7 @@ first when the four-day schedule tightens; the date never moves.
   - Files: efb/models/timeseries.py, tests/test_beta_history.py,
     data/models/TS-v1/beta_history.parquet
 
-- [ ] Task 4: Volatility estimators and QLIKE/MZ evaluation framework (P0)
+- [x] Task 4: Volatility estimators and QLIKE/MZ evaluation framework (P0)
   - Acceptance: efb/vol.py implements EWMA (0.94, 0.97), realized vol
     (21d, 63d), the QLIKE loss and the Mincer-Zarnowitz regression; an
     out-of-sample split (last 2 years) produces the vol horse race table
