@@ -159,6 +159,85 @@ def risk_decomposition(
     return out
 
 
+def rolling_book_exposure(
+    weights: pd.DataFrame,
+    betas: dict[str, pd.DataFrame],
+    factor_cov: pd.DataFrame,
+    idio_var: pd.DataFrame,
+    factor: str = "mom",
+) -> pd.DataFrame:
+    """Month-end book exposure to one factor from rolling name-level betas.
+
+    weights: daily weights (date x ticker), signals set at month ends.
+    betas: per-factor (date x ticker) rolling betas, already shifted so
+    that date t uses data through t-1. factor_cov: factor covariance.
+    idio_var: rolling idio variance per date and name.
+
+    At each rebalance the book's exposure to `factor` is sum_i w_i(t) *
+    beta_i(t), a portfolio loading built from the weights that were
+    actually held and the betas dated the day they were held. The factor
+    share uses the same weights against the whole factor set and the same
+    date's rolling betas.
+
+    This exists because a static full-sample beta cannot measure a
+    portfolio that re-sorts every month: the weights move, the beta does
+    not, and so the two never meet on the same date. The full-sample
+    number understates a book whose exposure is concentrated in the names
+    that were recently selected.
+    """
+    rebalance_dates = month_end_dates(weights.index)
+    factor_names = sorted(betas)
+    columns = [
+        "date",
+        "exposure",
+        "factor_share",
+        "factor_variance",
+        "idio_variance",
+        "gross",
+        "net",
+        "n_names",
+    ]
+    rows: list[dict[str, float]] = []
+    for date in rebalance_dates:
+        if date not in weights.index:
+            continue
+        w = weights.loc[date]
+        w = w[w.abs() > 0]
+        if w.empty or factor not in betas:
+            continue
+        panels = {
+            name: betas[name].loc[date]
+            for name in factor_names
+            if date in betas[name].index
+        }
+        if factor not in panels:
+            continue
+        B = pd.DataFrame(panels).reindex(w.index)
+        # a name with no beta yet contributes nothing but zeros to the
+        # aggregate, so a rebalance where most names have no beta is
+        # skipped rather than recorded as an exposure of zero
+        usable = int(np.isfinite(B[factor].to_numpy(dtype=float)).sum())
+        if usable < max(2, len(w) // 2):
+            continue
+        idio_t = (
+            idio_var.loc[date] if date in idio_var.index else pd.Series(dtype=float)
+        )
+        report = risk_decomposition(w, B, factor_cov, idio_t)
+        rows.append(
+            {
+                "date": date,
+                "exposure": report[f"portfolio_beta_{factor}"],
+                "factor_share": report["factor_share"],
+                "factor_variance": report["factor_variance"],
+                "idio_variance": report["idio_variance"],
+                "gross": float(w.abs().sum()),
+                "net": float(w.sum()),
+                "n_names": float(len(w)),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns).set_index("date")
+
+
 def portfolio_returns(weights: pd.DataFrame, returns_r: pd.DataFrame) -> pd.Series:
     """Daily portfolio return from a date x ticker weight panel.
 

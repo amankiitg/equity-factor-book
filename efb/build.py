@@ -49,11 +49,13 @@ E2_ARTIFACTS = [
     "eval/vol_horse_race_aligned.parquet",
     "eval/vol_window_dependence.parquet",
     "eval/momentum_exposure.parquet",
+    "eval/momentum_exposure_rolling.parquet",
     "eval/portfolio_risk_snapshot.parquet",
     "portfolios/seed_ew.parquet",
     "portfolios/seed_mom_ls.parquet",
     "portfolios/seed_ew_risk.parquet",
     "portfolios/seed_mom_ls_risk.parquet",
+    "portfolios/seed_mom_ls_risk_21.parquet",
 ]
 
 MODEL_START = 2010
@@ -524,6 +526,19 @@ def build_e2_artifacts(
         )
         risk.to_parquet(port_dir / f"{name}_risk.parquet")
 
+    # C8(b): the same diagonal-model bias statistic for the momentum book,
+    # on a 21-day forward window rather than 63, because a book that is
+    # re-sorted every month is measured over the month it is held
+    mom_risk_21 = pf.portfolio_risk_history(
+        ls_weights,
+        returns_wide,
+        betas,
+        factor_var,
+        idio_var_rolling,
+        forward=21,
+    )
+    mom_risk_21.to_parquet(port_dir / "seed_mom_ls_risk_21.parquet")
+
     rows = []
     for name, weights in (("seed_ew", ew_weights), ("seed_mom_ls", ls_weights)):
         w_last = weights.iloc[-1]
@@ -565,6 +580,28 @@ def build_e2_artifacts(
     mom_rows["factor_share_name_level_betas"] = mom_snapshot["factor_share"]
     mom_rows["regression_r_squared"] = mom_loadings["r_squared"].iloc[0]
     mom_rows.to_parquet(eval_dir / "momentum_exposure.parquet", index=False)
+
+    # C8(a): the book's MOM exposure from rolling 252d name-level betas
+    # dated at each rebalance, against the static full-sample aggregate
+    rolling_betas = {
+        name: ts._as_frame(ts.rolling_beta(y, fac[name], window=252, min_obs=126))
+        for name in ts.MULTI_FACTORS
+    }
+    exposure_history = pf.rolling_book_exposure(
+        ls_weights, rolling_betas, factor_cov, idio_var_rolling, factor="mom"
+    )
+    exposure_history.to_parquet(eval_dir / "momentum_exposure_rolling.parquet")
+    static_exposure = float((mom_weights * loadings["mom"]).sum())
+    exposure_stats = {
+        "rolling_mean": float(exposure_history["exposure"].mean()),
+        "rolling_min": float(exposure_history["exposure"].min()),
+        "rolling_max": float(exposure_history["exposure"].max()),
+        "rolling_share_mean": float(exposure_history["factor_share"].mean()),
+        "static_aggregate": static_exposure,
+        "static_share_last_month": mom_snapshot["factor_share"],
+        "regression_loading": mom["mom_loading"],
+        "n_rebalances": int(len(exposure_history)),
+    }
 
     # the same combined hash rebuild_e2 writes into VERSION.json, so the
     # registry entry and the data manifest point at one identifier
@@ -610,6 +647,10 @@ def build_e2_artifacts(
             "mom_loading": mom["mom_loading"],
             "mom_t_stat": mom["mom_t_stat"],
             "mom_check_passes": mom["passes"],
+            # C8: the same exposure measured from rolling betas at each
+            # rebalance, which is the only way a monthly re-sorted book
+            # can be measured at all
+            "mom_exposure": exposure_stats,
         },
         universe_path=processed_dir / "universe_membership.parquet",
         data_paths=[raw_dir / "factors_ff.parquet", processed_dir / "returns.parquet"],

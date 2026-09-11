@@ -1,7 +1,7 @@
 {
   "sprint": "E2",
-  "evaluated_at": "2026-09-11T14:19:20+00:00",
-  "data_hash": "1ce2bcf782efe462df4dc62ac6b7fba14939d3ed6b3494d2be54ccc0d3c68d54",
+  "evaluated_at": "2026-09-11T14:29:26+00:00",
+  "data_hash": "51f0faa935cb57e8e9f11bf620e5f551f69ca50b415f12112f880f32b3393692",
   "criteria": {
     "F2.0a": {
       "criterion": "coverage is reported per universe rather than as one threshold: current members 100%, point-in-time members with prices by year (the Task 0 table); the criterion passes if the table is stored and MODEL_START is recorded.",
@@ -444,10 +444,9 @@
   },
   "revisions": {
     "previous_data_hash": "050f2b4531540bbcc6142f64fef7d1aa7f124a10c4c124dc34747ebd5206e6ad",
-    "data_hash": "1ce2bcf782efe462df4dc62ac6b7fba14939d3ed6b3494d2be54ccc0d3c68d54",
-    "n_changed": 2,
+    "data_hash": "51f0faa935cb57e8e9f11bf620e5f551f69ca50b415f12112f880f32b3393692",
+    "n_changed": 1,
     "changed_tickers_or_criteria": [
-      "F2.3",
       "F2.3b"
     ],
     "cross_sprint_criteria": [],
@@ -536,17 +535,17 @@
         }
       },
       "F2.3": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "fail",
           "stored_numbers": {
-            "garch_win_share": 0.4444444444444444,
+            "garch_win_share": 0.5816326530612245,
             "ewma_094_win_share": 0.35403726708074534,
-            "garch_names_fitted": 45,
-            "paired_n": 37,
-            "paired_garch_win_share": 0.40540540540540543,
-            "paired_ewma_094_win_share": 0.2702702702702703,
-            "garch_beats_ewma_094_share": 0.7297297297297297
+            "garch_names_fitted": 98,
+            "paired_n": 80,
+            "paired_garch_win_share": 0.5375,
+            "paired_ewma_094_win_share": 0.3625,
+            "garch_beats_ewma_094_share": 0.725
           }
         },
         "new": {
@@ -855,18 +854,18 @@
               "1": {
                 "ewma_094": 0.35403726708074534,
                 "ewma_097": 0.5196687370600414,
-                "garch": 0.4666666666666667,
+                "garch": 0.6122448979591837,
                 "trailing_63": 0.36661211129296234
               },
               "21": {
                 "ewma_094": 0.19875776397515527,
                 "ewma_097": 0.34368530020703936,
-                "garch": 0.5555555555555556,
+                "garch": 0.4897959183673469,
                 "trailing_63": 0.3076923076923077
               }
             },
-            "garch_fitted": 47,
-            "garch_failed": 13,
+            "garch_fitted": 98,
+            "garch_failed": 2,
             "day_level_ewma_094": {
               "pooled": 0.5155910558965167,
               "excluding_2020": 0.5155910558965167,
@@ -1026,7 +1025,137 @@
       },
       "F2.3c": {
         "changed": false,
-        "old": null,
+        "old": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "seed": 20260910,
+            "sample_size": 100,
+            "sample": [
+              "AAPL",
+              "ABNB",
+              "AEE",
+              "AEP",
+              "AES",
+              "AKAM",
+              "ALK",
+              "ALL",
+              "AMCR",
+              "AMZN",
+              "APO",
+              "ARES",
+              "AVGO",
+              "AVY",
+              "BBWI",
+              "BBY",
+              "BHF",
+              "BTU",
+              "BX",
+              "CFG",
+              "CL",
+              "CMS",
+              "CPB",
+              "CPRT",
+              "CPT",
+              "CRH",
+              "CVNA",
+              "D",
+              "DAL",
+              "DE",
+              "DGX",
+              "DTE",
+              "EL",
+              "ERIE",
+              "ETN",
+              "EW",
+              "EXC",
+              "F",
+              "FE",
+              "FIX",
+              "GDDY",
+              "GE",
+              "GEHC",
+              "GLW",
+              "GPN",
+              "GRMN",
+              "GWW",
+              "HAL",
+              "HIG",
+              "HPQ",
+              "HUM",
+              "INVH",
+              "IPGP",
+              "IT",
+              "KLAC",
+              "KMI",
+              "LDOS",
+              "LEN",
+              "LHX",
+              "LII",
+              "LLY",
+              "LW",
+              "MGM",
+              "MO",
+              "MTB",
+              "NI",
+              "NTAP",
+              "NUE",
+              "NWL",
+              "NWSA",
+              "OMC",
+              "ON",
+              "ORCL",
+              "PAYX",
+              "PEP",
+              "PHM",
+              "POOL",
+              "PRU",
+              "QRVO",
+              "RDDT",
+              "REGN",
+              "RF",
+              "RHI",
+              "RRC",
+              "SBUX",
+              "SE",
+              "SHW",
+              "SIG",
+              "SII",
+              "SUN",
+              "TPL",
+              "TYL",
+              "VFC",
+              "VNT",
+              "VRSN",
+              "WAB",
+              "WEC",
+              "WHR",
+              "WSM",
+              "XEL"
+            ],
+            "n_fully_covered": 599,
+            "garch_fitted": 98,
+            "garch_failed": 2,
+            "not_converged": [
+              "LW",
+              "RDDT"
+            ],
+            "win_shares": {
+              "1": {
+                "ewma_094": 0.35403726708074534,
+                "ewma_097": 0.5196687370600414,
+                "garch": 0.6122448979591837,
+                "trailing_63": 0.36661211129296234
+              },
+              "21": {
+                "ewma_094": 0.19875776397515527,
+                "ewma_097": 0.34368530020703936,
+                "garch": 0.4897959183673469,
+                "trailing_63": 0.3076923076923077
+              }
+            },
+            "oos_start": "2024-09-03"
+          }
+        },
         "new": {
           "verdict": "fail",
           "stored_numbers": {
@@ -2732,6 +2861,1702 @@
           "F2.3c": {
             "changed": false,
             "old": null,
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "seed": 20260910,
+                "sample_size": 100,
+                "sample": [
+                  "AAPL",
+                  "ABNB",
+                  "AEE",
+                  "AEP",
+                  "AES",
+                  "AKAM",
+                  "ALK",
+                  "ALL",
+                  "AMCR",
+                  "AMZN",
+                  "APO",
+                  "ARES",
+                  "AVGO",
+                  "AVY",
+                  "BBWI",
+                  "BBY",
+                  "BHF",
+                  "BTU",
+                  "BX",
+                  "CFG",
+                  "CL",
+                  "CMS",
+                  "CPB",
+                  "CPRT",
+                  "CPT",
+                  "CRH",
+                  "CVNA",
+                  "D",
+                  "DAL",
+                  "DE",
+                  "DGX",
+                  "DTE",
+                  "EL",
+                  "ERIE",
+                  "ETN",
+                  "EW",
+                  "EXC",
+                  "F",
+                  "FE",
+                  "FIX",
+                  "GDDY",
+                  "GE",
+                  "GEHC",
+                  "GLW",
+                  "GPN",
+                  "GRMN",
+                  "GWW",
+                  "HAL",
+                  "HIG",
+                  "HPQ",
+                  "HUM",
+                  "INVH",
+                  "IPGP",
+                  "IT",
+                  "KLAC",
+                  "KMI",
+                  "LDOS",
+                  "LEN",
+                  "LHX",
+                  "LII",
+                  "LLY",
+                  "LW",
+                  "MGM",
+                  "MO",
+                  "MTB",
+                  "NI",
+                  "NTAP",
+                  "NUE",
+                  "NWL",
+                  "NWSA",
+                  "OMC",
+                  "ON",
+                  "ORCL",
+                  "PAYX",
+                  "PEP",
+                  "PHM",
+                  "POOL",
+                  "PRU",
+                  "QRVO",
+                  "RDDT",
+                  "REGN",
+                  "RF",
+                  "RHI",
+                  "RRC",
+                  "SBUX",
+                  "SE",
+                  "SHW",
+                  "SIG",
+                  "SII",
+                  "SUN",
+                  "TPL",
+                  "TYL",
+                  "VFC",
+                  "VNT",
+                  "VRSN",
+                  "WAB",
+                  "WEC",
+                  "WHR",
+                  "WSM",
+                  "XEL"
+                ],
+                "n_fully_covered": 599,
+                "garch_fitted": 98,
+                "garch_failed": 2,
+                "not_converged": [
+                  "LW",
+                  "RDDT"
+                ],
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.35403726708074534,
+                    "ewma_097": 0.5196687370600414,
+                    "garch": 0.6122448979591837,
+                    "trailing_63": 0.36661211129296234
+                  },
+                  "21": {
+                    "ewma_094": 0.19875776397515527,
+                    "ewma_097": 0.34368530020703936,
+                    "garch": 0.4897959183673469,
+                    "trailing_63": 0.3076923076923077
+                  }
+                },
+                "oos_start": "2024-09-03"
+              }
+            }
+          }
+        }
+      },
+      {
+        "previous_data_hash": "050f2b4531540bbcc6142f64fef7d1aa7f124a10c4c124dc34747ebd5206e6ad",
+        "data_hash": "ca71a51826cb42f248cf07e492d9380b7c070e038941c9ebd34961bdf1e43113",
+        "n_changed": 1,
+        "changed_tickers_or_criteria": [
+          "F2.3b"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F2.0a": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "model_start": 2010,
+                "coverage_years_stored": 17,
+                "current_member_coverage": 1.0
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "model_start": 2010,
+                "coverage_years_stored": 17,
+                "current_member_coverage": 1.0
+              }
+            }
+          },
+          "F2.0b": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "interior_nan_rows_e1": 302,
+                "nan_row_dropped_by_fit": true
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "interior_nan_rows_e1": 302,
+                "nan_row_dropped_by_fit": true
+              }
+            }
+          },
+          "F2.0c": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "audit_mean_bp": 0.017816512107027022,
+                "large_audit_days": 1,
+                "large_audit_days_with_event": 1
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "audit_mean_bp": 0.017816512107027022,
+                "large_audit_days": 1,
+                "large_audit_days_with_event": 1
+              }
+            }
+          },
+          "F2.1": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_number": 0.924360607612146
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_number": 0.924360607612146
+            }
+          },
+          "F2.2": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_pairwise_correlation": 0.015617959842847057,
+                "n_names_sampled": 150
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_pairwise_correlation": 0.015617959842847057,
+                "n_names_sampled": 150
+              }
+            }
+          },
+          "F2.3": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "garch_win_share": 0.5816326530612245,
+                "ewma_094_win_share": 0.35403726708074534,
+                "garch_names_fitted": 98,
+                "paired_n": 80,
+                "paired_garch_win_share": 0.5375,
+                "paired_ewma_094_win_share": 0.3625,
+                "garch_beats_ewma_094_share": 0.725
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "garch_win_share": 0.5816326530612245,
+                "ewma_094_win_share": 0.35403726708074534,
+                "garch_names_fitted": 98,
+                "paired_n": 80,
+                "paired_garch_win_share": 0.5375,
+                "paired_ewma_094_win_share": 0.3625,
+                "garch_beats_ewma_094_share": 0.725
+              }
+            }
+          },
+          "F2.4": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "bias_mean": 1.0225333792324938,
+                "bias_by_year": {
+                  "2010": 0.6894745441461914,
+                  "2011": 1.243169042984342,
+                  "2012": 0.6832150422159406,
+                  "2013": 0.8715465929945752,
+                  "2014": 1.0347752887326924,
+                  "2015": 1.207778980310976,
+                  "2016": 0.775656690436585,
+                  "2017": 0.9282227718355079,
+                  "2018": 1.3178797011660677,
+                  "2019": 1.2341508695112442,
+                  "2020": 1.3936401040451825,
+                  "2021": 0.826414662817548,
+                  "2022": 1.2305398720195155,
+                  "2023": 0.7583397191684487,
+                  "2024": 1.0336420038155036,
+                  "2025": 1.2558251392176192,
+                  "2026": 0.8987964215344576
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "bias_mean": 1.0225333792324938,
+                "bias_by_year": {
+                  "2010": 0.6894745441461914,
+                  "2011": 1.243169042984342,
+                  "2012": 0.6832150422159406,
+                  "2013": 0.8715465929945752,
+                  "2014": 1.0347752887326924,
+                  "2015": 1.207778980310976,
+                  "2016": 0.775656690436585,
+                  "2017": 0.9282227718355079,
+                  "2018": 1.3178797011660677,
+                  "2019": 1.2341508695112442,
+                  "2020": 1.3936401040451825,
+                  "2021": 0.826414662817548,
+                  "2022": 1.2305398720195155,
+                  "2023": 0.7583397191684487,
+                  "2024": 1.0336420038155036,
+                  "2025": 1.2558251392176192,
+                  "2026": 0.8987964215344576
+                }
+              }
+            }
+          },
+          "F2.5": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_number": 0.9633757961783439
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_number": 0.9633757961783439
+            }
+          },
+          "F2.6": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "names_with_breaks": 4,
+                "break_tickers": [
+                  "CPWR",
+                  "EP",
+                  "MI",
+                  "POM"
+                ],
+                "break_rows": 20
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "names_with_breaks": 4,
+                "break_tickers": [
+                  "CPWR",
+                  "EP",
+                  "MI",
+                  "POM"
+                ],
+                "break_rows": 20
+              }
+            }
+          },
+          "F2.6b": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "identity_table_rows": 373,
+                "names_matched": 93,
+                "names_unverified": 244,
+                "names_reused": 36,
+                "reused_tickers": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "FOX",
+                  "FOXA",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCG",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "restored_by_the_c6_review": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "dropped_by_build": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "truncated": {
+                  "FOX": "2019-03-13 00:00:00",
+                  "FOXA": "2019-03-12 00:00:00",
+                  "PCG": "2022-10-03 00:00:00"
+                },
+                "gap_tickers": [],
+                "dropped_still_in_panel": []
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "identity_table_rows": 373,
+                "names_matched": 93,
+                "names_unverified": 244,
+                "names_reused": 36,
+                "reused_tickers": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "FOX",
+                  "FOXA",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCG",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "restored_by_the_c6_review": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "dropped_by_build": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "truncated": {
+                  "FOX": "2019-03-13 00:00:00",
+                  "FOXA": "2019-03-12 00:00:00",
+                  "PCG": "2022-10-03 00:00:00"
+                },
+                "gap_tickers": [],
+                "dropped_still_in_panel": []
+              }
+            }
+          },
+          "F2.3b": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.35403726708074534,
+                    "ewma_097": 0.5196687370600414,
+                    "garch": 0.6122448979591837,
+                    "trailing_63": 0.36661211129296234
+                  },
+                  "21": {
+                    "ewma_094": 0.19875776397515527,
+                    "ewma_097": 0.34368530020703936,
+                    "garch": 0.4897959183673469,
+                    "trailing_63": 0.3076923076923077
+                  }
+                },
+                "garch_fitted": 98,
+                "garch_failed": 2,
+                "day_level_ewma_094": {
+                  "pooled": 0.5155910558965167,
+                  "excluding_2020": 0.5155910558965167,
+                  "n_name_days": 242126,
+                  "by_year": {
+                    "2024": 0.5128413684314306,
+                    "2025": 0.5458484473699501,
+                    "2026": 0.472009472009472
+                  }
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.35403726708074534,
+                    "ewma_097": 0.5196687370600414,
+                    "garch": 0.6122448979591837,
+                    "trailing_63": 0.36661211129296234
+                  },
+                  "21": {
+                    "ewma_094": 0.19875776397515527,
+                    "ewma_097": 0.34368530020703936,
+                    "garch": 0.4897959183673469,
+                    "trailing_63": 0.3076923076923077
+                  }
+                },
+                "garch_fitted": 98,
+                "garch_failed": 2,
+                "day_level_ewma_094": {
+                  "pooled": 0.5155910558965167,
+                  "excluding_2020": 0.5155910558965167,
+                  "n_name_days": 242126,
+                  "by_year": {
+                    "2024": 0.5128413684314306,
+                    "2025": 0.5458484473699501,
+                    "2026": 0.472009472009472
+                  }
+                }
+              }
+            }
+          },
+          "F2.6c": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "review_rows": 36,
+                "kept": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "stays_dropped": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "n_current_dropped_by_c1": 4,
+                "n_kept_current": 3,
+                "n_current": 503,
+                "n_covered": 502,
+                "coverage": 0.9980119284294234,
+                "bar": 0.9960238568588469,
+                "missing": [
+                  "DD"
+                ]
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "review_rows": 36,
+                "kept": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "stays_dropped": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "n_current_dropped_by_c1": 4,
+                "n_kept_current": 3,
+                "n_current": 503,
+                "n_covered": 502,
+                "coverage": 0.9980119284294234,
+                "bar": 0.9960238568588469,
+                "missing": [
+                  "DD"
+                ]
+              }
+            }
+          },
+          "F2.3c": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "seed": 20260910,
+                "sample_size": 100,
+                "sample": [
+                  "AAPL",
+                  "ABNB",
+                  "AEE",
+                  "AEP",
+                  "AES",
+                  "AKAM",
+                  "ALK",
+                  "ALL",
+                  "AMCR",
+                  "AMZN",
+                  "APO",
+                  "ARES",
+                  "AVGO",
+                  "AVY",
+                  "BBWI",
+                  "BBY",
+                  "BHF",
+                  "BTU",
+                  "BX",
+                  "CFG",
+                  "CL",
+                  "CMS",
+                  "CPB",
+                  "CPRT",
+                  "CPT",
+                  "CRH",
+                  "CVNA",
+                  "D",
+                  "DAL",
+                  "DE",
+                  "DGX",
+                  "DTE",
+                  "EL",
+                  "ERIE",
+                  "ETN",
+                  "EW",
+                  "EXC",
+                  "F",
+                  "FE",
+                  "FIX",
+                  "GDDY",
+                  "GE",
+                  "GEHC",
+                  "GLW",
+                  "GPN",
+                  "GRMN",
+                  "GWW",
+                  "HAL",
+                  "HIG",
+                  "HPQ",
+                  "HUM",
+                  "INVH",
+                  "IPGP",
+                  "IT",
+                  "KLAC",
+                  "KMI",
+                  "LDOS",
+                  "LEN",
+                  "LHX",
+                  "LII",
+                  "LLY",
+                  "LW",
+                  "MGM",
+                  "MO",
+                  "MTB",
+                  "NI",
+                  "NTAP",
+                  "NUE",
+                  "NWL",
+                  "NWSA",
+                  "OMC",
+                  "ON",
+                  "ORCL",
+                  "PAYX",
+                  "PEP",
+                  "PHM",
+                  "POOL",
+                  "PRU",
+                  "QRVO",
+                  "RDDT",
+                  "REGN",
+                  "RF",
+                  "RHI",
+                  "RRC",
+                  "SBUX",
+                  "SE",
+                  "SHW",
+                  "SIG",
+                  "SII",
+                  "SUN",
+                  "TPL",
+                  "TYL",
+                  "VFC",
+                  "VNT",
+                  "VRSN",
+                  "WAB",
+                  "WEC",
+                  "WHR",
+                  "WSM",
+                  "XEL"
+                ],
+                "n_fully_covered": 599,
+                "garch_fitted": 98,
+                "garch_failed": 2,
+                "not_converged": [
+                  "LW",
+                  "RDDT"
+                ],
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.35403726708074534,
+                    "ewma_097": 0.5196687370600414,
+                    "garch": 0.6122448979591837,
+                    "trailing_63": 0.36661211129296234
+                  },
+                  "21": {
+                    "ewma_094": 0.19875776397515527,
+                    "ewma_097": 0.34368530020703936,
+                    "garch": 0.4897959183673469,
+                    "trailing_63": 0.3076923076923077
+                  }
+                },
+                "oos_start": "2024-09-03"
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "seed": 20260910,
+                "sample_size": 100,
+                "sample": [
+                  "AAPL",
+                  "ABNB",
+                  "AEE",
+                  "AEP",
+                  "AES",
+                  "AKAM",
+                  "ALK",
+                  "ALL",
+                  "AMCR",
+                  "AMZN",
+                  "APO",
+                  "ARES",
+                  "AVGO",
+                  "AVY",
+                  "BBWI",
+                  "BBY",
+                  "BHF",
+                  "BTU",
+                  "BX",
+                  "CFG",
+                  "CL",
+                  "CMS",
+                  "CPB",
+                  "CPRT",
+                  "CPT",
+                  "CRH",
+                  "CVNA",
+                  "D",
+                  "DAL",
+                  "DE",
+                  "DGX",
+                  "DTE",
+                  "EL",
+                  "ERIE",
+                  "ETN",
+                  "EW",
+                  "EXC",
+                  "F",
+                  "FE",
+                  "FIX",
+                  "GDDY",
+                  "GE",
+                  "GEHC",
+                  "GLW",
+                  "GPN",
+                  "GRMN",
+                  "GWW",
+                  "HAL",
+                  "HIG",
+                  "HPQ",
+                  "HUM",
+                  "INVH",
+                  "IPGP",
+                  "IT",
+                  "KLAC",
+                  "KMI",
+                  "LDOS",
+                  "LEN",
+                  "LHX",
+                  "LII",
+                  "LLY",
+                  "LW",
+                  "MGM",
+                  "MO",
+                  "MTB",
+                  "NI",
+                  "NTAP",
+                  "NUE",
+                  "NWL",
+                  "NWSA",
+                  "OMC",
+                  "ON",
+                  "ORCL",
+                  "PAYX",
+                  "PEP",
+                  "PHM",
+                  "POOL",
+                  "PRU",
+                  "QRVO",
+                  "RDDT",
+                  "REGN",
+                  "RF",
+                  "RHI",
+                  "RRC",
+                  "SBUX",
+                  "SE",
+                  "SHW",
+                  "SIG",
+                  "SII",
+                  "SUN",
+                  "TPL",
+                  "TYL",
+                  "VFC",
+                  "VNT",
+                  "VRSN",
+                  "WAB",
+                  "WEC",
+                  "WHR",
+                  "WSM",
+                  "XEL"
+                ],
+                "n_fully_covered": 599,
+                "garch_fitted": 98,
+                "garch_failed": 2,
+                "not_converged": [
+                  "LW",
+                  "RDDT"
+                ],
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.35403726708074534,
+                    "ewma_097": 0.5196687370600414,
+                    "garch": 0.6122448979591837,
+                    "trailing_63": 0.36661211129296234
+                  },
+                  "21": {
+                    "ewma_094": 0.19875776397515527,
+                    "ewma_097": 0.34368530020703936,
+                    "garch": 0.4897959183673469,
+                    "trailing_63": 0.3076923076923077
+                  }
+                },
+                "oos_start": "2024-09-03"
+              }
+            }
+          }
+        }
+      },
+      {
+        "previous_data_hash": "050f2b4531540bbcc6142f64fef7d1aa7f124a10c4c124dc34747ebd5206e6ad",
+        "data_hash": "51f0faa935cb57e8e9f11bf620e5f551f69ca50b415f12112f880f32b3393692",
+        "n_changed": 1,
+        "changed_tickers_or_criteria": [
+          "F2.3b"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F2.0a": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "model_start": 2010,
+                "coverage_years_stored": 17,
+                "current_member_coverage": 1.0
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "model_start": 2010,
+                "coverage_years_stored": 17,
+                "current_member_coverage": 1.0
+              }
+            }
+          },
+          "F2.0b": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "interior_nan_rows_e1": 302,
+                "nan_row_dropped_by_fit": true
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "interior_nan_rows_e1": 302,
+                "nan_row_dropped_by_fit": true
+              }
+            }
+          },
+          "F2.0c": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "audit_mean_bp": 0.017816512107027022,
+                "large_audit_days": 1,
+                "large_audit_days_with_event": 1
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "audit_mean_bp": 0.017816512107027022,
+                "large_audit_days": 1,
+                "large_audit_days_with_event": 1
+              }
+            }
+          },
+          "F2.1": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_number": 0.924360607612146
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_number": 0.924360607612146
+            }
+          },
+          "F2.2": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_pairwise_correlation": 0.015617959842847057,
+                "n_names_sampled": 150
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_pairwise_correlation": 0.015617959842847057,
+                "n_names_sampled": 150
+              }
+            }
+          },
+          "F2.3": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "garch_win_share": 0.5816326530612245,
+                "ewma_094_win_share": 0.35403726708074534,
+                "garch_names_fitted": 98,
+                "paired_n": 80,
+                "paired_garch_win_share": 0.5375,
+                "paired_ewma_094_win_share": 0.3625,
+                "garch_beats_ewma_094_share": 0.725
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "garch_win_share": 0.5816326530612245,
+                "ewma_094_win_share": 0.35403726708074534,
+                "garch_names_fitted": 98,
+                "paired_n": 80,
+                "paired_garch_win_share": 0.5375,
+                "paired_ewma_094_win_share": 0.3625,
+                "garch_beats_ewma_094_share": 0.725
+              }
+            }
+          },
+          "F2.4": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "bias_mean": 1.0225333792324938,
+                "bias_by_year": {
+                  "2010": 0.6894745441461914,
+                  "2011": 1.243169042984342,
+                  "2012": 0.6832150422159406,
+                  "2013": 0.8715465929945752,
+                  "2014": 1.0347752887326924,
+                  "2015": 1.207778980310976,
+                  "2016": 0.775656690436585,
+                  "2017": 0.9282227718355079,
+                  "2018": 1.3178797011660677,
+                  "2019": 1.2341508695112442,
+                  "2020": 1.3936401040451825,
+                  "2021": 0.826414662817548,
+                  "2022": 1.2305398720195155,
+                  "2023": 0.7583397191684487,
+                  "2024": 1.0336420038155036,
+                  "2025": 1.2558251392176192,
+                  "2026": 0.8987964215344576
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "bias_mean": 1.0225333792324938,
+                "bias_by_year": {
+                  "2010": 0.6894745441461914,
+                  "2011": 1.243169042984342,
+                  "2012": 0.6832150422159406,
+                  "2013": 0.8715465929945752,
+                  "2014": 1.0347752887326924,
+                  "2015": 1.207778980310976,
+                  "2016": 0.775656690436585,
+                  "2017": 0.9282227718355079,
+                  "2018": 1.3178797011660677,
+                  "2019": 1.2341508695112442,
+                  "2020": 1.3936401040451825,
+                  "2021": 0.826414662817548,
+                  "2022": 1.2305398720195155,
+                  "2023": 0.7583397191684487,
+                  "2024": 1.0336420038155036,
+                  "2025": 1.2558251392176192,
+                  "2026": 0.8987964215344576
+                }
+              }
+            }
+          },
+          "F2.5": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_number": 0.9633757961783439
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_number": 0.9633757961783439
+            }
+          },
+          "F2.6": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "names_with_breaks": 4,
+                "break_tickers": [
+                  "CPWR",
+                  "EP",
+                  "MI",
+                  "POM"
+                ],
+                "break_rows": 20
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "names_with_breaks": 4,
+                "break_tickers": [
+                  "CPWR",
+                  "EP",
+                  "MI",
+                  "POM"
+                ],
+                "break_rows": 20
+              }
+            }
+          },
+          "F2.6b": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "identity_table_rows": 373,
+                "names_matched": 93,
+                "names_unverified": 244,
+                "names_reused": 36,
+                "reused_tickers": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "FOX",
+                  "FOXA",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCG",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "restored_by_the_c6_review": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "dropped_by_build": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "truncated": {
+                  "FOX": "2019-03-13 00:00:00",
+                  "FOXA": "2019-03-12 00:00:00",
+                  "PCG": "2022-10-03 00:00:00"
+                },
+                "gap_tickers": [],
+                "dropped_still_in_panel": []
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "identity_table_rows": 373,
+                "names_matched": 93,
+                "names_unverified": 244,
+                "names_reused": 36,
+                "reused_tickers": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "FOX",
+                  "FOXA",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCG",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "restored_by_the_c6_review": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "dropped_by_build": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "truncated": {
+                  "FOX": "2019-03-13 00:00:00",
+                  "FOXA": "2019-03-12 00:00:00",
+                  "PCG": "2022-10-03 00:00:00"
+                },
+                "gap_tickers": [],
+                "dropped_still_in_panel": []
+              }
+            }
+          },
+          "F2.3b": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.35403726708074534,
+                    "ewma_097": 0.5196687370600414,
+                    "garch": 0.6122448979591837,
+                    "trailing_63": 0.36661211129296234
+                  },
+                  "21": {
+                    "ewma_094": 0.19875776397515527,
+                    "ewma_097": 0.34368530020703936,
+                    "garch": 0.4897959183673469,
+                    "trailing_63": 0.3076923076923077
+                  }
+                },
+                "garch_fitted": 98,
+                "garch_failed": 2,
+                "day_level_ewma_094": {
+                  "pooled": 0.5155910558965167,
+                  "excluding_2020": 0.5155910558965167,
+                  "n_name_days": 242126,
+                  "by_year": {
+                    "2024": 0.5128413684314306,
+                    "2025": 0.5458484473699501,
+                    "2026": 0.472009472009472
+                  }
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.35403726708074534,
+                    "ewma_097": 0.5196687370600414,
+                    "garch": 0.6122448979591837,
+                    "trailing_63": 0.36661211129296234
+                  },
+                  "21": {
+                    "ewma_094": 0.19875776397515527,
+                    "ewma_097": 0.34368530020703936,
+                    "garch": 0.4897959183673469,
+                    "trailing_63": 0.3076923076923077
+                  }
+                },
+                "garch_fitted": 98,
+                "garch_failed": 2,
+                "day_level_ewma_094": {
+                  "pooled": 0.5155910558965167,
+                  "excluding_2020": 0.5155910558965167,
+                  "n_name_days": 242126,
+                  "by_year": {
+                    "2024": 0.5128413684314306,
+                    "2025": 0.5458484473699501,
+                    "2026": 0.472009472009472
+                  }
+                }
+              }
+            }
+          },
+          "F2.6c": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "review_rows": 36,
+                "kept": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "stays_dropped": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "n_current_dropped_by_c1": 4,
+                "n_kept_current": 3,
+                "n_current": 503,
+                "n_covered": 502,
+                "coverage": 0.9980119284294234,
+                "bar": 0.9960238568588469,
+                "missing": [
+                  "DD"
+                ]
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "review_rows": 36,
+                "kept": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "stays_dropped": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "n_current_dropped_by_c1": 4,
+                "n_kept_current": 3,
+                "n_current": 503,
+                "n_covered": 502,
+                "coverage": 0.9980119284294234,
+                "bar": 0.9960238568588469,
+                "missing": [
+                  "DD"
+                ]
+              }
+            }
+          },
+          "F2.3c": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "seed": 20260910,
+                "sample_size": 100,
+                "sample": [
+                  "AAPL",
+                  "ABNB",
+                  "AEE",
+                  "AEP",
+                  "AES",
+                  "AKAM",
+                  "ALK",
+                  "ALL",
+                  "AMCR",
+                  "AMZN",
+                  "APO",
+                  "ARES",
+                  "AVGO",
+                  "AVY",
+                  "BBWI",
+                  "BBY",
+                  "BHF",
+                  "BTU",
+                  "BX",
+                  "CFG",
+                  "CL",
+                  "CMS",
+                  "CPB",
+                  "CPRT",
+                  "CPT",
+                  "CRH",
+                  "CVNA",
+                  "D",
+                  "DAL",
+                  "DE",
+                  "DGX",
+                  "DTE",
+                  "EL",
+                  "ERIE",
+                  "ETN",
+                  "EW",
+                  "EXC",
+                  "F",
+                  "FE",
+                  "FIX",
+                  "GDDY",
+                  "GE",
+                  "GEHC",
+                  "GLW",
+                  "GPN",
+                  "GRMN",
+                  "GWW",
+                  "HAL",
+                  "HIG",
+                  "HPQ",
+                  "HUM",
+                  "INVH",
+                  "IPGP",
+                  "IT",
+                  "KLAC",
+                  "KMI",
+                  "LDOS",
+                  "LEN",
+                  "LHX",
+                  "LII",
+                  "LLY",
+                  "LW",
+                  "MGM",
+                  "MO",
+                  "MTB",
+                  "NI",
+                  "NTAP",
+                  "NUE",
+                  "NWL",
+                  "NWSA",
+                  "OMC",
+                  "ON",
+                  "ORCL",
+                  "PAYX",
+                  "PEP",
+                  "PHM",
+                  "POOL",
+                  "PRU",
+                  "QRVO",
+                  "RDDT",
+                  "REGN",
+                  "RF",
+                  "RHI",
+                  "RRC",
+                  "SBUX",
+                  "SE",
+                  "SHW",
+                  "SIG",
+                  "SII",
+                  "SUN",
+                  "TPL",
+                  "TYL",
+                  "VFC",
+                  "VNT",
+                  "VRSN",
+                  "WAB",
+                  "WEC",
+                  "WHR",
+                  "WSM",
+                  "XEL"
+                ],
+                "n_fully_covered": 599,
+                "garch_fitted": 98,
+                "garch_failed": 2,
+                "not_converged": [
+                  "LW",
+                  "RDDT"
+                ],
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.35403726708074534,
+                    "ewma_097": 0.5196687370600414,
+                    "garch": 0.6122448979591837,
+                    "trailing_63": 0.36661211129296234
+                  },
+                  "21": {
+                    "ewma_094": 0.19875776397515527,
+                    "ewma_097": 0.34368530020703936,
+                    "garch": 0.4897959183673469,
+                    "trailing_63": 0.3076923076923077
+                  }
+                },
+                "oos_start": "2024-09-03"
+              }
+            },
             "new": {
               "verdict": "fail",
               "stored_numbers": {

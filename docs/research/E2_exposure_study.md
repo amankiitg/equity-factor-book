@@ -226,19 +226,22 @@ harder test.
   factor share of variance is 99.2 percent, so the book is a factor
   position, not a collection of idio bets. For the sector-neutral
   momentum long/short seed book the answer depends on how the portfolio
-  beta is measured, and the three measurements are 0.0939 with name-level
-  TS betas and last-month weights, 0.1459 with the portfolio regression
-  betas and MOM removed from the covariance, and 0.8919 with the same
-  betas and all six factors. The regression explains 0.5564 of the book's
+  beta is measured, and the three measurements are 0.0968 with name-level
+  TS betas and last-month weights, 0.1462 with the portfolio regression
+  betas and MOM removed from the covariance, and 0.8906 with the same
+  betas and all six factors. The regression explains 0.5581 of the book's
   daily variance. The C4 check in the close-out section shows why the book
-  is a momentum position (MOM loading +0.2897, t 29.09), and the spread
+  is a momentum position (MOM loading +0.2885, t 29.10), and the spread
   between those three numbers is the diagonal-residual assumption at work:
   a 192-name long/short book looks nearly risk-free when its residual
-  co-movement is thrown away. Size it on the realized residual covariance,
-  which E3 owns; until then treat the low idio share as unproven rather
-  than as a finding. Carry the E1 caveat as well: the short side's
-  specific risk is biased downward because missing deletions are
-  disproportionately failures.
+  co-movement is thrown away. C8 measures the same share from rolling
+  name-level betas dated at each rebalance instead of from one full-sample
+  fit, and gets a mean of 0.7390 across 195 rebalances, which is the number
+  that belongs here. Size it on the realized residual covariance, which E3
+  owns; until then treat the low idio share as unproven rather than as a
+  finding. Carry the E1 caveat as well: the short side's specific risk is
+  biased downward because missing deletions are disproportionately
+  failures.
 
 Portfolio risk at the last date, from sigma_p^2 = w' B F B' w + w' D w:
 
@@ -380,19 +383,25 @@ estimator.
 
 C4, momentum book exposure (check passes, one claim corrected). The
 long/short seed book's own return series was regressed on FF5 plus MOM
-with Newey-West standard errors: MOM loading +0.2897 with a t statistic of
-29.09, and a significantly negative market loading, which is what a
+with Newey-West standard errors: MOM loading +0.2885 with a t statistic of
+29.10, and a significantly negative market loading, which is what a
 dollar-neutral momentum book should look like. The check therefore passes.
 What it also showed is that the idio share reported for that book is not
-a single number: 0.8919 with the regression betas and all six factors in
-the covariance, 0.1459 with MOM removed, 0.0939 with name-level TS betas
-and last-month weights, and 0.5564 of daily variance explained by the
-regression. The last of those is the honest summary, and the 0.0939 in the
+a single number: 0.8906 with the regression betas and all six factors in
+the covariance, 0.1462 with MOM removed, 0.0968 with name-level TS betas
+and last-month weights, and 0.5581 of daily variance explained by the
+regression. The 0.5581 is the honest summary, and the 0.0968 in the
 Sizing section above comes from the diagonal-residual assumption, which
 makes a 192-name long/short book look nearly risk-free by discarding the
-residual co-movement it is actually exposed to. E3 owns the realized
-residual covariance, and until it exists the low idio share is unproven
-rather than a finding.
+residual co-movement it is actually exposed to. C8 replaces that number
+and is the entry to read: the same share measured from rolling betas at
+each rebalance averages 0.7390, so the book is about three quarters factor
+risk, not ten percent.
+
+Every number in this paragraph moved in its fourth decimal when C6 put
+three renamed constituents back in the panel. The old values (0.2897,
+0.8919, 0.1459, 0.0939, 0.5564) are in the hygiene ledger with the new
+ones, and no verdict changed.
 
 After the four tasks: make rebuild-e2 versions 23 artifacts, the TS-v1
 registry entry carries the same artifacts hash as data/VERSION.json
@@ -529,3 +538,69 @@ After C7: make rebuild-e2 versions 27 artifacts, data/VERSION.json and the
 TS-v1 registry entry both carry artifacts hash 1ce2bcf7 (full value in the
 file), and the sprint has 13 criteria, 9 passing and 4 failing (F2.3,
 F2.3b, F2.3c, F2.6).
+
+C8, when the momentum exposure is measured, and what the diagonal model
+misses. No criterion is added: C4's check passes and these two measurements
+explain it rather than testing it.
+
+(a) The book's MOM exposure at each rebalance, from rolling 252-day
+name-level betas dated at the rebalance and the weights actually held, over
+195 month ends from 2010-07-30 to 2026-09-03:
+
+| Measure | What it uses | Value |
+| --- | --- | --- |
+| rolling-beta exposure, mean | w(t) and beta(t) at each of 195 rebalances | +0.0698 |
+| rolling-beta exposure, range | same series | -0.3322 to +0.3905 |
+| static aggregate | last month's weights, full-sample betas | -0.0162 |
+| regression loading | the book's own return series, FF5+MOM | +0.2885 |
+
+Three measurements of one thing, and the static one is the outlier: it says
+the book has no momentum exposure at all, on a book whose own return series
+loads +0.2885 on MOM with a t statistic of 29.10 and which is long the
+winners and short the losers by construction. The reason is that the
+weights are re-sorted every month and a full-sample beta is not, so the
+static aggregate combines this month's book with a beta fitted across
+sixteen years of a changing book. Done properly, the conditional exposure
+is positive at 73.9 percent of rebalances and swings from -0.33 to +0.39,
+which is what a book that re-selects names every month should look like.
+The mean of the conditional measure is smaller than the regression loading,
+and that gap is measurement error in name-level betas, which attenuates the
+cross-sectional aggregate: both numbers are reported rather than one being
+selected.
+
+The same construction gives the factor share of the book's variance at each
+rebalance, using all six factors and each date's rolling betas. It averages
+0.7390, against 0.0968 for the static full-sample decomposition with
+last-month weights. That is the C4 claim in the same units it was made in:
+the book is roughly three quarters factor risk, not nine tenths
+idiosyncratic, and the static number understates the factor share by a
+factor of about eight.
+
+(b) The diagonal model's bias statistic for the same book: realized
+21-day forward vol over predicted vol, at each month end, by calendar year.
+193 month ends, mean 1.8544, and the year-by-year values run from 1.1063
+(2012) to 2.9259 (2026), with 2020 at 2.4560. Every single year is above
+1.0. For comparison, the same statistic on the equal-weight book with a
+63-day forward window is 1.0225, which is F2.4 and passes. So the diagonal
+model is calibrated on the equal-weight book and understates the momentum
+book's realized volatility by close to a factor of two, in the same years,
+on the same data.
+
+The two results have one root cause between them, and it is not that the
+data are bad. The diagonal model prices the book from static full-sample
+betas and a diagonal residual covariance. For a book that re-sorts every
+month, that combination fails twice: the exposure is measured at the wrong
+time (static full-sample betas cannot measure a dynamically sorted
+portfolio's exposure), and the residual co-movement the book is actually
+exposed to is discarded. The primary fix is conditional exposure, which is
+what section (a) does with rolling betas and what E3 will do with
+descriptor exposures, and the secondary fix is the realized residual
+covariance, which is the item already open in docs/open_items.md. The
+ledger entry for C4 is corrected to say so, and the open item is rewritten
+with the same ordering.
+
+After C8: make rebuild-e2 versions 29 artifacts, data/VERSION.json and the
+TS-v1 registry entry both carry artifacts hash 51f0faa935cb57e8 (full value
+in the file), and the sprint has 13 criteria, 9 passing and 4 failing (F2.3,
+F2.3b, F2.3c, F2.6). Every criterion, in order, with its verdict, is listed
+at the end of this section.

@@ -36,25 +36,37 @@ with delisting-aware history. Until then, no result in EFB may claim
 point-in-time universe coverage for 2010 to 2016 without this caveat.
 Recorded in Sprint E2 as the failing criterion F2.6.
 
-## 2026-09-10: the risk model needs a residual covariance, not a diagonal
+## 2026-09-10: the risk model needs conditional exposures first, a residual covariance second
 
-Owner: E3. Found by close-out task C4. The portfolio risk decomposition
-uses sigma_p^2 = w' B F B' w + w' D w with D diagonal, so residual
-co-movement between names is assumed away. For the equal-weight seed book
-that is harmless, because the factor share is 99.2 percent either way. For
-the sector-neutral momentum long/short seed book it changes the answer
-completely: the factor share is 0.0939 with name-level TS betas and
-last-month weights, 0.1459 with the portfolio regression betas and MOM
-removed, and 0.8919 with the same betas and all six factors, while the
-regression explains 0.5564 of daily variance. The C4 check itself passes
-(the MOM loading is +0.2897 with t 29.09, so the book is a genuine momentum
-position), which is what makes the share discrepancy a risk-model problem
-rather than a book-construction problem.
+Owner: E3. Found by close-out task C4, reordered by close-out task C8. The
+portfolio risk decomposition uses sigma_p^2 = w' B F B' w + w' D w with D
+diagonal, and B taken from one full-sample fit. For the equal-weight seed
+book that is harmless, because the factor share is 99.2 percent either way
+and its bias statistic is 1.0225.
 
-E3 should estimate w' Sigma_resid w directly, from the cross-sectional
-residual covariance, and report the factor share with that term in place.
-Until then, no EFB result may quote a single idio share for a long/short
-book without the measurement method attached.
+For the sector-neutral momentum long/short seed book the root cause is the
+static exposure, not the diagonal: static full-sample betas cannot measure
+a dynamically sorted portfolio's exposure, so conditional exposures
+(rolling betas now, descriptor exposures in E3) are the primary fix, and
+residual co-movement is the secondary one. C8 shows both halves. Measured
+against the weights actually held and 252-day name-level betas dated at
+each rebalance, the book's MOM exposure averages +0.0698 over 195
+rebalances and ranges from -0.3322 to +0.3905, while the static full-sample
+aggregate with the last month's weights reports -0.0162, essentially no
+exposure at all, on a book whose own return series loads +0.2885 on MOM
+with a t statistic of 29.10. The same construction puts the factor share at
+0.7390 on average, against 0.0968 for the static decomposition with
+last-month weights, and the diagonal model's bias statistic for the book is
+1.8544 by year (21-day forward window), between 1.1063 and 2.9259, while
+the equal-weight book is at 1.0225.
+
+E3 should price the book from descriptor exposures recomputed at each
+rebalance, so the book's factor position is measured when it is held, and
+then replace the diagonal D with w' Sigma_resid w from a cross-sectional
+residual covariance. Until both are in place, no EFB result may quote a
+single idio share for a long/short book without the measurement method
+attached, and no long/short risk number may be published from the static
+decomposition.
 
 ## 2026-09-10: the 32 dropped symbols need identity repair, not exclusion
 

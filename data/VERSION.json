@@ -1,7 +1,7 @@
 {
   "note": "Built by make rebuild-e2 (Sprint E2). E1 and E2 artifacts, each with a content hash; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-11T14:18:33+00:00",
-  "data_hash": "1ce2bcf782efe462df4dc62ac6b7fba14939d3ed6b3494d2be54ccc0d3c68d54",
+  "built_at": "2026-09-11T14:28:40+00:00",
+  "data_hash": "51f0faa935cb57e8e9f11bf620e5f551f69ca50b415f12112f880f32b3393692",
   "artifacts": {
     "beta_horse_race.parquet": {
       "sha256": "862891ca3d6e712d6a2f6267274368d4c055e0f85077d7e23bb2e22759920005",
@@ -10,6 +10,10 @@
     "momentum_exposure.parquet": {
       "sha256": "c65822977a521e67c65958e1fb4411a9152f7c1ef4764c9bc1e2e1db9585b2be",
       "bytes": 9775
+    },
+    "momentum_exposure_rolling.parquet": {
+      "sha256": "24ec8b7598047ddb8b6597b5811a648f50ae00b7d50e44ebc5cc461ab041b958",
+      "bytes": 14776
     },
     "portfolio_risk_snapshot.parquet": {
       "sha256": "7c33fcbb54d1398c662a4f7e529aba28d98f14dc7faa7285a3e14f8ccefcb610",
@@ -52,8 +56,8 @@
       "bytes": 20344112
     },
     "registry.json": {
-      "sha256": "29048684bf1d87b595cc5be225e504ed0f5db533ba8b2e92eb7f21e7f60b6c3a",
-      "bytes": 5325
+      "sha256": "04f12cc3e361375c83b6a50baf71ffd4113e51f7f498b77eab2a45807912639b",
+      "bytes": 5745
     },
     "seed_ew.parquet": {
       "sha256": "0c16d1773ce3b60cefd2e53dfe87c5c68ced9b3e9c4c3af47c0160de448cf120",
@@ -70,6 +74,10 @@
     "seed_mom_ls_risk.parquet": {
       "sha256": "93530d1fddf4a300d7426529d856b25f6041049453b293296becce2865a6eb4d",
       "bytes": 18620
+    },
+    "seed_mom_ls_risk_21.parquet": {
+      "sha256": "be706bbdaa8144a205cc9b8554aefef0a9781f91be2f3f768047dcca3ee87d9a",
+      "bytes": 18691
     },
     "events.parquet": {
       "sha256": "ddc1eebadf0d4367288394962a116cadaae529bcfe881b67477ac26f086229da",

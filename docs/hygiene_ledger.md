@@ -263,6 +263,12 @@ that is short of 60 and far short of the 70 that would reopen the choice.
 
 ## 2026-09-10: the momentum book's idio share is not 9.4 percent
 
+Superseded on its root cause by the C8 entry further down: the primary
+reason the 0.0939 is wrong is that static full-sample betas cannot measure
+a dynamically sorted portfolio's exposure, and the residual co-movement is
+the second reason rather than the first. The values below stand as
+recorded.
+
 Decision. The deliverable reports three measurements instead of one. No
 criterion is added: the C4 check passes, and the correction is a claim
 change rather than a test.
@@ -400,3 +406,72 @@ pooled day-level share by 0.2 points. F2.3 keeps its fail because the
 criterion is written on the out-of-sample window, and the deliverable now
 states the window dependence explicitly rather than leaving the fail to
 read as a statement about the estimator in general.
+
+## 2026-09-10: the momentum exposure has to be measured at the rebalance
+
+Decision. No new criterion. C4's check passes and this replaces the way the
+book's exposure and factor share are measured, because the static one
+cannot measure a book that re-sorts every month. The root cause of the C4
+finding reads: static full-sample betas cannot measure a dynamically sorted
+portfolio's exposure; conditional exposures (rolling betas now, descriptor
+exposures in E3) are the primary fix, residual co-movement the secondary
+one. The C4 entry above is superseded on its root cause by this one, and
+docs/open_items.md is rewritten with the same ordering. The values C4
+recorded stay on the record above, uncorrected.
+
+Old value: the book's MOM exposure was read off one number, the regression
+loading of its return series, +0.2885 with a Newey-West t statistic of
+29.10, beside a factor share of 0.0968 from full-sample name-level betas and
+last-month weights. No exposure at a rebalance was ever measured, and the
+diagonal model's bias statistic was reported only for the equal-weight book
+(F2.4, 1.0225 on a 63-day window).
+
+New value: over 195 rebalances from 2010-07-30 to 2026-09-03, the MOM
+exposure from weights held and 252-day name-level betas dated at the
+rebalance averages +0.0698 and ranges from -0.3322 to +0.3905, positive at
+73.9 percent of rebalances. The static full-sample aggregate with the last
+month's weights is -0.0162. The factor share from rolling betas averages
+0.7390 over the same rebalances, against 0.0968 static. The momentum book's
+bias statistic, realized 21-day forward vol over predicted vol by calendar
+year, averages 1.8544 over 193 month ends and runs from 1.1063 in 2012 to
+2.9259 in 2026, with 2020 at 2.4560; every year exceeds 1.0, against 1.0225
+for the equal-weight book. Both series are stored, in
+data/eval/momentum_exposure_rolling.parquet and
+data/portfolios/seed_mom_ls_risk_21.parquet.
+
+Reason. The static aggregate reports essentially zero momentum exposure for
+a book that is long the winners and short the losers by construction and
+whose return series loads 0.2885 on MOM at t 29.10. It does that because it
+combines this month's weights with a beta fitted across sixteen years of a
+book that changes every month, so the two never meet on the same date. The
+same fault makes the static factor share 0.0968 where the conditional one
+is 0.7390. Separately, the diagonal model's predicted vol for the book is
+about half its realized vol in every year of the sample, which says the
+diagonal residual assumption and the static exposure together are
+understating a long/short book's risk by a factor of two, while the
+equal-weight book is calibrated to within 2 percent. The primary fix is
+conditional exposure, which rolling betas give now and E3's descriptor
+exposures give properly, and the residual covariance is the second fix
+rather than the first.
+
+## 2026-09-10: C4's prose numbers moved with the C6 panel
+
+Decision. The C4 paragraph in docs/research/E2_exposure_study.md, its
+Sizing bullet, and the open item that quoted them were updated to the
+artifact's current values. No criterion is involved and no verdict changed.
+
+Old value: MOM loading 0.2897 with t 29.09; factor shares 0.8919 with the
+regression betas and all six factors, 0.1459 with MOM removed, 0.0939 with
+name-level betas and last-month weights; regression R squared 0.5564.
+
+New value: MOM loading 0.2885 with t 29.10; factor shares 0.8906, 0.1462 and
+0.0968; regression R squared 0.5581. All read from
+data/eval/momentum_exposure.parquet.
+
+Reason. C6 restored FOX, FOXA and PCG to the estimation panel, which
+re-fitted the loadings and moved every one of these numbers in its fourth
+decimal. They are prose numbers in a document, not stored criteria, so
+nothing was re-scored; they were simply stale against the artifact, and a
+deliverable that quotes an artifact has to quote the artifact. The C4
+entry above this one records the values as they stood when it was written,
+and they stay there.

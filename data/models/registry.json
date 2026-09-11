@@ -228,14 +228,24 @@
           "LW",
           "RDDT"
         ],
-        "artifacts_hash": "1ce2bcf782efe462df4dc62ac6b7fba14939d3ed6b3494d2be54ccc0d3c68d54",
+        "artifacts_hash": "51f0faa935cb57e8e9f11bf620e5f551f69ca50b415f12112f880f32b3393692",
         "mom_loading": 0.2884639400639966,
         "mom_t_stat": 29.104952622365634,
-        "mom_check_passes": true
+        "mom_check_passes": true,
+        "mom_exposure": {
+          "rolling_mean": 0.06978002876927968,
+          "rolling_min": -0.3322050420277022,
+          "rolling_max": 0.3904549841533205,
+          "rolling_share_mean": 0.7390181611894182,
+          "static_aggregate": -0.016190070548666415,
+          "static_share_last_month": 0.09681972392333447,
+          "regression_loading": 0.2884639400639966,
+          "n_rebalances": 195
+        }
       },
       "universe_hash": "532623d541928c67dd165b8a6e49c1e890ba7a57a5c732c6b2b688c819944615",
       "data_hash": "64dbca27a562a48d1089647b58b6912bd256fabee0fc0880d4a2a9da84f31883",
-      "built_at": "2026-09-11T14:18:33+00:00",
+      "built_at": "2026-09-11T14:28:40+00:00",
       "champion": false,
       "eligible_for_champion": false,
       "walkthrough": "notebooks/E2_walkthrough.html",
