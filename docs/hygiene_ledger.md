@@ -475,3 +475,50 @@ nothing was re-scored; they were simply stale against the artifact, and a
 deliverable that quotes an artifact has to quote the artifact. The C4
 entry above this one records the values as they stood when it was written,
 and they stay there.
+
+## 2026-09-10: a NaN was reading as a changed number
+
+Decision. The change detection in sprints/*/RESULTS.json now compares the
+serialized form of a measurement instead of the objects, so a rebuild on
+unchanged data reports nothing moved. No criterion, threshold or number
+changes.
+
+Old value: F2.3b was flagged as changed in two consecutive E2 rebuilds
+whose stored numbers are identical, because its stored per-year block
+contains a NaN for a calendar year with no observations and NaN is not
+equal to itself.
+
+New value: a rebuild of the same data reports zero changed criteria and
+appends no history entry. Verified by rebuilding twice: data hash
+51f0faa935cb57e8 both times, five history entries both times, n_changed 0.
+
+Reason. The flag exists so a reader can see which numbers moved, and a flag
+that fires on every run for a criterion that did not move makes the whole
+record useless. The comparison now treats two NaNs as the same number,
+which is what they mean here: the year had no data. The one history entry
+already written with the false positive (data hash 51f0faa9) keeps it,
+because the history is append only, and the values it records are identical
+either way.
+
+## 2026-09-10: final rebuild, hashes, and the criteria list
+
+Decision. The third close-out pass is closed. make rebuild-e2 runs twice with
+the same result, every artifact is versioned, and the deliverable ends with
+every criterion and its verdict.
+
+Verified values. data/VERSION.json data_hash
+51f0faa935cb57e8e9f11bf620e5f551f69ca50b415f12112f880f32b3393692 over 29
+artifacts; models/registry.json carries the same artifacts_hash; the E2
+results file carries the same data hash. The E1 results file carries its own
+E1 only hash, 050f2b4531540bbcc6142f64fef7d1aa7f124a10c4c124dc34747ebd5206e6ad,
+because an E1 rebuild hashes the E1 artifacts, and its history holds the
+three hashes that pass went through: d64ce6a7, 6d241075 and 050f2b45. The
+sprint has 13 criteria, 9 passing and 4 failing: F2.3, F2.3b, F2.3c and
+F2.6. 215 tests pass.
+
+Reason. The close-out brief asks for the rebuild, the refreshed hashes, the
+full test suite and one line listing every criterion with its verdict, and
+this is that record. A second rebuild on the same data produced the same
+data hash, appended no history entry and reported zero changed criteria,
+which is the proof that the numbers in the deliverable can be re-derived
+rather than trusted.

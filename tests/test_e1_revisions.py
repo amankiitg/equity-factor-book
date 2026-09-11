@@ -196,3 +196,42 @@ def test_a_repeated_run_on_the_same_hash_does_not_append(tmp_path: Path) -> None
     _store(path, "hash1", 0.90)
     again = _store(path, "hash1", 0.90)
     assert len(again["history"]) == 1
+
+
+def test_a_nan_value_is_not_a_change(tmp_path: Path) -> None:
+    """A NaN per empty calendar year must not read as a moved number.
+
+    NaN is not equal to itself, so a direct dict comparison reports the
+    whole criterion as changed on every rebuild, which would put a fresh
+    history entry in the file for a change that did not happen.
+    """
+    path = tmp_path / "RESULTS.json"
+    payload = {
+        "sprint": "E2",
+        "criteria": {
+            "F2.4": {
+                "criterion": "text",
+                "threshold": "0.8 to 1.2",
+                "stored_numbers": {"bias_by_year": {"2026": float("nan")}},
+                "verdict": "pass",
+            }
+        },
+    }
+    path.write_text(json.dumps(payload))
+    evaluate.write_results(
+        {
+            "F2.4": {
+                "criterion": "text",
+                "threshold": "0.8 to 1.2",
+                "stored_numbers": {"bias_by_year": {"2026": float("nan")}},
+                "verdict": "pass",
+            }
+        },
+        path,
+        sprint="E2",
+        data_hash="hash2",
+        previous_data_hash="hash1",
+    )
+    revisions = json.loads(path.read_text())["revisions"]
+    assert revisions["changed"]["F2.4"]["changed"] is False
+    assert revisions["n_changed"] == 0

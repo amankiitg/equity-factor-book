@@ -1,6 +1,6 @@
 {
   "sprint": "E2",
-  "evaluated_at": "2026-09-11T14:29:26+00:00",
+  "evaluated_at": "2026-09-11T14:38:33+00:00",
   "data_hash": "51f0faa935cb57e8e9f11bf620e5f551f69ca50b415f12112f880f32b3393692",
   "criteria": {
     "F2.0a": {
@@ -445,10 +445,8 @@
   "revisions": {
     "previous_data_hash": "050f2b4531540bbcc6142f64fef7d1aa7f124a10c4c124dc34747ebd5206e6ad",
     "data_hash": "51f0faa935cb57e8e9f11bf620e5f551f69ca50b415f12112f880f32b3393692",
-    "n_changed": 1,
-    "changed_tickers_or_criteria": [
-      "F2.3b"
-    ],
+    "n_changed": 0,
+    "changed_tickers_or_criteria": [],
     "cross_sprint_criteria": [],
     "changed": {
       "F2.0a": {
@@ -846,7 +844,7 @@
         }
       },
       "F2.3b": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "fail",
           "stored_numbers": {

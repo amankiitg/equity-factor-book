@@ -184,6 +184,20 @@ def _measurement(criterion: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _changed(old: dict[str, Any] | None, new: dict[str, Any]) -> bool:
+    """Whether a re-measurement moved anything, NaN included.
+
+    Comparing the dicts directly reports a change whenever a value is NaN,
+    because NaN is not equal to itself, and the E2 criteria store a NaN per
+    calendar year with no observations. Comparing the serialized form
+    instead treats two NaNs as the same number, which is what they are
+    here: both mean the year had no data.
+    """
+    if old is None:
+        return False
+    return json.dumps(old, sort_keys=True) != json.dumps(new, sort_keys=True)
+
+
 def write_results(
     criteria: dict[str, dict[str, Any]],
     path: Path,
@@ -233,7 +247,7 @@ def write_results(
         old = _measurement(previous[key]) if key in previous else None
         new = _measurement(criterion)
         changed[key] = {
-            "changed": old is not None and old != new,
+            "changed": _changed(old, new),
             "old": old,
             "new": new,
         }
@@ -241,7 +255,7 @@ def write_results(
         old = _measurement(older[key]) if key in older else None
         new = _measurement(criterion)
         changed[key] = {
-            "changed": old is not None and old != new,
+            "changed": _changed(old, new),
             "old": old,
             "new": new,
             "sprint": "E2",

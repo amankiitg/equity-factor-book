@@ -604,3 +604,25 @@ TS-v1 registry entry both carry artifacts hash 51f0faa935cb57e8 (full value
 in the file), and the sprint has 13 criteria, 9 passing and 4 failing (F2.3,
 F2.3b, F2.3c, F2.6). Every criterion, in order, with its verdict, is listed
 at the end of this section.
+
+Final criteria list, in criterion order, read from
+sprints/E2/RESULTS.json at data hash
+51f0faa935cb57e8:
+
+| Criterion | Verdict |
+| --- | --- |
+| F2.0a | pass |
+| F2.0b | pass |
+| F2.0c | pass |
+| F2.1 | pass |
+| F2.2 | pass |
+| F2.3 | fail |
+| F2.3b | fail |
+| F2.3c | fail |
+| F2.4 | pass |
+| F2.5 | pass |
+| F2.6 | fail |
+| F2.6b | pass |
+| F2.6c | pass |
+
+13 criteria, 9 passing and 4 failing.

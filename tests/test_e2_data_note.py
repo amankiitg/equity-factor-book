@@ -56,3 +56,23 @@ def test_note_recommends_an_estimator_per_use() -> None:
     text = NOTE.read_text()
     for use in ["Hedging", "Risk", "Sizing"]:
         assert use in text
+
+
+def test_note_lists_every_criterion_with_its_verdict() -> None:
+    """The last list in the document has to match the stored file.
+
+    A reader who only reads the last paragraph should still see the count
+    of what passed and what failed, and it should not be possible for that
+    list to disagree with sprints/E2/RESULTS.json.
+    """
+    text = NOTE.read_text()
+    results = json.loads(RESULTS.read_text())
+    criteria = results["criteria"]
+    for key, value in criteria.items():
+        assert f"| {key} | {value['verdict']} |" in text, key
+    n_pass = sum(1 for value in criteria.values() if value["verdict"] == "pass")
+    assert (
+        f"{len(criteria)} criteria, {n_pass} passing and "
+        f"{len(criteria) - n_pass} failing."
+    ) in text
+    assert results["data_hash"][:16] in text
