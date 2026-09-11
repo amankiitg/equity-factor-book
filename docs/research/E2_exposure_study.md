@@ -222,11 +222,21 @@ harder test.
 - Sizing: the FF5 plus momentum decomposition, with idiosyncratic
   variance from the TS-v1 residuals. For the equal-weight seed book the
   factor share of variance is 99.2 percent, so the book is a factor
-  position, not a collection of idio bets; for the sector-neutral
-  momentum long/short seed book the factor share is only 9.4 percent, so
-  its risk is almost entirely idiosyncratic and must be sized on the
-  residual. Carry the E1 caveat: the short side's specific risk is biased
-  downward because missing deletions are disproportionately failures.
+  position, not a collection of idio bets. For the sector-neutral
+  momentum long/short seed book the answer depends on how the portfolio
+  beta is measured, and the three measurements are 0.0939 with name-level
+  TS betas and last-month weights, 0.1381 with the portfolio regression
+  betas and MOM removed from the covariance, and 0.8951 with the same
+  betas and all six factors. The regression explains 0.5606 of the book's
+  daily variance. The C4 check in the close-out section shows why the book
+  is a momentum position (MOM loading +0.2947, t 29.0), and the spread
+  between those three numbers is the diagonal-residual assumption at work:
+  a 192-name long/short book looks nearly risk-free when its residual
+  co-movement is thrown away. Size it on the realized residual covariance,
+  which E3 owns; until then treat the low idio share as unproven rather
+  than as a finding. Carry the E1 caveat as well: the short side's
+  specific risk is biased downward because missing deletions are
+  disproportionately failures.
 
 Portfolio risk at the last date, from sigma_p^2 = w' B F B' w + w' D w:
 

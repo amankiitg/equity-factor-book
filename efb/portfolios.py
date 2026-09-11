@@ -157,6 +157,118 @@ def risk_decomposition(
     return out
 
 
+def portfolio_returns(weights: pd.DataFrame, returns_r: pd.DataFrame) -> pd.Series:
+    """Daily portfolio return from a date x ticker weight panel.
+
+    Weights are held from the date they are set, and the return is earned
+    on the following day, so the weight panel is shifted one day before it
+    is applied. A missing return contributes nothing rather than a zero,
+    which would silently shrink the book.
+    """
+    aligned = weights.reindex(columns=returns_r.columns).fillna(0.0)
+    held = aligned.shift(1)
+    product = held * returns_r
+    return product.sum(axis=1, min_count=1).rename("portfolio_return")
+
+
+def portfolio_loadings(
+    weights: pd.DataFrame,
+    returns_r: pd.DataFrame,
+    factors: pd.DataFrame,
+    nw_lag: int = 5,
+    min_obs: int = 120,
+) -> pd.DataFrame:
+    """Portfolio-level factor loadings with Newey-West standard errors.
+
+    The portfolio's own return series is regressed on the factors, which
+    gives the loading and a t statistic that accounts for residual
+    autocorrelation. Weighting name-level loadings by their weights would
+    report the same loading but an understated standard error, because it
+    treats every name's estimate as independent.
+    """
+    from efb.models import timeseries as ts
+
+    series = portfolio_returns(weights, returns_r).dropna()
+    usable = factors.reindex(series.index).dropna()
+    series = series.reindex(usable.index)
+    fit = ts.ols_fit(series, usable, nw_lag=nw_lag, min_obs=min_obs)
+    params = fit.params
+    nw = fit.nw_se
+    ols = fit.ols_se
+    out = pd.DataFrame(
+        {
+            "loading": params,
+            "nw_se": nw,
+            "ols_se": ols,
+            "t_stat": params / nw.replace(0.0, np.nan),
+        }
+    )
+    out["n_obs"] = int(fit.n_obs)
+    out["r_squared"] = float(fit.r_squared)
+    return out
+
+
+def mom_sanity(
+    weights: pd.DataFrame,
+    returns_r: pd.DataFrame,
+    factors: pd.DataFrame,
+    idio_var: pd.Series | None = None,
+    half_life: float = 90.0,
+) -> dict[str, object]:
+    """Check a momentum seed book's MOM exposure and its factor share.
+
+    A book built from a momentum signal has to load positively on MOM with
+    a t statistic beyond two. When it does not, the factor share is
+    recomputed without MOM in the regressor set: if the share jumps, the
+    book is a factor position the six-factor fit is not capturing, and the
+    idio share being reported is an artifact.
+    """
+    from efb.models import timeseries as ts
+
+    loadings = portfolio_loadings(weights, returns_r, factors)
+    mom_loading = float(loadings.loc["mom", "loading"])
+    mom_t = float(loadings.loc["mom", "t_stat"])
+    report: dict[str, object] = {
+        "loadings": loadings,
+        "mom_loading": mom_loading,
+        "mom_t_stat": mom_t,
+        "passes": bool(mom_loading > 0 and abs(mom_t) > 2.0),
+    }
+    if idio_var is None:
+        return report
+
+    series = portfolio_returns(weights, returns_r).dropna()
+    usable = factors.reindex(series.index).dropna()
+    series = series.reindex(usable.index)
+    covariance = ewma_factor_cov(usable, half_life=half_life)
+    weights_last = weights.iloc[-1]
+    weights_last = weights_last[weights_last.abs() > 0]
+    factor_names = list(usable.columns)
+    without = [name for name in factor_names if name != "mom"]
+    beta_p = pd.Series(
+        {name: float(loadings.loc[name, "loading"]) for name in factor_names}
+    )
+    sub_cov = covariance.reindex(index=factor_names, columns=factor_names)
+
+    def share(names: list[str], beta: pd.Series) -> float:
+        vector = beta.reindex(names).to_numpy(dtype=float)
+        matrix = sub_cov.reindex(index=names, columns=names).to_numpy(dtype=float)
+        factor_var = float(vector @ matrix @ vector)
+        idio = float(
+            np.nansum(
+                weights_last.to_numpy(dtype=float) ** 2
+                * idio_var.reindex(weights_last.index).fillna(0.0).to_numpy(dtype=float)
+            )
+        )
+        total = factor_var + idio
+        return factor_var / total if total > 0 else float("nan")
+
+    report["factor_share_with_mom"] = share(factor_names, beta_p)
+    report["factor_share_without_mom"] = share(without, beta_p)
+    _ = ts
+    return report
+
+
 def ewma_factor_cov(
     factors: pd.DataFrame, half_life: float = 90.0, min_obs: int = 252
 ) -> pd.DataFrame:

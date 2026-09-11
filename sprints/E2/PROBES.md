@@ -519,3 +519,39 @@ target matched on both sides:
 
 garch fitted: 47
 ```
+
+## C4 momentum seed book sanity check (2026-09-10)
+
+The long/short seed book is built from a momentum signal, so its TS-v1
+MOM loading has to be positive with a t statistic beyond two. If it were
+not, the idio share reported for the book would be suspect. Output of
+efb.portfolios.mom_sanity on the flagged-row-excluded returns.
+
+```
+=== C4 momentum long/short seed book, portfolio return regressed on FF5 + MOM ===
+Newey-West standard errors at lag 5, weights 1 - j/6. 4067 days, gross 1.0,
+dollar neutral, 192 names in the last month.
+
+        loading   nw_se  ols_se   t_stat  n_obs  r_squared
+alpha   -0.0000  0.0000  0.0000  -1.1188   4067     0.5606
+mkt_rf  -0.0274  0.0072  0.0043  -3.8305   4067     0.5606
+smb     -0.0566  0.0174  0.0079  -3.2502   4067     0.5606
+hml     -0.0140  0.0162  0.0076  -0.8614   4067     0.5606
+rmw     -0.0459  0.0154  0.0099  -2.9835   4067     0.5606
+cma     -0.0224  0.0245  0.0127  -0.9126   4067     0.5606
+mom      0.2947  0.0102  0.0048  28.9983   4067     0.5606
+
+MOM loading 0.2947 with t 29.00: positive, and the t statistic is far beyond
+two, so the required sanity check passes.
+
+the factor share of this book is not one number. Three measurements:
+  regression betas, all six factors in the covariance: 0.8951
+  regression betas, MOM removed from the covariance:   0.1381
+  name-level TS betas, last-month weights (snapshot):  0.0939
+  share of daily variance explained by the regression: 0.5606
+
+so the book is mostly a momentum factor position, not a collection of
+independent name bets: the 0.0939 in the snapshot comes from static
+name-level betas and one month of weights, and it is an artifact of
+treating the residual covariance as diagonal.
+```

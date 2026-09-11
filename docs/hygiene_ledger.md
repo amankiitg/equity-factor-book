@@ -208,3 +208,79 @@ security-identity source and is tracked in docs/open_items.md.
 
 The F2.3 verdict does not change, since it was already a fail, but the
 size of the effect and the claim built on it do.
+
+## 2026-09-10: Ticker identity, and 36 reused symbols leave the panel
+
+Decision. Every ticker on the Wikipedia changes table's removed list is
+compared with the current holder of that symbol on yfinance, cached to
+data/raw/yf_names.parquet so each symbol is asked once, and matched by
+name token overlap after stripping legal suffixes, punctuation and share
+class letters. A verified mismatch means the symbol was reused, and the
+ticker leaves the estimation panel. A symbol with no name today is
+recorded as unverified and kept, because a missing name is not evidence
+of reuse. Tickers with a gap above 60 business days between two live price
+segments are flagged separately; none were found.
+
+Old value: 858 tickers in returns.parquet, 47 GARCH fits, F1.3 0.95575,
+F1.5 bias 349.67 bp/yr.
+New value: 822 tickers, 47 GARCH fits over the reduced panel, F1.3
+0.95655, F1.5 bias 365.81 bp/yr. Table and both data hashes in
+sprints/E1/RESULTS.json under revisions.
+
+Reason. Four symbols had a level break no split explained (CPWR, EP, MI,
+POM) and 32 more had a name mismatch with clean prices, where the vendor
+hides the splice by keeping only one company's history. Names and prices
+cannot separate a rename from a hidden reuse, so a mismatch is excluded
+and the plausible renames (ATI, CCE, CLF, CNX, DD, FOX, FOXA, OI, PCG) go
+with them: keeping a fabricated history is worse than dropping a
+legitimate one. The 32 are listed with their removed and current names in
+sprints/E2/PROBES.md. F2.6b records this and passes; the security-master
+fix that would repair rather than drop them is in docs/open_items.md.
+
+## 2026-09-10: F2.3 stands after the horizon-aligned re-test
+
+Decision. F2.3 keeps its recorded fail. F2.3b, a new criterion with the
+same 60 percent bar and forecast and target matched on both sides, also
+fails. EWMA(0.97) stays the production estimator.
+
+Old value: F2.3 GARCH win share 46.7 percent of 45 names, EWMA(0.94) 36.4
+percent of 514 names, verdict fail.
+New value: after the C1 exclusions, GARCH 44.4 percent of 45 names,
+EWMA(0.94) 35.4 percent of 483 names, verdict fail. F2.3b: horizon 1,
+GARCH 46.7, EWMA(0.94) 35.4; horizon 21, GARCH 55.6, EWMA(0.94) 19.9.
+
+Reason. The fail contradicted the daily-vol literature, so it was treated
+as a hypothesis. The diagnostic rules out the obvious explanations: QLIKE
+targets the same day's squared return, every estimator is one step ahead,
+and the arch fit scales returns by 100 with the variance divided back, 47
+of 60 fits converging. Counting name-days instead of names, EWMA(0.94)
+wins on 51.6 percent of 242,126 name-days, so the name-level fail comes
+from a few names where one day is badly mispriced and QLIKE is unbounded.
+The 2020 window the brief asked about is not in the sample, which starts
+2024-09-03. GARCH does improve to 55.6 percent once its multi-step
+dynamics are used, which is the mechanism the hypothesis predicted, but
+that is short of 60 and far short of the 70 that would reopen the choice.
+
+## 2026-09-10: the momentum book's idio share is not 9.4 percent
+
+Decision. The deliverable reports three measurements instead of one. No
+criterion is added: the C4 check passes, and the correction is a claim
+change rather than a test.
+
+Old value: the momentum long/short seed book is 90.6 percent idiosyncratic
+(factor share 0.0939).
+New value: factor share 0.8951 with the portfolio regression betas and all
+six factors in the covariance, 0.1381 with MOM removed, 0.0939 with
+name-level TS betas and last-month weights, and 0.5606 of daily variance
+explained by the regression (R squared).
+
+Reason. The required check passes: the book's MOM loading is +0.2947 with
+a Newey-West t statistic of 29.0, so it genuinely is a momentum position.
+But measuring the factor share three ways shows the 0.0939 is an artifact
+of treating the residual covariance as diagonal and using static
+name-level betas. With residuals assumed uncorrelated, a book of 192
+long/short names looks almost risk-free specifically because its residual
+co-movement is thrown away. The book is mostly a momentum factor
+exposure. The realized residual covariance that would fix this belongs to
+E3, which owns the cross-sectional risk model, and is recorded in
+docs/open_items.md.
