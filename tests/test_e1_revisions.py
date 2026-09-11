@@ -145,3 +145,54 @@ def test_real_e1_results_carry_revisions_if_present() -> None:
         assert block["changed"] in {True, False}, key
         assert isinstance(block["old"], dict) or block["old"] is None, key
         assert isinstance(block["new"], dict), key
+
+
+def _store(path: Path, data_hash: str, value: float) -> dict:
+    criteria = {
+        "F1.1": {
+            "criterion": "original text",
+            "threshold": "95%",
+            "stored_numbers": {"share": value},
+            "verdict": "fail",
+        }
+    }
+    evaluate.write_results(
+        criteria,
+        path,
+        sprint="E1",
+        data_hash=data_hash,
+        previous_data_hash="prev",
+    )
+    return json.loads(path.read_text())["revisions"]
+
+
+def test_a_second_correction_appends_to_the_history(tmp_path: Path) -> None:
+    """C6 rebuilds E1 twice, so one revisions block is not enough.
+
+    The first store has no earlier file, so its comparison is the first
+    history entry. The second store, on a different data hash, appends
+    rather than replacing, which keeps the first correction on the record.
+    """
+    path = tmp_path / "RESULTS.json"
+    first = _store(path, "hash1", 0.90)
+    second = _store(path, "hash2", 0.88)
+    assert [entry["data_hash"] for entry in second["history"]] == ["hash1", "hash2"]
+    # the top level still describes the newest comparison, as before
+    assert second["data_hash"] == "hash2"
+    assert second["changed"]["F1.1"]["old"] == {
+        "verdict": "fail",
+        "stored_numbers": {"share": 0.90},
+    }
+    assert second["changed"]["F1.1"]["new"] == {
+        "verdict": "fail",
+        "stored_numbers": {"share": 0.88},
+    }
+    # the first entry keeps the values as they were when it was written
+    assert first["history"][0]["changed"]["F1.1"]["old"] is None
+
+
+def test_a_repeated_run_on_the_same_hash_does_not_append(tmp_path: Path) -> None:
+    path = tmp_path / "RESULTS.json"
+    _store(path, "hash1", 0.90)
+    again = _store(path, "hash1", 0.90)
+    assert len(again["history"]) == 1

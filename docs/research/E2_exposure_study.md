@@ -89,14 +89,15 @@ sprints/E2/RESULTS.json.
 | F2.0a | coverage table stored and MODEL_START recorded | MODEL_START 2010, 17 years stored, current members 100% | pass |
 | F2.0b | NaN rows dropped, never imputed | 302 interior NaN rows, dropped by the fit (n_obs equals valid count) | pass |
 | F2.0c | audit mean below 0.1 bp, every day above 50 bp in events with a cause | mean 0.0178 bp, 1 day above 50 bp, 1 matched (BKR 2017-07-05 special distribution) | pass |
-| F2.1 | full-sample vs mean rolling beta correlation above 0.9 | 0.9239 | pass |
-| F2.2 | mean pairwise FF5+MOM residual correlation below 0.05 | 0.0154 on 150 names | pass |
+| F2.1 | full-sample vs mean rolling beta correlation above 0.9 | 0.9244 | pass |
+| F2.2 | mean pairwise FF5+MOM residual correlation below 0.05 | 0.0156 on 150 names | pass |
 | F2.3 | GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of names | GARCH 44.4% of 45 names, EWMA(0.94) 35.4% of 483 names, paired 37 names where both fit: GARCH 40.5%, EWMA(0.94) 27.0% | fail |
 | F2.3b | the same 60% bar with forecast and target horizons matched | horizon 1: GARCH 46.7%, EWMA(0.94) 35.4%. horizon 21: GARCH 55.6%, EWMA(0.94) 19.9% | fail |
-| F2.4 | equal-weight seed book bias ratio between 0.8 and 1.2 across calendar years | mean 1.0221, per-year range 0.68 (2012) to 1.39 (2020) | pass |
+| F2.4 | equal-weight seed book bias ratio between 0.8 and 1.2 across calendar years | mean 1.0225, per-year range 0.68 (2012) to 1.39 (2020) | pass |
 | F2.5 | Newey-West SE exceeds OLS SE for more than 80% of names | 96.3% | pass |
 | F2.6 | no name has an unexplained adjusted-close move above 5x (successor to F2.3, not pre-registered) | 4 names: CPWR, EP, MI, POM, 20 rows | fail |
-| F2.6b | identity check stored and its exclusions applied by the build | 373 removed tickers compared, 36 reused symbols found and dropped, none left in the estimated panel | pass |
+| F2.6b | identity check stored and its exclusions applied by the build | 373 removed tickers compared, 36 reused symbols found, 33 dropped and 3 restored by the C6 review, none left in the estimated panel that the build did not mean to keep | pass |
+| F2.6c | current-constituent coverage of the estimation panel at or above 501 of 503, with the re-add review stored | 502 of 503 covered, 99.80% against a bar of 99.602%, one name missing (DD); review keeps FOX (2019-03-13), FOXA (2019-03-12) and PCG (2022-10-03) | pass |
 
 Reference loadings, full sample. AAPL beta 1.074 (OLS SE 0.0182, Newey-West
 SE 0.0265), alpha 0.00046, R squared 0.455. XOM beta 0.777 (0.0183,
@@ -396,3 +397,84 @@ After the four tasks: make rebuild-e2 versions 23 artifacts, the TS-v1
 registry entry carries the same artifacts hash as data/VERSION.json
 (3f2d32b3fd262e6c), and the sprint has 11 criteria, 8 passing and 3
 failing (F2.3, F2.3b, F2.6).
+
+## Close-out, second pass
+
+Three more tasks were added after the first close-out, and they are
+recorded the same way: nothing above was reworded, every criterion that
+already had a number keeps it, and the C1 to C4 section stands as the
+record of what that pass did.
+
+C6, re-added names and the identity review (F2.6c, pass). C1's last
+paragraph named nine symbols that look like renames of the same issuer and
+dropped them anyway, because names alone cannot separate a rename from a
+hidden reuse. C6 reopens exactly those cases with two more questions: is
+the symbol a current index constituent, and does the changes table have an
+added row for that same ticker dated after its removal. When either holds,
+the name on that side is compared with the yfinance holder of the symbol,
+and a match puts the ticker back with its history starting at the later of
+the re-add date and its first valid price.
+
+Four of the 36 reused symbols are current constituents. Three came back:
+
+| Ticker | Removed name | Added name, or the name today | Holder on yfinance | Score | Decision | Truncated to |
+| --- | --- | --- | --- | --- | --- | --- |
+| FOX | 21st Century Fox | Fox Corporation (Class B) | Fox Corporation | 1.00 | keep | 2019-03-13 |
+| FOXA | 21st Century Fox | Fox Corporation (Class A) | Fox Corporation | 1.00 | keep | 2019-03-12 |
+| PCG | Pacific Gas & Electric Company | PG&E (added 2022-10-03) | PG&E Corporation | 1.00 | keep | 2022-10-03 |
+| DD | DuPont | DuPont (added 2019-06-03) | DuPont de Nemours, Inc. | 0.33 | stays dropped | not applicable |
+
+FOX and FOXA are the two share classes of the company that was spun out of
+21st Century Fox in March 2019, which is why their truncation dates are one
+day apart and both are the listing date rather than the removal date. PCG
+was removed in January 2019 and readmitted in October 2022, so its panel
+history now starts at the readmission. DD is the case the name matcher
+cannot settle: "DuPont" against "DuPont de Nemours, Inc." scores 0.33,
+below the 0.5 bar, because the holder's name carries two extra tokens and
+the matcher is symmetric. A subset-style matcher would keep it, but that
+would also re-score F2.6b's stored 93 matches and 244 unverified names
+without any new evidence, so the matcher was left alone and the miss is
+recorded instead.
+
+The effect on the estimation panel is the number F2.6c is stated on. Of
+the 503 current constituents, 502 now appear in returns.parquet, 99.80
+percent, against the 501 of 503 bar in the close-out brief. Before C6 the
+panel covered 499 of them: the four names above were missing. The one
+remaining gap is DD. Note that the panel is the right place to measure
+this: prices.parquet already covered all 503 names, including the three
+that had been dropped from the estimated universe, so a coverage check on
+the price file would have shown no problem at all.
+
+F2.6b is re-measured rather than changed. Its criterion text, threshold and
+verdict are untouched, and its numbers move because the data did: the
+dropped list falls from 36 names to 33, the truncation list gains FOX,
+FOXA and PCG, and the leak check now treats a name the review restored as
+expected rather than as a failed exclusion. Without that, F2.6b would have
+failed on the three names F2.6c deliberately puts back.
+
+C2 re-run, E1 restated again. The E1 rebuild ran a second time, so its
+revisions history now holds three entries, one per data hash, and the
+second entry records the intermediate build that changed nothing (hash
+6d24107521893114). The final numbers:
+
+| Criterion | Before C6 | After C6 | Verdict |
+| --- | --- | --- | --- |
+| F1.3 equal-weight vs market correlation | 0.95655 | 0.95636 | pass |
+| F1.5 fraction of deleted members recovered | 0.44789 | 0.44789 | fail |
+| F1.5 naive minus point-in-time bias | 365.81 bp/yr | 365.10 bp/yr | fail |
+| F1.5 naive minus FF market | 377.20 bp/yr | 375.37 bp/yr | fail |
+| F1.5 point-in-time minus FF market | 9.36 bp/yr | 8.24 bp/yr | fail |
+
+All four E1 verdicts are unchanged. The E2 criteria moved with the same
+correction, and each one is in the hygiene ledger with its old and new
+value: F2.1 from 0.92389 to 0.92436, F2.2 from 0.0154 to 0.0156, F2.4's
+mean bias from 1.02211 to 1.02253 with the whole per-year series shifted,
+F2.5 from 0.96321 to 0.96338, and F2.3b's trailing 63-day baseline win
+share from 36.68 percent to 36.66 at horizon 1 and from 30.76 to 30.77 at
+horizon 21. No verdict changed, and the three restored names move the
+numbers by less than a tenth of a percent each, which is the scale you
+would expect from adding back 3 names to a 500-name universe.
+
+After C6: make rebuild-e2 versions 26 artifacts, data/VERSION.json and the
+TS-v1 registry entry both carry artifacts hash 88c0062b281698c2, and the
+sprint has 12 criteria, 9 passing and 3 failing (F2.3, F2.3b, F2.6).

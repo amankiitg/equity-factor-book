@@ -31,6 +31,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import TypedDict
 
 import pandas as pd
 
@@ -198,6 +199,156 @@ def removal_names(changes: pd.DataFrame) -> dict[str, str]:
     return out
 
 
+def _first_add_after(
+    changes: pd.DataFrame, ticker: str, removal: pd.Timestamp
+) -> tuple[pd.Timestamp | None, str | None]:
+    """Earliest row that adds THIS ticker, dated after its removal.
+
+    A re-add is what makes a renamed name recoverable: the original stint
+    ended at the removal, and the next add row starts the current company.
+    The row has to be filtered on the ticker, because the same table also
+    records the company that replaced the member on that date and that
+    name has nothing to do with the symbol's identity.
+    """
+    if "added_ticker" not in changes.columns:
+        return None, None
+    added = changes.dropna(subset=["added_ticker"])
+    added = added[added["added_ticker"].astype(str) == ticker]
+    best_date: pd.Timestamp | None = None
+    best_name: str | None = None
+    for row in added.itertuples(index=False):
+        date = pd.Timestamp(row.effective_date)
+        if date <= removal:
+            continue
+        if best_date is None or date < best_date:
+            best_date = date
+            name = row.added_security
+            best_name = name.strip() if isinstance(name, str) and name.strip() else None
+    return best_date, best_name
+
+
+def constituent_names(constituents: pd.DataFrame) -> dict[str, str]:
+    """Security name per current constituent, keyed by symbol."""
+    symbol = "symbol" if "symbol" in constituents.columns else "ticker"
+    name_column = "security" if "security" in constituents.columns else None
+    if symbol not in constituents.columns:
+        return {}
+    out: dict[str, str] = {}
+    for row in constituents.itertuples(index=False):
+        ticker = getattr(row, symbol)
+        if not isinstance(ticker, str):
+            continue
+        name = getattr(row, name_column) if name_column else None
+        if isinstance(name, str) and name.strip():
+            out[ticker] = name.strip()
+    return out
+
+
+def readded_review(
+    identity_table: pd.DataFrame,
+    changes: pd.DataFrame,
+    constituents: pd.DataFrame,
+    names: pd.DataFrame,
+    threshold: float = MATCH_THRESHOLD,
+) -> pd.DataFrame:
+    """C6: decide which reused symbols were renamed rather than taken over.
+
+    For every ticker the identity table dropped, ask whether it is a
+    current constituent or whether the changes table has an added row dated
+    after its removal. When either holds, the name on that add row, or the
+    constituents-table name when there is no add row, is compared with the
+    yfinance holder. A match means the ticker and the holder are the same
+    company, so the history is kept from the later of the re-add date and
+    the first valid price. No match means the symbol really was taken over
+    and the ticker stays dropped.
+
+    Returns one row per reviewed ticker with the names, the match score,
+    the decision and the truncation date.
+    """
+    if identity_table.empty or "action" not in identity_table.columns:
+        return empty_review()
+    candidates = identity_table[identity_table["reused"].astype(bool)]
+    if candidates.empty:
+        return empty_review()
+
+    holder = dict(zip(names["ticker"], names["long_name"], strict=False))
+    short = dict(zip(names["ticker"], names["short_name"], strict=False))
+    members = constituent_names(constituents)
+    rows: list[dict[str, object]] = []
+    for row in candidates.itertuples(index=False):
+        ticker = str(row.ticker)
+        removal = pd.Timestamp(row.removal_date)
+        added_date, added_name = _first_add_after(changes, ticker, removal)
+        current = usable_name(holder.get(ticker)) or usable_name(short.get(ticker))
+        if added_name is None:
+            # no add row after the removal, so the only other name to
+            # compare is the one the constituents table carries today
+            added_name = members.get(ticker)
+        score = match_score(added_name, current) if added_name else 0.0
+        keep = bool(added_name) and current is not None and score >= threshold
+
+        truncation: pd.Timestamp | None = None
+        if keep:
+            first_valid = row.first_valid_date
+            first_valid = pd.Timestamp(first_valid) if first_valid is not None else None
+            candidates_dates = [
+                date for date in (added_date, first_valid) if date is not None
+            ]
+            truncation = max(candidates_dates) if candidates_dates else None
+            if truncation is None:
+                keep = False
+        rows.append(
+            {
+                "ticker": ticker,
+                "removed_name": row.removed_name,
+                "added_name": added_name,
+                "current_name": current,
+                "added_date": added_date,
+                "match_score": round(float(score), 4),
+                "decision": "keep_truncated" if keep else "stays_dropped",
+                "truncation_date": truncation,
+            }
+        )
+    return pd.DataFrame(rows).sort_values("ticker").reset_index(drop=True)
+
+
+class PanelCoverage(TypedDict):
+    """How much of the current constituent list an estimation panel covers."""
+
+    n_current: int
+    n_covered: int
+    coverage: float
+    missing: list[str]
+
+
+def panel_coverage(constituents: pd.DataFrame, panel: pd.DataFrame) -> PanelCoverage:
+    """Current-constituent coverage of an estimation panel.
+
+    The panel is counted by name, not by row: a constituent counts as
+    covered when it appears with at least one non-NaN value. That is the
+    measurement F2.6c is stated on, and it is deliberately about the
+    estimation panel rather than the price file, because a name can have
+    prices and still be absent from the returns the models see.
+    """
+    symbol = "symbol" if "symbol" in constituents.columns else "ticker"
+    current = sorted(set(constituents[symbol].dropna().astype(str)))
+    present: set[str] = set()
+    if not panel.empty:
+        if "ticker" in (panel.index.names or []):
+            live = panel.notna().any(axis=1)
+            present = set(panel.index.get_level_values("ticker")[live].astype(str))
+        else:
+            present = set(str(c) for c in panel.columns)
+    covered = sorted(set(current) & present)
+    missing = sorted(set(current) - present)
+    return {
+        "n_current": len(current),
+        "n_covered": len(covered),
+        "coverage": len(covered) / len(current) if current else float("nan"),
+        "missing": missing,
+    }
+
+
 def _missing_between(dates: pd.DatetimeIndex) -> list[int]:
     """Missing business days between consecutive live observations.
 
@@ -351,16 +502,33 @@ def identity_table(
     return pd.DataFrame(rows)
 
 
-def exclusions(table: pd.DataFrame) -> tuple[list[str], dict[str, pd.Timestamp]]:
-    """Split the identity table into tickers to drop and dates to truncate from."""
+def exclusions(
+    table: pd.DataFrame, readded: pd.DataFrame | None = None
+) -> tuple[list[str], dict[str, pd.Timestamp]]:
+    """Split the identity table into tickers to drop and dates to truncate from.
+
+    `readded` is the C6 review. A reused symbol whose holder still matches
+    the company on its later add row is not dropped after all: it is kept
+    from its truncation date, which is what makes the current constituents
+    recoverable.
+    """
     if table.empty or "action" not in table.columns:
         return [], {}
-    dropped = sorted(table.loc[table["action"] == "drop", "ticker"].tolist())
+    dropped = set(table.loc[table["action"] == "drop", "ticker"].tolist())
     truncated: dict[str, pd.Timestamp] = {}
     for row in table.loc[table["action"] == "truncate"].itertuples(index=False):
         if row.drop_before is not None and not pd.isna(row.drop_before):
             truncated[str(row.ticker)] = pd.Timestamp(row.drop_before)
-    return dropped, truncated
+    if readded is not None and not readded.empty:
+        for row in readded.itertuples(index=False):
+            ticker = str(row.ticker)
+            if row.decision == "keep_truncated" and row.truncation_date is not None:
+                dropped.discard(ticker)
+                truncated[ticker] = pd.Timestamp(row.truncation_date)
+            else:
+                dropped.add(ticker)
+                truncated.pop(ticker, None)
+    return sorted(dropped), truncated
 
 
 def drop_truncated(
@@ -388,6 +556,40 @@ REPORT_COLUMNS = [
 ]
 
 
+_REVIEW_COLUMNS = [
+    "ticker",
+    "removed_name",
+    "added_name",
+    "current_name",
+    "added_date",
+    "match_score",
+    "decision",
+    "truncation_date",
+]
+
+
+def empty_review() -> pd.DataFrame:
+    """The re-add review with no rows, but the columns F2.6c reads."""
+    return pd.DataFrame(columns=_REVIEW_COLUMNS)
+
+
+def _write_empty(root: Path) -> pd.DataFrame:
+    """Record that the identity check ran and found nothing to act on.
+
+    Both artifacts are versioned, so they have to exist after a rebuild
+    even when there is no changes table to check (an offline run, or a
+    window with no membership events). An empty file says exactly that;
+    a missing one would break the manifest instead.
+    """
+    identity = pd.DataFrame(columns=REPORT_COLUMNS)
+    review = empty_review()
+    processed = root / "processed"
+    processed.mkdir(parents=True, exist_ok=True)
+    identity.to_parquet(processed / "ticker_identity.parquet", index=False)
+    review.to_parquet(processed / "ticker_identity_readded.parquet", index=False)
+    return identity
+
+
 def run(data_root: Path | str = "data", verbose: bool = True) -> pd.DataFrame:
     """Identity check end to end: fetch names, build the table, save it."""
     root = Path(data_root)
@@ -395,13 +597,13 @@ def run(data_root: Path | str = "data", verbose: bool = True) -> pd.DataFrame:
     if not changes_path.exists():
         if verbose:
             print("=== C1 ticker identity: skipped, no changes artifact ===")
-        return pd.DataFrame()
+        return _write_empty(root)
     changes = pd.read_parquet(changes_path)
     tickers = sorted(set(removal_names(changes)))
     if not tickers:
         if verbose:
             print("=== C1 ticker identity: no removed tickers to check ===")
-        return pd.DataFrame()
+        return _write_empty(root)
 
     prices = pd.read_parquet(root / "raw" / "prices.parquet")
     members = pd.read_parquet(root / "processed" / "universe_membership.parquet")
@@ -415,10 +617,22 @@ def run(data_root: Path | str = "data", verbose: bool = True) -> pd.DataFrame:
     )
     table.to_parquet(root / "processed" / "ticker_identity.parquet", index=False)
 
+    # C6: the reused list is not final until the re-add and current-member
+    # cases are checked, because four current constituents were renamed
+    # rather than taken over
+    constituents_path = root / "processed" / "universe_constituents.parquet"
+    review = empty_review()
+    if constituents_path.exists():
+        constituents = pd.read_parquet(constituents_path)
+        review = readded_review(table, changes, constituents, names)
+        review.to_parquet(
+            root / "processed" / "ticker_identity_readded.parquet", index=False
+        )
+
     if verbose:
         print("=== C1 ticker identity: removed members vs the current holder ===")
         print(table[REPORT_COLUMNS].to_string(index=False))
-        dropped, truncated = exclusions(table)
+        dropped, truncated = exclusions(table, readded=review)
         print()
         matched = table["verified"] & (table["match_score"] >= MATCH_THRESHOLD)
         unverified = ~table["verified"]
@@ -453,6 +667,28 @@ def run(data_root: Path | str = "data", verbose: bool = True) -> pd.DataFrame:
         print(f"the four known cases caught: {sorted(known & caught)}")
         print(f"missing from the check: {sorted(known - caught)}")
         print(f"additional tickers caught: {sorted(caught - known)}")
+        if not review.empty:
+            print()
+            print("=== C6 re-added and current constituents ===")
+            print(
+                review[
+                    [
+                        "ticker",
+                        "removed_name",
+                        "added_name",
+                        "current_name",
+                        "match_score",
+                        "decision",
+                        "truncation_date",
+                    ]
+                ].to_string(index=False)
+            )
+            kept = review.loc[review["decision"] == "keep_truncated", "ticker"].tolist()
+            print(f"restored on a name match: {kept}")
+            staying = review.loc[
+                review["decision"] == "stays_dropped", "ticker"
+            ].tolist()
+            print(f"staying dropped: {staying}")
     return table
 
 

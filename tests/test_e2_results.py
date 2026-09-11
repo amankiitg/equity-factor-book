@@ -37,6 +37,7 @@ def _inputs(**overrides):
         f26b_unverified=244,
         f26b_reused=4,
         f26b_reused_tickers=["CPWR", "EP", "MI", "POM"],
+        f26b_kept_by_review=[],
         f26b_dropped=["CPWR", "EP", "MI", "POM"],
         f26b_truncated={},
         f26b_gaps=["CPWR"],
@@ -56,6 +57,18 @@ def _inputs(**overrides):
         f23b_garch_fitted=47,
         f23b_garch_failed=13,
         f23b_day_level={"pooled": 0.516, "by_year": {"2024": 0.513}},
+        f26c={
+            "review_rows": 36,
+            "kept": ["ATI", "FOX", "FOXA", "PCG"],
+            "stays_dropped": ["DD"],
+            "n_current_dropped_by_c1": 4,
+            "n_kept_current": 3,
+            "n_current": 503,
+            "n_covered": 502,
+            "coverage": 502 / 503,
+            "bar": 501 / 503,
+            "missing": ["DD"],
+        },
     )
     base.update(overrides)
     return base
@@ -75,6 +88,7 @@ def test_all_nine_criteria_present_with_valid_verdicts() -> None:
         "F2.5",
         "F2.6",
         "F2.6b",
+        "F2.6c",
     }
     for key, value in criteria.items():
         assert value["verdict"] in {"pass", "fail"}, key
@@ -238,6 +252,31 @@ def test_write_results_records_the_sprint(tmp_path: Path) -> None:
     assert set(payload["criteria"]) == set(criteria)
 
 
+def test_f26c_needs_the_bar_and_a_stored_review() -> None:
+    good = evaluate.evaluate_e2_criteria(**_inputs())
+    assert good["F2.6c"]["verdict"] == "pass"
+    assert good["F2.6c"]["stored_numbers"]["n_covered"] == 502
+    assert good["F2.6c"]["stored_numbers"]["kept"] == ["ATI", "FOX", "FOXA", "PCG"]
+
+    # one name below the brief's 501 of 503 bar
+    short = evaluate.evaluate_e2_criteria(
+        **_inputs(f26c={**_inputs()["f26c"], "n_covered": 500, "coverage": 500 / 503})
+    )
+    assert short["F2.6c"]["verdict"] == "fail"
+
+    # nothing reviewed means nothing was restored, whatever the coverage says
+    unreviewed = evaluate.evaluate_e2_criteria(
+        **_inputs(f26c={**_inputs()["f26c"], "review_rows": 0, "kept": []})
+    )
+    assert unreviewed["F2.6c"]["verdict"] == "fail"
+
+
+def test_f26c_does_not_reword_f26b() -> None:
+    criteria = evaluate.evaluate_e2_criteria(**_inputs())
+    assert criteria["F2.6b"]["criterion"].startswith("Close-out C1")
+    assert criteria["F2.6c"]["criterion"].startswith("Close-out C6")
+
+
 def test_real_results_file_has_every_criterion_if_present() -> None:
     path = Path(__file__).resolve().parents[1] / "sprints" / "E2" / "RESULTS.json"
     if not path.exists():
@@ -255,4 +294,5 @@ def test_real_results_file_has_every_criterion_if_present() -> None:
         "F2.5",
         "F2.6",
         "F2.6b",
+        "F2.6c",
     }

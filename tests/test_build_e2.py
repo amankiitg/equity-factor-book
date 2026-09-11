@@ -199,6 +199,72 @@ def test_the_build_records_when_the_identity_check_cannot_run(tmp_path: Path) ->
     assert summary["identity_dropped"] == []
 
 
+def test_the_build_keeps_a_re_added_name_instead_of_dropping_it(
+    tmp_path: Path,
+) -> None:
+    """C6: a reused symbol that is the same company under a new name.
+
+    The changes table removes T05 and adds it back later, and the holders
+    on both sides are the same company, so the ticker belongs in the panel
+    with its history cut back to the re-add rather than dropped. The
+    summary, the registry entry and the review artifact all have to agree,
+    otherwise F2.6b and F2.6c would be measuring different things.
+    """
+    data_root = tmp_path / "data"
+    _write_inputs(data_root)
+    _splice(data_root, "T05")
+    changes = pd.DataFrame(
+        {
+            "effective_date": pd.to_datetime(["2024-06-03", "2024-09-03"]),
+            "added_ticker": [None, "T05"],
+            "added_security": [None, "Same Company Inc"],
+            "removed_ticker": ["T05", None],
+            "removed_security": ["Old Company Corp", None],
+            "reason": ["test", "test"],
+        }
+    )
+    changes.to_parquet(
+        data_root / "processed" / "universe_changes.parquet", index=False
+    )
+    pd.DataFrame(
+        {
+            "ticker": ["T05"],
+            "symbol": ["T05"],
+            "long_name": ["Same Company Inc"],
+            "short_name": ["Same Company"],
+        }
+    ).to_parquet(data_root / "raw" / "yf_names.parquet", index=False)
+    pd.DataFrame(
+        {"symbol": ["T05"], "security": ["Same Company Inc"], "gics_sector": ["Tech"]}
+    ).to_parquet(data_root / "processed" / "universe_constituents.parquet", index=False)
+
+    summary = build.build_e2_artifacts(
+        data_root=data_root, start=2024, include_garch=False, garch_tickers=0
+    )
+    assert summary["identity_dropped"] == []
+    assert summary["readded_kept"] == ["T05"]
+
+    review = pd.read_parquet(
+        data_root / "processed" / "ticker_identity_readded.parquet"
+    )
+    row = review.iloc[0]
+    assert row["decision"] == "keep_truncated"
+    assert pd.Timestamp(row["truncation_date"]) == pd.Timestamp("2024-09-03")
+
+    registry = json.loads((data_root / "models/registry.json").read_text())
+    params = registry["models"]["TS-v1"]["parameters"]
+    assert params["readded_kept"] == ["T05"]
+    assert params["identity_truncated"] == {"T05": "2024-09-03 00:00:00"}
+
+    # the review's own name is expected in the panel, so it is not a leak
+    loadings = pd.read_parquet(data_root / "models/TS-v1/loadings.parquet")
+    from efb import evaluate
+
+    findings = evaluate._identity_findings(data_root, loadings)
+    assert findings["kept_by_review"] == ["T05"]
+    assert findings["leaks"] == []
+
+
 def test_build_e2_artifact_list_includes_registry() -> None:
     assert "models/registry.json" in build.E2_ARTIFACTS
     assert "portfolios/seed_mom_ls.parquet" in build.E2_ARTIFACTS

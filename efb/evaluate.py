@@ -16,7 +16,7 @@ from typing import Any, TypedDict
 import numpy as np
 import pandas as pd
 
-from efb import hygiene, returns
+from efb import hygiene, identity, returns
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS_PATH = ROOT / "sprints" / "E1" / "RESULTS.json"
@@ -204,13 +204,28 @@ def write_results(
     still changes, such as the E2 zero tier when an E1 data correction
     moves the universe return. Their previous values come from
     `extra_previous`, the other sprint's own results file.
+
+    `revisions` also carries a `history` list, one entry per distinct data
+    hash, so a second correction to the same sprint does not overwrite the
+    first. Re-running a build without changing the data leaves the list
+    alone, which keeps the file stable under a repeated run.
     """
-    previous: dict[str, Any] = {}
+    prior: dict[str, Any] = {}
     if path.exists():
         try:
-            previous = json.loads(path.read_text()).get("criteria", {})
+            prior = json.loads(path.read_text())
         except json.JSONDecodeError:  # pragma: no cover - corrupt file
-            previous = {}
+            prior = {}
+    previous: dict[str, Any] = prior.get("criteria", {})
+    prior_revisions = prior.get("revisions")
+    history: list[dict[str, Any]] = []
+    if isinstance(prior_revisions, dict):
+        history = list(prior_revisions.get("history") or [])
+        if not history and prior_revisions.get("changed") is not None:
+            # the single comparison the earlier writer left behind becomes
+            # the first entry of the history rather than being lost, even
+            # when it recorded no data hash
+            history = [{k: v for k, v in prior_revisions.items() if k != "history"}]
     older = extra_previous or {}
 
     changed: dict[str, Any] = {}
@@ -233,19 +248,23 @@ def write_results(
         }
     moved = [key for key, block in changed.items() if block["changed"]]
 
+    entry = {
+        "previous_data_hash": previous_data_hash,
+        "data_hash": data_hash,
+        "n_changed": len(moved),
+        "changed_tickers_or_criteria": sorted(moved),
+        "cross_sprint_criteria": sorted(extra or {}),
+        "changed": changed,
+    }
+    if not history or history[-1].get("data_hash") != data_hash:
+        history.append(entry)
+
     payload = {
         "sprint": sprint,
         "evaluated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "data_hash": data_hash,
         "criteria": criteria,
-        "revisions": {
-            "previous_data_hash": previous_data_hash,
-            "data_hash": data_hash,
-            "n_changed": len(moved),
-            "changed_tickers_or_criteria": sorted(moved),
-            "cross_sprint_criteria": sorted(extra or {}),
-            "changed": changed,
-        },
+        "revisions": {**entry, "history": history},
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n")
@@ -440,6 +459,20 @@ E2_CRITERIA_TEXT = {
         "wins for more than 70% of names here, which would be an open "
         "decision for E5 rather than a change now."
     ),
+    "F2.6c": (
+        "Close-out C6, added 2026-09-10 and not pre-registered: for every "
+        "ticker the F2.6b identity check dropped, the changes table is "
+        "asked for an added row dated after the removal and the "
+        "constituents table for the name the symbol carries today. When "
+        "either exists, that name is compared with the yfinance holder. A "
+        "match means the symbol was renamed rather than taken over, so the "
+        "ticker returns to the universe with its history truncated to the "
+        "later of the re-add date and its first valid price; no match "
+        "means it stays dropped. The criterion passes when the current "
+        "constituents are covered by the estimation panel (returns.parquet) "
+        "at 501 of 503, the bar stated in the close-out brief, and when "
+        "the review itself is stored."
+    ),
 }
 
 E2_THRESHOLDS = {
@@ -458,6 +491,10 @@ E2_THRESHOLDS = {
     "F2.3b": (
         "GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% "
         "of names at horizon 1 and at horizon 21"
+    ),
+    "F2.6c": (
+        "current-constituent coverage of the estimation panel at or above 501 "
+        "of 503, with the re-add review stored"
     ),
 }
 
@@ -490,6 +527,7 @@ def evaluate_e2_criteria(
     f26b_unverified: int,
     f26b_reused: int,
     f26b_reused_tickers: list[str],
+    f26b_kept_by_review: list[str],
     f26b_dropped: list[str],
     f26b_truncated: dict[str, str],
     f26b_gaps: list[str],
@@ -498,6 +536,7 @@ def evaluate_e2_criteria(
     f23b_garch_fitted: int,
     f23b_garch_failed: int,
     f23b_day_level: dict[str, object],
+    f26c: ReaddedCoverage,
 ) -> dict[str, dict[str, Any]]:
     """Store the E2 criteria with numbers computed from the artifacts."""
 
@@ -641,6 +680,7 @@ def evaluate_e2_criteria(
                 "names_unverified": f26b_unverified,
                 "names_reused": f26b_reused,
                 "reused_tickers": f26b_reused_tickers,
+                "restored_by_the_c6_review": f26b_kept_by_review,
                 "dropped_by_build": f26b_dropped,
                 "truncated": f26b_truncated,
                 "gap_tickers": f26b_gaps,
@@ -692,6 +732,19 @@ def evaluate_e2_criteria(
                 "stays the production estimator."
             ),
         },
+        "F2.6c": {
+            "criterion": E2_CRITERIA_TEXT["F2.6c"],
+            "threshold": E2_THRESHOLDS["F2.6c"],
+            "stored_numbers": {**f26c},
+            "verdict": v(f26c["bar"] <= f26c["coverage"] and f26c["review_rows"] > 0),
+            "note": (
+                "Of the reused symbols, "
+                f"{len(f26c['kept'])} are the same company as the "
+                "symbol's current holder, so they came back with their "
+                "history truncated rather than dropped, and "
+                f"{len(f26c['stays_dropped'])} stays dropped."
+            ),
+        },
     }
 
 
@@ -733,6 +786,7 @@ class IdentityFindings(TypedDict):
     unverified: int
     reused: int
     reused_tickers: list[str]
+    kept_by_review: list[str]
     dropped: list[str]
     truncated: dict[str, str]
     gaps: list[str]
@@ -753,6 +807,7 @@ def _identity_findings(data_root: Path, loadings: pd.DataFrame) -> IdentityFindi
         "unverified": 0,
         "reused": 0,
         "reused_tickers": [],
+        "kept_by_review": [],
         "dropped": [],
         "truncated": {},
         "gaps": [],
@@ -765,27 +820,32 @@ def _identity_findings(data_root: Path, loadings: pd.DataFrame) -> IdentityFindi
     table = pd.read_parquet(path)
     dropped: list[str] = []
     truncated: dict[str, str] = {}
+    kept_by_review: list[str] = []
     registry_path = data_root / "models" / "registry.json"
     if registry_path.exists():
         registry = json.loads(registry_path.read_text())
         params = registry.get("models", {}).get("TS-v1", {}).get("parameters", {})
         dropped = list(params.get("identity_dropped", []))
         truncated = dict(params.get("identity_truncated", {}))
+        kept_by_review = list(params.get("readded_kept", []))
 
     reused = sorted(table.loc[table["reused"].astype(bool), "ticker"].tolist())
     verified = table["verified"].astype(bool)
     matched = int((verified & ~table["reused"].astype(bool)).sum())
     unverified = int((~verified).sum())
     in_panel = set(loadings.index)
-    # a reused name that is still in the estimated panel means the build
-    # did not apply the exclusion, whether or not it recorded the list
-    flagged = sorted(set(dropped) | set(reused))
+    # a name the build flagged and did not exclude, that the C6 review did
+    # not deliberately restore, means the exclusion was never applied. The
+    # names F2.6c put back are expected to be in the panel, so they are not
+    # leaks; F2.6c is the criterion that governs them.
+    flagged = (set(dropped) | set(reused)) - set(kept_by_review)
     return {
         "rows": int(len(table)),
         "matched": matched,
         "unverified": unverified,
         "reused": len(reused),
         "reused_tickers": reused,
+        "kept_by_review": sorted(kept_by_review),
         "dropped": dropped,
         "truncated": truncated,
         "gaps": sorted(table.loc[table["has_gap"].astype(bool), "ticker"].tolist()),
@@ -855,6 +915,83 @@ def _aligned_volatility(
             "n_name_days": day["n_name_days"],
             "by_year": day["by_year"],
         },
+    }
+
+
+class ReaddedCoverage(TypedDict):
+    """F2.6c: what the re-add review kept, and the coverage it produced."""
+
+    review_rows: int
+    kept: list[str]
+    stays_dropped: list[str]
+    n_current_dropped_by_c1: int
+    n_kept_current: int
+    n_current: int
+    n_covered: int
+    coverage: float
+    bar: float
+    missing: list[str]
+
+
+def _readded_coverage(data_root: Path) -> ReaddedCoverage:
+    """Coverage of the current constituents by the estimation panel (C6).
+
+    The review artifact is what the build acts on, so the criterion reads
+    it rather than recomputing the decisions, and the panel is
+    returns.parquet because a name can have prices and still be absent
+    from the returns the models see. The bar is the close-out brief's 501
+    of 503, recorded here so the verdict is not adjusted after the fact.
+    """
+    empty: ReaddedCoverage = {
+        "review_rows": 0,
+        "kept": [],
+        "stays_dropped": [],
+        "n_current_dropped_by_c1": 0,
+        "n_kept_current": 0,
+        "n_current": 0,
+        "n_covered": 0,
+        "coverage": 0.0,
+        "bar": 501 / 503,
+        "missing": [],
+    }
+    constituents_path = data_root / "processed" / "universe_constituents.parquet"
+    returns_path = data_root / "processed" / "returns.parquet"
+    if not constituents_path.exists() or not returns_path.exists():
+        return empty
+
+    constituents = pd.read_parquet(constituents_path)
+    returns_frame = pd.read_parquet(returns_path)
+    panel = hygiene.clean_returns(returns_frame).dropna().to_frame("r")
+    coverage = identity.panel_coverage(constituents, panel)
+    symbol = "symbol" if "symbol" in constituents.columns else "ticker"
+    current = set(constituents[symbol].dropna().astype(str))
+
+    review_path = data_root / "processed" / "ticker_identity_readded.parquet"
+    kept: list[str] = []
+    stays: list[str] = []
+    rows = 0
+    if review_path.exists():
+        review = pd.read_parquet(review_path)
+        if "decision" in review.columns:
+            rows = int(len(review))
+            kept = sorted(review.loc[review["decision"] == "keep_truncated", "ticker"])
+            stays = sorted(review.loc[review["decision"] == "stays_dropped", "ticker"])
+    # the reused symbols that are current constituents: the ones C1 dropped
+    # and C6 reviewed, which is where the coverage gain comes from
+    reviewed_current = [str(t) for t in kept if str(t) in current]
+    return {
+        "review_rows": rows,
+        "kept": [str(t) for t in kept],
+        "stays_dropped": [str(t) for t in stays],
+        "n_current_dropped_by_c1": len(
+            [t for t in list(kept) + list(stays) if str(t) in current]
+        ),
+        "n_kept_current": len(reviewed_current),
+        "n_current": int(coverage["n_current"]),
+        "n_covered": int(coverage["n_covered"]),
+        "coverage": float(coverage["coverage"]),
+        "bar": 501 / 503,
+        "missing": [str(t) for t in coverage["missing"]],
     }
 
 
@@ -1015,6 +1152,9 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     # F2.3b: the aligned evaluation, same 60% bar, matched horizons
     f23b = _aligned_volatility(data_root, returns_frame)
 
+    # F2.6c: the re-add review and the coverage it restores (C6)
+    f26c = _readded_coverage(data_root)
+
     return {
         "model_start": model_start,
         "coverage_years_stored": int(len(coverage)),
@@ -1043,6 +1183,7 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "f26b_unverified": f26b["unverified"],
         "f26b_reused": f26b["reused"],
         "f26b_reused_tickers": f26b["reused_tickers"],
+        "f26b_kept_by_review": f26b["kept_by_review"],
         "f26b_dropped": f26b["dropped"],
         "f26b_truncated": f26b["truncated"],
         "f26b_gaps": f26b["gaps"],
@@ -1051,6 +1192,7 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "f23b_garch_fitted": f23b["garch_fitted"],
         "f23b_garch_failed": f23b["garch_failed"],
         "f23b_day_level": f23b["day_level"],
+        "f26c": dict(f26c),
     }
 
 

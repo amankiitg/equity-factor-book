@@ -29,6 +29,9 @@ ARTIFACTS = [
     "processed/returns.parquet",
     "processed/universe_membership.parquet",
     "processed/universe_changes.parquet",
+    "processed/universe_constituents.parquet",
+    "processed/ticker_identity.parquet",
+    "processed/ticker_identity_readded.parquet",
     "processed/sectors.parquet",
     "processed/events.parquet",
 ]
@@ -156,6 +159,9 @@ def rebuild(
 
     # 3. Universe membership and sectors
     changes.to_parquet(processed_dir / "universe_changes.parquet", index=False)
+    constituents.to_parquet(
+        processed_dir / "universe_constituents.parquet", index=False
+    )
     members = universe.build_membership(changes, constituents, start=start, end=end)
     members.to_parquet(processed_dir / "universe_membership.parquet")
     sectors = universe.build_sectors(constituents, as_of=as_of)
@@ -167,8 +173,13 @@ def rebuild(
     factors_artifact.to_parquet(raw_dir / "factors_ff.parquet")
 
     # 5. Ticker identity, before returns are used by anything (C1, F2.6b)
+    # and the re-add review that restores renamed current constituents (C6)
     identity_table = identity.run(data_root, verbose=False)
-    identity_drops, identity_truncations = identity.exclusions(identity_table)
+    readded_path = processed_dir / "ticker_identity_readded.parquet"
+    readded_review = pd.read_parquet(readded_path) if readded_path.exists() else None
+    identity_drops, identity_truncations = identity.exclusions(
+        identity_table, readded=readded_review
+    )
 
     # 6. Returns and hygiene flags
     returns_frame = returns.compute_returns(prices_artifact, factors_artifact["rf"])
@@ -270,6 +281,7 @@ def build_e2_artifacts(
     broken = hygiene.series_break_tickers(prices_frame)
     identity_status = "skipped, no changes artifact"
     identity_table = pd.DataFrame()
+    readded_review = pd.DataFrame()
     changes_path = processed_dir / "universe_changes.parquet"
     if changes_path.exists():
         changes = pd.read_parquet(changes_path)
@@ -288,8 +300,40 @@ def build_e2_artifacts(
             processed_dir / "ticker_identity.parquet", index=False
         )
         identity_status = "applied"
+        # C6: the reused list is only final once the re-add and current
+        # member cases are checked, so E2 reuses E1's review when it exists
+        readded_path = processed_dir / "ticker_identity_readded.parquet"
+        constituents_path = processed_dir / "universe_constituents.parquet"
+        if readded_path.exists():
+            readded_review = pd.read_parquet(readded_path)
+        elif constituents_path.exists():
+            readded_review = identity.readded_review(
+                identity_table,
+                changes,
+                pd.read_parquet(constituents_path),
+                names,
+            )
+            readded_review.to_parquet(readded_path, index=False)
 
-    identity_drops, identity_truncations = identity.exclusions(identity_table)
+    readded_reviewed = 0
+    readded_kept: list[str] = []
+    readded_staying_dropped: list[str] = []
+    if "decision" in readded_review.columns:
+        readded_reviewed = int(len(readded_review))
+        readded_kept = sorted(
+            readded_review.loc[
+                readded_review["decision"] == "keep_truncated", "ticker"
+            ].tolist()
+        )
+        readded_staying_dropped = sorted(
+            readded_review.loc[
+                readded_review["decision"] == "stays_dropped", "ticker"
+            ].tolist()
+        )
+
+    identity_drops, identity_truncations = identity.exclusions(
+        identity_table, readded=readded_review
+    )
     if identity_truncations:
         returns_frame = identity.drop_truncated(returns_frame, identity_truncations)
 
@@ -468,6 +512,11 @@ def build_e2_artifacts(
             "identity_truncated": {
                 ticker: str(cutoff) for ticker, cutoff in identity_truncations.items()
             },
+            # C6: which reused symbols turned out to be the same company
+            # under a new name, and which stayed out of the panel
+            "readded_reviewed": readded_reviewed,
+            "readded_kept": readded_kept,
+            "readded_staying_dropped": readded_staying_dropped,
             "garch_fitted": len(aligned_fits["fitted"]),
             "garch_failed": len(aligned_fits["failed"]),
             "artifacts_hash": e2_data_hash,
@@ -489,6 +538,8 @@ def build_e2_artifacts(
         "identity_check": identity_status,
         "identity_dropped": identity_drops,
         "oos_start": oos_start,
+        "readded_reviewed": readded_reviewed,
+        "readded_kept": readded_kept,
     }
 
 
@@ -501,9 +552,14 @@ def rebuild_e2(
     e1 = rebuild(data_root=data_root, start="2010-01-04", results_path=None)
     e2 = build_e2_artifacts(data_root=data_root, start=start)
     artifact_paths = [data_root / rel for rel in ARTIFACTS + E2_ARTIFACTS]
+    version_path = data_root / "VERSION.json"
+    # the manifest hash about to be replaced, so the stored criteria carry
+    # the identifier of the data they were measured on. E2's version file
+    # covers E1 and E2 files, so the comparison is like for like
+    old_hash = previous_data_hash(version_path)
     payload = write_version(
         artifact_paths,
-        data_root / "VERSION.json",
+        version_path,
         note=(
             "Built by make rebuild-e2 (Sprint E2). E1 and E2 artifacts, each "
             "with a content hash; the dashboard sidebar shows this version."
@@ -514,7 +570,13 @@ def rebuild_e2(
 
         inputs = evaluate.compute_e2_from_artifacts(data_root=data_root)
         criteria = evaluate.evaluate_e2_criteria(**inputs)
-        evaluate.write_results(criteria, results_path, sprint="E2")
+        evaluate.write_results(
+            criteria,
+            results_path,
+            sprint="E2",
+            data_hash=payload["data_hash"],
+            previous_data_hash=old_hash,
+        )
     return {"n_steps": 8, "e1_tickers": e1["n_tickers"], "e2": e2, "version": payload}
 
 

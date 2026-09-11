@@ -227,3 +227,70 @@ date, reason.
   - Files: data/VERSION.json, data/models/registry.json,
     docs/research/E2_exposure_study.md, docs/hygiene_ledger.md
 
+
+## Close-out tasks, second pass (added 2026-09-11)
+
+Same rules as C1 to C5: a stored criterion is never reworded or re-scored,
+a new finding gets a new ID, and every changed number is written to
+docs/hygiene_ledger.md as old value, new value, date, reason.
+
+- [x] C6: Identity rule for re-added and current tickers, registered as F2.6c
+  - Acceptance: for every ticker on the C1 reused list, check whether it
+    is in the current constituents table and whether the changes table has
+    an added row dated after its removal. If either holds, compare the
+    added-row security name, or the constituents-table name when there is
+    no added row, with the yfinance holder name. On a match the ticker is
+    kept and its history truncated to start at the later of the re-add date
+    and the first valid price; on no match it stays dropped. The table
+    prints ticker, removed name, added name, current name, decision and
+    truncation date, and PCG, DD, FOX and FOXA all appear in it. F2.6c
+    passes when the current-constituent coverage of the estimation panel
+    (returns.parquet, not prices.parquet) is back at 100 percent minus the
+    two names E1 already documented. C2 is then re-run: make rebuild-e1, a
+    second entry in the E1 revisions history, the E1 walkthrough
+    re-executed, and the E1 Addendum extended, with F1.3 and F1.5 printed
+    before and after.
+  - Test: tests/test_identity.py (re-add detection, name match, truncation
+    date, stays dropped), tests/test_e2_results.py (F2.6c verdict),
+    tests/test_e1_revisions.py (history keeps both entries)
+  - Files: efb/identity.py, efb/build.py, efb/evaluate.py, tests
+
+- [x] C7: Volatility sample and period dependence, registered as F2.3c
+  - Acceptance: the alphabetical GARCH sample is replaced by a seeded
+    random sample of 100 tickers with full coverage over the out-of-sample
+    window; the seed and the non-converged list are printed; the evaluation
+    runs at horizons 1 and 21 against the same 60 percent bar. Separately,
+    and with no new criterion, EWMA(0.94), EWMA(0.97) and trailing 252 run
+    over the full history from MODEL_START, printing the EWMA(0.97) win
+    share against trailing by calendar year including 2020, and the
+    deliverable states whether the trailing-wins result depends on the
+    window.
+  - Test: tests/test_vol_alignment.py (seeded sample is reproducible and
+    fully covered, C7 verdict logic, full-history year table includes 2020)
+  - Files: efb/vol.py, efb/build.py, efb/evaluate.py, tests
+
+- [x] C8: Momentum book exposure timing
+  - Acceptance: (a) at each monthly rebalance the book's MOM exposure is
+    aggregated from rolling 252-day name-level betas dated at the
+    rebalance, and the time series is compared with the static full-sample
+    aggregate (0.0939 share) and the regression loading (0.2897), printing
+    the mean and range of the rolling-beta exposure; (b) the bias statistic
+    of the diagonal model for the book, realized 21-day forward vol over
+    the model's predicted vol, by year. The C4 ledger entry and the E3 open
+    item are rewritten so the root cause reads that static full-sample
+    betas cannot measure a dynamically sorted portfolio's exposure, with
+    conditional exposures as the primary fix and residual co-movement as
+    the secondary one, and the deliverable's close-out section is updated
+    to match.
+  - Test: tests/test_mom_sanity.py (rolling beta aggregate, exposure
+    history, bias statistic by year)
+  - Files: efb/portfolios.py, efb/build.py, docs/hygiene_ledger.md,
+    docs/open_items.md, docs/research/E2_exposure_study.md
+
+- [x] C9: Close-out, second pass
+  - Acceptance: make rebuild-e2 runs, VERSION.json and the TS-v1 registry
+    carry the new artifacts hash, the full test suite passes, and the
+    deliverable closes with a final line listing every criterion with its
+    verdict.
+  - Files: data/VERSION.json, data/models/registry.json,
+    docs/research/E2_exposure_study.md

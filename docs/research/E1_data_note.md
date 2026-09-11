@@ -214,3 +214,42 @@ true of F1.2 and F1.4.
 
 The walkthrough notebook was re-executed against the new artifacts and
 re-rendered at notebooks/E1_walkthrough.html.
+
+## Addendum 2: the second C2 re-run, after C6
+
+The close-out task C6 went back to the reused symbols C1 had excluded and
+asked, for each one, whether the symbol is a current index constituent or
+has an added row for the same ticker dated after its removal. Where the
+name on that side matches the yfinance holder, the symbol was renamed
+rather than taken over, so the ticker comes back with its history starting
+at the later of the re-add date and its first valid price. Three names
+return: FOX from 2019-03-13, FOXA from 2019-03-12 and PCG from 2022-10-03.
+DuPont (DD) stays out, because "DuPont" against "DuPont de Nemours, Inc."
+scores 0.33 against a 0.5 bar. The full review, with every removed and
+current name, is in sprints/E2/TICKER_REVIEW.md and the decision table is
+reproduced in docs/research/E2_exposure_study.md.
+
+E1 was rebuilt on the result and its criteria were re-measured. This is a
+second pass, so sprints/E1/RESULTS.json keeps a revisions history with one
+entry per data hash rather than a single old and new pair:
+
+| Criterion | Before C6 | After C6 | Verdict | Why |
+| --- | --- | --- | --- | --- |
+| F1.3 equal-weight vs market return correlation | 0.95655 | 0.95636 | pass | the universe return averages in three more series |
+| F1.5 fraction of deleted members recovered | 0.44789 | 0.44789 | fail | the restored names are current members, not deleted ones |
+| F1.5 survivorship bias, naive minus point-in-time | 365.81 bp/yr | 365.10 bp/yr | fail | the naive book gains three names with long histories |
+| F1.5, naive minus FF market | 377.20 bp/yr | 375.37 bp/yr | fail | same correction |
+| F1.5, point-in-time minus FF market | 9.36 bp/yr | 8.24 bp/yr | fail | same correction |
+| F1.1, F1.2, F1.4 | unchanged | unchanged | unchanged | they read the price artifact, which this correction does not touch |
+
+All four E1 verdicts are unchanged, and the movements are a fraction of a
+basis point per year. The direction is the expected one: three large
+current constituents back in the naive universe pull its return closer to
+the market, so the measured survivorship gap shrinks slightly rather than
+growing. The prices artifact is byte for byte identical again, verified by
+the content hashes in data/VERSION.json, so every movement traces to the
+membership of the return panel.
+
+The estimation panel now covers 502 of the 503 current constituents, up
+from 499, with DD the only gap. The E1 walkthrough notebook was re-executed
+against the new artifacts and re-rendered at notebooks/E1_walkthrough.html.

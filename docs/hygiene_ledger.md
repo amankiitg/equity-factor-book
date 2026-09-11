@@ -284,3 +284,65 @@ co-movement is thrown away. The book is mostly a momentum factor
 exposure. The realized residual covariance that would fix this belongs to
 E3, which owns the cross-sectional risk model, and is recorded in
 docs/open_items.md.
+
+## 2026-09-10: four current constituents were renames, not reused symbols
+
+Decision. The C6 review restores three of the 36 reused symbols to the
+estimation panel with their history truncated, and leaves the rest
+dropped. New criterion F2.6c records the outcome and passes. F2.6b keeps
+its text, threshold and verdict and is re-measured.
+
+Old value: 36 reused symbols, all 36 dropped by the build, F2.6b
+dropped_by_build listing 36 tickers, truncated list empty, no F2.6c.
+Current-constituent coverage of returns.parquet 499 of 503 (99.20%).
+
+New value: 36 reused symbols, 33 dropped and 3 kept. FOX kept from
+2019-03-13, FOXA from 2019-03-12, PCG from 2022-10-03. F2.6b
+dropped_by_build lists 33 tickers and records the three restorations.
+F2.6c: 502 of 503 covered (99.80%) against the brief's bar of 501 of 503
+(99.602%), one name missing (DD).
+
+Reason. A reused symbol that is a current constituent, or that has an
+added row for the same ticker dated after its removal, has a second name
+to compare with the yfinance holder. Where the two names match, the symbol
+was renamed rather than taken over, so the history belongs to the company
+in the index and only its start date needs fixing. FOX and FOXA are the
+share classes spun out of 21st Century Fox in March 2019 and PCG is the
+utility readmitted in October 2022. DD stays out because "DuPont" against
+"DuPont de Nemours, Inc." scores 0.33, below the 0.5 bar; a subset-style
+matcher would keep it but would also re-score F2.6b's stored 93 matches
+and 244 unverified names without new evidence, so the matcher is
+unchanged. The three restorations are why F2.6b's leak check now treats a
+name the review kept as expected rather than as a failed exclusion;
+without that change F2.6b would fail on the three names F2.6c puts back.
+
+## 2026-09-10: E1 restated a second time, and F2.3b's baseline moves
+
+Decision. E1's criteria are re-measured on the panel with the three
+restored names. No criterion text, threshold or verdict changes.
+
+Old value: F1.3 0.95655, F1.5 fraction recovered 0.44789, F1.5 naive minus
+point-in-time 365.81 bp/yr, naive minus FF market 377.20 bp/yr,
+point-in-time minus FF market 9.36 bp/yr. E2 side: F2.1 0.92389, F2.2
+mean pairwise 0.015362, F2.4 mean bias 1.022108, F2.5 Newey-West share
+0.963208, F2.3b trailing 63d baseline win share 0.366776 at horizon 1 and
+0.307566 at horizon 21.
+
+New value: F1.3 0.95636, F1.5 fraction recovered 0.44789, F1.5 naive minus
+point-in-time 365.10 bp/yr, naive minus FF market 375.37 bp/yr,
+point-in-time minus FF market 8.24 bp/yr. E2 side: F2.1 0.924361, F2.2
+mean pairwise 0.015618, F2.4 mean bias 1.022533 with every year moving in
+the fourth decimal, F2.5 Newey-West share 0.963376, F2.3b trailing 63d
+baseline win share 0.366612 at horizon 1 and 0.307692 at horizon 21.
+
+Reason. Restoring three names changes the universe return and the
+estimation panel, so both sprints' criteria move together. The movements
+are small, a few basis points on E1 and under a tenth of a percent on
+each E2 number, which is the scale expected from adding 3 names to a
+500-name universe. The GARCH and EWMA win shares themselves do not move;
+only the trailing baseline they are measured against does, and no verdict
+changes anywhere. The E1 revisions history now carries three entries, one
+per data hash, including the intermediate build (6d24107521893114) that
+was made before the add-row filter in the review was fixed and that
+changed nothing. That entry is kept rather than deleted because the chain
+of data hashes is the record.
