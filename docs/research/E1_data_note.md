@@ -163,3 +163,54 @@ data stack, not an accident waiting to corrupt a model.
   cross-check remains null.
 - Sectors and shares outstanding are not point-in-time; any factor that
   needs historical sectors or shares must bring its own vintage source.
+
+## Addendum, 2026-09-10: restated on corrected data
+
+Everything above was written before the ticker identity check existed, and
+it is left as written. This addendum states what changed and why.
+
+What was wrong. A ticker symbol is not an identity. When an S&P 500 member
+is acquired or delisted its symbol can be taken by an unrelated listing,
+and the vendor then splices both companies into one price history. Four
+names had a level break no split could explain (CPWR, EP, MI, POM) and 32
+more had a name mismatch with clean prices, where the vendor hides the
+splice by keeping only one company's history. The close-out task C1
+compared every removed security name in the Wikipedia changes table with
+the current holder of that symbol on yfinance and found 36 reused symbols
+out of 373 removed tickers; 244 more have no listing today and could not
+be checked either way. The full table is in sprints/E2/PROBES.md.
+
+What the fix does. Those 36 tickers no longer contribute returns:
+returns.parquet drops their rows (858 tickers before, 822 now) and their
+events go with them. The membership matrix is untouched, because they
+really were members; only their prices are unusable. Nothing is silently
+overwritten: the flags, the raw prices and the ledger all stay as they
+were.
+
+What moved. sprints/E1/RESULTS.json now carries a revisions block with
+the old value, the new value, and the data hash of each, so the change is
+on the record rather than in a commit message:
+
+| Criterion | Before | After | Verdict | Why |
+| --- | --- | --- | --- | --- |
+| F1.3 equal-weight vs market return correlation | 0.95575 | 0.95655 | pass | the universe return no longer averages in 36 spliced series |
+| F1.5 survivorship bias, naive minus point-in-time | 349.67 bp/yr | 365.81 bp/yr | fail | the same 36 names leave the backtest universe |
+| F1.5, point-in-time minus FF market | 20.75 bp/yr | 9.36 bp/yr | fail | the point-in-time book is cleaner, so less of the gap is left to measure |
+| F1.1, F1.2, F1.4 | unchanged | unchanged | unchanged | they read the price artifact, which this correction does not touch |
+
+The bias got larger, not smaller, which is the honest direction: some of
+the deleted members that were previously counted had fabricated histories,
+and removing them leaves fewer recovered names out of the same deleted
+set. F1.5 fails on both runs, so no verdict changed.
+
+The prices artifact is byte for byte identical to the previous build,
+verified by the content hashes in data/VERSION.json, so every movement
+traces to the exclusions and not to a data refresh. The equal-weight
+universe return, which F1.3 correlates against the market, is the other
+object that changed: it is now an average over the 822 tickers with usable
+history. The ten-year coverage fraction in F1.1 did not move, because it
+reads first-available price dates rather than returns, and the same is
+true of F1.2 and F1.4.
+
+The walkthrough notebook was re-executed against the new artifacts and
+re-rendered at notebooks/E1_walkthrough.html.

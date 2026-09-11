@@ -175,13 +175,77 @@ def evaluate_criteria(
     return {"F1.1": f11, "F1.2": f12, "F1.3": f13, "F1.4": f14, "F1.5": f15}
 
 
+def _measurement(criterion: dict[str, Any]) -> dict[str, Any]:
+    """The parts of a stored criterion that a re-run can change."""
+    out: dict[str, Any] = {"verdict": criterion.get("verdict")}
+    for key in ("stored_number", "stored_numbers"):
+        if key in criterion:
+            out[key] = criterion[key]
+    return out
+
+
 def write_results(
-    criteria: dict[str, dict[str, Any]], path: Path, sprint: str = "E1"
+    criteria: dict[str, dict[str, Any]],
+    path: Path,
+    sprint: str = "E1",
+    data_hash: str | None = None,
+    previous_data_hash: str | None = None,
+    extra: dict[str, dict[str, Any]] | None = None,
+    extra_previous: dict[str, dict[str, Any]] | None = None,
 ) -> None:
+    """Store the criteria, keeping the previous measurement alongside.
+
+    A criterion is never reworded or re-scored, so when a data correction
+    moves a number the old and the new value both stay on the record with
+    the data hash that produced each. Rewriting the file with only the new
+    numbers would erase the evidence that anything moved.
+
+    `extra` carries criteria owned by another sprint that this rebuild
+    still changes, such as the E2 zero tier when an E1 data correction
+    moves the universe return. Their previous values come from
+    `extra_previous`, the other sprint's own results file.
+    """
+    previous: dict[str, Any] = {}
+    if path.exists():
+        try:
+            previous = json.loads(path.read_text()).get("criteria", {})
+        except json.JSONDecodeError:  # pragma: no cover - corrupt file
+            previous = {}
+    older = extra_previous or {}
+
+    changed: dict[str, Any] = {}
+    for key, criterion in criteria.items():
+        old = _measurement(previous[key]) if key in previous else None
+        new = _measurement(criterion)
+        changed[key] = {
+            "changed": old is not None and old != new,
+            "old": old,
+            "new": new,
+        }
+    for key, criterion in (extra or {}).items():
+        old = _measurement(older[key]) if key in older else None
+        new = _measurement(criterion)
+        changed[key] = {
+            "changed": old is not None and old != new,
+            "old": old,
+            "new": new,
+            "sprint": "E2",
+        }
+    moved = [key for key, block in changed.items() if block["changed"]]
+
     payload = {
         "sprint": sprint,
         "evaluated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "data_hash": data_hash,
         "criteria": criteria,
+        "revisions": {
+            "previous_data_hash": previous_data_hash,
+            "data_hash": data_hash,
+            "n_changed": len(moved),
+            "changed_tickers_or_criteria": sorted(moved),
+            "cross_sprint_criteria": sorted(extra or {}),
+            "changed": changed,
+        },
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n")
@@ -852,6 +916,18 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "f26b_gaps": f26b["gaps"],
         "f26b_leaks": f26b["leaks"],
     }
+
+
+def zero_tier_criteria(data_root: Path = ROOT / "data") -> dict[str, dict[str, Any]]:
+    """F2.0a to F2.0c, evaluated on their own.
+
+    An E1 rebuild changes the universe return, which moves these three
+    criteria even though they belong to E2. They are computed here so the
+    E1 re-store can record their old and new values side by side without
+    reaching into the E2 evaluation.
+    """
+    criteria = evaluate_e2_criteria(**compute_e2_from_artifacts(data_root))
+    return {key: criteria[key] for key in ("F2.0a", "F2.0b", "F2.0c")}
 
 
 def main_e2() -> None:

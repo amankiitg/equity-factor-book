@@ -164,7 +164,14 @@ def _yfinance_fetcher(symbol: str) -> dict:  # pragma: no cover - network
 
 
 def removal_dates(changes: pd.DataFrame) -> dict[str, pd.Timestamp]:
-    """First removal date per removed ticker, the end of the original stint."""
+    """First removal date per removed ticker, the end of the original stint.
+
+    A fixture or an older changes table may not carry the removal columns
+    at all, in which case there is nothing to check and the caller gets an
+    empty mapping rather than an error.
+    """
+    if "removed_ticker" not in changes.columns:
+        return {}
     removed = changes.dropna(subset=["removed_ticker"])
     out: dict[str, pd.Timestamp] = {}
     for row in removed.itertuples(index=False):
@@ -177,6 +184,10 @@ def removal_dates(changes: pd.DataFrame) -> dict[str, pd.Timestamp]:
 
 def removal_names(changes: pd.DataFrame) -> dict[str, str]:
     """Security name recorded on the removal row per ticker."""
+    if "removed_ticker" not in changes.columns or "removed_security" not in (
+        changes.columns
+    ):
+        return {}
     removed = changes.dropna(subset=["removed_ticker"])
     out: dict[str, str] = {}
     for row in removed.itertuples(index=False):
@@ -380,11 +391,20 @@ REPORT_COLUMNS = [
 def run(data_root: Path | str = "data", verbose: bool = True) -> pd.DataFrame:
     """Identity check end to end: fetch names, build the table, save it."""
     root = Path(data_root)
-    changes = pd.read_parquet(root / "processed" / "universe_changes.parquet")
+    changes_path = root / "processed" / "universe_changes.parquet"
+    if not changes_path.exists():
+        if verbose:
+            print("=== C1 ticker identity: skipped, no changes artifact ===")
+        return pd.DataFrame()
+    changes = pd.read_parquet(changes_path)
+    tickers = sorted(set(removal_names(changes)))
+    if not tickers:
+        if verbose:
+            print("=== C1 ticker identity: no removed tickers to check ===")
+        return pd.DataFrame()
+
     prices = pd.read_parquet(root / "raw" / "prices.parquet")
     members = pd.read_parquet(root / "processed" / "universe_membership.parquet")
-
-    tickers = sorted(set(changes["removed_ticker"].dropna().astype(str)))
     names = fetch_symbol_names(tickers, cache_path=root / "raw" / "yf_names.parquet")
     table = identity_table(
         changes,

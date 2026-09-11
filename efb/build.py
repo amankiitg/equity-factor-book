@@ -63,6 +63,37 @@ def hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def combined_hash(artifacts: dict[str, dict[str, object]]) -> str:
+    """One hash over every artifact hash, the data hash of a build."""
+    digest = hashlib.sha256()
+    for name in sorted(artifacts):
+        digest.update(name.encode())
+        digest.update(str(artifacts[name].get("sha256", "")).encode())
+    return digest.hexdigest()
+
+
+def previous_data_hash(path: Path, restrict: list[str] | None = None) -> str | None:
+    """Data hash of the manifest that is about to be replaced.
+
+    `restrict` limits the comparison to the artifact names this build
+    writes, so an E1 rebuild that replaces an E1 plus E2 manifest still
+    compares like with like rather than hashing twenty files against
+    seven.
+    """
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+    except json.JSONDecodeError:  # pragma: no cover - corrupt manifest
+        return None
+    artifacts = payload.get("artifacts", {})
+    if restrict is not None:
+        artifacts = {k: v for k, v in artifacts.items() if k in set(restrict)}
+    if not artifacts:
+        return None
+    return combined_hash(artifacts)
+
+
 def write_version(artifact_paths: list[Path], out_path: Path, note: str) -> dict:
     """Write data/VERSION.json with a content hash of every artifact."""
     artifacts: dict[str, dict[str, object]] = {}
@@ -74,6 +105,7 @@ def write_version(artifact_paths: list[Path], out_path: Path, note: str) -> dict
     payload = {
         "note": note,
         "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "data_hash": combined_hash(artifacts),
         "artifacts": artifacts,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,21 +157,36 @@ def rebuild(
     factors_artifact = factors.build_factors_artifact(frames, start=start)
     factors_artifact.to_parquet(raw_dir / "factors_ff.parquet")
 
-    # 5. Returns and hygiene flags
+    # 5. Ticker identity, before returns are used by anything (C1, F2.6b)
+    identity_table = identity.run(data_root, verbose=False)
+    identity_drops, identity_truncations = identity.exclusions(identity_table)
+
+    # 6. Returns and hygiene flags
     returns_frame = returns.compute_returns(prices_artifact, factors_artifact["rf"])
+    if identity_truncations:
+        returns_frame = identity.drop_truncated(returns_frame, identity_truncations)
+    if identity_drops:
+        # a reused symbol carries another company's history, so the member's
+        # returns are missing rather than wrong: keep the rows out entirely
+        returns_frame = returns_frame[
+            ~returns_frame.index.isin(identity_drops, level="ticker")
+        ]
     returns_frame = hygiene.apply_flags(returns_frame)
     returns_frame.to_parquet(processed_dir / "returns.parquet")
 
-    # 6. Event log
+    # 7. Event log
     membership_events = universe.membership_changes(members)
     events = hygiene.build_events(prices_artifact, returns_frame, membership_events)
     events.to_parquet(processed_dir / "events.parquet")
 
-    # 7. Version file
+    # 8. Version file
+    version_path = data_root / "VERSION.json"
+    e1_names = [Path(rel).name for rel in ARTIFACTS]
+    old_hash = previous_data_hash(version_path, restrict=e1_names)
     artifact_paths = [data_root / rel for rel in ARTIFACTS]
     payload = write_version(
         artifact_paths,
-        data_root / "VERSION.json",
+        version_path,
         note=(
             "Built by make rebuild-e1 (Sprint E1). Every data artifact "
             "carries a content hash here; the dashboard sidebar shows "
@@ -147,15 +194,33 @@ def rebuild(
         ),
     )
 
-    # 8. F criteria, stored so the numbers and the artifacts always agree
+    # 9. F criteria, stored so the numbers and the artifacts always agree
     if results_path is not None:
         from efb import evaluate
 
         inputs = evaluate.compute_from_artifacts(data_root=data_root)
         criteria = evaluate.evaluate_criteria(**inputs)
-        evaluate.write_results(criteria, results_path)
+        # the same correction moves the E2 zero tier, so its old and new
+        # values are recorded here too, against the E2 file's own history
+        e2_path = data_root.parent / "sprints" / "E2" / "RESULTS.json"
+        e2_previous: dict[str, dict[str, object]] = {}
+        if e2_path.exists():
+            e2_previous = json.loads(e2_path.read_text()).get("criteria", {})
+        evaluate.write_results(
+            criteria,
+            results_path,
+            data_hash=payload["data_hash"],
+            previous_data_hash=old_hash,
+            extra=evaluate.zero_tier_criteria(data_root),
+            extra_previous=e2_previous,
+        )
 
-    return {"n_steps": 7, "version": payload, "n_tickers": len(tickers)}
+    return {
+        "n_steps": 8,
+        "version": payload,
+        "n_tickers": len(tickers),
+        "identity_dropped": identity_drops,
+    }
 
 
 def build_e2_artifacts(
