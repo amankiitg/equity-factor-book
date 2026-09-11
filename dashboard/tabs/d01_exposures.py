@@ -52,7 +52,24 @@ def loadings_table(loadings: pd.DataFrame, se: pd.DataFrame) -> pd.DataFrame:
 
 
 def beta_overlay(history: pd.DataFrame, ticker: str) -> pd.DataFrame:
-    """Raw, Vasicek and Blume beta history for one ticker."""
+    """Raw, Vasicek and Blume beta history for one ticker.
+
+    `beta_history.parquet` is written long, one row per (date, method,
+    ticker), so it has to be pivoted here. Reading it as if method were a
+    column level found nothing and drew an empty chart, which is how this
+    was found.
+    """
+    if {"date", "method", "ticker", "beta"} <= set(history.columns):
+        rows = history[history["ticker"] == ticker]
+        frame = rows.pivot(index="date", columns="method", values="beta")
+        out = {
+            method: frame[method]
+            for method in ("raw", "vasicek", "blume")
+            if method in frame.columns
+        }
+        overlay = pd.DataFrame(out)
+        overlay.index.name = "date"
+        return overlay
     out = {}
     for method in ("raw", "vasicek", "blume"):
         if (method, ticker) in history.columns:

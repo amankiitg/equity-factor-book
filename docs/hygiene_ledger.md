@@ -522,3 +522,55 @@ this is that record. A second rebuild on the same data produced the same
 data hash, appended no history entry and reported zero changed criteria,
 which is the proof that the numbers in the deliverable can be re-derived
 rather than trusted.
+
+## 2026-09-11: the D1 rolling-beta panel read a shape the build never writes
+
+Decision. dashboard/tabs/d01_exposures.py now pivots beta_history.parquet
+from its long form before drawing the rolling beta chart. No data artifact
+changes, so no hash moves.
+
+Old value: beta_overlay() looked for (method, ticker) column levels, which
+beta_history.parquet does not have: the artifact is written long, one row
+per (date, method, ticker). The lookup found no columns, so the D1 panel
+drew an empty chart with an empty legend while every other D1 panel
+worked.
+
+New value: beta_overlay() returns the three method columns for a ticker
+from the long artifact. On JPM it returns 201 rows over raw, vasicek and
+blume, asserted in tests/test_dashboard_d1.py, which also keeps the wide
+form working for callers that pass it.
+
+Reason. This was found while writing the E2 walkthrough section that maps
+every D1 panel to the parquet columns it reads. The map made the mismatch
+visible: the artifact has method as a column, the panel treated it as a
+column level. The check in the walkthrough now executes every D1 panel
+builder against the current artifacts and fails if a read comes back
+empty, so the same defect cannot return unnoticed.
+
+## 2026-09-11: the E2 walkthrough is rebuilt against the close-out data
+
+Decision. notebooks/E2_walkthrough.ipynb is regenerated from scratch
+against data hash 51f0faa935cb57e8, executed, rendered to
+notebooks/E2_walkthrough.html, and linked from the Methodology tab as
+before. It replaces the C1 to C4 version.
+
+Old value: the previous walkthrough reproduced C1 to C4 against the
+pre-close-out data and cited the numbers as they stood then.
+
+New value: twelve sections covering the three research questions, the
+by-hand derivations on AAPL, XOM and JPM, the full volatility arc through
+F2.3, F2.3b and F2.3c, the exposure-timing result from C8, the data
+integrity trail, all thirteen criteria, the dashboard D1 column map, the
+nine tables the deliverable cites, what E3 inherits, and the credit port
+note. 135 numeric checks run inside the notebook, every one asserting a
+printed value against its artifact, and five more run after execution in
+tests/test_e2_walkthrough_notebook.py.
+
+Reason. The brief for this notebook is that no figure is typed by hand.
+That is now mechanical rather than a promise: the closing cell collects
+every stored value from sprints/E1/RESULTS.json and sprints/E2/RESULTS.json
+into a forbidden-literal set (212 entries) and asserts none of them appears
+in any code cell, and the post-execution test asserts that the full
+precision form of every stored value appears in the printed output. If C6
+had moved F1.3 again, the notebook would have failed at the assert rather
+than reported a stale figure.

@@ -1,5 +1,9 @@
 """Tests for Task 7: dashboard D1 panel builders (parquet in, tables out)."""
 
+from __future__ import annotations
+
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -124,3 +128,40 @@ def test_modules_import() -> None:
     import dashboard.app  # noqa: F401
 
     assert callable(d01_exposures.render)
+
+
+def test_beta_overlay_reads_the_long_artifact_the_build_writes() -> None:
+    """The build writes beta_history.parquet long, not with column levels.
+
+    Reading it as wide found no columns and drew an empty chart on D1.
+    """
+    dates = pd.bdate_range("2024-01-31", periods=3)
+    rows = [
+        {"date": d, "method": m, "ticker": "AAA", "beta": v}
+        for d, values in zip(
+            dates,
+            [(1.0, 0.9, 1.0), (1.1, 1.0, 1.06), (1.2, 1.1, 1.13)],
+            strict=True,
+        )
+        for m, v in zip(("raw", "vasicek", "blume"), values, strict=True)
+    ]
+    rows.append({"date": dates[-1], "method": "raw", "ticker": "BBB", "beta": 0.5})
+    history = pd.DataFrame(rows)
+    out = d01_exposures.beta_overlay(history, "AAA")
+    assert list(out.columns) == ["raw", "vasicek", "blume"]
+    assert len(out) == 3
+    assert out["raw"].iloc[-1] == pytest.approx(1.2)
+    assert out["vasicek"].iloc[-1] == pytest.approx(1.1)
+    assert "BBB" not in out.columns
+
+
+def test_beta_overlay_on_the_stored_artifact_returns_rows() -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = root / "data" / "models" / "TS-v1" / "beta_history.parquet"
+    if not path.exists():
+        pytest.skip("E2 artifacts not built yet")
+    history = pd.read_parquet(path)
+    out = d01_exposures.beta_overlay(history, "JPM")
+    assert list(out.columns) == ["raw", "vasicek", "blume"]
+    assert len(out) > 100
+    assert out["raw"].notna().sum() > 100
