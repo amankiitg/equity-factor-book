@@ -473,6 +473,20 @@ E2_CRITERIA_TEXT = {
         "at 501 of 503, the bar stated in the close-out brief, and when "
         "the review itself is stored."
     ),
+    "F2.3c": (
+        "Close-out C7, added 2026-09-10 and not pre-registered: the same "
+        "60 percent bar as F2.3b, evaluated on a seeded random sample of "
+        "100 names with full coverage over the out-of-sample window rather "
+        "than on the alphabetical head of the universe, which is not a "
+        "sample of anything. The seed, the sample size, the number of fits "
+        "that converged and the names that did not are stored with the "
+        "result. GARCH and EWMA(0.94) each have to beat the trailing 252d "
+        "baseline for more than 60 percent of the names at horizon 1 and "
+        "at horizon 21. The criterion exists because F2.3 and F2.3b were "
+        "measured on a sample chosen by ticker order, and the point of a "
+        "sample is to be chosen at random from the names that can be "
+        "scored."
+    ),
 }
 
 E2_THRESHOLDS = {
@@ -495,6 +509,11 @@ E2_THRESHOLDS = {
     "F2.6c": (
         "current-constituent coverage of the estimation panel at or above 501 "
         "of 503, with the re-add review stored"
+    ),
+    "F2.3c": (
+        "GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% "
+        "of a seeded random sample of 100 fully covered names at horizon 1 and "
+        "at horizon 21"
     ),
 }
 
@@ -537,11 +556,28 @@ def evaluate_e2_criteria(
     f23b_garch_failed: int,
     f23b_day_level: dict[str, object],
     f26c: ReaddedCoverage,
+    f23c: SeededSampleFindings,
 ) -> dict[str, dict[str, Any]]:
     """Store the E2 criteria with numbers computed from the artifacts."""
 
     def v(ok: bool) -> str:
         return "pass" if ok else "fail"
+
+    shares = f23c["win_shares"]
+    garch_h1 = shares.get("1", {}).get("garch", float("nan"))
+    garch_h21 = shares.get("21", {}).get("garch", float("nan"))
+    f23c_note = (
+        f"Seed {f23c['seed']}, sample of {f23c['sample_size']} names drawn "
+        f"from the {f23c['n_fully_covered']} with full coverage over the "
+        f"window, {f23c['garch_fitted']} fits converging and "
+        f"{f23c['garch_failed']} not "
+        f"({', '.join(f23c['not_converged']) or 'none'}). The GARCH win "
+        f"share is sample-dependent: {garch_h1:.1%} at horizon 1 on this "
+        "sample against 46.7% on the alphabetical 60 that F2.3b first used, "
+        f"and {garch_h21:.1%} at horizon 21, but EWMA(0.94) is nowhere near "
+        "the bar at either horizon, so the verdict does not turn on the "
+        "sample."
+    )
 
     return {
         "F2.0a": {
@@ -745,6 +781,21 @@ def evaluate_e2_criteria(
                 f"{len(f26c['stays_dropped'])} stays dropped."
             ),
         },
+        "F2.3c": {
+            "criterion": E2_CRITERIA_TEXT["F2.3c"],
+            "threshold": E2_THRESHOLDS["F2.3c"],
+            "stored_numbers": {**f23c},
+            "verdict": v(
+                bool(f23c["sample"])
+                and len(shares) >= 2
+                and all(
+                    block.get(method, 0.0) > 0.6
+                    for block in shares.values()
+                    for method in ("garch", "ewma_094")
+                )
+            ),
+            "note": f23c_note,
+        },
     }
 
 
@@ -931,6 +982,61 @@ class ReaddedCoverage(TypedDict):
     coverage: float
     bar: float
     missing: list[str]
+
+
+class SeededSampleFindings(TypedDict):
+    """F2.3c: the sample the GARCH evaluation was drawn from and scored on."""
+
+    seed: int
+    sample_size: int
+    sample: list[str]
+    n_fully_covered: int
+    garch_fitted: int
+    garch_failed: int
+    not_converged: list[str]
+    win_shares: dict[str, dict[str, float]]
+    oos_start: str
+
+
+def _seeded_sample_findings(
+    data_root: Path,
+    returns_frame: pd.DataFrame,
+    aligned: AlignedVolatility,
+) -> SeededSampleFindings:
+    """F2.3c: what the seeded sample was, and how the two methods scored.
+
+    The sample is not described here, it is reported: the seed, the size,
+    how many names were eligible, which fits converged and which did not,
+    all read from the registry entry the build wrote, so the stored
+    criterion and the run that produced it cannot drift apart. The win
+    shares come from the same aligned table F2.3b reads, because the two
+    criteria differ in what they pin down, not in what they measure.
+    """
+    from efb import vol as vol_mod
+
+    registry_path = data_root / "models" / "registry.json"
+    params: dict[str, Any] = {}
+    if registry_path.exists():
+        entry = json.loads(registry_path.read_text())
+        params = entry.get("models", {}).get("TS-v1", {}).get("parameters", {})
+
+    sample = [str(t) for t in params.get("garch_sample_tickers", [])]
+    # how many names the draw was made from, recomputed so the eligible
+    # count is not taken on trust from the run being checked
+    wide = hygiene.clean_returns(returns_frame).unstack("ticker")
+    oos_start = (wide.index.max() - pd.DateOffset(years=2)).strftime("%Y-%m-%d")
+    eligible = vol_mod.covered_tickers(wide, oos_start)
+    return {
+        "seed": int(params.get("garch_seed", 0)),
+        "sample_size": int(params.get("garch_sample_size", len(sample))),
+        "sample": sample,
+        "n_fully_covered": len(eligible),
+        "garch_fitted": int(params.get("garch_fitted", 0)),
+        "garch_failed": int(params.get("garch_failed", 0)),
+        "not_converged": [str(t) for t in params.get("garch_not_converged", [])],
+        "win_shares": aligned["win_shares"],
+        "oos_start": oos_start,
+    }
 
 
 def _readded_coverage(data_root: Path) -> ReaddedCoverage:
@@ -1155,6 +1261,9 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     # F2.6c: the re-add review and the coverage it restores (C6)
     f26c = _readded_coverage(data_root)
 
+    # F2.3c: the same evaluation on the seeded, fully covered sample (C7)
+    f23c = _seeded_sample_findings(data_root, returns_frame, f23b)
+
     return {
         "model_start": model_start,
         "coverage_years_stored": int(len(coverage)),
@@ -1193,6 +1302,7 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "f23b_garch_failed": f23b["garch_failed"],
         "f23b_day_level": f23b["day_level"],
         "f26c": dict(f26c),
+        "f23c": f23c,
     }
 
 

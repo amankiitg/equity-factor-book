@@ -69,6 +69,28 @@ def _inputs(**overrides):
             "bar": 501 / 503,
             "missing": ["DD"],
         },
+        f23c={
+            "seed": 20260910,
+            "sample_size": 100,
+            "sample": ["AAPL", "MSFT", "XOM"],
+            "n_fully_covered": 599,
+            "garch_fitted": 98,
+            "garch_failed": 2,
+            "not_converged": ["LW", "RDDT"],
+            "win_shares": {
+                "1": {
+                    "garch": 0.6122448979591837,
+                    "ewma_094": 0.35403726708074534,
+                    "ewma_097": 0.5196687370600414,
+                },
+                "21": {
+                    "garch": 0.4897959183673469,
+                    "ewma_094": 0.19875776397515527,
+                    "ewma_097": 0.34368530020703936,
+                },
+            },
+            "oos_start": "2024-09-03",
+        },
     )
     base.update(overrides)
     return base
@@ -89,6 +111,7 @@ def test_all_nine_criteria_present_with_valid_verdicts() -> None:
         "F2.6",
         "F2.6b",
         "F2.6c",
+        "F2.3c",
     }
     for key, value in criteria.items():
         assert value["verdict"] in {"pass", "fail"}, key
@@ -214,6 +237,13 @@ def test_passing_configuration() -> None:
                 "1": {"garch": 0.7, "ewma_094": 0.65},
                 "21": {"garch": 0.72, "ewma_094": 0.66},
             },
+            f23c={
+                **_inputs()["f23c"],
+                "win_shares": {
+                    "1": {"garch": 0.7, "ewma_094": 0.65},
+                    "21": {"garch": 0.72, "ewma_094": 0.66},
+                },
+            },
         )
     )
     assert all(value["verdict"] == "pass" for value in criteria.values())
@@ -277,6 +307,53 @@ def test_f26c_does_not_reword_f26b() -> None:
     assert criteria["F2.6c"]["criterion"].startswith("Close-out C6")
 
 
+def test_f23c_needs_both_methods_on_the_seeded_sample() -> None:
+    # the fixture is the real result: GARCH clears 60 percent at horizon 1
+    # on this sample but EWMA(0.94) is nowhere near it, and neither clears
+    # at horizon 21, so the criterion fails
+    criteria = evaluate.evaluate_e2_criteria(**_inputs())
+    assert criteria["F2.3c"]["verdict"] == "fail"
+    stored = criteria["F2.3c"]["stored_numbers"]
+    assert stored["seed"] == 20260910
+    assert stored["sample_size"] == 100
+    assert stored["garch_fitted"] == 98
+    assert stored["not_converged"] == ["LW", "RDDT"]
+    assert stored["n_fully_covered"] == 599
+
+    # the note has to say the GARCH win share depends on the sample, because
+    # 61.2 percent here against 46.7 percent on the alphabetical 60 is the
+    # finding, not a detail
+    note = criteria["F2.3c"]["note"]
+    assert "61.2%" in note and "46.7%" in note and "49.0%" in note
+    assert "LW" in note and "RDDT" in note
+
+    # a clean sweep on both horizons passes
+    strong = evaluate.evaluate_e2_criteria(
+        **_inputs(
+            f23c={
+                **_inputs()["f23c"],
+                "win_shares": {
+                    "1": {"garch": 0.68, "ewma_094": 0.64},
+                    "21": {"garch": 0.72, "ewma_094": 0.66},
+                },
+            }
+        )
+    )
+    assert strong["F2.3c"]["verdict"] == "pass"
+
+    # a sample that was never drawn cannot pass, whatever the numbers say
+    empty = evaluate.evaluate_e2_criteria(
+        **_inputs(f23c={**_inputs()["f23c"], "sample": []})
+    )
+    assert empty["F2.3c"]["verdict"] == "fail"
+
+
+def test_f23c_does_not_reword_f23b() -> None:
+    criteria = evaluate.evaluate_e2_criteria(**_inputs())
+    assert criteria["F2.3b"]["criterion"].startswith("Close-out C3")
+    assert criteria["F2.3c"]["criterion"].startswith("Close-out C7")
+
+
 def test_real_results_file_has_every_criterion_if_present() -> None:
     path = Path(__file__).resolve().parents[1] / "sprints" / "E2" / "RESULTS.json"
     if not path.exists():
@@ -295,4 +372,5 @@ def test_real_results_file_has_every_criterion_if_present() -> None:
         "F2.6",
         "F2.6b",
         "F2.6c",
+        "F2.3c",
     }

@@ -103,7 +103,7 @@ def test_build_e2_artifacts_writes_everything_and_registers_ts_v1(
     data_root = tmp_path / "data"
     _write_inputs(data_root)
     summary = build.build_e2_artifacts(
-        data_root=data_root, start=2024, include_garch=False, garch_tickers=0
+        data_root=data_root, start=2024, include_garch=False
     )
     expected = [
         "models/TS-v1/loadings.parquet",
@@ -115,6 +115,7 @@ def test_build_e2_artifacts_writes_everything_and_registers_ts_v1(
         "models/registry.json",
         "eval/beta_horse_race.parquet",
         "eval/vol_horse_race.parquet",
+        "eval/vol_window_dependence.parquet",
         "eval/portfolio_risk_snapshot.parquet",
         "portfolios/seed_ew.parquet",
         "portfolios/seed_mom_ls.parquet",
@@ -176,7 +177,7 @@ def test_the_build_applies_the_identity_exclusions(tmp_path: Path) -> None:
     ).to_parquet(data_root / "raw" / "yf_names.parquet", index=False)
 
     summary = build.build_e2_artifacts(
-        data_root=data_root, start=2024, include_garch=False, garch_tickers=0
+        data_root=data_root, start=2024, include_garch=False
     )
     assert summary["identity_check"] == "applied"
     assert summary["identity_dropped"] == ["T05"]
@@ -193,7 +194,7 @@ def test_the_build_records_when_the_identity_check_cannot_run(tmp_path: Path) ->
     data_root = tmp_path / "data"
     _write_inputs(data_root)  # no changes table on disk
     summary = build.build_e2_artifacts(
-        data_root=data_root, start=2024, include_garch=False, garch_tickers=0
+        data_root=data_root, start=2024, include_garch=False
     )
     assert summary["identity_check"].startswith("skipped")
     assert summary["identity_dropped"] == []
@@ -239,7 +240,7 @@ def test_the_build_keeps_a_re_added_name_instead_of_dropping_it(
     ).to_parquet(data_root / "processed" / "universe_constituents.parquet", index=False)
 
     summary = build.build_e2_artifacts(
-        data_root=data_root, start=2024, include_garch=False, garch_tickers=0
+        data_root=data_root, start=2024, include_garch=False
     )
     assert summary["identity_dropped"] == []
     assert summary["readded_kept"] == ["T05"]
@@ -281,9 +282,7 @@ def test_the_registry_carries_the_same_data_hash_as_the_manifest(
     # the network for constituents and factor files.
     data_root = tmp_path / "data"
     _write_inputs(data_root)
-    build.build_e2_artifacts(
-        data_root=data_root, start=2024, include_garch=False, garch_tickers=0
-    )
+    build.build_e2_artifacts(data_root=data_root, start=2024, include_garch=False)
     registry = json.loads((data_root / "models" / "registry.json").read_text())
     entry = registry["models"]["TS-v1"]
     written = {
@@ -315,7 +314,7 @@ def test_a_reused_symbol_leaves_the_panel(tmp_path: Path) -> None:
     _write_inputs(data_root)
     _splice(data_root, "T05")
     summary = build.build_e2_artifacts(
-        data_root=data_root, start=2024, include_garch=False, garch_tickers=0
+        data_root=data_root, start=2024, include_garch=False
     )
     assert summary["n_names"] == len(TICKERS) - 1
 

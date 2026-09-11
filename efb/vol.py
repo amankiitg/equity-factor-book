@@ -19,6 +19,7 @@ QLIKE levels are comparable across methods but not to other scales.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -28,6 +29,13 @@ LAMBDAS = (0.94, 0.97)
 REALIZED_WINDOWS = (21, 63)
 BASELINE_WINDOW = 252
 ANNUALIZATION = 252
+
+# C7: the GARCH evaluation runs on a seeded random sample of names with
+# full out-of-sample coverage rather than on the alphabetical head of the
+# universe, which is not a sample of anything. The seed is stored in the
+# criterion so the draw can be reproduced exactly.
+GARCH_SAMPLE = 100
+GARCH_SEED = 20260910
 
 
 def _frame(x: pd.Series | pd.DataFrame) -> pd.DataFrame:
@@ -228,19 +236,81 @@ def garch_forecast(
     return pd.Series(forecasts, index=out_index, name="garch")
 
 
+def covered_tickers(r: pd.DataFrame, start: str) -> list[str]:
+    """Names whose clean returns have no gap over the window from `start`.
+
+    A GARCH fit is only comparable across names when every name is scored
+    on the same days, so the sample is drawn from the names that are
+    actually present on all of them.
+    """
+    frame = _frame(r).astype(float)
+    window = frame.loc[pd.Timestamp(start) :]
+    if window.empty:
+        return []
+    return [str(c) for c in frame.columns if window[c].notna().all()]
+
+
+def garch_sample(
+    r: pd.DataFrame,
+    start: str,
+    n: int = GARCH_SAMPLE,
+    seed: int = GARCH_SEED,
+) -> tuple[list[str], int]:
+    """Seeded random sample of fully covered names, and the seed used.
+
+    The alphabetical head of a sorted ticker list is not a sample of
+    anything: it is the names starting with A and B. This draws from the
+    names with full coverage over the out-of-sample window instead, and
+    returns the seed so the draw can be reproduced exactly.
+    """
+    universe = covered_tickers(r, start)
+    if n is None or n >= len(universe):
+        return sorted(universe), seed
+    rng = np.random.default_rng(seed)
+    picked = rng.choice(np.array(universe, dtype=object), size=n, replace=False)
+    return sorted(str(t) for t in picked), seed
+
+
+def fit_garch_universe(
+    r: pd.DataFrame, names: list[str], split: str
+) -> tuple[dict[str, dict[str, float]], list[str]]:
+    """Fit each named series on data before `split`, once for the whole run.
+
+    Both horse races score the same fitted parameters, so fitting here
+    rather than inside each race keeps the two tables on one set of fits
+    and halves the work.
+    """
+    frame = _frame(r).astype(float)
+    cutoff = pd.Timestamp(split)
+    params: dict[str, dict[str, float]] = {}
+    failed: list[str] = []
+    for ticker in names:
+        series = frame[ticker].dropna()
+        fitted = fit_garch(series[series.index < cutoff])
+        if fitted is None:
+            failed.append(str(ticker))
+            continue
+        params[str(ticker)] = fitted
+    return params, failed
+
+
 def vol_horse_race(
     r: pd.DataFrame,
     oos_start: str,
     include_garch: bool = True,
     garch_tickers: int | None = 60,
+    garch_names: Sequence[str] | None = None,
+    garch_params: dict[str, dict[str, float]] | None = None,
 ) -> pd.DataFrame:
     """QLIKE comparison of volatility forecasts across names.
 
     r: daily returns (date x ticker). Methods: ewma_094, ewma_097,
     realized_21, realized_63, trailing_252 (baseline) and, when the arch
-    package is available, garch for the first garch_tickers names.
-    Returns one row per (ticker, method) with the mean out-of-sample
-    QLIKE and the number of observations.
+    package is available, garch. The GARCH names come from `garch_names`
+    when given, which is how the seeded sample is passed in; otherwise the
+    first `garch_tickers` columns are used. Returns one row per
+    (ticker, method) with the mean out-of-sample QLIKE and the number of
+    observations.
     """
     rf = _frame(r).astype(float)
     split = pd.Timestamp(oos_start)
@@ -268,10 +338,20 @@ def vol_horse_race(
                 }
             )
     if include_garch:
-        names = list(rf.columns[:garch_tickers]) if garch_tickers else list(rf.columns)
+        names = (
+            list(garch_names)
+            if garch_names is not None
+            else (
+                list(rf.columns[:garch_tickers]) if garch_tickers else list(rf.columns)
+            )
+        )
         for ticker in names:
             series = rf[ticker].dropna()
-            forecast = garch_forecast(series, oos_start=oos_start)
+            forecast = garch_forecast(
+                series,
+                oos_start=oos_start,
+                params=(garch_params or {}).get(str(ticker)),
+            )
             if forecast is None:
                 continue
             values = qlike(forecast, series.reindex(forecast.index)).dropna()
@@ -392,6 +472,7 @@ def aligned_horse_race(
     horizons: tuple[int, ...] = (1, 21),
     include_garch: bool = True,
     garch_tickers: int | None = 60,
+    garch_names: Sequence[str] | None = None,
     min_obs: int = 100,
     garch_params: dict[str, dict[str, float]] | None = None,
 ) -> pd.DataFrame:
@@ -433,9 +514,13 @@ def aligned_horse_race(
 
         if include_garch:
             names = (
-                list(frame.columns[:garch_tickers])
-                if garch_tickers
-                else list(frame.columns)
+                list(garch_names)
+                if garch_names is not None
+                else (
+                    list(frame.columns[:garch_tickers])
+                    if garch_tickers
+                    else list(frame.columns)
+                )
             )
             for ticker in names:
                 series = frame[ticker].dropna()
@@ -539,10 +624,14 @@ def win_rate_by_year(
     by_year = {
         int(year): float(value) for year, value in wins.groupby(years).mean().items()
     }
+    counts = {
+        int(year): int(value) for year, value in wins.groupby(years).size().items()
+    }
     return {
         "pooled": float(wins.mean()),
         "n_name_days": int(len(wins)),
         "by_year": by_year,
+        "n_by_year": counts,
         "excluding_2020": float(wins[years != 2020].mean()),
     }
 

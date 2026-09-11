@@ -346,3 +346,57 @@ per data hash, including the intermediate build (6d24107521893114) that
 was made before the add-row filter in the review was fixed and that
 changed nothing. That entry is kept rather than deleted because the chain
 of data hashes is the record.
+
+## 2026-09-10: the GARCH sample was chosen by ticker order, and it mattered
+
+Decision. The GARCH evaluation moves from the first 60 names of the sorted
+universe to a seeded random sample of 100 names with full coverage over the
+out-of-sample window. New criterion F2.3c records it and fails. F2.3 and
+F2.3b keep their text, thresholds and verdicts and are re-measured.
+
+Old value: F2.3 GARCH win share 44.4 percent of 45 names, EWMA(0.94) 35.4
+percent of 483 names, paired sample of 37 names where GARCH 40.5 percent
+and EWMA(0.94) 27.0 percent. F2.3b horizon 1 GARCH 46.7 percent, horizon 21
+GARCH 55.6 percent, 47 of 60 fits converging and 13 not.
+
+New value: seed 20260910, sample of 100 drawn from the 599 names with full
+coverage, 98 fits converging and 2 not (LW, RDDT). F2.3 GARCH 58.2 percent
+of 98 names, EWMA(0.94) unchanged at 35.4 percent of 483, paired sample of
+80 names where GARCH 53.8 percent and EWMA(0.94) 36.3 percent. F2.3b
+horizon 1 GARCH 61.2 percent, horizon 21 GARCH 49.0 percent. F2.3c fails:
+GARCH clears 60 percent at horizon 1 but EWMA(0.94) is at 35.4 and 19.9.
+
+Reason. The alphabetical head of a sorted ticker list is the names starting
+with A and B, not a sample. GARCH's measured win share moves from 46.7 to
+61.2 percent at horizon 1 and from 55.6 to 49.0 percent at horizon 21 on
+the same data with a different set of names, which is the size of the
+effect the old sample was carrying. EWMA(0.94) is far below the bar on
+every sample, so no verdict changes and no production choice changes; the
+sample the number came from was simply not defensible, and now it is
+recorded with its seed, its eligible universe and its non-converged names.
+
+## 2026-09-10: the trailing-wins volatility result depends on the window
+
+Decision. No new criterion. The window comparison the close-out brief asked
+for is stored in data/eval/vol_window_dependence.parquet and stated in the
+deliverable, because it changes how F2.3's fail should be read.
+
+Old value: no window comparison existed. F2.3 reported EWMA(0.94) losing to
+trailing 252d for 64.6 percent of names on the two-year out-of-sample
+window and that was the end of it.
+
+New value: on the same two-year window, name level, EWMA(0.94) beats
+trailing for 35.4 percent of 483 names and EWMA(0.97) for 52.0 percent.
+Over the full history from MODEL_START, name level, EWMA(0.94) beats
+trailing for 74.3 percent of 506 names and EWMA(0.97) for 86.8 percent. By
+name-day over the full history, EWMA(0.97) wins 56.9 percent of 1,948,463
+observations, 56.7 percent with 2020 removed, and 60.5 percent inside 2020.
+
+Reason. The brief asked whether the trailing-wins result is a property of
+the window, and it is. Trailing 252d beats EWMA(0.97) for just under half
+the names in the last two years and loses to it for almost seven names in
+eight over sixteen years. 2020 is not the driver: excluding it moves the
+pooled day-level share by 0.2 points. F2.3 keeps its fail because the
+criterion is written on the out-of-sample window, and the deliverable now
+states the window dependence explicitly rather than leaving the fail to
+read as a statement about the estimator in general.

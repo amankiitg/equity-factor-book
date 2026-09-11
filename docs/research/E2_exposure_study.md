@@ -91,8 +91,9 @@ sprints/E2/RESULTS.json.
 | F2.0c | audit mean below 0.1 bp, every day above 50 bp in events with a cause | mean 0.0178 bp, 1 day above 50 bp, 1 matched (BKR 2017-07-05 special distribution) | pass |
 | F2.1 | full-sample vs mean rolling beta correlation above 0.9 | 0.9244 | pass |
 | F2.2 | mean pairwise FF5+MOM residual correlation below 0.05 | 0.0156 on 150 names | pass |
-| F2.3 | GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of names | GARCH 44.4% of 45 names, EWMA(0.94) 35.4% of 483 names, paired 37 names where both fit: GARCH 40.5%, EWMA(0.94) 27.0% | fail |
-| F2.3b | the same 60% bar with forecast and target horizons matched | horizon 1: GARCH 46.7%, EWMA(0.94) 35.4%. horizon 21: GARCH 55.6%, EWMA(0.94) 19.9% | fail |
+| F2.3 | GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of names | GARCH 58.2% of 98 names, EWMA(0.94) 35.4% of 483 names, paired 80 names where both fit: GARCH 53.8%, EWMA(0.94) 36.3% | fail |
+| F2.3b | the same 60% bar with forecast and target horizons matched | horizon 1: GARCH 61.2%, EWMA(0.94) 35.4%. horizon 21: GARCH 49.0%, EWMA(0.94) 19.9% | fail |
+| F2.3c | the same 60% bar on a seeded random sample of 100 fully covered names | seed 20260910, 100 names drawn from 599 with full coverage, 98 fits converging and 2 not (LW, RDDT). horizon 1: GARCH 61.2%, EWMA(0.94) 35.4%. horizon 21: GARCH 49.0%, EWMA(0.94) 19.9% | fail |
 | F2.4 | equal-weight seed book bias ratio between 0.8 and 1.2 across calendar years | mean 1.0225, per-year range 0.68 (2012) to 1.39 (2020) | pass |
 | F2.5 | Newey-West SE exceeds OLS SE for more than 80% of names | 96.3% | pass |
 | F2.6 | no name has an unexplained adjusted-close move above 5x (successor to F2.3, not pre-registered) | 4 names: CPWR, EP, MI, POM, 20 rows | fail |
@@ -478,3 +479,53 @@ would expect from adding back 3 names to a 500-name universe.
 After C6: make rebuild-e2 versions 26 artifacts, data/VERSION.json and the
 TS-v1 registry entry both carry artifacts hash 88c0062b281698c2, and the
 sprint has 12 criteria, 9 passing and 3 failing (F2.3, F2.3b, F2.6).
+
+C7, the GARCH sample and the window (F2.3c, fail). F2.3 and F2.3b were
+measured on the first 60 names of the sorted universe, which is the names
+starting with A and B rather than a sample of anything. The evaluation now
+draws 100 names at random, with seed 20260910, from the 599 names with full
+coverage over the out-of-sample window, and records the seed, the sample,
+the eligible count and the names that did not converge. 98 of the 100 fits
+converge; LW and RDDT do not.
+
+The verdict does not change, but the number does. GARCH's win share at
+horizon 1 rises from 46.7 percent on the alphabetical 60 to 61.2 percent on
+the seeded sample, so it clears the 60 percent bar there for the first
+time, while at horizon 21 it falls from 55.6 to 49.0. On the one-step
+legacy race the same move takes GARCH from 44.4 percent of 45 names to 58.2
+percent of 98. EWMA(0.94) is at 35.4 percent at horizon 1 and 19.9 percent
+at horizon 21 either way, so F2.3c fails on EWMA, not on GARCH, and F2.3
+and F2.3b are re-measured to the same shares with their text and verdicts
+untouched. The honest reading is that GARCH's measured performance was a
+property of which names happened to be tested, and a random sample of the
+names that can be scored is the only way to have said so.
+
+The window question, asked separately and without a new criterion. The same
+estimators run over the whole history from MODEL_START rather than the
+two-year out-of-sample window, and the answer is that the trailing-wins
+result is a property of the window:
+
+| Comparison | EWMA(0.94) | EWMA(0.97) |
+| --- | --- | --- |
+| name level, 2-year out-of-sample window, 483 names | 35.4% | 52.0% |
+| name level, full history from 2010, 506 names | 74.3% | 86.8% |
+| name-days, full history, 1,948,463 observations | 57.7% | 56.9% |
+| name-days, full history excluding 2020 | 57.3% | 56.7% |
+| name-days, 2020 alone | 63.5% | 60.5% |
+
+So trailing 252d beats EWMA(0.97) for just under half the names in the
+two-year window, and loses to it for almost seven names in eight over the
+full history. 2020 is not the reason either way: EWMA(0.97) beats trailing
+on 60.5 percent of name-days inside 2020 and on 56.7 percent of them once
+2020 is removed, which is the same number. The year-by-year series
+(eval/vol_window_dependence.parquet) has EWMA(0.97) above 50 percent in 12
+of the 16 calendar years, and the four exceptions are 2015, 2018, 2022 and
+2026. None of this changes a criterion: F2.3 is stated on the out-of-sample
+window and keeps its fail. What it changes is how the fail should be read,
+and the Volatility horse race section above should be read with this table
+next to it.
+
+After C7: make rebuild-e2 versions 27 artifacts, data/VERSION.json and the
+TS-v1 registry entry both carry artifacts hash 1ce2bcf7 (full value in the
+file), and the sprint has 13 criteria, 9 passing and 4 failing (F2.3,
+F2.3b, F2.3c, F2.6).

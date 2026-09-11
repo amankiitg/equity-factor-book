@@ -47,6 +47,7 @@ E2_ARTIFACTS = [
     "eval/beta_horse_race.parquet",
     "eval/vol_horse_race.parquet",
     "eval/vol_horse_race_aligned.parquet",
+    "eval/vol_window_dependence.parquet",
     "eval/momentum_exposure.parquet",
     "eval/portfolio_risk_snapshot.parquet",
     "portfolios/seed_ew.parquet",
@@ -247,7 +248,6 @@ def build_e2_artifacts(
     data_root: Path = DATA_ROOT,
     start: int = MODEL_START,
     include_garch: bool = True,
-    garch_tickers: int = 60,
 ) -> dict[str, object]:
     """Build every E2 artifact from the E1 artifacts (Sprint E2, Task 6).
 
@@ -394,11 +394,25 @@ def build_e2_artifacts(
     # single 95x day for one name dominates a mean QLIKE and a realized vol.
     returns_wide = hygiene.clean_returns(returns_frame).unstack("ticker")
     oos_start = (returns_wide.index.max() - pd.DateOffset(years=2)).strftime("%Y-%m-%d")
+    # C7: one seeded random sample of names with full out-of-sample
+    # coverage, fitted once, scored by both races
+    garch_names: list[str] = []
+    garch_params: dict[str, dict[str, float]] = {}
+    garch_seed = vol.GARCH_SEED
+    garch_failed: list[str] = []
+    if include_garch:
+        garch_names, garch_seed = vol.garch_sample(
+            returns_wide, oos_start, n=vol.GARCH_SAMPLE, seed=vol.GARCH_SEED
+        )
+        garch_params, garch_failed = vol.fit_garch_universe(
+            returns_wide, garch_names, split=oos_start
+        )
     vol_table = vol.vol_horse_race(
         returns_wide,
         oos_start=oos_start,
         include_garch=include_garch,
-        garch_tickers=garch_tickers,
+        garch_names=garch_names,
+        garch_params=garch_params,
     )
     vol_table.to_parquet(eval_dir / "vol_horse_race.parquet", index=False)
 
@@ -409,13 +423,81 @@ def build_e2_artifacts(
         returns_wide,
         oos_start=oos_start,
         horizons=(1, 21),
-        garch_tickers=garch_tickers,
+        garch_names=garch_names,
+        garch_params=garch_params,
     )
     aligned.to_parquet(eval_dir / "vol_horse_race_aligned.parquet", index=False)
     aligned_fits = {
         "fitted": aligned.attrs.get("garch_fitted", []),
         "failed": aligned.attrs.get("garch_failed", []),
     }
+    if not include_garch:
+        garch_params, garch_failed = {}, []
+
+    # C7, second part, no new criterion: the same estimators over the whole
+    # history from MODEL_START rather than the two-year out-of-sample window,
+    # so the year-by-year comparison includes 2020 and answers whether the
+    # trailing-wins result is a property of the window.
+    window_rows: list[dict[str, object]] = []
+    for method in ("ewma_094", "ewma_097"):
+        full = vol.win_rate_by_year(
+            returns_wide, oos_start=START, method=method, baseline="trailing_252"
+        )
+        window_rows.append(
+            {
+                "method": method,
+                "baseline": "trailing_252",
+                "scope": "day_level_pooled",
+                "year": pd.NA,
+                "win_share": full["pooled"],
+                "n_obs": full["n_name_days"],
+            }
+        )
+        window_rows.append(
+            {
+                "method": method,
+                "baseline": "trailing_252",
+                "scope": "day_level_excluding_2020",
+                "year": pd.NA,
+                "win_share": full["excluding_2020"],
+                "n_obs": full["n_name_days"] - full["n_by_year"].get(2020, 0),
+            }
+        )
+        for year, share in sorted(full["by_year"].items()):
+            window_rows.append(
+                {
+                    "method": method,
+                    "baseline": "trailing_252",
+                    "scope": "day_level_by_year",
+                    "year": int(year),
+                    "win_share": float(share),
+                    "n_obs": int(full["n_by_year"].get(int(year), 0)),
+                }
+            )
+        # the name-level view, which is the one F2.3 is stated on: averaged
+        # per name over the whole history against the same baseline, so the
+        # two windows can be compared like for like
+        for scope, window_start in (
+            ("name_level_oos_window", oos_start),
+            ("name_level_full_history", START),
+        ):
+            table = vol.vol_horse_race(returns_wide, oos_start=window_start)
+            shares = vol.beats_baseline(table, baseline="trailing_252").set_index(
+                "method"
+            )
+            window_rows.append(
+                {
+                    "method": method,
+                    "baseline": "trailing_252",
+                    "scope": scope,
+                    "year": pd.NA,
+                    "win_share": float(shares.loc[method, "win_share"]),
+                    "n_obs": int(shares.loc[method, "n_names"]),
+                }
+            )
+    window_frame = pd.DataFrame(window_rows)
+    window_frame["year"] = window_frame["year"].astype("Int64")
+    window_frame.to_parquet(eval_dir / "vol_window_dependence.parquet", index=False)
 
     # the seed books are also built from usable names only, so a spliced
     # series cannot sit in a portfolio while its returns are missing
@@ -517,8 +599,13 @@ def build_e2_artifacts(
             "readded_reviewed": readded_reviewed,
             "readded_kept": readded_kept,
             "readded_staying_dropped": readded_staying_dropped,
+            "garch_sample": len(garch_names),
+            "garch_sample_size": len(garch_names),
+            "garch_sample_tickers": garch_names,
+            "garch_seed": garch_seed,
             "garch_fitted": len(aligned_fits["fitted"]),
             "garch_failed": len(aligned_fits["failed"]),
+            "garch_not_converged": sorted(set(garch_failed)),
             "artifacts_hash": e2_data_hash,
             "mom_loading": mom["mom_loading"],
             "mom_t_stat": mom["mom_t_stat"],
