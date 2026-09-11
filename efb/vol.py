@@ -115,6 +115,30 @@ def qlike(
     return _same_type(out, sigma2_hat)
 
 
+def qlike_variance(
+    sigma2_hat: pd.Series | pd.DataFrame, realized_var: pd.Series | pd.DataFrame
+) -> pd.Series | pd.DataFrame:
+    """QLIKE with the target already a variance level rather than a return.
+
+    qlike() squares its second argument, which is right for a next-day
+    return and wrong for a realized variance, where the level is already a
+    sum of squares. The functional form is the same, ln s2 + rv / s2, so a
+    one-step call here and a call to qlike() on the same second of data
+    give identical numbers.
+    """
+    if isinstance(sigma2_hat, pd.Series) and isinstance(realized_var, pd.Series):
+        s2, rv = sigma2_hat.align(realized_var, join="outer")
+        s2 = s2.astype(float)
+        rv = rv.astype(float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return np.log(s2) + rv / s2
+    s2 = _frame(sigma2_hat).astype(float)
+    rv = _frame(realized_var).astype(float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out = np.log(s2) + rv / s2
+    return _same_type(out, sigma2_hat)
+
+
 @dataclass
 class MZResult:
     alpha: float
@@ -259,6 +283,352 @@ def vol_horse_race(
                     "method": "garch",
                     "qlike": float(values.mean()),
                     "n_obs": int(len(values)),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def garch_horizon_sum(
+    params: dict[str, float], sigma2_next: float, horizon: int
+) -> float | None:
+    """Expected sum of the next `horizon` GARCH variances from sigma2_next.
+
+    For GARCH(1,1) the k-step variance reverts geometrically toward the
+    unconditional level, so the sum is h * uncond plus the transient term
+    (sigma2_next - uncond) * (1 - p^h) / (1 - p) with p = alpha + beta.
+    Returns None when the fit is not stationary, because then there is no
+    unconditional level to revert to.
+    """
+    omega = float(params["omega"])
+    persistence = float(params["persistence"])
+    if not np.isfinite(omega) or omega <= 0 or persistence >= 1.0:
+        return None
+    uncond = omega / (1.0 - persistence)
+    if horizon <= 0:
+        return None
+    transient = (
+        1.0
+        if persistence == 0.0
+        else (1.0 - persistence**horizon) / (1.0 - persistence)
+    )
+    return float(horizon * uncond + (sigma2_next - uncond) * transient)
+
+
+def garch_horizon_forecast(
+    r: pd.DataFrame,
+    params: dict[str, float],
+    oos_start: str,
+    horizon: int = 21,
+) -> pd.DataFrame | None:
+    """h-day expected variance sums from a GARCH fit held fixed at oos_start.
+
+    The recursion is walked over realized squared returns to reach each
+    forecast date, then the multi-step sum is closed form from there.
+    Returns a frame indexed like the one-step forecasts, in decimal
+    variance units.
+    """
+    frame = _frame(r).astype(float)
+    split = pd.Timestamp(oos_start)
+    index = frame.index[frame.index >= split]
+    if len(index) == 0:
+        return None
+    omega = float(params["omega"])
+    alpha = float(params["alpha"])
+    beta = float(params["beta"])
+    uncond = omega / (1.0 - float(params["persistence"]))
+    values = frame.to_numpy(dtype=float)
+    positions = frame.index.get_indexer(index)
+    first = int(positions[0])
+    out = np.full((len(index), frame.shape[1]), np.nan)
+
+    for column in range(frame.shape[1]):
+        series = values[:, column]
+        state = uncond
+        # walk the recursion through the in-sample period first
+        for warm in range(first):
+            previous = series[warm - 1] if warm >= 1 else uncond
+            if not np.isfinite(previous):
+                previous = uncond
+            state = omega + alpha * previous**2 + beta * state
+        for i, loc in enumerate(positions):
+            previous = series[loc - 1] if loc >= 1 else uncond
+            if not np.isfinite(previous):
+                previous = uncond
+            state = omega + alpha * previous**2 + beta * state
+            total = garch_horizon_sum(params, state, horizon)
+            out[i, column] = np.nan if total is None else total
+
+    return pd.DataFrame(out, index=index, columns=frame.columns)
+
+
+def forward_realized_variance(r: pd.DataFrame, horizon: int = 21) -> pd.DataFrame:
+    """Realized variance of the `horizon` days starting at the index date.
+
+    The convention matches every forecast in this module: a value indexed
+    at t is a forecast of the return realized at t, because ewma_vol and
+    the trailing windows all use information through t-1. So the h-day
+    target at t is the sum of squared returns over t to t+h-1, and the
+    last h-1 rows have no future to measure and stay NaN.
+    """
+    frame = _frame(r).astype(float)
+    squared = frame**2
+    forward = squared.rolling(horizon, min_periods=horizon).sum().shift(-(horizon - 1))
+    return forward.astype(float)
+
+
+def horizon_forecast(sigma2: pd.DataFrame, horizon: int = 21) -> pd.DataFrame:
+    """Scale a one-step variance forecast to a flat `horizon`-day sum.
+
+    EWMA and a trailing window have no multi-step dynamics, so the only
+    consistent h-day forecast they can make is the one-step level held for
+    h days.
+    """
+    return _frame(sigma2).astype(float) * float(horizon)
+
+
+def aligned_horse_race(
+    r: pd.DataFrame,
+    oos_start: str,
+    horizons: tuple[int, ...] = (1, 21),
+    include_garch: bool = True,
+    garch_tickers: int | None = 60,
+    min_obs: int = 100,
+    garch_params: dict[str, dict[str, float]] | None = None,
+) -> pd.DataFrame:
+    """QLIKE comparison where forecast and target share a horizon.
+
+    horizon 1: one-step forecasts against the next day's squared return,
+    which is what F2.3 already did. horizon h: h-day forecasts from GARCH
+    multi-step, EWMA held flat and a trailing window held flat, against the
+    realized variance of the next h days. Every method is scored on the
+    same out-of-sample window, and the caller passes returns that already
+    exclude flagged rows.
+
+    Returns one row per (horizon, ticker, method) with the mean QLIKE and
+    the number of observations, plus `n_attempted` rows for diagnostics
+    where a GARCH fit failed.
+    """
+    frame = _frame(r).astype(float)
+    split = pd.Timestamp(oos_start)
+    rows: list[dict[str, object]] = []
+    garch_ok: list[str] = []
+    garch_failed: list[str] = []
+
+    for horizon in horizons:
+        target = forward_realized_variance(frame, horizon=horizon)
+        one_step = {
+            "ewma_094": _frame(ewma_vol(frame, lam=0.94, min_obs=60)),
+            "ewma_097": _frame(ewma_vol(frame, lam=0.97, min_obs=60)),
+            "trailing_252": _frame(realized_var(frame, window=252)),
+            "trailing_63": _frame(realized_var(frame, window=63)),
+        }
+        forecasts = (
+            one_step
+            if horizon == 1
+            else {
+                name: horizon_forecast(value, horizon)
+                for name, value in one_step.items()
+            }
+        )
+
+        if include_garch:
+            names = (
+                list(frame.columns[:garch_tickers])
+                if garch_tickers
+                else list(frame.columns)
+            )
+            for ticker in names:
+                series = frame[ticker].dropna()
+                fitted = (garch_params or {}).get(ticker)
+                if fitted is None:
+                    fitted = fit_garch(series[series.index < split])
+                if fitted is None:
+                    garch_failed.append(ticker)
+                    continue
+                single = garch_horizon_forecast(
+                    frame[[ticker]], params=fitted, oos_start=oos_start, horizon=1
+                )
+                if single is None:
+                    garch_failed.append(ticker)
+                    continue
+                if horizon == 1:
+                    path = single
+                else:
+                    multi = garch_horizon_forecast(
+                        frame[[ticker]],
+                        params=fitted,
+                        oos_start=oos_start,
+                        horizon=horizon,
+                    )
+                    if multi is None:
+                        garch_failed.append(ticker)
+                        continue
+                    path = multi
+                garch_ok.append(ticker)
+                losses = qlike_variance(path, target[[ticker]])
+                window = losses.loc[losses.index >= split]
+                values = window.iloc[:, 0].dropna()
+                if len(values) < min_obs:
+                    continue
+                rows.append(
+                    {
+                        "horizon": horizon,
+                        "ticker": ticker,
+                        "method": "garch",
+                        "qlike": float(values.mean()),
+                        "n_obs": int(len(values)),
+                    }
+                )
+
+        for name, path in forecasts.items():
+            losses = qlike_variance(path, target)
+            window = losses.loc[losses.index >= split]
+            for ticker in window.columns:
+                values = window[ticker].dropna()
+                if len(values) < min_obs:
+                    continue
+                rows.append(
+                    {
+                        "horizon": horizon,
+                        "ticker": ticker,
+                        "method": name,
+                        "qlike": float(values.mean()),
+                        "n_obs": int(len(values)),
+                    }
+                )
+
+    table = pd.DataFrame(rows)
+    table.attrs["garch_fitted"] = sorted(set(garch_ok))
+    table.attrs["garch_failed"] = sorted(set(garch_failed))
+    table.attrs["oos_start"] = oos_start
+    return table
+
+
+def win_rate_by_year(
+    r: pd.DataFrame,
+    oos_start: str,
+    method: str = "ewma_094",
+    baseline: str = "trailing_252",
+):
+    """Day-level win rate of one estimator over the baseline, by calendar year.
+
+    F2.3 counts names: it averages each name's QLIKE and then asks how many
+    names favor the method. This counts name-days instead, which answers a
+    different question: how often the method is better on a given day. When
+    the two disagree, a few names with extreme losses are driving the
+    name-level average rather than the method being worse.
+    """
+    frame = _frame(r).astype(float)
+    split = pd.Timestamp(oos_start)
+    target = forward_realized_variance(frame, 1)
+    options = {
+        "ewma_094": _frame(ewma_vol(frame, lam=0.94, min_obs=60)),
+        "ewma_097": _frame(ewma_vol(frame, lam=0.97, min_obs=60)),
+        "trailing_252": _frame(realized_var(frame, window=252)),
+        "trailing_63": _frame(realized_var(frame, window=63)),
+    }
+    if method not in options or baseline not in options:
+        raise KeyError(f"unknown method {method!r} or baseline {baseline!r}")
+    left = _frame(qlike_variance(options[method], target)).loc[split:]
+    right = _frame(qlike_variance(options[baseline], target)).loc[split:]
+    both = pd.concat(
+        [left.stack().rename("method"), right.stack().rename("baseline")], axis=1
+    ).dropna()
+    wins = both["method"] < both["baseline"]
+    years = pd.Series(wins.index.get_level_values(0).year, index=wins.index)
+    by_year = {
+        int(year): float(value) for year, value in wins.groupby(years).mean().items()
+    }
+    return {
+        "pooled": float(wins.mean()),
+        "n_name_days": int(len(wins)),
+        "by_year": by_year,
+        "excluding_2020": float(wins[years != 2020].mean()),
+    }
+
+
+def diagnose(r: pd.DataFrame, oos_start: str, garch_tickers: int | None = 60):
+    """Print the F2.3 diagnostic the close-out brief asks for.
+
+    a) the exact target behind QLIKE and the horizon of every estimator;
+    b) whether returns are scaled for the arch fit and how many fits fail;
+    c) the win rate by calendar year, and with 2020 excluded.
+    """
+    frame = _frame(r).astype(float)
+    split = pd.Timestamp(oos_start)
+    print("=== C3 F2.3 diagnostic ===")
+    print(f"out-of-sample window: {split.date()} to {frame.index.max().date()}")
+    print("(a) target and horizons")
+    print("  QLIKE(sigma2, r) = ln(sigma2) + r^2 / sigma2, and every forecast in")
+    print("  this module is indexed as a forecast of the return on that date,")
+    print("  so the target is the SAME-DAY squared return, one step ahead.")
+    table = vol_horse_race(
+        frame, oos_start=oos_start, include_garch=True, garch_tickers=garch_tickers
+    )
+    rows = []
+    for name in sorted(table["method"].unique()):
+        block = table[table["method"] == name]
+        rows.append(
+            {
+                "method": name,
+                "horizon": 1,
+                "names": int(len(block)),
+                "mean_qlike": round(float(block["qlike"].mean()), 3),
+            }
+        )
+    print(pd.DataFrame(rows).to_string(index=False))
+    print("  trailing_21 and trailing_63 are trailing variances: one step ahead.")
+    print("  All methods are one-step, so F2.3 is horizon aligned already.")
+
+    print("(b) arch fit")
+    names = (
+        list(frame.columns[:garch_tickers]) if garch_tickers else list(frame.columns)
+    )
+    fitted: list[str] = []
+    failed: list[str] = []
+    for ticker in names:
+        series = frame[ticker].dropna()
+        params = fit_garch(series[series.index < split])
+        (fitted if params is not None else failed).append(ticker)
+    print("  returns are scaled by 100 before arch_model and the variance is")
+    print("  divided by 1e4 on the way out, for numerical stability.")
+    print(f"  attempted: {len(names)}, fitted: {len(fitted)}, failed: {len(failed)}")
+    if failed:
+        print(f"  did not converge: {failed}")
+
+    print("(c) win rate by calendar year")
+    stats = win_rate_by_year(frame, oos_start)
+    print("  EWMA(0.94) vs trailing 252d, fraction of name-days with lower QLIKE")
+    for year, value in stats["by_year"].items():
+        print(f"    {year}: {value:.3f}")
+    print(f"  pooled: {stats['pooled']:.3f}  over {stats['n_name_days']} name-days")
+    print(f"  excluding 2020: {stats['excluding_2020']:.3f}")
+    print("  the window starts in 2024, so 2020 is not in it")
+    print("(d) name level against day level")
+    print("  F2.3 counts names, this diagnostic counts name-days. When the two")
+    print("  disagree, a few names with extreme losses drive the name average.")
+    return stats
+
+
+def aligned_win_shares(
+    table: pd.DataFrame, baseline: str = "trailing_252"
+) -> pd.DataFrame:
+    """Win share per horizon, method and baseline, on matched names."""
+    rows: list[dict[str, object]] = []
+    for horizon, block in table.groupby("horizon"):
+        pivot = block.pivot(index="ticker", columns="method", values="qlike")
+        for method in sorted(set(pivot.columns) - {baseline}):
+            pair = pivot[[method, baseline]].dropna()
+            if pair.empty:
+                continue
+            rows.append(
+                {
+                    "horizon": int(horizon),
+                    "method": method,
+                    "n_names": int(len(pair)),
+                    "win_share": float((pair[method] < pair[baseline]).mean()),
+                    "mean_qlike": float(pair[method].mean()),
+                    "baseline_qlike": float(pair[baseline].mean()),
                 }
             )
     return pd.DataFrame(rows)

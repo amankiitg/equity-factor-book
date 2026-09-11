@@ -427,6 +427,19 @@ E2_CRITERIA_TEXT = {
         "the exclusions itself, which is checked against the estimated "
         "panel rather than asserted."
     ),
+    "F2.3b": (
+        "Close-out C3, added 2026-09-10 and not pre-registered: the same "
+        "60% win-share bar as F2.3, evaluated on forecasts matched to the "
+        "target horizon. One-step forecasts are scored against the squared "
+        "return of the same day, and 21-day forecasts (GARCH multi-step, "
+        "EWMA held flat, trailing held flat) against the realized variance "
+        "of the next 21 days, both over the same out-of-sample window with "
+        "flagged rows excluded. GARCH and EWMA(0.94) each have to beat the "
+        "trailing 252d baseline for more than 60% of names at both "
+        "horizons. EWMA(0.97) stays the production estimator unless GARCH "
+        "wins for more than 70% of names here, which would be an open "
+        "decision for E5 rather than a change now."
+    ),
 }
 
 E2_THRESHOLDS = {
@@ -441,6 +454,10 @@ E2_THRESHOLDS = {
     "F2.6": "0 names with an unexplained adjusted-close move above 5x",
     "F2.6b": (
         "identity table stored and the reused-symbol exclusions applied by the build"
+    ),
+    "F2.3b": (
+        "GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% "
+        "of names at horizon 1 and at horizon 21"
     ),
 }
 
@@ -476,6 +493,10 @@ def evaluate_e2_criteria(
     f26b_truncated: dict[str, str],
     f26b_gaps: list[str],
     f26b_leaks: list[str],
+    f23b_win_shares: dict[str, dict[str, float]],
+    f23b_garch_fitted: int,
+    f23b_garch_failed: int,
+    f23b_day_level: dict[str, object],
 ) -> dict[str, dict[str, Any]]:
     """Store the E2 criteria with numbers computed from the artifacts."""
 
@@ -641,6 +662,34 @@ def evaluate_e2_criteria(
                 "names."
             ),
         },
+        "F2.3b": {
+            "criterion": E2_CRITERIA_TEXT["F2.3b"],
+            "threshold": E2_THRESHOLDS["F2.3b"],
+            "stored_numbers": {
+                "win_shares": f23b_win_shares,
+                "garch_fitted": f23b_garch_fitted,
+                "garch_failed": f23b_garch_failed,
+                "day_level_ewma_094": f23b_day_level,
+            },
+            "verdict": v(
+                all(
+                    block.get(method, 0.0) > 0.6
+                    for block in f23b_win_shares.values()
+                    for method in ("garch", "ewma_094")
+                )
+                and len(f23b_win_shares) >= 2
+            ),
+            "note": (
+                "Horizon matched on both sides. GARCH improves when the "
+                "21-day dynamics are used rather than a flat scaling "
+                f"({f23b_win_shares.get('21', {}).get('garch', float('nan')):.1%} "
+                "of names against the one-step "
+                f"{f23b_win_shares.get('1', {}).get('garch', float('nan')):.1%}), "
+                "which was the hypothesis behind treating F2.3 as suspect, "
+                "but neither horizon reaches 60%, so F2.3 stands and EWMA "
+                "stays the production estimator."
+            ),
+        },
     }
 
 
@@ -727,6 +776,71 @@ def _identity_findings(data_root: Path, loadings: pd.DataFrame) -> IdentityFindi
         "truncated": truncated,
         "gaps": sorted(table.loc[table["has_gap"].astype(bool), "ticker"].tolist()),
         "leaks": sorted(t for t in flagged if t in in_panel),
+    }
+
+
+class AlignedVolatility(TypedDict):
+    """Win shares from the horizon-matched volatility evaluation."""
+
+    win_shares: dict[str, dict[str, float]]
+    garch_fitted: int
+    garch_failed: int
+    day_level: dict[str, object]
+
+
+def _aligned_volatility(
+    data_root: Path, returns_frame: pd.DataFrame
+) -> AlignedVolatility:
+    """Win shares from eval/vol_horse_race_aligned.parquet, plus the day level.
+
+    Reads the stored table for the win shares so the stored number and the
+    artifact cannot disagree, and recomputes the day-level win rate here
+    because it is a diagnostic rather than a stored table.
+    """
+    from efb import hygiene
+    from efb import vol as vol_mod
+
+    empty: AlignedVolatility = {
+        "win_shares": {},
+        "garch_fitted": 0,
+        "garch_failed": 0,
+        "day_level": {},
+    }
+    path = data_root / "eval" / "vol_horse_race_aligned.parquet"
+    if not path.exists():
+        return empty
+    table = pd.read_parquet(path)
+    shares = vol_mod.aligned_win_shares(table)
+    win_shares: dict[str, dict[str, float]] = {}
+    for row in shares.itertuples(index=False):
+        win_shares.setdefault(str(int(row.horizon)), {})[str(row.method)] = float(
+            row.win_share
+        )
+
+    wide = hygiene.clean_returns(returns_frame).unstack("ticker")
+    oos_start = (wide.index.max() - pd.DateOffset(years=2)).strftime("%Y-%m-%d")
+    day = vol_mod.win_rate_by_year(wide, oos_start=oos_start)
+    registry_path = data_root / "models" / "registry.json"
+    fitted = failed = 0
+    if registry_path.exists():
+        params = (
+            json.loads(registry_path.read_text())
+            .get("models", {})
+            .get("TS-v1", {})
+            .get("parameters", {})
+        )
+        fitted = int(params.get("garch_fitted", 0))
+        failed = int(params.get("garch_failed", 0))
+    return {
+        "win_shares": win_shares,
+        "garch_fitted": fitted,
+        "garch_failed": failed,
+        "day_level": {
+            "pooled": day["pooled"],
+            "excluding_2020": day["excluding_2020"],
+            "n_name_days": day["n_name_days"],
+            "by_year": day["by_year"],
+        },
     }
 
 
@@ -884,6 +998,9 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     # F2.6b: ticker identity, and proof the build acted on it
     f26b = _identity_findings(data_root, loadings)
 
+    # F2.3b: the aligned evaluation, same 60% bar, matched horizons
+    f23b = _aligned_volatility(data_root, returns_frame)
+
     return {
         "model_start": model_start,
         "coverage_years_stored": int(len(coverage)),
@@ -915,6 +1032,10 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "f26b_truncated": f26b["truncated"],
         "f26b_gaps": f26b["gaps"],
         "f26b_leaks": f26b["leaks"],
+        "f23b_win_shares": f23b["win_shares"],
+        "f23b_garch_fitted": f23b["garch_fitted"],
+        "f23b_garch_failed": f23b["garch_failed"],
+        "f23b_day_level": f23b["day_level"],
     }
 
 

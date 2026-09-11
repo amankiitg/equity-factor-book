@@ -467,3 +467,55 @@ Reading of the summary below the table:
   history is worse than dropping a legitimate one. Both sets are
   recorded in docs/hygiene_ledger.md and the security-master fix is in
   docs/open_items.md.
+
+## C3 F2.3 diagnostic (2026-09-10)
+
+Trailing volatility beating EWMA and GARCH on a majority of names
+contradicts the daily-vol literature, so the fail was treated as a
+hypothesis rather than a result. Output of `efb.vol.diagnose` on the
+flagged-row-excluded returns, window 2024-09-03 to 2026-09-03.
+
+```
+=== C3 F2.3 diagnostic ===
+out-of-sample window: 2024-09-03 to 2026-09-03
+(a) target and horizons
+  QLIKE(sigma2, r) = ln(sigma2) + r^2 / sigma2, so the target is the
+  NEXT-DAY squared return, one step ahead, for every estimator below.
+      method  horizon  names  mean_qlike
+    ewma_094        1    483      -6.701
+    ewma_097        1    483      -6.744
+       garch        1     45      -6.716
+ realized_21        1    615      -6.479
+ realized_63        1    611      -6.574
+trailing_252        1    608      -6.620
+  trailing_21 and trailing_63 are trailing variances: one step ahead.
+  All methods are one-step, so F2.3 is horizon aligned already.
+(b) arch fit
+  returns are scaled by 100 before arch_model and the variance is
+  divided by 1e4 on the way out, for numerical stability.
+  attempted: 60, fitted: 47, failed: 13
+  did not converge: ['ABK', 'ABMD', 'ABS', 'ACAS', 'ACE', 'ADS', 'AGN', 'AKS', 'ALTR', 'ALXN', 'AMTM', 'ANR', 'ANSS']
+(c) win rate by calendar year
+  EWMA(0.94) vs trailing 252d, fraction of name-days with lower QLIKE
+    2024: 0.513
+    2025: 0.546
+    2026: 0.472
+  pooled: 0.516   excluding 2020: 0.516
+```
+
+Aligned evaluation, same window, flagged rows excluded, forecast and
+target matched on both sides:
+
+```
+ horizon      method  n_names  win_share  mean_qlike  baseline_qlike
+       1    ewma_094      483     0.3540     -6.7009         -6.7487
+       1    ewma_097      483     0.5197     -6.7436         -6.7487
+       1       garch       45     0.4667     -6.7166         -6.7103
+       1 trailing_63      608     0.3668     -6.5820         -6.6199
+      21    ewma_094      483     0.1988     -3.5884         -3.6759
+      21    ewma_097      483     0.3437     -3.6488         -3.6759
+      21       garch       45     0.5556     -3.6459         -3.6430
+      21 trailing_63      608     0.3076     -3.5125         -3.5471
+
+garch fitted: 47
+```

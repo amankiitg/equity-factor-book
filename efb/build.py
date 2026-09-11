@@ -43,6 +43,7 @@ E2_ARTIFACTS = [
     "models/registry.json",
     "eval/beta_horse_race.parquet",
     "eval/vol_horse_race.parquet",
+    "eval/vol_horse_race_aligned.parquet",
     "eval/portfolio_risk_snapshot.parquet",
     "portfolios/seed_ew.parquet",
     "portfolios/seed_mom_ls.parquet",
@@ -349,6 +350,21 @@ def build_e2_artifacts(
     )
     vol_table.to_parquet(eval_dir / "vol_horse_race.parquet", index=False)
 
+    # C3: the horizon-aligned evaluation. One-step forecasts against the same
+    # day's squared return, and 21-day forecasts against the realized variance
+    # of the next 21 days, both on the same window with flagged rows excluded.
+    aligned = vol.aligned_horse_race(
+        returns_wide,
+        oos_start=oos_start,
+        horizons=(1, 21),
+        garch_tickers=garch_tickers,
+    )
+    aligned.to_parquet(eval_dir / "vol_horse_race_aligned.parquet", index=False)
+    aligned_fits = {
+        "fitted": aligned.attrs.get("garch_fitted", []),
+        "failed": aligned.attrs.get("garch_failed", []),
+    }
+
     # the seed books are also built from usable names only, so a spliced
     # series cannot sit in a portfolio while its returns are missing
     if broken:
@@ -413,6 +429,8 @@ def build_e2_artifacts(
             "identity_truncated": {
                 ticker: str(cutoff) for ticker, cutoff in identity_truncations.items()
             },
+            "garch_fitted": len(aligned_fits["fitted"]),
+            "garch_failed": len(aligned_fits["failed"]),
         },
         universe_path=processed_dir / "universe_membership.parquet",
         data_paths=[raw_dir / "factors_ff.parquet", processed_dir / "returns.parquet"],

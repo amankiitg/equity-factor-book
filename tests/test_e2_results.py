@@ -40,6 +40,21 @@ def _inputs(**overrides):
         f26b_truncated={},
         f26b_gaps=["CPWR"],
         f26b_leaks=[],
+        f23b_win_shares={
+            "1": {
+                "garch": 0.4666666666666667,
+                "ewma_094": 0.35403726708074534,
+                "ewma_097": 0.5196687370600414,
+            },
+            "21": {
+                "garch": 0.5555555555555556,
+                "ewma_094": 0.19875776397515527,
+                "ewma_097": 0.34368530020703936,
+            },
+        },
+        f23b_garch_fitted=47,
+        f23b_garch_failed=13,
+        f23b_day_level={"pooled": 0.516, "by_year": {"2024": 0.513}},
     )
     base.update(overrides)
     return base
@@ -54,6 +69,7 @@ def test_all_nine_criteria_present_with_valid_verdicts() -> None:
         "F2.1",
         "F2.2",
         "F2.3",
+        "F2.3b",
         "F2.4",
         "F2.5",
         "F2.6",
@@ -62,6 +78,54 @@ def test_all_nine_criteria_present_with_valid_verdicts() -> None:
     for key, value in criteria.items():
         assert value["verdict"] in {"pass", "fail"}, key
         assert value["criterion"] and value["threshold"], key
+
+
+def test_f23b_needs_both_methods_above_sixty_percent_at_both_horizons() -> None:
+    # the fixture is the real result: GARCH reaches 55.6% at horizon 21 and
+    # 46.7% at horizon 1, so the aligned evaluation still fails
+    criteria = evaluate.evaluate_e2_criteria(**_inputs())
+    assert criteria["F2.3b"]["verdict"] == "fail"
+    stored = criteria["F2.3b"]["stored_numbers"]
+    assert stored["win_shares"]["21"]["garch"] == pytest.approx(0.5556, abs=1e-3)
+    assert stored["garch_fitted"] == 47
+    assert stored["garch_failed"] == 13
+
+    # a clean sweep at both horizons passes
+    strong = evaluate.evaluate_e2_criteria(
+        **_inputs(
+            f23b_win_shares={
+                "1": {"garch": 0.71, "ewma_094": 0.65},
+                "21": {"garch": 0.75, "ewma_094": 0.68},
+            }
+        )
+    )
+    assert strong["F2.3b"]["verdict"] == "pass"
+
+    # one method short at one horizon fails
+    mixed = evaluate.evaluate_e2_criteria(
+        **_inputs(
+            f23b_win_shares={
+                "1": {"garch": 0.71, "ewma_094": 0.65},
+                "21": {"garch": 0.58, "ewma_094": 0.68},
+            }
+        )
+    )
+    assert mixed["F2.3b"]["verdict"] == "fail"
+
+    # a single horizon is not enough to claim the aligned result
+    one_horizon = evaluate.evaluate_e2_criteria(
+        **_inputs(
+            f23b_win_shares={"1": {"garch": 0.71, "ewma_094": 0.65}},
+        )
+    )
+    assert one_horizon["F2.3b"]["verdict"] == "fail"
+
+
+def test_f23b_note_states_the_garch_improvement() -> None:
+    criteria = evaluate.evaluate_e2_criteria(**_inputs())
+    note = criteria["F2.3b"]["note"]
+    assert "55.6%" in note and "46.7%" in note
+    assert "60%" in note
 
 
 def test_f26b_passes_only_when_the_build_applied_the_exclusions() -> None:
@@ -131,6 +195,10 @@ def test_passing_configuration() -> None:
             f23_garch_win_share=0.7,
             f23_ewma094_win_share=0.65,
             f25_nw_gt_ols_share=0.95,
+            f23b_win_shares={
+                "1": {"garch": 0.7, "ewma_094": 0.65},
+                "21": {"garch": 0.72, "ewma_094": 0.66},
+            },
         )
     )
     assert all(value["verdict"] == "pass" for value in criteria.values())
@@ -181,6 +249,7 @@ def test_real_results_file_has_every_criterion_if_present() -> None:
         "F2.1",
         "F2.2",
         "F2.3",
+        "F2.3b",
         "F2.4",
         "F2.5",
         "F2.6",
