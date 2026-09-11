@@ -19,6 +19,8 @@ factor covariance (half-life 90d) and D the diagonal idio variances.
 
 from __future__ import annotations
 
+from typing import NotRequired, TypedDict
+
 import numpy as np
 import pandas as pd
 
@@ -208,13 +210,29 @@ def portfolio_loadings(
     return out
 
 
+class MomSanity(TypedDict):
+    """What the momentum book check found.
+
+    The two factor shares are only produced when an idio variance is
+    supplied, because without it there is nothing to weigh the factor
+    variance against.
+    """
+
+    loadings: pd.DataFrame
+    mom_loading: float
+    mom_t_stat: float
+    passes: bool
+    factor_share_with_mom: NotRequired[float]
+    factor_share_without_mom: NotRequired[float]
+
+
 def mom_sanity(
     weights: pd.DataFrame,
     returns_r: pd.DataFrame,
     factors: pd.DataFrame,
     idio_var: pd.Series | None = None,
     half_life: float = 90.0,
-) -> dict[str, object]:
+) -> MomSanity:
     """Check a momentum seed book's MOM exposure and its factor share.
 
     A book built from a momentum signal has to load positively on MOM with
@@ -228,7 +246,7 @@ def mom_sanity(
     loadings = portfolio_loadings(weights, returns_r, factors)
     mom_loading = float(loadings.loc["mom", "loading"])
     mom_t = float(loadings.loc["mom", "t_stat"])
-    report: dict[str, object] = {
+    report: MomSanity = {
         "loadings": loadings,
         "mom_loading": mom_loading,
         "mom_t_stat": mom_t,

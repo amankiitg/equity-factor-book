@@ -44,6 +44,7 @@ E2_ARTIFACTS = [
     "eval/beta_horse_race.parquet",
     "eval/vol_horse_race.parquet",
     "eval/vol_horse_race_aligned.parquet",
+    "eval/momentum_exposure.parquet",
     "eval/portfolio_risk_snapshot.parquet",
     "portfolios/seed_ew.parquet",
     "portfolios/seed_mom_ls.parquet",
@@ -53,6 +54,11 @@ E2_ARTIFACTS = [
 
 MODEL_START = 2010
 REGISTRY_PATH = DATA_ROOT / "models" / "registry.json"
+
+# The registry entry records the data hash, so it cannot be inside the hash.
+# Everything else the build writes is, which is what makes the number
+# reproducible from the artifacts alone.
+NON_DATA_ARTIFACTS = {"registry.json"}
 
 
 def hash_file(path: Path) -> str:
@@ -68,6 +74,8 @@ def combined_hash(artifacts: dict[str, dict[str, object]]) -> str:
     """One hash over every artifact hash, the data hash of a build."""
     digest = hashlib.sha256()
     for name in sorted(artifacts):
+        if name in NON_DATA_ARTIFACTS:
+            continue
         digest.update(name.encode())
         digest.update(str(artifacts[name].get("sha256", "")).encode())
     return digest.hexdigest()
@@ -408,6 +416,37 @@ def build_e2_artifacts(
         eval_dir / "portfolio_risk_snapshot.parquet", index=False
     )
 
+    # C4: the momentum seed book's own MOM exposure, and the three ways of
+    # measuring how much of its risk is factor risk rather than residual.
+    mom = pf.mom_sanity(
+        ls_weights, returns_wide, fac[ts.MULTI_FACTORS], idio_var=idio["idio_var"]
+    )
+    mom_weights = ls_weights.iloc[-1]
+    mom_weights = mom_weights[mom_weights.abs() > 0]
+    mom_snapshot = pf.risk_decomposition(
+        mom_weights, loadings[ts.MULTI_FACTORS], factor_cov, idio["idio_var"]
+    )
+    mom_loadings = mom["loadings"]
+    assert isinstance(mom_loadings, pd.DataFrame)
+    mom_rows = mom_loadings.reset_index(names="factor").assign(
+        portfolio="seed_mom_ls",
+        factor_share_regression_betas=mom["factor_share_with_mom"],
+        factor_share_without_mom=mom["factor_share_without_mom"],
+        mom_loading=mom["mom_loading"],
+        mom_t_stat=mom["mom_t_stat"],
+        mom_check_passes=mom["passes"],
+    )
+    mom_rows["factor_share_name_level_betas"] = mom_snapshot["factor_share"]
+    mom_rows["regression_r_squared"] = mom_loadings["r_squared"].iloc[0]
+    mom_rows.to_parquet(eval_dir / "momentum_exposure.parquet", index=False)
+
+    # the same combined hash rebuild_e2 writes into VERSION.json, so the
+    # registry entry and the data manifest point at one identifier
+    manifest = [data_root / rel for rel in ARTIFACTS + E2_ARTIFACTS]
+    e2_data_hash = combined_hash(
+        {path.name: {"sha256": hash_file(path)} for path in manifest if path.exists()}
+    )
+
     entry = registry.model_entry(
         version="TS-v1",
         family="timeseries",
@@ -431,6 +470,10 @@ def build_e2_artifacts(
             },
             "garch_fitted": len(aligned_fits["fitted"]),
             "garch_failed": len(aligned_fits["failed"]),
+            "artifacts_hash": e2_data_hash,
+            "mom_loading": mom["mom_loading"],
+            "mom_t_stat": mom["mom_t_stat"],
+            "mom_check_passes": mom["passes"],
         },
         universe_path=processed_dir / "universe_membership.parquet",
         data_paths=[raw_dir / "factors_ff.parquet", processed_dir / "returns.parquet"],

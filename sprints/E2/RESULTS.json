@@ -1,6 +1,6 @@
 {
   "sprint": "E2",
-  "evaluated_at": "2026-09-11T00:15:11+00:00",
+  "evaluated_at": "2026-09-11T00:41:15+00:00",
   "data_hash": null,
   "criteria": {
     "F2.0a": {
@@ -246,13 +246,9 @@
   "revisions": {
     "previous_data_hash": null,
     "data_hash": null,
-    "n_changed": 5,
+    "n_changed": 1,
     "changed_tickers_or_criteria": [
-      "F2.1",
-      "F2.2",
-      "F2.3",
-      "F2.4",
-      "F2.5"
+      "F2.3b"
     ],
     "cross_sprint_criteria": [],
     "changed": {
@@ -312,10 +308,10 @@
         }
       },
       "F2.1": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "pass",
-          "stored_number": 0.9135409599040305
+          "stored_number": 0.9238941063852038
         },
         "new": {
           "verdict": "pass",
@@ -323,11 +319,11 @@
         }
       },
       "F2.2": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "pass",
           "stored_numbers": {
-            "mean_pairwise_correlation": 0.01595330640639573,
+            "mean_pairwise_correlation": 0.015362297223403331,
             "n_names_sampled": 150
           }
         },
@@ -340,16 +336,16 @@
         }
       },
       "F2.3": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "fail",
           "stored_numbers": {
             "garch_win_share": 0.4444444444444444,
-            "ewma_094_win_share": 0.3604887983706721,
+            "ewma_094_win_share": 0.35403726708074534,
             "garch_names_fitted": 45,
             "paired_n": 37,
-            "paired_garch_win_share": 0.43243243243243246,
-            "paired_ewma_094_win_share": 0.2972972972972973,
+            "paired_garch_win_share": 0.40540540540540543,
+            "paired_ewma_094_win_share": 0.2702702702702703,
             "garch_beats_ewma_094_share": 0.7297297297297297
           }
         },
@@ -367,29 +363,29 @@
         }
       },
       "F2.4": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "pass",
           "stored_numbers": {
-            "bias_mean": 1.0224312677527996,
+            "bias_mean": 1.0221080485704503,
             "bias_by_year": {
-              "2010": 0.6881476560122989,
-              "2011": 1.2417155826249766,
-              "2012": 0.6825759616142605,
-              "2013": 0.8705920411009266,
-              "2014": 1.0363612495104018,
-              "2015": 1.2070836378009315,
-              "2016": 0.7754995143476977,
-              "2017": 0.9287084102887949,
-              "2018": 1.3182036680618363,
-              "2019": 1.2345922007443855,
-              "2020": 1.3936366610120254,
-              "2021": 0.8266618664569682,
-              "2022": 1.2300871893273064,
-              "2023": 0.7581192064919214,
-              "2024": 1.0338517161542102,
-              "2025": 1.2568644773714814,
-              "2026": 0.8986305128771696
+              "2010": 0.6894745441461914,
+              "2011": 1.243169042984342,
+              "2012": 0.6832150422159406,
+              "2013": 0.8715465929945752,
+              "2014": 1.0347752887326924,
+              "2015": 1.207778980310976,
+              "2016": 0.775656690436585,
+              "2017": 0.9282227718355079,
+              "2018": 1.3177276911739775,
+              "2019": 1.2318621938466923,
+              "2020": 1.393283629387333,
+              "2021": 0.8256649450175353,
+              "2022": 1.2297607805537525,
+              "2023": 0.7576569639284924,
+              "2024": 1.0332375424924012,
+              "2025": 1.2538323728112708,
+              "2026": 0.8989717528293925
             }
           }
         },
@@ -420,10 +416,10 @@
         }
       },
       "F2.5": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "pass",
-          "stored_number": 0.956989247311828
+          "stored_number": 0.9632
         },
         "new": {
           "verdict": "pass",
@@ -461,7 +457,93 @@
       },
       "F2.6b": {
         "changed": false,
-        "old": null,
+        "old": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "identity_table_rows": 373,
+            "names_matched": 337,
+            "names_reused": 36,
+            "reused_tickers": [
+              "ADCT",
+              "AN",
+              "APC",
+              "ATI",
+              "AV",
+              "BEAM",
+              "CAM",
+              "CCE",
+              "CLF",
+              "CNX",
+              "CPWR",
+              "CSC",
+              "CSRA",
+              "DD",
+              "DV",
+              "DYN",
+              "EMC",
+              "EP",
+              "FOX",
+              "FOXA",
+              "GENZ",
+              "GRN",
+              "INFO",
+              "KG",
+              "LIFE",
+              "MHS",
+              "MI",
+              "MMI",
+              "NFX",
+              "NSM",
+              "NYX",
+              "OI",
+              "PCG",
+              "PCL",
+              "PCS",
+              "POM"
+            ],
+            "dropped_by_build": [
+              "ADCT",
+              "AN",
+              "APC",
+              "ATI",
+              "AV",
+              "BEAM",
+              "CAM",
+              "CCE",
+              "CLF",
+              "CNX",
+              "CPWR",
+              "CSC",
+              "CSRA",
+              "DD",
+              "DV",
+              "DYN",
+              "EMC",
+              "EP",
+              "FOX",
+              "FOXA",
+              "GENZ",
+              "GRN",
+              "INFO",
+              "KG",
+              "LIFE",
+              "MHS",
+              "MI",
+              "MMI",
+              "NFX",
+              "NSM",
+              "NYX",
+              "OI",
+              "PCG",
+              "PCL",
+              "PCS",
+              "POM"
+            ],
+            "truncated": {},
+            "gap_tickers": [],
+            "dropped_still_in_panel": []
+          }
+        },
         "new": {
           "verdict": "pass",
           "stored_numbers": {
@@ -551,8 +633,38 @@
         }
       },
       "F2.3b": {
-        "changed": false,
-        "old": null,
+        "changed": true,
+        "old": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "win_shares": {
+              "1": {
+                "ewma_094": 0.35403726708074534,
+                "ewma_097": 0.5196687370600414,
+                "garch": 0.4666666666666667,
+                "trailing_63": 0.3667763157894737
+              },
+              "21": {
+                "ewma_094": 0.19875776397515527,
+                "ewma_097": 0.34368530020703936,
+                "garch": 0.5555555555555556,
+                "trailing_63": 0.30756578947368424
+              }
+            },
+            "garch_fitted": 47,
+            "garch_failed": 13,
+            "day_level_ewma_094": {
+              "pooled": 0.5155910558965167,
+              "excluding_2020": 0.5155910558965167,
+              "n_name_days": 242126,
+              "by_year": {
+                "2024": 0.5128413684314306,
+                "2025": 0.5458484473699501,
+                "2026": 0.472009472009472
+              }
+            }
+          }
+        },
         "new": {
           "verdict": "fail",
           "stored_numbers": {

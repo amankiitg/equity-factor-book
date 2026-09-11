@@ -202,6 +202,43 @@ def test_the_build_records_when_the_identity_check_cannot_run(tmp_path: Path) ->
 def test_build_e2_artifact_list_includes_registry() -> None:
     assert "models/registry.json" in build.E2_ARTIFACTS
     assert "portfolios/seed_mom_ls.parquet" in build.E2_ARTIFACTS
+    assert "eval/vol_horse_race_aligned.parquet" in build.E2_ARTIFACTS
+    assert "eval/momentum_exposure.parquet" in build.E2_ARTIFACTS
+
+
+def test_the_registry_carries_the_same_data_hash_as_the_manifest(
+    tmp_path: Path,
+) -> None:
+    # one identifier for a build: the registry records the hash of every
+    # artifact but its own, which is what the manifest in VERSION.json
+    # computes too. This deliberately avoids rebuild_e2, which would reach
+    # the network for constituents and factor files.
+    data_root = tmp_path / "data"
+    _write_inputs(data_root)
+    build.build_e2_artifacts(
+        data_root=data_root, start=2024, include_garch=False, garch_tickers=0
+    )
+    registry = json.loads((data_root / "models" / "registry.json").read_text())
+    entry = registry["models"]["TS-v1"]
+    written = {
+        path.name: {"sha256": build.hash_file(path)}
+        for rel in build.ARTIFACTS + build.E2_ARTIFACTS
+        if (path := data_root / rel).exists()
+    }
+    assert entry["parameters"]["artifacts_hash"] == build.combined_hash(written)
+    # the synthetic panel has no momentum structure, so whether the book
+    # passes is not fixed here; the number and the flag are what matter, and
+    # the real book's values are checked in tests/test_mom_sanity.py
+    assert isinstance(entry["parameters"]["mom_check_passes"], bool)
+    assert isinstance(entry["parameters"]["mom_loading"], float)
+
+
+def test_combined_hash_ignores_the_registry() -> None:
+    with_registry = build.combined_hash(
+        {"registry.json": {"sha256": "abc"}, "a.parquet": {"sha256": "def"}}
+    )
+    without = build.combined_hash({"a.parquet": {"sha256": "def"}})
+    assert with_registry == without
 
 
 def test_a_reused_symbol_leaves_the_panel(tmp_path: Path) -> None:

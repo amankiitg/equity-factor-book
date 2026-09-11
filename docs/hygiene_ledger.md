@@ -269,13 +269,13 @@ change rather than a test.
 
 Old value: the momentum long/short seed book is 90.6 percent idiosyncratic
 (factor share 0.0939).
-New value: factor share 0.8951 with the portfolio regression betas and all
-six factors in the covariance, 0.1381 with MOM removed, 0.0939 with
-name-level TS betas and last-month weights, and 0.5606 of daily variance
+New value: factor share 0.8919 with the portfolio regression betas and all
+six factors in the covariance, 0.1459 with MOM removed, 0.0939 with
+name-level TS betas and last-month weights, and 0.5564 of daily variance
 explained by the regression (R squared).
 
-Reason. The required check passes: the book's MOM loading is +0.2947 with
-a Newey-West t statistic of 29.0, so it genuinely is a momentum position.
+Reason. The required check passes: the book's MOM loading is +0.2897 with
+a Newey-West t statistic of 29.09, so it genuinely is a momentum position.
 But measuring the factor share three ways shows the 0.0939 is an artifact
 of treating the residual covariance as diagonal and using static
 name-level betas. With residuals assumed uncorrelated, a book of 192

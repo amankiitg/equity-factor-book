@@ -225,11 +225,11 @@ harder test.
   position, not a collection of idio bets. For the sector-neutral
   momentum long/short seed book the answer depends on how the portfolio
   beta is measured, and the three measurements are 0.0939 with name-level
-  TS betas and last-month weights, 0.1381 with the portfolio regression
-  betas and MOM removed from the covariance, and 0.8951 with the same
-  betas and all six factors. The regression explains 0.5606 of the book's
+  TS betas and last-month weights, 0.1459 with the portfolio regression
+  betas and MOM removed from the covariance, and 0.8919 with the same
+  betas and all six factors. The regression explains 0.5564 of the book's
   daily variance. The C4 check in the close-out section shows why the book
-  is a momentum position (MOM loading +0.2947, t 29.0), and the spread
+  is a momentum position (MOM loading +0.2897, t 29.09), and the spread
   between those three numbers is the diagonal-residual assumption at work:
   a 192-name long/short book looks nearly risk-free when its residual
   co-movement is thrown away. Size it on the realized residual covariance,
@@ -310,3 +310,89 @@ rules out the most plausible explanation for the first failure.
 - The loser-side idio bias from E1 remains: tracking a delisting-return
   source in docs/open_items.md is a prerequisite for trusting long/short
   specific-risk numbers.
+
+## Close-out
+
+Four tasks were added after the sprint's exit criteria were met, because
+the F2.3 investigation and the F2.6 successor criterion both pointed at
+data problems that the first write-up had taken at face value. This
+section records their numbers. Nothing above is reworded, and every
+criterion already stored keeps its number and its verdict.
+
+C1, ticker identity (F2.6b, pass). Every ticker on the Wikipedia changes
+table's removed list was compared with the current holder of that symbol on
+yfinance, matched by name token overlap after stripping legal suffixes,
+punctuation and share class letters. 373 tickers compared, 93 names still
+match, 244 could not be verified because the symbol has no listing today,
+and 36 symbols were reused. CPWR, EP, MI and POM are among them, with 32
+more, listed with the removed and current security in
+sprints/E2/PROBES.md. All 36 leave the estimation panel: returns fall from
+858 tickers to 822, and the build applies the exclusion itself, which is
+what F2.6b checks. No ticker needed truncation, because no reused symbol
+has two live price segments separated by more than 60 business days.
+
+The 32 extra names matter for how this should be read. Nine of them look
+like real renames of the same issuer (ATI, CCE, CLF, CNX, DD, FOX, FOXA,
+OI, PCG) and were excluded anyway, because names and prices cannot tell a
+rename from a reuse that the vendor has hidden by keeping one company's
+history. Dropping a legitimate history is the smaller error than keeping a
+fabricated one, and the repair needs a security-identity source recorded
+in docs/open_items.md.
+
+C2, E1 restated (F1.3 and F1.5 moved, both verdicts unchanged). E1 was
+rebuilt on the corrected returns and its results file now carries a
+revisions block with the old value, the new value and the data hash of
+each:
+
+| Criterion | Before | After | Verdict |
+| --- | --- | --- | --- |
+| F1.3 equal-weight vs market correlation | 0.95575 | 0.95655 | pass |
+| F1.5 naive minus point-in-time bias | 349.67 bp/yr | 365.81 bp/yr | fail |
+| F1.5 point-in-time minus FF market | 20.75 bp/yr | 9.36 bp/yr | fail |
+| F2.0a, F2.0b, F2.0c (cross sprint) | unchanged | unchanged | pass |
+
+The bias grew, which is the honest direction: some previously counted
+deleted members had fabricated histories. The prices artifact is byte for
+byte identical across the two builds, verified by content hashes, so every
+movement traces to the exclusions. The E1 walkthrough was re-executed and
+re-rendered, and docs/research/E1_data_note.md carries the same table as
+an Addendum with the original sections untouched.
+
+C3, F2.3 diagnostic and F2.3b (both fail). The fail contradicted the
+daily-vol literature, so it was treated as a hypothesis and tested. The
+target and the horizon already matched: QLIKE is ln sigma2 + r^2 / sigma2,
+every estimator in efb.vol forecasts the return on the date it is indexed
+at, and the arch fit scales returns by 100 with the variance divided back,
+with 47 of 60 fits converging. Counting name-days rather than names,
+EWMA(0.94) wins on 51.6 percent of 242,126 name-days, so the name-level
+fail comes from a few names where one day is badly mispriced and QLIKE is
+unbounded above. The window starts on 2024-09-03, so the 2020 exclusion the
+brief asked about is not available and changes nothing. The new aligned
+evaluation registers as F2.3b with the same 60 percent bar: at horizon 1
+GARCH reaches 46.7 percent and EWMA(0.94) 35.4; at horizon 21, against
+realized variance, GARCH reaches 55.6 percent and EWMA(0.94) 19.9. GARCH
+improves when its multi-step dynamics are used, which is the mechanism the
+hypothesis predicted, but it does not reach 60, let alone the 70 that
+would reopen the production choice for E5. EWMA(0.97) stays the production
+estimator.
+
+C4, momentum book exposure (check passes, one claim corrected). The
+long/short seed book's own return series was regressed on FF5 plus MOM
+with Newey-West standard errors: MOM loading +0.2897 with a t statistic of
+29.09, and a significantly negative market loading, which is what a
+dollar-neutral momentum book should look like. The check therefore passes.
+What it also showed is that the idio share reported for that book is not
+a single number: 0.8919 with the regression betas and all six factors in
+the covariance, 0.1459 with MOM removed, 0.0939 with name-level TS betas
+and last-month weights, and 0.5564 of daily variance explained by the
+regression. The last of those is the honest summary, and the 0.0939 in the
+Sizing section above comes from the diagonal-residual assumption, which
+makes a 192-name long/short book look nearly risk-free by discarding the
+residual co-movement it is actually exposed to. E3 owns the realized
+residual covariance, and until it exists the low idio share is unproven
+rather than a finding.
+
+After the four tasks: make rebuild-e2 versions 23 artifacts, the TS-v1
+registry entry carries the same artifacts hash as data/VERSION.json
+(3f2d32b3fd262e6c), and the sprint has 11 criteria, 8 passing and 3
+failing (F2.3, F2.3b, F2.6).

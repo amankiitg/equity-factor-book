@@ -44,10 +44,10 @@ co-movement between names is assumed away. For the equal-weight seed book
 that is harmless, because the factor share is 99.2 percent either way. For
 the sector-neutral momentum long/short seed book it changes the answer
 completely: the factor share is 0.0939 with name-level TS betas and
-last-month weights, 0.1381 with the portfolio regression betas and MOM
-removed, and 0.8951 with the same betas and all six factors, while the
-regression explains 0.5606 of daily variance. The C4 check itself passes
-(the MOM loading is +0.2947 with t 29.0, so the book is a genuine momentum
+last-month weights, 0.1459 with the portfolio regression betas and MOM
+removed, and 0.8919 with the same betas and all six factors, while the
+regression explains 0.5564 of daily variance. The C4 check itself passes
+(the MOM loading is +0.2897 with t 29.09, so the book is a genuine momentum
 position), which is what makes the share discrepancy a risk-model problem
 rather than a book-construction problem.
 
