@@ -1,6 +1,6 @@
 {
   "sprint": "E2",
-  "evaluated_at": "2026-09-11T00:41:15+00:00",
+  "evaluated_at": "2026-09-11T00:44:28+00:00",
   "data_hash": null,
   "criteria": {
     "F2.0a": {
@@ -123,7 +123,8 @@
       "threshold": "identity table stored and the reused-symbol exclusions applied by the build",
       "stored_numbers": {
         "identity_table_rows": 373,
-        "names_matched": 337,
+        "names_matched": 93,
+        "names_unverified": 244,
         "names_reused": 36,
         "reused_tickers": [
           "ADCT",
@@ -246,9 +247,10 @@
   "revisions": {
     "previous_data_hash": null,
     "data_hash": null,
-    "n_changed": 1,
+    "n_changed": 2,
     "changed_tickers_or_criteria": [
-      "F2.3b"
+      "F2.3b",
+      "F2.6b"
     ],
     "cross_sprint_criteria": [],
     "changed": {
@@ -456,7 +458,7 @@
         }
       },
       "F2.6b": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "stored_numbers": {
@@ -548,7 +550,8 @@
           "verdict": "pass",
           "stored_numbers": {
             "identity_table_rows": 373,
-            "names_matched": 337,
+            "names_matched": 93,
+            "names_unverified": 244,
             "names_reused": 36,
             "reused_tickers": [
               "ADCT",

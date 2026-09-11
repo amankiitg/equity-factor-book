@@ -487,6 +487,7 @@ def evaluate_e2_criteria(
     f26_break_rows: int,
     f26b_rows: int,
     f26b_matched: int,
+    f26b_unverified: int,
     f26b_reused: int,
     f26b_reused_tickers: list[str],
     f26b_dropped: list[str],
@@ -637,6 +638,7 @@ def evaluate_e2_criteria(
             "stored_numbers": {
                 "identity_table_rows": f26b_rows,
                 "names_matched": f26b_matched,
+                "names_unverified": f26b_unverified,
                 "names_reused": f26b_reused,
                 "reused_tickers": f26b_reused_tickers,
                 "dropped_by_build": f26b_dropped,
@@ -718,10 +720,17 @@ def _series_breaks(
 
 
 class IdentityFindings(TypedDict):
-    """What the F2.6b check found, and what the build did about it."""
+    """What the F2.6b check found, and what the build did about it.
+
+    matched counts names that were verified against a current holder and
+    agree; unverified counts symbols with no listing today, which cannot
+    be judged either way; reused counts the rest, and those are the ones
+    the build has to exclude.
+    """
 
     rows: int
     matched: int
+    unverified: int
     reused: int
     reused_tickers: list[str]
     dropped: list[str]
@@ -741,6 +750,7 @@ def _identity_findings(data_root: Path, loadings: pd.DataFrame) -> IdentityFindi
     empty: IdentityFindings = {
         "rows": 0,
         "matched": 0,
+        "unverified": 0,
         "reused": 0,
         "reused_tickers": [],
         "dropped": [],
@@ -763,13 +773,17 @@ def _identity_findings(data_root: Path, loadings: pd.DataFrame) -> IdentityFindi
         truncated = dict(params.get("identity_truncated", {}))
 
     reused = sorted(table.loc[table["reused"].astype(bool), "ticker"].tolist())
+    verified = table["verified"].astype(bool)
+    matched = int((verified & ~table["reused"].astype(bool)).sum())
+    unverified = int((~verified).sum())
     in_panel = set(loadings.index)
     # a reused name that is still in the estimated panel means the build
     # did not apply the exclusion, whether or not it recorded the list
     flagged = sorted(set(dropped) | set(reused))
     return {
         "rows": int(len(table)),
-        "matched": int((~table["reused"].astype(bool)).sum()),
+        "matched": matched,
+        "unverified": unverified,
         "reused": len(reused),
         "reused_tickers": reused,
         "dropped": dropped,
@@ -1026,6 +1040,7 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "f26_break_rows": f26_rows,
         "f26b_rows": f26b["rows"],
         "f26b_matched": f26b["matched"],
+        "f26b_unverified": f26b["unverified"],
         "f26b_reused": f26b["reused"],
         "f26b_reused_tickers": f26b["reused_tickers"],
         "f26b_dropped": f26b["dropped"],
