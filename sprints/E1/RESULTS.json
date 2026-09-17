@@ -661,5 +661,24 @@
         }
       }
     ]
+  },
+  "reference_values": {
+    "source": "efb.evaluate.e1_reference_values from data/raw/factors_ff.parquet column mkt_rf",
+    "series": "mkt_rf",
+    "n_obs": 4169,
+    "first_date": "2010-01-04",
+    "last_date": "2026-07-31",
+    "annualization": 252,
+    "lo_q": 5,
+    "sharpe_daily": 0.04788212403281411,
+    "sharpe_annualized": 0.7601051546182517,
+    "se_iid_daily": 0.015496472017044434,
+    "se_iid_annualized": 0.24599886693582632,
+    "se_lo2002_daily": 0.014288336517787974,
+    "se_lo2002_annualized": 0.2268203104492176,
+    "ratio_lo_over_iid": 0.9220380291767286,
+    "lag1_autocorrelation_ff_market": -0.10289978052657538,
+    "sum_rho_weighted_q": -0.07610911247235277,
+    "sum_phi_weighted_q": 0.9598197108458648
   }
 }

@@ -73,6 +73,26 @@ def sharpe_se_lo2002(excess: pd.Series, q: int = 5) -> float:
     return float(np.sqrt((a + (sr**2 / 2) * b) / len(x)))
 
 
+def autocorrelation(values: pd.Series | np.ndarray, lag: int = 1) -> float:
+    """Biased sample autocorrelation at `lag`, the estimator Lo (2002) uses.
+
+    rho_k = sum_t (x_t - mean)(x_{t+k} - mean) / sum_t (x_t - mean)^2,
+    dividing by the full sample length rather than by the overlap. This is
+    the estimator behind `_newy_west_acf_sum`, exposed so a single lag can
+    be quoted (the E1 walkthrough reports the market factor's lag-1
+    autocorrelation, which is what makes the Lo standard error smaller than
+    the i.i.d. one).
+    """
+    x = np.asarray(pd.Series(values).dropna(), dtype=float)
+    if len(x) <= lag:
+        return float("nan")
+    z = x - x.mean()
+    var = float(np.dot(z, z)) / len(z)
+    if var == 0:
+        return float("nan")
+    return float(np.dot(z[:-lag], z[lag:]) / len(z) / var)
+
+
 def drawdown_series(wealth: pd.Series) -> pd.Series:
     """Running drawdown: D_t = W_t / max_{s <= t} W_s - 1."""
     w = wealth.dropna()

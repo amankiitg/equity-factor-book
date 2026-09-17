@@ -574,3 +574,73 @@ in any code cell, and the post-execution test asserts that the full
 precision form of every stored value appears in the printed output. If C6
 had moved F1.3 again, the notebook would have failed at the assert rather
 than reported a stale figure.
+
+## 2026-09-17: the shares history is as filed, and it starts in late 2015
+
+Decision. E3 reads share counts from the vendor's share history
+(get_shares_full), dates each row at its filing date, and uses the last
+observation dated at or before t-1, so a count is never used before it was
+filed. Market cap is close x shares and carries a per-row look_ahead flag
+that is true wherever the count is a backfill of the name's first filing,
+because that value was not knowable on the date it is applied to. This
+entry corrects the E1 statement about the same source; the E1 text is not
+edited.
+
+Old value. The ledger entry of 2026-09-10 recorded: "yfinance returns a
+history for 10 of 12 sampled names but it is current-vintage data, not the
+value known at each date. No artifact is built from it in E1." That was
+generalised from a twelve name sample to a claim about the whole series.
+
+New value. Measured over the panel's names (826 asked, the union of the
+sector file and the panel): 773 return a history, 426,062 fetched rows of
+which 52 are empty markers for names with no vendor page (DD is one). The
+rows are dated at filing dates, not period ends, and the series is not
+split adjusted, which is what makes it as filed rather than restated: AAPL
+steps from 4,275,630,080 on 2020-08-28 to 17,102,499,840 on 2020-08-31,
+exactly 4.000000x, at the 2020 4-for-1 split. 61,002 fetched rows (14.3%)
+are duplicate dates with conflicting values and are dropped by keeping the
+largest value on a date. 341 split-sized steps are visible across the
+panel. Names with a filed count among the 502 sector-mapped names: 1 in
+2013-04, 22 by 2015-09, 149 by 2015-10, 396 by 2015-11, 435 by 2015-12,
+502 by 2017. 1,245,448 name-days (36% of the panel's 3,459,225) carry a
+backfilled count and are flagged look_ahead.
+
+Reason. The direction of the E1 note was wrong for the period the series
+covers and right for the period it does not. The series is usable as a
+point-in-time count from the date it starts, and unusable, not merely
+noisy, before that. E1 is not reopened and its operative finding still
+holds: no E1 artifact is built from the series. What changes is that E3
+can use it from 2015-10 onward with the flag doing the work, and that the
+2010 to 2015 window in Size and in the sqrt(market cap) weights is
+recorded as a projection rather than presented as data.
+
+## 2026-09-17: XS-v1 parameters fixed by the Task 0 probes
+
+Decision. XS-v1 estimates from 2011-01-03, the first session on which at
+least 300 names carry every descriptor, and its universe is the
+sector-mapped panel names with a return and a complete descriptor row. The
+descriptor windows, the standardisation, the orthogonalization map, the
+weights, the identification constraint and the covariance half-lives are
+the ones recorded in the XS-v1 registry entry. The regressand is the total
+return r, because the risk-free series ends 2026-07-31.
+
+Old value. The PRD as drafted said XS-v1 estimates from 2010-01-04 with
+the first cross-section on 2010-01-05, and the Fama-MacBeth subperiods
+started at 2010.
+
+New value. Momentum is the binding warm-up: the 12-1 window needs 231
+observations ending at t-21, so no name has momentum on 2010-12-31 and
+252 sessions sit below the 300-name floor. The first complete cross-section
+is 2011-01-03, and the subperiods become 2011-01-03 to 2015-12-31,
+2016-01-01 to 2020-12-31, 2021-01-01 to 2026-09-03. The cross-section then
+holds 428 to 497 names and is never below the floor again. Liquidity is the
+second tightest window, at 425 of 428 names in 2010 and 499 of 501 in 2026.
+The sector file binds the universe: 502 names, of which 41.9% of the 2010
+index by name and 8.85% by market cap sit outside the file, falling to
+4.8% by name and 0.24% by cap in 2025.
+
+Reason. A stored threshold is set on measured data, as MODEL_START was in
+E2. The 300-name floor was met in 2010 on price coverage alone; with the
+descriptor set attached, the first qualifying session is a year later, and
+recording 2010 would have meant publishing a cross-section of zero rows for
+a year or silently shortening a descriptor window.

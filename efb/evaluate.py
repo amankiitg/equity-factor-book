@@ -16,10 +16,14 @@ from typing import Any, TypedDict
 import numpy as np
 import pandas as pd
 
-from efb import hygiene, identity, returns
+from efb import hygiene, identity, perf, returns
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS_PATH = ROOT / "sprints" / "E1" / "RESULTS.json"
+
+# Newey-West lag used by the Lo (2002) Sharpe standard error, quoted in the
+# E1 reference values block so the walkthrough and the data note agree.
+LO_Q = 5
 
 CRITERIA_TEXT = {
     "F1.1": (
@@ -206,6 +210,7 @@ def write_results(
     previous_data_hash: str | None = None,
     extra: dict[str, dict[str, Any]] | None = None,
     extra_previous: dict[str, dict[str, Any]] | None = None,
+    reference_values: dict[str, Any] | None = None,
 ) -> None:
     """Store the criteria, keeping the previous measurement alongside.
 
@@ -280,8 +285,57 @@ def write_results(
         "criteria": criteria,
         "revisions": {**entry, "history": history},
     }
+    # `reference_values` holds the numbers a walkthrough asserts against
+    # without recomputing them from prose. A caller that does not know about
+    # the block must not erase it, so it is carried forward when not passed,
+    # and it is never allowed to move the revisions history: it is a
+    # derived input rather than a scored criterion.
+    if reference_values is not None:
+        payload["reference_values"] = reference_values
+    elif isinstance(prior.get("reference_values"), dict):
+        payload["reference_values"] = prior["reference_values"]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def e1_reference_values(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    """The E1 walkthrough's reference constants, recomputed from parquet.
+
+    docs/research/E1_data_note.md quotes these in prose (annualized Sharpe,
+    the i.i.d. and Lo (2002) standard errors, their ratio, and the market
+    factor's lag-1 autocorrelation). Prose is not an assertion target: the
+    notebook reads this block, prints it, and asserts the recomputed values
+    against it, so a data correction moves the notebook and the block
+    together instead of leaving a stale figure in a markdown table.
+    """
+    factors_frame = pd.read_parquet(data_root / "raw" / "factors_ff.parquet")
+    market = factors_frame["mkt_rf"]
+    x = market.dropna()
+    sr = perf.sharpe_ratio(x)
+    se_iid = perf.sharpe_se_iid(x)
+    se_lo = perf.sharpe_se_lo2002(x, q=LO_Q)
+    return {
+        "source": (
+            "efb.evaluate.e1_reference_values from "
+            "data/raw/factors_ff.parquet column mkt_rf"
+        ),
+        "series": "mkt_rf",
+        "n_obs": int(len(x)),
+        "first_date": str(x.index[0].date()),
+        "last_date": str(x.index[-1].date()),
+        "annualization": int(perf.TRADING_DAYS),
+        "lo_q": int(LO_Q),
+        "sharpe_daily": sr,
+        "sharpe_annualized": sr * np.sqrt(perf.TRADING_DAYS),
+        "se_iid_daily": se_iid,
+        "se_iid_annualized": se_iid * np.sqrt(perf.TRADING_DAYS),
+        "se_lo2002_daily": se_lo,
+        "se_lo2002_annualized": se_lo * np.sqrt(perf.TRADING_DAYS),
+        "ratio_lo_over_iid": se_lo / se_iid,
+        "lag1_autocorrelation_ff_market": perf.autocorrelation(x, lag=1),
+        "sum_rho_weighted_q": perf._newy_west_acf_sum(x.to_numpy(), LO_Q),
+        "sum_phi_weighted_q": perf._newy_west_acf_sum((x**2).to_numpy(), LO_Q),
+    }
 
 
 def compute_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
@@ -391,7 +445,12 @@ def main(argv: list[str] | None = None) -> None:
         return
     inputs = compute_from_artifacts()
     criteria = evaluate_criteria(**inputs)
-    write_results(criteria, RESULTS_PATH)
+    write_results(
+        criteria,
+        RESULTS_PATH,
+        data_hash=inputs.get("data_hash"),
+        reference_values=e1_reference_values(),
+    )
     print(json.dumps(criteria, indent=2))
 
 

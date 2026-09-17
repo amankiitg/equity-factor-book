@@ -79,3 +79,30 @@ hidden reuse cannot be told apart from names and prices alone. Repairing
 rather than dropping them needs a security-identity source (FIGI or CRSP
 PERMNO). The full list with removed and current names is in
 sprints/E2/PROBES.md and the decision is in the Hygiene Ledger.
+
+## 2026-09-17: the XS-v1 cross-section is survivors only, 41.9% of the 2010 index by name
+
+Owner: E4. The sector dummies restrict the cross-sectional model to the 502
+names the sector file holds, and that file is a current-member snapshot, so
+the historical cross-section is entirely survivors. Measured in the E3 Task 0
+probes (sprints/E3/PROBES.md): in 2010 an average of 503.9 point-in-time
+members per day, of which 292.6 are in the sector file and 211.3 are not,
+which is 41.9% of the index by name and 8.85% by market capitalisation. The
+name share decays as the missing names leave (33.8% in 2015, 18.9% in 2020,
+4.8% in 2025) and the cap share decays faster (5.5% in 2015, 2.0% in 2020,
+0.24% in 2025), so the bias is mostly a breadth problem and a smaller weight
+problem.
+
+This is a stronger restriction than the F1.5 survivorship measurement of
+365.1 bp per year on the full panel, because F1.5 is estimated from the
+members the panel does hold while the sector dummies remove the members it
+does not. Two consequences are recorded rather than fixed: the historical
+cross-section has no non-survivors in it at all, and the sector exposures
+themselves are assigned from a snapshot, so a name's 2010 sector is its
+2026 sector.
+
+E3 states both numbers in the research note as a limitation and does not
+attempt a repair. A repair needs a point-in-time sector and constituent
+source, which is the same dependency as the E11 ongoing constituent item
+above, and it should be priced in E4's evaluation of the model rather than
+patched inside the risk model.

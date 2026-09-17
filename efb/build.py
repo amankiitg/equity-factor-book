@@ -236,6 +236,7 @@ def rebuild(
             previous_data_hash=old_hash,
             extra=evaluate.zero_tier_criteria(data_root),
             extra_previous=e2_previous,
+            reference_values=evaluate.e1_reference_values(data_root),
         )
 
     return {
