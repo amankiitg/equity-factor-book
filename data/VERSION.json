@@ -1,7 +1,7 @@
 {
   "note": "Built by make rebuild (Sprint E3). E1, E2 and E3 artifacts, each with a content hash; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-17T22:47:53+00:00",
-  "data_hash": "0eb5612afbdbb753455d93c9da009c702decf688610ab382cebc0acf60f03b87",
+  "built_at": "2026-09-18T01:42:22+00:00",
+  "data_hash": "237c1183b898a054118c1dd0e7fbfa0556b9162841d9eb7fe242da7fa14d2b36",
   "artifacts": {
     "beta_horse_race.parquet": {
       "sha256": "862891ca3d6e712d6a2f6267274368d4c055e0f85077d7e23bb2e22759920005",
@@ -35,9 +35,17 @@
       "sha256": "a496cb67e4316381ff7c2783e66fce12ec2d62c5522bd0fde802d71b8f8b6fa0",
       "bytes": 27139
     },
+    "xs_bias_by_exposure.parquet": {
+      "sha256": "435b8eb0ac16771ff6cc1be6fd3fb92b77c5cda4bc1cd0c7688ef6ad00354c15",
+      "bytes": 7989
+    },
+    "xs_coverage_by_year.parquet": {
+      "sha256": "446c385b928d20a8eb7ede7a893d96c0ecc9578c303b6f7007bbd0e821c9a192",
+      "bytes": 8558
+    },
     "xs_exposure_timeseries.parquet": {
-      "sha256": "0b94ea9808a1c4945f3424d19fdfa8bea403cb289ad237dac6ebaa2b5b28c38d",
-      "bytes": 38779
+      "sha256": "a71fcf072e907571fec35062ffc3c76c4ec84a75f9dc42555f671a973fc880e2",
+      "bytes": 39299
     },
     "xs_fm_premia.parquet": {
       "sha256": "eed3b54dede911959af22dad0f214eb3c0fe61edf3aff55db81f7efde62405b8",
@@ -50,6 +58,10 @@
     "xs_risk_decomposition.parquet": {
       "sha256": "ca519b68224c3e21682588d1ed7496fd69a45bd1ecca75f7c596145fa25b6a14",
       "bytes": 4033179
+    },
+    "xs_survivor_restriction.parquet": {
+      "sha256": "92ec81907489c934355ac2626b3098ac5da359e15ae86355d9c21119032de00a",
+      "bytes": 7024
     },
     "beta_history.parquet": {
       "sha256": "396ef452838788277d95eba85f0224f8882bbfaf35893f1bed00b434f95a9551",
@@ -100,8 +112,8 @@
       "bytes": 105879
     },
     "registry.json": {
-      "sha256": "14c14c8ec25553e45df72e600785629e684ca7a16007064352d636d71479a375",
-      "bytes": 9903
+      "sha256": "3d4e0ccab68105ac3ca07a30220c2c8bf25a9dc934c34262a8fefdc088934834",
+      "bytes": 10120
     },
     "seed_ew.parquet": {
       "sha256": "0c16d1773ce3b60cefd2e53dfe87c5c68ced9b3e9c4c3af47c0160de448cf120",
@@ -168,8 +180,8 @@
       "bytes": 61093009
     },
     "shares_history.parquet": {
-      "sha256": "160a47bf3a681ea5d3d8886ffe985a8e85a523a7905e2a3c2df29442a5efba96",
-      "bytes": 1619367
+      "sha256": "1bca9fff8f5ce86db0dcb9539f5684ce89e8035d1c8fd785ba15ff1466892bf7",
+      "bytes": 2112831
     }
   }
 }

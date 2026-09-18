@@ -417,3 +417,65 @@ def test_full_design_has_a_constant_for_the_market() -> None:
     # the market descriptor is the constant column, so it is not standardized
     assert result.standardized["market"].loc[last.date].nunique() == 1
     assert float(result.standardized["market"].loc[last.date].iloc[0]) == 1.0
+
+
+def test_shift_test_reports_the_two_vintages_and_their_difference() -> None:
+    panel = _panel()
+    design = fx.build_design(
+        returns=panel["returns"],
+        close=panel["close"],
+        volume=panel["volume"],
+        market_cap=panel["market_cap"],
+        sectors=SECTORS,
+        proxy=panel["proxy"],
+    )
+    summary = fx.shift_test(design)
+    assert summary["shift_test_days"] == len(design.days) - 1
+    assert summary["shift_test_lagged_mean_r_squared"] > 0
+    assert summary["shift_test_dated_t_mean_r_squared"] > 0
+    assert summary["shift_test_difference"] == pytest.approx(
+        summary["shift_test_dated_t_mean_r_squared"]
+        - summary["shift_test_lagged_mean_r_squared"],
+        rel=1e-12,
+    )
+    # the lagged mean is the model's own mean R squared on the paired days
+    assert (
+        abs(
+            summary["shift_test_lagged_mean_r_squared"]
+            - float(
+                pd.Series(
+                    [
+                        fx.wls_fit(
+                            day.design,
+                            day.returns,
+                            day.weights,
+                        ).r_squared
+                        for day in design.days[:-1]
+                    ]
+                ).mean()
+            )
+        )
+        < 5e-3
+    )
+
+
+def test_the_size_descriptor_of_the_next_day_contains_that_days_return() -> None:
+    # a price path and the returns it implies, so the identity is checkable
+    idx = pd.bdate_range("2020-01-01", periods=8)
+    returns = pd.DataFrame(
+        {"AAA": [0.02, -0.01, 0.005, 0.0, -0.03, 0.04, 0.001, -0.002]}, index=idx
+    )
+    close = 100.0 * (1.0 + returns).cumprod()
+    volume = pd.DataFrame(1e6, index=idx, columns=returns.columns)
+    market_cap = close.copy()
+    proxy = close.pct_change().fillna(0.0).squeeze()
+
+    raw = fx.raw_descriptors(returns, close, volume, market_cap, proxy)
+
+    first, second = idx[2], idx[3]
+    change = float(raw["size"].loc[second, "AAA"] - raw["size"].loc[first, "AAA"])
+    explained = float(np.log1p(returns.loc[first, "AAA"]))
+    # size is log(market cap shifted one row), so its one day change is the log
+    # of the price ratio, which is the return the later design would explain
+    assert change == pytest.approx(explained, rel=1e-12)
+    assert change != 0.0

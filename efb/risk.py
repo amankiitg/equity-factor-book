@@ -25,6 +25,8 @@ from efb.models import fundamental as fx
 
 TRADING_DAYS = 252
 DEFAULT_HORIZON = 21
+# the band F3.6 is written on: a mean monthly bias inside it passes
+BIAS_BAND = (0.8, 1.25)
 
 
 @dataclass
@@ -234,11 +236,14 @@ def exposure_series(
     days: dict[pd.Timestamp, fx.CrossSection],
     weights_by_date: dict[pd.Timestamp, pd.Series],
     factor_names: list[str],
+    book: str = "book",
 ) -> pd.DataFrame:
     """x = X'w per factor at each rebalance, for one book.
 
     INPUT: the design by date, the book's weights by date and the factor
-    order. OUTPUT: a long frame with one row per date and factor. Only dates
+    order. OUTPUT: a long frame with one row per date and factor, carrying the
+    book label, because two books on the same date are two different exposure
+    vectors and a frame without the label cannot tell them apart. Only dates
     present in both maps are produced, so a rebalance with no design row is
     absent rather than zero.
     """
@@ -251,6 +256,7 @@ def exposure_series(
         for name, value in zip(factor_names, exposures, strict=True):
             rows.append(
                 {
+                    "book": book,
                     "date": date,
                     "factor": name,
                     "exposure": float(value),
@@ -329,3 +335,109 @@ def segment_bias(
             }
         )
     return pd.DataFrame(rows)
+
+
+def bias_by_exposure(
+    bias: pd.DataFrame,
+    exposure: pd.DataFrame,
+    factor: str = "momentum",
+    n_buckets: int = 3,
+) -> pd.DataFrame:
+    """Realized against predicted volatility, split by the book's own exposure.
+
+    INPUT: data/eval/xs_bias.parquet (book, date, predicted_vol_ann,
+    realized_vol_ann, bias_ratio) and
+    data/eval/xs_exposure_timeseries.parquet (date, factor, exposure).
+    OUTPUT: data/eval/xs_bias_by_exposure.parquet (book, bucket, n_months,
+    exposure_mean, exposure_min, exposure_max, predicted_vol_ann_mean,
+    realized_vol_ann_mean, bias_mean, bias_median, share_in_band).
+
+    The buckets are terciles of the book's own exposure to `factor` at the
+    rebalance, ranked within each book so the buckets are comparable across
+    books rather than against each other. The point of the split is to
+    separate two causes of a bias away from one: if the misestimate is
+    concentrated in the high-exposure bucket the factor covariance is the
+    suspect, and if it is flat across the three buckets the specific variance
+    is, because only the factor term responds to the book's own exposure.
+    """
+    series = exposure.loc[exposure["factor"] == factor, ["book", "date", "exposure"]]
+    joined = bias.merge(series, on=["book", "date"], how="inner")
+    low, high = BIAS_BAND
+    labels = ["low", "mid", "high"][:n_buckets]
+    rows: list[dict[str, object]] = []
+    for book, group in joined.groupby("book"):
+        group = group.dropna(subset=["exposure", "bias_ratio"])
+        if len(group) < n_buckets:
+            continue
+        rank = group["exposure"].rank(method="first")
+        group = group.assign(bucket=pd.qcut(rank, n_buckets, labels=labels).astype(str))
+        for bucket, block in group.groupby("bucket", observed=True):
+            rows.append(
+                {
+                    "book": str(book),
+                    "factor": factor,
+                    "bucket": str(bucket),
+                    "n_months": int(len(block)),
+                    "exposure_mean": float(block["exposure"].mean()),
+                    "exposure_min": float(block["exposure"].min()),
+                    "exposure_max": float(block["exposure"].max()),
+                    "predicted_vol_ann_mean": float(block["predicted_vol_ann"].mean()),
+                    "realized_vol_ann_mean": float(block["realized_vol_ann"].mean()),
+                    "bias_mean": float(block["bias_ratio"].mean()),
+                    "bias_median": float(block["bias_ratio"].median()),
+                    "share_in_band": float(
+                        block["bias_ratio"].between(low, high).mean()
+                    ),
+                }
+            )
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    # order the buckets by exposure rather than alphabetically
+    out["bucket"] = pd.Categorical(out["bucket"], categories=labels, ordered=True)
+    out = out.sort_values(["book", "bucket"]).reset_index(drop=True)
+    out["bucket"] = out["bucket"].astype(str)
+    return out
+
+
+def coverage_by_year(bias: pd.DataFrame, decomposition: pd.DataFrame) -> pd.DataFrame:
+    """The bias statistics beside the share of the book the model describes.
+
+    INPUT: data/eval/xs_bias.parquet (book, date, predicted_vol_ann,
+    realized_vol_ann, bias_ratio) and data/eval/xs_risk_decomposition.parquet
+    (book, date, residual_weight, n_names). OUTPUT:
+    data/eval/xs_coverage_by_year.parquet (book, year, n_months,
+    coverage_mean, coverage_min, coverage_max, n_names_mean,
+    predicted_vol_ann_mean, realized_vol_ann_mean, bias_mean, share_in_band).
+
+    Coverage is one minus the residual weight, the weight of the book's names
+    that have no descriptor row and are therefore outside the model. A bias
+    mean computed over a year whose coverage is low is a statement about the
+    covered part of the book, so the two series are stored side by side rather
+    than quoted apart.
+    """
+    per_date = decomposition.groupby(["book", "date"], as_index=False).agg(
+        residual_weight_model=("residual_weight", "first"),
+        n_names_model=("n_names", "first"),
+    )
+    joined = bias.merge(per_date, on=["book", "date"], how="left")
+    joined["coverage"] = 1.0 - joined["residual_weight_model"].fillna(1.0)
+    joined["year"] = pd.to_datetime(joined["date"]).dt.year
+    low, high = BIAS_BAND
+    joined["in_band"] = joined["bias_ratio"].between(low, high)
+    out = (
+        joined.groupby(["book", "year"], as_index=False)
+        .agg(
+            n_months=("bias_ratio", "size"),
+            coverage_mean=("coverage", "mean"),
+            coverage_min=("coverage", "min"),
+            coverage_max=("coverage", "max"),
+            n_names_mean=("n_names_model", "mean"),
+            predicted_vol_ann_mean=("predicted_vol_ann", "mean"),
+            realized_vol_ann_mean=("realized_vol_ann", "mean"),
+            bias_mean=("bias_ratio", "mean"),
+            share_in_band=("in_band", "mean"),
+        )
+        .sort_values(["book", "year"])
+    )
+    return out.reset_index(drop=True)

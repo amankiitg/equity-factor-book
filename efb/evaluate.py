@@ -1602,7 +1602,8 @@ def evaluate_e3_criteria(
         }
 
     momentum_exposure = exposure_timeseries.loc[
-        (exposure_timeseries["factor"] == "momentum")
+        (exposure_timeseries["book"] == "seed_mom_ls")
+        & (exposure_timeseries["factor"] == "momentum")
         & (exposure_timeseries["date"] >= "2015-01-01")
     ]["exposure"]
     reconciliation = {
@@ -1623,12 +1624,22 @@ def evaluate_e3_criteria(
             "r_squared_by_year": parameters.get("r_squared_by_year", {}),
             "r_squared_market_only_mean": parameters.get("r_squared_market_only_mean"),
             "r_squared_by_sector": parameters.get("r_squared_by_sector", {}),
+            "shift_test_lagged_mean_r_squared": parameters.get(
+                "shift_test_lagged_mean_r_squared"
+            ),
+            "shift_test_dated_t_mean_r_squared": parameters.get(
+                "shift_test_dated_t_mean_r_squared"
+            ),
         },
         "verdict": _verdict(mean_r2 > 0.20),
         "note": (
             "The three diagnostics standing instruction B names are stored here "
             "whether or not the average clears 20 percent, so a low number can "
-            "be attributed without a rebuild."
+            "be attributed without a rebuild. The shift test pair is stored "
+            "beside them: the design dated t-1 explains "
+            "shift_test_lagged_mean_r_squared and the design dated t explains "
+            "shift_test_dated_t_mean_r_squared, and the difference is the "
+            "same-day information the t-1 rule removes."
         ),
     }
     criteria["F3.2"] = {

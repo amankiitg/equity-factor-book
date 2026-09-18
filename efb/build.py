@@ -73,6 +73,9 @@ E3_ARTIFACTS = [
     "eval/xs_fm_premia.parquet",
     "eval/xs_risk_decomposition.parquet",
     "eval/xs_bias.parquet",
+    "eval/xs_bias_by_exposure.parquet",
+    "eval/xs_coverage_by_year.parquet",
+    "eval/xs_survivor_restriction.parquet",
     "eval/xs_exposure_timeseries.parquet",
     "eval/xs_residual_covariance.parquet",
 ]
@@ -1052,9 +1055,13 @@ def build_e3_artifacts(
     for directory in (raw_dir, processed_dir, xs_dir, eval_dir):
         directory.mkdir(parents=True, exist_ok=True)
 
-    # 1. Share history, market cap
+    # 1. Share history, market cap. The union of the sector file and the panel
+    # is asked for, not the sector file alone: the survivor-only measurement
+    # needs a market cap for the members the sector file cannot reach, and a
+    # name with no share count has no market cap at all.
     sector_frame = pd.read_parquet(processed_dir / "sectors.parquet")
-    history = probes.fetch_share_history(list(dict.fromkeys(sector_frame["ticker"])))
+    wanted = list(dict.fromkeys([*sector_frame["ticker"], *returns.columns]))
+    history = probes.fetch_share_history(wanted)
     history.to_parquet(raw_dir / "shares_history.parquet", index=False)
     cap = fundamental.market_cap(close[mapped], shares[mapped])
     look_ahead = inputs["look_ahead"]
@@ -1166,7 +1173,9 @@ def build_e3_artifacts(
                 continue
             weights_by_date[date] = rows.set_index("ticker")["weight"].astype(float)
         exposure_rows.append(
-            risk.exposure_series(days, weights_by_date, list(fundamental.FACTOR_NAMES))
+            risk.exposure_series(
+                days, weights_by_date, list(fundamental.FACTOR_NAMES), book=book
+            )
         )
         bias = risk.segment_bias(
             days,
@@ -1219,6 +1228,19 @@ def build_e3_artifacts(
     residual_frame = pd.DataFrame(residual_rows)
     residual_frame.to_parquet(eval_dir / "xs_residual_covariance.parquet", index=False)
 
+    # 7b. The three tables the walkthrough's E3 close-out reads: the bias by the
+    # book's own exposure, the bias beside the model's coverage, and the
+    # survivor-only restriction as a stored frame rather than prose
+    risk.bias_by_exposure(bias_frame, exposure_frame).to_parquet(
+        eval_dir / "xs_bias_by_exposure.parquet", index=False
+    )
+    risk.coverage_by_year(bias_frame, decomposition).to_parquet(
+        eval_dir / "xs_coverage_by_year.parquet", index=False
+    )
+    probes.members_outside_sector_file(
+        membership, set(mapped), market_cap=(close * shares).shift(1)
+    ).to_parquet(eval_dir / "xs_survivor_restriction.parquet", index=False)
+
     # 8. Registry entry, hashed after the artifacts exist
     artifacts_hash = combined_hash(
         {
@@ -1239,7 +1261,10 @@ def build_e3_artifacts(
         artifacts_hash=artifacts_hash,
         start=str(xs_r2["date"].min().date()),
         end=str(xs_r2["date"].max().date()),
-        diagnostics=_diagnostics(design, xs_r2, specific_wide),
+        diagnostics={
+            **_diagnostics(design, xs_r2, specific_wide),
+            **fx.shift_test(design),
+        },
     )
     entry = registry.model_entry(
         version="XS-v1",

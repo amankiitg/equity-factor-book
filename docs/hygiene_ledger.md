@@ -777,4 +777,64 @@ and momentum windows contain the day being explained for the same reason. The
 t-1 rule removes, and they are the reason the rule exists rather than evidence
 against it. The pre-registration is recorded as wrong about the sign, the
 decision it was attached to (use the t-1 design) is unchanged, and no criterion
-text was edited.
+text was edited. The rule was wrong on one detail and the walkthrough now
+prints the exact windows: the momentum column is 231 sessions, not 252, and it
+ends 21 sessions before the date being explained, so momentum is the one style
+whose window never contains the return.
+
+## 2026-09-17: the exposure time series had no book label, so F3.9 quoted a blend
+
+Decision. `data/eval/xs_exposure_timeseries.parquet` carries a `book` column,
+and the F3.9 reconciliation quotes the momentum book alone.
+
+Old value. `risk.exposure_series` returned one row per date and factor with no
+book label, and the build concatenated the two books into the same frame. The
+artifact therefore held 6804 rows of which 3402 were duplicates on (date,
+factor): two different exposure vectors under one key. F3.9's stored mean was
+computed over both books together, 0.3407061589106543 over 282 rows, and the
+dashboard's exposure timing panel took the same pooled series because there was
+no label to filter on.
+
+New value. The artifact holds 6804 rows with no duplicate keys, F3.9 quotes the
+momentum book over its own 141 rebalances at a mean of 0.7214982201158555 and a
+range of 0.23195900889357352 to 1.091340001486862, and the dashboard panel
+filters on the book it is asked for. The equal-weight book's own momentum
+exposure averages -0.038468 and its market exposure 0.761138, against the
+momentum book's 0.719794 and -0.000998, so the two books are not two versions
+of one exposure profile and the pooled number described neither.
+
+Reason. The criterion text, quoted from the roadmap, says "the XS-v1 exposure
+time series for the momentum book". A frame in which two books are
+indistinguishable cannot support that sentence, and the error was found while
+splitting the bias by the book's own exposure for the E3 close-out, which is
+exactly the kind of question the label is needed for. This is a correction to
+an artifact schema and to a stored number, so it is recorded as a revision in
+sprints/E3/RESULTS.json, which reports n_changed 1 against the previous run.
+
+## 2026-09-17: the share-history cache was narrowed to the sector file, so the survivor weight share came back zero
+
+Decision. The E3 build fetches the share history for the union of the sector
+file and the panel, which is what `python -m efb.probes --e3-shares-all` does
+and what the Task 0 probe record describes: 826 names asked, 773 returning a
+history.
+
+Old value. The build asked for the 502 names in the sector file only and wrote
+the result back to the cache, so the cached history held the sector names
+alone. With no share count for a name there is no market capitalisation, and
+the survivor-only table's `share_outside_mcap` came back as 0.0 for every year
+while `share_outside` stayed correct, because the name count does not need a
+market cap and the weight share does.
+
+New value. The cache holds the union again (503 names before the probe run, 826
+after it) and
+`data/eval/xs_survivor_restriction.parquet` reproduces the Task 0 probe record
+exactly: 0.419391 by name and 0.088511 by market cap in 2010, 0.048094 and
+0.002385 in 2025, 0.013707 and 0.000444 in the partial 2026.
+
+Reason. The zero was arithmetically correct and factually wrong, which is the
+failure mode a stored table is supposed to prevent: nothing raised, the column
+was present, and only the probe record caught it. The narrower fetch also
+clobbered a cache that the probe had filled with the wider union, so a rebuild
+silently narrowed what was known about the past. The union is now what the
+build asks for, and the survivor table is stored so that a future regression
+shows up as a changed number rather than as a plausible zero.

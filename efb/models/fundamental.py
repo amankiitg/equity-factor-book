@@ -616,6 +616,64 @@ def fit_panel(
     }
 
 
+def shift_test(design: DesignResult) -> dict[str, object]:
+    """The cross-sectional R squared with the design dated t-1 and dated t.
+
+    INPUT: the built design. OUTPUT: the two means, the number of paired
+    cross-sections and their difference, for the registry and the evaluator.
+    No file is written.
+
+    `dated t` is the design of the next available cross-section, so its
+    descriptors are computed from data through the date being explained, and
+    the date being explained sits inside several of its input windows: the
+    size column is the log of market cap at that date, which is the previous
+    market cap times one plus the return being explained, and the beta,
+    reversal, residual volatility and liquidity windows all end on that date.
+    The momentum window ends 21 sessions earlier, so it is the one style that
+    is unaffected. Both fits run on the names the two cross-sections share and
+    on the returns that are finite in both, so the only thing that differs is
+    the vintage of the design.
+    """
+    by_date = {day.date: day for day in design.days}
+    dates = sorted(by_date)
+    lagged: list[float] = []
+    dated_t: list[float] = []
+    for position, date in enumerate(dates[:-1]):
+        day = by_date[date]
+        later = by_date[dates[position + 1]]
+        common = day.tickers.intersection(later.tickers)
+        if len(common) < MIN_NAMES:
+            continue
+        here = day.tickers.get_indexer(common)
+        there = later.tickers.get_indexer(common)
+        target = day.returns[here]
+        ok = np.isfinite(target)
+        if int(ok.sum()) < MIN_NAMES:
+            continue
+        lagged.append(
+            float(
+                wls_fit(
+                    day.design[here][ok], target[ok], day.weights[here][ok]
+                ).r_squared
+            )
+        )
+        dated_t.append(
+            float(
+                wls_fit(
+                    later.design[there][ok], target[ok], later.weights[there][ok]
+                ).r_squared
+            )
+        )
+    lagged_mean = float(np.mean(lagged))
+    dated_mean = float(np.mean(dated_t))
+    return {
+        "shift_test_days": len(lagged),
+        "shift_test_lagged_mean_r_squared": lagged_mean,
+        "shift_test_dated_t_mean_r_squared": dated_mean,
+        "shift_test_difference": dated_mean - lagged_mean,
+    }
+
+
 def ewma_factor_cov(
     factor_returns: pd.DataFrame, half_life: int = F_HALF_LIFE, nw_lag: int = NW_LAG
 ) -> pd.DataFrame:

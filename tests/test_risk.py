@@ -215,17 +215,75 @@ def test_realized_idio_variance_behaves_differently_for_the_two_books() -> None:
     )
 
 
-def test_exposure_series_is_linear_in_the_weights() -> None:
+def test_exposure_series_carries_the_book_label() -> None:
     day = _cross_section()
     weights = _weights(day)
-    doubled = weights * 2.0
-    single = exposure_series({day.date: day}, {day.date: weights}, FACTORS)
-    twice = exposure_series({day.date: day}, {day.date: doubled}, FACTORS)
-    merged = single.merge(twice, on="factor", suffixes=("_1", "_2"))
-    assert (merged["exposure_1"] * 2).tolist() == pytest.approx(
-        merged["exposure_2"].tolist()
+    out = exposure_series({day.date: day}, {day.date: weights}, FACTORS, book="seed_ew")
+    assert set(out["book"]) == {"seed_ew"}
+    two = pd.concat(
+        [
+            exposure_series(
+                {day.date: day}, {day.date: weights}, FACTORS, book="seed_ew"
+            ),
+            exposure_series(
+                {day.date: day}, {day.date: weights}, FACTORS, book="seed_mom_ls"
+            ),
+        ],
+        ignore_index=True,
     )
-    assert set(merged["factor"]) == set(FACTORS)
+    # the same weights under two book labels are two distinguishable series
+    assert two.groupby("book")["exposure"].sum().nunique() == 1
+    assert not two.duplicated(["book", "date", "factor"]).any()
+
+
+def _two_books(n_months: int = 9) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Two books on the same dates with different exposure distributions."""
+    dates = pd.date_range("2016-01-31", periods=n_months, freq="ME")
+    spans = {"seed_ew": (-1.0, 1.0), "seed_mom_ls": (0.0, 2.0)}
+    bias_rows: list[dict[str, object]] = []
+    exposure_rows: list[dict[str, object]] = []
+    for book, (low, high) in spans.items():
+        for exposure, date in zip(np.linspace(low, high, n_months), dates, strict=True):
+            predicted = 0.05 + 0.05 * max(exposure, 0.0)
+            bias_rows.append(
+                {
+                    "book": book,
+                    "date": date,
+                    "predicted_vol_ann": predicted,
+                    "realized_vol_ann": 0.05,
+                    "bias_ratio": 0.05 / predicted,
+                    "factor_share": 0.5,
+                    "n_names": 100,
+                    "residual_weight": 0.0,
+                }
+            )
+            exposure_rows.append(
+                {
+                    "book": book,
+                    "date": date,
+                    "factor": "momentum",
+                    "exposure": exposure,
+                }
+            )
+    return pd.DataFrame(bias_rows), pd.DataFrame(exposure_rows)
+
+
+def test_bias_by_exposure_uses_each_books_own_exposure() -> None:
+    from efb.risk import bias_by_exposure
+
+    bias, exposure = _two_books()
+    table = bias_by_exposure(bias, exposure)
+    assert set(table["book"]) == {"seed_ew", "seed_mom_ls"}
+    assert table["n_months"].sum() == len(bias)
+    means = table.pivot(index="bucket", columns="book", values="exposure_mean").loc[
+        ["low", "mid", "high"]
+    ]
+    # each book is split on its own exposure, so the bucket means differ
+    assert not np.allclose(means["seed_ew"], means["seed_mom_ls"])
+    assert means["seed_ew"].is_monotonic_increasing
+    assert means["seed_mom_ls"].is_monotonic_increasing
+    # a book split on its own exposure can only see its own months
+    assert (table.groupby("book")["n_months"].sum() == len(bias) / 2).all()
 
 
 def test_exposure_series_skips_dates_without_a_design() -> None:
@@ -260,3 +318,106 @@ def test_decomposition_type_is_stable() -> None:
     )
     assert isinstance(result, RiskDecomposition)
     assert result.book == "book"
+
+
+def _bias_frame(n_months: int = 12) -> pd.DataFrame:
+    """A monthly bias frame with a known relation to exposure."""
+    dates = pd.date_range("2016-01-31", periods=n_months, freq="ME")
+    exposure = np.linspace(-0.5, 1.0, n_months)
+    # predicted volatility rises with exposure, realized does not: the bias
+    # therefore falls as exposure rises, which is the pattern the tercile
+    # table has to expose
+    predicted = 0.05 + 0.05 * np.maximum(exposure, 0.0)
+    realized = np.full(n_months, 0.05)
+    rows = []
+    columns = zip(dates, predicted, realized, strict=True)
+    for date, pred, real in columns:
+        rows.append(
+            {
+                "book": "seed_mom_ls",
+                "date": date,
+                "predicted_vol_ann": pred,
+                "realized_vol_ann": real,
+                "bias_ratio": real / pred,
+                "factor_share": 0.5,
+                "n_names": 100,
+                "residual_weight": 0.0,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _exposure_frame(bias: pd.DataFrame, factor: str = "momentum") -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "book": bias["book"],
+            "date": bias["date"],
+            "factor": factor,
+            "exposure": np.linspace(-0.5, 1.0, len(bias)),
+        }
+    )
+
+
+def test_bias_by_exposure_orders_the_buckets_by_exposure() -> None:
+    from efb.risk import bias_by_exposure
+
+    bias = _bias_frame()
+    table = bias_by_exposure(bias, _exposure_frame(bias))
+    assert list(table["bucket"]) == ["low", "mid", "high"]
+    assert table["n_months"].sum() == len(bias)
+    means = table.set_index("bucket")["exposure_mean"]
+    assert means["low"] < means["mid"] < means["high"]
+    # the fixture predicts poorly only where the exposure is high
+    bias_means = table.set_index("bucket")["bias_mean"]
+    assert bias_means["low"] > bias_means["high"]
+    assert table["share_in_band"].between(0.0, 1.0).all()
+
+
+def test_bias_by_exposure_is_flat_when_the_model_is_right() -> None:
+    from efb.risk import bias_by_exposure
+
+    bias = _bias_frame()
+    bias["predicted_vol_ann"] = 0.05
+    bias["bias_ratio"] = 1.0
+    table = bias_by_exposure(bias, _exposure_frame(bias))
+    assert np.allclose(table["bias_mean"], 1.0)
+    assert np.allclose(table["share_in_band"], 1.0)
+
+
+def test_coverage_by_year_is_one_minus_the_residual_weight() -> None:
+    from efb.risk import coverage_by_year
+
+    bias = _bias_frame()
+    decomposition = pd.DataFrame(
+        {
+            "book": ["seed_mom_ls"] * len(bias),
+            "date": bias["date"],
+            "residual_weight": np.linspace(0.0, 0.5, len(bias)),
+            "n_names": 100,
+        }
+    )
+    table = coverage_by_year(bias, decomposition)
+    assert table["year"].tolist() == [2016]
+    assert table["n_months"].tolist() == [len(bias)]
+    assert table["coverage_mean"].iloc[0] == pytest.approx(1.0 - 0.25, rel=1e-9)
+    assert table["coverage_max"].iloc[0] == pytest.approx(1.0)
+    assert table["coverage_min"].iloc[0] == pytest.approx(0.5)
+
+
+def test_coverage_by_year_treats_a_missing_row_as_full_exposure() -> None:
+    from efb.risk import coverage_by_year
+
+    bias = _bias_frame()
+    decomposition = pd.DataFrame(
+        {
+            "book": ["seed_mom_ls"],
+            "date": [bias["date"].iloc[0]],
+            "residual_weight": [0.0],
+            "n_names": [100],
+        }
+    )
+    table = coverage_by_year(bias, decomposition)
+    assert table["n_months"].iloc[0] == len(bias)
+    # eleven of twelve months have no decomposition row, so coverage is zero
+    # there rather than silently one
+    assert table["coverage_mean"].iloc[0] == pytest.approx(1.0 / 12.0)

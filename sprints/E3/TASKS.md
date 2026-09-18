@@ -310,9 +310,12 @@ never moves and a stored criterion is never narrowed.
   - Completed: 2026-09-17. data/eval/xs_exposure_timeseries.parquet holds
     378 book-factor rows over 189 month ends, the book's exposures read from
     the standardized cross-section at each rebalance. F3.9 stores the
-    momentum series mean 0.3407061589106543 with range -0.10186105044867005
-    to 1.091340001486862 over 282 book rebalances, and the reconciliation
-    against all five E2 numbers is written into the risk report. Both
+    momentum series mean 0.7214982201158555 with range 0.23195900889357352
+    to 1.091340001486862 over 141 rebalances of the momentum book, and the
+    reconciliation against all five E2 numbers is written into the risk report.
+    The artifact carries a book column: the first version concatenated both
+    books without one, so F3.9's stored mean was a blend of the equal-weight and
+    momentum books, and both were fixed under a dated Hygiene Ledger entry. Both
     deliverables are written:
     docs/research/E3_factor_model_note.md and
     docs/research/E3_risk_report.md, each with the PM answer in one paragraph

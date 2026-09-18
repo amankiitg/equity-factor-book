@@ -201,13 +201,14 @@ def mcr_chart(decomposition: pd.DataFrame, book: str, top: int = 20) -> pd.DataF
 
 def exposure_timing(exposure: pd.DataFrame, book: str, factor: str) -> pd.DataFrame:
     """One book's exposure to one factor at each rebalance."""
-    _require(exposure, ["date", "factor", "exposure"], "exposure")
+    _require(exposure, ["book", "date", "factor", "exposure"], "exposure")
     subset = exposure.loc[
-        (exposure["factor"] == factor) & (exposure["date"] >= "2015-01-01")
+        (exposure["book"] == book)
+        & (exposure["factor"] == factor)
+        & (exposure["date"] >= "2015-01-01")
     ]
     if subset.empty:
-        raise ValueError(f"exposure: no rows for {factor}")
-    del book
+        raise ValueError(f"exposure: no rows for {book} and {factor}")
     return subset.set_index("date")["exposure"].sort_index().to_frame(factor)
 
 

@@ -113,30 +113,38 @@ XS-v1 column is the exposure time series this sprint stores.
 | E2 rolling 252-day beta aggregate, mean | 0.06978002876927968 |
 | E2 rolling aggregate range, 195 rebalances | -0.3322050420277022 to 0.3904549841533205 |
 | E2 static full-sample aggregate | -0.016190070548666415 |
-| XS-v1 exposure to momentum, mean | 0.3407061589106543 |
-| XS-v1 exposure to momentum, range, 282 book rebalances | -0.10186105044867005 to 1.091340001486862 |
+| XS-v1 exposure to momentum, mean | 0.7214982201158555 |
+| XS-v1 exposure to momentum, range, 141 rebalances of the momentum book | 0.23195900889357352 to 1.091340001486862 |
 
-The two measurements agree in sign and in magnitude once the windows are
-matched: a book sorted on momentum carries a positive momentum exposure
-whenever it is measured at the moment it is held, and a full-sample regression
-averages that exposure toward zero. F3.9's mean of 0.3407061589106543 is about
-five times the E2 rolling aggregate mean of 0.06978002876927968, and the
-difference is the measurement rather than the book: E2's aggregate is a beta
-weighted across the name-level loadings and F3.9's is the book's descriptor
-exposure read straight from the standardized cross-section, so the two answer
-"how much momentum is in this book" in different units. The step that matters
-for sizing is that both are positive and both are far from the static
-full-sample reading of -0.016190070548666415. That is why no EFB result may
-quote a single idio share for a long/short book without the measurement method
-attached, and why the static decomposition is not used for the momentum book's
-sizing.
+The two measurements agree in sign and disagree in units: a book sorted on
+momentum carries a positive momentum exposure whenever it is measured at the
+moment it is held, and a full-sample regression averages that exposure toward
+zero. F3.9's mean of 0.7214982201158555 is about ten times the E2 rolling
+aggregate mean of 0.06978002876927968, and the difference is the measurement
+rather than the book: E2's aggregate is a beta weighted across the name-level
+loadings and F3.9's is the momentum book's own descriptor exposure read
+straight from the standardized cross-section. The comparison had to be fixed
+before it could be read: the exposure artifact originally concatenated both
+books without a book label, so F3.9's stored mean was a blend of the
+equal-weight and momentum books over 282 rows. It now carries a book column
+and the criterion quotes the momentum book over its own 141 rebalances, which
+is what the criterion text says. The step that matters for sizing is that both
+are positive and both are far from the static full-sample reading of
+-0.016190070548666415. That is why no EFB result may quote a single idio share
+for a long/short book without the measurement method attached, and why the
+static decomposition is not used for the momentum book's sizing.
 
-The exposure series covers every factor, not only momentum, and the stored
-means are the book's average tilt: momentum 0.340663, reversal 0.210273,
-market 0.380070, size -0.359046, liquidity -0.331124, beta -0.031688 and
-residual volatility -0.108568 on the 378 book-factor dates. The size and
-liquidity tilts are the ones to watch, because both are negative and the
-liquidity tilt is larger than the momentum tilt that the book was built for.
+The exposure series covers every factor, and with the book label in place the
+two books can be read apart. The momentum book's average tilt is momentum
+0.719794, reversal 0.452987, size 0.088020, liquidity 0.037501, beta 0.015528,
+residual volatility -0.139699 and market -0.000998: the market exposure is zero
+to three decimal places, which is what a dollar-neutral book should look like,
+and the momentum tilt is an order of magnitude larger than anything else. The
+equal-weight book's average tilt is the mirror image, momentum -0.038468 with
+market 0.761138, size -0.806113 and liquidity -0.699749, so the two books are
+not two versions of one exposure profile. Before the book label existed these
+figures were pooled averages of both books and the market tilt was reported as
+0.380070, which described neither book.
 
 ## Top marginal contributions
 
@@ -240,7 +248,8 @@ book, which is E4's work.
   book: 0.9570097710419492, inside the band.
 - An exposure time series that contradicts the E2 numbers in sign, which would
   say one of the two measurements is wrong rather than that the book's
-  exposure is small. Stored: mean 0.3407061589106543, same sign as every E2
+  exposure is small. Stored for the momentum book: mean 0.7214982201158555,
+  same sign as every E2
   measurement.
 - A realized residual covariance that leaves the factor share unchanged, which
   would say the specific returns carry no common structure. Stored: the
