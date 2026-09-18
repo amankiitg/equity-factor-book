@@ -1,0 +1,1602 @@
+{
+  "sprint": "E3",
+  "evaluated_at": "2026-09-17T22:47:53+00:00",
+  "data_hash": "0eb5612afbdbb753455d93c9da009c702decf688610ab382cebc0acf60f03b87",
+  "criteria": {
+    "F3.1": {
+      "criterion": "Average daily cross-sectional R squared above 20%. Below 15% means descriptor construction or weighting is wrong, not that the market is unusual.",
+      "threshold": "mean cross-sectional R squared > 0.20, fail band below 0.15",
+      "stored_numbers": {
+        "mean_cross_sectional_r_squared": 0.3294501878861149,
+        "n_days": 3941,
+        "r_squared_by_year": {
+          "2011": 0.35381,
+          "2012": 0.289056,
+          "2013": 0.247919,
+          "2014": 0.28293,
+          "2015": 0.293861,
+          "2016": 0.31435,
+          "2017": 0.277233,
+          "2018": 0.312246,
+          "2019": 0.28363,
+          "2020": 0.37178,
+          "2021": 0.340566,
+          "2022": 0.414612,
+          "2023": 0.367565,
+          "2024": 0.3654,
+          "2025": 0.380905,
+          "2026": 0.398301
+        },
+        "r_squared_market_only_mean": -0.0,
+        "r_squared_by_sector": {
+          "Communication Services": 0.312029,
+          "Consumer Discretionary": 0.227468,
+          "Consumer Staples": 0.27365,
+          "Energy": 0.389566,
+          "Financials": 0.271331,
+          "Health Care": 0.217544,
+          "Industrials": 0.244622,
+          "Information Technology": 0.258247,
+          "Materials": 0.19037,
+          "Real Estate": 0.316339,
+          "Utilities": 0.435051
+        }
+      },
+      "verdict": "pass",
+      "note": "The three diagnostics standing instruction B names are stored here whether or not the average clears 20 percent, so a low number can be attributed without a rebuild."
+    },
+    "F3.2": {
+      "criterion": "FMP check: X' w_FMP(k) equals the unit vector e_k within 1e-8 for every factor k.",
+      "threshold": "max abs deviation from e_k < 1e-8",
+      "stored_numbers": {
+        "max_abs_identity_error_estimated": 1.2426149519073615e-13,
+        "n_days_checked": 3941,
+        "n_factor_days": 1032745,
+        "kinds": [
+          "estimated",
+          "identified"
+        ]
+      },
+      "verdict": "pass",
+      "note": "The criterion tests the factor-mimicking portfolios of the estimated design, the rows of (X'WX)^-1 X'W, where the reference sector is dropped so the market column and the sector block are not collinear. The identified weight set reproduces all eleven reported sector returns and is stored beside it."
+    },
+    "F3.3": {
+      "criterion": "Identification: cap-weighted sector factor returns sum to zero within 1e-10 on every day.",
+      "threshold": "abs cap-weighted sector sum < 1e-10 on every day",
+      "stored_numbers": {
+        "max_abs_cap_weighted_sector_sum": 7.047314121155779e-18,
+        "n_days_checked": 3941
+      },
+      "verdict": "pass",
+      "note": "Measured on the identified factor returns, every day."
+    },
+    "F3.4": {
+      "criterion": "Agreement with the time-series world: XS-v1 momentum factor return vs FF MOM daily correlation above 0.6; market factor vs Mkt-RF above 0.9.",
+      "threshold": "momentum correlation > 0.6 and market correlation > 0.9",
+      "stored_numbers": {
+        "momentum_vs_ff_mom_correlation": 0.7555482343048963,
+        "market_vs_ff_market_correlation": 0.9889255744977894,
+        "n_overlap_momentum": 3917,
+        "n_overlap_market": 3917
+      },
+      "verdict": "pass",
+      "note": "The market comparison is against Mkt-RF plus RF, the FF total return, on the overlap through 2026-07-31. XS-v1 regresses the total return r because the risk-free series ends there."
+    },
+    "F3.5": {
+      "criterion": "Decomposition adds up: factor variance plus idio variance equals w' Sigma w to machine precision; contributions sum to sigma_p.",
+      "threshold": "identity error at machine precision",
+      "stored_numbers": {
+        "max_abs_factor_plus_idio_minus_total": 0.0,
+        "max_abs_contribution_sum_minus_sigma_p": 6.245004513516506e-17,
+        "n_book_dates": 370,
+        "factor_share_by_book": {
+          "seed_ew": 0.995566769958711,
+          "seed_mom_ls": 0.8158376346028686
+        }
+      },
+      "verdict": "pass",
+      "note": "Both seed books, every month end the model runs."
+    },
+    "F3.6": {
+      "criterion": "Bias statistic for both seed portfolios, monthly 2015 to 2026, between 0.8 and 1.25.",
+      "threshold": "mean monthly bias in [0.8, 1.25] for both books",
+      "stored_numbers": {
+        "seed_ew": {
+          "mean": 0.9570097710419492,
+          "min": 0.20205604847059966,
+          "max": 4.435314656662224,
+          "share_in_band": 0.36879432624113473,
+          "n_months": 141,
+          "by_year": {
+            "2015": 0.797448785083244,
+            "2016": 1.0003598151455415,
+            "2017": 1.2478538867184978,
+            "2018": 0.6306023975534878,
+            "2019": 1.012453341788112,
+            "2020": 0.39728358994726903,
+            "2021": 1.5649206806800946,
+            "2022": 0.6672542500609988,
+            "2023": 1.3152652665526483,
+            "2024": 0.9638461452513073,
+            "2025": 0.7211143152110808,
+            "2026": 1.2352831143341638
+          }
+        },
+        "seed_mom_ls": {
+          "mean": 0.6663870518805773,
+          "min": 0.17496657712925254,
+          "max": 3.4321371222032133,
+          "share_in_band": 0.12056737588652482,
+          "n_months": 141,
+          "by_year": {
+            "2015": 0.6150280235822388,
+            "2016": 0.7912201425961273,
+            "2017": 0.9028617141396377,
+            "2018": 0.47742410341523595,
+            "2019": 0.5586982998334332,
+            "2020": 0.3736563533551951,
+            "2021": 1.4656677541722916,
+            "2022": 0.556323120648526,
+            "2023": 0.8244992739923621,
+            "2024": 0.4613643257918165,
+            "2025": 0.47794448046601595,
+            "2026": 0.43381369013853804
+          }
+        }
+      },
+      "verdict": "fail",
+      "note": "The monthly statistic is the book's realized 21-day forward volatility over the model's predicted volatility, estimated point in time at each month end. The criterion is read as the average of the monthly statistics, the reading E2 used for F2.4, and the monthly distribution is stored beside it."
+    },
+    "F3.7": {
+      "criterion": "The Fama-MacBeth premia table is produced with Newey-West t-stats for every factor and subperiod, whatever the verdict; a premium with |t| below 2 is reported as unpriced, not dropped.",
+      "threshold": "table complete for every factor and subperiod",
+      "stored_numbers": {
+        "n_rows": 72,
+        "n_factors": 18,
+        "periods": [
+          "2011_2015",
+          "2016_2020",
+          "2021_2026",
+          "full_sample"
+        ],
+        "min_periods_per_factor": 4,
+        "n_unpriced": 64,
+        "unpriced_share": 0.8888888888888888
+      },
+      "verdict": "pass",
+      "note": "Complete means every factor appears in every subperiod with a Newey-West t statistic, whatever the verdict. Unpriced premia are labelled and kept."
+    },
+    "F3.8": {
+      "criterion": "Realized residual covariance is computed for both seed portfolios and the factor share is reported both ways, with the diagonal D and with the realized residual covariance. The criterion passes when both numbers are stored, whatever they show.",
+      "threshold": "both factor shares stored for both books",
+      "stored_numbers": {
+        "seed_ew": {
+          "factor_share_diagonal_mean": 0.9940314593621442,
+          "factor_share_realized_mean": 0.9968315206727247,
+          "n_windows": 141
+        },
+        "seed_mom_ls": {
+          "factor_share_diagonal_mean": 0.7905666631763667,
+          "factor_share_realized_mean": 0.5890153813347032,
+          "n_windows": 141
+        }
+      },
+      "verdict": "pass",
+      "note": "The realized residual covariance is estimated on trailing 252-day windows of specific returns, so nothing after the window end enters. The difference against the diagonal D is the measurement the E2 open item asked for."
+    },
+    "F3.9": {
+      "criterion": "The XS-v1 exposure time series for the momentum book is stored and reconciled to the E2 measurements in writing.",
+      "threshold": "exposure series stored and reconciled",
+      "stored_numbers": {
+        "xs_exposure_mean": 0.3407061589106543,
+        "xs_exposure_min": -0.10186105044867005,
+        "xs_exposure_max": 1.091340001486862,
+        "n_rebalances": 282,
+        "e2_reference": {
+          "static_name_level_factor_share_last_month": 0.09681972392333447,
+          "regression_loading": 0.2884639400639966,
+          "regression_t_stat": 29.104952622365634,
+          "rolling_beta_aggregate_mean": 0.06978002876927968,
+          "rolling_beta_aggregate_min": -0.3322050420277022,
+          "rolling_beta_aggregate_max": 0.3904549841533205,
+          "static_full_sample_aggregate": -0.016190070548666415,
+          "n_rebalances": 195
+        }
+      },
+      "verdict": "pass",
+      "note": "The series is x = X'w at each rebalance, so the momentum book is priced from descriptor exposures recomputed when it is held rather than from full-sample betas. The reconciliation against every E2 measurement is written in docs/research/E3_factor_model_note.md."
+    }
+  },
+  "revisions": {
+    "previous_data_hash": "536c4c71c64e0ad28c9c1009bbb9caa18377173249652baff00256fc84c32204",
+    "data_hash": "0eb5612afbdbb753455d93c9da009c702decf688610ab382cebc0acf60f03b87",
+    "n_changed": 0,
+    "changed_tickers_or_criteria": [],
+    "cross_sprint_criteria": [],
+    "changed": {
+      "F3.1": {
+        "changed": false,
+        "old": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "mean_cross_sectional_r_squared": 0.3294501878861149,
+            "n_days": 3941,
+            "r_squared_by_year": {
+              "2011": 0.35381,
+              "2012": 0.289056,
+              "2013": 0.247919,
+              "2014": 0.28293,
+              "2015": 0.293861,
+              "2016": 0.31435,
+              "2017": 0.277233,
+              "2018": 0.312246,
+              "2019": 0.28363,
+              "2020": 0.37178,
+              "2021": 0.340566,
+              "2022": 0.414612,
+              "2023": 0.367565,
+              "2024": 0.3654,
+              "2025": 0.380905,
+              "2026": 0.398301
+            },
+            "r_squared_market_only_mean": -0.0,
+            "r_squared_by_sector": {
+              "Communication Services": 0.312029,
+              "Consumer Discretionary": 0.227468,
+              "Consumer Staples": 0.27365,
+              "Energy": 0.389566,
+              "Financials": 0.271331,
+              "Health Care": 0.217544,
+              "Industrials": 0.244622,
+              "Information Technology": 0.258247,
+              "Materials": 0.19037,
+              "Real Estate": 0.316339,
+              "Utilities": 0.435051
+            }
+          }
+        },
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "mean_cross_sectional_r_squared": 0.3294501878861149,
+            "n_days": 3941,
+            "r_squared_by_year": {
+              "2011": 0.35381,
+              "2012": 0.289056,
+              "2013": 0.247919,
+              "2014": 0.28293,
+              "2015": 0.293861,
+              "2016": 0.31435,
+              "2017": 0.277233,
+              "2018": 0.312246,
+              "2019": 0.28363,
+              "2020": 0.37178,
+              "2021": 0.340566,
+              "2022": 0.414612,
+              "2023": 0.367565,
+              "2024": 0.3654,
+              "2025": 0.380905,
+              "2026": 0.398301
+            },
+            "r_squared_market_only_mean": -0.0,
+            "r_squared_by_sector": {
+              "Communication Services": 0.312029,
+              "Consumer Discretionary": 0.227468,
+              "Consumer Staples": 0.27365,
+              "Energy": 0.389566,
+              "Financials": 0.271331,
+              "Health Care": 0.217544,
+              "Industrials": 0.244622,
+              "Information Technology": 0.258247,
+              "Materials": 0.19037,
+              "Real Estate": 0.316339,
+              "Utilities": 0.435051
+            }
+          }
+        }
+      },
+      "F3.2": {
+        "changed": false,
+        "old": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "max_abs_identity_error_estimated": 1.2426149519073615e-13,
+            "n_days_checked": 3941,
+            "n_factor_days": 1032745,
+            "kinds": [
+              "estimated",
+              "identified"
+            ]
+          }
+        },
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "max_abs_identity_error_estimated": 1.2426149519073615e-13,
+            "n_days_checked": 3941,
+            "n_factor_days": 1032745,
+            "kinds": [
+              "estimated",
+              "identified"
+            ]
+          }
+        }
+      },
+      "F3.3": {
+        "changed": false,
+        "old": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "max_abs_cap_weighted_sector_sum": 7.047314121155779e-18,
+            "n_days_checked": 3941
+          }
+        },
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "max_abs_cap_weighted_sector_sum": 7.047314121155779e-18,
+            "n_days_checked": 3941
+          }
+        }
+      },
+      "F3.4": {
+        "changed": false,
+        "old": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "momentum_vs_ff_mom_correlation": 0.7555482343048963,
+            "market_vs_ff_market_correlation": 0.9889255744977894,
+            "n_overlap_momentum": 3917,
+            "n_overlap_market": 3917
+          }
+        },
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "momentum_vs_ff_mom_correlation": 0.7555482343048963,
+            "market_vs_ff_market_correlation": 0.9889255744977894,
+            "n_overlap_momentum": 3917,
+            "n_overlap_market": 3917
+          }
+        }
+      },
+      "F3.5": {
+        "changed": false,
+        "old": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "max_abs_factor_plus_idio_minus_total": 0.0,
+            "max_abs_contribution_sum_minus_sigma_p": 6.245004513516506e-17,
+            "n_book_dates": 370,
+            "factor_share_by_book": {
+              "seed_ew": 0.995566769958711,
+              "seed_mom_ls": 0.8158376346028686
+            }
+          }
+        },
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "max_abs_factor_plus_idio_minus_total": 0.0,
+            "max_abs_contribution_sum_minus_sigma_p": 6.245004513516506e-17,
+            "n_book_dates": 370,
+            "factor_share_by_book": {
+              "seed_ew": 0.995566769958711,
+              "seed_mom_ls": 0.8158376346028686
+            }
+          }
+        }
+      },
+      "F3.6": {
+        "changed": false,
+        "old": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "seed_ew": {
+              "mean": 0.9570097710419492,
+              "min": 0.20205604847059966,
+              "max": 4.435314656662224,
+              "share_in_band": 0.36879432624113473,
+              "n_months": 141,
+              "by_year": {
+                "2015": 0.797448785083244,
+                "2016": 1.0003598151455415,
+                "2017": 1.2478538867184978,
+                "2018": 0.6306023975534878,
+                "2019": 1.012453341788112,
+                "2020": 0.39728358994726903,
+                "2021": 1.5649206806800946,
+                "2022": 0.6672542500609988,
+                "2023": 1.3152652665526483,
+                "2024": 0.9638461452513073,
+                "2025": 0.7211143152110808,
+                "2026": 1.2352831143341638
+              }
+            },
+            "seed_mom_ls": {
+              "mean": 0.6663870518805773,
+              "min": 0.17496657712925254,
+              "max": 3.4321371222032133,
+              "share_in_band": 0.12056737588652482,
+              "n_months": 141,
+              "by_year": {
+                "2015": 0.6150280235822388,
+                "2016": 0.7912201425961273,
+                "2017": 0.9028617141396377,
+                "2018": 0.47742410341523595,
+                "2019": 0.5586982998334332,
+                "2020": 0.3736563533551951,
+                "2021": 1.4656677541722916,
+                "2022": 0.556323120648526,
+                "2023": 0.8244992739923621,
+                "2024": 0.4613643257918165,
+                "2025": 0.47794448046601595,
+                "2026": 0.43381369013853804
+              }
+            }
+          }
+        },
+        "new": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "seed_ew": {
+              "mean": 0.9570097710419492,
+              "min": 0.20205604847059966,
+              "max": 4.435314656662224,
+              "share_in_band": 0.36879432624113473,
+              "n_months": 141,
+              "by_year": {
+                "2015": 0.797448785083244,
+                "2016": 1.0003598151455415,
+                "2017": 1.2478538867184978,
+                "2018": 0.6306023975534878,
+                "2019": 1.012453341788112,
+                "2020": 0.39728358994726903,
+                "2021": 1.5649206806800946,
+                "2022": 0.6672542500609988,
+                "2023": 1.3152652665526483,
+                "2024": 0.9638461452513073,
+                "2025": 0.7211143152110808,
+                "2026": 1.2352831143341638
+              }
+            },
+            "seed_mom_ls": {
+              "mean": 0.6663870518805773,
+              "min": 0.17496657712925254,
+              "max": 3.4321371222032133,
+              "share_in_band": 0.12056737588652482,
+              "n_months": 141,
+              "by_year": {
+                "2015": 0.6150280235822388,
+                "2016": 0.7912201425961273,
+                "2017": 0.9028617141396377,
+                "2018": 0.47742410341523595,
+                "2019": 0.5586982998334332,
+                "2020": 0.3736563533551951,
+                "2021": 1.4656677541722916,
+                "2022": 0.556323120648526,
+                "2023": 0.8244992739923621,
+                "2024": 0.4613643257918165,
+                "2025": 0.47794448046601595,
+                "2026": 0.43381369013853804
+              }
+            }
+          }
+        }
+      },
+      "F3.7": {
+        "changed": false,
+        "old": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "n_rows": 72,
+            "n_factors": 18,
+            "periods": [
+              "2011_2015",
+              "2016_2020",
+              "2021_2026",
+              "full_sample"
+            ],
+            "min_periods_per_factor": 4,
+            "n_unpriced": 64,
+            "unpriced_share": 0.8888888888888888
+          }
+        },
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "n_rows": 72,
+            "n_factors": 18,
+            "periods": [
+              "2011_2015",
+              "2016_2020",
+              "2021_2026",
+              "full_sample"
+            ],
+            "min_periods_per_factor": 4,
+            "n_unpriced": 64,
+            "unpriced_share": 0.8888888888888888
+          }
+        }
+      },
+      "F3.8": {
+        "changed": false,
+        "old": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "seed_ew": {
+              "factor_share_diagonal_mean": 0.9940314593621442,
+              "factor_share_realized_mean": 0.9968315206727247,
+              "n_windows": 141
+            },
+            "seed_mom_ls": {
+              "factor_share_diagonal_mean": 0.7905666631763667,
+              "factor_share_realized_mean": 0.5890153813347032,
+              "n_windows": 141
+            }
+          }
+        },
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "seed_ew": {
+              "factor_share_diagonal_mean": 0.9940314593621442,
+              "factor_share_realized_mean": 0.9968315206727247,
+              "n_windows": 141
+            },
+            "seed_mom_ls": {
+              "factor_share_diagonal_mean": 0.7905666631763667,
+              "factor_share_realized_mean": 0.5890153813347032,
+              "n_windows": 141
+            }
+          }
+        }
+      },
+      "F3.9": {
+        "changed": false,
+        "old": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "xs_exposure_mean": 0.3407061589106543,
+            "xs_exposure_min": -0.10186105044867005,
+            "xs_exposure_max": 1.091340001486862,
+            "n_rebalances": 282,
+            "e2_reference": {
+              "static_name_level_factor_share_last_month": 0.09681972392333447,
+              "regression_loading": 0.2884639400639966,
+              "regression_t_stat": 29.104952622365634,
+              "rolling_beta_aggregate_mean": 0.06978002876927968,
+              "rolling_beta_aggregate_min": -0.3322050420277022,
+              "rolling_beta_aggregate_max": 0.3904549841533205,
+              "static_full_sample_aggregate": -0.016190070548666415,
+              "n_rebalances": 195
+            }
+          }
+        },
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "xs_exposure_mean": 0.3407061589106543,
+            "xs_exposure_min": -0.10186105044867005,
+            "xs_exposure_max": 1.091340001486862,
+            "n_rebalances": 282,
+            "e2_reference": {
+              "static_name_level_factor_share_last_month": 0.09681972392333447,
+              "regression_loading": 0.2884639400639966,
+              "regression_t_stat": 29.104952622365634,
+              "rolling_beta_aggregate_mean": 0.06978002876927968,
+              "rolling_beta_aggregate_min": -0.3322050420277022,
+              "rolling_beta_aggregate_max": 0.3904549841533205,
+              "static_full_sample_aggregate": -0.016190070548666415,
+              "n_rebalances": 195
+            }
+          }
+        }
+      }
+    },
+    "history": [
+      {
+        "previous_data_hash": "122f60a4290986ad1909dfd3b13afff73b82ad98c3f051da6c253b811f59b503",
+        "data_hash": "882e5cdb0936bae56ea961b88ed635f1c5b1bf7d17a67fd695733ff00c60e72c",
+        "n_changed": 0,
+        "changed_tickers_or_criteria": [],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F3.1": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_cross_sectional_r_squared": 0.3294501878861149,
+                "n_days": 3941,
+                "r_squared_by_year": {
+                  "2011": 0.35381,
+                  "2012": 0.289056,
+                  "2013": 0.247919,
+                  "2014": 0.28293,
+                  "2015": 0.293861,
+                  "2016": 0.31435,
+                  "2017": 0.277233,
+                  "2018": 0.312246,
+                  "2019": 0.28363,
+                  "2020": 0.37178,
+                  "2021": 0.340566,
+                  "2022": 0.414612,
+                  "2023": 0.367565,
+                  "2024": 0.3654,
+                  "2025": 0.380905,
+                  "2026": 0.398301
+                },
+                "r_squared_market_only_mean": -0.0,
+                "r_squared_by_sector": {
+                  "Communication Services": 0.312029,
+                  "Consumer Discretionary": 0.227468,
+                  "Consumer Staples": 0.27365,
+                  "Energy": 0.389566,
+                  "Financials": 0.271331,
+                  "Health Care": 0.217544,
+                  "Industrials": 0.244622,
+                  "Information Technology": 0.258247,
+                  "Materials": 0.19037,
+                  "Real Estate": 0.316339,
+                  "Utilities": 0.435051
+                }
+              }
+            }
+          },
+          "F3.2": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_identity_error_estimated": 1.2426149519073615e-13,
+                "n_days_checked": 3941,
+                "n_factor_days": 1032745,
+                "kinds": [
+                  "estimated",
+                  "identified"
+                ]
+              }
+            }
+          },
+          "F3.3": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_cap_weighted_sector_sum": 7.047314121155779e-18,
+                "n_days_checked": 3941
+              }
+            }
+          },
+          "F3.4": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "momentum_vs_ff_mom_correlation": 0.7555482343048963,
+                "market_vs_ff_market_correlation": 0.9889255744977894,
+                "n_overlap_momentum": 3917,
+                "n_overlap_market": 3917
+              }
+            }
+          },
+          "F3.5": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_factor_plus_idio_minus_total": 0.0,
+                "max_abs_contribution_sum_minus_sigma_p": 6.245004513516506e-17,
+                "n_book_dates": 124,
+                "factor_share_by_book": {
+                  "seed_ew": 0.995734413788528,
+                  "seed_mom_ls": 0.8289682929690225
+                }
+              }
+            }
+          },
+          "F3.6": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "seed_ew": {
+                  "mean": 0.9341039878915077,
+                  "min": 0.20205604847059966,
+                  "max": 3.3637463275816883,
+                  "share_in_band": 0.40425531914893614,
+                  "n_months": 47,
+                  "by_year": {
+                    "2015": 1.0058046623022274,
+                    "2016": 0.9720982674539046,
+                    "2017": 0.9914164220770841,
+                    "2018": 0.5327296535553351,
+                    "2019": 1.0665526068393905,
+                    "2020": 0.32169577814198036,
+                    "2021": 1.4172677102312106,
+                    "2022": 0.5861169523401508,
+                    "2023": 1.2541161543844104,
+                    "2024": 0.8818407260490507,
+                    "2025": 0.6988059301350669,
+                    "2026": 1.6630359922872016
+                  }
+                },
+                "seed_mom_ls": {
+                  "mean": 0.6409807872036593,
+                  "min": 0.17496657712925254,
+                  "max": 2.8030737138401793,
+                  "share_in_band": 0.0851063829787234,
+                  "n_months": 47,
+                  "by_year": {
+                    "2015": 0.6501398144553956,
+                    "2016": 0.8655475979636392,
+                    "2017": 0.9197500805387043,
+                    "2018": 0.48835271377905654,
+                    "2019": 0.5195510632888116,
+                    "2020": 0.3738468283087001,
+                    "2021": 1.2442748934335035,
+                    "2022": 0.405698947342788,
+                    "2023": 0.8259966844782567,
+                    "2024": 0.4321520853012272,
+                    "2025": 0.4833796647900548,
+                    "2026": 0.43044516795047816
+                  }
+                }
+              }
+            }
+          },
+          "F3.7": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "n_rows": 72,
+                "n_factors": 18,
+                "periods": [
+                  "2011_2015",
+                  "2016_2020",
+                  "2021_2026",
+                  "full_sample"
+                ],
+                "min_periods_per_factor": 4,
+                "n_unpriced": 64,
+                "unpriced_share": 0.8888888888888888
+              }
+            }
+          },
+          "F3.8": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "seed_ew": {
+                  "factor_share_diagonal_mean": 0.9941452895015725,
+                  "factor_share_realized_mean": 0.9968180001301217,
+                  "n_windows": 47
+                },
+                "seed_mom_ls": {
+                  "factor_share_diagonal_mean": 0.7941295504454796,
+                  "factor_share_realized_mean": 0.5907145071841527,
+                  "n_windows": 47
+                }
+              }
+            }
+          },
+          "F3.9": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "xs_exposure_mean": 0.3458048688956168,
+                "xs_exposure_min": -0.10186105044867005,
+                "xs_exposure_max": 1.091340001486862,
+                "n_rebalances": 94,
+                "e2_reference": {
+                  "static_name_level_factor_share_last_month": 0.09681972392333447,
+                  "regression_loading": 0.2884639400639966,
+                  "regression_t_stat": 29.104952622365634,
+                  "rolling_beta_aggregate_mean": 0.06978002876927968,
+                  "rolling_beta_aggregate_min": -0.3322050420277022,
+                  "rolling_beta_aggregate_max": 0.3904549841533205,
+                  "static_full_sample_aggregate": -0.016190070548666415,
+                  "n_rebalances": 195
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "previous_data_hash": "882e5cdb0936bae56ea961b88ed635f1c5b1bf7d17a67fd695733ff00c60e72c",
+        "data_hash": "536c4c71c64e0ad28c9c1009bbb9caa18377173249652baff00256fc84c32204",
+        "n_changed": 4,
+        "changed_tickers_or_criteria": [
+          "F3.5",
+          "F3.6",
+          "F3.8",
+          "F3.9"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F3.1": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_cross_sectional_r_squared": 0.3294501878861149,
+                "n_days": 3941,
+                "r_squared_by_year": {
+                  "2011": 0.35381,
+                  "2012": 0.289056,
+                  "2013": 0.247919,
+                  "2014": 0.28293,
+                  "2015": 0.293861,
+                  "2016": 0.31435,
+                  "2017": 0.277233,
+                  "2018": 0.312246,
+                  "2019": 0.28363,
+                  "2020": 0.37178,
+                  "2021": 0.340566,
+                  "2022": 0.414612,
+                  "2023": 0.367565,
+                  "2024": 0.3654,
+                  "2025": 0.380905,
+                  "2026": 0.398301
+                },
+                "r_squared_market_only_mean": -0.0,
+                "r_squared_by_sector": {
+                  "Communication Services": 0.312029,
+                  "Consumer Discretionary": 0.227468,
+                  "Consumer Staples": 0.27365,
+                  "Energy": 0.389566,
+                  "Financials": 0.271331,
+                  "Health Care": 0.217544,
+                  "Industrials": 0.244622,
+                  "Information Technology": 0.258247,
+                  "Materials": 0.19037,
+                  "Real Estate": 0.316339,
+                  "Utilities": 0.435051
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_cross_sectional_r_squared": 0.3294501878861149,
+                "n_days": 3941,
+                "r_squared_by_year": {
+                  "2011": 0.35381,
+                  "2012": 0.289056,
+                  "2013": 0.247919,
+                  "2014": 0.28293,
+                  "2015": 0.293861,
+                  "2016": 0.31435,
+                  "2017": 0.277233,
+                  "2018": 0.312246,
+                  "2019": 0.28363,
+                  "2020": 0.37178,
+                  "2021": 0.340566,
+                  "2022": 0.414612,
+                  "2023": 0.367565,
+                  "2024": 0.3654,
+                  "2025": 0.380905,
+                  "2026": 0.398301
+                },
+                "r_squared_market_only_mean": -0.0,
+                "r_squared_by_sector": {
+                  "Communication Services": 0.312029,
+                  "Consumer Discretionary": 0.227468,
+                  "Consumer Staples": 0.27365,
+                  "Energy": 0.389566,
+                  "Financials": 0.271331,
+                  "Health Care": 0.217544,
+                  "Industrials": 0.244622,
+                  "Information Technology": 0.258247,
+                  "Materials": 0.19037,
+                  "Real Estate": 0.316339,
+                  "Utilities": 0.435051
+                }
+              }
+            }
+          },
+          "F3.2": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_identity_error_estimated": 1.2426149519073615e-13,
+                "n_days_checked": 3941,
+                "n_factor_days": 1032745,
+                "kinds": [
+                  "estimated",
+                  "identified"
+                ]
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_identity_error_estimated": 1.2426149519073615e-13,
+                "n_days_checked": 3941,
+                "n_factor_days": 1032745,
+                "kinds": [
+                  "estimated",
+                  "identified"
+                ]
+              }
+            }
+          },
+          "F3.3": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_cap_weighted_sector_sum": 7.047314121155779e-18,
+                "n_days_checked": 3941
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_cap_weighted_sector_sum": 7.047314121155779e-18,
+                "n_days_checked": 3941
+              }
+            }
+          },
+          "F3.4": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "momentum_vs_ff_mom_correlation": 0.7555482343048963,
+                "market_vs_ff_market_correlation": 0.9889255744977894,
+                "n_overlap_momentum": 3917,
+                "n_overlap_market": 3917
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "momentum_vs_ff_mom_correlation": 0.7555482343048963,
+                "market_vs_ff_market_correlation": 0.9889255744977894,
+                "n_overlap_momentum": 3917,
+                "n_overlap_market": 3917
+              }
+            }
+          },
+          "F3.5": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_factor_plus_idio_minus_total": 0.0,
+                "max_abs_contribution_sum_minus_sigma_p": 6.245004513516506e-17,
+                "n_book_dates": 124,
+                "factor_share_by_book": {
+                  "seed_ew": 0.995734413788528,
+                  "seed_mom_ls": 0.8289682929690225
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_factor_plus_idio_minus_total": 0.0,
+                "max_abs_contribution_sum_minus_sigma_p": 6.245004513516506e-17,
+                "n_book_dates": 370,
+                "factor_share_by_book": {
+                  "seed_ew": 0.995566769958711,
+                  "seed_mom_ls": 0.8158376346028686
+                }
+              }
+            }
+          },
+          "F3.6": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "seed_ew": {
+                  "mean": 0.9341039878915077,
+                  "min": 0.20205604847059966,
+                  "max": 3.3637463275816883,
+                  "share_in_band": 0.40425531914893614,
+                  "n_months": 47,
+                  "by_year": {
+                    "2015": 1.0058046623022274,
+                    "2016": 0.9720982674539046,
+                    "2017": 0.9914164220770841,
+                    "2018": 0.5327296535553351,
+                    "2019": 1.0665526068393905,
+                    "2020": 0.32169577814198036,
+                    "2021": 1.4172677102312106,
+                    "2022": 0.5861169523401508,
+                    "2023": 1.2541161543844104,
+                    "2024": 0.8818407260490507,
+                    "2025": 0.6988059301350669,
+                    "2026": 1.6630359922872016
+                  }
+                },
+                "seed_mom_ls": {
+                  "mean": 0.6409807872036593,
+                  "min": 0.17496657712925254,
+                  "max": 2.8030737138401793,
+                  "share_in_band": 0.0851063829787234,
+                  "n_months": 47,
+                  "by_year": {
+                    "2015": 0.6501398144553956,
+                    "2016": 0.8655475979636392,
+                    "2017": 0.9197500805387043,
+                    "2018": 0.48835271377905654,
+                    "2019": 0.5195510632888116,
+                    "2020": 0.3738468283087001,
+                    "2021": 1.2442748934335035,
+                    "2022": 0.405698947342788,
+                    "2023": 0.8259966844782567,
+                    "2024": 0.4321520853012272,
+                    "2025": 0.4833796647900548,
+                    "2026": 0.43044516795047816
+                  }
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "seed_ew": {
+                  "mean": 0.9570097710419492,
+                  "min": 0.20205604847059966,
+                  "max": 4.435314656662224,
+                  "share_in_band": 0.36879432624113473,
+                  "n_months": 141,
+                  "by_year": {
+                    "2015": 0.797448785083244,
+                    "2016": 1.0003598151455415,
+                    "2017": 1.2478538867184978,
+                    "2018": 0.6306023975534878,
+                    "2019": 1.012453341788112,
+                    "2020": 0.39728358994726903,
+                    "2021": 1.5649206806800946,
+                    "2022": 0.6672542500609988,
+                    "2023": 1.3152652665526483,
+                    "2024": 0.9638461452513073,
+                    "2025": 0.7211143152110808,
+                    "2026": 1.2352831143341638
+                  }
+                },
+                "seed_mom_ls": {
+                  "mean": 0.6663870518805773,
+                  "min": 0.17496657712925254,
+                  "max": 3.4321371222032133,
+                  "share_in_band": 0.12056737588652482,
+                  "n_months": 141,
+                  "by_year": {
+                    "2015": 0.6150280235822388,
+                    "2016": 0.7912201425961273,
+                    "2017": 0.9028617141396377,
+                    "2018": 0.47742410341523595,
+                    "2019": 0.5586982998334332,
+                    "2020": 0.3736563533551951,
+                    "2021": 1.4656677541722916,
+                    "2022": 0.556323120648526,
+                    "2023": 0.8244992739923621,
+                    "2024": 0.4613643257918165,
+                    "2025": 0.47794448046601595,
+                    "2026": 0.43381369013853804
+                  }
+                }
+              }
+            }
+          },
+          "F3.7": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "n_rows": 72,
+                "n_factors": 18,
+                "periods": [
+                  "2011_2015",
+                  "2016_2020",
+                  "2021_2026",
+                  "full_sample"
+                ],
+                "min_periods_per_factor": 4,
+                "n_unpriced": 64,
+                "unpriced_share": 0.8888888888888888
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "n_rows": 72,
+                "n_factors": 18,
+                "periods": [
+                  "2011_2015",
+                  "2016_2020",
+                  "2021_2026",
+                  "full_sample"
+                ],
+                "min_periods_per_factor": 4,
+                "n_unpriced": 64,
+                "unpriced_share": 0.8888888888888888
+              }
+            }
+          },
+          "F3.8": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "seed_ew": {
+                  "factor_share_diagonal_mean": 0.9941452895015725,
+                  "factor_share_realized_mean": 0.9968180001301217,
+                  "n_windows": 47
+                },
+                "seed_mom_ls": {
+                  "factor_share_diagonal_mean": 0.7941295504454796,
+                  "factor_share_realized_mean": 0.5907145071841527,
+                  "n_windows": 47
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "seed_ew": {
+                  "factor_share_diagonal_mean": 0.9940314593621442,
+                  "factor_share_realized_mean": 0.9968315206727247,
+                  "n_windows": 141
+                },
+                "seed_mom_ls": {
+                  "factor_share_diagonal_mean": 0.7905666631763667,
+                  "factor_share_realized_mean": 0.5890153813347032,
+                  "n_windows": 141
+                }
+              }
+            }
+          },
+          "F3.9": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "xs_exposure_mean": 0.3458048688956168,
+                "xs_exposure_min": -0.10186105044867005,
+                "xs_exposure_max": 1.091340001486862,
+                "n_rebalances": 94,
+                "e2_reference": {
+                  "static_name_level_factor_share_last_month": 0.09681972392333447,
+                  "regression_loading": 0.2884639400639966,
+                  "regression_t_stat": 29.104952622365634,
+                  "rolling_beta_aggregate_mean": 0.06978002876927968,
+                  "rolling_beta_aggregate_min": -0.3322050420277022,
+                  "rolling_beta_aggregate_max": 0.3904549841533205,
+                  "static_full_sample_aggregate": -0.016190070548666415,
+                  "n_rebalances": 195
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "xs_exposure_mean": 0.3407061589106543,
+                "xs_exposure_min": -0.10186105044867005,
+                "xs_exposure_max": 1.091340001486862,
+                "n_rebalances": 282,
+                "e2_reference": {
+                  "static_name_level_factor_share_last_month": 0.09681972392333447,
+                  "regression_loading": 0.2884639400639966,
+                  "regression_t_stat": 29.104952622365634,
+                  "rolling_beta_aggregate_mean": 0.06978002876927968,
+                  "rolling_beta_aggregate_min": -0.3322050420277022,
+                  "rolling_beta_aggregate_max": 0.3904549841533205,
+                  "static_full_sample_aggregate": -0.016190070548666415,
+                  "n_rebalances": 195
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "previous_data_hash": "536c4c71c64e0ad28c9c1009bbb9caa18377173249652baff00256fc84c32204",
+        "data_hash": "0eb5612afbdbb753455d93c9da009c702decf688610ab382cebc0acf60f03b87",
+        "n_changed": 0,
+        "changed_tickers_or_criteria": [],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F3.1": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_cross_sectional_r_squared": 0.3294501878861149,
+                "n_days": 3941,
+                "r_squared_by_year": {
+                  "2011": 0.35381,
+                  "2012": 0.289056,
+                  "2013": 0.247919,
+                  "2014": 0.28293,
+                  "2015": 0.293861,
+                  "2016": 0.31435,
+                  "2017": 0.277233,
+                  "2018": 0.312246,
+                  "2019": 0.28363,
+                  "2020": 0.37178,
+                  "2021": 0.340566,
+                  "2022": 0.414612,
+                  "2023": 0.367565,
+                  "2024": 0.3654,
+                  "2025": 0.380905,
+                  "2026": 0.398301
+                },
+                "r_squared_market_only_mean": -0.0,
+                "r_squared_by_sector": {
+                  "Communication Services": 0.312029,
+                  "Consumer Discretionary": 0.227468,
+                  "Consumer Staples": 0.27365,
+                  "Energy": 0.389566,
+                  "Financials": 0.271331,
+                  "Health Care": 0.217544,
+                  "Industrials": 0.244622,
+                  "Information Technology": 0.258247,
+                  "Materials": 0.19037,
+                  "Real Estate": 0.316339,
+                  "Utilities": 0.435051
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_cross_sectional_r_squared": 0.3294501878861149,
+                "n_days": 3941,
+                "r_squared_by_year": {
+                  "2011": 0.35381,
+                  "2012": 0.289056,
+                  "2013": 0.247919,
+                  "2014": 0.28293,
+                  "2015": 0.293861,
+                  "2016": 0.31435,
+                  "2017": 0.277233,
+                  "2018": 0.312246,
+                  "2019": 0.28363,
+                  "2020": 0.37178,
+                  "2021": 0.340566,
+                  "2022": 0.414612,
+                  "2023": 0.367565,
+                  "2024": 0.3654,
+                  "2025": 0.380905,
+                  "2026": 0.398301
+                },
+                "r_squared_market_only_mean": -0.0,
+                "r_squared_by_sector": {
+                  "Communication Services": 0.312029,
+                  "Consumer Discretionary": 0.227468,
+                  "Consumer Staples": 0.27365,
+                  "Energy": 0.389566,
+                  "Financials": 0.271331,
+                  "Health Care": 0.217544,
+                  "Industrials": 0.244622,
+                  "Information Technology": 0.258247,
+                  "Materials": 0.19037,
+                  "Real Estate": 0.316339,
+                  "Utilities": 0.435051
+                }
+              }
+            }
+          },
+          "F3.2": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_identity_error_estimated": 1.2426149519073615e-13,
+                "n_days_checked": 3941,
+                "n_factor_days": 1032745,
+                "kinds": [
+                  "estimated",
+                  "identified"
+                ]
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_identity_error_estimated": 1.2426149519073615e-13,
+                "n_days_checked": 3941,
+                "n_factor_days": 1032745,
+                "kinds": [
+                  "estimated",
+                  "identified"
+                ]
+              }
+            }
+          },
+          "F3.3": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_cap_weighted_sector_sum": 7.047314121155779e-18,
+                "n_days_checked": 3941
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_cap_weighted_sector_sum": 7.047314121155779e-18,
+                "n_days_checked": 3941
+              }
+            }
+          },
+          "F3.4": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "momentum_vs_ff_mom_correlation": 0.7555482343048963,
+                "market_vs_ff_market_correlation": 0.9889255744977894,
+                "n_overlap_momentum": 3917,
+                "n_overlap_market": 3917
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "momentum_vs_ff_mom_correlation": 0.7555482343048963,
+                "market_vs_ff_market_correlation": 0.9889255744977894,
+                "n_overlap_momentum": 3917,
+                "n_overlap_market": 3917
+              }
+            }
+          },
+          "F3.5": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_factor_plus_idio_minus_total": 0.0,
+                "max_abs_contribution_sum_minus_sigma_p": 6.245004513516506e-17,
+                "n_book_dates": 370,
+                "factor_share_by_book": {
+                  "seed_ew": 0.995566769958711,
+                  "seed_mom_ls": 0.8158376346028686
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "max_abs_factor_plus_idio_minus_total": 0.0,
+                "max_abs_contribution_sum_minus_sigma_p": 6.245004513516506e-17,
+                "n_book_dates": 370,
+                "factor_share_by_book": {
+                  "seed_ew": 0.995566769958711,
+                  "seed_mom_ls": 0.8158376346028686
+                }
+              }
+            }
+          },
+          "F3.6": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "seed_ew": {
+                  "mean": 0.9570097710419492,
+                  "min": 0.20205604847059966,
+                  "max": 4.435314656662224,
+                  "share_in_band": 0.36879432624113473,
+                  "n_months": 141,
+                  "by_year": {
+                    "2015": 0.797448785083244,
+                    "2016": 1.0003598151455415,
+                    "2017": 1.2478538867184978,
+                    "2018": 0.6306023975534878,
+                    "2019": 1.012453341788112,
+                    "2020": 0.39728358994726903,
+                    "2021": 1.5649206806800946,
+                    "2022": 0.6672542500609988,
+                    "2023": 1.3152652665526483,
+                    "2024": 0.9638461452513073,
+                    "2025": 0.7211143152110808,
+                    "2026": 1.2352831143341638
+                  }
+                },
+                "seed_mom_ls": {
+                  "mean": 0.6663870518805773,
+                  "min": 0.17496657712925254,
+                  "max": 3.4321371222032133,
+                  "share_in_band": 0.12056737588652482,
+                  "n_months": 141,
+                  "by_year": {
+                    "2015": 0.6150280235822388,
+                    "2016": 0.7912201425961273,
+                    "2017": 0.9028617141396377,
+                    "2018": 0.47742410341523595,
+                    "2019": 0.5586982998334332,
+                    "2020": 0.3736563533551951,
+                    "2021": 1.4656677541722916,
+                    "2022": 0.556323120648526,
+                    "2023": 0.8244992739923621,
+                    "2024": 0.4613643257918165,
+                    "2025": 0.47794448046601595,
+                    "2026": 0.43381369013853804
+                  }
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "seed_ew": {
+                  "mean": 0.9570097710419492,
+                  "min": 0.20205604847059966,
+                  "max": 4.435314656662224,
+                  "share_in_band": 0.36879432624113473,
+                  "n_months": 141,
+                  "by_year": {
+                    "2015": 0.797448785083244,
+                    "2016": 1.0003598151455415,
+                    "2017": 1.2478538867184978,
+                    "2018": 0.6306023975534878,
+                    "2019": 1.012453341788112,
+                    "2020": 0.39728358994726903,
+                    "2021": 1.5649206806800946,
+                    "2022": 0.6672542500609988,
+                    "2023": 1.3152652665526483,
+                    "2024": 0.9638461452513073,
+                    "2025": 0.7211143152110808,
+                    "2026": 1.2352831143341638
+                  }
+                },
+                "seed_mom_ls": {
+                  "mean": 0.6663870518805773,
+                  "min": 0.17496657712925254,
+                  "max": 3.4321371222032133,
+                  "share_in_band": 0.12056737588652482,
+                  "n_months": 141,
+                  "by_year": {
+                    "2015": 0.6150280235822388,
+                    "2016": 0.7912201425961273,
+                    "2017": 0.9028617141396377,
+                    "2018": 0.47742410341523595,
+                    "2019": 0.5586982998334332,
+                    "2020": 0.3736563533551951,
+                    "2021": 1.4656677541722916,
+                    "2022": 0.556323120648526,
+                    "2023": 0.8244992739923621,
+                    "2024": 0.4613643257918165,
+                    "2025": 0.47794448046601595,
+                    "2026": 0.43381369013853804
+                  }
+                }
+              }
+            }
+          },
+          "F3.7": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "n_rows": 72,
+                "n_factors": 18,
+                "periods": [
+                  "2011_2015",
+                  "2016_2020",
+                  "2021_2026",
+                  "full_sample"
+                ],
+                "min_periods_per_factor": 4,
+                "n_unpriced": 64,
+                "unpriced_share": 0.8888888888888888
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "n_rows": 72,
+                "n_factors": 18,
+                "periods": [
+                  "2011_2015",
+                  "2016_2020",
+                  "2021_2026",
+                  "full_sample"
+                ],
+                "min_periods_per_factor": 4,
+                "n_unpriced": 64,
+                "unpriced_share": 0.8888888888888888
+              }
+            }
+          },
+          "F3.8": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "seed_ew": {
+                  "factor_share_diagonal_mean": 0.9940314593621442,
+                  "factor_share_realized_mean": 0.9968315206727247,
+                  "n_windows": 141
+                },
+                "seed_mom_ls": {
+                  "factor_share_diagonal_mean": 0.7905666631763667,
+                  "factor_share_realized_mean": 0.5890153813347032,
+                  "n_windows": 141
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "seed_ew": {
+                  "factor_share_diagonal_mean": 0.9940314593621442,
+                  "factor_share_realized_mean": 0.9968315206727247,
+                  "n_windows": 141
+                },
+                "seed_mom_ls": {
+                  "factor_share_diagonal_mean": 0.7905666631763667,
+                  "factor_share_realized_mean": 0.5890153813347032,
+                  "n_windows": 141
+                }
+              }
+            }
+          },
+          "F3.9": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "xs_exposure_mean": 0.3407061589106543,
+                "xs_exposure_min": -0.10186105044867005,
+                "xs_exposure_max": 1.091340001486862,
+                "n_rebalances": 282,
+                "e2_reference": {
+                  "static_name_level_factor_share_last_month": 0.09681972392333447,
+                  "regression_loading": 0.2884639400639966,
+                  "regression_t_stat": 29.104952622365634,
+                  "rolling_beta_aggregate_mean": 0.06978002876927968,
+                  "rolling_beta_aggregate_min": -0.3322050420277022,
+                  "rolling_beta_aggregate_max": 0.3904549841533205,
+                  "static_full_sample_aggregate": -0.016190070548666415,
+                  "n_rebalances": 195
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "xs_exposure_mean": 0.3407061589106543,
+                "xs_exposure_min": -0.10186105044867005,
+                "xs_exposure_max": 1.091340001486862,
+                "n_rebalances": 282,
+                "e2_reference": {
+                  "static_name_level_factor_share_last_month": 0.09681972392333447,
+                  "regression_loading": 0.2884639400639966,
+                  "regression_t_stat": 29.104952622365634,
+                  "rolling_beta_aggregate_mean": 0.06978002876927968,
+                  "rolling_beta_aggregate_min": -0.3322050420277022,
+                  "rolling_beta_aggregate_max": 0.3904549841533205,
+                  "static_full_sample_aggregate": -0.016190070548666415,
+                  "n_rebalances": 195
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

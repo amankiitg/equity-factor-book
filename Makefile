@@ -7,7 +7,7 @@ RUFF ?= $(if $(VENV_BIN),$(VENV_BIN)/ruff,ruff)
 MYPY ?= $(if $(VENV_BIN),$(VENV_BIN)/mypy,mypy)
 BLACK ?= $(if $(VENV_BIN),$(VENV_BIN)/black,black)
 
-.PHONY: help test lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 clean
+.PHONY: help test lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-15s %s\n", $$1, $$2}'
@@ -36,8 +36,11 @@ rebuild-e1: ## Rebuilds the E1 data layer end to end (Sprint E1)
 rebuild-e2: ## Rebuilds E1 and E2 artifacts end to end (Sprint E2)
 	$(PYTHON) -m efb.build --e2
 
-rebuild-e3: ## Rebuilds E3 artifacts; implemented in Sprint E3
-	@echo "make rebuild-e3 is implemented in Sprint E3." && exit 1
+rebuild-e3: ## Rebuilds the XS-v1 artifacts from the E1 and E2 artifacts (Sprint E3)
+	$(PYTHON) -m efb.build --e3
+
+rebuild: ## Rebuilds E1 through E3 end to end, the gate G1 one-command path
+	$(PYTHON) -m efb.build --all
 
 clean:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

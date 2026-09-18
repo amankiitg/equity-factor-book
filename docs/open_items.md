@@ -106,3 +106,40 @@ attempt a repair. A repair needs a point-in-time sector and constituent
 source, which is the same dependency as the E11 ongoing constituent item
 above, and it should be priced in E4's evaluation of the model rather than
 patched inside the risk model.
+
+## 2026-09-17: the equal-weight seed book is only 58 to 98 percent covered by the model (closed for E3, carried into E4)
+
+Owner: E4. Found while writing the E3 risk report. The equal-weight seed book
+is equal weighted over the whole panel, while the XS-v1 universe is the 502
+sector-mapped names, so the weight of the book's names with no descriptor row
+is 0.4172 in 2011, 0.3460 in 2015, 0.1950 in 2020 and 0.0179 in 2026. Up to
+42 percent of the book's weight is therefore outside the model in the early
+years, and data/eval/xs_risk_decomposition.parquet reports that weight per
+date as residual_weight. The bias statistic in
+data/eval/xs_bias.parquet reports zero residual weight because it reindexes
+the book onto each day's cross-section before decomposing, so its comparison
+of predicted against realized volatility is like-for-like on the covered part
+of the book and says nothing about the uncovered part.
+
+Closed for E3 by stating the number in docs/research/E3_risk_report.md and
+keeping it beside every quoted risk figure. Carried into E4 because the fix is
+the same point-in-time sector source the item above needs: until the model can
+describe the whole book, the early equal-weight risk numbers are partial rather
+than wrong.
+
+## 2026-09-17: the momentum book's bias fails F3.6 in the opposite direction from the E2 prediction (open for E4)
+
+Owner: E4. F3.6 requires a mean monthly bias inside 0.8 to 1.25 for both
+books. The stored means are 0.9570097710419492 for the equal-weight book, which
+is inside the band, and 0.6663870518805773 for the momentum book, which is
+below it: the XS-v1 model over-predicts the momentum book's risk by about 1.5
+times on average. The E2 measurement of the same book pointed the other way
+(21-day bias 1.8544, every year above 1.0), and the sprints/ E3 PRD therefore
+pre-registered a fail in the other direction. Both numbers are stored.
+
+The discrepancy is the model and the window, not an arithmetic error: E2
+measured the bias of the book's factor exposure using TS-v1 market factor and
+stock betas, while E3 prices a full XS-v1 covariance with a specific variance
+term and a point-in-time factor covariance. E4 should decide which construction
+is the sizing model and price the other as a sensitivity, which is the
+conditional covariance work below.

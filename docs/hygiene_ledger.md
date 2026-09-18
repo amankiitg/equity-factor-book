@@ -644,3 +644,137 @@ E2. The 300-name floor was met in 2010 on price coverage alone; with the
 descriptor set attached, the first qualifying session is a year later, and
 recording 2010 would have meant publishing a cross-section of zero rows for
 a year or silently shortening a descriptor window.
+
+## 2026-09-17: the XS-v1 design carries 17 estimated columns, not 18
+
+Decision. The published XS-v1 factor set has 18 factors: seven styles and
+eleven sector factors. The estimated design has 17 columns: the seven style
+columns and ten sector dummies, with Real Estate (code 60) as the reference
+sector and no dummy of its own. Its factor return is derived from the
+identification constraint, and the cap-weighted mean of the sector block is
+moved into the market factor when the factor returns are reported.
+
+Old value. The first build estimated all eleven sector dummies from a design
+that also contained the market constant column, and solved the system with a
+pseudo-inverse. The factor-mimicking portfolio identity X' w_FMP = e_k then
+failed badly: the largest absolute deviation from the unit vector was far
+above the criterion's 1e-8 fail band.
+
+New value. With the reference sector dropped, X has full column rank on every
+one of the 3941 days, the FMP rows satisfy the identity at 1.2426149519073615e-13,
+and the identified factor returns reproduce the same fitted values to 1e-15.
+The cap-weighted sector factor returns sum to 7.047314121155779e-18 on the worst
+day.
+
+Reason. A constant column plus a full set of mutually exclusive sector dummies
+is exactly collinear, so the design is rank deficient by one and no
+pseudo-inverse can satisfy X' w = I for every column. The criterion was right
+and the parameterization was wrong, so the parameterization changed: this is a
+correction to the model, not to the criterion. The reported 18-factor set is
+unchanged and no criterion text was edited.
+
+## 2026-09-17: the month-end artifacts ran on quarter ends, and the F3.6 and F3.8 windows were 47 months instead of 141
+
+Decision. The exposure time series, the risk decomposition, the bias
+statistics and the realized residual covariance are all month-end artifacts,
+evaluated at every month end the model runs.
+
+Old value. The artifact covered 63 month ends: the exposure series had 63
+dates, the decomposition 62 book dates, the bias statistics 47 months per book
+and the realized residual covariance 47 windows per book.
+
+New value. The artifact covers 189 month ends: the exposure series has 189
+dates, the decomposition 185 book dates, the bias statistics 141 months per
+book from 2015-01-30 and the realized residual covariance 141 windows per book.
+The corrected numbers are in sprints/E3/RESULTS.json with data hash
+536c4c71c64e0ad28c9c1009bbb9caa18377173249652baff00256fc84c32204.
+
+Reason. The builder computed one date list at quarter frequency for the
+factor-mimicking weight sample and then reused that same list for the exposure,
+decomposition, bias and residual covariance artifacts, so the month-end
+artifacts silently carried quarter ends. The coverage was not wrong, it was
+thin, and thin coverage understated every window count in F3.6 and F3.8. The
+fix keeps the quarter-end sample for the FMP weights, where a sampled set of
+days is the intent, and gives the month-end artifacts their own list. The
+verdicts did not change, but both the numbers and the window counts did, so
+they are recorded as a revision rather than as a silent edit.
+
+## 2026-09-17: the market-only R squared is zero by construction, not a diagnostic
+
+Decision. F3.1 stores the by-year, by-sector and block R squared diagnostics
+that the sprint's standing instruction B asks for, computed whether or not the
+average clears its bar.
+
+Old value. The first diagnostics stored a single "market factor alone" R
+squared, and it came back as zero.
+
+New value. The market factor is the constant column, so a model containing only
+the market factor predicts the cap-weighted mean return and explains none of the
+within-day dispersion: the market-only R squared is zero by construction on
+every day. Two informative comparisons replace it: the sector block alone
+averages 0.192787 and the style block alone averages 0.200683, against 0.3294501878861149
+for the full 18-factor set.
+
+Reason. A statistic that is zero by algebra should not be reported as though it
+were a measurement of the descriptors, because a reader would read it as
+evidence that the market factor explains nothing rather than as evidence that
+the market factor is the intercept. Both substitute statistics are measured on
+the same days and the same names as the full model.
+
+## 2026-09-17: XS-v1 regresses the total return, and the market factor is a total-return factor
+
+Decision. The regressand is the panel's total return r. The market factor is
+therefore a total-return factor, the premia are total-return premia, and F3.4
+compares the model's market factor against Mkt-RF plus RF, the FF total return.
+
+Old value. The PRD draft assumed the academic convention of regressing the
+excess return r minus rf.
+
+New value. The stored risk-free series ends 2026-07-31 (factors_ff.parquet,
+4169 rows) while the panel's total return runs to 2026-09-03, so an excess
+regressand would truncate the model by five weeks and would make the
+cross-section of the final month unusable. The stored market correlation goes
+from an expected 0.9563597974375629 for the excess counterpart to 0.9889255744977894
+for the total-return factor on the 3917-day overlap. The sprint's standing
+instruction C prices the choice directly: the Market factor estimated on total
+returns and on excess returns is printed side by side in sprints/E3/PROBES.md
+with its correlation on the overlap. Because the market factor is the intercept
+of a design that contains a constant column, subtracting a common risk-free
+rate on a day moves the intercept and leaves every other coefficient untouched,
+so the gap between the two series is the risk-free rate itself.
+
+Reason. A five-week truncation of the sample is a bigger error than the
+difference between a total-return and an excess factor, and the difference can
+be measured rather than assumed. The measurement is stored so an E4 or E5
+comparison against an excess-return model has the conversion in hand.
+
+## 2026-09-17: the shift test runs the other way, which is what makes the lag load bearing
+
+Decision. Every XS-v1 descriptor is dated t-1 and is computed from data through
+t-1, so the model fits the design dated t-1 against the return r_t. The sprint
+prints the shift test both ways: the same returns explained by the design dated
+t-1 and by the design dated t, on the same names, so the only difference is the
+vintage of the design.
+
+Old value. The PRD's design rule pre-registered the direction: "a shift test
+proves that replacing X_{t-1} with X_t reduces the cross-sectional R squared".
+That is the opposite of what the artifacts show.
+
+New value. Over 3940 pairs of consecutive cross-sections, the lagged design
+explains 0.329462 of the daily cross-sectional dispersion of r_t and the design
+dated t explains 0.364005, so the later design explains 3.45 percentage points
+more rather than less. Both numbers are printed by
+notebooks/E3_walkthrough.ipynb, section 4, and the lagged number reproduces the
+stored mean R squared of 0.3294501878861149 to 1e-5, which is the check that
+the build really fits the t-1 design.
+
+Reason. Replacing X_{t-1} with X_t cannot lower the R squared, because the
+t-dated size descriptor is the log of market cap at t and market cap at t is
+the t-1 market cap times one plus r_t, so the dated-t design contains the
+variable being explained on both sides of the regression; the dated-t reversal
+and momentum windows contain the day being explained for the same reason. The
+3.45 points are therefore a measurement of the same-day information that the
+t-1 rule removes, and they are the reason the rule exists rather than evidence
+against it. The pre-registration is recorded as wrong about the sign, the
+decision it was attached to (use the t-1 design) is unchanged, and no criterion
+text was edited.

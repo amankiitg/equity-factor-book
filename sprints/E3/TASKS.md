@@ -1,6 +1,6 @@
 # Sprint E3: Tasks
 
-## Status: In Progress (Task 0 complete)
+## Status: Complete (Tasks 0 to 9 evaluated; Task 7 walkthrough rendered and linked)
 
 Rules: ten atomic tasks including Task 0, each with a test, worked in order.
 Task 7 evaluates every F criterion and lands the walkthrough; Task 9 produces
@@ -59,7 +59,20 @@ never moves and a stored criterion is never narrowed.
     now reads it, prints it and asserts against it instead of the prose in
     docs/research/E1_data_note.md.
 
-- [ ] Task 1: Market cap and the seven style descriptors through t-1 (P0)
+- [x] Task 1: Market cap and the seven style descriptors through t-1 (P0)
+  - Completed: 2026-09-17. efb/models/fundamental.py implements market_cap,
+    market_proxy and raw_descriptors; the share count used on t is the last
+    observation dated at or before t-1, forward filled from each name's first
+    filing and backfilled before it with a per-row look_ahead flag.
+    data/processed/market_cap.parquet holds close, shares, shares_as_of,
+    market_cap and look_ahead per name-day; descriptors.parquet holds
+    664,146 name-day rows over 189 month ends in the long schema. Every
+    descriptor is dated t-1 and the shift test covers all seven. The
+    descriptor tests live in tests/test_fundamental.py together with Tasks 2
+    to 4 (one module per sprint, 77 tests across the four E3 module files),
+    not in a separate tests/test_fundamental_descriptors.py. A zero or
+    negative market cap is masked before the log so the result is NaN and not
+    minus infinity.
   - Acceptance: market cap = close x shares, the share count on t being the
     last observation dated at or before t-1 (never a count filed later),
     forward-filled from each name's first observation and backfilled before it
@@ -76,7 +89,17 @@ never moves and a stored criterion is never narrowed.
   - Files: efb/models/fundamental.py, tests/test_fundamental_descriptors.py,
     data/models/XS-v1/descriptors.parquet
 
-- [ ] Task 2: Standardization and orthogonalization (P0)
+- [x] Task 2: Standardization and orthogonalization (P0)
+  - Completed: 2026-09-17. standardize returns the z score, the statistics and
+    the winsorized input, so the walkthrough can show the intermediate step.
+    Winsorization is at plus or minus 3 MAD; the z score uses a cap-weighted
+    mean and an equal-weighted standard deviation, so the cap-weighted market
+    portfolio's mean style exposure is zero to 1e-15 and the walkthrough
+    asserts it on a real day for the seven styles. Momentum is orthogonalized
+    on (beta, size) and residual volatility on (beta) by cross-sectional
+    regression with the residual re-standardized; the pre and post
+    orthogonalization vectors are both stored in the descriptor artifact. The
+    degenerate-cross-section case stays finite and is tested.
   - Acceptance: winsorization at plus or minus 3 MAD, then the z-score with a
     cap-weighted mean and an equal-weighted standard deviation, so the
     cap-weighted market portfolio's mean style exposure is zero to 1e-12;
@@ -89,7 +112,19 @@ never moves and a stored criterion is never narrowed.
     to 1e-10, a degenerate cross-section stays finite).
   - Files: efb/models/fundamental.py, tests/test_fundamental_standardize.py
 
-- [ ] Task 3: Constrained weighted least squares, factor-mimicking portfolios, identification (P0)
+- [x] Task 3: Constrained weighted least squares, factor-mimicking portfolios, identification (P0)
+  - Completed: 2026-09-17. The identity X' w_FMP = e_k originally failed
+    because the market column plus eleven sector dummies is exactly
+    collinear, so no pseudo-inverse can satisfy all 18 identities: the
+    parameterization had to change, not the criterion. The estimated design
+    now carries 17 columns (the seven styles and ten sector dummies) with
+    Real Estate, code 60, as the reference, its return derived from the
+    constraint, and the cap-weighted mean of the sector block moved into the
+    market factor. The identity now holds at 1.2426149519073615e-13 over all
+    3941 days and the cap-weighted sector sum at 7.047314121155779e-18.
+    identify is checked against the reduced design's fitted values to 1e-15
+    and no day in the sample is rank deficient. The equivalence with an
+    explicit constrained solve and the collinear case are both unit tested.
   - Acceptance: f_uncon = (X'WX)^-1 X'W r with W = diag(sqrt mcap) normalized;
     the FMP rows A = (X'WX)^-1 X'W satisfy X' w_FMP(k) = e_k within 1e-8 for
     every factor k; the null direction is removed with a = sum_s w_s f_sector,s
@@ -103,7 +138,23 @@ never moves and a stored criterion is never narrowed.
     sum, the equivalence proof, the collinear-column case).
   - Files: efb/models/fundamental.py, tests/test_fundamental_wls.py
 
-- [ ] Task 4: Factor returns, specific returns, cross-sectional R squared, exposures (P0)
+- [x] Task 4: Factor returns, specific returns, cross-sectional R squared, exposures (P0)
+  - Completed: 2026-09-17. factor_returns.parquet holds 70,938 rows (18
+    factors over 3941 days) with f, f_estimated and the estimation label, so
+    the derived reference sector is distinguishable from an estimated one;
+    specific_returns.parquet holds one row per day and name; xs_r2.parquet
+    holds the daily R squared and the health columns (FMP identity error,
+    cap-weighted sector sum, names, descriptors, rank_deficient). The mean
+    cross-sectional R squared is 0.3294501878861149 and no day is below the
+    300-name floor or rank deficient. F3.1 adds the by-year, by-sector and
+    block diagnostics the sprint's standing instruction B asks for, computed
+    whether or not the average clears its bar. The shift test is printed both
+    ways and comes back in the opposite direction to the PRD's pre-registered
+    rule: the design dated t explains 0.364005 of r_t against 0.329462 for the
+    design dated t-1, a 3.45 point gain, because the t-dated size descriptor
+    contains market cap at t and market cap at t is a function of r_t. The
+    decision the rule attaches to is unchanged, the lagged number reproduces
+    the stored mean R squared, and the finding is a dated Hygiene Ledger entry.
   - Acceptance: factor_returns.parquet (f and f_pre_identification per factor
     per day), specific_returns.parquet, xs_r2.parquet with the daily R
     squared plus the model health columns (FMP identity maximum absolute
@@ -118,7 +169,22 @@ never moves and a stored criterion is never narrowed.
   - Files: efb/models/fundamental.py,
     tests/test_fundamental_factor_returns.py
 
-- [ ] Task 5: Factor covariance, specific variance, Sigma, the risk decomposition, the registry entry (P0)
+- [x] Task 5: Factor covariance, specific variance, Sigma, the risk decomposition, the registry entry (P0)
+  - Completed: 2026-09-17. factor_cov.parquet is the 18 x 18 EWMA matrix at
+    half-life 90 sessions with the Newey-West lag 2 correction; a first
+    version weighted the oldest row most and was fixed to put the largest
+    decay on the newest observation. specific_var.parquet holds the EWMA
+    specific variance at half-life 42 sessions shrunk toward the (sector,
+    size tercile) bucket mean with weight n/(n + 60), both raw and shrunk. The
+    decomposition is stored for both seed books with sigma_p, MCR,
+    contribution, percent of variance, the factor contributions and x = X'w;
+    the identity holds at 0.0 and 6.245004513516506e-17 over 370 book dates.
+    The registry gains XS-v1 with champion false, eligible_for_champion true,
+    the full parameter block and both hashes, with champion_rule and
+    family_notes byte identical. efb/build.py gained build_e3_artifacts,
+    rebuild_e3 and the 15-path artifact set; the Makefile implements
+    rebuild-e3 and adds rebuild as the E1 to E3 entry point, which is the G1
+    one-command requirement.
   - Acceptance: F the EWMA factor covariance at half-life 90 business days
     with the Newey-West lag 2 correction, stored as an 18 x 18 matrix; D the
     EWMA specific variance at half-life 42 days shrunk toward the mean of the
@@ -144,7 +210,18 @@ never moves and a stored criterion is never narrowed.
   - Files: efb/models/fundamental.py, efb/risk.py, efb/registry.py,
     efb/build.py, Makefile, tests/test_risk.py, tests/test_build_e3.py,
     data/eval/xs_risk_decomposition.parquet
-- [ ] Task 6: Fama-MacBeth premia and dashboard tab D2 (P0)
+- [x] Task 6: Fama-MacBeth premia and dashboard tab D2 (P0)
+  - Completed: 2026-09-17. xs_fm_premia.parquet holds 72 rows: 18 factors in
+    each of the four periods, so every factor is present in every subperiod.
+    A premium with an absolute t statistic below 2 is labelled unpriced and
+    kept: 64 of the 72, an unpriced share of 0.8888888888888888, and the
+    strongest is the market factor at 3.4676. dashboard/tabs/d02_factor_risk.py
+    has the eight panels plus the CSV weight upload and the exposure limits;
+    every panel builder reads parquet through a guard that raises when the
+    read comes back empty or loses a column, which is the D1 defect's lesson,
+    and each guard has its own test in tests/test_fm_premia.py. D0,
+    Methodology and D1 still render. The dashboard tests live in
+    tests/test_fm_premia.py rather than a separate tests/test_dashboard_d2.py.
   - Acceptance: data/eval/xs_fm_premia.parquet with the daily and annualized
     premium, the Newey-West lag 2 standard error, the t statistic, the day
     count and the priced label for every factor for the full sample and for
@@ -161,7 +238,19 @@ never moves and a stored criterion is never narrowed.
   - Files: efb/models/fundamental.py, dashboard/tabs/d02_factor_risk.py,
     dashboard/app.py, tests/test_fm_premia.py, tests/test_dashboard_d2.py
 
-- [ ] Task 7: Evaluate F3.1 to F3.9, render the walkthrough, publish the docs (P0)
+- [x] Task 7: Evaluate F3.1 to F3.9, render the walkthrough, publish the docs (P0)
+  - Completed: 2026-09-17. sprints/E3/RESULTS.json holds nine criteria with
+    their threshold, stored numbers, verdict and note, plus the revisions
+    block with data_hash, previous_data_hash, the changed list and the
+    append-only history; the second write over unchanged artifacts reports
+    n_changed 0 and appends no history entry. notebooks/E3_walkthrough.ipynb
+    has 38 cells, 24 asserts, prints every stored criterion and its verdict,
+    and hardcodes no stored number: the last section scans its own code cells
+    for any stored value and reports none. The Methodology tab links the E3
+    PRD, tasks, probes, results, both research notes and the walkthrough, and
+    efb/dashboard publish copies each to dashboard/static/docs so the link
+    opens the file. Verified F3.1 to F3.9, eight pass and F3.6 fails on the
+    momentum book as the criterion is written.
   - Acceptance: sprints/E3/RESULTS.json holds every criterion with its
     threshold, stored numbers, verdict and note, plus the revisions block with
     data_hash, previous_data_hash, the changed list and an append-only
@@ -186,7 +275,17 @@ never moves and a stored criterion is never narrowed.
     dashboard/publish.py, tests/test_e3_results.py,
     tests/test_e3_walkthrough_notebook.py, tests/test_e3_docs_links.py
 
-- [ ] Task 8: Realized residual covariance for both seed books, F3.8 (P1, inherited open item 1)
+- [x] Task 8: Realized residual covariance for both seed books, F3.8 (P1, inherited open item 1)
+  - Completed: 2026-09-17. data/eval/xs_residual_covariance.parquet holds 282
+    rows, 141 trailing 252-day windows per book from 2015-01-30. F3.8 stores
+    the factor share both ways: the equal-weight book moves from
+    0.9940314593621442 with the diagonal D to 0.9968315206727247 with the
+    realized covariance, and the momentum book from 0.7905666631763667 to
+    0.5890153813347032. The direction is measured rather than assumed: the
+    realized idiosyncratic variance is below the diagonal in 90.1 percent of
+    the equal-weight windows and above it in every momentum window. The
+    average pairwise within-sector specific-return correlation was dropped
+    because the artifact stores the two variances directly.
   - Acceptance: the realized covariance of XS-v1 specific returns over
     trailing 252-day windows is computed for both seed books; the factor share
     of variance is reported twice for each book, once with the diagonal D and
@@ -207,7 +306,22 @@ never moves and a stored criterion is never narrowed.
     tests/test_residual_covariance.py,
     data/eval/xs_residual_covariance.parquet
 
-- [ ] Task 9: Conditional exposure time series for the momentum book, F3.9, and the research deliverables (P1, inherited open item 2)
+- [x] Task 9: Conditional exposure time series for the momentum book, F3.9, and the research deliverables (P1, inherited open item 2)
+  - Completed: 2026-09-17. data/eval/xs_exposure_timeseries.parquet holds
+    378 book-factor rows over 189 month ends, the book's exposures read from
+    the standardized cross-section at each rebalance. F3.9 stores the
+    momentum series mean 0.3407061589106543 with range -0.10186105044867005
+    to 1.091340001486862 over 282 book rebalances, and the reconciliation
+    against all five E2 numbers is written into the risk report. Both
+    deliverables are written:
+    docs/research/E3_factor_model_note.md and
+    docs/research/E3_risk_report.md, each with the PM answer in one paragraph
+    at the top, only stored values quoted and a section titled "What would
+    falsify this?". The tests live in
+    tests/test_e3_walkthrough_notebook.py (the required note sections, the
+    reconciliation figures, no em dashes, no typed stored number) rather than
+    in separate tests/test_exposure_timeseries.py and
+    tests/test_e3_research_note.py files.
   - Acceptance: x_t = X_{t-1}' w for the momentum book is stored at every
     rebalance in data/eval/xs_exposure_timeseries.parquet, with the book's
     XS-v1 exposure to momentum and to size, so the book is priced from
@@ -256,13 +370,13 @@ never moves and a stored criterion is never narrowed.
 
 ## Gate checklist (G1, Sep 20)
 
-- [ ] make rebuild runs E1 through E3 from raw parquet in one command
-- [ ] registry holds TS-v1 and XS-v1 with their data hashes, champion_rule
+- [x] make rebuild runs E1 through E3 from raw parquet in one command
+- [x] registry holds TS-v1 and XS-v1 with their data hashes, champion_rule
       unedited
-- [ ] F1 to F3 criteria all evaluated with stored numbers in the three
+- [x] F1 to F3 criteria all evaluated with stored numbers in the three
       RESULTS.json files
-- [ ] all three walkthroughs rendered as HTML and linked from the Methodology
+- [x] all three walkthroughs rendered as HTML and linked from the Methodology
       tab, each opening the file
-- [ ] research deliverable written and linked
-- [ ] make lint and make test clean, and no em dashes in any file the sprint
+- [x] research deliverable written and linked
+- [x] make lint and make test clean, and no em dashes in any file the sprint
       writes

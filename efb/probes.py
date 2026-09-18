@@ -174,16 +174,22 @@ def dedupe_share_history(raw: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
 
 
 def share_count_panel(
-    history: pd.DataFrame, index: pd.DatetimeIndex, tickers: list[str] | tuple[str, ...]
+    history: pd.DataFrame,
+    index: pd.DatetimeIndex,
+    tickers: list[str] | tuple[str, ...],
 ) -> pd.DataFrame:
     """Share count usable on each date, with the filing date it came from.
 
-    The panel is dated t-1 on purpose: the count filed on date t is not
-    usable until the next session, so the value on date t is the last
-    observation dated at or before t-1. A date before a name's first filing
-    is backfilled with that first filing and flagged `look_ahead`, because
-    the count was not knowable then; the flag is carried into the market cap
-    and into the Size descriptor.
+    The panel is dated t-1 on purpose: the count filed on date t is not usable
+    until the next session, so the value on date t is the last observation
+    dated at or before t-1. A date before a name's first filing is backfilled
+    with that first filing and flagged `look_ahead`, because the count was not
+    knowable then; the flag is carried into the market cap and into the Size
+    descriptor.
+
+    Implemented with merge_asof, which is the vectorized form of "the last
+    filing on or before the cutoff". The earlier per-date loop produced the
+    same frame and took minutes on the full panel.
 
     Returns columns date, ticker, shares, shares_as_of, look_ahead.
     """
@@ -191,47 +197,38 @@ def share_count_panel(
     index = pd.DatetimeIndex(sorted(index))
     if isinstance(index.dtype, pd.DatetimeTZDtype):
         index = index.tz_localize(None)
-    records: list[dict[str, object]] = []
-    for ticker in dict.fromkeys(tickers):
-        sub = frame.loc[frame["ticker"] == ticker].sort_values("date")
-        if sub.empty:
-            for date in index:
-                records.append(
-                    {
-                        "date": date,
-                        "ticker": ticker,
-                        "shares": np.nan,
-                        "shares_as_of": pd.NaT,
-                        "look_ahead": False,
-                    }
-                )
-            continue
-        dates = sub["date"].to_numpy()
-        values = sub["shares"].to_numpy()
-        for date in index:
-            cutoff = date - pd.Timedelta(days=1)
-            pos = int(np.searchsorted(dates, np.datetime64(cutoff), side="right")) - 1
-            if pos >= 0:
-                records.append(
-                    {
-                        "date": date,
-                        "ticker": ticker,
-                        "shares": float(values[pos]),
-                        "shares_as_of": pd.Timestamp(dates[pos]),
-                        "look_ahead": False,
-                    }
-                )
-            else:
-                records.append(
-                    {
-                        "date": date,
-                        "ticker": ticker,
-                        "shares": float(values[0]),
-                        "shares_as_of": pd.NaT,
-                        "look_ahead": True,
-                    }
-                )
-    return pd.DataFrame.from_records(records)
+    wanted = list(dict.fromkeys(tickers))
+    grid = pd.MultiIndex.from_product(
+        [index, wanted], names=["date", "ticker"]
+    ).to_frame(index=False)
+    if frame.empty:
+        grid["shares"] = np.nan
+        grid["shares_as_of"] = pd.NaT
+        grid["look_ahead"] = False
+        return grid
+
+    observations = frame.loc[frame["ticker"].isin(wanted), ["ticker", "date", "shares"]]
+    observations = observations.sort_values(["date", "ticker"])
+    # parquet stores timestamps at microsecond resolution while the panel
+    # index is nanosecond, and merge_asof refuses to join across units
+    grid["date"] = pd.to_datetime(grid["date"]).astype("datetime64[ns]")
+    observations["date"] = pd.to_datetime(observations["date"]).astype("datetime64[ns]")
+    merged = pd.merge_asof(
+        grid.sort_values(["date", "ticker"]),
+        observations.rename(columns={"date": "shares_as_of"}),
+        left_on="date",
+        right_on="shares_as_of",
+        by="ticker",
+        direction="backward",
+        allow_exact_matches=False,
+    )
+    first = observations.groupby("ticker")["shares"].first()
+    merged["look_ahead"] = merged["shares"].isna()
+    backfill = merged["ticker"].map(first)
+    merged["shares"] = merged["shares"].fillna(backfill)
+    return merged[
+        ["date", "ticker", "shares", "shares_as_of", "look_ahead"]
+    ].reset_index(drop=True)
 
 
 def availability_masks(
@@ -581,22 +578,27 @@ def _wide(frame: pd.DataFrame, column: str) -> pd.DataFrame:
     return frame[column].unstack("ticker")
 
 
-def load_e3_inputs() -> dict[str, object]:
-    """Load and align every frame the E3 probes and the build read."""
-    data_root = ROOT / "data"
-    returns_frame = pd.read_parquet(data_root / "processed" / "returns.parquet")
-    prices_frame = pd.read_parquet(data_root / "raw" / "prices.parquet")
-    sectors_frame = pd.read_parquet(data_root / "processed" / "sectors.parquet")
-    membership = pd.read_parquet(
-        data_root / "processed" / "universe_membership.parquet"
-    )
+def load_panel(data_root: Path | None = None) -> dict[str, object]:
+    """Load and align every frame the XS-v1 probes and the build read.
+
+    This is the shared loader: efb.build calls it, so the build and the probes
+    cannot disagree about the panel. It lives here because the Task 0 probes
+    were written first; moving it into its own module is a tidy-up for E4.
+    """
+    root = ROOT / "data" if data_root is None else Path(data_root)
+    returns_frame = pd.read_parquet(root / "processed" / "returns.parquet")
+    prices_frame = pd.read_parquet(root / "raw" / "prices.parquet")
+    sectors_frame = pd.read_parquet(root / "processed" / "sectors.parquet")
+    membership = pd.read_parquet(root / "processed" / "universe_membership.parquet")
     returns = _wide(returns_frame, "r")
     close = _wide(prices_frame, "close")
     volume = _wide(prices_frame, "volume")
     index = returns.index
     sectors = sectors_frame.set_index("ticker")["gics_sector"]
     mapped = [c for c in returns.columns if c in set(sectors.index)]
-    history_path = SHARES_CACHE
+    history_path = root / "raw" / "shares_history.parquet"
+    if not history_path.exists():
+        history_path = SHARES_CACHE
     history = (
         pd.read_parquet(history_path)
         if history_path.exists()
@@ -618,8 +620,145 @@ def load_e3_inputs() -> dict[str, object]:
         "shares": shares.reindex(index=index, columns=returns.columns),
         "shares_mapped": shares.reindex(index=index, columns=mapped),
         "look_ahead": look_ahead.reindex(index=index, columns=returns.columns),
+        "shares_long": shares_long,
         "history": history,
     }
+
+
+def market_factor_two_ways(
+    data_root: Path | None = None, verbose: bool = True
+) -> dict[str, object]:
+    """The Market factor estimated on total returns and on excess returns.
+
+    XS-v1 regresses the total return r, because the panel's excess column is
+    all NaN after 2026-07-31 while r runs to 2026-09-03. This is the standing
+    instruction C measurement of what that choice costs. The design is built
+    once and every day is fitted twice, once on r and once on r - rf, so the
+    two series differ only through the regressand. Because the design carries
+    a constant column, subtracting a common rf on a day moves the intercept
+    and leaves every other coefficient untouched, which the probe prints
+    rather than assumes.
+
+    OUTPUT: the two Market factor series, their correlation on the overlap,
+    the maximum deviation of the style and sector returns between the two
+    fits, and the maximum deviation of the market gap from rf, which is the
+    same statement measured on the real design.
+    """
+    from efb.models import fundamental
+
+    inputs = load_panel(data_root)
+    returns = inputs["returns"]
+    close = inputs["close"]
+    volume = inputs["volume"]
+    sectors = inputs["sectors"]
+    mapped = inputs["mapped"]
+    shares = inputs["shares"]
+    assert isinstance(returns, pd.DataFrame)
+    assert isinstance(close, pd.DataFrame)
+    assert isinstance(volume, pd.DataFrame)
+    assert isinstance(sectors, pd.Series)
+    assert isinstance(shares, pd.DataFrame)
+    assert isinstance(mapped, list)
+
+    factors_path = (data_root or (ROOT / "data")) / "raw" / "factors_ff.parquet"
+    ff = pd.read_parquet(factors_path)
+    rf = ff["rf"].astype(float)
+
+    cap = fundamental.market_cap(close[mapped], shares[mapped])
+    proxy = fundamental.market_proxy(returns[mapped], cap)
+    design = fundamental.build_design(
+        returns=returns[mapped],
+        close=close[mapped],
+        volume=volume[mapped],
+        market_cap=cap,
+        sectors=sectors,
+        proxy=proxy,
+    )
+    # the market factor is the constant column, so it is the intercept of the
+    # fit and the only coefficient a common shift of the regressand can move
+    if list(fundamental.FACTOR_NAMES).index("market") != 0:
+        raise RuntimeError("the market factor must be the intercept position")
+    style_count = len(fundamental.STYLE_NAMES)
+
+    total_rows: list[dict[str, object]] = []
+    excess_rows: list[dict[str, object]] = []
+    other_gap = 0.0
+    market_gap_error = 0.0
+    for day in design.days:
+        rate = rf.get(day.date, np.nan)
+        total = fundamental.wls_fit(day.design, day.returns, day.weights)
+        total_weights = fundamental.sector_cap_weights(day)
+        total_market = fundamental.identify(
+            total.factor_returns, total_weights, n_styles=style_count
+        )
+        total_rows.append({"date": day.date, "market": float(total_market.market)})
+        if not np.isfinite(rate):
+            continue
+        excess = fundamental.wls_fit(day.design, day.returns - rate, day.weights)
+        excess_weights = fundamental.sector_cap_weights(day)
+        excess_market = fundamental.identify(
+            excess.factor_returns, excess_weights, n_styles=style_count
+        )
+        excess_rows.append({"date": day.date, "market": float(excess_market.market)})
+        other_gap = max(
+            other_gap,
+            float(
+                np.max(
+                    np.abs(total_market.as_vector()[1:] - excess_market.as_vector()[1:])
+                )
+            ),
+        )
+        market_gap_error = max(
+            market_gap_error,
+            abs(float(total_market.market) - float(excess_market.market) - rate),
+        )
+
+    total_frame = pd.DataFrame(total_rows).set_index("date")["market"]
+    excess_frame = pd.DataFrame(excess_rows).set_index("date")["market"]
+    overlap = total_frame.index.intersection(excess_frame.index)
+    correlation = float(
+        np.corrcoef(total_frame.reindex(overlap), excess_frame.reindex(overlap))[0, 1]
+    )
+    # both FF series are used: the total return, which is the comparison F3.4
+    # stores, and the excess return, which is the series the model would be
+    # compared against if it regressed the excess return instead
+    ff_total = (ff["mkt_rf"] + ff["rf"]).astype(float)
+    ff_excess = ff["mkt_rf"].astype(float)
+    ff_overlap = overlap.intersection(ff_total.index)
+    correlation_ff_total = float(
+        np.corrcoef(total_frame.reindex(ff_overlap), ff_total.reindex(ff_overlap))[0, 1]
+    )
+    correlation_ff_excess = float(
+        np.corrcoef(excess_frame.reindex(ff_overlap), ff_excess.reindex(ff_overlap))[
+            0, 1
+        ]
+    )
+    summary: dict[str, object] = {
+        "n_days_total": int(len(total_frame)),
+        "n_days_overlap": int(len(overlap)),
+        "overlap_first": str(overlap.min().date()),
+        "overlap_last": str(overlap.max().date()),
+        "market_total_mean": float(total_frame.mean()),
+        "market_total_std": float(total_frame.std(ddof=1)),
+        "market_excess_mean": float(excess_frame.mean()),
+        "market_excess_std": float(excess_frame.std(ddof=1)),
+        "mean_rf_on_overlap": float(rf.reindex(overlap).mean()),
+        "correlation_total_vs_excess": correlation,
+        "correlation_ff_market_total": correlation_ff_total,
+        "correlation_ff_market_excess": correlation_ff_excess,
+        "ff_total_label": "Mkt-RF plus RF",
+        "ff_excess_label": "Mkt-RF",
+        "max_abs_other_factors_gap": other_gap,
+        "max_abs_market_gap_minus_rf": market_gap_error,
+    }
+    if verbose:
+        print("### the Market factor, estimated both ways (total vs excess)")
+        for key, value in summary.items():
+            if isinstance(value, float):
+                print(f"{key}: {value:.10g}")
+            else:
+                print(f"{key}: {value}")
+    return summary
 
 
 def cap_weighted_market_return(
@@ -639,7 +778,7 @@ def cap_weighted_market_return(
 
 def run_e3_probes() -> None:
     """Print every Sprint E3 Task 0 table."""
-    inputs = load_e3_inputs()
+    inputs = load_panel()
     returns = inputs["returns"]
     close = inputs["close"]
     volume = inputs["volume"]
@@ -1014,6 +1153,9 @@ def main() -> None:
     import sys
 
     args = sys.argv[1:]
+    if "--e3-two-ways" in args:
+        market_factor_two_ways()
+        return
     if "--e3-shares-all" in args:
         run_e3_shares(all_panel_names=True)
         return

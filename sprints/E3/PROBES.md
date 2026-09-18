@@ -437,3 +437,53 @@ and asserts the recomputed values against it, so no assert depends on the
 prose table in docs/research/E1_data_note.md. The data note keeps its table;
 it is no longer an assertion target. The values reproduce the prose exactly:
 0.7601, 0.2460, 0.2268, 0.9220, -0.1029.
+
+## The Market factor, estimated both ways (standing instruction C)
+
+Printed by `python -m efb.probes --e3-two-ways` on 2026-09-17. The design is
+built once and every one of the 3941 days is fitted twice, once on the total
+return r and once on r minus rf, so the two series differ only through the
+regressand. The style and sector factors are compared between the two fits
+rather than assumed to be equal.
+
+```
+n_days_total                     3941
+n_days_overlap                   3917   (2011-01-03 to 2026-07-31)
+market_total_mean                0.000578022897
+market_total_std                 0.01099506696
+market_excess_mean               0.0005126478159
+market_excess_std                0.01101293198
+mean_rf_on_overlap               6.137350013e-05
+correlation_total_vs_excess      0.9999726435
+correlation_ff_market_total      0.9889255745   (Mkt-RF plus RF)
+correlation_ff_market_excess     0.9889259495   (Mkt-RF)
+max_abs_other_factors_gap        1.765948499e-15
+max_abs_market_gap_minus_rf      6.481767163e-16
+```
+
+Readings.
+
+1. The answer to the instruction's question is 0.9999726435. The Market factor
+   estimated on total returns and the Market factor estimated on excess returns
+   are the same series to four decimal places, and the only thing that moves is
+   the mean: 0.000578022897 against 0.0005126478159, a difference of 6.5 basis
+   points a day over the overlap, which is the risk-free rate itself.
+2. That is exact and not approximate, and the reason is the design's shape. The
+   market column is the constant column, so the market factor is the intercept
+   of the fit, and a constant subtracted from every name's return on a day
+   moves the intercept and nothing else. The probe measures that rather than
+   asserting it: the largest absolute difference between the two fits on the
+   other 17 factors is 1.765948499e-15, and the largest absolute deviation of
+   (market gap minus rf) is 6.481767163e-16, which is floating point noise on
+   both counts.
+3. So the regressand choice costs a level shift and no shape. Correlating
+   either series with the FF market return gives the same number to five
+   decimals: 0.9889255745 against Mkt-RF plus RF for the total-return factor,
+   which is the figure F3.4 stores as 0.9889255744977894, and 0.9889259495
+   against Mkt-RF for the excess-return factor.
+4. The practical consequence for E4 and E5 is that a model comparison against an
+   excess-return benchmark needs only the risk-free series for the overlapping
+   window, because every style and sector factor return is already the same
+   number in both parameterizations. XS-v1 would not gain a different factor
+   structure by switching regressand; it would gain five weeks of missing
+   sample at the end, which is why it does not switch.

@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from efb import factors, hygiene, identity, prices, returns, universe
+from efb.models import fundamental as fx
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
@@ -56,6 +57,24 @@ E2_ARTIFACTS = [
     "portfolios/seed_ew_risk.parquet",
     "portfolios/seed_mom_ls_risk.parquet",
     "portfolios/seed_mom_ls_risk_21.parquet",
+]
+
+E3_ARTIFACTS = [
+    "raw/shares_history.parquet",
+    "processed/market_cap.parquet",
+    "models/XS-v1/descriptors.parquet",
+    "models/XS-v1/factor_returns.parquet",
+    "models/XS-v1/specific_returns.parquet",
+    "models/XS-v1/fmp_weights.parquet",
+    "models/XS-v1/xs_r2.parquet",
+    "models/XS-v1/factor_cov.parquet",
+    "models/XS-v1/specific_var.parquet",
+    "models/registry.json",
+    "eval/xs_fm_premia.parquet",
+    "eval/xs_risk_decomposition.parquet",
+    "eval/xs_bias.parquet",
+    "eval/xs_exposure_timeseries.parquet",
+    "eval/xs_residual_covariance.parquet",
 ]
 
 MODEL_START = 2010
@@ -709,8 +728,617 @@ def rebuild_e2(
     return {"n_steps": 8, "e1_tickers": e1["n_tickers"], "e2": e2, "version": payload}
 
 
+SUBPERIODS = [
+    ("full_sample", None, None),
+    ("2011_2015", "2011-01-03", "2015-12-31"),
+    ("2016_2020", "2016-01-01", "2020-12-31"),
+    ("2021_2026", "2021-01-01", "2026-09-03"),
+]
+
+
+def _period_ends(design: fx.DesignResult, freq: str) -> list[pd.Timestamp]:
+    """Last design date of each period ("M", "Q" or "Y")."""
+    dates = pd.Series([day.date for day in design.days])
+    return list(dates.groupby(dates.dt.to_period(freq)).max())
+
+
+def _descriptor_frame(
+    design: fx.DesignResult,
+    look_ahead: pd.DataFrame,
+    returns: pd.DataFrame,
+) -> pd.DataFrame:
+    """The descriptor artifact: month ends plus the final session.
+
+    A daily long frame would be about fifteen million rows for no extra
+    information, because every value is a deterministic function of the
+    panel. Month ends plus the last cross-section is what the dashboard, the
+    walkthrough and the research note read.
+    """
+    dates = [
+        date for date in _period_ends(design, "M") if date in design.raw["size"].index
+    ]
+    if design.dates[-1] not in dates:
+        dates.append(design.dates[-1])
+    obs = design.raw.get("obs_count")
+    rows: list[dict[str, object]] = []
+    for name in fx.STYLE_NAMES:
+        raw = design.raw[name]
+        winsorized = design.winsorized.get(name, raw)
+        pre = design.standard_pre.get(name, design.standardized[name])
+        post = design.standardized[name]
+        for date in dates:
+            if date not in raw.index:
+                continue
+            for ticker in returns.columns:
+                rows.append(
+                    {
+                        "date": date,
+                        "ticker": ticker,
+                        "descriptor": name,
+                        "value_raw": (
+                            float(raw.loc[date, ticker])
+                            if pd.notna(raw.loc[date, ticker])
+                            else np.nan
+                        ),
+                        "value_winsor": (
+                            float(winsorized.loc[date, ticker])
+                            if pd.notna(winsorized.loc[date, ticker])
+                            else np.nan
+                        ),
+                        "value_z": (
+                            float(pre.loc[date, ticker])
+                            if pd.notna(pre.loc[date, ticker])
+                            else np.nan
+                        ),
+                        "value_z_orth": (
+                            float(post.loc[date, ticker])
+                            if pd.notna(post.loc[date, ticker])
+                            else np.nan
+                        ),
+                        "n_obs": (
+                            float(obs.loc[date, ticker])
+                            if obs is not None and pd.notna(obs.loc[date, ticker])
+                            else np.nan
+                        ),
+                        "look_ahead": (
+                            bool(look_ahead.loc[date, ticker])
+                            if ticker in look_ahead.columns
+                            and pd.notna(look_ahead.loc[date, ticker])
+                            else False
+                        ),
+                    }
+                )
+    return pd.DataFrame(rows)
+
+
+def _fmp_frame(design: fx.DesignResult, dates: list[pd.Timestamp]) -> pd.DataFrame:
+    """Factor-mimicking weights at quarter ends, both weight sets.
+
+    `unconstrained` is the object F3.2 tests: the rows of (X'WX)^-1 X'W, where
+    X' w_FMP is exactly the unit vector. `identified` adds the adjustment that
+    makes the cap-weighted sector returns sum to zero, which is the portfolio
+    whose return is the reported factor return.
+    """
+    index = {day.date: day for day in design.days}
+    rows: list[dict[str, object]] = []
+    for date in dates:
+        day = index.get(date)
+        if day is None:
+            continue
+        fit = fx.wls_fit(day.design, day.returns, day.weights)
+        weights = fx.sector_cap_weights(day)
+        # estimated: the rows of (X'WX)^-1 X'W on the reduced design, where
+        # X' w = I holds exactly. identified: the rows that reproduce the
+        # reported factor returns, the reference sector included.
+        transform = fx.identified_transform(weights)
+        for kind, matrix, names in (
+            ("estimated", fit.fmp_weights, list(fx.ESTIMATED_NAMES)),
+            ("identified", transform @ fit.fmp_weights, list(design.factor_names)),
+        ):
+            for position, factor in enumerate(names):
+                for ticker, value in zip(day.tickers, matrix[position], strict=True):
+                    rows.append(
+                        {
+                            "date": date,
+                            "factor": factor,
+                            "ticker": ticker,
+                            "weight": float(value),
+                            "kind": kind,
+                        }
+                    )
+    return pd.DataFrame(rows)
+
+
+def _premia_frame(
+    factor_wide: pd.DataFrame, subperiods: list[tuple[str, str | None, str | None]]
+) -> pd.DataFrame:
+    """Fama-MacBeth premia for the full sample and each subperiod."""
+    tables: list[pd.DataFrame] = []
+    for label, start, end in subperiods:
+        window = factor_wide
+        if start is not None:
+            window = window.loc[start:]
+        if end is not None:
+            window = window.loc[:end]
+        if window.empty:
+            continue
+        table = fx.fama_macbeth(window)
+        table["period"] = label
+        tables.append(table)
+    return pd.concat(tables, ignore_index=True)
+
+
+def _diagnostics(
+    design: fx.DesignResult, xs_r2: pd.DataFrame, specific_wide: pd.DataFrame
+) -> dict[str, object]:
+    """The three diagnostics standing instruction B asks for.
+
+    R squared by calendar year, by sector, and with the market factor alone
+    against the full set. The market-only pass is the one refit; the other two
+    read the stored fits. All three are computed here, while the design is in
+    memory, and stored in the registry so the criterion can quote them without
+    rebuilding the panel.
+    """
+    r_by_year = (
+        xs_r2.assign(year=xs_r2["date"].dt.year)
+        .groupby("year")["r_squared"]
+        .mean()
+        .round(6)
+        .to_dict()
+    )
+    sector_values: dict[str, list[float]] = {sector: [] for sector in fx.SECTOR_NAMES}
+    market_only: list[float] = []
+    sectors_only: list[float] = []
+    styles_only: list[float] = []
+    n_styles = len(fx.STYLE_NAMES)
+    for day in design.days:
+        market_fit = fx.wls_fit(day.design[:, :1], day.returns, day.weights)
+        market_only.append(market_fit.r_squared)
+        sectors_only.append(
+            fx.wls_fit(day.design[:, n_styles:], day.returns, day.weights).r_squared
+        )
+        styles_only.append(
+            fx.wls_fit(day.design[:, :n_styles], day.returns, day.weights).r_squared
+        )
+        scale = day.weights / day.weights.mean()
+        weighted_mean = float(np.average(day.returns, weights=scale))
+        specific = (
+            specific_wide.loc[day.date].reindex(day.tickers).to_numpy(dtype=float)
+        )
+        residual = specific**2 * scale
+        spread = (day.returns - weighted_mean) ** 2 * scale
+        for sector in fx.SECTOR_NAMES:
+            mask = day.sector_names == sector
+            total = float(spread[mask].sum())
+            if total <= 0 or not np.isfinite(residual[mask]).any():
+                continue
+            sector_values[sector].append(
+                1.0 - float(np.nan_to_num(residual[mask]).sum()) / total
+            )
+    by_sector = {
+        sector: round(float(np.mean(values)), 6)
+        for sector, values in sorted(sector_values.items())
+        if values
+    }
+    return {
+        "r_squared_by_year": {str(k): v for k, v in r_by_year.items()},
+        # the market factor is the intercept in a cross-sectional model, so a
+        # market-only fit explains no dispersion and its R squared is zero by
+        # construction. The two informative comparisons are the sector block
+        # alone and the style block alone.
+        "r_squared_market_only_mean": round(float(np.mean(market_only)), 6),
+        "r_squared_sectors_only_mean": round(float(np.mean(sectors_only)), 6),
+        "r_squared_styles_only_mean": round(float(np.mean(styles_only)), 6),
+        "r_squared_by_sector": by_sector,
+    }
+
+
+def _xs_parameters(
+    *,
+    design: fx.DesignResult,
+    factor_returns: pd.DataFrame,
+    xs_r2: pd.DataFrame,
+    decomposition: pd.DataFrame,
+    premia: pd.DataFrame,
+    specific_month: pd.DataFrame,
+    shares_long: pd.DataFrame,
+    fmp: pd.DataFrame,
+    artifacts_hash: str,
+    start: str,
+    end: str,
+    diagnostics: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """The registry parameter block for XS-v1."""
+    factor_rows = decomposition.loc[decomposition["level"] == "factor"]
+    return {
+        "family": "fundamental",
+        "assets": "equity",
+        "universe_rule": (
+            "sector-mapped panel names with a return and a complete descriptor row"
+        ),
+        "model_start": start,
+        "model_end": end,
+        "n_days": int(xs_r2.shape[0]),
+        "n_factors": int(len(design.factor_names)),
+        "descriptors": list(fx.STYLE_NAMES),
+        "n_sectors": len(fx.SECTOR_NAMES),
+        "sector_scheme": "gics",
+        "sector_source": "processed/sectors.parquet",
+        "identification": "cap_weighted_sector_factor_returns_sum_to_zero",
+        "estimator": "wls",
+        "weights": "sqrt_mcap",
+        "winsorize": "3mad",
+        "zscore_mean": "cap_weighted",
+        "zscore_std": "equal_weighted",
+        "orthogonalization": fx.DEFAULT_ORTHOGONALIZATION,
+        "beta_source": "cap_weighted_universe_total_return",
+        "beta_window": fx.BETA_WINDOW,
+        "beta_min_obs": fx.BETA_MIN_OBS,
+        "beta_shrinkage": "vasicek",
+        "resid_vol_source": "one_factor_market_model_residual",
+        "resid_vol_window": fx.RESID_VOL_WINDOW,
+        "momentum_window": [fx.MOMENTUM_WINDOW, fx.MOMENTUM_SKIP],
+        "reversal_window": fx.REVERSAL_WINDOW,
+        "liquidity_window": fx.LIQUIDITY_WINDOW,
+        "f_half_life": fx.F_HALF_LIFE,
+        "n_lags": fx.NW_LAG,
+        "d_half_life": fx.D_HALF_LIFE,
+        "d_shrink": "sector_size",
+        "d_shrink_k": fx.D_SHRINK_K,
+        "min_names": fx.MIN_NAMES,
+        "size_shares_source": "yfinance_get_shares_full",
+        "size_shares_first_filed": str(
+            pd.to_datetime(shares_long["date"]).min().date()
+        ),
+        "size_look_ahead": True,
+        "size_look_ahead_note": (
+            "the vendor share history starts to be filed in 2013-04 and is dense "
+            "from 2015-10; earlier counts are backfilled from a name's first "
+            "filing and are flagged per row in descriptors and market_cap"
+        ),
+        "n_names_mean": float(xs_r2["n_names"].mean()),
+        "n_names_min": int(xs_r2["n_names"].min()),
+        "r_squared_mean": float(xs_r2["r_squared"].mean()),
+        "fmp_identity_max_abs_error": float(xs_r2["fmp_identity_max_abs_error"].max()),
+        "sector_sum_max_abs": float(xs_r2["sector_cap_weighted_sum"].abs().max()),
+        "n_days_below_300_names_e2_floor": int((xs_r2["n_names"] < 300).sum()),
+        "mean_factor_share_seed_ew": float(
+            factor_rows.loc[factor_rows["book"] == "seed_ew", "factor_variance"].mean()
+            / float(
+                factor_rows.loc[
+                    factor_rows["book"] == "seed_ew", "total_variance"
+                ].mean()
+            )
+        ),
+        "n_premia_rows": int(premia.shape[0]),
+        "n_unpriced": int((~premia["priced"].astype(bool)).sum()),
+        "specific_var_dates": int(specific_month["date"].nunique()),
+        "fmp_dates": int(fmp["date"].nunique()),
+        "fmp_kinds": sorted(fmp["kind"].unique().tolist()),
+        "artifacts_hash": artifacts_hash,
+        **(diagnostics or {}),
+    }
+
+
+def build_e3_artifacts(
+    data_root: Path = DATA_ROOT,
+    verbose: bool = True,
+) -> dict[str, object]:
+    from efb import probes, registry, risk
+    from efb.models import fundamental
+
+    inputs = probes.load_panel(data_root)
+    returns = inputs["returns"]
+    close = inputs["close"]
+    volume = inputs["volume"]
+    sectors = inputs["sectors"]
+    mapped = inputs["mapped"]
+    shares = inputs["shares"]
+    shares_long = inputs["shares_long"]
+    membership = inputs["membership"]
+    assert isinstance(returns, pd.DataFrame)
+    assert isinstance(close, pd.DataFrame)
+    assert isinstance(volume, pd.DataFrame)
+    assert isinstance(sectors, pd.Series)
+    assert isinstance(shares, pd.DataFrame)
+    assert isinstance(shares_long, pd.DataFrame)
+    assert isinstance(membership, pd.DataFrame)
+    assert isinstance(mapped, list)
+
+    raw_dir = data_root / "raw"
+    processed_dir = data_root / "processed"
+    xs_dir = data_root / "models" / "XS-v1"
+    eval_dir = data_root / "eval"
+    for directory in (raw_dir, processed_dir, xs_dir, eval_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    # 1. Share history, market cap
+    sector_frame = pd.read_parquet(processed_dir / "sectors.parquet")
+    history = probes.fetch_share_history(list(dict.fromkeys(sector_frame["ticker"])))
+    history.to_parquet(raw_dir / "shares_history.parquet", index=False)
+    cap = fundamental.market_cap(close[mapped], shares[mapped])
+    look_ahead = inputs["look_ahead"]
+    assert isinstance(look_ahead, pd.DataFrame)
+    market_cap_frame = pd.DataFrame(
+        {
+            "date": np.repeat(returns.index.to_numpy(), len(mapped)),
+            "ticker": np.tile(np.array(mapped), len(returns.index)),
+            "close": close[mapped].to_numpy().ravel(),
+            "shares": shares[mapped].to_numpy().ravel(),
+            "market_cap": cap.to_numpy().ravel(),
+            "look_ahead": look_ahead[mapped].to_numpy().ravel(),
+        }
+    )
+    as_of = shares_long.set_index(["date", "ticker"])["shares_as_of"]
+    market_cap_frame["shares_as_of"] = as_of.reindex(
+        pd.MultiIndex.from_arrays(
+            [market_cap_frame["date"], market_cap_frame["ticker"]]
+        )
+    ).to_numpy()
+    market_cap_frame = market_cap_frame[
+        [
+            "date",
+            "ticker",
+            "close",
+            "shares",
+            "shares_as_of",
+            "market_cap",
+            "look_ahead",
+        ]
+    ]
+    market_cap_frame.to_parquet(processed_dir / "market_cap.parquet", index=False)
+
+    # 2. Descriptors and the design
+    proxy = fundamental.market_proxy(returns[mapped], cap)
+    design = fundamental.build_design(
+        returns=returns[mapped],
+        close=close[mapped],
+        volume=volume[mapped],
+        market_cap=cap,
+        sectors=sectors,
+        proxy=proxy,
+    )
+    if not design.days:
+        raise RuntimeError("no cross section cleared the minimum name count")
+    descriptor_long = _descriptor_frame(design, look_ahead[mapped], returns[mapped])
+    descriptor_long.to_parquet(xs_dir / "descriptors.parquet", index=False)
+
+    # 3. Cross-sectional fits
+    tables = fundamental.fit_panel(design)
+    factor_returns = tables["factor_returns"]
+    specific_returns = tables["specific_returns"]
+    xs_r2 = tables["xs_r2"]
+    factor_returns.to_parquet(xs_dir / "factor_returns.parquet", index=False)
+    specific_returns.to_parquet(xs_dir / "specific_returns.parquet", index=False)
+    xs_r2.to_parquet(xs_dir / "xs_r2.parquet", index=False)
+
+    factor_wide = (
+        factor_returns.pivot(index="date", columns="factor", values="f")
+        .reindex(columns=list(fundamental.FACTOR_NAMES))
+        .dropna()
+    )
+    specific_wide = specific_returns.pivot(
+        index="date", columns="ticker", values="specific_return"
+    )
+
+    # 4. Factor-mimicking portfolios at quarter ends
+    month_ends = _period_ends(design, "Q")
+    fmp = _fmp_frame(design, month_ends)
+    fmp.to_parquet(xs_dir / "fmp_weights.parquet", index=False)
+
+    # 5. Covariance and specific variance
+    factor_cov = fundamental.ewma_factor_cov(factor_wide, half_life=fx.F_HALF_LIFE)
+    factor_cov.to_parquet(xs_dir / "factor_cov.parquet")
+    specific_long = fundamental.specific_variance(
+        specific_wide, sectors, cap, half_life=fx.D_HALF_LIFE, shrink_k=fx.D_SHRINK_K
+    )
+    specific_month = specific_long.loc[
+        specific_long["date"].isin(_period_ends(design, "M"))
+    ]
+    specific_month.to_parquet(xs_dir / "specific_var.parquet", index=False)
+
+    # 6. Fama-MacBeth premia, full sample and the three subperiods
+    premia = _premia_frame(factor_wide, subperiods=SUBPERIODS)
+    premia.to_parquet(eval_dir / "xs_fm_premia.parquet", index=False)
+
+    # 7. Risk decomposition, bias, exposure timing, realized residual risk
+    days = {day.date: day for day in design.days}
+    portfolios = data_root / "portfolios"
+    specific_by_date = {
+        date: group.set_index("ticker")["specific_var"]
+        for date, group in specific_month.groupby("date")
+    }
+    decomposition_rows: list[pd.DataFrame] = []
+    bias_rows: list[pd.DataFrame] = []
+    exposure_rows: list[pd.DataFrame] = []
+    residual_rows: list[dict[str, object]] = []
+    books = {
+        "seed_ew": portfolios / "seed_ew.parquet",
+        "seed_mom_ls": portfolios / "seed_mom_ls.parquet",
+    }
+    month_list = [d for d in _period_ends(design, "M") if d in days]
+    for book, path in books.items():
+        book_frame = pd.read_parquet(path)
+        weights_by_date: dict[pd.Timestamp, pd.Series] = {}
+        for date in month_list:
+            rows = book_frame.loc[book_frame["date"] == date]
+            if rows.empty:
+                continue
+            weights_by_date[date] = rows.set_index("ticker")["weight"].astype(float)
+        exposure_rows.append(
+            risk.exposure_series(days, weights_by_date, list(fundamental.FACTOR_NAMES))
+        )
+        bias = risk.segment_bias(
+            days,
+            weights_by_date,
+            specific_month,
+            factor_wide,
+            returns[mapped],
+            start="2015-01-01",
+        )
+        bias["book"] = book
+        bias_rows.append(bias)
+        for date, weights in weights_by_date.items():
+            day = days[date]
+            history = factor_wide.loc[:date]
+            if len(history) < fx.F_HALF_LIFE:
+                continue
+            covariance = fundamental.ewma_factor_cov(history, half_life=fx.F_HALF_LIFE)
+            specific = specific_by_date.get(date)
+            if specific is None:
+                continue
+            result = risk.decompose(book, date, weights, day, covariance, specific)
+            decomposition_rows.append(risk.decomposition_frame(result))
+            if date >= pd.Timestamp("2015-01-01"):
+                realized_cov = risk.realized_residual_covariance(
+                    specific_wide, date, window=252
+                )
+                if not realized_cov.empty:
+                    realized_idio = risk.realized_idio_variance(weights, realized_cov)
+                    residual_rows.append(
+                        {
+                            "book": book,
+                            "window_end": date,
+                            "factor_share_diagonal": 1.0
+                            - result.idio_variance / result.total_variance,
+                            "factor_share_realized": 1.0
+                            - realized_idio / result.total_variance,
+                            "total_variance": result.total_variance,
+                            "factor_variance_diagonal": result.factor_variance,
+                            "idio_variance_diagonal": result.idio_variance,
+                            "idio_variance_realized": realized_idio,
+                            "n_names_covariance": int(realized_cov.shape[0]),
+                        }
+                    )
+    decomposition = pd.concat(decomposition_rows, ignore_index=True)
+    decomposition.to_parquet(eval_dir / "xs_risk_decomposition.parquet", index=False)
+    bias_frame = pd.concat(bias_rows, ignore_index=True)
+    bias_frame.to_parquet(eval_dir / "xs_bias.parquet", index=False)
+    exposure_frame = pd.concat(exposure_rows, ignore_index=True)
+    exposure_frame.to_parquet(eval_dir / "xs_exposure_timeseries.parquet", index=False)
+    residual_frame = pd.DataFrame(residual_rows)
+    residual_frame.to_parquet(eval_dir / "xs_residual_covariance.parquet", index=False)
+
+    # 8. Registry entry, hashed after the artifacts exist
+    artifacts_hash = combined_hash(
+        {
+            rel: {"sha256": hash_file(data_root / rel)}
+            for rel in E3_ARTIFACTS
+            if rel != "models/registry.json" and (data_root / rel).exists()
+        }
+    )
+    parameters = _xs_parameters(
+        design=design,
+        factor_returns=factor_wide,
+        xs_r2=xs_r2,
+        decomposition=decomposition,
+        premia=premia,
+        specific_month=specific_month,
+        shares_long=shares_long,
+        fmp=fmp,
+        artifacts_hash=artifacts_hash,
+        start=str(xs_r2["date"].min().date()),
+        end=str(xs_r2["date"].max().date()),
+        diagnostics=_diagnostics(design, xs_r2, specific_wide),
+    )
+    entry = registry.model_entry(
+        version="XS-v1",
+        family="fundamental",
+        parameters=parameters,
+        universe_path=processed_dir / "universe_membership.parquet",
+        data_paths=[processed_dir / "returns.parquet", xs_dir / "descriptors.parquet"],
+        walkthrough="notebooks/E3_walkthrough.html",
+        deliverable="docs/research/E3_factor_model_note.md",
+        results="sprints/E3/RESULTS.json",
+        champion=False,
+        eligible_for_champion=True,
+    )
+    registry.write_registry(data_root / "models" / "registry.json", entry)
+    if verbose:
+        print(
+            json.dumps(
+                {
+                    "xs_start": parameters["model_start"],
+                    "n_days": parameters["n_days"],
+                    "mean_r_squared": parameters["r_squared_mean"],
+                    "n_factors": parameters["n_factors"],
+                },
+                indent=2,
+            )
+        )
+    return {
+        "days": len(design.days),
+        "factor_returns": factor_wide.shape,
+        "specific_returns": specific_wide.shape,
+        "decomposition_rows": len(decomposition),
+        "residual_rows": len(residual_frame),
+        "artifacts_hash": artifacts_hash,
+        "parameters": parameters,
+    }
+
+
+def rebuild_e3(
+    data_root: Path = DATA_ROOT,
+    results_path: Path | None = None,
+    full: bool = False,
+) -> dict[str, object]:
+    """Run the E3 build and version everything.
+
+    With `full` the E1 and E2 legs run first, which is what `make rebuild`
+    does and what gate G1 names as one command from raw parquet to the
+    dashboard. Without it, as `make rebuild-e3` runs it, the E1 and E2
+    artifacts are read from disk and only XS-v1 is rebuilt, which is the path
+    the sprint iterates on.
+    """
+    e1: dict[str, object] | None = None
+    e2: dict[str, object] | None = None
+    if full:
+        e1 = rebuild(data_root=data_root, start="2010-01-04", results_path=None)
+        e2 = build_e2_artifacts(data_root=data_root, start=MODEL_START)
+    e3 = build_e3_artifacts(data_root=data_root)
+    artifact_paths = [
+        data_root / rel for rel in ARTIFACTS + E2_ARTIFACTS + E3_ARTIFACTS
+    ]
+    version_path = data_root / "VERSION.json"
+    old_hash = previous_data_hash(version_path)
+    payload = write_version(
+        artifact_paths,
+        version_path,
+        note=(
+            "Built by make rebuild (Sprint E3). E1, E2 and E3 artifacts, each "
+            "with a content hash; the dashboard sidebar shows this version."
+        ),
+    )
+    if results_path is not None:
+        from efb import evaluate
+
+        inputs = evaluate.compute_e3_from_artifacts(data_root=data_root)
+        criteria = evaluate.evaluate_e3_criteria(**inputs)
+        evaluate.write_results(
+            criteria,
+            results_path,
+            sprint="E3",
+            data_hash=payload["data_hash"],
+            previous_data_hash=old_hash,
+        )
+    return {
+        "n_steps": 8,
+        "full": full,
+        "e1_tickers": (e1 or {}).get("n_tickers"),
+        "e2": e2,
+        "e3": e3,
+        "version": payload,
+    }
+
+
 def main() -> None:
-    if "--e2" in sys.argv:
+    if "--all" in sys.argv:
+        summary = rebuild_e3(
+            results_path=ROOT / "sprints" / "E3" / "RESULTS.json", full=True
+        )
+    elif "--e3" in sys.argv:
+        summary = rebuild_e3(results_path=ROOT / "sprints" / "E3" / "RESULTS.json")
+    elif "--e2" in sys.argv:
         summary = rebuild_e2(results_path=ROOT / "sprints" / "E2" / "RESULTS.json")
     else:
         summary = rebuild(results_path=ROOT / "sprints" / "E1" / "RESULTS.json")

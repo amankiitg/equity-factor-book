@@ -1,7 +1,7 @@
 {
-  "note": "Built by make rebuild-e2 (Sprint E2). E1 and E2 artifacts, each with a content hash; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-11T14:37:35+00:00",
-  "data_hash": "51f0faa935cb57e8e9f11bf620e5f551f69ca50b415f12112f880f32b3393692",
+  "note": "Built by make rebuild (Sprint E3). E1, E2 and E3 artifacts, each with a content hash; the dashboard sidebar shows this version.",
+  "built_at": "2026-09-17T22:47:53+00:00",
+  "data_hash": "0eb5612afbdbb753455d93c9da009c702decf688610ab382cebc0acf60f03b87",
   "artifacts": {
     "beta_horse_race.parquet": {
       "sha256": "862891ca3d6e712d6a2f6267274368d4c055e0f85077d7e23bb2e22759920005",
@@ -31,13 +31,33 @@
       "sha256": "428ed704a16770f1dd94bcac05e4b6b1380fbf0110cfca94b88a98aae31de608",
       "bytes": 4569
     },
+    "xs_bias.parquet": {
+      "sha256": "a496cb67e4316381ff7c2783e66fce12ec2d62c5522bd0fde802d71b8f8b6fa0",
+      "bytes": 27139
+    },
+    "xs_exposure_timeseries.parquet": {
+      "sha256": "0b94ea9808a1c4945f3424d19fdfa8bea403cb289ad237dac6ebaa2b5b28c38d",
+      "bytes": 38779
+    },
+    "xs_fm_premia.parquet": {
+      "sha256": "eed3b54dede911959af22dad0f214eb3c0fe61edf3aff55db81f7efde62405b8",
+      "bytes": 7839
+    },
+    "xs_residual_covariance.parquet": {
+      "sha256": "49c9e919b70de6a5e0b9891bdf0c76e38ad2e19b13b0b0facf31748ff1f8b7f1",
+      "bytes": 23465
+    },
+    "xs_risk_decomposition.parquet": {
+      "sha256": "ca519b68224c3e21682588d1ed7496fd69a45bd1ecca75f7c596145fa25b6a14",
+      "bytes": 4033179
+    },
     "beta_history.parquet": {
       "sha256": "396ef452838788277d95eba85f0224f8882bbfaf35893f1bed00b434f95a9551",
       "bytes": 5064571
     },
     "factor_cov.parquet": {
-      "sha256": "a3b21352f65eebf96a04fcd7e349cd331e275d31c85b75c137fc65b8abe5e4b9",
-      "bytes": 4973
+      "sha256": "256ae426f5287a576c5df2f76d14f9e1cc0935a0185ef25b1ee0884eeb122e79",
+      "bytes": 14603
     },
     "idio_vol.parquet": {
       "sha256": "95237aaac3d6b43df8c68bd80ff2a0fc61993380ce5475977cc16e8f37290b33",
@@ -55,9 +75,33 @@
       "sha256": "9b4166e3858310720e5e368220f515876746ccd97aedb0ae9c65ef0a5f68a07c",
       "bytes": 20344112
     },
+    "descriptors.parquet": {
+      "sha256": "f88055f0ee2733c75630c72a2a76c1d7b2462024fb6e42f6d7946b6b3ea5ff05",
+      "bytes": 18190843
+    },
+    "factor_returns.parquet": {
+      "sha256": "250944f25dbd8b918ea93252c360c720ec9578f6ef63f21c5b086bd468cdd395",
+      "bytes": 1425303
+    },
+    "fmp_weights.parquet": {
+      "sha256": "d709ab959afac123fa4174b106f0060c9a6c63ebcfff948d80cfead70ce38ed5",
+      "bytes": 8834286
+    },
+    "specific_returns.parquet": {
+      "sha256": "5d1c60ae6009f2505856503fcace487eadd486c3fc5f8fe6b257124e47756e53",
+      "bytes": 16126711
+    },
+    "specific_var.parquet": {
+      "sha256": "893b78d86e3476cf202f065ec93e87c9e278754468613c71aaf05d2f13e4e9e6",
+      "bytes": 2118527
+    },
+    "xs_r2.parquet": {
+      "sha256": "a264ddebf10d007216b809095e07faf6f5c1ec1b3e0240a14d9bcc0f98e7ed4e",
+      "bytes": 105879
+    },
     "registry.json": {
-      "sha256": "3c31d82130035834c315d8a6b8f3ef813d460996e1cddc905fa4d8dea9939e67",
-      "bytes": 5745
+      "sha256": "14c14c8ec25553e45df72e600785629e684ca7a16007064352d636d71479a375",
+      "bytes": 9903
     },
     "seed_ew.parquet": {
       "sha256": "0c16d1773ce3b60cefd2e53dfe87c5c68ced9b3e9c4c3af47c0160de448cf120",
@@ -82,6 +126,10 @@
     "events.parquet": {
       "sha256": "ddc1eebadf0d4367288394962a116cadaae529bcfe881b67477ac26f086229da",
       "bytes": 90364
+    },
+    "market_cap.parquet": {
+      "sha256": "b02ab30597728dcaf9ca7b816533050add2e5a8e66ac0c34f1ad2e194f37bca3",
+      "bytes": 27392000
     },
     "returns.parquet": {
       "sha256": "e2f6b720d091b6645ba1658f41a4e0573ef9add858c919d742293acd39e11d74",
@@ -118,6 +166,10 @@
     "prices.parquet": {
       "sha256": "302b86ef12e555fb31ec6851dad5d5e8b472f150b9ffa0331486fd49665a510b",
       "bytes": 61093009
+    },
+    "shares_history.parquet": {
+      "sha256": "160a47bf3a681ea5d3d8886ffe985a8e85a523a7905e2a3c2df29442a5efba96",
+      "bytes": 1619367
     }
   }
 }

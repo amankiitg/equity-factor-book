@@ -44,8 +44,21 @@ LINKS = [
         "Research deliverable: Beta and Volatility Estimation Study",
         "docs/research/E2_exposure_study.md",
     ),
+    ("Sprint E3 PRD", "sprints/E3/PRD.md"),
+    ("Sprint E3 tasks", "sprints/E3/TASKS.md"),
+    ("Sprint E3 probes (descriptors, shares, sectors)", "sprints/E3/PROBES.md"),
+    ("Sprint E3 results (F criteria)", "sprints/E3/RESULTS.json"),
+    (
+        "Research deliverable: Fund Model Research Note XS-v1",
+        "docs/research/E3_factor_model_note.md",
+    ),
+    (
+        "Research deliverable: Factor Exposure and Risk Report",
+        "docs/research/E3_risk_report.md",
+    ),
     ("Walkthrough notebook", "notebooks/E1_walkthrough.html"),
     ("Walkthrough notebook E2", "notebooks/E2_walkthrough.html"),
+    ("Walkthrough notebook E3 (XS-v1)", "notebooks/E3_walkthrough.html"),
 ]
 
 

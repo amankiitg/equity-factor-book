@@ -20,7 +20,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from dashboard.tabs import d00_data, d01_exposures, methodology  # noqa: E402
+from dashboard.tabs import (  # noqa: E402
+    d00_data,
+    d01_exposures,
+    d02_factor_risk,
+    methodology,
+)
 
 VERSION_PATH = ROOT / "data" / "VERSION.json"
 
@@ -44,12 +49,16 @@ def main() -> None:
         st.markdown("---")
         st.caption("Links live on the Methodology tab.")
 
-    tabs = st.tabs(["D0 Data Health", "D1 Exposures", "Methodology"])
+    tabs = st.tabs(
+        ["D0 Data Health", "D1 Exposures", "D2 Factor Model and Risk", "Methodology"]
+    )
     with tabs[0]:
         d00_data.render()
     with tabs[1]:
         d01_exposures.render()
     with tabs[2]:
+        d02_factor_risk.render()
+    with tabs[3]:
         methodology.render()
 
 

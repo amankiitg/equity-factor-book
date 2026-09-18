@@ -251,6 +251,126 @@
       "walkthrough": "notebooks/E2_walkthrough.html",
       "deliverable": "docs/research/E2_exposure_study.md",
       "results": "sprints/E2/RESULTS.json"
+    },
+    "XS-v1": {
+      "version": "XS-v1",
+      "family": "fundamental",
+      "parameters": {
+        "family": "fundamental",
+        "assets": "equity",
+        "universe_rule": "sector-mapped panel names with a return and a complete descriptor row",
+        "model_start": "2011-01-03",
+        "model_end": "2026-09-03",
+        "n_days": 3941,
+        "n_factors": 18,
+        "descriptors": [
+          "market",
+          "size",
+          "beta",
+          "momentum",
+          "reversal",
+          "resid_vol",
+          "liquidity"
+        ],
+        "n_sectors": 11,
+        "sector_scheme": "gics",
+        "sector_source": "processed/sectors.parquet",
+        "identification": "cap_weighted_sector_factor_returns_sum_to_zero",
+        "estimator": "wls",
+        "weights": "sqrt_mcap",
+        "winsorize": "3mad",
+        "zscore_mean": "cap_weighted",
+        "zscore_std": "equal_weighted",
+        "orthogonalization": {
+          "momentum": [
+            "beta",
+            "size"
+          ],
+          "resid_vol": [
+            "beta"
+          ]
+        },
+        "beta_source": "cap_weighted_universe_total_return",
+        "beta_window": 252,
+        "beta_min_obs": 126,
+        "beta_shrinkage": "vasicek",
+        "resid_vol_source": "one_factor_market_model_residual",
+        "resid_vol_window": 63,
+        "momentum_window": [
+          231,
+          21
+        ],
+        "reversal_window": 20,
+        "liquidity_window": 63,
+        "f_half_life": 90,
+        "n_lags": 2,
+        "d_half_life": 42,
+        "d_shrink": "sector_size",
+        "d_shrink_k": 60,
+        "min_names": 50,
+        "size_shares_source": "yfinance_get_shares_full",
+        "size_shares_first_filed": "2010-01-04",
+        "size_look_ahead": true,
+        "size_look_ahead_note": "the vendor share history starts to be filed in 2013-04 and is dense from 2015-10; earlier counts are backfilled from a name's first filing and are flagged per row in descriptors and market_cap",
+        "n_names_mean": 467.61354986044154,
+        "n_names_min": 417,
+        "r_squared_mean": 0.3294501878861149,
+        "fmp_identity_max_abs_error": 1.2426149519073615e-13,
+        "sector_sum_max_abs": 7.047314121155779e-18,
+        "n_days_below_300_names_e2_floor": 0,
+        "mean_factor_share_seed_ew": 0.995566769958711,
+        "n_premia_rows": 72,
+        "n_unpriced": 64,
+        "specific_var_dates": 189,
+        "fmp_dates": 63,
+        "fmp_kinds": [
+          "estimated",
+          "identified"
+        ],
+        "artifacts_hash": "c1274fe508d8688d9f2fd273aadf9ac264e8a47244b504026b41463b543781b3",
+        "r_squared_by_year": {
+          "2011": 0.35381,
+          "2012": 0.289056,
+          "2013": 0.247919,
+          "2014": 0.28293,
+          "2015": 0.293861,
+          "2016": 0.31435,
+          "2017": 0.277233,
+          "2018": 0.312246,
+          "2019": 0.28363,
+          "2020": 0.37178,
+          "2021": 0.340566,
+          "2022": 0.414612,
+          "2023": 0.367565,
+          "2024": 0.3654,
+          "2025": 0.380905,
+          "2026": 0.398301
+        },
+        "r_squared_market_only_mean": -0.0,
+        "r_squared_sectors_only_mean": 0.192787,
+        "r_squared_styles_only_mean": 0.200683,
+        "r_squared_by_sector": {
+          "Communication Services": 0.312029,
+          "Consumer Discretionary": 0.227468,
+          "Consumer Staples": 0.27365,
+          "Energy": 0.389566,
+          "Financials": 0.271331,
+          "Health Care": 0.217544,
+          "Industrials": 0.244622,
+          "Information Technology": 0.258247,
+          "Materials": 0.19037,
+          "Real Estate": 0.316339,
+          "Utilities": 0.435051
+        }
+      },
+      "universe_hash": "532623d541928c67dd165b8a6e49c1e890ba7a57a5c732c6b2b688c819944615",
+      "data_hash": "2bb524bfe4dd426a521714412acbc23db76252d7af1602999d520ad4ddb591c5",
+      "built_at": "2026-09-17T22:47:52+00:00",
+      "champion": false,
+      "eligible_for_champion": true,
+      "walkthrough": "notebooks/E3_walkthrough.html",
+      "deliverable": "docs/research/E3_factor_model_note.md",
+      "results": "sprints/E3/RESULTS.json"
     }
   }
 }
