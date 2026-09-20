@@ -92,7 +92,7 @@ belong in the order.
   - Files: `efb/registry.py`, `dashboard/app.py`, `dashboard/tabs/d03_covariance.py`,
     `tests/test_registry.py`, `tests/test_dashboard_d3.py`
 
-- [ ] Task 6: evaluate every criterion into RESULTS.json (P0)
+- [x] Task 6: evaluate every criterion into RESULTS.json (P0)
   - Acceptance: F4.1 to F4.6 evaluated with a stored number each and written
     to `sprints/E4/RESULTS.json` with the previous criteria untouched, the
     revisions block reporting any moved number, and the data hash. STOP
@@ -101,7 +101,7 @@ belong in the order.
   - Files: `efb/evaluate.py`, `sprints/E4/RESULTS.json`,
     `tests/test_e4_results.py`
 
-- [ ] Task 7: the research deliverable (P0)
+- [x] Task 7: the research deliverable (P0)
   - Acceptance: `docs/research/E4_covariance_memo.md` with the PM answer in
     one paragraph, the horse-race table with a recommendation per use for the
     optimizer, hedging and risk reporting, the residual factor audit, the Task
