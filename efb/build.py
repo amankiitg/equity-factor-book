@@ -1356,6 +1356,165 @@ def rebuild_e3(
     }
 
 
+def build_pca_v1(
+    data_root: Path = DATA_ROOT,
+    store: bool = True,
+    verbose: bool = True,
+) -> dict[str, object]:
+    """Sprint E4, Task 1: fit PCA-v1, store it, register it, and price F4.1 and F4.4.
+
+    Two fits: the model universe, which becomes PCA-v1, and the wider panel,
+    which is stored as a robustness spectrum. The registration writes the entry
+    through `efb.registry` so the champion rule is carried rather than retyped.
+    """
+    from efb import registry
+    from efb.models import statistical
+
+    root = Path(data_root)
+    returns = pd.read_parquet(root / "processed" / "returns.parquet")
+    specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
+    sectors = pd.read_parquet(root / "processed" / "sectors.parquet")
+    factor_returns = pd.read_parquet(root / "models" / "XS-v1" / "factor_returns.parquet")
+    xs_r2 = pd.read_parquet(root / "models" / "XS-v1" / "xs_r2.parquet")
+    as_of = pd.Timestamp("2026-09-03")
+    mapped = list(sectors["ticker"])
+
+    model = statistical.run(
+        returns, specific, as_of=as_of, tickers=mapped, label="pca"
+    )
+    panel = statistical.run(
+        returns, None, as_of=as_of, label="pca_panel", with_residuals=False
+    )
+    counts = model["diagnostics"]["total"]
+    panel_counts = panel["diagnostics"]["total"]
+    residual = model.get("residual_diagnostics", {})
+
+    factor_frame = model["factor_returns"]
+    first = factor_frame.loc[factor_frame["factor"] == "pca_01"].set_index("date")["f"]
+    market = (
+        factor_returns.loc[factor_returns["factor"] == "market"]
+        .set_index("date")["f"]
+        .sort_index()
+    )
+    joined = pd.concat([first, market], axis=1, join="inner").dropna()
+    f4_1 = float(joined.iloc[:, 0].corr(joined.iloc[:, 1]))
+
+    # F4.4: the held-out cross-sectional test. PCA loadings are fitted on the
+    # training window and held fixed; the test regresses each held-out day's
+    # cross-section on those loadings and compares with XS-v1's stored R
+    # squared over the same days.
+    train_end = pd.Timestamp("2024-08-30")
+    wide = statistical.clean_wide(returns)
+    wide = wide[[column for column in wide.columns if column in set(mapped)]]
+    train = statistical.complete_block(wide, as_of=train_end, window=statistical.PCA_WINDOW)
+    train_fit = statistical.fit(train)
+    k_held = max(statistical.count_mp(train_fit), 1)
+    loadings = pd.DataFrame(train_fit.loadings(k_held), index=train_fit.tickers)
+    held_days = [date for date in wide.loc[train_end:].index if date > train_end]
+    scores: list[float] = []
+    for date in held_days:
+        row = wide.loc[date].dropna()
+        names = [name for name in row.index if name in loadings.index]
+        if len(names) < 50:
+            continue
+        design = np.column_stack(
+            [np.ones(len(names)), loadings.loc[names].to_numpy(dtype=float)]
+        )
+        target = row[names].to_numpy(dtype=float)
+        fitted, *_ = np.linalg.lstsq(design, target, rcond=None)
+        residual_values = target - design @ fitted
+        total = float(((target - target.mean()) ** 2).sum())
+        if total <= 0:
+            continue
+        scores.append(1.0 - float((residual_values**2).sum()) / total)
+    r2_pca = float(np.mean(scores)) if scores else float("nan")
+    xs_block = xs_r2.loc[(xs_r2["date"] > train_end) & (xs_r2["date"].isin(held_days))]
+    r2_xs = float(xs_block["r_squared"].mean()) if len(xs_block) else float("nan")
+
+    if verbose:
+        print("### E4 Task 1: PCA-v1")
+        print(f"model universe: N {model['diagnostics']['fit'].n_names}, "
+              f"T {model['diagnostics']['fit'].n_days}, N/T {counts.n_over_t:.4f}, "
+              f"MP edge {counts.edge:.4f}")
+        print(f"factor counts: scree {counts.scree}, MP {counts.marchenko_pastur}, "
+              f"cross-validated {counts.cross_validated}, selected {counts.selected}")
+        print(f"panel robustness: N {panel['diagnostics']['fit'].n_names}, "
+              f"N/T {panel_counts.n_over_t:.4f}, MP {panel_counts.marchenko_pastur}")
+        if residual:
+            print(f"residual PCA: largest {residual['largest_eigenvalue']:.4f} against "
+                  f"edge {residual['edge']:.4f}, above edge {residual['above_edge']}, "
+                  f"count above edge {residual['counts'].marchenko_pastur}")
+        print(f"F4.1 first PC vs market: {f4_1:.4f} on {len(joined)} days")
+        print(f"F4.4 held-out R squared: PCA {r2_pca:.4f} against XS-v1 {r2_xs:.4f} "
+              f"over {len(scores)} days, k {k_held}")
+
+    frames: dict[str, object] = {
+        "f4_1_first_pc_vs_market": f4_1,
+        "f4_4_pca_held_out_r_squared": r2_pca,
+        "f4_4_xs_v1_held_out_r_squared": r2_xs,
+        "f4_4_k": k_held,
+        "f4_4_held_out_days": len(scores),
+        "counts": counts,
+        "panel_counts": panel_counts,
+        "residual": residual,
+        "loadings": model["loadings"],
+        "factor_returns": factor_frame,
+        "eigenvalues": model["spectrum"],
+        "residual_spectrum": model.get("residual_spectrum"),
+        "panel_spectrum": panel["spectrum"],
+        "residual_loadings": model.get("residual_loadings"),
+    }
+
+    if store:
+        target_dir = root / "models" / "PCA-v1"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        model["loadings"].to_parquet(target_dir / "loadings.parquet", index=False)
+        factor_frame.to_parquet(target_dir / "factor_returns.parquet", index=False)
+        model["spectrum"].to_parquet(target_dir / "eigenvalues.parquet", index=False)
+        panel["spectrum"].to_parquet(target_dir / "eigenvalues_panel.parquet", index=False)
+        if model.get("residual_spectrum") is not None:
+            model["residual_spectrum"].to_parquet(
+                root / "eval" / "xs_residual_spectrum.parquet", index=False
+            )
+        if model.get("residual_loadings") is not None:
+            model["residual_loadings"].to_parquet(
+                root / "eval" / "xs_residual_loadings.parquet", index=False
+            )
+        entry = registry.model_entry(
+            version="PCA-v1",
+            family="statistical",
+            parameters={
+                "family": "statistical",
+                "estimator": "principal component analysis on the correlation matrix",
+                "window": statistical.PCA_WINDOW,
+                "n_names": model["diagnostics"]["fit"].n_names,
+                "n_days": model["diagnostics"]["fit"].n_days,
+                "n_over_t": counts.n_over_t,
+                "mp_edge": counts.edge,
+                "n_factors": counts.selected,
+                "n_factors_scree": counts.scree,
+                "n_factors_mp": counts.marchenko_pastur,
+                "n_factors_cv": counts.cross_validated,
+                "rotation": "varimax",
+                "residual_pca_largest_eigenvalue": float(
+                    residual.get("largest_eigenvalue", float("nan"))
+                ),
+                "residual_pca_edge": float(residual.get("edge", float("nan"))),
+                "residual_pca_above_edge": bool(residual.get("above_edge", False)),
+            },
+            universe_path=root / "processed" / "universe_membership.parquet",
+            data_paths=[root / "processed" / "returns.parquet", root / "processed" / "sectors.parquet"],
+            champion=False,
+            eligible_for_champion=True,
+            walkthrough="notebooks/E4_walkthrough.html",
+            deliverable="docs/research/E4_covariance_memo.md",
+            results="sprints/E4/RESULTS.json",
+        )
+        registry.write_registry(root / "models" / "registry.json", entry)
+        frames["registry_entry"] = entry
+    return frames
+
+
 def main() -> None:
     if "--all" in sys.argv:
         summary = rebuild_e3(
