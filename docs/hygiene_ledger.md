@@ -838,3 +838,34 @@ clobbered a cache that the probe had filled with the wider union, so a rebuild
 silently narrowed what was known about the past. The union is now what the
 build asks for, and the survivor table is stored so that a future regression
 shows up as a changed number rather than as a plausible zero.
+
+## 2026-09-20: the Ledoit-Wolf shrinkage intensity was missing its 1/T
+
+Decision. `efb/cov.py` divides the Ledoit-Wolf plug-in intensity by the number
+of days in the window, so `delta = (pi - rho) / (gamma * T)`, and a test pins
+both the corrected value and the uncorrected ratio it replaced. No stored
+criterion moves: the covariance laboratory is new in E4 and this is its first
+run.
+
+Old value. `delta = (pi - rho) / gamma`, clipped into [0, 1]. On the 504-day
+windows the uncorrected ratio is roughly T times too large, so the intensity
+hit the clip at exactly 1.0000 in every one of the 175 rebalances: the
+estimator silently became its own target, and the Ledoit-Wolf row of the
+horse race was byte for byte the constant-correlation row, mean realized
+volatility 0.175822 for both and identical condition numbers.
+
+New value. `delta` averages 0.2738 across the windows, ranging from 0.1482 to
+1.0000, and Ledoit-Wolf is a genuine blend: mean realized volatility 0.103960,
+between the sample covariance at 0.409593 and the constant-correlation target
+at 0.175822, with a median condition number of 2785 against 2.65e6 for the
+sample.
+
+Reason. This is the fifth defect this project has found by reading an output
+rather than the code that produced it, and the first in a published estimator.
+The two identical rows are what exposed it: nothing raised, the table was
+well formed, and every number in it was plausible. The horse race exists to
+separate estimators that look alike on paper, so an estimator that collapses
+onto another one in every window is exactly the failure the comparison is
+built to catch. The ledger records it because a reader of the E4 memo has to
+know that the Ledoit-Wolf comparisons in the first draft of the table were the
+target's numbers wearing the estimator's name.
