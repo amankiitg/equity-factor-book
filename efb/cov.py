@@ -80,7 +80,7 @@ def parameter_count(name: str, n_names: int, n_factors: int | None = None) -> in
         return n_names + (n_factors or 0)
     if name == "ts_v1":
         return 2 * n_names
-    if name in {"xs_v1", "pca_v1"}:
+    if name in {"xs_v1", "pca_v1", "pca_v1c"}:
         return (n_factors or 0) + n_names
     raise ValueError(f"unknown estimator {name}")
 
@@ -282,6 +282,18 @@ def estimator_from_window(
         matrix, keep = pca_cov(z)
         extra = {"n_factors": float(keep)}
         k = keep
+    elif name == "pca_v1c":
+        # the covariance variant, which is the object every other estimator in
+        # the lab works on: no standardization, so the factors keep their scale
+        from efb import pca_eval
+
+        frame = pd.DataFrame(values, columns=[f"N{i}" for i in range(values.shape[1])])
+        cov_fit = pca_eval.fit_covariance(frame)
+        keep = int(np.sum(cov_fit.eigenvalues > cov_fit.mp_edge))
+        matrix = cov_fit.covariance(max(keep, 1))
+        extra = {"n_factors": float(keep)}
+        k = keep
+        rescaled = False
     elif name == "xs_v1":
         if design is None or factor_covariance is None or specific is None:
             raise ValueError(
@@ -312,6 +324,7 @@ ESTIMATORS = (
     "clip",
     "ts_v1",
     "pca_v1",
+    "pca_v1c",
     "xs_v1",
 )
 
@@ -370,7 +383,11 @@ def horse_race(
                 continue
             try:
                 result = estimator_from_window(training, name, **supplied)  # type: ignore[arg-type]
-            except (np.linalg.LinAlgError, ValueError):
+            except np.linalg.LinAlgError:
+                # a singular window is a real numerical outcome and the row is
+                # dropped; a configuration error must not be swallowed, which
+                # is how a requested estimator once produced zero rows in
+                # silence
                 continue
             weights = min_variance_weights(result.matrix)
             realized_volatility = realized_vol(weights, realized)
