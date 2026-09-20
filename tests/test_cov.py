@@ -122,7 +122,9 @@ def test_the_stored_horse_race_puts_the_sample_covariance_last() -> None:
     # estimation-error result the sprint exists to confirm.
     assert table.index[-1] == "sample", "a sample covariance win is an estimation bug"
     assert table.loc["sample", "mean_realized_vol"] == pytest.approx(0.409593, abs=1e-5)
-    for name in ("pca_v1", "clip", "xs_v1", "ledoit_wolf"):
+    # the XS-v1 row is absent from the rebuilt artifact (F5.0b), so only
+    # the survivors are held to the bar
+    for name in ("pca_v1", "clip", "ledoit_wolf"):
         assert table.loc[name, "beat_sample_by"] > 0.10, name
     # the XS-v1 row is not reproducible in this sprint: F5.0b
     assert "xs_v1" not in table.index
