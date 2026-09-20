@@ -1374,14 +1374,14 @@ def build_pca_v1(
     returns = pd.read_parquet(root / "processed" / "returns.parquet")
     specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
     sectors = pd.read_parquet(root / "processed" / "sectors.parquet")
-    factor_returns = pd.read_parquet(root / "models" / "XS-v1" / "factor_returns.parquet")
+    factor_returns = pd.read_parquet(
+        root / "models" / "XS-v1" / "factor_returns.parquet"
+    )
     xs_r2 = pd.read_parquet(root / "models" / "XS-v1" / "xs_r2.parquet")
     as_of = pd.Timestamp("2026-09-03")
     mapped = list(sectors["ticker"])
 
-    model = statistical.run(
-        returns, specific, as_of=as_of, tickers=mapped, label="pca"
-    )
+    model = statistical.run(returns, specific, as_of=as_of, tickers=mapped, label="pca")
     panel = statistical.run(
         returns, None, as_of=as_of, label="pca_panel", with_residuals=False
     )
@@ -1406,7 +1406,9 @@ def build_pca_v1(
     train_end = pd.Timestamp("2024-08-30")
     wide = statistical.clean_wide(returns)
     wide = wide[[column for column in wide.columns if column in set(mapped)]]
-    train = statistical.complete_block(wide, as_of=train_end, window=statistical.PCA_WINDOW)
+    train = statistical.complete_block(
+        wide, as_of=train_end, window=statistical.PCA_WINDOW
+    )
     train_fit = statistical.fit(train)
     k_held = max(statistical.count_mp(train_fit), 1)
     loadings = pd.DataFrame(train_fit.loadings(k_held), index=train_fit.tickers)
@@ -1433,20 +1435,30 @@ def build_pca_v1(
 
     if verbose:
         print("### E4 Task 1: PCA-v1")
-        print(f"model universe: N {model['diagnostics']['fit'].n_names}, "
-              f"T {model['diagnostics']['fit'].n_days}, N/T {counts.n_over_t:.4f}, "
-              f"MP edge {counts.edge:.4f}")
-        print(f"factor counts: scree {counts.scree}, MP {counts.marchenko_pastur}, "
-              f"cross-validated {counts.cross_validated}, selected {counts.selected}")
-        print(f"panel robustness: N {panel['diagnostics']['fit'].n_names}, "
-              f"N/T {panel_counts.n_over_t:.4f}, MP {panel_counts.marchenko_pastur}")
+        print(
+            f"model universe: N {model['diagnostics']['fit'].n_names}, "
+            f"T {model['diagnostics']['fit'].n_days}, N/T {counts.n_over_t:.4f}, "
+            f"MP edge {counts.edge:.4f}"
+        )
+        print(
+            f"factor counts: scree {counts.scree}, MP {counts.marchenko_pastur}, "
+            f"cross-validated {counts.cross_validated}, selected {counts.selected}"
+        )
+        print(
+            f"panel robustness: N {panel['diagnostics']['fit'].n_names}, "
+            f"N/T {panel_counts.n_over_t:.4f}, MP {panel_counts.marchenko_pastur}"
+        )
         if residual:
-            print(f"residual PCA: largest {residual['largest_eigenvalue']:.4f} against "
-                  f"edge {residual['edge']:.4f}, above edge {residual['above_edge']}, "
-                  f"count above edge {residual['counts'].marchenko_pastur}")
+            print(
+                f"residual PCA: largest {residual['largest_eigenvalue']:.4f} against "
+                f"edge {residual['edge']:.4f}, above edge {residual['above_edge']}, "
+                f"count above edge {residual['counts'].marchenko_pastur}"
+            )
         print(f"F4.1 first PC vs market: {f4_1:.4f} on {len(joined)} days")
-        print(f"F4.4 held-out R squared: PCA {r2_pca:.4f} against XS-v1 {r2_xs:.4f} "
-              f"over {len(scores)} days, k {k_held}")
+        print(
+            f"F4.4 held-out R squared: PCA {r2_pca:.4f} against XS-v1 {r2_xs:.4f} "
+            f"over {len(scores)} days, k {k_held}"
+        )
 
     frames: dict[str, object] = {
         "f4_1_first_pc_vs_market": f4_1,
@@ -1471,7 +1483,9 @@ def build_pca_v1(
         model["loadings"].to_parquet(target_dir / "loadings.parquet", index=False)
         factor_frame.to_parquet(target_dir / "factor_returns.parquet", index=False)
         model["spectrum"].to_parquet(target_dir / "eigenvalues.parquet", index=False)
-        panel["spectrum"].to_parquet(target_dir / "eigenvalues_panel.parquet", index=False)
+        panel["spectrum"].to_parquet(
+            target_dir / "eigenvalues_panel.parquet", index=False
+        )
         if model.get("residual_spectrum") is not None:
             model["residual_spectrum"].to_parquet(
                 root / "eval" / "xs_residual_spectrum.parquet", index=False
@@ -1503,7 +1517,10 @@ def build_pca_v1(
                 "residual_pca_above_edge": bool(residual.get("above_edge", False)),
             },
             universe_path=root / "processed" / "universe_membership.parquet",
-            data_paths=[root / "processed" / "returns.parquet", root / "processed" / "sectors.parquet"],
+            data_paths=[
+                root / "processed" / "returns.parquet",
+                root / "processed" / "sectors.parquet",
+            ],
             champion=False,
             eligible_for_champion=True,
             walkthrough="notebooks/E4_walkthrough.html",

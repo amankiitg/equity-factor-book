@@ -21,6 +21,7 @@ own edge means the fundamental model is missing something common.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -327,7 +328,7 @@ def run(
     tickers: list[str] | None = None,
     label: str = "total",
     with_residuals: bool = True,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Fit the factor model on one universe and return every stored frame.
 
     INPUT: the panel's long returns frame, optionally the XS-v1 specific
