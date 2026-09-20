@@ -396,3 +396,94 @@ def run(
                 "above_edge": bool(residual_fit.eigenvalues[0] > residual_fit.mp_edge),
             }
     return frames
+
+
+RESIDUAL_FLOOR = 1e-12
+
+
+@dataclass
+class ResidualCovariance:
+    """XS-v2's specific block: k residual PCs plus the shrunk diagonal remainder.
+
+    The fit is the project's residual PCA, a correlation fit on the specific
+    returns with k by the Marchenko-Pastur count, rescaled by each name's
+    sample specific standard deviation so the low-rank block is a covariance of
+    the same returns the diagonal D is a variance of. The shrunk diagonal
+    remainder is XS-v1's D minus the variance the k factors already carry on
+    the diagonal, clipped at a floor. With k = 0 the block is exactly diag(D);
+    with k > 0 the diagonal never falls below D and the off-diagonal specific
+    covariance the k factors carry is added on top.
+    """
+
+    tickers: list[str]
+    n_names: int
+    n_days: int
+    k: int
+    edge: float
+    eigenvalues: np.ndarray  # the k kept correlation eigenvalues
+    loadings: np.ndarray  # N x k unit eigenvectors
+    std: np.ndarray  # sample specific standard deviations over the window
+    diagonal: np.ndarray  # D, the XS-v1 shrunk specific variance
+    floor: float
+
+    def low_rank_diagonal(self) -> np.ndarray:
+        kept = np.einsum("ij,j,ij->i", self.loadings, self.eigenvalues, self.loadings)
+        return self.std**2 * kept
+
+    @property
+    def remainder(self) -> np.ndarray:
+        return np.clip(self.diagonal - self.low_rank_diagonal(), self.floor, None)
+
+    def low_rank(self) -> np.ndarray:
+        scaled = self.loadings * self.std[:, None]
+        return scaled @ np.diag(self.eigenvalues) @ scaled.T
+
+    def matrix(self) -> np.ndarray:
+        return self.low_rank() + np.diag(self.remainder)
+
+    @property
+    def trace_diagonal(self) -> float:
+        return float(np.sum(self.diagonal))
+
+    @property
+    def trace_total(self) -> float:
+        return float(self.low_rank().trace() + np.sum(self.remainder))
+
+
+def residual_covariance(
+    specific_block: pd.DataFrame,
+    diagonal: pd.Series,
+    k: int | None = None,
+    floor: float = RESIDUAL_FLOOR,
+) -> ResidualCovariance:
+    """XS-v2's replacement for the XS-v1 specific diagonal D.
+
+    INPUT: a complete wide block of specific returns (dates down, names
+    across) and the shrunk specific variance D for those names at the same
+    as-of date. OUTPUT: the low-rank plus diagonal block, with k by the
+    Marchenko-Pastur count `count_mp` unless one is given, which is the same
+    rule the residual audit already uses on the same data.
+    """
+    if specific_block.empty:
+        raise ValueError("a residual covariance needs a specific-return block")
+    if specific_block.isna().any().any():
+        raise ValueError("the specific-return block must be complete")
+    fitted = fit(specific_block)
+    if k is None:
+        k = count_mp(fitted)
+    k = int(max(k, 0))
+    diagonal_values = diagonal.reindex(specific_block.columns).to_numpy(dtype=float)
+    if not np.isfinite(diagonal_values).all():
+        raise ValueError("the specific variance diagonal carries NaN")
+    return ResidualCovariance(
+        tickers=list(specific_block.columns),
+        n_names=fitted.n_names,
+        n_days=fitted.n_days,
+        k=k,
+        edge=fitted.mp_edge,
+        eigenvalues=fitted.eigenvalues[:k].copy(),
+        loadings=fitted.eigenvectors[:, :k].copy(),
+        std=fitted.std.to_numpy(dtype=float),
+        diagonal=diagonal_values,
+        floor=floor,
+    )

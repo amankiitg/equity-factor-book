@@ -429,6 +429,53 @@
       "walkthrough": "notebooks/E4_walkthrough.html",
       "deliverable": "docs/research/E4_covariance_memo.md",
       "results": "sprints/E4/RESULTS.json"
+    },
+    "XS-v2": {
+      "version": "XS-v2",
+      "family": "fundamental",
+      "parameters": {
+        "family": "fundamental",
+        "assets": "equity",
+        "estimator": "XS-v1 factor structure with the specific diagonal D replaced by k residual principal components plus the shrunk diagonal remainder",
+        "base_version": "XS-v1",
+        "factor_part": "X F X' from XS-v1 descriptors and factor covariance",
+        "specific_part": "V_k Lambda_k V_k' + diag(clip(D - diag(V_k Lambda_k V_k'), floor))",
+        "k_rule": "Marchenko-Pastur count on the specific-return correlation, the project's count_mp",
+        "window": 504,
+        "min_window": 252,
+        "floor": 1e-12,
+        "d_source": "models/XS-v1/specific_var.parquet, the shrunk diagonal",
+        "specific_returns_source": "models/XS-v1/specific_returns.parquet",
+        "dates": 178,
+        "skipped_short_windows": [
+          "2011-01-31",
+          "2011-02-28",
+          "2011-03-31",
+          "2011-04-29",
+          "2011-05-31",
+          "2011-06-30",
+          "2011-07-29",
+          "2011-08-31",
+          "2011-09-30",
+          "2011-10-31",
+          "2011-11-30"
+        ],
+        "k_min": 13,
+        "k_max": 25,
+        "k_mean": 20.60112359550562,
+        "n_names_mean": 460.1123595505618,
+        "trace_total_mean": 0.10238979302709458,
+        "trace_diagonal_mean": 0.10206473197661481,
+        "artifacts_hash": "207feb7aa7a099896831543a6f121d4778b66f78cd232f9e9b512fc6da8ac651"
+      },
+      "universe_hash": "532623d541928c67dd165b8a6e49c1e890ba7a57a5c732c6b2b688c819944615",
+      "data_hash": "b11e0d5ee2152c76f74d6020721ea39160560a1a74ae4ede96406aec38428c7c",
+      "built_at": "2026-09-20T22:30:44+00:00",
+      "champion": false,
+      "eligible_for_champion": true,
+      "walkthrough": "notebooks/E5_walkthrough.html",
+      "deliverable": "docs/research/E5_risk_model_diagnostic.md",
+      "results": "sprints/E5/RESULTS.json"
     }
   }
 }

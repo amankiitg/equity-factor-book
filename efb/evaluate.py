@@ -1862,12 +1862,36 @@ def e4_data_hash(data_root: Path = ROOT / "data") -> str:
 
     Implemented here rather than imported from `efb.build`, which imports
     this module: the same fold, the same ordering, no cycle.
+
+    The registry is a living append-only file, so its contribution is the
+    registry as E4 left it: the four E4-era entries with no champion, which
+    reconstructs byte-for-byte. A later sprint appending a version or setting
+    the champion flag must not move E4's stored hash, which was computed
+    before either happened.
     """
     digest = hashlib.sha256()
     for path in e4_artifacts(data_root):
         digest.update(path.name.encode("utf-8"))
-        digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("utf-8"))
+        if path.name == "registry.json":
+            content = _registry_as_of_e4(path).encode("utf-8")
+        else:
+            content = path.read_bytes()
+        digest.update(hashlib.sha256(content).hexdigest().encode("utf-8"))
     return digest.hexdigest()
+
+
+E4_REGISTRY_VERSIONS = ("TS-v1", "XS-v1", "PCA-v1", "PCA-v1c")
+
+
+def _registry_as_of_e4(path: Path) -> str:
+    """The registry serialized as E4 left it, before any E5 entry or flag."""
+    payload = json.loads(path.read_text())
+    payload["models"] = {
+        name: {**entry, "champion": False}
+        for name, entry in payload["models"].items()
+        if name in E4_REGISTRY_VERSIONS
+    }
+    return json.dumps(payload, indent=2) + "\n"
 
 
 def compute_e4_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:

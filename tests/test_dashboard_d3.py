@@ -33,12 +33,13 @@ def test_registry_v1_schema_validates_and_the_rule_is_untouched() -> None:
 def test_every_registered_version_is_known_and_no_champion_is_declared() -> None:
     payload = registry.load(REGISTRY)
     names = registry.versions(payload)
-    for expected in ("TS-v1", "XS-v1", "PCA-v1", "PCA-v1c"):
+    for expected in ("TS-v1", "XS-v1", "PCA-v1", "PCA-v1c", "XS-v2"):
         assert expected in names, expected
-    assert registry.champion(payload) is None, "E4 declares no champion"
-    assert registry.eligible(payload) == ["XS-v1", "PCA-v1", "PCA-v1c"]
+    assert registry.champion(payload) is None, "no champion is declared before Task 5"
+    assert registry.eligible(payload) == ["XS-v1", "PCA-v1", "PCA-v1c", "XS-v2"]
     assert registry.family_of(payload, "PCA-v1c") == "statistical"
     assert registry.family_of(payload, "XS-v1") == "fundamental"
+    assert registry.family_of(payload, "XS-v2") == "fundamental"
 
 
 def test_validate_reports_a_missing_key_and_a_family_typo() -> None:

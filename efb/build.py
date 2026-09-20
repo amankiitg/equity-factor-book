@@ -1564,6 +1564,201 @@ def build_pca_v1(
     return frames
 
 
+XS_V2_WINDOW = 504
+XS_V2_MIN_WINDOW = 252
+
+
+def build_xs_v2(
+    data_root: Path = DATA_ROOT,
+    store: bool = True,
+    verbose: bool = True,
+) -> dict[str, object]:
+    """Sprint E5, Task 1: build XS-v2, store it, register it.
+
+    XS-v1's factor structure with the specific diagonal D replaced by k
+    residual principal components plus the shrunk diagonal remainder, k by the
+    Marchenko-Pastur count on the specific-return correlation. The residual
+    block is stored at the month ends XS-v1's specific_var artifact carries,
+    which is the cadence the risk engine already reads XS-v1's D at. XS-v1's
+    artifacts are read and never written.
+    """
+    from efb import registry
+    from efb.models import statistical
+
+    root = Path(data_root)
+    xs_dir = root / "models" / "XS-v1"
+    target_dir = root / "models" / "XS-v2"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    specific = pd.read_parquet(xs_dir / "specific_returns.parquet")
+    specific_var = pd.read_parquet(xs_dir / "specific_var.parquet")
+    specific_wide = specific.pivot(
+        index="date", columns="ticker", values="specific_return"
+    )
+    dates = sorted(pd.to_datetime(pd.unique(specific_var["date"])))
+    diagonal_by_date = {
+        date: group.set_index("ticker")["specific_var"]
+        for date, group in specific_var.groupby("date")
+    }
+
+    rows: list[dict[str, object]] = []
+    loading_rows: list[dict[str, object]] = []
+    remainder_rows: list[dict[str, object]] = []
+    skipped: list[str] = []
+    for date in dates:
+        block = statistical.complete_block(
+            specific_wide, as_of=date, window=XS_V2_WINDOW
+        )
+        if len(block) < XS_V2_MIN_WINDOW or block.shape[1] < 2:
+            skipped.append(str(date.date()))
+            continue
+        diagonal = diagonal_by_date[date].reindex(block.columns)
+        if diagonal.isna().any():
+            skipped.append(str(date.date()))
+            continue
+        fitted = statistical.residual_covariance(block, diagonal)
+        rows.append(
+            {
+                "date": date,
+                "k": fitted.k,
+                "edge": fitted.edge,
+                "n_names": fitted.n_names,
+                "n_days": fitted.n_days,
+                "n_over_t": fitted.n_names / fitted.n_days,
+                "largest_eigenvalue": (
+                    float(fitted.eigenvalues[0]) if fitted.k else float("nan")
+                ),
+                "trace_low_rank": float(fitted.low_rank().trace()),
+                "trace_remainder": float(np.sum(fitted.remainder)),
+                "trace_total": fitted.trace_total,
+                "trace_diagonal": fitted.trace_diagonal,
+                "diagonal_mean": float(np.mean(fitted.diagonal)),
+            }
+        )
+        for position in range(fitted.k):
+            factor = f"xs2_{position + 1:02d}"
+            for index, ticker in enumerate(fitted.tickers):
+                loading_rows.append(
+                    {
+                        "date": date,
+                        "factor": factor,
+                        "ticker": ticker,
+                        "loading": float(fitted.loadings[index, position]),
+                        "eigenvalue": float(fitted.eigenvalues[position]),
+                        "specific_std": float(fitted.std[index]),
+                        "scaled_loading": float(
+                            fitted.std[index] * fitted.loadings[index, position]
+                        ),
+                    }
+                )
+        for index, ticker in enumerate(fitted.tickers):
+            remainder_rows.append(
+                {
+                    "date": date,
+                    "ticker": ticker,
+                    "d": float(fitted.diagonal[index]),
+                    "low_rank_diagonal": float(fitted.low_rank_diagonal()[index]),
+                    "remainder": float(fitted.remainder[index]),
+                }
+            )
+    if not rows:
+        raise RuntimeError("no month end produced a residual covariance block")
+    summary = pd.DataFrame(rows)
+    loadings = pd.DataFrame(loading_rows)
+    remainder = pd.DataFrame(remainder_rows)
+
+    if store:
+        summary.to_parquet(target_dir / "residual_factors.parquet", index=False)
+        loadings.to_parquet(target_dir / "residual_loadings.parquet", index=False)
+        remainder.to_parquet(target_dir / "residual_remainder.parquet", index=False)
+        artifacts_hash = combined_hash(
+            {
+                "models/XS-v2/residual_factors.parquet": {
+                    "sha256": hash_file(target_dir / "residual_factors.parquet")
+                },
+                "models/XS-v2/residual_loadings.parquet": {
+                    "sha256": hash_file(target_dir / "residual_loadings.parquet")
+                },
+                "models/XS-v2/residual_remainder.parquet": {
+                    "sha256": hash_file(target_dir / "residual_remainder.parquet")
+                },
+            }
+        )
+        entry = registry.model_entry(
+            version="XS-v2",
+            family="fundamental",
+            parameters={
+                "family": "fundamental",
+                "assets": "equity",
+                "estimator": (
+                    "XS-v1 factor structure with the specific diagonal D "
+                    "replaced by k residual principal components plus the "
+                    "shrunk diagonal remainder"
+                ),
+                "base_version": "XS-v1",
+                "factor_part": "X F X' from XS-v1 descriptors and factor covariance",
+                "specific_part": (
+                    "V_k Lambda_k V_k' + diag(clip(D - diag(V_k Lambda_k V_k'), floor))"
+                ),
+                "k_rule": (
+                    "Marchenko-Pastur count on the specific-return correlation, "
+                    "the project's count_mp"
+                ),
+                "window": XS_V2_WINDOW,
+                "min_window": XS_V2_MIN_WINDOW,
+                "floor": statistical.RESIDUAL_FLOOR,
+                "d_source": "models/XS-v1/specific_var.parquet, the shrunk diagonal",
+                "specific_returns_source": "models/XS-v1/specific_returns.parquet",
+                "dates": int(len(summary)),
+                "skipped_short_windows": skipped,
+                "k_min": int(summary["k"].min()),
+                "k_max": int(summary["k"].max()),
+                "k_mean": float(summary["k"].mean()),
+                "n_names_mean": float(summary["n_names"].mean()),
+                "trace_total_mean": float(summary["trace_total"].mean()),
+                "trace_diagonal_mean": float(summary["trace_diagonal"].mean()),
+                "artifacts_hash": artifacts_hash,
+            },
+            universe_path=root / "processed" / "universe_membership.parquet",
+            data_paths=[
+                root / "processed" / "returns.parquet",
+                xs_dir / "descriptors.parquet",
+                xs_dir / "factor_cov.parquet",
+                xs_dir / "specific_returns.parquet",
+                xs_dir / "specific_var.parquet",
+            ],
+            champion=False,
+            eligible_for_champion=True,
+            walkthrough="notebooks/E5_walkthrough.html",
+            deliverable="docs/research/E5_risk_model_diagnostic.md",
+            results="sprints/E5/RESULTS.json",
+        )
+        registry.write_registry(root / "models" / "registry.json", entry)
+    else:
+        artifacts_hash = ""
+        entry = {}
+    if verbose:
+        print("### E5 Task 1: XS-v2")
+        print(
+            f"residual blocks: {len(summary)} month ends, "
+            f"k {summary['k'].min()} to {summary['k'].max()} "
+            f"(mean {summary['k'].mean():.2f}), skipped {len(skipped)}"
+        )
+        print(
+            f"trace total vs diagonal: "
+            f"{summary['trace_total'].mean():.3e} against "
+            f"{summary['trace_diagonal'].mean():.3e}"
+        )
+    return {
+        "summary": summary,
+        "loadings": loadings,
+        "remainder": remainder,
+        "skipped": skipped,
+        "artifacts_hash": artifacts_hash,
+        "registry_entry": entry,
+    }
+
+
 def rebuild_e4(
     data_root: Path = DATA_ROOT,
     results_path: Path | None = None,
