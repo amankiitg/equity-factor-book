@@ -149,8 +149,16 @@ def design_diagnosis(
     wide = wide[[c for c in wide.columns if c in set(sectors["ticker"].astype(str))]]
     if date is None:
         date = race_grid(data_root)[100]
-    complete = [c for c in wide.columns if wide.loc[:date, c].notna().all()]
+    # the names have to be complete over the training window, not over all
+    # history: requiring the latter left an empty list on the first date the
+    # diagnosis ran on and the median of an empty array raised
+    train = wide.loc[:date].iloc[-cov.WINDOW :]
+    complete = [c for c in wide.columns if train[c].notna().all()]
     names = complete[:n_names]
+    if len(names) < 20:
+        raise RuntimeError(
+            f"the diagnosis found only {len(names)} complete names on {date.date()}"
+        )
     ordered = list(fx.ESTIMATED_NAMES)
     factor_returns = pd.read_parquet(
         data_root / "models" / "XS-v1" / "factor_returns.parquet"
@@ -159,7 +167,8 @@ def design_diagnosis(
         (pd.to_datetime(factor_returns["date"]) < date)
         & (factor_returns["factor"].isin(ordered))
     ].pivot_table(index="date", columns="factor", values="f")
-    covariance = fx.ewma_factor_cov(history.loc[:, ordered], half_life=fx.F_HALF_LIFE)
+    history = history.loc[:, ordered].fillna(0.0)
+    covariance = fx.ewma_factor_cov(history, half_life=fx.F_HALF_LIFE)
     latest = (
         covariance.index.get_level_values(0).max()
         if isinstance(covariance.index, pd.MultiIndex)
@@ -243,6 +252,13 @@ def xs_supplier(
     ordered = list(fx.ESTIMATED_NAMES)
     if not set(ordered).issubset(history.columns):
         raise RuntimeError("the stored factor returns do not cover every factor")
+    # a sector factor is not estimated on every early date. An EWMA carries a
+    # single NaN through the whole covariance, and dropping the incomplete rows
+    # emptied the history entirely on dates where one sector had no estimate, so
+    # a date with no estimate is treated as a zero factor return: the associated
+    # design column then enters with a zero-variance factor and contributes no
+    # risk, which is the honest reading of a sector the model did not estimate.
+    history = history.loc[:, ordered].fillna(0.0)
     factor_covariance = fx.ewma_factor_cov(
         history.loc[:, ordered], half_life=fx.F_HALF_LIFE
     )

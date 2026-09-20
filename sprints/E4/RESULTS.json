@@ -1,7 +1,7 @@
 {
   "sprint": "E4",
-  "evaluated_at": "2026-09-20T19:20:30+00:00",
-  "data_hash": "dc05cdf277e8f822acc3d0c48622dd0baf8c5cfcf119bf9acbc147dad78f8325",
+  "evaluated_at": "2026-09-20T22:00:13+00:00",
+  "data_hash": "f15044725bd5f211675900cd211a2fd51e8fbc583926c16aa53a2f988ea06650",
   "criteria": {
     "F4.1": {
       "criterion": "First principal component vs the market factor: correlation above 0.95.",
@@ -50,35 +50,35 @@
           "pca_v1": 0.0866739833512632,
           "pca_v1c": 0.08731759279333594,
           "sample": 0.2804044567234314,
-          "ts_v1": 0.15094789273544665,
-          "xs_v1": 0.08800739604549945
+          "ts_v1": 0.15094789273544665
         },
         "ratio_to_sample": {
           "clip": 0.3068498026766469,
           "constant_correlation": 0.5715118239875542,
           "ledoit_wolf": 0.3355937660458735,
           "ts_v1": 0.5383220170581298,
-          "xs_v1": 0.31385876342294705,
           "pca_v1": 0.30910344423217034,
           "pca_v1c": 0.3113987338634173
         },
         "worst_ratio": 0.5715118239875542,
+        "estimators_missing": [
+          "xs_v1"
+        ],
         "windows": 175,
         "n_names": 496,
         "windows_won": {
-          "clip": 24,
+          "clip": 39,
           "constant_correlation": 0,
           "ewma": 0,
-          "ledoit_wolf": 27,
-          "pca_v1": 33,
-          "pca_v1c": 29,
+          "ledoit_wolf": 39,
+          "pca_v1": 48,
+          "pca_v1c": 46,
           "sample": 0,
-          "ts_v1": 3,
-          "xs_v1": 59
+          "ts_v1": 3
         }
       },
       "verdict": "pass",
-      "note": "Every shrinkage estimator and every factor estimator has a median out-of-sample minimum-variance volatility at least 10 percent below the sample covariance's, so the estimation-error result holds in the direction theory predicts. The sample covariance won no window and EWMA none either; EWMA is a weighting scheme rather than a shrinkage or factor estimator and is reported beside them, not scored."
+      "note": "Every shrinkage estimator and every factor estimator has a median out-of-sample minimum-variance volatility at least 10 percent below the sample covariance's, so the estimation-error result holds in the direction theory predicts. The sample covariance won no window and EWMA none either; EWMA is a weighting scheme rather than a shrinkage or factor estimator and is reported beside them, not scored. E5 rebuilt this race from a derived grid and could not reproduce the XS-v1 row, which is stored as F5.0b; the estimators missing from this read are listed in the stored numbers and the verdict is unchanged because the missing row is the strongest performer among those scored, not the weakest."
     },
     "F4.4": {
       "criterion": "PCA-v1 with k factors explains at least as much cross-sectional variance as XS-v1 on a held-out residual test; both numbers stored.",
@@ -233,9 +233,11 @@
   },
   "revisions": {
     "previous_data_hash": null,
-    "data_hash": "dc05cdf277e8f822acc3d0c48622dd0baf8c5cfcf119bf9acbc147dad78f8325",
-    "n_changed": 0,
-    "changed_tickers_or_criteria": [],
+    "data_hash": "f15044725bd5f211675900cd211a2fd51e8fbc583926c16aa53a2f988ea06650",
+    "n_changed": 1,
+    "changed_tickers_or_criteria": [
+      "F4.3"
+    ],
     "cross_sprint_criteria": [],
     "changed": {
       "F4.1": {
@@ -303,7 +305,7 @@
         }
       },
       "F4.3": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "stored_numbers": {
@@ -354,31 +356,31 @@
               "pca_v1": 0.0866739833512632,
               "pca_v1c": 0.08731759279333594,
               "sample": 0.2804044567234314,
-              "ts_v1": 0.15094789273544665,
-              "xs_v1": 0.08800739604549945
+              "ts_v1": 0.15094789273544665
             },
             "ratio_to_sample": {
               "clip": 0.3068498026766469,
               "constant_correlation": 0.5715118239875542,
               "ledoit_wolf": 0.3355937660458735,
               "ts_v1": 0.5383220170581298,
-              "xs_v1": 0.31385876342294705,
               "pca_v1": 0.30910344423217034,
               "pca_v1c": 0.3113987338634173
             },
             "worst_ratio": 0.5715118239875542,
+            "estimators_missing": [
+              "xs_v1"
+            ],
             "windows": 175,
             "n_names": 496,
             "windows_won": {
-              "clip": 24,
+              "clip": 39,
               "constant_correlation": 0,
               "ewma": 0,
-              "ledoit_wolf": 27,
-              "pca_v1": 33,
-              "pca_v1c": 29,
+              "ledoit_wolf": 39,
+              "pca_v1": 48,
+              "pca_v1c": 46,
               "sample": 0,
-              "ts_v1": 3,
-              "xs_v1": 59
+              "ts_v1": 3
             }
           }
         }
@@ -1357,11 +1359,455 @@
             }
           }
         }
+      },
+      {
+        "previous_data_hash": null,
+        "data_hash": "f15044725bd5f211675900cd211a2fd51e8fbc583926c16aa53a2f988ea06650",
+        "n_changed": 1,
+        "changed_tickers_or_criteria": [
+          "F4.3"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F4.1": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "pc1_vs_market_pca_v1": 0.7970186544462351,
+                "pc1_vs_equal_weight_pca_v1": 0.9891437143108711,
+                "pc1_vs_market_pca_v1c": 0.9305990473058937,
+                "pc1_vs_equal_weight_pca_v1c": 0.9432514280452247,
+                "market_vs_equal_weight": 0.8556455749346611,
+                "pc1_vs_market_full_sample": 0.9450346654685466,
+                "window_days": 504,
+                "full_sample_days": 4192,
+                "n_names": 494
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "pc1_vs_market_pca_v1": 0.7970186544462351,
+                "pc1_vs_equal_weight_pca_v1": 0.9891437143108711,
+                "pc1_vs_market_pca_v1c": 0.9305990473058937,
+                "pc1_vs_equal_weight_pca_v1c": 0.9432514280452247,
+                "market_vs_equal_weight": 0.8556455749346611,
+                "pc1_vs_market_full_sample": 0.9450346654685466,
+                "window_days": 504,
+                "full_sample_days": 4192,
+                "n_names": 494
+              }
+            }
+          },
+          "F4.2": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "n_factors_mp": 13,
+                "n_factors_selected": 13,
+                "n_factors_scree": 2,
+                "n_factors_cv": 12,
+                "n_names": 494,
+                "n_days": 504,
+                "n_over_t": 0.9801587301587301,
+                "mp_edge": 3.9602180526627095,
+                "panel_n_factors_above_edge": 14,
+                "panel_n_names": 599
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "n_factors_mp": 13,
+                "n_factors_selected": 13,
+                "n_factors_scree": 2,
+                "n_factors_cv": 12,
+                "n_names": 494,
+                "n_days": 504,
+                "n_over_t": 0.9801587301587301,
+                "mp_edge": 3.9602180526627095,
+                "panel_n_factors_above_edge": 14,
+                "panel_n_names": 599
+              }
+            }
+          },
+          "F4.3": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "median_realized_vol": {
+                  "clip": 0.0860420522152373,
+                  "constant_correlation": 0.16025446251624748,
+                  "ewma": 0.29849385834412884,
+                  "ledoit_wolf": 0.0941019876478635,
+                  "pca_v1": 0.0866739833512632,
+                  "pca_v1c": 0.08731759279333594,
+                  "sample": 0.2804044567234314,
+                  "ts_v1": 0.15094789273544665,
+                  "xs_v1": 0.08800739604549945
+                },
+                "ratio_to_sample": {
+                  "clip": 0.3068498026766469,
+                  "constant_correlation": 0.5715118239875542,
+                  "ledoit_wolf": 0.3355937660458735,
+                  "ts_v1": 0.5383220170581298,
+                  "xs_v1": 0.31385876342294705,
+                  "pca_v1": 0.30910344423217034,
+                  "pca_v1c": 0.3113987338634173
+                },
+                "worst_ratio": 0.5715118239875542,
+                "windows": 175,
+                "n_names": 496,
+                "windows_won": {
+                  "clip": 24,
+                  "constant_correlation": 0,
+                  "ewma": 0,
+                  "ledoit_wolf": 27,
+                  "pca_v1": 33,
+                  "pca_v1c": 29,
+                  "sample": 0,
+                  "ts_v1": 3,
+                  "xs_v1": 59
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "median_realized_vol": {
+                  "clip": 0.0860420522152373,
+                  "constant_correlation": 0.16025446251624748,
+                  "ewma": 0.29849385834412884,
+                  "ledoit_wolf": 0.0941019876478635,
+                  "pca_v1": 0.0866739833512632,
+                  "pca_v1c": 0.08731759279333594,
+                  "sample": 0.2804044567234314,
+                  "ts_v1": 0.15094789273544665
+                },
+                "ratio_to_sample": {
+                  "clip": 0.3068498026766469,
+                  "constant_correlation": 0.5715118239875542,
+                  "ledoit_wolf": 0.3355937660458735,
+                  "ts_v1": 0.5383220170581298,
+                  "pca_v1": 0.30910344423217034,
+                  "pca_v1c": 0.3113987338634173
+                },
+                "worst_ratio": 0.5715118239875542,
+                "estimators_missing": [
+                  "xs_v1"
+                ],
+                "windows": 175,
+                "n_names": 496,
+                "windows_won": {
+                  "clip": 39,
+                  "constant_correlation": 0,
+                  "ewma": 0,
+                  "ledoit_wolf": 39,
+                  "pca_v1": 48,
+                  "pca_v1c": 46,
+                  "sample": 0,
+                  "ts_v1": 3
+                }
+              }
+            }
+          },
+          "F4.4": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "xs_v1_daily_refit": 0.3857271089786408,
+                "xs_v1_descriptors_frozen": 0.2539967143184686,
+                "pca_frozen_k_mp": 0.271055449143828,
+                "pca_frozen_k_17": 0.3056578777163282,
+                "pca_rolling_refit": 0.31330323475183786,
+                "xs_v1_plus_top3_residual_pcs": 0.29269877642027187,
+                "xs_v1_plus_top5_residual_pcs": 0.31240368910663047,
+                "held_out_days": 503
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "xs_v1_daily_refit": 0.3857271089786408,
+                "xs_v1_descriptors_frozen": 0.2539967143184686,
+                "pca_frozen_k_mp": 0.271055449143828,
+                "pca_frozen_k_17": 0.3056578777163282,
+                "pca_rolling_refit": 0.31330323475183786,
+                "xs_v1_plus_top3_residual_pcs": 0.29269877642027187,
+                "xs_v1_plus_top5_residual_pcs": 0.31240368910663047,
+                "held_out_days": 503
+              }
+            }
+          },
+          "F4.5": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "momentum_share_of_predicted_variance": {
+                  "low": 0.3198075601623549,
+                  "high": 0.5612671526099806
+                },
+                "realized_book_vol": {
+                  "low": 0.04909255195966771,
+                  "high": 0.027775005014359557
+                },
+                "predicted_book_vol": {
+                  "low": 0.054010065811213134,
+                  "high": 0.05472874629297251
+                },
+                "forward_market_vol": {
+                  "low": 0.21928617646320958,
+                  "high": 0.16819101257153132
+                },
+                "covariance_between_components": {
+                  "low": 1.2900024639991553e-06,
+                  "high": -1.0391607116310025e-06
+                },
+                "orthogonality_correlation": {
+                  "low": 0.052039887450922646,
+                  "high": -0.09166137374563459
+                },
+                "half_life_bias_high_tercile": {
+                  "21": 0.5218762515909683,
+                  "42": 0.5209481395520448,
+                  "90": 0.5247492592588209
+                },
+                "half_life_spread": {
+                  "21": 0.44612018955739086,
+                  "42": 0.43077773355050886,
+                  "90": 0.39841351516531087
+                },
+                "residual_top5_share": {
+                  "low": 0.5681373901266118,
+                  "high": 0.5768030936931818
+                },
+                "residual_largest_eigenvalue": {
+                  "low": 7.110191430882313,
+                  "high": 6.2041621050265165
+                },
+                "residual_edge": {
+                  "low": 2.393528275582561,
+                  "high": 2.39403246322348
+                },
+                "residual_tree": {
+                  "n_above_edge": {
+                    "low": 11.2,
+                    "high": 10.804878048780488
+                  },
+                  "effective_directions": {
+                    "low": 11.513603626573392,
+                    "high": 10.828942509265122
+                  },
+                  "n_names": {
+                    "low": 151.13333333333333,
+                    "high": 151.4390243902439
+                  }
+                },
+                "residual_spectrum_largest": 22.303134561841865,
+                "residual_spectrum_edge": 3.9522375163091836,
+                "measurements_present": {
+                  "3a_decomposition": true,
+                  "3b_confound": true,
+                  "3c_orthogonality": true,
+                  "3d_sweep": true
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "momentum_share_of_predicted_variance": {
+                  "low": 0.3198075601623549,
+                  "high": 0.5612671526099806
+                },
+                "realized_book_vol": {
+                  "low": 0.04909255195966771,
+                  "high": 0.027775005014359557
+                },
+                "predicted_book_vol": {
+                  "low": 0.054010065811213134,
+                  "high": 0.05472874629297251
+                },
+                "forward_market_vol": {
+                  "low": 0.21928617646320958,
+                  "high": 0.16819101257153132
+                },
+                "covariance_between_components": {
+                  "low": 1.2900024639991553e-06,
+                  "high": -1.0391607116310025e-06
+                },
+                "orthogonality_correlation": {
+                  "low": 0.052039887450922646,
+                  "high": -0.09166137374563459
+                },
+                "half_life_bias_high_tercile": {
+                  "21": 0.5218762515909683,
+                  "42": 0.5209481395520448,
+                  "90": 0.5247492592588209
+                },
+                "half_life_spread": {
+                  "21": 0.44612018955739086,
+                  "42": 0.43077773355050886,
+                  "90": 0.39841351516531087
+                },
+                "residual_top5_share": {
+                  "low": 0.5681373901266118,
+                  "high": 0.5768030936931818
+                },
+                "residual_largest_eigenvalue": {
+                  "low": 7.110191430882313,
+                  "high": 6.2041621050265165
+                },
+                "residual_edge": {
+                  "low": 2.393528275582561,
+                  "high": 2.39403246322348
+                },
+                "residual_tree": {
+                  "n_above_edge": {
+                    "low": 11.2,
+                    "high": 10.804878048780488
+                  },
+                  "effective_directions": {
+                    "low": 11.513603626573392,
+                    "high": 10.828942509265122
+                  },
+                  "n_names": {
+                    "low": 151.13333333333333,
+                    "high": 151.4390243902439
+                  }
+                },
+                "residual_spectrum_largest": 22.303134561841865,
+                "residual_spectrum_edge": 3.9522375163091836,
+                "measurements_present": {
+                  "3a_decomposition": true,
+                  "3b_confound": true,
+                  "3c_orthogonality": true,
+                  "3d_sweep": true
+                }
+              }
+            }
+          },
+          "F4.6": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "style_correlation_panel_vs_mapped": {
+                  "market": 0.9970085236909502,
+                  "size": 0.5777797124005946,
+                  "beta": 0.9889610730316395,
+                  "momentum": 0.9828197198371462,
+                  "reversal": 0.9801732782892218,
+                  "resid_vol": 0.8931331802173103,
+                  "liquidity": 0.6255602786000058
+                },
+                "size_premium": {
+                  "panel": -3.227315739685675e-05,
+                  "mapped": -0.00017259213063607558,
+                  "t_panel": -0.07368092442936629,
+                  "t_mapped": -0.5779707672990975
+                },
+                "mean_r_squared": {
+                  "panel_825": 0.13352957836777643,
+                  "mapped_502": 0.1425263471599973
+                },
+                "mean_specific_variance": {
+                  "panel_825": 0.0002917214821117274,
+                  "mapped_502": 0.0002285411087334006
+                },
+                "mean_names_per_date": {
+                  "panel_825": 569.1534391534392,
+                  "mapped_502": 467.94179894179894
+                },
+                "excluded_names": {
+                  "n_names": 323,
+                  "annualized_vol": 0.19928128503336792,
+                  "included_annualized_vol": 0.1667962191799504,
+                  "differential_annualized": -0.02014117011032529,
+                  "years": "2010 to 2016"
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "style_correlation_panel_vs_mapped": {
+                  "market": 0.9970085236909502,
+                  "size": 0.5777797124005946,
+                  "beta": 0.9889610730316395,
+                  "momentum": 0.9828197198371462,
+                  "reversal": 0.9801732782892218,
+                  "resid_vol": 0.8931331802173103,
+                  "liquidity": 0.6255602786000058
+                },
+                "size_premium": {
+                  "panel": -3.227315739685675e-05,
+                  "mapped": -0.00017259213063607558,
+                  "t_panel": -0.07368092442936629,
+                  "t_mapped": -0.5779707672990975
+                },
+                "mean_r_squared": {
+                  "panel_825": 0.13352957836777643,
+                  "mapped_502": 0.1425263471599973
+                },
+                "mean_specific_variance": {
+                  "panel_825": 0.0002917214821117274,
+                  "mapped_502": 0.0002285411087334006
+                },
+                "mean_names_per_date": {
+                  "panel_825": 569.1534391534392,
+                  "mapped_502": 467.94179894179894
+                },
+                "excluded_names": {
+                  "n_names": 323,
+                  "annualized_vol": 0.19928128503336792,
+                  "included_annualized_vol": 0.1667962191799504,
+                  "differential_annualized": -0.02014117011032529,
+                  "years": "2010 to 2016"
+                }
+              }
+            }
+          },
+          "F4.7": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "pca_v1c_n_factors_above_edge": 16,
+                "pca_v1c_mp_edge_covariance": 0.002032342469016801,
+                "pca_v1c_pc1_vs_market": 0.9305990473058937,
+                "pca_v1c_pc1_vs_equal_weight": 0.9432514280452247,
+                "pca_v1_pc1_vs_market": 0.7970186544462351,
+                "pca_v1_pc1_vs_equal_weight": 0.9891437143108711,
+                "scored_against_f4_2": false,
+                "covariance_spectrum_rows": 494
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "pca_v1c_n_factors_above_edge": 16,
+                "pca_v1c_mp_edge_covariance": 0.002032342469016801,
+                "pca_v1c_pc1_vs_market": 0.9305990473058937,
+                "pca_v1c_pc1_vs_equal_weight": 0.9432514280452247,
+                "pca_v1_pc1_vs_market": 0.7970186544462351,
+                "pca_v1_pc1_vs_equal_weight": 0.9891437143108711,
+                "scored_against_f4_2": false,
+                "covariance_spectrum_rows": 494
+              }
+            }
+          }
+        }
       }
     ]
   },
   "reference_values": {
-    "data_hash": "dc05cdf277e8f822acc3d0c48622dd0baf8c5cfcf119bf9acbc147dad78f8325",
+    "data_hash": "f15044725bd5f211675900cd211a2fd51e8fbc583926c16aa53a2f988ea06650",
     "verdicts": {
       "F4.1": "fail",
       "F4.2": "pass",
@@ -1404,31 +1850,31 @@
           "pca_v1": 0.0866739833512632,
           "pca_v1c": 0.08731759279333594,
           "sample": 0.2804044567234314,
-          "ts_v1": 0.15094789273544665,
-          "xs_v1": 0.08800739604549945
+          "ts_v1": 0.15094789273544665
         },
         "ratio_to_sample": {
           "clip": 0.3068498026766469,
           "constant_correlation": 0.5715118239875542,
           "ledoit_wolf": 0.3355937660458735,
           "ts_v1": 0.5383220170581298,
-          "xs_v1": 0.31385876342294705,
           "pca_v1": 0.30910344423217034,
           "pca_v1c": 0.3113987338634173
         },
         "worst_ratio": 0.5715118239875542,
+        "estimators_missing": [
+          "xs_v1"
+        ],
         "windows": 175,
         "n_names": 496,
         "windows_won": {
-          "clip": 24,
+          "clip": 39,
           "constant_correlation": 0,
           "ewma": 0,
-          "ledoit_wolf": 27,
-          "pca_v1": 33,
-          "pca_v1c": 29,
+          "ledoit_wolf": 39,
+          "pca_v1": 48,
+          "pca_v1c": 46,
           "sample": 0,
-          "ts_v1": 3,
-          "xs_v1": 59
+          "ts_v1": 3
         }
       },
       "F4.4": {

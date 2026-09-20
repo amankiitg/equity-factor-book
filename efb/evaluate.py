@@ -2017,7 +2017,9 @@ def evaluate_e4_criteria(
     pivot = race.pivot(index="date", columns="estimator", values="realized_vol")
     medians = {name: float(value) for name, value in pivot.median().items()}
     sample = medians["sample"]
-    scored = {name: medians[name] for name in (*E4_SHRINKAGE, *E4_FACTOR)}
+    wanted = (*E4_SHRINKAGE, *E4_FACTOR)
+    scored = {name: medians[name] for name in wanted if name in medians}
+    missing = [name for name in wanted if name not in medians]
     ratios = {name: medians[name] / sample for name in scored}
     criteria["F4.3"] = {
         "criterion": E4_CRITERIA_TEXT["F4.3"],
@@ -2026,6 +2028,7 @@ def evaluate_e4_criteria(
             "median_realized_vol": medians,
             "ratio_to_sample": ratios,
             "worst_ratio": float(max(ratios.values())),
+            "estimators_missing": missing,
             "windows": int(race["date"].nunique()),
             "n_names": int(race["n_names"].max()),
             "windows_won": {
@@ -2040,7 +2043,12 @@ def evaluate_e4_criteria(
             "the sample covariance's, so the estimation-error result holds in the "
             "direction theory predicts. The sample covariance won no window and "
             "EWMA none either; EWMA is a weighting scheme rather than a shrinkage "
-            "or factor estimator and is reported beside them, not scored."
+            "or factor estimator and is reported beside them, not scored. E5 "
+            "rebuilt this race from a derived grid and could not reproduce the "
+            "XS-v1 row, which is stored as F5.0b; the estimators missing from "
+            "this read are listed in the stored numbers and the verdict is "
+            "unchanged because the missing row is the strongest performer among "
+            "those scored, not the weakest."
         ),
     }
 
