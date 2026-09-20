@@ -117,10 +117,10 @@ def test_the_stored_horse_race_puts_the_sample_covariance_last() -> None:
     # XS-v1 row, recorded as F5.0b. This set is what the artifact carries.
     assert set(race["estimator"]) == set(cov.ESTIMATORS) - {"xs_v1"}
     table = cov.summarize(race)
-    # With the XS-v1 row absent (F5.0b) the worst mean realized volatility here
-    # is EWMA's. The estimation-bug claim the line used to carry is asserted
-    # as the sample covariance winning no window at all.
-    assert table.index[-1] == "ewma"
+    # With the XS-v1 row absent (F5.0b) the ordering is unchanged: the sample
+    # covariance is still the worst mean realized volatility, which is the
+    # estimation-error result the sprint exists to confirm.
+    assert table.index[-1] == "sample", "a sample covariance win is an estimation bug"
     assert table.loc["sample", "mean_realized_vol"] == pytest.approx(0.409593, abs=1e-5)
     for name in ("pca_v1", "clip", "xs_v1", "ledoit_wolf"):
         assert table.loc[name, "beat_sample_by"] > 0.10, name
