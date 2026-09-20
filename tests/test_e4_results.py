@@ -86,7 +86,6 @@ def test_f4_3_is_scored_on_medians_and_the_sample_never_wins(payload: dict) -> N
         "constant_correlation",
         "ledoit_wolf",
         "ts_v1",
-        "xs_v1",
         "pca_v1",
         "pca_v1c",
     ):
@@ -94,6 +93,8 @@ def test_f4_3_is_scored_on_medians_and_the_sample_never_wins(payload: dict) -> N
     # EWMA is the one estimator worse than the sample covariance, which is why
     # F4.3 names shrinkage and factor estimators rather than every alternative
     assert medians["ewma"] > medians["sample"]
+    # E5 rebuilt the race and could not reproduce the XS-v1 row: F5.0b.
+    assert numbers["estimators_missing"] == ["xs_v1"]
 
 
 @pytest.mark.integration
