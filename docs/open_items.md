@@ -143,3 +143,45 @@ stock betas, while E3 prices a full XS-v1 covariance with a specific variance
 term and a point-in-time factor covariance. E4 should decide which construction
 is the sizing model and price the other as a sensitivity, which is the
 conditional covariance work below.
+
+## 2026-09-20: E4 restates three open items and closes none
+
+Survivor restriction, restated with the Task 4 numbers. The XS-v1 universe is
+the 502 sector-mapped names out of an 825-name panel, and the missing 323 are
+the small, illiquid end of the cross-section. It is not a caveat: dropping them
+correlates the size factor return at 0.577780 between the two universes and
+liquidity at 0.625560, against 0.98 and above for market, beta, momentum and
+reversal, deepens the size premium from -0.000032 to -0.000173, raises mean
+cross-sectional R squared from 0.133530 to 0.142526, and the excluded names ran
+0.199281 annualized volatility against 0.166796 and earned 0.020141 a year less
+over 2010 to 2016. Still open, and still a data problem: only a point-in-time
+sector source closes it, no model version does.
+
+Equal-weight seed book coverage, restated but not closed. Task 0b found no
+point-in-time GICS source, and the same coverage gap is what caps the early
+equal-weight risk numbers. The restatement above is the measurement of it.
+
+Momentum bias, restated with the Task 3 verdict and the E3 ordering reversed.
+E3 ordered a conditional exposure fix first and a residual covariance second.
+Task 3 measured both and reverses that order: the momentum book's
+realized-to-predicted bias falls from 0.8960 to 0.5841 and 0.5191 across
+exposure terciles while its predicted volatility is flat, the realized
+covariance between its factor and specific components is negative in the high
+tercile where a diagonal asserts independence, the top five residual directions
+carry 0.553 to 0.577 of the book's specific variance, and adding three residual
+principal components to a frozen XS-v1 is worth 3.9 points of held-out R
+squared. The half-life sweep is measured and rejected at 0.003, so the bias is
+not a calibration knob and a later reader should not retry it.
+
+New, opened by this sprint: the covariance horse race's rebalance grid. The
+stored race has 175 windows and `make rebuild-e4` versions it but does not
+rebuild it, because the grid was chosen interactively in Task 2 and is not yet
+derived from an artifact. Rebuilding it before that is fixed would produce a
+second race rather than reproduce the stored one. F4.3 is scored from the
+stored artifact meanwhile.
+
+Process decision, for every sprint from E5 on: a research deliverable carries a
+test of the `tests/test_e4_memo.py` kind, asserting that every headline number
+in the deliverable matches a stored value. Prose and measurement cannot be
+allowed to drift apart, and three of this sprint's defects were found by
+exactly that kind of check rather than by reading code.

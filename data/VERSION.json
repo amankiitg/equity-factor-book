@@ -1,11 +1,23 @@
 {
-  "note": "Built by make rebuild (Sprint E3). E1, E2 and E3 artifacts, each with a content hash; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-18T01:42:22+00:00",
-  "data_hash": "237c1183b898a054118c1dd0e7fbfa0556b9162841d9eb7fe242da7fa14d2b36",
+  "note": "Built by make rebuild (Sprint E4). E1, E2, E3 and E4 artifacts, each with a content hash; the dashboard sidebar shows this version.",
+  "built_at": "2026-09-20T19:19:03+00:00",
+  "data_hash": "b7d89bcc95217c44208267d48665cab8f52bc58082397239e57938924bada3ae",
   "artifacts": {
     "beta_horse_race.parquet": {
       "sha256": "862891ca3d6e712d6a2f6267274368d4c055e0f85077d7e23bb2e22759920005",
       "bytes": 3487
+    },
+    "cov_horse_race.parquet": {
+      "sha256": "faafa76c08f40537b558968d8e91b2c723acc0cbc62f03c04ef45038508693fc",
+      "bytes": 90153
+    },
+    "e4_f41_pc1_correlations.parquet": {
+      "sha256": "e0856a188685e7d90bb959fc313a5ad316fc395b776f93d29f1ade63c11ad890",
+      "bytes": 4391
+    },
+    "e4_f44_held_out.parquet": {
+      "sha256": "b17f4f41789019ffff70eb361e80e79499da9fe153174ffde42c06b7bd379e48",
+      "bytes": 2598
     },
     "momentum_exposure.parquet": {
       "sha256": "c65822977a521e67c65958e1fb4411a9152f7c1ef4764c9bc1e2e1db9585b2be",
@@ -55,13 +67,73 @@
       "sha256": "49c9e919b70de6a5e0b9891bdf0c76e38ad2e19b13b0b0facf31748ff1f8b7f1",
       "bytes": 23465
     },
+    "xs_residual_loadings.parquet": {
+      "sha256": "b36d0ae6658dc2504dd5d82266a701a82efd6aeabd81230ab225ba2eb789368f",
+      "bytes": 230411
+    },
+    "xs_residual_spectrum.parquet": {
+      "sha256": "bcc62b6ac6a1fdcf42736939586657a0d3521351ebd40df9ebb721c318eedeed",
+      "bytes": 22322
+    },
     "xs_risk_decomposition.parquet": {
       "sha256": "ca519b68224c3e21682588d1ed7496fd69a45bd1ecca75f7c596145fa25b6a14",
       "bytes": 4033179
     },
+    "xs_survivor_excluded_names.parquet": {
+      "sha256": "cec67fcd8e02089c6a274de070d9052d0f48d091658706a3310f61558068a337",
+      "bytes": 5638
+    },
+    "xs_survivor_measurement.parquet": {
+      "sha256": "695f782fa753c1c552dfc4489c608021e1be0e088d273d26a4a1085e6a45ff29",
+      "bytes": 6562
+    },
     "xs_survivor_restriction.parquet": {
       "sha256": "92ec81907489c934355ac2626b3098ac5da359e15ae86355d9c21119032de00a",
       "bytes": 7024
+    },
+    "xs_survivor_universe_summary.parquet": {
+      "sha256": "3c7795f8d342a609d668fbfe963201017db8e17b07e8215592049e02792974b8",
+      "bytes": 3656
+    },
+    "xs_task3_confound.parquet": {
+      "sha256": "50d3a7d5a2fa173aeaf176497c3b0c452ba97546f74357f00e3277e9c3c403b4",
+      "bytes": 8748
+    },
+    "xs_task3_decomposition.parquet": {
+      "sha256": "62d3c02f3ba8bd1f7719bb5a2db5f4380321ac0c7d5672fafc71b99b5da8eaf6",
+      "bytes": 47331
+    },
+    "xs_task3_orthogonality.parquet": {
+      "sha256": "ceff6f86d971f136b1e239b19482ae35f8798e1b465639c459e5881803e2b793",
+      "bytes": 15999
+    },
+    "xs_task3_projection.parquet": {
+      "sha256": "6332cf89096175ebbd5b98b41f36ba22875a62d7215652b8a04c35ea57bc7840",
+      "bytes": 20439
+    },
+    "xs_task3_sweep.parquet": {
+      "sha256": "6825f944ff2e103e0590f324d7cae76f68f8332460f825bc64aeaa6f81bc19ca",
+      "bytes": 18256
+    },
+    "eigenvalues.parquet": {
+      "sha256": "9a0b8282ee72735bb7267c22f4c1691ccad6163bffa185fe20ed5cdd3e84de19",
+      "bytes": 22387
+    },
+    "eigenvalues_panel.parquet": {
+      "sha256": "954a5a545ea7abc9be92797c2644fc5fea4257ca560cf626a7150a2e01f88ecb",
+      "bytes": 24219
+    },
+    "factor_returns.parquet": {
+      "sha256": "250944f25dbd8b918ea93252c360c720ec9578f6ef63f21c5b086bd468cdd395",
+      "bytes": 1425303
+    },
+    "loadings.parquet": {
+      "sha256": "c298ff5345ba7d3fbb0a1d0217741b1d7d4884102265eadf05a557d108393757",
+      "bytes": 60016
+    },
+    "spectrum.parquet": {
+      "sha256": "2b76ef7a7eb874a6b933b84192a751ca83a6a6f02bd9298d64dff59adbf0857c",
+      "bytes": 8825
     },
     "beta_history.parquet": {
       "sha256": "396ef452838788277d95eba85f0224f8882bbfaf35893f1bed00b434f95a9551",
@@ -75,10 +147,6 @@
       "sha256": "95237aaac3d6b43df8c68bd80ff2a0fc61993380ce5475977cc16e8f37290b33",
       "bytes": 27770
     },
-    "loadings.parquet": {
-      "sha256": "c298ff5345ba7d3fbb0a1d0217741b1d7d4884102265eadf05a557d108393757",
-      "bytes": 60016
-    },
     "loadings_se.parquet": {
       "sha256": "15b782a79e81ba470fee8637a94abf240afc2e66987e76c3a1787b5b5276c0ae",
       "bytes": 98759
@@ -90,10 +158,6 @@
     "descriptors.parquet": {
       "sha256": "f88055f0ee2733c75630c72a2a76c1d7b2462024fb6e42f6d7946b6b3ea5ff05",
       "bytes": 18190843
-    },
-    "factor_returns.parquet": {
-      "sha256": "250944f25dbd8b918ea93252c360c720ec9578f6ef63f21c5b086bd468cdd395",
-      "bytes": 1425303
     },
     "fmp_weights.parquet": {
       "sha256": "d709ab959afac123fa4174b106f0060c9a6c63ebcfff948d80cfead70ce38ed5",
@@ -112,8 +176,8 @@
       "bytes": 105879
     },
     "registry.json": {
-      "sha256": "3d4e0ccab68105ac3ca07a30220c2c8bf25a9dc934c34262a8fefdc088934834",
-      "bytes": 10120
+      "sha256": "abf635b5bf358a9fe56b5dccbb2c3ac27c192cfeca8e68ff24807d661a5add51",
+      "bytes": 12229
     },
     "seed_ew.parquet": {
       "sha256": "0c16d1773ce3b60cefd2e53dfe87c5c68ced9b3e9c4c3af47c0160de448cf120",

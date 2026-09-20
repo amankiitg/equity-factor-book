@@ -1024,3 +1024,19 @@ the size premium flips sign. It does not: both readings are negative and the
 mapped universe makes the discount four times deeper. The test written from the
 stored artifact caught the misreading before the commit, which is the check this
 project relies on rather than re-reading prose.
+
+## 2026-09-20: research deliverables carry a traceability test from E5 on
+
+Decision. Every research deliverable from E5 onward ships with a test that
+asserts each headline number in the document matches a stored value, as
+`tests/test_e4_memo.py` does for `docs/research/E4_covariance_memo.md`. The
+test parses the stored files, rounds the memo's numbers to the printed
+precision and fails when a number cannot be traced to an artifact.
+
+Reason. Prose is the one artifact in this project that no assertion has ever
+covered. Three of the four defects this sprint found were caught by a check on
+an artifact rather than by reading code, and the memo is the place where a
+wrong number would do the most damage because it is the document a reader
+quotes. The test also caught a misreading in this sprint's own ledger entry,
+where the size premium was described as flipping sign when both readings are
+negative: the check ran before the commit, which is the sequence worth keeping.

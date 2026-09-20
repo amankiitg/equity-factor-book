@@ -80,6 +80,38 @@ E3_ARTIFACTS = [
     "eval/xs_residual_covariance.parquet",
 ]
 
+E4_ARTIFACTS = [
+    "models/PCA-v1/loadings.parquet",
+    "models/PCA-v1/factor_returns.parquet",
+    "models/PCA-v1/eigenvalues.parquet",
+    "models/PCA-v1/eigenvalues_panel.parquet",
+    "models/PCA-v1c/loadings.parquet",
+    "models/PCA-v1c/factor_returns.parquet",
+    "models/PCA-v1c/eigenvalues.parquet",
+    "models/PCA-v1c/spectrum.parquet",
+    "models/registry.json",
+    "eval/e4_f41_pc1_correlations.parquet",
+    "eval/e4_f44_held_out.parquet",
+    "eval/xs_residual_spectrum.parquet",
+    "eval/xs_residual_loadings.parquet",
+    "eval/xs_task3_decomposition.parquet",
+    "eval/xs_task3_confound.parquet",
+    "eval/xs_task3_orthogonality.parquet",
+    "eval/xs_task3_sweep.parquet",
+    "eval/xs_task3_projection.parquet",
+    "eval/xs_survivor_measurement.parquet",
+    "eval/xs_survivor_excluded_names.parquet",
+    "eval/xs_survivor_universe_summary.parquet",
+    "eval/cov_horse_race.parquet",
+]
+
+# The covariance horse race is stored and versioned but is not rebuilt by
+# `rebuild_e4`: its rebalance grid was chosen interactively in Task 2 and is
+# not yet derived from an artifact, so rebuilding it would produce a second
+# race rather than reproduce the stored one. F4.3 is scored from the stored
+# artifact and the grid is the one open engineering item this sprint leaves.
+E4_RACE_ARTIFACT = "eval/cov_horse_race.parquet"
+
 MODEL_START = 2010
 REGISTRY_PATH = DATA_ROOT / "models" / "registry.json"
 
@@ -1532,11 +1564,65 @@ def build_pca_v1(
     return frames
 
 
+def rebuild_e4(
+    data_root: Path = DATA_ROOT,
+    results_path: Path | None = None,
+    full: bool = False,
+) -> dict[str, object]:
+    """Run the E4 build and version everything.
+
+    With `full` the E1, E2 and E3 legs run first, which is what `make rebuild`
+    does. Without it, as `make rebuild-e4` runs it, the earlier artifacts are
+    read from disk and only the E4 work is redone, which is the path the
+    sprint iterates on. Every E4 step writes its own artifacts, and the
+    criteria are re-evaluated from those artifacts rather than from anything
+    held in memory, so the results file can always be recomputed from disk.
+    """
+    from efb import evaluate, pca_eval, survivor, tercile
+
+    e3: dict[str, object] | None = None
+    if full:
+        e3 = rebuild_e3(data_root=data_root, results_path=None, full=True)
+    model = build_pca_v1(data_root=data_root, store=True)
+    covariance = pca_eval.run(str(data_root))
+    task3 = tercile.run(data_root)
+    task4 = survivor.run(data_root)
+    artifact_paths = [
+        data_root / rel
+        for rel in ARTIFACTS + E2_ARTIFACTS + E3_ARTIFACTS + E4_ARTIFACTS
+    ]
+    version_path = data_root / "VERSION.json"
+    old_hash = previous_data_hash(version_path)
+    payload = write_version(
+        artifact_paths,
+        version_path,
+        note=(
+            "Built by make rebuild (Sprint E4). E1, E2, E3 and E4 artifacts, "
+            "each with a content hash; the dashboard sidebar shows this version."
+        ),
+    )
+    if results_path is not None:
+        evaluate.main_e4(data_root=data_root)
+    return {
+        "n_steps": 12,
+        "full": full,
+        "e3": e3,
+        "pca_v1": model.get("diagnostics", {}),
+        "factors_above_covariance_edge": covariance["covariance_factors_above_edge"],
+        "task3_rows": int(len(task3["decomposition"])),
+        "task4_min_style_correlation": task4["min_style_correlation"],
+        "version": payload,
+        "previous_data_hash": old_hash,
+    }
+
+
 def main() -> None:
     if "--all" in sys.argv:
-        summary = rebuild_e3(
-            results_path=ROOT / "sprints" / "E3" / "RESULTS.json", full=True
+        summary = rebuild_e4(
+            results_path=ROOT / "sprints" / "E4" / "RESULTS.json", full=True
         )
+    elif "--e4" in sys.argv:
+        summary = rebuild_e4(results_path=ROOT / "sprints" / "E4" / "RESULTS.json")
     elif "--e3" in sys.argv:
         summary = rebuild_e3(results_path=ROOT / "sprints" / "E3" / "RESULTS.json")
     elif "--e2" in sys.argv:
