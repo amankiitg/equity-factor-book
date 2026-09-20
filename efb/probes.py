@@ -9,6 +9,7 @@ source modules; the parsing helpers are unit tested offline.
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -1149,10 +1150,406 @@ def run_all() -> list[ProbeReport]:
     return reports
 
 
+def eigenvalue_feasibility(
+    data_root: Path | None = None,
+    windows: tuple[int, ...] = (252, 504, 756),
+) -> pd.DataFrame:
+    """Task 0a: how many names are there, against how many days.
+
+    Marchenko-Pastur needs N and T stated before any factor count is claimed.
+    N is the number of names with a complete return history inside the window,
+    counted per calendar year, and T is the rolling window length the estimator
+    will use. The probe reports both the model universe (the sector-mapped
+    names the cross-section actually holds) and the wider panel, because the
+    residual PCA runs on the model universe while the total-return PCA can use
+    the panel.
+    """
+    inputs = load_panel(data_root)
+    returns = inputs["returns"]
+    mapped = inputs["mapped"]
+    assert isinstance(returns, pd.DataFrame)
+    assert isinstance(mapped, list)
+
+    model_start = pd.Timestamp("2011-01-03")
+    index = returns.index[returns.index >= model_start]
+    frames = {"model_universe": returns.loc[index, mapped], "panel": returns.loc[index]}
+
+    rows: list[dict[str, object]] = []
+    for label, frame in frames.items():
+        for year, block in frame.groupby(frame.index.year):
+            complete = int(block.notna().all(axis=0).sum())
+            present = block.notna().sum(axis=1)
+            rows.append(
+                {
+                    "universe": label,
+                    "year": int(year),
+                    "days": int(len(block)),
+                    "names_complete_all_year": complete,
+                    "names_median_present": float(present.median()),
+                    "ratio_n_over_t_504": complete / 504.0,
+                }
+            )
+    feasibility = pd.DataFrame(rows)
+
+    print("### E4 Task 0a: eigenvalue feasibility")
+    print("N is the name count with a complete return history inside the year;")
+    print("T is the rolling window the estimator will use.")
+    print(feasibility.round(4).to_string(index=False))
+    print()
+    for label, frame in frames.items():
+        present = frame.notna().sum(axis=1)
+        n_median = float(present.median())
+        n_min = float(present.min())
+        print(
+            f"{label}: days {len(frame)}, names present median {n_median:.0f}, "
+            f"minimum {n_min:.0f}"
+        )
+        for window in windows:
+            ratio = n_median / window
+            edge = (1.0 + np.sqrt(ratio)) ** 2
+            print(f"   T = {window:4d}  N/T = {ratio:6.3f}   MP edge = {edge:6.3f}")
+        print()
+    return feasibility
+
+
+_DELISTED_PROBE = ("CPWR", "EP", "MI", "POM", "ABK", "ABS", "ACAS", "ACE", "AGN", "AKS")
+
+_UA = {"User-Agent": "EquityFactorBook research contact@example.com"}
+
+
+@dataclass
+class SourceProbe:
+    """One delisted name's answers from the three candidate sources."""
+
+    ticker: str
+    security: str
+    removal_date: str
+    sec: dict[str, object]
+    wiki: dict[str, object]
+    yf: dict[str, object]
+
+
+def _fetch(url: str, timeout: float = 12.0) -> tuple[object, str]:
+    """GET a URL and return (status, body); status is the code or the error name."""
+    import urllib.request
+
+    request = urllib.request.Request(url, headers=_UA)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, response.read().decode("utf-8", errors="replace")
+    except Exception as exc:  # noqa: BLE001 - a probe records every failure mode
+        return type(exc).__name__, str(getattr(exc, "code", "")) or str(exc)[:60]
+
+
+def _sec_company(name: str, with_filings: bool = True) -> dict[str, object]:
+    """EDGAR company search: the issuer's own SIC code, CIK and 10-K dates.
+
+    The SIC is the filer's assigned code, so it belongs to the issuer rather
+    than to the current holder of a ticker. The filings give the dates on which
+    that issuer was on file, which is what makes a classification attachable to
+    a date rather than to a snapshot.
+    """
+    import re
+    import urllib.parse
+
+    query = urllib.parse.quote(name)
+    url = (
+        "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany"
+        f"&company={query}&type=10-K&dateb=&owner=include&count=10&output=atom"
+    )
+    status, body = _fetch(url)
+    if status != 200:
+        return {"status": str(status)}
+    sic = re.search(r"<assigned-sic>(.*?)</assigned-sic>", body)
+    description = re.search(r"<assigned-sic-desc>(.*?)</assigned-sic-desc>", body)
+    cik = re.search(r"CIK=(\d+)", body)
+    out: dict[str, object] = {
+        "status": "ok",
+        "sic": sic.group(1).strip() if sic else None,
+        "sic_desc": (
+            description.group(1).strip().replace("&amp;", "&") if description else None
+        ),
+        "cik": cik.group(1) if cik else None,
+    }
+    if with_filings and out["cik"]:
+        padded = str(out["cik"]).zfill(10)
+        code, payload = _fetch(f"https://data.sec.gov/submissions/CIK{padded}.json")
+        if code == 200:
+            try:
+                data = json.loads(str(payload))
+            except ValueError:
+                out["n_filings"] = None
+                return out
+            recent = data.get("filings", {}).get("recent", {})
+            forms = recent.get("form", [])
+            dates = recent.get("filingDate", [])
+            tens = [
+                date
+                for form, date in zip(forms, dates, strict=False)
+                if str(form).startswith("10-K")
+            ]
+            out["n_filings"] = len(dates)
+            out["first_filing"] = dates[-1] if dates else None
+            out["last_filing"] = dates[0] if dates else None
+            out["first_10k"] = tens[-1] if tens else None
+            out["last_10k"] = tens[0] if tens else None
+        else:
+            out["n_filings"] = None
+    return out
+
+
+def _wikipedia_summary(name: str, attempts: int = 3) -> dict[str, object]:
+    """Wikipedia REST summary: a one-line description of a delisted issuer."""
+    import time
+    import urllib.parse
+
+    title = urllib.parse.quote(name.replace(" ", "_"))
+    url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{title}"
+    for attempt in range(attempts):
+        status, body = _fetch(url)
+        if status == 200:
+            try:
+                payload = json.loads(body)
+            except ValueError:
+                return {"status": "unparsable"}
+            return {
+                "status": "ok",
+                "description": str(payload.get("description", ""))[:52],
+            }
+        if "429" not in str(status):
+            return {"status": str(status)}
+        time.sleep(2.0 * (attempt + 1))
+    return {"status": "rate_limited_429"}
+
+
+def _yfinance_identity(ticker: str) -> dict[str, object]:
+    """yfinance's name and sector for a ticker that no longer trades.
+
+    The name is requested as well as the sector, because for a reused symbol
+    the sector describes whoever holds the ticker today, which is the failure
+    this probe exists to expose.
+    """
+    try:
+        import yfinance
+    except ImportError:
+        return {"status": "no_yfinance"}
+    try:
+        info = yfinance.Ticker(ticker).info
+    except Exception as exc:  # noqa: BLE001
+        return {"status": type(exc).__name__}
+    return {
+        "status": "ok" if info else "empty",
+        "long_name": str(info.get("longName", ""))[:28],
+        "sector": info.get("sector"),
+        "quote_type": info.get("quoteType"),
+    }
+
+
+def sector_source_probe(
+    tickers: tuple[str, ...] = _DELISTED_PROBE,
+    data_root: Path | None = None,
+    offline: bool = False,
+) -> pd.DataFrame:
+    """Task 0b: is any point-in-time sector and constituent source reachable?
+
+    Three candidate sources, each asked for ten known delisted index members:
+    the changes table's own dated record and security names, the issuer's own
+    SIC code through EDGAR (with its filing dates), and the yfinance sector
+    field. A source closes the survivor restriction only if it dates the
+    classification and describes the issuer rather than the ticker.
+    """
+    root = ROOT / "data" if data_root is None else Path(data_root)
+    changes = pd.read_parquet(root / "processed" / "universe_changes.parquet")
+    rows: list[dict[str, object]] = []
+    for ticker in tickers:
+        matched = changes.loc[changes["removed_ticker"] == ticker]
+        name = str(matched["removed_security"].iloc[0]) if len(matched) else ""
+        date = str(matched["effective_date"].iloc[0].date()) if len(matched) else ""
+        rows.append({"ticker": ticker, "removed_security": name, "removal_date": date})
+    subject = pd.DataFrame(rows)
+
+    print("### E4 Task 0b: point-in-time sector and constituent sources")
+    print("source 1, the pinned changes table: dated membership and a name")
+    print(subject.to_string(index=False))
+    print()
+    print(f"network probes: {'offline, skipped' if offline else 'live'}")
+    results: list[SourceProbe] = []
+    for ticker, name, date in zip(
+        subject["ticker"],
+        subject["removed_security"],
+        subject["removal_date"],
+        strict=True,
+    ):
+        if offline:
+            sec: dict[str, object] = {"status": "skipped"}
+            wiki: dict[str, object] = {"status": "skipped"}
+            yf: dict[str, object] = {"status": "skipped"}
+        else:
+            sec = _sec_company(str(name))
+            wiki = _wikipedia_summary(str(name))
+            yf = _yfinance_identity(ticker)
+        results.append(
+            SourceProbe(
+                ticker=str(ticker),
+                security=str(name),
+                removal_date=str(date),
+                sec=sec,
+                wiki=wiki,
+                yf=yf,
+            )
+        )
+        print(f"  {ticker:5s} {str(name)[:30]:30s} removed {date}")
+        print(f"        SEC      {sec}")
+        print(f"        Wikipedia {wiki}")
+        print(f"        yfinance  {yf}")
+    print()
+    with_sic = [row for row in results if row.sec.get("sic")]
+    print(f"SEC SIC returned for {len(with_sic)} of {len(results)} names")
+    if with_sic:
+        print("sic  description                          first_10k   last_10k")
+        for row in with_sic:
+            sic = str(row.sec.get("sic"))
+            desc = str(row.sec.get("sic_desc"))[:34]
+            first = str(row.sec.get("first_10k"))
+            last = str(row.sec.get("last_10k"))
+            print(f"  {sic:4s} {desc:34s} {first:11s} {last}")
+    yf_sector = [row for row in results if row.yf.get("sector")]
+    print()
+    print(f"yfinance returned a sector for {len(yf_sector)} of {len(results)} names:")
+    for row in yf_sector:
+        print(
+            f"  {row.ticker:5s} {row.security[:26]:26s} -> "
+            f"{row.yf.get('long_name')} / {row.yf.get('sector')}"
+        )
+    print()
+    print("read this as follows: the changes table dates membership and names the")
+    print("issuer being removed. EDGAR returns the issuer's own SIC code and the")
+    print("dates it was on file, so a classification can be attached to an issuer")
+    print("and not to whoever holds the ticker today, but SIC is not GICS and the")
+    print("code is the filer's, not a sector assigned at a date. A yfinance sector")
+    print("describes the current holder of the symbol, which is why it is printed")
+    print("beside the long name: for a reused symbol it names a different company.")
+    return subject
+
+
+def momentum_factor_vol_by_tercile(data_root: Path | None = None) -> pd.DataFrame:
+    """Task 0c: is the momentum factor's own realized volatility low in the
+    months when the book's momentum exposure is high?
+
+    The terciles are the ones E3 stored in data/eval/xs_bias_by_exposure.parquet:
+    the momentum book's 141 rebalances sorted on its own momentum exposure into
+    three groups of 47. This probe recomputes the grouping, checks it against
+    the stored exposure means, and then measures the factor itself rather than
+    the book, which is the measurement that separates the two explanations in
+    Task 3.
+    """
+    root = ROOT / "data" if data_root is None else Path(data_root)
+    exposure = pd.read_parquet(root / "eval" / "xs_exposure_timeseries.parquet")
+    bias = pd.read_parquet(root / "eval" / "xs_bias.parquet")
+    stored = pd.read_parquet(root / "eval" / "xs_bias_by_exposure.parquet")
+    factors = pd.read_parquet(root / "models" / "XS-v1" / "factor_returns.parquet")
+
+    momentum_exposure = (
+        exposure.loc[
+            (exposure["book"] == "seed_mom_ls") & (exposure["factor"] == "momentum")
+        ]
+        .set_index("date")["exposure"]
+        .sort_index()
+    )
+    book_bias = bias.loc[bias["book"] == "seed_mom_ls"].set_index("date").sort_index()
+    factor_series = (
+        factors.loc[factors["factor"] == "momentum"].set_index("date")["f"].sort_index()
+    )
+
+    dates = book_bias.index.intersection(momentum_exposure.index)
+    ranked = momentum_exposure.reindex(dates).rank(method="first")
+    n = len(dates)
+    labels = pd.Series("low", index=dates)
+    labels[ranked > n / 3.0] = "mid"
+    labels[ranked > 2.0 * n / 3.0] = "high"
+
+    rows: list[dict[str, object]] = []
+    for bucket in ("low", "mid", "high"):
+        members = dates[labels == bucket]
+        forward = []
+        trailing = []
+        for date in members:
+            position = factor_series.index.get_indexer([date])[0]
+            if position < 0:
+                continue
+            fwd = factor_series.iloc[position + 1 : position + 22]
+            back = factor_series.iloc[max(0, position - 20) : position + 1]
+            if len(fwd) > 1:
+                forward.append(float(np.std(fwd, ddof=1) * np.sqrt(252)))
+            if len(back) > 1:
+                trailing.append(float(np.std(back, ddof=1) * np.sqrt(252)))
+        stored_row = stored.loc[
+            (stored["book"] == "seed_mom_ls") & (stored["bucket"] == bucket)
+        ].iloc[0]
+        rows.append(
+            {
+                "bucket": bucket,
+                "n_months": len(members),
+                "exposure_mean": float(momentum_exposure.reindex(members).mean()),
+                "stored_exposure_mean": float(stored_row["exposure_mean"]),
+                "stored_predicted_vol": float(stored_row["predicted_vol_ann_mean"]),
+                "stored_realized_vol": float(stored_row["realized_vol_ann_mean"]),
+                "stored_bias_mean": float(stored_row["bias_mean"]),
+                "factor_vol_forward_21d": float(np.mean(forward)),
+                "factor_vol_trailing_21d": float(np.mean(trailing)),
+                "book_realized_vol_mean": (
+                    float(book_bias.reindex(members)["realized_vol_ann"].mean())
+                    if "realized_vol_ann" in book_bias.columns
+                    else float("nan")
+                ),
+            }
+        )
+    table = pd.DataFrame(rows)
+    print("### E4 Task 0c: the momentum factor's own volatility by exposure tercile")
+    print("buckets are the book's own momentum exposure, 47 rebalances each")
+    print(table.round(6).to_string(index=False))
+    print()
+    print("swings across the three buckets")
+    for column in (
+        "stored_predicted_vol",
+        "stored_realized_vol",
+        "factor_vol_forward_21d",
+        "factor_vol_trailing_21d",
+        "stored_bias_mean",
+    ):
+        series = table[column]
+        print(
+            f"  {column:24s} min {series.min():.6f} max {series.max():.6f} "
+            f"max-min {series.max() - series.min():.6f} "
+            f"low-to-high {series.iloc[2] - series.iloc[0]:+.6f}"
+        )
+    print()
+    print("the question the probe answers: if factor_vol_forward_21d is lower in")
+    print("the high-exposure bucket, the factor itself was quiet in those months")
+    print("and the model's error is a conditional factor variance rather than a")
+    print("smoothing half-life.")
+    return table
+
+
+def run_e4_probes(offline: bool = False) -> None:
+    """Task 0 of Sprint E4: the three probes, in order."""
+    eigenvalue_feasibility()
+    print()
+    sector_source_probe(offline=offline)
+    print()
+    momentum_factor_vol_by_tercile()
+
+
 def main() -> None:
     import sys
 
     args = sys.argv[1:]
+    if "--e4-offline" in args:
+        run_e4_probes(offline=True)
+        return
+    if "--e4" in args:
+        run_e4_probes()
+        return
     if "--e3-two-ways" in args:
         market_factor_two_ways()
         return
