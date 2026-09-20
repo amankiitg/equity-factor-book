@@ -110,7 +110,7 @@ belong in the order.
     an artifact.
   - Files: `docs/research/E4_covariance_memo.md`, `docs/open_items.md`
 
-- [ ] Task 8: the walkthrough and its render (P0)
+- [x] Task 8: the walkthrough and its render (P0)
   - Acceptance: `notebooks/E4_walkthrough.ipynb` with cell 1 asserting the data
     hash against the registry, every figure read from an artifact and asserted
     against its stored value, the forbidden-literal scan over every code cell,
@@ -123,7 +123,7 @@ belong in the order.
   - Files: `notebooks/E4_walkthrough.ipynb`, `notebooks/E4_walkthrough.html`,
     `dashboard/tabs/methodology.py`, `tests/test_e4_walkthrough_notebook.py`
 
-- [ ] Task 9: engineering, ledger, open items, commit and push (P0)
+- [x] Task 9: engineering, ledger, open items, commit and push (P0)
   - Acceptance: `make rebuild-e4` and `make rebuild` both run E1 through E4
     end to end; `VERSION.json` and the registry share one artifacts hash; the
     hygiene ledger carries an entry with old value, new value, date and reason
