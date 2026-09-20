@@ -83,15 +83,126 @@ def _as_of(frame: pd.DataFrame, date: pd.Timestamp) -> pd.Timestamp | None:
     return None if len(usable) == 0 else pd.Timestamp(usable[-1])
 
 
-def _design_for(date: pd.Timestamp, names: list[str], data_root: Path) -> np.ndarray:
-    """XS-v1's design matrix for one date, read from the stored weights."""
+def _fmp_design(date: pd.Timestamp, names: list[str], data_root: Path) -> np.ndarray:
+    """The design read from `fmp_weights`, which are portfolio weights.
+
+    Kept for the diagnosis rather than for the race: FMP weights are portfolio
+    weights summing to roughly one per factor, so `X S X'` sits orders of
+    magnitude below the specific diagonal and the assembled matrix is close to
+    singular. That is a specification mismatch, not a numerical accident.
+    """
     weights = pd.read_parquet(data_root / "models" / "XS-v1" / "fmp_weights.parquet")
     stamp = _as_of(weights, date)
     weights = weights.loc[pd.to_datetime(weights["date"]) == stamp]
     wide = weights.pivot_table(index="ticker", columns="factor", values="weight")
     factors = list(fx.ESTIMATED_NAMES)
     wide = wide.reindex(index=names, columns=factors)
-    return wide.to_numpy(dtype=float)
+    return np.nan_to_num(wide.to_numpy(dtype=float), nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def _descriptor_design(
+    date: pd.Timestamp, names: list[str], data_root: Path
+) -> np.ndarray:
+    """The standardized descriptor matrix plus the sector dummies.
+
+    This is the design the model itself uses and the one that belongs in
+    `Sigma = X F X' + D`: the six non-market styles standardized and
+    orthogonalized, the market column as the constant the fit uses, and one
+    dummy per estimated sector with the reference sector dropped. Column order
+    is `fx.ESTIMATED_NAMES`, which is the order the factor covariance is
+    stored in.
+    """
+    descriptors = pd.read_parquet(
+        data_root / "models" / "XS-v1" / "descriptors.parquet"
+    )
+    stamp = _as_of(descriptors, date)
+    day = descriptors.loc[pd.to_datetime(descriptors["date"]) == stamp]
+    z = day.pivot_table(index="ticker", columns="descriptor", values="value_z_orth")
+    styles = [name for name in fx.STYLE_NAMES if name != "market"]
+    z = z.reindex(index=names, columns=styles)
+    design = np.column_stack(
+        [np.ones(len(names)), np.nan_to_num(z.to_numpy(dtype=float), nan=0.0)]
+    )
+    sectors = pd.read_parquet(data_root / "processed" / "sectors.parquet")
+    sector_column = [c for c in sectors.columns if c != "ticker"][0]
+    codes = sectors.set_index("ticker")[sector_column]
+    aligned = codes.reindex(names).astype(str)
+    # `SECTOR_FACTORS_ESTIMATED` names sectors by code, while the sector file may
+    # hold either the code or the sector name, so both are accepted here
+    by_code = {str(code): name for name, code in fx.SECTOR_CODES.items()}
+    for factor in fx.SECTOR_FACTORS_ESTIMATED:
+        code = factor.replace("sector_", "")
+        sector_name = str(by_code.get(code, code))
+        column = ((aligned == code) | (aligned == sector_name)).to_numpy(dtype=float)
+        design = np.column_stack([design, column])
+    return design
+
+
+def design_diagnosis(
+    data_root: Path, date: pd.Timestamp | None = None, n_names: int = 60
+) -> dict[str, object]:
+    """Both candidate designs' column norms and the condition each produces."""
+    returns = pd.read_parquet(data_root / "processed" / "returns.parquet")
+    clean = hygiene.clean_returns(returns)
+    wide = clean.unstack("ticker")
+    sectors = pd.read_parquet(data_root / "processed" / "sectors.parquet")
+    wide = wide[[c for c in wide.columns if c in set(sectors["ticker"].astype(str))]]
+    if date is None:
+        date = race_grid(data_root)[100]
+    complete = [c for c in wide.columns if wide.loc[:date, c].notna().all()]
+    names = complete[:n_names]
+    ordered = list(fx.ESTIMATED_NAMES)
+    factor_returns = pd.read_parquet(
+        data_root / "models" / "XS-v1" / "factor_returns.parquet"
+    )
+    history = factor_returns.loc[
+        (pd.to_datetime(factor_returns["date"]) < date)
+        & (factor_returns["factor"].isin(ordered))
+    ].pivot_table(index="date", columns="factor", values="f")
+    covariance = fx.ewma_factor_cov(history.loc[:, ordered], half_life=fx.F_HALF_LIFE)
+    latest = (
+        covariance.index.get_level_values(0).max()
+        if isinstance(covariance.index, pd.MultiIndex)
+        else covariance.index.max()
+    )
+    block = (
+        covariance.xs(latest, level=0)
+        if isinstance(covariance.index, pd.MultiIndex)
+        else covariance.loc[latest]
+    )
+    block = pd.DataFrame(block).reindex(index=ordered, columns=ordered)
+    specific = _specific_for(date, names, data_root)[0]
+    out: dict[str, object] = {"date": str(date), "n_names": len(names)}
+    for label, design in (
+        ("fmp_weights", _fmp_design(date, names, data_root)),
+        ("descriptors", _descriptor_design(date, names, data_root)),
+    ):
+        matrix = cov.factor_cov(design, block.to_numpy(dtype=float), specific)
+        norms = np.sqrt((design**2).sum(axis=0))
+        factor_part = float(
+            np.median(np.diag(design @ block.to_numpy(dtype=float) @ design.T))
+        )
+        out[label] = {
+            "column_norms": [float(value) for value in norms],
+            "max_column_norm": float(norms.max()),
+            "median_factor_variance": factor_part,
+            "median_specific_variance": float(np.median(specific)),
+            "ratio": factor_part / float(np.median(specific)),
+            "condition_number": condition_or_none(matrix),
+        }
+    return out
+
+
+def condition_or_none(matrix: np.ndarray) -> float | None:
+    try:
+        return cov.condition_number(matrix)
+    except np.linalg.LinAlgError:
+        return None
+
+
+def _design_for(date: pd.Timestamp, names: list[str], data_root: Path) -> np.ndarray:
+    """The design used by the race: the descriptor matrix, not the FMP weights."""
+    return _descriptor_design(date, names, data_root)
 
 
 def _specific_for(
@@ -107,7 +218,7 @@ def _specific_for(
 
 def xs_supplier(
     date: pd.Timestamp, names: list[str], data_root: Path
-) -> dict[str, object]:
+) -> dict[str, object] | None:
     """What the race needs for the XS-v1 row: design, factor covariance, diagonal.
 
     XS-v1 is the one estimator that cannot be built from the window alone, and
@@ -190,7 +301,8 @@ def run(data_root: Path = ROOT / "data", store: bool = True) -> dict[str, object
     print(f"rebalance dates {len(grid)} from {grid[0].date()} to {grid[-1].date()}")
     gaps = pd.Series(grid).diff().dt.days.dropna()
     print(
-        f"median gap {gaps.median():.0f} days, min {gaps.min():.0f}, max {gaps.max():.0f}"
+        f"median gap {gaps.median():.0f} days, min {gaps.min():.0f}, "
+        f"max {gaps.max():.0f}"
     )
 
     race = cov.horse_race(
@@ -217,6 +329,7 @@ def run(data_root: Path = ROOT / "data", store: bool = True) -> dict[str, object
     stored_pivot = stored.pivot(
         index="date", columns="estimator", values="realized_vol"
     )
+    stored_medians = stored_pivot.median()
     derived_path = root / "eval" / "cov_horse_race_derived_grid.parquet"
     race.to_parquet(derived_path, index=False)
     comparison = pd.DataFrame(

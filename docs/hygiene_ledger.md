@@ -1071,3 +1071,29 @@ evidence and needs a derivation before it is rebuilt, and an untracked,
 underived artifact is one run away from being unrecoverable. The mitigation
 this project already has for the general case is the content hash in
 `data/VERSION.json`, which detects the change but cannot restore the file.
+
+## 2026-09-20: evidence artifacts get a tracked snapshot (E5 R1)
+
+Decision. Every artifact a stored criterion was scored on has a tracked,
+compressed snapshot under `evidence/`, written by `efb.evidence` and verified
+by `make verify-evidence`, which decompresses each snapshot, hashes it, and
+compares the hash against both `evidence/MANIFEST.json` and the hash
+`data/VERSION.json` records for the same artifact. The snapshot covers every
+parquet under `data/eval` and `data/models/<version>/`, plus the registry and
+the manifest itself.
+
+Cost. 47 artifacts, 13.81 MB of parquet, 12.17 MB committed as gzip. Five files
+are over the 4 MB cap and are listed as skipped rather than committed
+(`TS-v1/beta_history`, `TS-v1/residuals`, `XS-v1/descriptors`,
+`XS-v1/fmp_weights`, `XS-v1/specific_returns`, 68.7 MB together). Every skipped
+file is a build product of `make rebuild-e3`, which is the distinction that
+matters: the artifact E5 destroyed was not rebuildable from any derivation, and
+these five are.
+
+Reason. `data/**/*.parquet` is gitignored, so every computed artifact had the
+same exposure, and E5 Task 0a demonstrated it by overwriting the E4 covariance
+race, which carried the XS-v1 row that F4.3 was scored on. A content hash in
+`VERSION.json` detects that a file changed and cannot bring it back. The project
+has found eight defects by reading outputs; this is the first that destroyed
+evidence, and the lesson is that a criterion's inputs have to be as durable as
+its stored numbers.
