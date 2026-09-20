@@ -1,0 +1,40 @@
+{
+  "n_dates": 175,
+  "first_date": "2012-01-31",
+  "last_date": "2026-07-31",
+  "median_gap_days": 31.0,
+  "worst_ratio": 0.5715118239875542,
+  "derived_verdict": "pass",
+  "stored_verdict": "pass",
+  "moved": false,
+  "medians": {
+    "clip": 0.0860420522152373,
+    "constant_correlation": 0.16025446251624748,
+    "ewma": 0.29849385834412884,
+    "ledoit_wolf": 0.0941019876478635,
+    "pca_v1": 0.0866739833512632,
+    "pca_v1c": 0.08731759279333594,
+    "sample": 0.2804044567234314,
+    "ts_v1": 0.15094789273544665
+  },
+  "windows_won": {
+    "clip": 39,
+    "constant_correlation": 0,
+    "ewma": 0,
+    "ledoit_wolf": 39,
+    "pca_v1": 48,
+    "pca_v1c": 46,
+    "sample": 0,
+    "ts_v1": 3
+  },
+  "median_ratio_to_stored": {
+    "clip": 1.0,
+    "constant_correlation": 1.0,
+    "ewma": 1.0,
+    "ledoit_wolf": 1.0,
+    "pca_v1": 1.0,
+    "pca_v1c": 1.0,
+    "sample": 1.0,
+    "ts_v1": 1.0
+  }
+}

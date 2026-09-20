@@ -1040,3 +1040,34 @@ wrong number would do the most damage because it is the document a reader
 quotes. The test also caught a misreading in this sprint's own ledger entry,
 where the size premium was described as flipping sign when both readings are
 negative: the check ran before the commit, which is the sequence worth keeping.
+
+## 2026-09-20: the E4 covariance race artifact was overwritten and is not tracked
+
+Decision. `data/eval/cov_horse_race.parquet` is now a build input and is named
+in `E4_ARTIFACTS`, and every artifact this project treats as evidence must be
+reproducible from a derivation rather than from an interactive run. Until the
+XS-v1 row can be reconstructed, the derived race is stored beside the published
+one as `data/eval/cov_horse_race_derived_grid.parquet` and the comparison is
+stored in `data/eval/e5_race_grid.json`.
+
+Old value. The published race: 175 windows, 9 estimators, 1575 rows, XS-v1
+median 0.088007 winning 59 of 175 windows, which is the row F4.3 was scored on
+and the row the E4 memo's optimizer recommendation rests on.
+
+New value. The derived race: the same 175 dates and the same medians for the
+eight estimators that need only the window (clip 0.086042, constant_correlation
+0.160254, ewma 0.298494, ledoit_wolf 0.094102, pca_v1 0.086674, pca_v1c
+0.087318, sample 0.280404, ts_v1 0.150948, every ratio exactly 1.000000), and
+no XS-v1 row, because every reconstructed window fails in `condition_number`
+with `Eigenvalues did not converge` and `efb/cov.py` catches that error by
+design.
+
+Reason. E5 Task 0a was told to derive the grid from an artifact and rebuild the
+race from it. The derivation succeeded and is exact, and the rebuild destroyed
+the evidence it was meant to reproduce, because the artifact is gitignored
+(`data/**/*.parquet`) and is not reproducible from any derivation yet. Two
+lessons, both recorded: an artifact that a stored criterion was scored on is
+evidence and needs a derivation before it is rebuilt, and an untracked,
+underived artifact is one run away from being unrecoverable. The mitigation
+this project already has for the general case is the content hash in
+`data/VERSION.json`, which detects the change but cannot restore the file.

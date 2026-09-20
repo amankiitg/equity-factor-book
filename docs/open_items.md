@@ -185,3 +185,21 @@ test of the `tests/test_e4_memo.py` kind, asserting that every headline number
 in the deliverable matches a stored value. Prose and measurement cannot be
 allowed to drift apart, and three of this sprint's defects were found by
 exactly that kind of check rather than by reading code.
+
+## 2026-09-20: the E4 covariance race (closed on the grid, open on the row)
+
+The grid is closed. E5 Task 0a derived the 175 rebalance dates from the
+descriptor and specific-variance artifacts and reproduced the published
+medians for all eight window-only estimators exactly, so the race no longer
+depends on an interactive choice.
+
+Still open, and new in E5: the XS-v1 row. The published row was produced by a
+live per-date model call and the artifact was not tracked in git, so it cannot
+be recovered after this sprint's first rebuild overwrote it. Reconstructing it
+from `fmp_weights` and the stored factor returns raises `LinAlgError:
+Eigenvalues did not converge` inside `condition_number` on all 175 windows,
+which `efb/cov.py` catches and drops, and the cause is the scale of
+`fmp_weights` relative to the diagonal rather than the covariance. The next
+session should fix the design's scale first, then rebuild
+`data/eval/cov_horse_race.parquet` with nine estimators and compare the XS-v1
+median against the 0.088007 that F4.3 stores.
