@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypedDict
@@ -2272,7 +2273,7 @@ def prior_verdict_changes(data_root: Path = ROOT / "data") -> dict[str, Any]:
     compared with its own RESULTS.json.
     """
     out: dict[str, Any] = {}
-    plans = {
+    plans: dict[str, tuple[Callable[..., Any], Callable[..., Any]]] = {
         "E1": (compute_from_artifacts, evaluate_criteria),
         "E2": (compute_e2_from_artifacts, evaluate_e2_criteria),
         "E3": (compute_e3_from_artifacts, evaluate_e3_criteria),

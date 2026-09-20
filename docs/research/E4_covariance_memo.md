@@ -134,7 +134,11 @@ estimator's (ratio 1.000000 against clip's 0.327858), which is the estimation-er
 near one: with 494 names and 504 days, an optimizer given the sample covariance
 buys the noise directions. EWMA is worse than the sample covariance, the
 clearest sign that a covariance estimator has to be structured rather than
-merely down-weighted. TS-v1 is the weakest of the factor models, at 0.150948
+merely down-weighted, and the reason is arithmetic rather than tuning: a
+half-life of 63 days implies an effective sample size of 181.78 days against a
+median 466 names on those windows, so the EWMA matrix is estimated from 39.0
+percent of the observations its dimension requires and is rank deficient by
+construction (notebook section 8). TS-v1 is the weakest of the factor models, at 0.150948
 with three windows won, which is consistent with a six-factor model fitted to a
 short window.
 

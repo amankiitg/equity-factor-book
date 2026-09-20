@@ -56,9 +56,25 @@ LINKS = [
         "Research deliverable: Factor Exposure and Risk Report",
         "docs/research/E3_risk_report.md",
     ),
+    ("Sprint E4 PRD", "sprints/E4/PRD.md"),
+    ("Sprint E4 tasks", "sprints/E4/TASKS.md"),
+    (
+        "Sprint E4 probes (eigenvalue feasibility, sectors, momentum)",
+        "sprints/E4/PROBES.md",
+    ),
+    ("Sprint E4 results (F criteria)", "sprints/E4/RESULTS.json"),
+    (
+        "Research deliverable: Covariance Estimator Comparison and Residual "
+        "Factor Audit",
+        "docs/research/E4_covariance_memo.md",
+    ),
     ("Walkthrough notebook", "notebooks/E1_walkthrough.html"),
     ("Walkthrough notebook E2", "notebooks/E2_walkthrough.html"),
     ("Walkthrough notebook E3 (XS-v1)", "notebooks/E3_walkthrough.html"),
+    (
+        "Walkthrough notebook E4 (PCA and the covariance lab)",
+        "notebooks/E4_walkthrough.html",
+    ),
 ]
 
 
