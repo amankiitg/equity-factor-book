@@ -91,3 +91,90 @@ def write_registry(path: Path, entry: dict[str, Any]) -> dict[str, Any]:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n")
     return payload
+
+
+# Registry v1 (Sprint E4, Task 5). The schema is validated rather than assumed,
+# and the champion flag is read through one function so no tab or report can
+# invent its own answer. The champion rule itself is never edited here.
+
+SCHEMA_VERSION = 1
+
+REQUIRED_KEYS = (
+    "version",
+    "family",
+    "parameters",
+    "universe_hash",
+    "data_hash",
+    "built_at",
+    "champion",
+    "eligible_for_champion",
+)
+
+FAMILIES = ("timeseries", "fundamental", "statistical", "blend")
+
+
+def load(path: Path) -> dict[str, Any]:
+    return json.loads(Path(path).read_text())
+
+
+def versions(payload: dict[str, Any]) -> list[str]:
+    """Every registered version, in registration order."""
+    return list(payload.get("models", {}))
+
+
+def validate(payload: dict[str, Any]) -> list[str]:
+    """Schema check. Returns the problems; an empty list means the registry is valid."""
+    problems: list[str] = []
+    for key in ("note", "champion_rule", "family_notes", "models"):
+        if key not in payload:
+            problems.append(f"missing top-level key {key}")
+    models = payload.get("models", {})
+    if not models:
+        problems.append("no models registered")
+    for name, entry in models.items():
+        for key in REQUIRED_KEYS:
+            if key not in entry:
+                problems.append(f"{name}: missing {key}")
+        if entry.get("family") not in FAMILIES:
+            problems.append(
+                f"{name}: family {entry.get('family')!r} is not one of {FAMILIES}"
+            )
+        if entry.get("version") != name:
+            problems.append(
+                f"{name}: version field {entry.get('version')!r} does not match its key"
+            )
+        if not isinstance(entry.get("champion"), bool):
+            problems.append(f"{name}: champion must be a boolean")
+        if not isinstance(entry.get("eligible_for_champion"), bool):
+            problems.append(f"{name}: eligible_for_champion must be a boolean")
+        if entry.get("champion") and not entry.get("eligible_for_champion"):
+            problems.append(f"{name}: an ineligible model cannot be champion")
+    champions = [name for name, entry in models.items() if entry.get("champion")]
+    if len(champions) > 1:
+        problems.append(f"more than one champion declared: {champions}")
+    return problems
+
+
+def champion(payload: dict[str, Any]) -> str | None:
+    """The declared champion, or None. No champion is declared in E4."""
+    models = payload.get("models", {})
+    for name, entry in models.items():
+        if entry.get("champion"):
+            return name
+    return None
+
+
+def eligible(payload: dict[str, Any]) -> list[str]:
+    return [
+        name
+        for name, entry in payload.get("models", {}).items()
+        if entry.get("eligible_for_champion")
+    ]
+
+
+def family_of(payload: dict[str, Any], version: str) -> str:
+    return str(payload.get("models", {}).get(version, {}).get("family", ""))
+
+
+def parameters_of(payload: dict[str, Any], version: str) -> dict[str, Any]:
+    return dict(payload.get("models", {}).get(version, {}).get("parameters", {}))

@@ -869,3 +869,125 @@ onto another one in every window is exactly the failure the comparison is
 built to catch. The ledger records it because a reader of the E4 memo has to
 know that the Ledoit-Wolf comparisons in the first draft of the table were the
 target's numbers wearing the estimator's name.
+
+## 2026-09-20: realized volatility has two definitions and only one is authoritative
+
+Decision. The F3.6 realized volatility, the standard deviation of the book's own
+daily return series over the forward horizon times `sqrt(252)`, is the only
+realized volatility any EFB table may quote. The covariance form,
+`sqrt(w' S w)` on the names with complete forward data, survives as a labelled
+diagnostic column and is never presented as the bias statistic's denominator.
+
+Old value. The Task 3 diagnostics computed realized volatility as
+`sqrt(252) * sqrt(w' S w)` on the names complete over the forward window and
+reported 0.064068 for the momentum book in the high exposure tercile, against
+the stored 0.027775 for the same months.
+
+New value. Every measurement that talks about realized volatility reads
+`realized_vol_ann` from `data/eval/xs_bias.parquet`, which is the F3.6
+definition: 0.027775 in the high tercile, 0.030110 in the middle and 0.049093
+in the low. The covariance form is stored beside it as
+`book_realized_vol_covariance_form`, and a test asserts the two disagree in
+level so a reader cannot silently swap them.
+
+Reason. Both numbers are arithmetically correct and they answer different
+questions. The stored one measures the dispersion of the book's return series,
+which is what a bias statistic needs and what E2 and E3 have used since F2.4.
+The covariance form measures one instant of the book's risk against a
+particular covariance estimate. Publishing the second where the first belongs
+would have moved the momentum book's high tercile bias from 0.52 to 1.2 and
+turned a failing criterion into a passing one, with no error anywhere in the
+arithmetic. This is the sixth defect this project has found by reading an output
+rather than the code behind it, and the reason line is the same as the
+Ledoit-Wolf entry: the table was well formed and every number in it was
+plausible.
+
+## 2026-09-20: F4.1 was written for an estimator this sprint did not specify
+
+Decision. F4.1 is recorded as a fail at 0.7970 with its mechanism, the
+correlation PCA is not changed to make it pass, and a covariance PCA is
+registered separately as PCA-v1c because every other estimator in the lab works
+on a covariance. The full-sample number 0.9450 is stored beside the fail.
+
+Old value. The pre-registered criterion reads "First principal component vs the
+market factor: correlation above 0.95", written before the standardization
+choice existed.
+
+New value. PCA-v1 standardizes each name to unit variance, so its first
+principal component is the equal-weight common factor: 0.9891 against the
+equal-weight mean return and 0.7970 against the cap-weighted market factor over
+the 504-day window, and 0.9450 against the market over the full 4192-day
+sample. PCA-v1c, on the covariance of raw returns, puts its PC1 at 0.9306
+against the market and 0.9433 against the equal-weight mean, and its factor
+count of 16 is above the F4.2 band because it is a different object with a
+different edge; F4.2 governs PCA-v1 and its count of 13.
+
+Reason. A threshold that assumes a first principal component tracking the
+cap-weighted market is a threshold for a covariance PCA, and this sprint
+specified a correlation PCA in its own PRD. Recording the fail is the point of
+pre-registering it: the criterion did its job by catching that the specification
+and the threshold were written by different people at different times. The
+alternative, quietly switching to a covariance PCA and reporting a pass, would
+have hidden a real difference between two estimators that the horse race now
+separates.
+
+## 2026-09-20: the horse race swallowed an unknown estimator and produced no rows
+
+Decision. `efb/cov.py` catches only `numpy.linalg.LinAlgError` when an
+estimator fails on a window, so a configuration error surfaces instead of
+silently removing a row, and `parameter_count` knows every name in
+`ESTIMATORS`. A test asserts that every name in the dispatch table has a
+parameter count.
+
+Old value. `except (np.linalg.LinAlgError, ValueError): continue`. PCA-v1c was
+added to the estimator tuple and to the dispatch without a parameter count, so
+it raised `ValueError: unknown estimator pca_v1c` on every one of the 175
+windows and the horse race printed a well formed eight row table with no
+indication that a ninth estimator had been requested.
+
+New value. The nine estimator race prints nine rows: clip 0.086042, pca_v1
+0.086674, pca_v1c 0.087318, xs_v1 0.088007, ledoit_wolf 0.094102, ts_v1
+0.150948, constant_correlation 0.160254, sample 0.280404, ewma 0.298494, in
+medians over 175 windows.
+
+Reason. The table was well formed and every number in it was plausible, which is
+the same reason line as the Ledoit-Wolf entry and the same failure mode: a bare
+except around a dispatch table means any future estimator added with a typo
+produces no rows in silence. The two defects are recorded together because they
+are one habit, an output that looks finished being trusted without a check that
+every part asked for is present.
+
+## 2026-09-20: the survivor restriction was named but never applied
+
+Decision. `efb/survivor.py`'s `style_only` takes the universe as an argument and
+restricts both the cross-sectional standardization and the daily cross-section
+to it, and `run` refuses to compare two universes whose mean cross-section size
+is identical. The measured summary carries each universe's mean names per date.
+
+Old value. The first run printed a table in which every style correlated exactly
+1.000000, both premia agreed to six decimals, both t statistics agreed to six
+decimals, and both R squared readings were 0.133530. The mean names per date
+were 825 and 502 by construction, and the fit never saw the difference: the
+label `mapped_502` was passed to a function that had no universe parameter, so
+the 502 name restriction was computed in `restricted_names` and then used
+nowhere.
+
+New value. The two universes now differ as they should. Size correlates 0.577780
+between them, liquidity 0.625560, residual volatility 0.893133, and the stable
+four read market 0.997009, beta 0.988961, momentum 0.982820, reversal 0.980173.
+The size premium deepens: -0.000032 on the panel against -0.000173 on the
+mapped names, with a t statistic of -0.073681 against -0.577971. Mean
+cross-sectional R squared rises from 0.133530 to 0.142526 when the excluded
+names are dropped, and mean specific variance falls from 2.9172148211e-04 to
+2.2854110873e-04. Mean names per date are 569.2 and 467.9, below the panel's 825
+and the mapped 502 because the descriptor history is not complete for every
+name.
+
+Reason. The table was well formed and every number in it was plausible, which is
+the same reason line as the Ledoit-Wolf and swallowed-exception entries, and the
+third instance of the same habit: an output that looks finished is trusted
+without a check that the two things it claims to compare are actually two
+things. The identical correlations were the only evidence, and they were
+identical to a degree no two different universes can produce. Every measurement
+in this sprint now stores the sample size it was computed on alongside the
+result.

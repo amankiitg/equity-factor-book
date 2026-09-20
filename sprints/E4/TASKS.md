@@ -16,7 +16,7 @@ belong in the order.
     the predicted-vol swing is 0.003656 max minus min, not 0.0055, and the
     quiet-factor explanation is refuted.
 
-- [ ] Task 1: PCA and the registration of PCA-v1 (P0)
+- [x] Task 1: PCA and the registration of PCA-v1 (P0)
   - Acceptance: `efb/models/statistical.py` with standardization to the
     correlation matrix, SVD eigendecomposition, the k-factor covariance, and
     three factor counts (scree, MP edge from the window's own N and T,
@@ -33,7 +33,7 @@ belong in the order.
   - Files: `efb/models/statistical.py`, `efb/build.py`, `efb/registry.py`,
     `data/models/PCA-v1/`, `tests/test_statistical.py`
 
-- [ ] Task 2: the covariance laboratory and the out-of-sample test (P0)
+- [x] Task 2: the covariance laboratory and the out-of-sample test (P0)
   - Acceptance: `efb/cov.py` with sample, EWMA, Ledoit-Wolf linear shrinkage
     with the intensity estimated from the data, constant correlation,
     eigenvalue clipping, and the three factor estimators TS-v1, XS-v1 and
@@ -51,7 +51,7 @@ belong in the order.
   - STOP CONDITION 2: if the sample covariance wins the out-of-sample
     minimum-variance test, that is an estimation bug, print the table and stop.
 
-- [ ] Task 3: where the momentum book's miss lives, four measurements (P0)
+- [x] Task 3: where the momentum book's miss lives, four measurements (P0)
   - Acceptance: 3a the predicted variance decomposition by source within each
     tercile, momentum contribution, every other factor and idio, with the
     implied momentum share tested against the 5 percent estimate; 3b the
@@ -66,7 +66,7 @@ belong in the order.
   - Files: `efb/cov.py`, `data/eval/xs_momentum_tercile_decomposition.parquet`,
     `data/eval/xs_halflife_sweep.parquet`, `tests/test_tercile_diagnostics.py`
 
-- [ ] Task 4: the survivor restriction as a measurement (P0)
+- [x] Task 4: the survivor restriction as a measurement (P0)
   - Acceptance: 4a the same-period style-only design, the full 825-name panel
     against the 502 sector-mapped names over identical dates, comparing style
     factor returns, Fama-MacBeth premia, mean cross-sectional R squared and
@@ -78,7 +78,7 @@ belong in the order.
     `data/eval/xs_survivor_measurement.parquet`,
     `tests/test_survivor_measurement.py`
 
-- [ ] Task 5: registry v1, the dashboard version selector and D3 (P1)
+- [x] Task 5: registry v1, the dashboard version selector and D3 (P1)
   - Acceptance: `efb/registry.py` v1 with a schema carrying the champion flag,
     the champion rule untouched and one entry per version; a selector in
     `st.session_state` wired into D0 through D3 so every tab renders under any

@@ -20,10 +20,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from dashboard import version as version_module  # noqa: E402
 from dashboard.tabs import (  # noqa: E402
     d00_data,
     d01_exposures,
     d02_factor_risk,
+    d03_covariance,
     methodology,
 )
 
@@ -47,10 +49,21 @@ def main() -> None:
         st.metric("Data version hash", first_hash[:12])
         st.caption(f"{len(artifacts)} artifacts versioned")
         st.markdown("---")
+        # one selector, read by every tab through dashboard.version, so D0 to D3
+        # cannot disagree about which model version is on screen
+        chosen = version_module.select_version()
+        st.caption(f"rendering under {chosen}")
+        st.markdown("---")
         st.caption("Links live on the Methodology tab.")
 
     tabs = st.tabs(
-        ["D0 Data Health", "D1 Exposures", "D2 Factor Model and Risk", "Methodology"]
+        [
+            "D0 Data Health",
+            "D1 Exposures",
+            "D2 Factor Model and Risk",
+            "D3 Covariance Lab",
+            "Methodology",
+        ]
     )
     with tabs[0]:
         d00_data.render()
@@ -59,6 +72,8 @@ def main() -> None:
     with tabs[2]:
         d02_factor_risk.render()
     with tabs[3]:
+        d03_covariance.render()
+    with tabs[4]:
         methodology.render()
 
 
