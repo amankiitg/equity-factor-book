@@ -7,6 +7,7 @@ from the roadmap and never reworded after the numbers are seen.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from datetime import UTC, datetime
@@ -1770,3 +1771,576 @@ def evaluate_e3_criteria(
         ),
     }
     return criteria
+
+
+# --------------------------------------------------------------------------
+# Sprint E4: the statistical factor model and the covariance lab
+# --------------------------------------------------------------------------
+
+# F4.1 to F4.4 are copied verbatim from docs/roadmap_v2.md, the
+# pre-registered table for this sprint. F4.5 and F4.6 are the two findings
+# that took their own IDs in sprints/E4/PRD.md when Task 3 and Task 4 were
+# reframed. F4.7 is recorded here as it was registered mid-sprint by
+# decision, with the date and the reason, because F4.1's threshold turned
+# out to be written for an object the sprint did not build.
+E4_CRITERIA_TEXT = {
+    "F4.1": "First principal component vs the market factor: correlation above 0.95.",
+    "F4.2": (
+        "Marchenko-Pastur edge isolates between 3 and 15 significant factors; "
+        "the count is stored."
+    ),
+    "F4.3": (
+        "OOS minimum-variance vol: shrinkage and factor estimators beat the "
+        "sample covariance by more than 10%. If the sample covariance wins, "
+        "that is an estimation bug."
+    ),
+    "F4.4": (
+        "PCA-v1 with k factors explains at least as much cross-sectional "
+        "variance as XS-v1 on a held-out residual test; both numbers stored."
+    ),
+    "F4.5": (
+        "Task 3 as reframed: passes when 3a, 3b, 3c and 3d are measured and "
+        "the deliverable names which explanation the evidence supports."
+    ),
+    "F4.6": (
+        "Task 4 as reframed: passes when 4a, 4b and 4c are stored. Registered "
+        "2026-09-20 as measured and material."
+    ),
+    "F4.7": (
+        "Registered 2026-09-20 by decision. PCA-v1c is measured on its own "
+        "terms: both PC1 objects are computed and the deliverable names which "
+        "object each PC1 is. PCA-v1c's factor count is stored under F4.7 and "
+        "is never scored against F4.2's 3 to 15 band."
+    ),
+}
+
+E4_THRESHOLDS = {
+    "F4.1": "correlation > 0.95",
+    "F4.2": "3 <= factor count <= 15, the STOP CONDITION 3 band",
+    "F4.3": "every shrinkage and factor estimator's median at least 10% below "
+    "the sample covariance's median",
+    "F4.4": "PCA-v1 held-out R squared >= XS-v1 held-out R squared, both stored",
+    "F4.5": "3a, 3b, 3c and 3d measured and the explanation named",
+    "F4.6": "4a, 4b and 4c stored",
+    "F4.7": "both PC1 objects measured and named; the count is not scored "
+    "against F4.2",
+}
+
+# The two groups F4.3 names. Every estimator here is a shrinkage or factor
+# estimator in the sense the criterion means; EWMA is a weighting scheme
+# rather than either, so it is reported beside them and not scored.
+E4_SHRINKAGE = ("clip", "constant_correlation", "ledoit_wolf")
+E4_FACTOR = ("ts_v1", "xs_v1", "pca_v1", "pca_v1c")
+
+
+def e4_artifacts(data_root: Path = ROOT / "data") -> list[Path]:
+    """The artifacts every E4 number is read from, in the order it is read."""
+    root = Path(data_root)
+    return [
+        root / "models" / "registry.json",
+        root / "models" / "PCA-v1" / "eigenvalues.parquet",
+        root / "models" / "PCA-v1" / "eigenvalues_panel.parquet",
+        root / "models" / "PCA-v1c" / "eigenvalues.parquet",
+        root / "eval" / "cov_horse_race.parquet",
+        root / "eval" / "e4_f41_pc1_correlations.parquet",
+        root / "eval" / "e4_f44_held_out.parquet",
+        root / "eval" / "xs_residual_spectrum.parquet",
+        root / "eval" / "xs_task3_decomposition.parquet",
+        root / "eval" / "xs_task3_confound.parquet",
+        root / "eval" / "xs_task3_orthogonality.parquet",
+        root / "eval" / "xs_task3_sweep.parquet",
+        root / "eval" / "xs_task3_projection.parquet",
+        root / "eval" / "xs_survivor_measurement.parquet",
+        root / "eval" / "xs_survivor_excluded_names.parquet",
+        root / "eval" / "xs_survivor_universe_summary.parquet",
+    ]
+
+
+def e4_data_hash(data_root: Path = ROOT / "data") -> str:
+    """The combined hash of the artifacts the E4 criteria are read from.
+
+    Implemented here rather than imported from `efb.build`, which imports
+    this module: the same fold, the same ordering, no cycle.
+    """
+    digest = hashlib.sha256()
+    for path in e4_artifacts(data_root):
+        digest.update(path.name.encode("utf-8"))
+        digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("utf-8"))
+    return digest.hexdigest()
+
+
+def compute_e4_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    root = Path(data_root)
+    registry_payload = json.loads((root / "models" / "registry.json").read_text())
+    return {
+        "registry_payload": registry_payload,
+        "spectrum": pd.read_parquet(root / "models" / "PCA-v1" / "eigenvalues.parquet"),
+        "spectrum_panel": pd.read_parquet(
+            root / "models" / "PCA-v1" / "eigenvalues_panel.parquet"
+        ),
+        "spectrum_covariance": pd.read_parquet(
+            root / "models" / "PCA-v1c" / "eigenvalues.parquet"
+        ),
+        "race": pd.read_parquet(root / "eval" / "cov_horse_race.parquet"),
+        "f41": pd.read_parquet(root / "eval" / "e4_f41_pc1_correlations.parquet"),
+        "f44": pd.read_parquet(root / "eval" / "e4_f44_held_out.parquet"),
+        "residual_spectrum": pd.read_parquet(
+            root / "eval" / "xs_residual_spectrum.parquet"
+        ),
+        "decomposition": pd.read_parquet(
+            root / "eval" / "xs_task3_decomposition.parquet"
+        ),
+        "confound": pd.read_parquet(root / "eval" / "xs_task3_confound.parquet"),
+        "orthogonality": pd.read_parquet(
+            root / "eval" / "xs_task3_orthogonality.parquet"
+        ),
+        "sweep": pd.read_parquet(root / "eval" / "xs_task3_sweep.parquet"),
+        "projection": pd.read_parquet(root / "eval" / "xs_task3_projection.parquet"),
+        "survivor": pd.read_parquet(root / "eval" / "xs_survivor_measurement.parquet"),
+        "survivor_excluded": pd.read_parquet(
+            root / "eval" / "xs_survivor_excluded_names.parquet"
+        ),
+        "survivor_summary": pd.read_parquet(
+            root / "eval" / "xs_survivor_universe_summary.parquet"
+        ),
+    }
+
+
+def _tercile_mean(
+    frame: pd.DataFrame, column: str, low: str, high: str
+) -> dict[str, float]:
+    """One stored series read at its low and high exposure tercile."""
+    grouped = frame.groupby("tercile")[column].mean()
+    return {"low": float(grouped[low]), "high": float(grouped[high])}
+
+
+def evaluate_e4_criteria(
+    registry_payload: dict[str, Any],
+    spectrum: pd.DataFrame,
+    spectrum_panel: pd.DataFrame,
+    spectrum_covariance: pd.DataFrame,
+    race: pd.DataFrame,
+    f41: pd.DataFrame,
+    f44: pd.DataFrame,
+    residual_spectrum: pd.DataFrame,
+    decomposition: pd.DataFrame,
+    confound: pd.DataFrame,
+    orthogonality: pd.DataFrame,
+    sweep: pd.DataFrame,
+    projection: pd.DataFrame,
+    survivor: pd.DataFrame,
+    survivor_excluded: pd.DataFrame,
+    survivor_summary: pd.DataFrame,
+) -> dict[str, dict[str, Any]]:
+    criteria: dict[str, dict[str, Any]] = {}
+    parameters = {
+        name: entry.get("parameters", {})
+        for name, entry in registry_payload["models"].items()
+    }
+
+    # F4.1. Both PC1 objects are measured, and the threshold is read against
+    # the correlation PCA the roadmap's own foundation section specifies.
+    pc1 = f41.set_index("variant")
+    correlation_pc1 = float(pc1.loc["PCA-v1 correlation", "pc1_vs_market"])
+    covariance_pc1 = float(pc1.loc["PCA-v1c covariance", "pc1_vs_market"])
+    n_over_t = float(parameters["PCA-v1"]["n_over_t"])
+    mp_edge = float(parameters["PCA-v1"]["mp_edge"])
+    criteria["F4.1"] = {
+        "criterion": E4_CRITERIA_TEXT["F4.1"],
+        "threshold": E4_THRESHOLDS["F4.1"],
+        "stored_numbers": {
+            "pc1_vs_market_pca_v1": correlation_pc1,
+            "pc1_vs_equal_weight_pca_v1": float(
+                pc1.loc["PCA-v1 correlation", "pc1_vs_equal_weight"]
+            ),
+            "pc1_vs_market_pca_v1c": covariance_pc1,
+            "pc1_vs_equal_weight_pca_v1c": float(
+                pc1.loc["PCA-v1c covariance", "pc1_vs_equal_weight"]
+            ),
+            "market_vs_equal_weight": float(
+                pc1.loc["market factor vs equal weight", "pc1_vs_equal_weight"]
+            ),
+            "pc1_vs_market_full_sample": float(
+                pc1.loc["PCA-v1 full sample", "pc1_vs_market"]
+            ),
+            "window_days": int(pc1.loc["PCA-v1 correlation", "window_days"]),
+            "full_sample_days": int(pc1.loc["PCA-v1 correlation", "full_sample_days"]),
+            "n_names": int(pc1.loc["PCA-v1 correlation", "n_names"]),
+        },
+        "verdict": _verdict(max(correlation_pc1, covariance_pc1) > 0.95),
+        "note": (
+            "Fails on both variants. The threshold was written for a PC1 of the "
+            "market portfolio and was measured against two PC1s that are not "
+            "that object: the correlation PCA's first component has mostly "
+            "equal-weighted content (0.989144 against the equal-weight mean) and "
+            "the covariance PCA's has mostly cap-weighted content (0.930599 "
+            "against the market). The market factor itself correlates 0.855646 "
+            "with the equal-weight mean over the same window, so no single "
+            "correlation above 0.95 was available to a PC1 of either kind. "
+            "Recorded as a specification conflict, not a model defect."
+        ),
+    }
+
+    # F4.2. STOP CONDITION 3 lives here.
+    count = int(parameters["PCA-v1"]["n_factors_mp"])
+    inside = 3 <= count <= 15
+    panel_fit = spectrum_panel.loc[spectrum_panel["index"] == 1]
+    panel_count = int(spectrum_panel["above_edge"].sum())
+    panel_n_names = int(panel_fit["n_names"].max()) if len(panel_fit) else -1
+    criteria["F4.2"] = {
+        "criterion": E4_CRITERIA_TEXT["F4.2"],
+        "threshold": E4_THRESHOLDS["F4.2"],
+        "stored_numbers": {
+            "n_factors_mp": count,
+            "n_factors_selected": int(parameters["PCA-v1"]["n_factors"]),
+            "n_factors_scree": int(parameters["PCA-v1"]["n_factors_scree"]),
+            "n_factors_cv": int(parameters["PCA-v1"]["n_factors_cv"]),
+            "n_names": int(parameters["PCA-v1"]["n_names"]),
+            "n_days": int(parameters["PCA-v1"]["n_days"]),
+            "n_over_t": n_over_t,
+            "mp_edge": mp_edge,
+            "panel_n_factors_above_edge": panel_count,
+            "panel_n_names": panel_n_names,
+        },
+        "verdict": _verdict(inside),
+        "note": (
+            "The count is the Marchenko-Pastur reading on the model universe, 13 "
+            "of a permitted 15, and it is the count PCA-v1 is registered with. "
+            "The covariance PCA of the same 504 days puts 16 eigenvalues above "
+            "its own edge, which is stored under F4.7 and not scored here: the "
+            "two spectra have different edges and different units."
+        ),
+    }
+
+    # F4.3, scored on medians, which is how the sprint reads the race.
+    pivot = race.pivot(index="date", columns="estimator", values="realized_vol")
+    medians = {name: float(value) for name, value in pivot.median().items()}
+    sample = medians["sample"]
+    scored = {name: medians[name] for name in (*E4_SHRINKAGE, *E4_FACTOR)}
+    ratios = {name: medians[name] / sample for name in scored}
+    criteria["F4.3"] = {
+        "criterion": E4_CRITERIA_TEXT["F4.3"],
+        "threshold": E4_THRESHOLDS["F4.3"],
+        "stored_numbers": {
+            "median_realized_vol": medians,
+            "ratio_to_sample": ratios,
+            "worst_ratio": float(max(ratios.values())),
+            "windows": int(race["date"].nunique()),
+            "n_names": int(race["n_names"].max()),
+            "windows_won": {
+                name: int(count)
+                for name, count in (pivot.rank(axis=1, method="min") == 1).sum().items()
+            },
+        },
+        "verdict": _verdict(all(ratio <= 0.9 for ratio in ratios.values())),
+        "note": (
+            "Every shrinkage estimator and every factor estimator has a median "
+            "out-of-sample minimum-variance volatility at least 10 percent below "
+            "the sample covariance's, so the estimation-error result holds in the "
+            "direction theory predicts. The sample covariance won no window and "
+            "EWMA none either; EWMA is a weighting scheme rather than a shrinkage "
+            "or factor estimator and is reported beside them, not scored."
+        ),
+    }
+
+    # F4.4.
+    held_out = f44.set_index("row")["mean_r_squared"]
+    xs_daily = float(held_out["(i) XS-v1 daily refit, as stored"])
+    pca_rolling = float(held_out["(iv) PCA rolling refit"])
+    criteria["F4.4"] = {
+        "criterion": E4_CRITERIA_TEXT["F4.4"],
+        "threshold": E4_THRESHOLDS["F4.4"],
+        "stored_numbers": {
+            "xs_v1_daily_refit": xs_daily,
+            "xs_v1_descriptors_frozen": float(
+                held_out["(ii) XS-v1 descriptors frozen"]
+            ),
+            "pca_frozen_k_mp": float(held_out["(iii) PCA frozen k=MP"]),
+            "pca_frozen_k_17": float(held_out["(iii) PCA frozen k=17"]),
+            "pca_rolling_refit": pca_rolling,
+            "xs_v1_plus_top3_residual_pcs": float(
+                held_out["(v) XS-v1 plus top 3 residual PCs"]
+            ),
+            "xs_v1_plus_top5_residual_pcs": float(
+                held_out["(v) XS-v1 plus top 5 residual PCs"]
+            ),
+            "held_out_days": int(f44["days"].max()),
+        },
+        "verdict": _verdict(pca_rolling >= xs_daily),
+        "note": (
+            "Fails by 7.2 points on the comparison the criterion names, PCA "
+            "rolling against XS-v1 refitted daily, both measured on the same 503 "
+            "held-out days with sqrt(market cap) weights and exposures dated t "
+            "minus one. The useful reading is the opposite one: adding the top "
+            "three residual principal components to a frozen XS-v1 raises held "
+            "out R squared from 0.253997 to 0.292699, which is where the missing "
+            "factor structure shows up. Scored as measured."
+        ),
+    }
+
+    # F4.5. Four measurements and the explanation the evidence supports.
+    momentum_share = _tercile_mean(decomposition, "momentum_share", "low", "high")
+    sweep_high = (
+        sweep.loc[sweep["tercile"] == "high"].groupby("half_life")["bias"].mean()
+    )
+    bias_sweep = {
+        str(int(half_life)): float(block.loc["low"] - block.loc["high"])
+        for half_life, block in sweep.groupby(["half_life", "tercile"])["bias"]
+        .mean()
+        .unstack("tercile")
+        .iterrows()
+    }
+    criteria["F4.5"] = {
+        "criterion": E4_CRITERIA_TEXT["F4.5"],
+        "threshold": E4_THRESHOLDS["F4.5"],
+        "stored_numbers": {
+            "momentum_share_of_predicted_variance": momentum_share,
+            "realized_book_vol": _tercile_mean(
+                confound, "book_realized_vol", "low", "high"
+            ),
+            "predicted_book_vol": _tercile_mean(
+                confound, "book_predicted_vol", "low", "high"
+            ),
+            "forward_market_vol": _tercile_mean(
+                confound, "market_vol_forward", "low", "high"
+            ),
+            "covariance_between_components": _tercile_mean(
+                orthogonality, "covariance", "low", "high"
+            ),
+            "orthogonality_correlation": _tercile_mean(
+                orthogonality, "correlation", "low", "high"
+            ),
+            "half_life_bias_high_tercile": {
+                str(int(k)): float(v) for k, v in sweep_high.items()
+            },
+            "half_life_spread": bias_sweep,
+            "residual_top5_share": _tercile_mean(
+                projection, "top5_share", "low", "high"
+            ),
+            "residual_largest_eigenvalue": _tercile_mean(
+                projection, "largest_eigenvalue", "low", "high"
+            ),
+            "residual_edge": _tercile_mean(projection, "mp_edge", "low", "high"),
+            "residual_tree": {
+                "n_above_edge": _tercile_mean(
+                    projection, "n_above_edge", "low", "high"
+                ),
+                "effective_directions": _tercile_mean(
+                    projection, "effective_directions", "low", "high"
+                ),
+                "n_names": _tercile_mean(projection, "n_names", "low", "high"),
+            },
+            "residual_spectrum_largest": float(
+                residual_spectrum.loc[
+                    residual_spectrum["index"] == 1, "eigenvalue"
+                ].max()
+            ),
+            "residual_spectrum_edge": float(
+                residual_spectrum.loc[residual_spectrum["index"] == 1, "mp_edge"].max()
+            ),
+            "measurements_present": {
+                "3a_decomposition": bool(len(decomposition) > 0),
+                "3b_confound": bool(len(confound) > 0),
+                "3c_orthogonality": bool(len(orthogonality) > 0),
+                "3d_sweep": bool(len(sweep) > 0),
+            },
+        },
+        "verdict": _verdict(
+            len(decomposition) > 0
+            and len(confound) > 0
+            and len(orthogonality) > 0
+            and len(sweep) > 0
+        ),
+        "note": (
+            "The explanation the evidence supports is the residual covariance "
+            "one, and the half-life sweep is measured and rejected at 0.003. "
+            "Momentum's share of predicted variance does rise with exposure, "
+            "from 0.319808 to 0.561267, but the book's predicted volatility is "
+            "flat across terciles while the realized volatility falls, so the "
+            "high-exposure book is not the one that is underforecast. The "
+            "specific component carries what the diagonal cannot: the top five "
+            "residual directions hold 0.553 to 0.577 of the book's specific "
+            "variance, and the realized covariance between the factor and "
+            "specific components is negative in the high tercile. Documen"
+            "ted in docs/research/E4_covariance_memo.md."
+        ),
+    }
+
+    # F4.6, as the user resolved it: measured and material.
+    measured = survivor.set_index("factor")
+    summary = survivor_summary.set_index("universe")
+    excluded = survivor_excluded.set_index("group")
+    size = measured.loc["size"]
+    criteria["F4.6"] = {
+        "criterion": E4_CRITERIA_TEXT["F4.6"],
+        "threshold": E4_THRESHOLDS["F4.6"],
+        "stored_numbers": {
+            "style_correlation_panel_vs_mapped": {
+                name: float(measured.loc[name, "correlation_panel_vs_mapped"])
+                for name in measured.index
+            },
+            "size_premium": {
+                "panel": float(size["premium_panel"]),
+                "mapped": float(size["premium_mapped"]),
+                "t_panel": float(size["t_panel"]),
+                "t_mapped": float(size["t_mapped"]),
+            },
+            "mean_r_squared": {
+                name: float(summary.loc[name, "mean_r_squared"])
+                for name in summary.index
+            },
+            "mean_specific_variance": {
+                name: float(summary.loc[name, "mean_specific_variance"])
+                for name in summary.index
+            },
+            "mean_names_per_date": {
+                name: float(summary.loc[name, "mean_names"]) for name in summary.index
+            },
+            "excluded_names": {
+                "n_names": int(excluded.loc["excluded, outside it", "names"]),
+                "annualized_vol": float(
+                    excluded.loc["excluded, outside it", "annualized_vol"]
+                ),
+                "included_annualized_vol": float(
+                    excluded.loc["included, in the sector file", "annualized_vol"]
+                ),
+                "differential_annualized": float(
+                    excluded.loc["excluded, outside it", "differential_annualized"]
+                ),
+                "years": "2010 to 2016",
+            },
+        },
+        "verdict": _verdict(
+            len(survivor) > 0
+            and len(survivor_excluded) > 0
+            and len(survivor_summary) > 0
+        ),
+        "note": (
+            "Measured and material. The restriction is concentrated in size and "
+            "liquidity, where the two universes correlate 0.577780 and 0.625560 "
+            "against 0.98 and above for market, beta, momentum and reversal. It "
+            "is not a caveat: it moves the size premium from -0.000032 to "
+            "-0.000173, raises mean cross-sectional R squared from 0.133530 to "
+            "0.142526, and the excluded names differ in the way that matters, "
+            "0.199281 annualized volatility against 0.166796 and 0.020141 a year "
+            "less over 2010 to 2016. Every E4 and E5 number computed on the "
+            "mapped universe carries it."
+        ),
+    }
+
+    # F4.7.
+    covariance_count = int(parameters["PCA-v1c"]["n_factors"])
+    criteria["F4.7"] = {
+        "criterion": E4_CRITERIA_TEXT["F4.7"],
+        "threshold": E4_THRESHOLDS["F4.7"],
+        "stored_numbers": {
+            "pca_v1c_n_factors_above_edge": covariance_count,
+            "pca_v1c_mp_edge_covariance": float(
+                parameters["PCA-v1c"]["mp_edge_covariance"]
+            ),
+            "pca_v1c_pc1_vs_market": covariance_pc1,
+            "pca_v1c_pc1_vs_equal_weight": float(
+                pc1.loc["PCA-v1c covariance", "pc1_vs_equal_weight"]
+            ),
+            "pca_v1_pc1_vs_market": correlation_pc1,
+            "pca_v1_pc1_vs_equal_weight": float(
+                pc1.loc["PCA-v1 correlation", "pc1_vs_equal_weight"]
+            ),
+            "scored_against_f4_2": False,
+            "covariance_spectrum_rows": int(len(spectrum_covariance)),
+        },
+        "verdict": _verdict(len(spectrum_covariance) > 0),
+        "note": (
+            "PCA-v1's PC1 is the first component of the correlation matrix and "
+            "PCA-v1c's is the first component of the covariance matrix; the "
+            "deliverable names both. The 16 eigenvalues PCA-v1c puts above its "
+            "own edge are stored here and are not compared with F4.2's 3 to 15 "
+            "band, which was written about the correlation spectrum on the model "
+            "universe."
+        ),
+    }
+    return criteria
+
+
+def prior_verdict_changes(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    """Recompute the earlier sprints' verdicts and report any that moved.
+
+    This is the stop condition that outranks everything else in E4: an
+    earlier stored criterion may not change verdict, because a sprint that
+    moves an earlier verdict has changed the project's history rather than
+    added to it. Each sprint is re-evaluated from the artifacts on disk and
+    compared with its own RESULTS.json.
+    """
+    out: dict[str, Any] = {}
+    plans = {
+        "E1": (compute_from_artifacts, evaluate_criteria),
+        "E2": (compute_e2_from_artifacts, evaluate_e2_criteria),
+        "E3": (compute_e3_from_artifacts, evaluate_e3_criteria),
+    }
+    for sprint, (compute, evaluate) in plans.items():
+        path = ROOT / "sprints" / sprint / "RESULTS.json"
+        if not path.exists():
+            continue
+        stored = json.loads(path.read_text())["criteria"]
+        try:
+            fresh = evaluate(**compute(data_root))
+        except Exception as error:  # pragma: no cover - a rebuild is what fixes it
+            out[sprint] = {"error": f"{type(error).__name__}: {error}"}
+            continue
+        moved = {
+            key: {
+                "stored": stored[key].get("verdict"),
+                "recomputed": value.get("verdict"),
+            }
+            for key, value in fresh.items()
+            if key in stored and stored[key].get("verdict") != value.get("verdict")
+        }
+        out[sprint] = {
+            "n_criteria": len(stored),
+            "n_changed": len(moved),
+            "changed": moved,
+        }
+    return out
+
+
+def e4_reference_values(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    """The numbers the E4 walkthrough asserts against, read from artifacts."""
+    inputs = compute_e4_from_artifacts(data_root)
+    criteria = evaluate_e4_criteria(**inputs)
+    return {
+        "data_hash": e4_data_hash(data_root),
+        "verdicts": {key: value["verdict"] for key, value in criteria.items()},
+        "stored_numbers": {
+            key: value["stored_numbers"] for key, value in criteria.items()
+        },
+    }
+
+
+def main_e4(data_root: Path = ROOT / "data") -> None:
+    inputs = compute_e4_from_artifacts(data_root)
+    criteria = evaluate_e4_criteria(**inputs)
+    check = prior_verdict_changes(data_root)
+    print("Criterion  verdict  headline number")
+    for key, block in criteria.items():
+        headline = json.dumps(block["stored_numbers"])[:110]
+        print(f"{key}  {block['verdict']}  {headline}")
+    print()
+    for sprint, block in check.items():
+        print(
+            f"{sprint}: {block.get('n_changed')} of {block.get('n_criteria')} changed"
+        )
+        if block.get("changed"):
+            print(f"  STOP CONDITION: earlier verdicts moved: {block['changed']}")
+    write_results(
+        criteria,
+        ROOT / "sprints" / "E4" / "RESULTS.json",
+        sprint="E4",
+        data_hash=e4_data_hash(data_root),
+        reference_values=e4_reference_values(data_root),
+    )
+    if any(block.get("n_changed") for block in check.values()):
+        raise SystemExit(3)
+
+
+if __name__ == "__main__":
+    main_e4()

@@ -991,3 +991,36 @@ things. The identical correlations were the only evidence, and they were
 identical to a degree no two different universes can produce. Every measurement
 in this sprint now stores the sample size it was computed on alongside the
 result.
+
+## 2026-09-20: the 0.9 style-correlation stop threshold is withdrawn
+
+Decision. The threshold that halted Task 4 is withdrawn, and it is not a
+criterion: it was never registered in the roadmap's criteria table and it enters
+no RESULTS.json. It was written by hand during Task 4 as a guard against a
+specification difference between the two runs and it was the wrong instrument
+for the question the task asks. The sprint keeps STOP CONDITION 3, on F4.2, as
+its only numeric stop.
+
+Reason. The measurement it halted is a genuine universe effect, not a code
+difference, and the pattern is the signature of one: size at 0.577780 and
+liquidity at 0.625560 fall between the universes while market, beta, momentum
+and reversal stay above 0.98, and residual volatility sits between the two
+groups at 0.893133. The 323 excluded names are the small, illiquid, failed end
+of the cross-section, so removing them truncates the dispersion that the size
+and liquidity descriptors are built to measure. A style correlation of 0.58 on
+size is what a real restriction looks like, which is the opposite of what the
+threshold assumed it meant.
+
+What it did catch, and why it was worth writing. The first Task 4 run returned a
+correlation of exactly 1.000000 on all seven styles, and the threshold was the
+reason anyone looked. The defect underneath it is recorded in the entry above:
+`style_only` never received the universe. A guard written to catch one failure
+caught a different one, and the guard itself was then retired rather than
+reworded, because a threshold that has fired once and been explained away is no
+longer a threshold.
+
+Also in this entry. The ledger's first version of the survivor measurement said
+the size premium flips sign. It does not: both readings are negative and the
+mapped universe makes the discount four times deeper. The test written from the
+stored artifact caught the misreading before the commit, which is the check this
+project relies on rather than re-reading prose.

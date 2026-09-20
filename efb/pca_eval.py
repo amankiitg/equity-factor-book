@@ -352,6 +352,44 @@ def run(data_root: str = "data") -> dict[str, object]:
     print(
         f"PCA-v1 full sample: PC1 vs market {f4_1_full:.4f} over {len(pc1_long)} days"
     )
+    # F4.1 is scored from these rows rather than from the print above, so a
+    # re-run moves the stored number and the verdict together
+    pd.DataFrame(
+        [
+            {
+                "variant": "PCA-v1 correlation",
+                "pc1_vs_market": f4_1_correlation,
+                "pc1_vs_equal_weight": float(pc1_correlation.corr(equal_weight)),
+                "window_days": int(len(block)),
+                "n_names": int(correlation.n_names),
+                "full_sample_days": int(len(pc1_long)),
+            },
+            {
+                "variant": "PCA-v1c covariance",
+                "pc1_vs_market": f4_1_covariance,
+                "pc1_vs_equal_weight": float(pc1_covariance.corr(equal_weight)),
+                "window_days": int(covariance.n_days),
+                "n_names": int(covariance.n_names),
+                "full_sample_days": int(len(pc1_long)),
+            },
+            {
+                "variant": "market factor vs equal weight",
+                "pc1_vs_market": 1.0,
+                "pc1_vs_equal_weight": float(market_aligned.corr(equal_weight)),
+                "window_days": int(len(block)),
+                "n_names": int(correlation.n_names),
+                "full_sample_days": int(len(pc1_long)),
+            },
+            {
+                "variant": "PCA-v1 full sample",
+                "pc1_vs_market": f4_1_full,
+                "pc1_vs_equal_weight": float("nan"),
+                "window_days": int(len(pc1_long)),
+                "n_names": int(correlation.n_names),
+                "full_sample_days": int(len(pc1_long)),
+            },
+        ]
+    ).to_parquet(root / "eval" / "e4_f41_pc1_correlations.parquet", index=False)
 
     cov_spectrum = spectrum_frame(covariance, "covariance")
     target_dir = root / "models" / "PCA-v1c"
@@ -410,6 +448,7 @@ def run(data_root: str = "data") -> dict[str, object]:
     print("### F4.4 rebuilt, five rows, sqrt(mcap) weights, exposures dated t-1")
     summary = held_out_comparison(str(root))
     print(summary.round(6).to_string(index=False))
+    summary.to_parquet(root / "eval" / "e4_f44_held_out.parquet", index=False)
     return {
         "f4_1_correlation_pca": f4_1_correlation,
         "f4_1_covariance_pca": f4_1_covariance,
