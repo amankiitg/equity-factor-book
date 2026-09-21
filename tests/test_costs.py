@@ -56,9 +56,8 @@ def test_the_corwin_schultz_spread_correlates_with_size_rank() -> None:
     assert not curves.empty
     correlation = float(curves["spread_size_rank_correlation"].iloc[0])
     assert np.isfinite(correlation)
-    # smaller names wider: the correlation is positive by construction of
-    # the rank direction used here
-    assert correlation > 0.0
+    # smaller names wider: the spread falls as the size rank rises
+    assert correlation < 0.0
 
 
 @pytest.mark.integration
