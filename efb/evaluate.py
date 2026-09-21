@@ -4038,7 +4038,8 @@ def evaluate_e9_criteria(
     criteria: dict[str, dict[str, Any]] = {}
 
     # F9.1. Net Sharpe is monotone in AUM and the halving AUM is stored.
-    violations = 0
+    sharpe_violations = 0
+    mean_violations = 0
     n_curves = 0
     for (_rho, _k), group in capacity.groupby(["rho", "k"]):
         group = group.sort_values("aum")
@@ -4046,7 +4047,11 @@ def evaluate_e9_criteria(
         net = group["net_sharpe"].to_numpy(dtype=float)
         for before, after in zip(net[:-1], net[1:], strict=True):
             if np.isfinite(before) and np.isfinite(after) and after > before + 1e-9:
-                violations += 1
+                sharpe_violations += 1
+        net_mean = group["net_mean"].to_numpy(dtype=float)
+        for before, after in zip(net_mean[:-1], net_mean[1:], strict=True):
+            if np.isfinite(before) and np.isfinite(after) and after > before + 1e-9:
+                mean_violations += 1
     halving_numbers = {
         f"{row['rho']}_{row['k']}": float(row["halving_aum"])
         for row in halving.to_dict(orient="records")
@@ -4055,19 +4060,25 @@ def evaluate_e9_criteria(
         "criterion": E9_CRITERIA_TEXT["F9.1"],
         "threshold": E9_THRESHOLDS["F9.1"],
         "stored_numbers": {
-            "n_monotonicity_violations": violations,
+            "n_monotonicity_violations_net_sharpe": sharpe_violations,
+            "n_monotonicity_violations_net_mean": mean_violations,
             "n_curves": n_curves,
             "halving_aum_by_rho_k": halving_numbers,
         },
         "verdict": _verdict(
-            violations == 0
-            and bool(halving_numbers)
+            sharpe_violations == 0
             and all(np.isfinite(value) for value in halving_numbers.values())
         ),
         "note": (
-            "The square-root impact grows with AUM, so net Sharpe declines "
-            "by construction; the check asserts the stored curve does not "
-            "bend the wrong way."
+            "The net mean return declines monotonically in AUM (the impact "
+            "grows with the square root of AUM), but the net Sharpe ratio "
+            "does not: the impact cost's cross-rebalance variance grows with "
+            "AUM and inflates the ratio's denominator, so the ratio rises "
+            "toward zero. The criterion is written against the ratio, so it "
+            "fails with that mechanism recorded. The halving AUM is "
+            "undefined because the i.i.d. synthetic signal reshuffles the "
+            "book fully each rebalance, leaving net Sharpe negative at every "
+            "AUM: turnover, not capacity, is the binding constraint."
         ),
     }
 
@@ -4088,8 +4099,11 @@ def evaluate_e9_criteria(
         "verdict": _verdict(mean_cut > 0.5 and mean_loss < 0.2),
         "note": (
             "The penalized optimizer holds the low-alpha half of the book at "
-            "its previous weight, so the churn it drops is exactly the "
-            "trades that carry the least alpha."
+            "its previous weight. It cuts about 37% of turnover with under "
+            "7% ex-ante IR loss, so the IR side of the criterion holds but "
+            "the 50% turnover cut does not: the proportional book's turnover "
+            "is concentrated in its high-alpha names, not in the low-alpha "
+            "churn the criterion presumes."
         ),
     }
 
@@ -4103,10 +4117,14 @@ def evaluate_e9_criteria(
         "criterion": E9_CRITERIA_TEXT["F9.3"],
         "threshold": E9_THRESHOLDS["F9.3"],
         "stored_numbers": {"spread_size_rank_correlation": correlation},
-        "verdict": _verdict(np.isfinite(correlation) and correlation > 0.5),
+        "verdict": _verdict(np.isfinite(correlation) and abs(correlation) > 0.5),
         "note": (
             "The Spearman correlation between the per-name half-spread and "
-            "the size rank (smaller names wider)."
+            "the size rank is negative (smaller names wider), and its "
+            "magnitude is the scored number. It comes out below 0.5 because "
+            "the Corwin-Schultz estimator is noisy at the single-name level, "
+            "which is the failure mode the roadmap named; the decile means "
+            "still decline monotonically from small to large."
         ),
     }
 

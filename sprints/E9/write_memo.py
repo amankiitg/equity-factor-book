@@ -43,9 +43,15 @@ def main() -> None:
     text = f"""# E9 Transaction Cost and Capacity Analysis
 
 The alpha is the E8 synthetic alpha with a known IC, labeled as such: no
-real signal passed RG-Signal, so this book's real capacity is undefined and
-the capacity table answers the useful question instead, what IC a strategy
-needs to support a given AUM under these costs.
+real signal passed RG-Signal, so this book's real capacity is undefined.
+The headline finding is that turnover, not AUM, is the binding constraint:
+the synthetic z is i.i.d. across rebalance dates, so the proportional book
+reshuffles about 140% of its gross each month, and at the Corwin-Schultz
+half-spread that is roughly 4% of AUM per rebalance in spread cost alone,
+which no IC in the experiment covers. The capacity curve is therefore
+negative at every AUM and the halving AUM is undefined. The table still
+answers the useful question: what turnover persistence a strategy needs
+before a capacity number is meaningful.
 
 ## The cost model and its uncertainty
 
@@ -66,13 +72,20 @@ as a clean point estimate.
 {curve_lines}
 
 The Spearman correlation between the half-spread and the size rank is
-{f93['spread_size_rank_correlation']:.3f}: smaller names are wider.
+{f93['spread_size_rank_correlation']:.3f}: smaller names are wider, but
+the per-name correlation sits below 0.5 because the Corwin-Schultz
+estimator is noisy on the small names, the failure mode the roadmap named.
 
 ## The turnover versus IR trade-off
 
 | rho | turnover cut | ex-ante IR loss |
 | --- | --- | --- |
 {tradeoff_lines}
+
+The penalized optimizer holds the low-alpha half of the book at its
+previous weight. It cuts about 37% of turnover with under 7% ex-ante IR
+loss, so the IR side holds but the 50% turnover cut does not: the book's
+turnover is concentrated in its high-alpha names.
 
 ## The capacity table
 
@@ -82,36 +95,45 @@ The halving AUM per rho and impact coefficient:
 | --- | --- | --- | --- |
 {capacity_lines}
 
-Net Sharpe is monotone in AUM ({f91['n_monotonicity_violations']} violations
-over {f91['n_curves']} curves).
+Net Sharpe is not monotone in AUM ({f91['n_monotonicity_violations_net_sharpe']}
+violations over {f91['n_curves']} curves), while the net mean return is
+monotone ({f91['n_monotonicity_violations_net_mean']} violations): the
+impact cost's cross-rebalance variance grows with AUM and inflates the
+Sharpe ratio's denominator. Both counts are stored under F9.1.
 
 ## Stored criteria
 
-- F9.1 (verdict {verdicts['F9.1']['verdict']}): net Sharpe declines
-  monotonically with AUM and the halving AUM is stored.
+- F9.1 (verdict {verdicts['F9.1']['verdict']}): the net Sharpe ratio is
+  not monotone in AUM (the ratio's denominator grows with the impact
+  variance), and the halving AUM is undefined because net Sharpe is
+  negative at every AUM. The net mean is monotone, stored beside it.
 - F9.2 (verdict {verdicts['F9.2']['verdict']}): the turnover-penalized
-  optimizer cuts turnover by more than 50% with less than 20% ex-ante IR
-  loss, holding the low-alpha half of the book at its previous weight.
+  optimizer cuts about 37% of turnover with under 7% ex-ante IR loss, so
+  the 50% cut is not reached because the turnover is concentrated in the
+  high-alpha names.
 - F9.3 (verdict {verdicts['F9.3']['verdict']}): the spread-size-rank
-  correlation is above 0.5.
+  correlation magnitude is below 0.5, with the direction correct, because
+  the Corwin-Schultz estimator is noisy at the single-name level.
 - F9.4 (verdict {verdicts['F9.4']['verdict']}): the halving AUM is stored
-  per rho with its sensitivity to k; doubling k roughly quarters the
-  halving AUM under the square-root law.
+  per rho with its sensitivity to k, and it is NaN everywhere: the book is
+  below half its gross Sharpe at zero AUM, so the halving point does not
+  exist under these costs.
 
 ## Practitioner conclusion
 
-Gross alpha is a research number; net alpha is the business. At a realistic
-IC the book's capacity is the AUM at which net Sharpe halves, and the
-table in rho is the honest answer while no real signal has passed
-RG-Signal. The rebalance cadence and the turnover budget follow from the
-trade-off table.
+Gross alpha is a research number; net alpha is the business. For the
+synthetic i.i.d. book the business answer is that the rebalance cadence and
+turnover budget are the binding constraints, not AUM: a book that
+reshuffles fully each month cannot survive a 3% half-spread at any size. A
+real signal with persistence would have far lower turnover and a defined
+capacity; that is the property the next signal must demonstrate.
 
 ## What would falsify this?
 
-- Net Sharpe is not monotone in AUM: the cost model is mis-specified. The
-  stored curves are checked for this under F9.1.
-- The turnover penalty destroys ex-ante IR: the signal horizon is wrong for
-  the cost regime. The stored trade-off is checked under F9.2.
+- Net Sharpe is not monotone in AUM: this happened, and the mechanism is
+  the ratio denominator, not the cost model, stored under F9.1.
+- The turnover penalty destroys ex-ante IR: the stored trade-off under
+  F9.2 shows the IR survives but the turnover cut falls short.
 - Realized fills in E11 outside the model's band: parameters are
   recalibrated and the capacity curve reissued.
 """

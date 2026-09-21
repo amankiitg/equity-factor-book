@@ -53,13 +53,13 @@ def corwin_schultz(prices: pd.DataFrame, window: int = CORWIN_WINDOW) -> pd.Seri
         gamma = (hi_roll - lo_roll) ** 2
         estimates: list[float] = []
         for start in range(0, len(both) - window + 1, window):
-            b = float(beta[start : start + window].sum())
-            g = float(gamma[start : start + window - 1].sum())
+            b = float(beta[start : start + window].mean())
+            g = float(gamma[start : start + window - 1].mean())
             if b <= 0 or g <= 0:
                 continue
             alpha = (np.sqrt(2.0 * b) - np.sqrt(b)) / (3.0 - 2.0 * np.sqrt(2.0))
             spread = 2.0 * (np.exp(alpha) - 1.0) / (1.0 + np.exp(alpha))
-            if np.isfinite(spread) and spread > 0:
+            if np.isfinite(spread) and 0 < spread < 1:
                 estimates.append(spread / 2.0)
         if estimates:
             half[ticker] = float(np.median(estimates))
@@ -176,6 +176,7 @@ def capacity_curve(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFr
     for rho in RHOS:
         for k in (IMPACT_K / 2, IMPACT_K, IMPACT_K * 2):
             net_by_aum: dict[float, float] = {}
+            net_mean_by_aum: dict[float, float] = {}
             gross_sharpe = float("nan")
             for seed in SEEDS:
                 frame = weights.loc[(weights["rho"] == rho) & (weights["seed"] == seed)]
@@ -184,6 +185,12 @@ def capacity_curve(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFr
                 w_wide = frame.pivot_table(
                     index="date", columns="ticker", values="weight"
                 )
+                # the book is dollar-neutral long/short; normalizing each
+                # rebalance to gross 1 makes AUM the gross notional, so the
+                # turnover and the impact are measured per dollar of capital
+                # instead of per dollar of a 30x-leveraged position
+                gross = w_wide.abs().sum(axis=1)
+                w_wide = w_wide.div(gross, axis=0)
                 realized = _realized_returns(w_wide, root)
                 gross_sharpe = float(
                     realized.mean() / realized.std(ddof=1) * np.sqrt(ANNUAL / HORIZON)
@@ -230,8 +237,12 @@ def capacity_curve(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFr
                         else float("nan")
                     )
                     net_by_aum[aum] = net_by_aum.get(aum, 0.0) + net_sharpe
+                    net_mean_by_aum[aum] = net_mean_by_aum.get(aum, 0.0) + float(
+                        net.mean()
+                    )
             for aum in aum_grid:
                 net_sharpe = float(net_by_aum.get(aum, float("nan"))) / len(SEEDS)
+                net_mean = float(net_mean_by_aum.get(aum, float("nan"))) / len(SEEDS)
                 rows.append(
                     {
                         "rho": rho,
@@ -239,15 +250,27 @@ def capacity_curve(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFr
                         "aum": float(aum),
                         "gross_sharpe": gross_sharpe,
                         "net_sharpe": net_sharpe,
+                        "net_mean": net_mean,
                     }
                 )
-            # the halving AUM: the first AUM where net Sharpe is half of gross
+            # the halving AUM: the first AUM where net Sharpe falls to half of
+            # gross. If the book is already below gross/2 at the lowest AUM the
+            # halving point is undefined, and NaN is stored rather than the
+            # grid edge masquerading as a number.
             halving = float("nan")
-            for aum in aum_grid:
-                net_sharpe = float(net_by_aum.get(aum, float("nan"))) / len(SEEDS)
-                if np.isfinite(gross_sharpe) and net_sharpe <= gross_sharpe / 2.0:
-                    halving = float(aum)
-                    break
+            first_net = float(net_by_aum.get(float(aum_grid[0]), float("nan"))) / len(
+                SEEDS
+            )
+            if (
+                np.isfinite(gross_sharpe)
+                and np.isfinite(first_net)
+                and first_net > gross_sharpe / 2.0
+            ):
+                for aum in aum_grid:
+                    net_sharpe = float(net_by_aum.get(aum, float("nan"))) / len(SEEDS)
+                    if np.isfinite(net_sharpe) and net_sharpe <= gross_sharpe / 2.0:
+                        halving = float(aum)
+                        break
             halving_rows.append(
                 {
                     "rho": rho,
