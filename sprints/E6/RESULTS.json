@@ -1,7 +1,7 @@
 {
   "sprint": "E6",
-  "evaluated_at": "2026-09-21T02:32:53+00:00",
-  "data_hash": "0d59a0c6ae2c5dd91bb982e94ff9e1f2cb5de65f0e8c800a258dfa5ac67bab2c",
+  "evaluated_at": "2026-09-21T02:53:03+00:00",
+  "data_hash": "27d3ce7343ca5d1e8d2cc8bcf8d5b64e1ae9ad451a48c2f913ceae3ef90a5f61",
   "criteria": {
     "F6.1": {
       "criterion": "Full FMP hedge drives every factor exposure below 1e-6 in absolute value and lifts the idio share of variance above 95%.",
@@ -110,14 +110,9 @@
   },
   "revisions": {
     "previous_data_hash": null,
-    "data_hash": "0d59a0c6ae2c5dd91bb982e94ff9e1f2cb5de65f0e8c800a258dfa5ac67bab2c",
-    "n_changed": 4,
-    "changed_tickers_or_criteria": [
-      "F6.2",
-      "F6.3",
-      "F6.4",
-      "F6.5"
-    ],
+    "data_hash": "27d3ce7343ca5d1e8d2cc8bcf8d5b64e1ae9ad451a48c2f913ceae3ef90a5f61",
+    "n_changed": 0,
+    "changed_tickers_or_criteria": [],
     "cross_sprint_criteria": [],
     "changed": {
       "F6.1": {
@@ -146,14 +141,15 @@
         }
       },
       "F6.2": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "pass",
           "stored_numbers": {
             "mean_factor_variance_removed_share": {
-              "xs_v1": 0.9687329108323827,
-              "xs_v2": 0.9687329108323827
+              "xs_v1": 0.9784935060330155,
+              "xs_v2": 0.9784935060330155
             },
+            "mean_n_instruments": 13.028571428571428,
             "residual_reported": "per-factor post-hedge exposures in F6.5"
           }
         },
@@ -170,13 +166,13 @@
         }
       },
       "F6.3": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "pass",
           "stored_numbers": {
             "realized_beta_to_mkt_rf": {
-              "xs_v1": -0.04908349659360308,
-              "xs_v2": -0.04908349659360308
+              "xs_v1": -0.027160228642736272,
+              "xs_v2": -0.027160228642736272
             },
             "unhedged_realized_beta_to_mkt_rf": -0.04952629090130904
           }
@@ -193,19 +189,19 @@
         }
       },
       "F6.4": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "pass",
           "stored_numbers": {
             "xs_v1": {
               "fmp_idio_share": 1.0,
-              "mv_share_long_only": 0.9687329108323827,
-              "momentum_realized_beta": -0.04908349659360308
+              "mv_share_long_only": 0.9784935060330155,
+              "momentum_realized_beta": -0.027160228642736272
             },
             "xs_v2": {
               "fmp_idio_share": 1.0,
-              "mv_share_long_only": 0.9687329108323827,
-              "momentum_realized_beta": -0.04908349659360308
+              "mv_share_long_only": 0.9784935060330155,
+              "momentum_realized_beta": -0.027160228642736272
             },
             "difference_v1_minus_v2": {
               "fmp_idio_share": 0.0,
@@ -236,28 +232,28 @@
         }
       },
       "F6.5": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "pass",
           "stored_numbers": {
             "mean_abs_exposure_after_instrument_hedge": {
-              "beta": 0.04738652033195879,
-              "liquidity": 0.4330174882295976,
-              "market": 0.015059040377157412,
-              "momentum": 0.04121830324595503,
-              "resid_vol": 0.0926543374777827,
-              "reversal": 0.17502094504115212,
-              "sector_10": 0.02114069165252957,
-              "sector_15": 0.028829749790964924,
-              "sector_20": 0.050019317918147274,
-              "sector_25": 0.09024889793530486,
-              "sector_30": 0.04935388701558196,
-              "sector_35": 0.08530191064974003,
-              "sector_40": 0.08872697380074576,
-              "sector_45": 0.21718380599939702,
-              "sector_50": 0.08318453338315822,
-              "sector_55": 0.035668349883812955,
-              "size": 0.49147938138343417
+              "beta": 0.045336246850708264,
+              "liquidity": 0.32224776934658006,
+              "market": 0.013016329414488754,
+              "momentum": 0.05031865352133169,
+              "resid_vol": 0.08622177896140602,
+              "reversal": 0.11546042019447843,
+              "sector_10": 0.026889080556015046,
+              "sector_15": 0.016798858649876913,
+              "sector_20": 0.0675849830981728,
+              "sector_25": 0.05655990038912681,
+              "sector_30": 0.05650693343766445,
+              "sector_35": 0.07448436892908773,
+              "sector_40": 0.09052059175078528,
+              "sector_45": 0.13368172161068734,
+              "sector_50": 0.04641329059105179,
+              "sector_55": 0.03169028458568181,
+              "size": 0.38156980950939573
             }
           }
         },
@@ -631,11 +627,210 @@
             }
           }
         }
+      },
+      {
+        "previous_data_hash": null,
+        "data_hash": "27d3ce7343ca5d1e8d2cc8bcf8d5b64e1ae9ad451a48c2f913ceae3ef90a5f61",
+        "n_changed": 0,
+        "changed_tickers_or_criteria": [],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F6.1": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "worst_abs_exposure_after_fmp": 5.8323571666685226e-15,
+                "mean_idio_share_after_fmp": 1.0,
+                "worst_abs_exposure_after_fmp_capped_stored": 0.7551610381615511,
+                "mean_fmp_name_count": 461.89142857142855,
+                "mean_fmp_name_count_capped": 461.89142857142855,
+                "n_fmp_dates": 175
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "worst_abs_exposure_after_fmp": 5.8323571666685226e-15,
+                "mean_idio_share_after_fmp": 1.0,
+                "worst_abs_exposure_after_fmp_capped_stored": 0.7551610381615511,
+                "mean_fmp_name_count": 461.89142857142855,
+                "mean_fmp_name_count_capped": 461.89142857142855,
+                "n_fmp_dates": 175
+              }
+            }
+          },
+          "F6.2": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_factor_variance_removed_share": {
+                  "xs_v1": 0.9784935060330155,
+                  "xs_v2": 0.9784935060330155
+                },
+                "mean_n_instruments": 13.028571428571428,
+                "residual_reported": "per-factor post-hedge exposures in F6.5"
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_factor_variance_removed_share": {
+                  "xs_v1": 0.9784935060330155,
+                  "xs_v2": 0.9784935060330155
+                },
+                "mean_n_instruments": 13.028571428571428,
+                "residual_reported": "per-factor post-hedge exposures in F6.5"
+              }
+            }
+          },
+          "F6.3": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "realized_beta_to_mkt_rf": {
+                  "xs_v1": -0.027160228642736272,
+                  "xs_v2": -0.027160228642736272
+                },
+                "unhedged_realized_beta_to_mkt_rf": -0.04952629090130904
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "realized_beta_to_mkt_rf": {
+                  "xs_v1": -0.027160228642736272,
+                  "xs_v2": -0.027160228642736272
+                },
+                "unhedged_realized_beta_to_mkt_rf": -0.04952629090130904
+              }
+            }
+          },
+          "F6.4": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "xs_v1": {
+                  "fmp_idio_share": 1.0,
+                  "mv_share_long_only": 0.9784935060330155,
+                  "momentum_realized_beta": -0.027160228642736272
+                },
+                "xs_v2": {
+                  "fmp_idio_share": 1.0,
+                  "mv_share_long_only": 0.9784935060330155,
+                  "momentum_realized_beta": -0.027160228642736272
+                },
+                "difference_v1_minus_v2": {
+                  "fmp_idio_share": 0.0,
+                  "mv_share_long_only": 0.0,
+                  "momentum_realized_beta": 0.0
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "xs_v1": {
+                  "fmp_idio_share": 1.0,
+                  "mv_share_long_only": 0.9784935060330155,
+                  "momentum_realized_beta": -0.027160228642736272
+                },
+                "xs_v2": {
+                  "fmp_idio_share": 1.0,
+                  "mv_share_long_only": 0.9784935060330155,
+                  "momentum_realized_beta": -0.027160228642736272
+                },
+                "difference_v1_minus_v2": {
+                  "fmp_idio_share": 0.0,
+                  "mv_share_long_only": 0.0,
+                  "momentum_realized_beta": 0.0
+                }
+              }
+            }
+          },
+          "F6.5": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_abs_exposure_after_instrument_hedge": {
+                  "beta": 0.045336246850708264,
+                  "liquidity": 0.32224776934658006,
+                  "market": 0.013016329414488754,
+                  "momentum": 0.05031865352133169,
+                  "resid_vol": 0.08622177896140602,
+                  "reversal": 0.11546042019447843,
+                  "sector_10": 0.026889080556015046,
+                  "sector_15": 0.016798858649876913,
+                  "sector_20": 0.0675849830981728,
+                  "sector_25": 0.05655990038912681,
+                  "sector_30": 0.05650693343766445,
+                  "sector_35": 0.07448436892908773,
+                  "sector_40": 0.09052059175078528,
+                  "sector_45": 0.13368172161068734,
+                  "sector_50": 0.04641329059105179,
+                  "sector_55": 0.03169028458568181,
+                  "size": 0.38156980950939573
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "mean_abs_exposure_after_instrument_hedge": {
+                  "beta": 0.045336246850708264,
+                  "liquidity": 0.32224776934658006,
+                  "market": 0.013016329414488754,
+                  "momentum": 0.05031865352133169,
+                  "resid_vol": 0.08622177896140602,
+                  "reversal": 0.11546042019447843,
+                  "sector_10": 0.026889080556015046,
+                  "sector_15": 0.016798858649876913,
+                  "sector_20": 0.0675849830981728,
+                  "sector_25": 0.05655990038912681,
+                  "sector_30": 0.05650693343766445,
+                  "sector_35": 0.07448436892908773,
+                  "sector_40": 0.09052059175078528,
+                  "sector_45": 0.13368172161068734,
+                  "sector_50": 0.04641329059105179,
+                  "sector_55": 0.03169028458568181,
+                  "size": 0.38156980950939573
+                }
+              }
+            }
+          },
+          "F6_decay": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "realized_beta_by_frequency": {
+                  "5d": 0.006492435936105948,
+                  "21d": 0.007451977439322253,
+                  "63d": 0.013878891477231132
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "realized_beta_by_frequency": {
+                  "5d": 0.006492435936105948,
+                  "21d": 0.007451977439322253,
+                  "63d": 0.013878891477231132
+                }
+              }
+            }
+          }
+        }
       }
     ]
   },
   "reference_values": {
-    "data_hash": "0d59a0c6ae2c5dd91bb982e94ff9e1f2cb5de65f0e8c800a258dfa5ac67bab2c",
+    "data_hash": "27d3ce7343ca5d1e8d2cc8bcf8d5b64e1ae9ad451a48c2f913ceae3ef90a5f61",
     "verdicts": {
       "F6.1": "pass",
       "F6.2": "pass",

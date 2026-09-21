@@ -97,6 +97,10 @@ LINKS = [
         "Research deliverable: Hedge Effectiveness Study",
         "docs/research/E6_hedge_study.md",
     ),
+    (
+        "Walkthrough notebook E6 (hedging)",
+        "notebooks/E6_walkthrough.html",
+    ),
 ]
 
 

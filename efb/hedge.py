@@ -305,8 +305,12 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
             h_full = pd.Series(h_star, index=np.array(INSTRUMENTS)[usable])
             h_full = h_full.reindex(list(INSTRUMENTS)).to_numpy(dtype=float)
             # beta hedge: h = -beta_p against SPY over the trailing window
+            # of data strictly before the rebalance date, point-in-time like
+            # the instrument regressions
             book_returns = book_returns_cache[book]
-            h_spy = beta_hedge(book_returns, spy)
+            book_before = book_returns.loc[book_returns.index < date]
+            spy_before = spy.loc[spy.index < date]
+            h_spy = beta_hedge(book_before, spy_before)
             # the FMP hedge has two forms. The exact in-model one subtracts
             # sum_k x_k FMP_k with the FMPs rebuilt on the rebalance date's own
             # design, which drives the exposure to zero by construction: that
@@ -447,7 +451,7 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
                     }
                 )
             beta_obs = int(
-                pd.concat([book_returns, spy], axis=1, join="inner")
+                pd.concat([book_before, spy_before], axis=1, join="inner")
                 .dropna()
                 .tail(BETA_WINDOW)
                 .shape[0]

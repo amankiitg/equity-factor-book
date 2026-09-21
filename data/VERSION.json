@@ -1,7 +1,7 @@
 {
-  "note": "Built by make rebuild (Sprint E5). E1 through E5 artifacts, each with a content hash; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-21T00:55:38+00:00",
-  "data_hash": "5112f5375ca636611deb2abce4d619d21f6f3797523bc8aaf77f9ad01634d5f3",
+  "note": "Built by make rebuild (Sprint E6). The hedging toolkit artifacts join the versioned set; the dashboard sidebar shows this version.",
+  "built_at": "2026-09-21T02:57:34+00:00",
+  "data_hash": "d695589a30822a7600863128fafcf2abffcfd40b12c09783be0c5f126f1a02b1",
   "artifacts": {
     "beta_horse_race.parquet": {
       "sha256": "862891ca3d6e712d6a2f6267274368d4c055e0f85077d7e23bb2e22759920005",
@@ -251,6 +251,26 @@
       "sha256": "6825f944ff2e103e0590f324d7cae76f68f8332460f825bc64aeaa6f81bc19ca",
       "bytes": 18256
     },
+    "e6_decay.parquet": {
+      "sha256": "a136af04e2effaad5c8bb12894e8be84b207bbb226e7aac6d2999f10cd230ff4",
+      "bytes": 3129
+    },
+    "e6_efficacy.parquet": {
+      "sha256": "98fcc42eb8979bef7d5842d2dd8a1a0bd885dc947127651cc42c75d1d7d2c209",
+      "bytes": 4272
+    },
+    "e6_exposures.parquet": {
+      "sha256": "6c12ba1ed04f408ecab64116ad51f903e33341dfde8725cdec4d6185ebad9012",
+      "bytes": 162874
+    },
+    "hedge_metrics.parquet": {
+      "sha256": "554ca217d22c3e4336530dac6f903282e8ccca817dc4382d8808c52d8d31b281",
+      "bytes": 81418
+    },
+    "hedge_positions.parquet": {
+      "sha256": "a6d2fda730c0e05e5609e40ccdc7d1a8c38c46dd25044e888faa258f4ff95063",
+      "bytes": 57189
+    },
     "eigenvalues.parquet": {
       "sha256": "9a0b8282ee72735bb7267c22f4c1691ccad6163bffa185fe20ed5cdd3e84de19",
       "bytes": 22387
@@ -382,6 +402,10 @@
     "universe_membership.parquet": {
       "sha256": "532623d541928c67dd165b8a6e49c1e890ba7a57a5c732c6b2b688c819944615",
       "bytes": 426994
+    },
+    "etf_prices.parquet": {
+      "sha256": "c0f401c3ede79dc4793990e89d1c35d182b22eba919f21589ca1a7b3ef76300e",
+      "bytes": 455352
     },
     "factors_ff.parquet": {
       "sha256": "17dcfdb52f74a05bd3894f01b02ac0628a702f73eec1658408aae53483937540",

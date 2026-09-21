@@ -220,3 +220,38 @@ New and carried into E6, all stored:
 3. The survivor-only universe caveat is inherited by every E5 number.
 4. The champion XS-v1 carries a stored stress haircut of 1.8471 until a
    stress model replaces it.
+
+## 2026-09-21: E6 close-out
+
+Closed in E6, stored in `data/hedge/` and `sprints/E6/RESULTS.json`:
+
+1. F6.1 passes: the exact in-model FMP hedge drives the worst absolute
+   post-hedge exposure to 5.8e-15 and the idio share after the hedge to
+   100.0%, at the cost of trading 461.9 names on average.
+2. F6.2 passes: the ETF minimum-variance hedge removes 97.85% of the
+   long-only seed book's factor variance; the momentum book keeps 42.81%.
+3. F6.3 passes: the hedged momentum long/short book realizes a beta to
+   Mkt-RF of -0.0272 over 2018 to 2026 against -0.0495 unhedged.
+4. F6.4 stores every headline under XS-v1 and XS-v2; every difference is
+   0.0 because the hedges use only the shared factor block. The sensitivity
+   to the provisional champion is therefore zero, and that is the finding.
+
+New and carried into E7, all stored:
+
+1. The as-stored quarterly capped FMP weights are not a hedge: their worst
+   residual exposure is 0.7552 (reversal, 2024-11-29, momentum book), worse
+   than the unhedged 0.7169 on that date, because the design drifts after
+   the stamp and the caps break exact spanning. The E6 recommendation is
+   never to flatten exposures with the capped FMPs; E7's neutralization
+   machinery must use the exact projection or accept the drift explicitly.
+2. The long-only seed book's realized return series is valid only from
+   2025-10 under daily weights, because its stored rows hold every member on
+   every day, including names before their prices exist, and the E5
+   missing-data semantics make those days missing. The momentum book's
+   series is complete and carries F6.3.
+3. The provisional E9 cost constants (5 bps per turnover unit, 2% per year
+   borrow) are used by every stored cost number in E6 and are replaced by
+   the E9 transaction cost model when it exists.
+4. The instrument set grows from 12 to 14 as XLRE and XLC gain history; the
+   per-date count is stored, and instruments without estimable history are
+   recorded as missing, never filled.

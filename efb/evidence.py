@@ -37,6 +37,7 @@ MANIFEST = EVIDENCE / "MANIFEST.json"
 # and are excluded: they are large, and they are rebuildable from source.
 EVIDENCE_GLOBS = (
     "data/eval/*.parquet",
+    "data/hedge/*.parquet",
     "data/models/*/*.parquet",
 )
 EVIDENCE_FILES = ("data/models/registry.json", "data/VERSION.json")

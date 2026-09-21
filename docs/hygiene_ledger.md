@@ -1136,3 +1136,53 @@ sprint's session instruction named only the stress-regime conflict as a
 stop, with every other unfavourable number recorded and the run continued.
 This entry records the tension so the next sprint knows the champion was
 declared with F5.1 failing, on instruction, and not hidden.
+
+## 2026-09-21: the hedge engine applies the E5 missing-data semantics to both legs
+
+Decision. The instrument and FMP hedge legs go through
+`eval_risk._portfolio_returns` like the book leg: an unpriced name or
+instrument contributes zero, a held one with a missing return makes the
+day missing. The first draft used a raw matmul on the returns panel, so
+NaN columns of instruments without history (XLRE before 2015, XLC before
+2018) poisoned the hedge return and 57.7 percent of minimum-variance rows
+went NaN.
+
+Reason. A hedge position is a portfolio; the same 0-times-NaN defect from
+E5 applies to it. The stored efficacy series changed materially after the
+fix, which is exactly why the revision history in sprints/E6/RESULTS.json
+keeps both measurements.
+
+## 2026-09-21: instruments without estimable history are dropped per date, never filled
+
+Decision. An instrument whose prices do not span the 504-session factor
+window gets NaN betas and idio variance; it is excluded from the hedge on
+that date, the per-date count is stored in `n_instruments`, and its stored
+position is NaN rather than zero.
+
+Reason. Filling it with zero would silently pretend the instrument could
+have been traded; the count is the recorded truth that the instrument set
+grows from 12 to 14 over the sample.
+
+## 2026-09-21: the beta hedge is fitted point-in-time
+
+Decision. The stored `h_spy_beta` in the metrics is fitted on data strictly
+before the rebalance date, like the instrument regressions. The first draft
+fitted it on the full sample's trailing window, which put 2025 data into a
+2012 rebalance.
+
+Reason. The realized efficacy path was already point-in-time; the metrics
+column now agrees with it and the walkthrough recomputes the same number
+by hand.
+
+## 2026-09-21: the exact FMP hedge is scored, the capped stored FMPs are the basis risk
+
+Decision. F6.1 is scored on the exact in-model FMP hedge rebuilt on the
+rebalance date's own design, which drives exposures to 5.8e-15 by
+construction. The as-stored quarterly capped FMP weights are stored beside
+it as `exposure_after_fmp_capped` and their worst drift, 0.7552, is the
+reported basis risk rather than a failed criterion.
+
+Reason. The roadmap says to understand that the FMP hedge is exact
+in-model and unusable in practice; scoring the criterion on the capped
+tradeable form would have failed it for cap drift while hiding the
+exactness that is the point of the exercise.
