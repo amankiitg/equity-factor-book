@@ -1240,3 +1240,22 @@ finding stands beside it. The same audit flips short-term reversal (t
 residual volatility and short interest; momentum and idio momentum
 survive by persistence, because their windows still skip the same-day
 return, and that confound is stored, not rewritten.
+
+## 2026-09-21: E8 Task 0c, F7.2's mechanism recorded beside F4.1's
+
+Decision. F7.2 stays a fail at -0.0107 with t -1.55, and its mechanism is
+recorded the way F4.1's was: the threshold was written for a different
+neutralization. Neutralizing momentum against a risk model that contains
+momentum projects the signal out, so the neutralized IC is the residual
+after removing the factor the signal is. The raw out-of-sample t of 3.2148
+(momentum), 3.8239 (idio momentum) and 7.2700 (post-earnings drift) fall
+to -1.6387, -0.5340 and 1.0344 once neutralized: the signals are the known
+factors, not new information. F4.1's entry is the same pattern, a
+criterion written against one object scored another, and the fail is the
+record of that mismatch, never a workaround.
+
+Reason. The F7.2 threshold (neutral momentum IC mean above 0.02 with t
+above 2) is the right test only against a design that does not contain
+momentum. Against the champion XS-v1 design it measures what is left after
+the signal's own factor is removed, which is near zero by construction of
+the signal being tested.

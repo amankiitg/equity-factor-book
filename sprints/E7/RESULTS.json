@@ -1,6 +1,6 @@
 {
   "sprint": "E7",
-  "evaluated_at": "2026-09-21T17:16:33+00:00",
+  "evaluated_at": "2026-09-21T17:23:01+00:00",
   "data_hash": "e5877fba16b88b75d12e637f5cd386d560f35d4dd4dde225fbeef7116a93d1f2",
   "criteria": {
     "F7.1": {
@@ -83,7 +83,7 @@
         }
       },
       "verdict": "fail",
-      "note": "Both periods are stored and reported either way."
+      "note": "Both periods are stored and reported either way. The threshold was written for a different neutralization: neutralizing momentum against a risk model that already contains momentum projects the signal out, so the fail records the mechanism rather than a verdict on the raw signal. The raw out-of-sample t statistics on momentum, idio momentum and post-earnings drift fall to near zero or negative once neutralized: the signals are the known factors, restated in the hygiene ledger beside F4.1's entry."
     },
     "F7.3": {
       "criterion": "Any signal failing the out-of-sample deflated-Sharpe hurdle is labeled NULL in the ledger, and the ledger contains at least as many rows as signal runs executed.",
@@ -501,7 +501,65 @@
       },
       "F7.1b": {
         "changed": false,
-        "old": null,
+        "old": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "momentum_12_1": {
+              "ic_before_mean": 0.015076440675165859,
+              "t_before": 4.461372051995127,
+              "ic_after_mean": 0.014892062936871446,
+              "t_after": 4.386290749842757,
+              "flipped": false,
+              "killed": false,
+              "survives": true
+            },
+            "short_term_reversal": {
+              "ic_before_mean": 0.012030688919115224,
+              "t_before": 4.708956513908862,
+              "ic_after_mean": -0.3949626275031914,
+              "t_after": -184.71883697624892,
+              "flipped": true,
+              "killed": false,
+              "survives": false
+            },
+            "idio_momentum": {
+              "ic_before_mean": 0.01210198660523347,
+              "t_before": 5.0435495844141,
+              "ic_after_mean": 0.01210472114275361,
+              "t_after": 5.028779739875748,
+              "flipped": false,
+              "killed": false,
+              "survives": true
+            },
+            "low_residual_volatility": {
+              "ic_before_mean": -0.0013998078824058564,
+              "t_before": -0.46447772002990256,
+              "ic_after_mean": -0.0016056663977247186,
+              "t_after": -0.5323972469867809,
+              "flipped": false,
+              "killed": true,
+              "survives": false
+            },
+            "short_interest": {
+              "ic_before_mean": 0.002677266803264082,
+              "t_before": 1.420239046579605,
+              "ic_after_mean": 0.002411383246073039,
+              "t_after": 1.2726086677806925,
+              "flipped": false,
+              "killed": true,
+              "survives": false
+            },
+            "post_earnings_drift": {
+              "ic_before_mean": 0.12398597114864914,
+              "t_before": 14.045656753281332,
+              "ic_after_mean": 0.20149756689922005,
+              "t_after": 21.146019103567788,
+              "flipped": false,
+              "killed": false,
+              "survives": true
+            }
+          }
+        },
         "new": {
           "verdict": "fail",
           "stored_numbers": {

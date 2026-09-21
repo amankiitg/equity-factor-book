@@ -3228,7 +3228,17 @@ def evaluate_e7_criteria(
             float(momentum_numbers["mean"]) > 0.02  # type: ignore[arg-type]
             and float(momentum_numbers["t"]) > 2  # type: ignore[arg-type]
         ),
-        "note": "Both periods are stored and reported either way.",
+        "note": (
+            "Both periods are stored and reported either way. The threshold "
+            "was written for a different neutralization: neutralizing "
+            "momentum against a risk model that already contains momentum "
+            "projects the signal out, so the fail records the mechanism "
+            "rather than a verdict on the raw signal. The raw out-of-sample "
+            "t statistics on momentum, idio momentum and post-earnings drift "
+            "fall to near zero or negative once neutralized: the signals are "
+            "the known factors, restated in the hygiene ledger beside "
+            "F4.1's entry."
+        ),
     }
 
     # F7.3. The ledger: below-hurdle signals are labeled NULL and the row

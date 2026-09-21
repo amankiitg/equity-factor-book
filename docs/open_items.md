@@ -277,3 +277,12 @@ Carried into E8, all stored:
 4. The short interest panel covers only 24 settlement dates from 2018 to
    2026 with gaps; a fuller history needs the FINRA files rather than the
    API endpoint.
+
+## 2026-09-21: E8 Task 0c, short interest is NULL for lack of history
+
+Short interest is NULL in the RG-Signal gate for lack of history, not for
+lack of signal: the panel covers only 24 settlement dates from 2018 to
+2026, its neutral out-of-sample t is 2.1035 and its break-even cost is
+21.02 bp per rebalance. It is the one signal to revisit with a longer
+panel (the FINRA files rather than the API endpoint), and it stays carried
+into a later sprint rather than re-scored here.
