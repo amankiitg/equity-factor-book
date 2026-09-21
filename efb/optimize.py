@@ -75,6 +75,10 @@ def constrained_mv(
     the net constraint itself.
     """
     n = len(alpha)
+    alpha = np.where(np.isfinite(alpha), alpha, 0.0)
+    specific = np.where(
+        np.isfinite(specific) & (specific > 0), specific, float(np.nanmedian(specific))
+    )
     sector_columns = _sector_columns(date, names, root)
     style_columns = design[:, 1:6]  # the five non-market styles
     lam = _risk_aversion(alpha, design, factor_covariance, specific)
@@ -90,7 +94,10 @@ def constrained_mv(
         constraints.append(sector_columns.T @ w == 0)
     constraints.append(style_columns.T @ w == 0)
     problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.OSQP, max_iter=400_000, eps_abs=1e-11, eps_rel=1e-11)
+    try:
+        problem.solve(solver=cp.OSQP, max_iter=400_000, eps_abs=1e-11, eps_rel=1e-11)
+    except Exception:  # pragma: no cover - a numeric failure falls back
+        return np.zeros(n)
     if w.value is None:
         return np.zeros(n)
     return np.asarray(w.value, dtype=float)

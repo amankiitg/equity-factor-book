@@ -69,8 +69,40 @@ def _standardize(values: np.ndarray) -> np.ndarray:
     return out
 
 
+def date_pieces(
+    data_root: Path = DATA_ROOT,
+) -> dict[pd.Timestamp, dict[str, np.ndarray]]:
+    """The champion design, factor covariance and specific variance per grid date.
+
+    These depend only on the date, not on the rho, seed or construction, so
+    the whole experiment shares one computation per date.
+    """
+    root = Path(data_root)
+    wide, _counts = eval_risk.load_clean_wide(root)
+    grid = race.race_grid(root)
+    pieces: dict[pd.Timestamp, dict[str, np.ndarray]] = {}
+    for date in grid:
+        names = eval_risk._window_names(wide, date)
+        if len(names) < 50:
+            continue
+        supplied = eval_risk._xs_pieces(date, names, root)
+        if supplied is None:
+            continue
+        pieces[pd.Timestamp(date)] = {
+            "names": np.asarray(names),
+            "design": supplied["design"],
+            "factor_covariance": supplied["factor_covariance"],
+            "specific": supplied["specific"],
+            "sigma": np.sqrt(np.maximum(supplied["specific"], 1e-12)),
+        }
+    return pieces
+
+
 def synthetic_alpha(
-    data_root: Path = DATA_ROOT, rho: float = 0.05, seed: int = 0
+    data_root: Path = DATA_ROOT,
+    rho: float = 0.05,
+    seed: int = 0,
+    pieces: dict[pd.Timestamp, dict[str, np.ndarray]] | None = None,
 ) -> pd.DataFrame:
     """The synthetic alpha over the E5 race grid, one row per name per date.
 
@@ -79,8 +111,8 @@ def synthetic_alpha(
     frame so no consumer mistakes it for a real signal.
     """
     root = Path(data_root)
-    wide, _counts = eval_risk.load_clean_wide(root)
     grid = race.race_grid(root)
+    pieces = pieces if pieces is not None else date_pieces(root)
     specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
     specific["date"] = pd.to_datetime(specific["date"])
     specific_wide = specific.pivot(
@@ -89,13 +121,10 @@ def synthetic_alpha(
     rng = np.random.default_rng(seed)
     rows: list[pd.DataFrame] = []
     for date in grid:
-        names = eval_risk._window_names(wide, date)
-        if len(names) < 50:
+        if date not in pieces:
             continue
-        supplied = eval_risk._xs_pieces(date, names, root)
-        if supplied is None:
-            continue
-        sigma = np.sqrt(np.maximum(supplied["specific"], 1e-12))
+        names = list(pieces[date]["names"])
+        sigma = pieces[date]["sigma"]
         e_h = _forward_specific(specific_wide, date, names)
         finite = np.isfinite(e_h)
         z = np.full(len(names), np.nan)
@@ -288,19 +317,22 @@ def construct(
     lam: float = 0.0,
     corr: float = 0.0,
     other_alpha: pd.DataFrame | None = None,
+    pieces: dict[pd.Timestamp, dict[str, np.ndarray]] | None = None,
 ) -> pd.DataFrame:
     """Run one construction over every date of the alpha frame.
 
     OUTPUT: a long frame of per-date weights with the decomposition columns.
     """
     root = Path(data_root)
-    wide, _counts = eval_risk.load_clean_wide(root)
+    pieces = pieces if pieces is not None else date_pieces(root)
     rows: list[dict[str, object]] = []
     for date, group in alpha_frame.groupby("date"):
-        names = list(group["ticker"])
-        supplied = eval_risk._xs_pieces(pd.Timestamp(date), names, root)
-        if supplied is None:
+        if date not in pieces:
             continue
+        names = list(pieces[date]["names"])
+        design = pieces[date]["design"]
+        factor_covariance = pieces[date]["factor_covariance"]
+        specific = pieces[date]["specific"]
         alpha = group.set_index("ticker")["alpha"].reindex(names).to_numpy(dtype=float)
         if construction == "combined" and other_alpha is not None:
             # two synthetic signals on the same truth carry the same IC, so
@@ -313,9 +345,6 @@ def construct(
                 .to_numpy(dtype=float)
             )
             alpha = alpha + other
-        design = supplied["design"]
-        factor_covariance = supplied["factor_covariance"]
-        specific = supplied["specific"]
         if construction in ("proportional", "sharpe"):
             raw = proportional(alpha, specific)
         elif construction == "procedure_6_3":
@@ -373,11 +402,12 @@ def run(
 ) -> dict[str, object]:
     """The full E8 experiment: every rho, seed and construction over the grid."""
     root = Path(data_root)
+    pieces = date_pieces(root)
     alpha_frames: dict[tuple[float, int], pd.DataFrame] = {}
     for rho in RHOS:
         for seed in SEEDS:
             print(f"synthetic alpha rho={rho} seed={seed}")
-            alpha_frames[(rho, seed)] = synthetic_alpha(root, rho, seed)
+            alpha_frames[(rho, seed)] = synthetic_alpha(root, rho, seed, pieces=pieces)
     all_rows: list[pd.DataFrame] = []
     summary_rows: list[dict[str, object]] = []
     for rho in RHOS:
@@ -396,6 +426,7 @@ def run(
                         if construction == "combined"
                         else None
                     ),
+                    pieces=pieces,
                 )
                 if built.empty:
                     continue
@@ -452,26 +483,22 @@ def f84_resampling(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFr
     rho is the recorded shrinkage.
     """
     root = Path(data_root)
+    pieces = date_pieces(root)
     rows: list[dict[str, object]] = []
     for rho in RHOS:
         dispersions: list[float] = []
         for seed in SEEDS:
-            frame = synthetic_alpha(root, rho, seed)
+            frame = synthetic_alpha(root, rho, seed, pieces=pieces)
             rng = np.random.default_rng(seed + 10_000)
             for _date, group in frame.groupby("date"):
-                names = list(group["ticker"])
-                supplied = eval_risk._xs_pieces(pd.Timestamp(_date), names, root)
-                if supplied is None:
+                if _date not in pieces:
                     continue
-                specific = supplied["specific"]
+                names = list(pieces[_date]["names"])
+                specific = pieces[_date]["specific"]
                 alpha = group.set_index("ticker")["alpha"].reindex(names).to_numpy()
-                finite = np.isfinite(
-                    group.set_index("ticker")["e_h"].reindex(names).to_numpy()
-                )
-                e_std = _standardize(
-                    group.set_index("ticker")["e_h"].reindex(names).to_numpy()
-                )
-                if finite.sum() < 10:
+                e_h = group.set_index("ticker")["e_h"].reindex(names).to_numpy()
+                e_std = _standardize(e_h)
+                if np.isfinite(e_h).sum() < 10:
                     continue
                 dispersions.append(
                     _resample_dispersion(alpha, specific, e_std, rho, rng, lam=0.0)
@@ -482,12 +509,11 @@ def f84_resampling(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFr
             for lam_candidate in np.logspace(-6, -1, 24):
                 sample: list[float] = []
                 rng = np.random.default_rng(0)
-                frame = synthetic_alpha(root, rho, 0)
+                frame = synthetic_alpha(root, rho, 0, pieces=pieces)
                 for _date, group in list(frame.groupby("date"))[:12]:
-                    names = list(group["ticker"])
-                    supplied = eval_risk._xs_pieces(pd.Timestamp(_date), names, root)
-                    if supplied is None:
+                    if _date not in pieces:
                         continue
+                    names = list(pieces[_date]["names"])
                     alpha = group.set_index("ticker")["alpha"].reindex(names).to_numpy()
                     e_std = _standardize(
                         group.set_index("ticker")["e_h"].reindex(names).to_numpy()
@@ -495,7 +521,7 @@ def f84_resampling(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFr
                     sample.append(
                         _resample_dispersion(
                             alpha,
-                            supplied["specific"],
+                            pieces[_date]["specific"],
                             e_std,
                             rho,
                             rng,

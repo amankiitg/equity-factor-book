@@ -3875,5 +3875,208 @@ def main_e8(data_root: Path = ROOT / "data") -> None:
         raise SystemExit(3)
 
 
+# Sprint E9: transaction costs and capacity. F9.1 to F9.3 are copied
+# verbatim from docs/roadmap_v2.md; F9.4 is new in E9. A stored criterion
+# is never reworded.
+
+E9_CRITERIA_TEXT = {
+    "F9.1": (
+        "Net Sharpe declines monotonically with AUM; the halving AUM is " "stored."
+    ),
+    "F9.2": (
+        "The turnover-penalized optimizer cuts turnover by more than 50% "
+        "with less than 20% loss of ex-ante IR."
+    ),
+    "F9.3": (
+        "Corwin-Schultz spread estimates correlate above 0.5 with size "
+        "rank (smaller names wider)."
+    ),
+    "F9.4": (
+        "New in E9: the halving AUM stored per rho with its sensitivity to "
+        "the impact coefficient k."
+    ),
+}
+
+E9_THRESHOLDS = {
+    "F9.1": "net Sharpe monotone in AUM; halving AUM stored",
+    "F9.2": "turnover cut above 50%, IR loss below 20%",
+    "F9.3": "spread-size-rank correlation above 0.5",
+    "F9.4": "halving AUM stored per rho, sensitivity to k stored",
+}
+
+E9_ARTIFACTS = [
+    "costs/cost_curves.parquet",
+    "costs/capacity.parquet",
+    "costs/capacity_halving.parquet",
+    "costs/turnover_tradeoff.parquet",
+]
+
+
+def compute_e9_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    root = Path(data_root)
+    return {
+        "cost_curves": pd.read_parquet(root / "costs" / "cost_curves.parquet"),
+        "capacity": pd.read_parquet(root / "costs" / "capacity.parquet"),
+        "halving": pd.read_parquet(root / "costs" / "capacity_halving.parquet"),
+        "tradeoff": pd.read_parquet(root / "costs" / "turnover_tradeoff.parquet"),
+    }
+
+
+def e9_data_hash(data_root: Path = ROOT / "data") -> str:
+    root = Path(data_root)
+    digest = hashlib.sha256()
+    for rel in E9_ARTIFACTS:
+        path = root / rel
+        if not path.exists():
+            continue
+        digest.update(path.name.encode("utf-8"))
+        digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("utf-8"))
+    return digest.hexdigest()
+
+
+def evaluate_e9_criteria(
+    cost_curves: pd.DataFrame,
+    capacity: pd.DataFrame,
+    halving: pd.DataFrame,
+    tradeoff: pd.DataFrame,
+) -> dict[str, dict[str, Any]]:
+    """F9.1 to F9.4, each with a stored number and a verdict."""
+    criteria: dict[str, dict[str, Any]] = {}
+
+    # F9.1. Net Sharpe is monotone in AUM and the halving AUM is stored.
+    violations = 0
+    n_curves = 0
+    for (_rho, _k), group in capacity.groupby(["rho", "k"]):
+        group = group.sort_values("aum")
+        n_curves += 1
+        net = group["net_sharpe"].to_numpy(dtype=float)
+        for before, after in zip(net[:-1], net[1:], strict=True):
+            if np.isfinite(before) and np.isfinite(after) and after > before + 1e-9:
+                violations += 1
+    halving_numbers = {
+        f"{row['rho']}_{row['k']}": float(row["halving_aum"])
+        for row in halving.to_dict(orient="records")
+    }
+    criteria["F9.1"] = {
+        "criterion": E9_CRITERIA_TEXT["F9.1"],
+        "threshold": E9_THRESHOLDS["F9.1"],
+        "stored_numbers": {
+            "n_monotonicity_violations": violations,
+            "n_curves": n_curves,
+            "halving_aum_by_rho_k": halving_numbers,
+        },
+        "verdict": _verdict(
+            violations == 0
+            and bool(halving_numbers)
+            and all(np.isfinite(value) for value in halving_numbers.values())
+        ),
+        "note": (
+            "The square-root impact grows with AUM, so net Sharpe declines "
+            "by construction; the check asserts the stored curve does not "
+            "bend the wrong way."
+        ),
+    }
+
+    # F9.2. The turnover-penalized optimizer versus the full rebalance.
+    f92_numbers = {
+        str(row["rho"]): {
+            "turnover_cut": float(row["turnover_cut"]),
+            "ex_ante_ir_loss": float(row["ex_ante_ir_loss"]),
+        }
+        for row in tradeoff.to_dict(orient="records")
+    }
+    mean_cut = float(np.mean([b["turnover_cut"] for b in f92_numbers.values()]))
+    mean_loss = float(np.mean([b["ex_ante_ir_loss"] for b in f92_numbers.values()]))
+    criteria["F9.2"] = {
+        "criterion": E9_CRITERIA_TEXT["F9.2"],
+        "threshold": E9_THRESHOLDS["F9.2"],
+        "stored_numbers": f92_numbers,
+        "verdict": _verdict(mean_cut > 0.5 and mean_loss < 0.2),
+        "note": (
+            "The penalized optimizer holds the low-alpha half of the book at "
+            "its previous weight, so the churn it drops is exactly the "
+            "trades that carry the least alpha."
+        ),
+    }
+
+    # F9.3. Corwin-Schultz spread versus size rank.
+    correlation = (
+        float(cost_curves["spread_size_rank_correlation"].iloc[0])
+        if not cost_curves.empty
+        else float("nan")
+    )
+    criteria["F9.3"] = {
+        "criterion": E9_CRITERIA_TEXT["F9.3"],
+        "threshold": E9_THRESHOLDS["F9.3"],
+        "stored_numbers": {"spread_size_rank_correlation": correlation},
+        "verdict": _verdict(np.isfinite(correlation) and correlation > 0.5),
+        "note": (
+            "The Spearman correlation between the per-name half-spread and "
+            "the size rank (smaller names wider)."
+        ),
+    }
+
+    # F9.4. The halving AUM per rho and its sensitivity to k.
+    f94_numbers: dict[str, dict[str, float]] = {}
+    for rho in sorted(halving["rho"].unique()):
+        sub = halving[halving["rho"] == rho]
+        by_k = {
+            f"k_{row['k']}": float(row["halving_aum"])
+            for row in sub.to_dict(orient="records")
+        }
+        f94_numbers[str(rho)] = by_k
+    criteria["F9.4"] = {
+        "criterion": E9_CRITERIA_TEXT["F9.4"],
+        "threshold": E9_THRESHOLDS["F9.4"],
+        "stored_numbers": f94_numbers,
+        "verdict": _verdict(bool(f94_numbers)),
+        "note": (
+            "The halving AUM at k, k/2 and 2k per rho. The spread between "
+            "the k/2 and 2k halving AUMs is the sensitivity: doubling k "
+            "roughly quarters the halving AUM under the square-root law."
+        ),
+    }
+
+    return criteria
+
+
+def e9_reference_values(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    inputs = compute_e9_from_artifacts(data_root)
+    criteria = evaluate_e9_criteria(**inputs)
+    return {
+        "data_hash": e9_data_hash(data_root),
+        "verdicts": {key: value["verdict"] for key, value in criteria.items()},
+        "stored_numbers": {
+            key: value["stored_numbers"] for key, value in criteria.items()
+        },
+    }
+
+
+def main_e9(data_root: Path = ROOT / "data") -> None:
+    inputs = compute_e9_from_artifacts(data_root)
+    criteria = evaluate_e9_criteria(**inputs)
+    check = prior_verdict_changes(data_root)
+    print("Criterion  verdict  headline number")
+    for key, block in criteria.items():
+        headline = json.dumps(block["stored_numbers"])[:110]
+        print(f"{key}  {block['verdict']}  {headline}")
+    print()
+    for sprint, block in check.items():
+        print(
+            f"{sprint}: {block.get('n_changed')} of {block.get('n_criteria')} changed"
+        )
+        if block.get("changed"):
+            print(f"  STOP CONDITION: earlier verdicts moved: {block['changed']}")
+    write_results(
+        criteria,
+        ROOT / "sprints" / "E9" / "RESULTS.json",
+        sprint="E9",
+        data_hash=e9_data_hash(data_root),
+        reference_values=e9_reference_values(data_root),
+    )
+    if any(block.get("n_changed") for block in check.values()):
+        raise SystemExit(3)
+
+
 if __name__ == "__main__":
     main_e4()
