@@ -3989,6 +3989,11 @@ E9_CRITERIA_TEXT = {
         "New in E9: the halving AUM stored per rho with its sensitivity to "
         "the impact coefficient k."
     ),
+    "F9.5": (
+        "New in E9: the chosen spread estimator's median half-spread by "
+        "size decile stored beside the anchor, with the half and double "
+        "sensitivity stated."
+    ),
 }
 
 E9_THRESHOLDS = {
@@ -3996,22 +4001,48 @@ E9_THRESHOLDS = {
     "F9.2": "turnover cut above 50%, IR loss below 20%",
     "F9.3": "spread-size-rank correlation above 0.5",
     "F9.4": "halving AUM stored per rho, sensitivity to k stored",
+    "F9.5": "median half-spread by decile stored, the anchor stored",
 }
 
 E9_ARTIFACTS = [
+    "costs/spread_probe.parquet",
     "costs/cost_curves.parquet",
     "costs/capacity.parquet",
     "costs/capacity_halving.parquet",
+    "costs/capacity_spread_sensitivity.parquet",
     "costs/turnover_tradeoff.parquet",
 ]
 
 
 def compute_e9_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
     root = Path(data_root)
+    probe_path = root / "costs" / "spread_probe.parquet"
+    sensitivity_path = root / "costs" / "capacity_spread_sensitivity.parquet"
     return {
+        "probe": (
+            pd.read_parquet(probe_path)
+            if probe_path.exists()
+            else pd.DataFrame(
+                columns=[
+                    "size_decile",
+                    "market_cap",
+                    "cs_raw_half_spread",
+                    "cs_adjusted_half_spread",
+                    "abdi_ranaldo_half_spread",
+                    "schedule_half_spread",
+                ]
+            )
+        ),
         "cost_curves": pd.read_parquet(root / "costs" / "cost_curves.parquet"),
         "capacity": pd.read_parquet(root / "costs" / "capacity.parquet"),
         "halving": pd.read_parquet(root / "costs" / "capacity_halving.parquet"),
+        "sensitivity": (
+            pd.read_parquet(sensitivity_path)
+            if sensitivity_path.exists()
+            else pd.DataFrame(
+                columns=["rho", "spread_multiplier", "gross_sharpe", "halving_aum"]
+            )
+        ),
         "tradeoff": pd.read_parquet(root / "costs" / "turnover_tradeoff.parquet"),
     }
 
@@ -4029,12 +4060,14 @@ def e9_data_hash(data_root: Path = ROOT / "data") -> str:
 
 
 def evaluate_e9_criteria(
+    probe: pd.DataFrame,
     cost_curves: pd.DataFrame,
     capacity: pd.DataFrame,
     halving: pd.DataFrame,
+    sensitivity: pd.DataFrame,
     tradeoff: pd.DataFrame,
 ) -> dict[str, dict[str, Any]]:
-    """F9.1 to F9.4, each with a stored number and a verdict."""
+    """F9.1 to F9.5, each with a stored number and a verdict."""
     criteria: dict[str, dict[str, Any]] = {}
 
     # F9.1. Net Sharpe is monotone in AUM and the halving AUM is stored.
@@ -4107,24 +4140,53 @@ def evaluate_e9_criteria(
         ),
     }
 
-    # F9.3. Corwin-Schultz spread versus size rank.
-    correlation = (
-        float(cost_curves["spread_size_rank_correlation"].iloc[0])
-        if not cost_curves.empty
+    # F9.3. Corwin-Schultz spread versus size rank, scored on the corrected
+    # overnight-adjusted estimator from the probe. The raw estimator the
+    # original run scored is stored beside it as the anchor.
+    adjusted_corr = (
+        float(
+            probe["cs_adjusted_half_spread"].corr(
+                probe["size_decile"], method="spearman"
+            )
+        )
+        if not probe.empty
+        else float("nan")
+    )
+    raw_corr = (
+        float(probe["cs_raw_half_spread"].corr(probe["size_decile"], method="spearman"))
+        if not probe.empty
+        else float("nan")
+    )
+    ar_corr = (
+        float(
+            probe["abdi_ranaldo_half_spread"].corr(
+                probe["size_decile"], method="spearman"
+            )
+        )
+        if not probe.empty
         else float("nan")
     )
     criteria["F9.3"] = {
         "criterion": E9_CRITERIA_TEXT["F9.3"],
         "threshold": E9_THRESHOLDS["F9.3"],
-        "stored_numbers": {"spread_size_rank_correlation": correlation},
-        "verdict": _verdict(np.isfinite(correlation) and abs(correlation) > 0.5),
+        "stored_numbers": {
+            "spread_size_rank_correlation": adjusted_corr,
+            "raw_cs_size_rank_correlation": raw_corr,
+            "abdi_ranaldo_size_rank_correlation": ar_corr,
+        },
+        "verdict": _verdict(np.isfinite(adjusted_corr) and abs(adjusted_corr) > 0.5),
         "note": (
-            "The Spearman correlation between the per-name half-spread and "
-            "the size rank is negative (smaller names wider), and its "
-            "magnitude is the scored number. It comes out below 0.5 because "
-            "the Corwin-Schultz estimator is noisy at the single-name level, "
-            "which is the failure mode the roadmap named; the decile means "
-            "still decline monotonically from small to large."
+            "Scored on the corrected overnight-adjusted Corwin-Schultz "
+            "estimator, which floors every two-day estimate at zero for "
+            "S&P 500 names because the true spread is below the "
+            "estimator's resolution on daily high-low data, so the "
+            "size-rank correlation is undefined and the criterion fails. "
+            "The raw estimator the original run scored measures "
+            "volatility, not the spread: its per-name half-spreads read "
+            "2.5 to 5.2 percent, 100 times the quoted range, with a "
+            "size-rank correlation magnitude below 0.5. The Abdi-Ranaldo "
+            "estimator has no size gradient either, which is why the cost "
+            "input is the F9.5 schedule."
         ),
     }
 
@@ -4146,6 +4208,55 @@ def evaluate_e9_criteria(
             "The halving AUM at k, k/2 and 2k per rho. The spread between "
             "the k/2 and 2k halving AUMs is the sensitivity: doubling k "
             "roughly quarters the halving AUM under the square-root law."
+        ),
+    }
+
+    # F9.5. The chosen spread estimator's median half-spread by size decile,
+    # stored beside the anchor estimator medians it replaced.
+    f95_schedule: dict[str, float] = {}
+    f95_raw: dict[str, float] = {}
+    f95_adjusted: dict[str, float] = {}
+    f95_ar: dict[str, float] = {}
+    if not probe.empty:
+        for decile, group in probe.groupby("size_decile"):
+            key = str(int(decile))
+            f95_schedule[key] = float(group["schedule_half_spread"].median())
+            f95_raw[key] = float(group["cs_raw_half_spread"].median())
+            f95_adjusted[key] = float(group["cs_adjusted_half_spread"].median())
+            f95_ar[key] = float(group["abdi_ranaldo_half_spread"].median())
+    f95_sensitivity: dict[str, dict[str, float]] = {}
+    if not sensitivity.empty:
+        for rho in sorted(sensitivity["rho"].unique()):
+            sub = sensitivity[sensitivity["rho"] == rho]
+            f95_sensitivity[str(rho)] = {
+                f"mult_{row['spread_multiplier']}": float(row["halving_aum"])
+                for row in sub.to_dict(orient="records")
+            }
+    criteria["F9.5"] = {
+        "criterion": E9_CRITERIA_TEXT["F9.5"],
+        "threshold": E9_THRESHOLDS["F9.5"],
+        "stored_numbers": {
+            "chosen_estimator": (
+                "size-decile schedule, 10 bp (smallest) to 1 bp (largest) "
+                "half-spread, stated as an assumption"
+            ),
+            "median_half_spread_by_decile": f95_schedule,
+            "anchor_raw_cs_median_by_decile": f95_raw,
+            "anchor_adjusted_cs_median_by_decile": f95_adjusted,
+            "anchor_abdi_ranaldo_median_by_decile": f95_ar,
+            "sensitivity_multipliers": {"half": 0.5, "double": 2.0},
+            "halving_aum_by_spread_multiplier": f95_sensitivity,
+        },
+        "verdict": _verdict(bool(f95_schedule)),
+        "note": (
+            "The chosen cost input is a size-decile schedule from 10 bp "
+            "half-spread for the smallest names to 1 bp for the largest, "
+            "stated as an assumption with a half and double sensitivity. "
+            "The anchor medians beside it show why the free estimators "
+            "were set aside: the raw Corwin-Schultz reads 2.5 to 5.2 "
+            "percent, the overnight-adjusted Corwin-Schultz floors at "
+            "zero for every name, and the Abdi-Ranaldo estimate has no "
+            "size gradient."
         ),
     }
 
@@ -4179,11 +4290,16 @@ def main_e9(data_root: Path = ROOT / "data") -> None:
         )
         if block.get("changed"):
             print(f"  STOP CONDITION: earlier verdicts moved: {block['changed']}")
+    results_path = ROOT / "sprints" / "E9" / "RESULTS.json"
+    previous_hash = None
+    if results_path.exists():
+        previous_hash = json.loads(results_path.read_text()).get("data_hash")
     write_results(
         criteria,
-        ROOT / "sprints" / "E9" / "RESULTS.json",
+        results_path,
         sprint="E9",
         data_hash=e9_data_hash(data_root),
+        previous_data_hash=previous_hash,
         reference_values=e9_reference_values(data_root),
     )
     if any(block.get("n_changed") for block in check.values()):

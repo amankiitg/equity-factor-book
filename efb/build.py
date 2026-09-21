@@ -191,9 +191,11 @@ E8_ARTIFACTS = [
 
 # Sprint E9: the cost model and the capacity curve.
 E9_ARTIFACTS = [
+    "costs/spread_probe.parquet",
     "costs/cost_curves.parquet",
     "costs/capacity.parquet",
     "costs/capacity_halving.parquet",
+    "costs/capacity_spread_sensitivity.parquet",
     "costs/turnover_tradeoff.parquet",
 ]
 

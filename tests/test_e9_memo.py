@@ -19,7 +19,14 @@ RESULTS = ROOT / "sprints" / "E9" / "RESULTS.json"
 def stored_numbers() -> list[float]:
     results = json.loads(RESULTS.read_text())
     texts = [json.dumps(results)]
-    for stem in ("cost_curves", "capacity", "capacity_halving", "turnover_tradeoff"):
+    for stem in (
+        "spread_probe",
+        "cost_curves",
+        "capacity",
+        "capacity_halving",
+        "capacity_spread_sensitivity",
+        "turnover_tradeoff",
+    ):
         frame = pd.read_parquet(DATA / "costs" / f"{stem}.parquet")
         texts.append(frame.select_dtypes(include="number").to_string())
     return [
@@ -44,7 +51,9 @@ def test_the_memo_exists_and_is_traceable(stored_numbers: list[float]) -> None:
 
 
 @pytest.mark.integration
-def test_the_memo_states_the_undefined_capacity() -> None:
+def test_the_memo_states_the_corrected_capacity_and_the_addendum() -> None:
     text = " ".join(MEMO.read_text().split())
     assert "synthetic" in text
     assert "What would falsify this?" in text
+    assert "Addendum: the cost magnitude correction" in text
+    assert "size-decile schedule" in text

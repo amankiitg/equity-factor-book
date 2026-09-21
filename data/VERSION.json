@@ -1,7 +1,7 @@
 {
-  "note": "Built by make rebuild (Sprint E9). The construction artifacts, the cost model and the capacity curve join the versioned set; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-21T20:50:20+00:00",
-  "data_hash": "52c3a2e435d886aeceb3cedf54a06857cf9b8ae9557a4354c28bfb54fcfb7acc",
+  "note": "Built by make rebuild (Sprint E9). The cost and capacity artifacts join the versioned set; the dashboard sidebar shows this version.",
+  "built_at": "2026-09-21T21:56:22+00:00",
+  "data_hash": "cb6b86dd2752f90eb1bba7d63482897bd0441d2b10fbc09005198649192848c0",
   "artifacts": {
     "f71b_audit.parquet": {
       "sha256": "7695b0ba7e4d4bc2dc3696c9250fcd391311d46aad7f7619fff616f76c538fb2",
@@ -36,16 +36,24 @@
       "bytes": 16820
     },
     "capacity.parquet": {
-      "sha256": "0a32755c0483193071a0dbf84ccbba4786368bef5c1a399c93e8ca1702f4a585",
+      "sha256": "ea4e1b2561b3cb52b4e63a33daf607b0ad7a2ceb45f82a68aea6d93ed4af32b9",
       "bytes": 8472
     },
     "capacity_halving.parquet": {
-      "sha256": "1be5e876d2d1a9c06330a226082dc45f48e018cdc6fd2e1288a8c41bf354b253",
-      "bytes": 2834
+      "sha256": "0a4e0b20e0b368cf75e2412094792a4f8dbc243fe9bb3cf5e81578f59fd6f391",
+      "bytes": 2957
+    },
+    "capacity_spread_sensitivity.parquet": {
+      "sha256": "0ddc166503264f717cb9ed49baa159f5797061bab0722b7471925dfeeb9f423b",
+      "bytes": 3110
     },
     "cost_curves.parquet": {
-      "sha256": "0a9fe58bea9767a851a042090104ce8f07daf2179fc034475f029703537f3619",
-      "bytes": 4654
+      "sha256": "16cf2c92a6ad0bfb47c60d6508fe5c11cd2ce94024f30f23c3f9d90b19077ee2",
+      "bytes": 4639
+    },
+    "spread_probe.parquet": {
+      "sha256": "e4943c6de5d2b71e9becbf1e74b4fa7061565626b84b6b7fb7a826aaa9dff50b",
+      "bytes": 21309
     },
     "turnover_tradeoff.parquet": {
       "sha256": "8ef202d7b31cca2ba4351bbd68da3a5af61040b941451fb036e3f26116e226bb",

@@ -14,7 +14,7 @@ NOTEBOOK = ROOT / "notebooks" / "E9_walkthrough.ipynb"
 HTML = ROOT / "notebooks" / "E9_walkthrough.html"
 RESULTS = ROOT / "sprints" / "E9" / "RESULTS.json"
 
-CRITERIA = [f"F9.{index}" for index in range(1, 5)]
+CRITERIA = [f"F9.{index}" for index in range(1, 6)]
 
 
 def _notebook() -> dict:

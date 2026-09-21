@@ -51,13 +51,33 @@ def test_doubling_aum_raises_cost_per_dollar_by_about_41_percent() -> None:
 
 
 @pytest.mark.integration
-def test_the_corwin_schultz_spread_correlates_with_size_rank() -> None:
+def test_the_chosen_spread_schedule_is_monotone_in_size() -> None:
     curves = costs.cost_curves(DATA, store=False)
     assert not curves.empty
     correlation = float(curves["spread_size_rank_correlation"].iloc[0])
     assert np.isfinite(correlation)
-    # smaller names wider: the spread falls as the size rank rises
+    # smaller names wider: the chosen schedule falls as the size rank rises
     assert correlation < 0.0
+
+
+@pytest.mark.integration
+def test_the_probe_records_why_the_free_estimators_were_set_aside() -> None:
+    probe = costs.spread_probe(DATA, store=False)
+    assert not probe.empty
+    # the overnight-adjusted Corwin-Schultz floors every name at zero
+    assert (probe["cs_adjusted_half_spread"] == 0.0).all()
+    # the Abdi-Ranaldo estimate has essentially no size gradient
+    ar_corr = float(
+        probe["abdi_ranaldo_half_spread"].corr(probe["size_decile"], method="spearman")
+    )
+    assert abs(ar_corr) < 0.1
+    # the chosen schedule is 10 bp for the smallest and 1 bp for the largest
+    assert np.isclose(
+        probe.loc[probe["size_decile"] == 0, "schedule_half_spread"].iloc[0], 1e-3
+    )
+    assert np.isclose(
+        probe.loc[probe["size_decile"] == 9, "schedule_half_spread"].iloc[0], 1e-4
+    )
 
 
 @pytest.mark.integration
@@ -69,3 +89,7 @@ def test_the_capacity_artifacts_are_written() -> None:
     assert {"rho", "k", "aum", "gross_sharpe", "net_sharpe"} <= set(capacity.columns)
     halving = pd.read_parquet(DATA / "costs" / "capacity_halving.parquet")
     assert {"rho", "k", "halving_aum"} <= set(halving.columns)
+    sensitivity = pd.read_parquet(
+        DATA / "costs" / "capacity_spread_sensitivity.parquet"
+    )
+    assert {"rho", "spread_multiplier", "halving_aum"} <= set(sensitivity.columns)
