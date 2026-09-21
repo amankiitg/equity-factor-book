@@ -308,7 +308,7 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
     wide, counts = eval_risk.load_clean_wide(root)
     grid = race.race_grid(root)
     vix = pd.read_parquet(root / "raw" / "vix.parquet")
-    vix_series = vix.set_index(pd.to_datetime(vix["date"]))["vix_close"]
+    vix_series = vix.set_index(pd.to_datetime(vix["date"]))["vix"]
     summary_rows: list[dict[str, object]] = []
     ledger_rows: list[dict[str, object]] = []
     results: dict[str, object] = {}
@@ -349,8 +349,8 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
         # the quantile spread Sharpe and the deflated-Sharpe verdict
         spread = _quantile_spread(quantiles)
         spread_sharpe = (
-            float(spread["return"].mean() / spread["return"].std(ddof=1) * np.sqrt(252))
-            if spread["return"].std(ddof=1) > 0
+            float(spread.mean() / spread.std(ddof=1) * np.sqrt(252))
+            if spread.std(ddof=1) > 0
             else float("nan")
         )
         n_runs_so_far = run_counter + 1
@@ -415,6 +415,12 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
             }
         )
         split = _split_ic(ic_frame["ic_h1"])
+        oos_spread = spread.loc[spread.index >= OUT_OF_SAMPLE_START]
+        oos_sharpe = (
+            float(oos_spread.mean() / oos_spread.std(ddof=1) * np.sqrt(252))
+            if len(oos_spread) > 20 and oos_spread.std(ddof=1) > 0
+            else float("nan")
+        )
         summary_rows.append(
             {
                 "signal": name,
@@ -429,6 +435,7 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
                 "in_sample_t": split["in_sample"]["t"],
                 "out_of_sample_mean": split["out_of_sample"]["mean"],
                 "out_of_sample_t": split["out_of_sample"]["t"],
+                "oos_spread_sharpe": oos_sharpe,
                 "audit_flipped": bool(audit["flipped"].iloc[-1]),
                 "audit_killed": bool(audit["killed"].iloc[-1]),
                 "audit_leak_flag": bool(audit["leak_flag"].iloc[-1]),
@@ -461,6 +468,23 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
             "out_of_sample_t": split["out_of_sample"]["t"],
         }
     summary = pd.DataFrame(summary_rows)
+    # the verdict per signal: NULL when the out-of-sample spread fails the
+    # deflated-Sharpe hurdle, PASS otherwise; every ledger row of the signal
+    # carries the same verdict, and the deciding number is stored per row
+    total_runs = run_counter
+    verdict_by_signal: dict[str, str] = {}
+    for row in summary_rows:
+        oos_sharpe = float(row["oos_spread_sharpe"])  # type: ignore[arg-type]
+        oos_t = float(row["out_of_sample_t"])  # type: ignore[arg-type]
+        deflated = hygiene.deflated_sharpe(oos_sharpe, total_runs, 63)
+        below_hurdle = (
+            not np.isfinite(oos_sharpe)
+            or deflated["deflated_sharpe"] <= 0
+            or abs(oos_t) < hygiene.HLZ_T_HURDLE
+        )
+        verdict_by_signal[str(row["signal"])] = "NULL" if below_hurdle else "PASS"
+    for row in ledger_rows:
+        row["verdict"] = verdict_by_signal.get(str(row["signal"]), "UNAVAILABLE")
     if store:
         summary.to_parquet(root / "alpha" / "summary.parquet", index=False)
         hygiene.write_ledger(ledger_rows, ROOT / "docs" / "multiple_testing_ledger.md")

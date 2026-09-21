@@ -101,6 +101,13 @@ LINKS = [
         "Walkthrough notebook E6 (hedging)",
         "notebooks/E6_walkthrough.html",
     ),
+    ("Sprint E7 PRD", "sprints/E7/PRD.md"),
+    ("Sprint E7 tasks", "sprints/E7/TASKS.md"),
+    ("Sprint E7 results (F criteria)", "sprints/E7/RESULTS.json"),
+    (
+        "The Multiple-Testing Ledger",
+        "docs/multiple_testing_ledger.md",
+    ),
 ]
 
 

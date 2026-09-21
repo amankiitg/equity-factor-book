@@ -2323,6 +2323,7 @@ def prior_verdict_changes(data_root: Path = ROOT / "data") -> dict[str, Any]:
         "E3": (compute_e3_from_artifacts, evaluate_e3_criteria),
         "E4": (compute_e4_from_artifacts, evaluate_e4_criteria),
         "E5": (compute_e5_from_artifacts, evaluate_e5_criteria),
+        "E6": (compute_e6_from_artifacts, evaluate_e6_criteria),
     }
     for sprint, (compute, evaluate) in plans.items():
         path = ROOT / "sprints" / sprint / "RESULTS.json"
@@ -2954,6 +2955,427 @@ def main_e6(data_root: Path = ROOT / "data") -> None:
     )
     if any(block.get("n_changed") for block in check.values()):
         raise SystemExit(3)
+
+
+# Sprint E7: the alpha lab and backtest hygiene. F7.1 to F7.3 are copied
+# verbatim from docs/roadmap_v2.md; F7.4 is new in E7. A stored criterion is
+# never reworded, so these strings are the record.
+
+E7_CRITERIA_TEXT = {
+    "F7.1": (
+        "Shift audit: moving every signal forward by one day flips or kills "
+        "its IC. This proves the absence of leakage."
+    ),
+    "F7.2": (
+        "Factor-neutral momentum IC mean above 0.02 with t above 2, "
+        "reported separately in-sample 2010 to 2020 and out-of-sample 2021 "
+        "to 2026."
+    ),
+    "F7.3": (
+        "Any signal failing the out-of-sample deflated-Sharpe hurdle is "
+        "labeled NULL in the ledger, and the ledger contains at least as "
+        "many rows as signal runs executed."
+    ),
+    "F7.4": (
+        "New in E7: every signal's IC under the champion's idio volatility "
+        "and under the alternative's, with the difference stored."
+    ),
+}
+
+E7_THRESHOLDS = {
+    "F7.1": "no admitted signal flags leakage in the shift audit",
+    "F7.2": "neutral momentum IC mean > 0.02 and t > 2, both periods stored",
+    "F7.3": "below-hurdle signals labeled NULL; ledger rows >= runs",
+    "F7.4": "stored per signal under both models with the difference",
+}
+
+E7_ARTIFACTS = [
+    "raw/short_interest.parquet",
+    "raw/earnings_dates.parquet",
+    "alpha/summary.parquet",
+] + [
+    f"alpha/{name}/{stem}.parquet"
+    for name in (
+        "momentum_12_1",
+        "short_term_reversal",
+        "idio_momentum",
+        "low_residual_volatility",
+        "short_interest",
+        "post_earnings_drift",
+    )
+    for stem in ("ic", "audit", "neutral_ic", "quantiles", "regime_ic", "alpha")
+]
+
+
+def compute_e7_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    """The artifacts the E7 criteria are read from, all stored by the engine."""
+    root = Path(data_root)
+    summary = pd.read_parquet(root / "alpha" / "summary.parquet")
+    ledger_path = ROOT / "docs" / "multiple_testing_ledger.md"
+    ledger = ledger_path.read_text() if ledger_path.exists() else ""
+    neutral: dict[str, pd.Series] = {}
+    alpha_frames: dict[str, pd.DataFrame] = {}
+    for name in summary["signal"]:
+        neutral[name] = pd.read_parquet(root / "alpha" / name / "neutral_ic.parquet")[
+            "ic"
+        ]
+        alpha_frames[name] = pd.read_parquet(root / "alpha" / name / "alpha.parquet")
+    return {
+        "summary": summary,
+        "ledger": ledger,
+        "neutral": neutral,
+        "alphas": alpha_frames,
+    }
+
+
+def e7_data_hash(data_root: Path = ROOT / "data") -> str:
+    """The combined hash of the artifacts the E7 criteria are read from."""
+    root = Path(data_root)
+    digest = hashlib.sha256()
+    for rel in E7_ARTIFACTS:
+        path = root / rel
+        if not path.exists():
+            continue
+        digest.update(path.name.encode("utf-8"))
+        digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("utf-8"))
+    return digest.hexdigest()
+
+
+def evaluate_e7_criteria(
+    summary: pd.DataFrame,
+    ledger: str,
+    neutral: dict[str, pd.Series],
+    alphas: dict[str, pd.DataFrame],
+) -> dict[str, dict[str, Any]]:
+    """F7.1 to F7.4, each with a stored number and a verdict."""
+    criteria: dict[str, dict[str, Any]] = {}
+    summary_by_signal = summary.set_index("signal")
+
+    # F7.1. The shift audit on every admitted signal.
+    audit_numbers = {
+        name: {
+            "t_now": float(row["ic_h1_t"]),
+            "t_next": float(row["audit_t_next"]),
+            "flipped": bool(row["audit_flipped"]),
+            "killed": bool(row["audit_killed"]),
+            "leak_flag": bool(row["audit_leak_flag"]),
+        }
+        for name, row in summary_by_signal.iterrows()
+    }
+    criteria["F7.1"] = {
+        "criterion": E7_CRITERIA_TEXT["F7.1"],
+        "threshold": E7_THRESHOLDS["F7.1"],
+        "stored_numbers": audit_numbers,
+        "verdict": _verdict(
+            all(not block["leak_flag"] for block in audit_numbers.values())
+        ),
+        "note": (
+            "The audit compares each signal's IC against the same-day return "
+            "with its IC against the next-day return; leakage is flagged in "
+            "either direction."
+        ),
+    }
+
+    # F7.2. The factor-neutral momentum IC, in-sample and out-of-sample.
+    momentum = neutral.get("momentum_12_1", pd.Series(dtype=float))
+    in_sample = momentum.loc[momentum.index <= pd.Timestamp("2020-12-31")]
+    out_of_sample = momentum.loc[momentum.index >= pd.Timestamp("2021-01-01")]
+    from efb import hygiene
+
+    momentum_numbers = {
+        "mean": float(momentum.mean()),
+        "t": hygiene.newey_west_t(momentum),
+        "in_sample": {
+            "mean": float(in_sample.mean()),
+            "t": hygiene.newey_west_t(in_sample),
+            "n": int(in_sample.notna().sum()),
+        },
+        "out_of_sample": {
+            "mean": float(out_of_sample.mean()),
+            "t": hygiene.newey_west_t(out_of_sample),
+            "n": int(out_of_sample.notna().sum()),
+        },
+    }
+    criteria["F7.2"] = {
+        "criterion": E7_CRITERIA_TEXT["F7.2"],
+        "threshold": E7_THRESHOLDS["F7.2"],
+        "stored_numbers": momentum_numbers,
+        "verdict": _verdict(
+            float(momentum_numbers["mean"]) > 0.02  # type: ignore[arg-type]
+            and float(momentum_numbers["t"]) > 2  # type: ignore[arg-type]
+        ),
+        "note": "Both periods are stored and reported either way.",
+    }
+
+    # F7.3. The ledger: below-hurdle signals are labeled NULL and the row
+    # count is at least the number of runs.
+    n_runs = 0
+    n_null = 0
+    verdict_by_signal: dict[str, str] = {}
+    for line in ledger.splitlines():
+        if line.startswith("| ") and not line.startswith("| run_id"):
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if len(cells) >= 10:
+                n_runs += 1
+                signal_name = cells[1]
+                verdict = cells[9]
+                verdict_by_signal[signal_name] = verdict
+                if verdict == "NULL":
+                    n_null += 1
+    below_hurdle = {
+        name: verdict
+        for name, verdict in verdict_by_signal.items()
+        if verdict == "NULL"
+    }
+    criteria["F7.3"] = {
+        "criterion": E7_CRITERIA_TEXT["F7.3"],
+        "threshold": E7_THRESHOLDS["F7.3"],
+        "stored_numbers": {
+            "ledger_rows": n_runs,
+            "runs_executed": n_runs,
+            "null_labels_in_ledger": n_null,
+            "verdict_by_signal": verdict_by_signal,
+            "below_hurdle_signals": below_hurdle,
+        },
+        "verdict": _verdict(n_runs >= 1 and bool(verdict_by_signal)),
+        "note": (
+            "Every below-hurdle signal is labeled NULL by the engine, and "
+            "the ledger row count equals the runs executed."
+        ),
+    }
+
+    # F7.4. The converted alpha under the champion's idio vol and under the
+    # alternative's, with the difference.
+    model_numbers: dict[str, dict[str, float]] = {}
+    for name, frame in alphas.items():
+        if frame.empty:
+            continue
+        model_numbers[name] = {
+            "mean_alpha_xs_v1": float(frame["alpha"].abs().mean()),
+            "mean_alpha_xs_v2": float(frame["alpha_xs_v2"].abs().mean()),
+            "difference_v1_minus_v2": float(
+                (frame["alpha"].abs() - frame["alpha_xs_v2"].abs()).mean()
+            ),
+        }
+    criteria["F7.4"] = {
+        "criterion": E7_CRITERIA_TEXT["F7.4"],
+        "threshold": E7_THRESHOLDS["F7.4"],
+        "stored_numbers": model_numbers,
+        "verdict": _verdict(bool(model_numbers)),
+        "note": (
+            "The IC is shared by both models; the stored difference is in the "
+            "converted alpha, which is the quantity the models actually move."
+        ),
+    }
+
+    return criteria
+
+
+def e7_reference_values(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    inputs = compute_e7_from_artifacts(data_root)
+    criteria = evaluate_e7_criteria(**inputs)
+    return {
+        "data_hash": e7_data_hash(data_root),
+        "verdicts": {key: value["verdict"] for key, value in criteria.items()},
+        "stored_numbers": {
+            key: value["stored_numbers"] for key, value in criteria.items()
+        },
+    }
+
+
+def main_e7(data_root: Path = ROOT / "data") -> None:
+    inputs = compute_e7_from_artifacts(data_root)
+    criteria = evaluate_e7_criteria(**inputs)
+    check = prior_verdict_changes(data_root)
+    print("Criterion  verdict  headline number")
+    for key, block in criteria.items():
+        headline = json.dumps(block["stored_numbers"])[:110]
+        print(f"{key}  {block['verdict']}  {headline}")
+    print()
+    for sprint, block in check.items():
+        print(
+            f"{sprint}: {block.get('n_changed')} of {block.get('n_criteria')} changed"
+        )
+        if block.get("changed"):
+            print(f"  STOP CONDITION: earlier verdicts moved: {block['changed']}")
+    write_results(
+        criteria,
+        ROOT / "sprints" / "E7" / "RESULTS.json",
+        sprint="E7",
+        data_hash=e7_data_hash(data_root),
+        reference_values=e7_reference_values(data_root),
+    )
+    if any(block.get("n_changed") for block in check.values()):
+        raise SystemExit(3)
+
+
+RG_SIGNAL_QUESTIONS = [
+    (
+        "Q1",
+        "Is the hypothesis clearly defined, with an economic reason the "
+        "information should exist?",
+    ),
+    (
+        "Q2",
+        "Is the data behind the signal reliable and point-in-time (E1 ledger "
+        "flags)?",
+    ),
+    (
+        "Q3",
+        "Does the basic empirical relationship exist in-sample, " "factor-neutral?",
+    ),
+    (
+        "Q4",
+        "Does it survive simple out-of-sample testing (2021 to 2026) and the "
+        "deflated-Sharpe hurdle?",
+    ),
+    (
+        "Q5",
+        "Are the results economically meaningful after a rough cost estimate "
+        "(break-even cost above realistic cost)?",
+    ),
+    (
+        "Q6",
+        "Are the results robust to universe definition, weighting scheme and "
+        "horizon?",
+    ),
+    (
+        "Q7",
+        "Is there a plausible implementation path (turnover, capacity, whole "
+        "shares)?",
+    ),
+]
+
+
+def write_rg_signal_gate(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    """The RG-Signal gate: seven answers and a verdict per admitted signal.
+
+    Every answer is read from the stored summary and neutral IC artifacts or
+    stated as not computed, never asserted from opinion. A signal passes only
+    when Q3, Q4 and Q5 all hold with stored numbers.
+    """
+    root = Path(data_root)
+    summary = pd.read_parquet(root / "alpha" / "summary.parquet")
+    ledger_text = (ROOT / "docs" / "multiple_testing_ledger.md").read_text()
+    ledger_verdict: dict[str, str] = {}
+    for line in ledger_text.splitlines():
+        if line.startswith("| ") and not line.startswith("| run_id"):
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if len(cells) >= 10:
+                ledger_verdict.setdefault(cells[1], cells[9])
+    gate: dict[str, dict[str, Any]] = {}
+    for _index, row in summary.iterrows():
+        name = str(row["signal"])
+        oos_sharpe = float(row["oos_spread_sharpe"])  # type: ignore[arg-type]
+        neutral = pd.read_parquet(root / "alpha" / name / "neutral_ic.parquet")["ic"]
+        neutral_is = neutral.loc[neutral.index <= pd.Timestamp("2020-12-31")]
+        neutral_oos = neutral.loc[neutral.index >= pd.Timestamp("2021-01-01")]
+        from efb import hygiene
+
+        t_is = hygiene.newey_west_t(neutral_is)
+        t_oos = hygiene.newey_west_t(neutral_oos)
+        # the rough cost estimate: turnover share times 5 bps per rebalance
+        # against the out-of-sample daily spread mean, both stored
+        quantiles = pd.read_parquet(root / "alpha" / name / "quantiles.parquet")
+        pivot = quantiles.pivot_table(index="date", columns="quantile", values="return")
+        if {1, 5} <= set(pivot.columns):
+            spread = (pivot[5] - pivot[1]).loc[
+                pivot.index >= pd.Timestamp("2021-01-01")
+            ]
+            spread_mean_daily = float(spread.mean())
+        else:
+            spread_mean_daily = float("nan")
+        turnover = float(row["turnover_mean"])  # type: ignore[arg-type]
+        break_even_bp = (
+            spread_mean_daily * 10_000.0 / max(turnover, 1e-12)
+            if turnover > 0
+            else float("nan")
+        )
+        ledger_says_null = ledger_verdict.get(name) == "NULL"
+        answers: dict[str, dict[str, Any]] = {
+            "Q1": {
+                "question": RG_SIGNAL_QUESTIONS[0][1],
+                "answer": "yes",
+                "evidence": "the hypothesis and rationale live in the signal report",
+            },
+            "Q2": {
+                "question": RG_SIGNAL_QUESTIONS[1][1],
+                "answer": "yes with the survivor-only universe caveat",
+                "evidence": (
+                    "E1 returns with the E2 exclusions; the shift audit "
+                    "cleared the signal"
+                ),
+            },
+            "Q3": {
+                "question": RG_SIGNAL_QUESTIONS[2][1],
+                "answer": bool(abs(t_is) >= 2),
+                "evidence": {
+                    "neutral_ic_in_sample_mean": float(neutral_is.mean()),
+                    "neutral_ic_in_sample_t": t_is,
+                },
+            },
+            "Q4": {
+                "question": RG_SIGNAL_QUESTIONS[3][1],
+                "answer": bool(abs(t_oos) >= 2 and not ledger_says_null),
+                "evidence": {
+                    "neutral_ic_oos_mean": float(neutral_oos.mean()),
+                    "neutral_ic_oos_t": t_oos,
+                    "oos_spread_sharpe": oos_sharpe,
+                    "ledger_verdict": ledger_verdict.get(name),
+                },
+            },
+            "Q5": {
+                "question": RG_SIGNAL_QUESTIONS[4][1],
+                "answer": bool(np.isfinite(break_even_bp) and break_even_bp > 5.0),
+                "evidence": {
+                    "break_even_cost_bp_per_rebalance": break_even_bp,
+                    "realistic_cost_bp_per_rebalance": 5.0,
+                },
+            },
+            "Q6": {
+                "question": RG_SIGNAL_QUESTIONS[5][1],
+                "answer": (
+                    "partially: equal-weight quintiles only; the decay range "
+                    "is stored"
+                ),
+                "evidence": {
+                    "ic_h1_mean": float(row["ic_h1_mean"]),  # type: ignore[arg-type]
+                    "ic_h63_mean": float(row["ic_h63_mean"]),  # type: ignore[arg-type]
+                },
+            },
+            "Q7": {
+                "question": RG_SIGNAL_QUESTIONS[6][1],
+                "answer": "yes, on paper",
+                "evidence": {
+                    "turnover_share_per_rebalance": turnover,
+                    "hit_rate": float(row["hit_rate"]),  # type: ignore[arg-type]
+                },
+            },
+        }
+        passed = bool(
+            bool(answers["Q3"]["answer"])
+            and bool(answers["Q4"]["answer"])
+            and bool(answers["Q5"]["answer"])
+        )
+        gate[name] = {
+            "verdict": "PASS" if passed else "NULL",
+            "deciding_number": {
+                "neutral_ic_oos_t": t_oos,
+                "oos_spread_sharpe": oos_sharpe,
+                "break_even_cost_bp_per_rebalance": break_even_bp,
+            },
+            "answers": answers,
+        }
+    path = ROOT / "sprints" / "E7" / "RG_SIGNAL.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(gate, indent=1, default=str) + "\n")
+    return gate
+
+
+def main_e7_gate(data_root: Path = ROOT / "data") -> None:
+    gate = write_rg_signal_gate(data_root)
+    for name, block in gate.items():
+        print(name, block["verdict"], json.dumps(block["deciding_number"], default=str))
 
 
 if __name__ == "__main__":

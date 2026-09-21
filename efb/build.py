@@ -151,6 +151,25 @@ E6_ARTIFACTS = [
     "hedge/e6_decay.parquet",
 ]
 
+# Sprint E7: the alpha lab. The short interest and earnings caches are fetched
+# inputs, versioned with the rest so a re-fetch moves the hash.
+E7_ARTIFACTS = [
+    "raw/short_interest.parquet",
+    "raw/earnings_dates.parquet",
+    "alpha/summary.parquet",
+] + [
+    f"alpha/{name}/{stem}.parquet"
+    for name in (
+        "momentum_12_1",
+        "short_term_reversal",
+        "idio_momentum",
+        "low_residual_volatility",
+        "short_interest",
+        "post_earnings_drift",
+    )
+    for stem in ("ic", "audit", "neutral_ic", "quantiles", "regime_ic", "alpha")
+]
+
 MODEL_START = 2010
 REGISTRY_PATH = DATA_ROOT / "models" / "registry.json"
 
@@ -1964,11 +1983,73 @@ def rebuild_e6(
     }
 
 
+def rebuild_e7(
+    data_root: Path = DATA_ROOT,
+    results_path: Path | None = None,
+    full: bool = False,
+) -> dict[str, object]:
+    """Run the E7 build: the alpha lab and the backtest hygiene ledger.
+
+    `full` first runs the E1 through E6 legs. Without it, the earlier
+    artifacts are read from disk. The run stores the IC and decay series,
+    the neutralized IC, the quantile portfolios, the regime IC, the
+    converted alpha and the append-only ledger; the criteria are then read
+    from those artifacts.
+    """
+    from efb import alpha, evaluate
+
+    e6: dict[str, object] | None = None
+    if full:
+        e6 = rebuild_e6(data_root=data_root, results_path=None, full=True)
+    engine = alpha.run(data_root=data_root, store=True)
+    artifact_paths = [
+        data_root / rel
+        for rel in (
+            ARTIFACTS
+            + E2_ARTIFACTS
+            + E3_ARTIFACTS
+            + E4_ARTIFACTS
+            + E5_ARTIFACTS
+            + E6_ARTIFACTS
+            + E7_ARTIFACTS
+        )
+    ]
+    version_path = data_root / "VERSION.json"
+    old_hash = previous_data_hash(version_path)
+    payload = write_version(
+        artifact_paths,
+        version_path,
+        note=(
+            "Built by make rebuild (Sprint E7). The alpha lab artifacts and "
+            "the multiple-testing ledger join the versioned set; the "
+            "dashboard sidebar shows this version."
+        ),
+    )
+    if results_path is not None:
+        evaluate.main_e7(data_root=data_root)
+        evaluate.main_e7_gate(data_root=data_root)
+    engine_summary = engine.get("summary")
+    engine_shape = (
+        engine_summary.shape if isinstance(engine_summary, pd.DataFrame) else None
+    )
+    return {
+        "n_steps": 17,
+        "full": full,
+        "e6": e6,
+        "engine": engine_shape,
+        "ledger_rows": engine.get("ledger_rows"),
+        "version": payload,
+        "previous_data_hash": old_hash,
+    }
+
+
 def main() -> None:
     if "--all" in sys.argv:
-        summary = rebuild_e6(
-            results_path=ROOT / "sprints" / "E6" / "RESULTS.json", full=True
+        summary = rebuild_e7(
+            results_path=ROOT / "sprints" / "E7" / "RESULTS.json", full=True
         )
+    elif "--e7" in sys.argv:
+        summary = rebuild_e7(results_path=ROOT / "sprints" / "E7" / "RESULTS.json")
     elif "--e6" in sys.argv:
         summary = rebuild_e6(results_path=ROOT / "sprints" / "E6" / "RESULTS.json")
     elif "--e5" in sys.argv:

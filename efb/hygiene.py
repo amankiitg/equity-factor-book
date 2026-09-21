@@ -361,7 +361,7 @@ def quantile_portfolios(
     from efb import eval_risk
 
     s_wide = _signal_wide(signal_frame)
-    collected: list[pd.Series] = []
+    rows: list[dict[str, object]] = []
     last = grid[-1] + pd.Timedelta(days=40)
     for start, end in zip(grid, grid[1:] + [last], strict=True):
         s = s_wide.loc[s_wide.index <= start].iloc[-1]
@@ -377,16 +377,15 @@ def quantile_portfolios(
             returns = eval_risk._portfolio_returns(
                 weight_row[None, :], window.to_numpy(dtype=float)
             )[0]
-            collected.append(
-                pd.Series(returns, index=window.index, name=f"q{bucket + 1}")
+            rows.extend(
+                {
+                    "date": date,
+                    "quantile": int(bucket + 1),
+                    "return": float(value),
+                }
+                for date, value in zip(window.index, returns, strict=True)
             )
-    if not collected:
-        return pd.DataFrame(columns=["date", "quantile", "return"])
-    frame = pd.concat(collected, axis=1)
-    long = frame.stack(future_stack=True).rename("return").reset_index()
-    long.columns = ["date", "quantile", "return"]
-    long["quantile"] = long["quantile"].str.replace("q", "").astype(int)
-    return long
+    return pd.DataFrame(rows, columns=["date", "quantile", "return"])
 
 
 def fundamental_law(ic: pd.Series, breadth: int) -> dict[str, float]:
