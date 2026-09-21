@@ -395,6 +395,70 @@ def construct(
     return pd.DataFrame(rows)
 
 
+def store_realized_ic(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFrame:
+    """The measured cross-sectional IC of each synthetic seed, per rho.
+
+    The measured IC differs from the nominal rho by sampling error, most at
+    rho 0.02. F8.5 uses this realized IC, not the nominal rho.
+    """
+    root = Path(data_root)
+    pieces = date_pieces(root)
+    rows: list[dict[str, object]] = []
+    for rho in RHOS:
+        for seed in SEEDS:
+            frame = synthetic_alpha(root, rho, seed, pieces=pieces)
+            measured = float(frame.groupby("date")["ic"].mean().mean())
+            rows.append({"rho": rho, "seed": seed, "realized_ic": measured})
+    out = pd.DataFrame(rows)
+    if store:
+        out.to_parquet(root / "portfolios" / "e8_realized_ic.parquet", index=False)
+    return out
+
+
+def store_neff(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFrame:
+    """The effective breadth per rebalance date.
+
+    N_eff is the participation ratio of the XS-v1 specific-return
+    correlation matrix over the trailing 504-session window:
+    (sum of eigenvalues)^2 / (sum of squared eigenvalues). E4 measured
+    strong residual co-movement, so N_eff sits well below the name count.
+    """
+    root = Path(data_root)
+    wide, _counts = eval_risk.load_clean_wide(root)
+    grid = race.race_grid(root)
+    specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
+    specific["date"] = pd.to_datetime(specific["date"])
+    specific_wide = specific.pivot(
+        index="date", columns="ticker", values="specific_return"
+    )
+    rows: list[dict[str, object]] = []
+    for date in grid:
+        names = eval_risk._window_names(wide, date)
+        if len(names) < 50:
+            continue
+        window = specific_wide.loc[:date].iloc[-504:].reindex(columns=names)
+        window = window.dropna(axis=1, how="any")
+        if window.shape[1] < 50:
+            continue
+        correlation = np.corrcoef(window.to_numpy(dtype=float).T)
+        eigenvalues = np.linalg.eigvalsh(correlation)
+        eigenvalues = np.clip(eigenvalues, 0.0, None)
+        total = float(eigenvalues.sum())
+        n_eff = float(total**2 / (eigenvalues**2).sum()) if total > 0 else 0.0
+        rows.append(
+            {
+                "date": pd.Timestamp(date),
+                "n_names": int(window.shape[1]),
+                "n_eff": n_eff,
+                "largest_eigenvalue": float(eigenvalues.max()),
+            }
+        )
+    out = pd.DataFrame(rows)
+    if store:
+        out.to_parquet(root / "portfolios" / "e8_neff.parquet", index=False)
+    return out
+
+
 def run(
     data_root: Path = DATA_ROOT,
     store: bool = True,

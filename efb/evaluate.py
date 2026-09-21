@@ -3594,6 +3594,8 @@ E8_THRESHOLDS = {
 E8_ARTIFACTS = [
     "portfolios/e8_summary.parquet",
     "portfolios/e8_f84_resampling.parquet",
+    "portfolios/e8_realized_ic.parquet",
+    "portfolios/e8_neff.parquet",
 ] + [
     f"portfolios/{name}.parquet"
     for name in (
@@ -3612,6 +3614,18 @@ def compute_e8_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     root = Path(data_root)
     summary = pd.read_parquet(root / "portfolios" / "e8_summary.parquet")
     resampling = pd.read_parquet(root / "portfolios" / "e8_f84_resampling.parquet")
+    realized_ic_path = root / "portfolios" / "e8_realized_ic.parquet"
+    realized_ic = (
+        pd.read_parquet(realized_ic_path)
+        if realized_ic_path.exists()
+        else pd.DataFrame(columns=["rho", "seed", "realized_ic"])
+    )
+    neff_path = root / "portfolios" / "e8_neff.parquet"
+    neff = (
+        pd.read_parquet(neff_path)
+        if neff_path.exists()
+        else pd.DataFrame(columns=["date", "n_names", "n_eff"])
+    )
     weights: dict[str, pd.DataFrame] = {}
     for name in (
         "proportional",
@@ -3624,7 +3638,13 @@ def compute_e8_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     ):
         path = root / "portfolios" / f"{name}.parquet"
         weights[name] = pd.read_parquet(path) if path.exists() else pd.DataFrame()
-    return {"summary": summary, "resampling": resampling, "weights": weights}
+    return {
+        "summary": summary,
+        "resampling": resampling,
+        "weights": weights,
+        "realized_ic": realized_ic,
+        "neff": neff,
+    }
 
 
 def e8_data_hash(data_root: Path = ROOT / "data") -> str:
@@ -3643,6 +3663,8 @@ def evaluate_e8_criteria(
     summary: pd.DataFrame,
     resampling: pd.DataFrame,
     weights: dict[str, pd.DataFrame],
+    realized_ic: pd.DataFrame | None = None,
+    neff: pd.DataFrame | None = None,
 ) -> dict[str, dict[str, Any]]:
     """F8.1 to F8.6, each with a stored number and a verdict."""
     criteria: dict[str, dict[str, Any]] = {}
@@ -3706,19 +3728,50 @@ def evaluate_e8_criteria(
         ),
     }
 
-    # F8.3. The constrained optimizer's worst constraint violation.
+    # F8.3. The constrained optimizer's worst constraint violation, with the
+    # solver-fallback rate stored beside it (a fallback produces a zero book
+    # on a date where the proportional book has a position).
     f83_violation = (
         float(summary["max_violation"].max()) if not summary.empty else float("nan")
     )
+    mv_c = weights.get("mv_constrained", pd.DataFrame())
+    prop = weights.get("proportional", pd.DataFrame())
+    fallback_rows: list[dict[str, float | int]] = []
+    if not mv_c.empty and not prop.empty:
+        mv_gross = mv_c.groupby(["rho", "seed", "date"])["gross"].max()
+        prop_gross = prop.groupby(["rho", "seed", "date"])["gross"].max()
+        aligned = pd.concat([mv_gross.rename("mv"), prop_gross.rename("prop")], axis=1)
+        aligned = aligned.dropna()
+        fallback = aligned[(aligned["mv"] < 1e-8) & (aligned["prop"] > 1e-8)]
+        for (rho, seed, _date), _row in fallback.iterrows():
+            fallback_rows.append({"rho": float(rho), "seed": int(seed), "n": 1})
+    fallback_frame = pd.DataFrame(fallback_rows)
+    fallback_by_seed: dict[str, int] = {}
+    if not fallback_frame.empty:
+        for row in fallback_frame.to_dict(orient="records"):
+            key = f"{row['rho']}_{int(row['seed'])}"
+            fallback_by_seed[key] = fallback_by_seed.get(key, 0) + int(row["n"])
+    n_fallback = int(len(fallback_frame))
+    n_dates = int(
+        summary.loc[summary["construction"] == "mv_constrained", "n_dates"].sum()
+    )
+    fallback_rate = float(n_fallback / n_dates) if n_dates else 0.0
     criteria["F8.3"] = {
         "criterion": E8_CRITERIA_TEXT["F8.3"],
         "threshold": E8_THRESHOLDS["F8.3"],
-        "stored_numbers": {"max_violation": f83_violation},
+        "stored_numbers": {
+            "max_violation": f83_violation,
+            "solver_fallbacks": n_fallback,
+            "solver_fallback_rate": fallback_rate,
+            "fallbacks_by_rho_seed": fallback_by_seed,
+        },
         "verdict": _verdict(np.isfinite(f83_violation) and f83_violation < 1e-8),
         "note": (
             "The worst solver slack over every rho, seed and date across the "
             "gross, net, position-cap, sector-neutral and beta-neutral "
-            "constraints."
+            "constraints. A solver fallback produces a zero book on a date "
+            "where the proportional book has a position; the fallback rate "
+            "is stored beside the violation."
         ),
     }
 
@@ -3749,23 +3802,55 @@ def evaluate_e8_criteria(
         ),
     }
 
-    # F8.5. The transfer coefficient table by construction and rho.
+    # F8.5. The transfer coefficient table by construction and rho. The
+    # prediction uses the realized IC of each seed (not the nominal rho) and
+    # the participation-ratio breadth N_eff from the specific-return
+    # correlation matrix, with the name count kept beside it.
+    realized_ic_map = (
+        realized_ic.groupby("rho")["realized_ic"].mean()
+        if realized_ic is not None and not realized_ic.empty
+        else pd.Series(dtype=float)
+    )
+    neff_mean = (
+        float(neff["n_eff"].mean())
+        if neff is not None and not neff.empty
+        else float("nan")
+    )
+    n_names_mean = (
+        float(neff["n_names"].mean())
+        if neff is not None and not neff.empty
+        else float("nan")
+    )
     transfer_rows: list[dict[str, float | str]] = []
     if not summary.empty:
         for construction, group in summary.groupby("construction"):
             for rho, sub in group.groupby("rho"):
                 ir = float(sub["realized_ir"].mean())
-                n_eff = float(sub["mean_n_eff"].mean())
-                prediction = float(rho) * np.sqrt(max(n_eff, 1.0))
+                ic_used = float(realized_ic_map.get(rho, float(rho)))
+                n_eff_used = (
+                    neff_mean
+                    if np.isfinite(neff_mean)
+                    else float(sub["mean_n_eff"].mean())
+                )
+                prediction_neff = ic_used * np.sqrt(max(n_eff_used, 1.0))
+                prediction_n = ic_used * np.sqrt(max(n_names_mean, 1.0))
                 transfer_rows.append(
                     {
                         "construction": construction,
                         "rho": float(rho),
                         "realized_ir": ir,
-                        "n_eff": n_eff,
-                        "predicted_ir": prediction,
-                        "transfer_coefficient": (
-                            ir / prediction if prediction > 0 else float("nan")
+                        "realized_ic": ic_used,
+                        "n_eff": n_eff_used,
+                        "n_names": n_names_mean,
+                        "predicted_ir_neff": prediction_neff,
+                        "predicted_ir_n": prediction_n,
+                        "transfer_coefficient_neff": (
+                            ir / prediction_neff
+                            if prediction_neff > 0
+                            else float("nan")
+                        ),
+                        "transfer_coefficient_n": (
+                            ir / prediction_n if prediction_n > 0 else float("nan")
                         ),
                     }
                 )
@@ -3777,9 +3862,12 @@ def evaluate_e8_criteria(
             row["construction"]: {
                 str(row["rho"]): {
                     "realized_ir": row["realized_ir"],
+                    "realized_ic": row["realized_ic"],
                     "n_eff": row["n_eff"],
-                    "predicted_ir": row["predicted_ir"],
-                    "transfer_coefficient": row["transfer_coefficient"],
+                    "n_names": row["n_names"],
+                    "predicted_ir_neff": row["predicted_ir_neff"],
+                    "transfer_coefficient_neff": row["transfer_coefficient_neff"],
+                    "transfer_coefficient_n": row["transfer_coefficient_n"],
                 }
                 for row in transfer_table[
                     transfer_table["construction"] == row["construction"]
@@ -3791,10 +3879,12 @@ def evaluate_e8_criteria(
         },
         "verdict": _verdict(not transfer_table.empty),
         "note": (
-            "The realized IR is the mean over the five seeds of the "
-            "per-rebalance mean-to-standard-deviation ratio; the prediction "
-            "is rho * sqrt(n_eff) with n_eff the mean effective number of "
-            "names. The ratio is the transfer coefficient."
+            "The realized IR is the mean over the five seeds; the prediction "
+            "is the realized IC times sqrt(N_eff), with N_eff the mean "
+            "participation ratio of the specific-return correlation matrix, "
+            "and the name count kept beside it. The two transfer "
+            "coefficients, over sqrt(N_eff) and over sqrt(N), say how much "
+            "of the shortfall the residual co-movement E4 measured explains."
         ),
     }
 
