@@ -138,9 +138,11 @@ def test_registry_entry_is_eligible_but_not_champion() -> None:
     payload = json.loads((_exists("models/registry.json")).read_text())
     entry = payload["models"]["XS-v1"]
     assert entry["family"] == "fundamental"
-    assert entry["champion"] is False
     assert entry["eligible_for_champion"] is True
-    assert set(payload["models"]) >= {"TS-v1", "XS-v1"}
+    assert set(payload["models"]) >= {"TS-v1", "XS-v1", "XS-v2"}
+    # E5 Task 5 declared exactly one champion; E3 closed with none
+    champions = [name for name, model in payload["models"].items() if model["champion"]]
+    assert len(champions) == 1, champions
 
 
 @pytest.mark.integration

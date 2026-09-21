@@ -2309,6 +2309,7 @@ def prior_verdict_changes(data_root: Path = ROOT / "data") -> dict[str, Any]:
         "E1": (compute_from_artifacts, evaluate_criteria),
         "E2": (compute_e2_from_artifacts, evaluate_e2_criteria),
         "E3": (compute_e3_from_artifacts, evaluate_e3_criteria),
+        "E4": (compute_e4_from_artifacts, evaluate_e4_criteria),
     }
     for sprint, (compute, evaluate) in plans.items():
         path = ROOT / "sprints" / sprint / "RESULTS.json"
@@ -2347,6 +2348,291 @@ def e4_reference_values(data_root: Path = ROOT / "data") -> dict[str, Any]:
             key: value["stored_numbers"] for key, value in criteria.items()
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Sprint E5: risk model evaluation. F5.1 to F5.3 are copied verbatim from
+# docs/roadmap_v2.md; F5.4 and F5.5 are new in E5. A stored criterion is never
+# reworded, so these strings are the record.
+
+E5_CRITERIA_TEXT = {
+    "F5.1": (
+        "At least one model version achieves mean bias between 0.9 and 1.1 "
+        "across all portfolio families."
+    ),
+    "F5.2": (
+        "Factor-based models beat the sample covariance on bias for "
+        "long/short portfolios."
+    ),
+    "F5.3": (
+        "Bias is worst in 2020 Q1 for every model. This is expected and is "
+        "reported, not hidden."
+    ),
+    "F5.4": (
+        "Regime table produced for every model version; the champion's "
+        "stress-regime bias and its recovery time in trading days are stored "
+        "alongside its average bias."
+    ),
+    "F5.5": (
+        "New in E5: XS-v2's bias against XS-v1's on the same families, "
+        "stored both ways."
+    ),
+}
+
+E5_THRESHOLDS = {
+    "F5.1": "0.9 <= mean bias <= 1.1 for every family for at least one version",
+    "F5.2": (
+        "every factor version's long/short mean bias closer to 1 than the "
+        "sample covariance's"
+    ),
+    "F5.3": "every version's 2020 Q1 bias is its worst episode, and it is reported",
+    "F5.4": "stored for every version, champion's numbers present",
+    "F5.5": "stored, whatever it shows",
+}
+
+E5_FACTOR_VERSIONS = ("ts_v1", "xs_v1", "xs_v2", "pca_v1", "pca_v1c")
+
+
+def compute_e5_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    """The artifacts the E5 criteria are read from, all stored by the engine."""
+    root = Path(data_root)
+    return {
+        "registry_payload": json.loads((root / "models" / "registry.json").read_text()),
+        "family_bias": pd.read_parquet(root / "eval" / "e5_family_bias.parquet"),
+        "summary": pd.read_parquet(root / "eval" / "e5_bias_summary.parquet"),
+        "regimes": pd.read_parquet(root / "eval" / "e5_regimes.parquet"),
+        "horizon": pd.read_parquet(root / "eval" / "e5_horizon.parquet"),
+        "asset_level": pd.read_parquet(root / "eval" / "e5_asset_level.parquet"),
+    }
+
+
+def e5_data_hash(data_root: Path = ROOT / "data") -> str:
+    """The combined hash of the artifacts the E5 criteria are read from."""
+    digest = hashlib.sha256()
+    root = Path(data_root)
+    for rel in (
+        "models/registry.json",
+        "models/XS-v2/residual_factors.parquet",
+        "models/XS-v2/residual_loadings.parquet",
+        "models/XS-v2/residual_remainder.parquet",
+        "eval/e5_portfolios.parquet",
+        "eval/e5_forecast_diag.parquet",
+        "eval/e5_forecast_portfolios.parquet",
+        "eval/e5_bias_summary.parquet",
+        "eval/e5_family_bias.parquet",
+        "eval/e5_rolling_bias.parquet",
+        "eval/e5_horizon.parquet",
+        "eval/e5_asset_level.parquet",
+        "eval/e5_regimes.parquet",
+        "raw/vix.parquet",
+    ):
+        path = root / rel
+        if not path.exists():
+            continue
+        digest.update(path.name.encode("utf-8"))
+        digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("utf-8"))
+    return digest.hexdigest()
+
+
+def evaluate_e5_criteria(
+    registry_payload: dict[str, Any],
+    family_bias: pd.DataFrame,
+    summary: pd.DataFrame,
+    regimes: pd.DataFrame,
+    horizon: pd.DataFrame,
+    asset_level: pd.DataFrame,
+) -> dict[str, dict[str, Any]]:
+    """F5.1 to F5.5, each with a stored number and a verdict."""
+    criteria: dict[str, dict[str, Any]] = {}
+    from efb import registry as registry_module
+
+    champions = [
+        name
+        for name, entry in registry_payload["models"].items()
+        if entry.get("champion")
+    ]
+    champion = champions[0] if len(champions) == 1 else None
+
+    # F5.1. At least one version inside 0.9 to 1.1 on every family.
+    eligible = [
+        name
+        for name, entry in registry_payload["models"].items()
+        if entry.get("eligible_for_champion")
+    ]
+    inside: dict[str, bool] = {}
+    for version in eligible:
+        tag = registry_module.engine_tag(version)
+        rows = family_bias.loc[family_bias["version"] == tag]
+        inside[version] = bool(
+            len(rows) == 4 and ((rows["bias"] >= 0.9) & (rows["bias"] <= 1.1)).all()
+        )
+    criteria["F5.1"] = {
+        "criterion": E5_CRITERIA_TEXT["F5.1"],
+        "threshold": E5_THRESHOLDS["F5.1"],
+        "stored_numbers": {
+            "family_bias": {
+                version: float(
+                    family_bias.loc[
+                        family_bias["version"] == registry_module.engine_tag(version),
+                        "bias",
+                    ].mean()
+                )
+                for version in eligible
+            },
+            "inside_all_families": inside,
+        },
+        "verdict": _verdict(any(inside.values())),
+        "note": (
+            "Scored on the family-pooled bias of the four eligible versions. "
+            + ("Passes: " + ", ".join(v for v, ok in inside.items() if ok) + ".")
+            if any(inside.values())
+            else "No version lands inside 0.9 to 1.1 on every family."
+        ),
+    }
+
+    # F5.2. Every factor version's long/short bias closer to 1 than the sample's.
+    ls = family_bias.loc[family_bias["family"] == "long_short"].set_index("version")
+    sample_distance = (
+        float(abs(ls.loc["sample", "bias"] - 1.0))
+        if "sample" in ls.index
+        else float("nan")
+    )
+    distances: dict[str, float] = {}
+    for version in E5_FACTOR_VERSIONS:
+        if version in ls.index:
+            distances[version] = float(abs(ls.loc[version, "bias"] - 1.0))
+    criteria["F5.2"] = {
+        "criterion": E5_CRITERIA_TEXT["F5.2"],
+        "threshold": E5_THRESHOLDS["F5.2"],
+        "stored_numbers": {
+            "long_short_abs_bias_minus_1": distances,
+            "sample_long_short_abs_bias_minus_1": sample_distance,
+        },
+        "verdict": _verdict(
+            bool(distances)
+            and all(value < sample_distance for value in distances.values())
+        ),
+        "note": (
+            "The factor versions are the registered factor models, TS-v1 "
+            "included as a diagnostic."
+        ),
+    }
+
+    # F5.3. 2020 Q1 is every version's worst episode.
+    episodes = regimes.loc[regimes["regime"].isin(("2020_q1", "2022"))].copy()
+    q1 = episodes.loc[episodes["regime"] == "2020_q1"].groupby("version")["bias"].mean()
+    w22 = episodes.loc[episodes["regime"] == "2022"].groupby("version")["bias"].mean()
+    q1_is_worst: dict[str, bool] = {}
+    for version in q1.index:
+        q1_is_worst[version] = bool(q1[version] >= w22.get(version, float("-inf")))
+    criteria["F5.3"] = {
+        "criterion": E5_CRITERIA_TEXT["F5.3"],
+        "threshold": E5_THRESHOLDS["F5.3"],
+        "stored_numbers": {
+            "bias_2020_q1": {k: float(v) for k, v in q1.items()},
+            "bias_2022": {k: float(v) for k, v in w22.items()},
+        },
+        "verdict": _verdict(bool(q1_is_worst) and all(q1_is_worst.values())),
+        "note": "Both episodes are stored and reported either way.",
+    }
+
+    # F5.4. Regime table for every version, champion's numbers present.
+    champion_stress = float("nan")
+    champion_recovery = float("nan")
+    if champion is not None:
+        from efb import registry as registry_module
+
+        champion_tag = registry_module.engine_tag(champion)
+        champion_rows = regimes.loc[regimes["version"] == champion_tag]
+        high = champion_rows.loc[champion_rows["regime"] == "vix_high", "bias"]
+        if len(high):
+            champion_stress = float(high.mean())
+        q1_rows = champion_rows.loc[
+            champion_rows["regime"] == "2020_q1", "recovery_trading_days"
+        ]
+        if len(q1_rows) and pd.notna(q1_rows.iloc[0]):
+            champion_recovery = float(q1_rows.iloc[0])
+    from efb import registry as registry_module
+
+    criteria["F5.4"] = {
+        "criterion": E5_CRITERIA_TEXT["F5.4"],
+        "threshold": E5_THRESHOLDS["F5.4"],
+        "stored_numbers": {
+            "n_versions_in_regime_table": int(regimes["version"].nunique()),
+            "champion": champion,
+            "champion_stress_bias_vix_high": champion_stress,
+            "champion_recovery_trading_days_2020_q1": champion_recovery,
+        },
+        "verdict": _verdict(
+            {registry_module.engine_tag(name) for name in registry_payload["models"]}
+            <= set(regimes["version"])
+            and champion is not None
+            and pd.notna(champion_stress)
+        ),
+        "note": (
+            "Stored per version; the champion's stress-regime bias and its "
+            "recovery time in trading days sit beside its average bias."
+        ),
+    }
+
+    # F5.5. XS-v2 against XS-v1 on the same families, both ways stored.
+    xs1 = family_bias.loc[family_bias["version"] == "xs_v1"].set_index("family")["bias"]
+    xs2 = family_bias.loc[family_bias["version"] == "xs_v2"].set_index("family")["bias"]
+    ratio_v2_over_v1 = {
+        family: float(xs2[family] / xs1[family]) for family in xs1.index
+    }
+    criteria["F5.5"] = {
+        "criterion": E5_CRITERIA_TEXT["F5.5"],
+        "threshold": E5_THRESHOLDS["F5.5"],
+        "stored_numbers": {
+            "bias_xs_v2": {k: float(v) for k, v in xs2.items()},
+            "bias_xs_v1": {k: float(v) for k, v in xs1.items()},
+            "ratio_xs_v2_over_xs_v1": ratio_v2_over_v1,
+        },
+        "verdict": _verdict(bool(xs1.index.equals(xs2.index))),
+        "note": (
+            "Whatever it shows is stored, which is the whole point of the " "criterion."
+        ),
+    }
+    return criteria
+
+
+def e5_reference_values(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    inputs = compute_e5_from_artifacts(data_root)
+    criteria = evaluate_e5_criteria(**inputs)
+    return {
+        "data_hash": e5_data_hash(data_root),
+        "verdicts": {key: value["verdict"] for key, value in criteria.items()},
+        "stored_numbers": {
+            key: value["stored_numbers"] for key, value in criteria.items()
+        },
+    }
+
+
+def main_e5(data_root: Path = ROOT / "data") -> None:
+    inputs = compute_e5_from_artifacts(data_root)
+    criteria = evaluate_e5_criteria(**inputs)
+    check = prior_verdict_changes(data_root)
+    print("Criterion  verdict  headline number")
+    for key, block in criteria.items():
+        headline = json.dumps(block["stored_numbers"])[:110]
+        print(f"{key}  {block['verdict']}  {headline}")
+    print()
+    for sprint, block in check.items():
+        print(
+            f"{sprint}: {block.get('n_changed')} of {block.get('n_criteria')} changed"
+        )
+        if block.get("changed"):
+            print(f"  STOP CONDITION: earlier verdicts moved: {block['changed']}")
+    write_results(
+        criteria,
+        ROOT / "sprints" / "E5" / "RESULTS.json",
+        sprint="E5",
+        data_hash=e5_data_hash(data_root),
+        reference_values=e5_reference_values(data_root),
+    )
+    if any(block.get("n_changed") for block in check.values()):
+        raise SystemExit(3)
 
 
 def main_e4(data_root: Path = ROOT / "data") -> None:

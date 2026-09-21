@@ -26,6 +26,7 @@ from dashboard.tabs import (  # noqa: E402
     d01_exposures,
     d02_factor_risk,
     d03_covariance,
+    d04_risk_eval,
     methodology,
 )
 
@@ -62,6 +63,7 @@ def main() -> None:
             "D1 Exposures",
             "D2 Factor Model and Risk",
             "D3 Covariance Lab",
+            "D4 Risk Model Evaluation",
             "Methodology",
         ]
     )
@@ -74,6 +76,8 @@ def main() -> None:
     with tabs[3]:
         d03_covariance.render()
     with tabs[4]:
+        d04_risk_eval.render()
+    with tabs[5]:
         methodology.render()
 
 

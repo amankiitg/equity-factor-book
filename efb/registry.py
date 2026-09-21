@@ -93,6 +93,25 @@ def write_registry(path: Path, entry: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def declare_champion(path: Path, version: str) -> dict[str, Any]:
+    """Set `champion: true` on exactly one entry and clear every other flag.
+
+    The champion rule and the family notes are carried, never edited. The
+    declared version must already be registered and eligible, which is how an
+    ineligible diagnostic version can never become champion through this door.
+    """
+    payload = load(path)
+    models = payload.setdefault("models", {})
+    if version not in models:
+        raise ValueError(f"{version} is not registered")
+    if not models[version].get("eligible_for_champion"):
+        raise ValueError(f"{version} is ineligible for champion")
+    for name, entry in models.items():
+        entry["champion"] = name == version
+    Path(path).write_text(json.dumps(payload, indent=2) + "\n")
+    return payload
+
+
 # Registry v1 (Sprint E4, Task 5). The schema is validated rather than assumed,
 # and the champion flag is read through one function so no tab or report can
 # invent its own answer. The champion rule itself is never edited here.
@@ -174,6 +193,15 @@ def eligible(payload: dict[str, Any]) -> list[str]:
 
 def family_of(payload: dict[str, Any], version: str) -> str:
     return str(payload.get("models", {}).get(version, {}).get("family", ""))
+
+
+def engine_tag(version: str) -> str:
+    """The lowercase tag the evaluation engine uses for a registry version.
+
+    Registry names are spelled like XS-v2; the engine's stored tables tag the
+    same versions xs_v2, so every comparison between the two goes through here.
+    """
+    return version.replace("-", "_").lower()
 
 
 def parameters_of(payload: dict[str, Any], version: str) -> dict[str, Any]:

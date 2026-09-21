@@ -42,7 +42,10 @@ rebuild-e3: ## Rebuilds the XS-v1 artifacts from the E1 and E2 artifacts (Sprint
 rebuild-e4: ## Rebuilds the E4 statistical and covariance artifacts (Sprint E4)
 	$(PYTHON) -m efb.build --e4
 
-rebuild: ## Rebuilds E1 through E4 end to end, the gate G1 one-command path
+rebuild-e5: ## Rebuilds the E5 risk evaluation and the champion decision (Sprint E5)
+	$(PYTHON) -m efb.build --e5
+
+rebuild: ## Rebuilds E1 through E5 end to end, the gate G1 one-command path
 	$(PYTHON) -m efb.build --all
 
 evidence: ## Refresh the tracked evidence snapshot (E5 R1)

@@ -370,7 +370,7 @@
       "universe_hash": "532623d541928c67dd165b8a6e49c1e890ba7a57a5c732c6b2b688c819944615",
       "data_hash": "2bb524bfe4dd426a521714412acbc23db76252d7af1602999d520ad4ddb591c5",
       "built_at": "2026-09-18T01:42:22+00:00",
-      "champion": false,
+      "champion": true,
       "eligible_for_champion": true,
       "walkthrough": "notebooks/E3_walkthrough.html",
       "deliverable": "docs/research/E3_factor_model_note.md",

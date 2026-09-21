@@ -35,7 +35,7 @@ def test_every_registered_version_is_known_and_no_champion_is_declared() -> None
     names = registry.versions(payload)
     for expected in ("TS-v1", "XS-v1", "PCA-v1", "PCA-v1c", "XS-v2"):
         assert expected in names, expected
-    assert registry.champion(payload) is None, "no champion is declared before Task 5"
+    assert registry.champion(payload) == "XS-v1", "E5 Task 5 declares XS-v1"
     assert registry.eligible(payload) == ["XS-v1", "PCA-v1", "PCA-v1c", "XS-v2"]
     assert registry.family_of(payload, "PCA-v1c") == "statistical"
     assert registry.family_of(payload, "XS-v1") == "fundamental"

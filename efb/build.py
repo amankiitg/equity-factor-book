@@ -112,6 +112,33 @@ E4_ARTIFACTS = [
 # artifact and the grid is the one open engineering item this sprint leaves.
 E4_RACE_ARTIFACT = "eval/cov_horse_race.parquet"
 
+E5_ARTIFACTS = [
+    "models/XS-v2/residual_factors.parquet",
+    "models/XS-v2/residual_loadings.parquet",
+    "models/XS-v2/residual_remainder.parquet",
+    "models/registry.json",
+    "raw/vix.parquet",
+    "eval/e5_portfolios.parquet",
+    "eval/e5_forecast_diag.parquet",
+    "eval/e5_forecast_portfolios.parquet",
+    "eval/e5_bias_summary.parquet",
+    "eval/e5_family_bias.parquet",
+    "eval/e5_rolling_bias.parquet",
+    "eval/e5_horizon.parquet",
+    "eval/e5_asset_level.parquet",
+    "eval/e5_regimes.parquet",
+    "eval/e5_stress_haircut.parquet",
+] + [
+    f"eval/bias_{version}_{family}.parquet"
+    for version in ("sample", "ts_v1", "xs_v1", "xs_v2", "pca_v1", "pca_v1c")
+    for family in (
+        "long_only",
+        "long_short",
+        "factor_tilted",
+        "sector_concentrated",
+    )
+]
+
 MODEL_START = 2010
 REGISTRY_PATH = DATA_ROOT / "models" / "registry.json"
 
@@ -1811,11 +1838,72 @@ def rebuild_e4(
     }
 
 
+def rebuild_e5(
+    data_root: Path = DATA_ROOT,
+    results_path: Path | None = None,
+    full: bool = False,
+) -> dict[str, object]:
+    """Run the E5 build: XS-v2, the evaluation engine, the champion, the record.
+
+    With `full` the E1 through E4 legs run first, which is what `make rebuild`
+    does. Without it, as `make rebuild-e5` runs it, the earlier artifacts are
+    read from disk and only the E5 work is redone. The champion application is
+    the rule printed before any bias statistic existed, and it can stop the
+    build on the pre-registered stop conditions.
+    """
+    from efb import eval_risk, evaluate
+
+    e4: dict[str, object] | None = None
+    if full:
+        e4 = rebuild_e4(data_root=data_root, results_path=None, full=True)
+    xs_v2 = build_xs_v2(data_root=data_root, store=True)
+    engine = eval_risk.run(data_root=data_root, store=True)
+    horizon = eval_risk.horizon_table(data_root=data_root, store=True)
+    asset_level = eval_risk.asset_level_table(data_root=data_root, store=True)
+    regimes = eval_risk.regime_table(data_root=data_root, store=True)
+    decision = eval_risk.apply_champion(data_root=data_root)
+    haircut = eval_risk.stress_haircut(data_root=data_root, store=True)
+    artifact_paths = [
+        data_root / rel
+        for rel in (
+            ARTIFACTS + E2_ARTIFACTS + E3_ARTIFACTS + E4_ARTIFACTS + E5_ARTIFACTS
+        )
+    ]
+    version_path = data_root / "VERSION.json"
+    old_hash = previous_data_hash(version_path)
+    payload = write_version(
+        artifact_paths,
+        version_path,
+        note=(
+            "Built by make rebuild (Sprint E5). E1 through E5 artifacts, each "
+            "with a content hash; the dashboard sidebar shows this version."
+        ),
+    )
+    if results_path is not None:
+        evaluate.main_e5(data_root=data_root)
+    return {
+        "n_steps": 15,
+        "full": full,
+        "e4": e4,
+        "xs_v2": xs_v2.get("summary"),
+        "engine": engine.get("family_table"),
+        "horizon": horizon,
+        "asset_level": asset_level,
+        "regimes": regimes,
+        "decision": decision,
+        "haircut": haircut,
+        "version": payload,
+        "previous_data_hash": old_hash,
+    }
+
+
 def main() -> None:
     if "--all" in sys.argv:
-        summary = rebuild_e4(
-            results_path=ROOT / "sprints" / "E4" / "RESULTS.json", full=True
+        summary = rebuild_e5(
+            results_path=ROOT / "sprints" / "E5" / "RESULTS.json", full=True
         )
+    elif "--e5" in sys.argv:
+        summary = rebuild_e5(results_path=ROOT / "sprints" / "E5" / "RESULTS.json")
     elif "--e4" in sys.argv:
         summary = rebuild_e4(results_path=ROOT / "sprints" / "E4" / "RESULTS.json")
     elif "--e3" in sys.argv:
