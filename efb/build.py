@@ -208,6 +208,7 @@ E9_ARTIFACTS = [
 
 # Sprint E10: dynamic risk allocation and loss management.
 E10_ARTIFACTS = [
+    "allocation/config.json",
     "allocation/kelly.parquet",
     "allocation/drawdown.parquet",
     "allocation/voltarget.parquet",

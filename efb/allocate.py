@@ -9,6 +9,7 @@ design book, with the two seed books run alongside.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -35,8 +36,13 @@ def _annual_factor(horizon: int = HORIZON) -> float:
 
 
 def pick_design_config(data_root: Path = DATA_ROOT) -> dict[str, float]:
-    """The (rho, phi) whose net annualized Sharpe is closest to 1.0 at the
-    reference AUM, stated as the design book."""
+    """The (rho, phi, seed) whose net annualized Sharpe is closest to 1.0.
+
+    The (rho, phi) is picked from the seed-averaged capacity table at the
+    reference AUM; within that configuration the single seed whose own net
+    Sharpe is closest to 1.0 is the design book, because a book is one
+    realization, not the average of five.
+    """
     root = Path(data_root)
     capacity = pd.read_parquet(root / "costs" / "capacity_phi.parquet")
     rows = capacity[capacity["aum"] == REFERENCE_AUM]
@@ -64,16 +70,36 @@ def pick_design_config(data_root: Path = DATA_ROOT) -> dict[str, float]:
             "gross_sharpe": float("nan"),
             "distance": float("nan"),
         }
+    best_seed = 0
+    best_seed_sharpe = float("nan")
+    if np.isfinite(best["net_sharpe"]):
+        for seed in SEEDS:
+            series = design_net_returns(
+                float(best["rho"]),
+                float(best["phi"]),
+                seed=seed,
+                aum=REFERENCE_AUM,
+                data_root=root,
+            )
+            sharpe = _annualized_moments(series, HORIZON)["sharpe"]
+            if abs(sharpe - 1.0) < abs(best_seed_sharpe - 1.0) or np.isnan(
+                best_seed_sharpe
+            ):
+                best_seed = seed
+                best_seed_sharpe = sharpe
+    best["seed"] = best_seed
+    best["net_sharpe_seed"] = best_seed_sharpe
     return best
 
 
 def design_net_returns(
     rho: float,
     phi: float,
+    seed: int = 0,
     aum: float = REFERENCE_AUM,
     data_root: Path = DATA_ROOT,
 ) -> pd.Series:
-    """The design book's per-rebalance net return, averaged over the seeds.
+    """The design book's per-rebalance net return for one seed.
 
     The realized specific return of the gross-normalized persistent weights
     minus the corrected transaction cost at the reference AUM.
@@ -87,46 +113,51 @@ def design_net_returns(
     weights = pd.read_parquet(root / "portfolios" / "persistent_proportional.parquet")
     specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
     sigma_map = specific.groupby("ticker")["specific_return"].std(ddof=1)
-    series: list[pd.Series] = []
-    for seed in SEEDS:
-        frame = weights.loc[
-            (weights["rho"] == rho)
-            & (weights["phi"] == phi)
-            & (weights["seed"] == seed)
-        ]
-        if frame.empty:
-            continue
-        w_wide = frame.pivot_table(index="date", columns="ticker", values="weight")
-        gross = w_wide.abs().sum(axis=1)
-        w_wide = w_wide.div(gross, axis=0)
-        realized = costs._realized_returns(w_wide, root)
-        names = [t for t in w_wide.columns]
-        spread_map = spread.reindex(names).fillna(spread.median())
-        adv_map = adv.reindex(names).fillna(adv.median())
-        sigma_np = sigma_map.reindex(names).fillna(sigma_map.median())
-        dates = w_wide.index
-        cost_rows: list[float] = []
-        prev = w_wide.iloc[0].reindex(names).fillna(0.0).to_numpy(dtype=float)
-        for index in range(1, len(dates)):
-            current = w_wide.iloc[index].reindex(names).fillna(0.0)
-            current_np = current.to_numpy(dtype=float)
-            delta = current_np - prev
-            cost_rows.append(
-                costs._trade_cost(
-                    delta,
-                    spread_map.to_numpy(dtype=float),
-                    sigma_np.to_numpy(dtype=float),
-                    adv_map.to_numpy(dtype=float),
-                    aum,
-                    costs.IMPACT_K,
-                )
-            )
-            prev = current_np
-        net = realized.iloc[1:] - pd.Series(cost_rows, index=realized.index[1:])
-        series.append(net)
-    if not series:
+    frame = weights.loc[
+        (weights["rho"] == rho) & (weights["phi"] == phi) & (weights["seed"] == seed)
+    ]
+    if frame.empty:
         return pd.Series(dtype=float, name="net_return")
-    return pd.concat(series, axis=1).mean(axis=1).rename("net_return")
+    w_wide = frame.pivot_table(index="date", columns="ticker", values="weight")
+    gross = w_wide.abs().sum(axis=1)
+    w_wide = w_wide.div(gross, axis=0)
+    realized = costs._realized_returns(w_wide, root)
+    names = [t for t in w_wide.columns]
+    spread_map = spread.reindex(names).fillna(spread.median())
+    adv_map = adv.reindex(names).fillna(adv.median())
+    sigma_np = sigma_map.reindex(names).fillna(sigma_map.median())
+    realized_dates = realized.index
+    aligned = w_wide.reindex(realized_dates)
+    cost_rows: list[float] = []
+    for index in range(1, len(realized_dates)):
+        current = aligned.iloc[index].reindex(names).fillna(0.0).to_numpy(dtype=float)
+        prev = aligned.iloc[index - 1].reindex(names).fillna(0.0).to_numpy(dtype=float)
+        delta = current - prev
+        cost_rows.append(
+            costs._trade_cost(
+                delta,
+                spread_map.to_numpy(dtype=float),
+                sigma_np.to_numpy(dtype=float),
+                adv_map.to_numpy(dtype=float),
+                aum,
+                costs.IMPACT_K,
+            )
+        )
+    net = realized.iloc[1:] - pd.Series(cost_rows, index=realized.index[1:])
+    return net.rename("net_return")
+
+
+def _scale_to_vol(
+    series: pd.Series, target_vol: float = TARGET_ANNUAL_VOL
+) -> pd.Series:
+    """Scale a series by a constant so its realized annual vol equals the
+    target, the book's constant vol target applied to the whole history."""
+    x = series.dropna()
+    factor = float(np.sqrt(TRADING_DAYS / HORIZON))
+    realized = float(x.std(ddof=1) * factor)
+    if realized <= 0:
+        return series
+    return series * (target_vol / realized)
 
 
 def seed_book_daily_returns(book: str, data_root: Path = DATA_ROOT) -> pd.Series:
@@ -473,7 +504,21 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
     """The full E10 pipeline on the design book and the two seed books."""
     root = Path(data_root)
     config = pick_design_config(root)
-    net = design_net_returns(float(config["rho"]), float(config["phi"]), data_root=root)
+    if store:
+        (root / "allocation").mkdir(parents=True, exist_ok=True)
+        (root / "allocation" / "config.json").write_text(
+            json.dumps(config, default=float) + "\n"
+        )
+    raw = design_net_returns(
+        float(config["rho"]),
+        float(config["phi"]),
+        seed=int(config["seed"]),
+        data_root=root,
+    )
+    # the book runs at its vol target; a constant scale to 10% annual vol
+    # preserves the Sharpe while making the Kelly and drawdown numbers mean
+    # the book's actual risk level rather than the gross-normalized one
+    net = _scale_to_vol(raw)
     kelly = kelly_analysis(net, data_root=root, store=store)
     drawdown = drawdown_analysis(net, data_root=root, store=store)
     voltarget = vol_target_analysis(net, data_root=root, store=store)

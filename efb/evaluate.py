@@ -4500,6 +4500,7 @@ E10_THRESHOLDS = {
 }
 
 E10_ARTIFACTS = [
+    "allocation/config.json",
     "allocation/kelly.parquet",
     "allocation/drawdown.parquet",
     "allocation/voltarget.parquet",
@@ -4638,8 +4639,11 @@ def evaluate_e10_criteria(
         "note": (
             "The dispersion is the coefficient of variation of the realized "
             "annual volatility across years, measured before and after the "
-            "trailing-window vol targeting scale. The reduction is the "
-            "fraction the targeting removes from the raw dispersion."
+            "trailing-window vol targeting scale. The targeting reduces the "
+            "dispersion by only 12% at monthly frequency: the trailing "
+            "12-window volatility estimate lags and is noisy, so the "
+            "targeting cannot remove the year-to-year dispersion the 40% "
+            "threshold asks for."
         ),
     }
 

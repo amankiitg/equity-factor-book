@@ -1,0 +1,415 @@
+{
+  "sprint": "E10",
+  "evaluated_at": "2026-09-21T23:37:22+00:00",
+  "data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
+  "criteria": {
+    "F10.1": {
+      "criterion": "Simulated drawdown distribution matches the analytical approximation within 10% at the median for the seed book's SR.",
+      "threshold": "simulated median drawdown within 10% of the analytical value",
+      "stored_numbers": {
+        "simulated_median_drawdown": -0.14030834893682936,
+        "analytical_median_drawdown": 0.0354329710482708,
+        "relative_gap_at_median": 4.959824558479318,
+        "n_bootstrap": 2000
+      },
+      "verdict": "fail",
+      "note": "The analytical benchmark is the Magdon-Ismail infinite-horizon Brownian median, ln(2) sigma^2 / (2 mu), computed from the book's own annualized moments. The simulated median is the median maximum drawdown of block-bootstrapped paths of the book's net return series. The gap between the two measures the fat tails and volatility clustering the Brownian benchmark does not have."
+    },
+    "F10.2": {
+      "criterion": "Control: on i.i.d. bootstrapped returns the stop-loss does not improve Sharpe. On the real book the result is reported either way.",
+      "threshold": "stop-loss does not improve Sharpe on the i.i.d. control",
+      "stored_numbers": {
+        "control_mean_sharpe_diff": -0.487285170300088,
+        "control_improves_sharpe": false,
+        "seed_ew_real_sharpe_diff": 0.0,
+        "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+      },
+      "verdict": "pass",
+      "note": "On i.i.d. bootstrapped returns a drawdown stop can only truncate expected return, so it must not improve the mean Sharpe. The design book's control mean difference and the two seed books' real-book differences are stored; the real book is reported either way."
+    },
+    "F10.3": {
+      "criterion": "Vol targeting reduces the dispersion of realized annual vol across years by more than 40%.",
+      "threshold": "dispersion reduction above 40%",
+      "stored_numbers": {
+        "raw_dispersion": 0.2663475246430778,
+        "targeted_dispersion": 0.2338401979010474,
+        "dispersion_reduction": 0.12204854085125161,
+        "n_years": 15
+      },
+      "verdict": "fail",
+      "note": "The dispersion is the coefficient of variation of the realized annual volatility across years, measured before and after the trailing-window vol targeting scale. The targeting reduces the dispersion by only 12% at monthly frequency: the trailing 12-window volatility estimate lags and is noisy, so the targeting cannot remove the year-to-year dispersion the 40% threshold asks for."
+    }
+  },
+  "revisions": {
+    "previous_data_hash": "416fa7b89507fb1a0bc14dbd8dfe7a5c571b606441f04fc9562359345bded572",
+    "data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
+    "n_changed": 0,
+    "changed_tickers_or_criteria": [],
+    "cross_sprint_criteria": [],
+    "changed": {
+      "F10.1": {
+        "changed": false,
+        "old": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "simulated_median_drawdown": -0.14030834893682936,
+            "analytical_median_drawdown": 0.0354329710482708,
+            "relative_gap_at_median": 4.959824558479318,
+            "n_bootstrap": 2000
+          }
+        },
+        "new": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "simulated_median_drawdown": -0.14030834893682936,
+            "analytical_median_drawdown": 0.0354329710482708,
+            "relative_gap_at_median": 4.959824558479318,
+            "n_bootstrap": 2000
+          }
+        }
+      },
+      "F10.2": {
+        "changed": false,
+        "old": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "control_mean_sharpe_diff": -0.487285170300088,
+            "control_improves_sharpe": false,
+            "seed_ew_real_sharpe_diff": 0.0,
+            "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+          }
+        },
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "control_mean_sharpe_diff": -0.487285170300088,
+            "control_improves_sharpe": false,
+            "seed_ew_real_sharpe_diff": 0.0,
+            "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+          }
+        }
+      },
+      "F10.3": {
+        "changed": false,
+        "old": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "raw_dispersion": 0.2663475246430778,
+            "targeted_dispersion": 0.2338401979010474,
+            "dispersion_reduction": 0.12204854085125161,
+            "n_years": 15
+          }
+        },
+        "new": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "raw_dispersion": 0.2663475246430778,
+            "targeted_dispersion": 0.2338401979010474,
+            "dispersion_reduction": 0.12204854085125161,
+            "n_years": 15
+          }
+        }
+      }
+    },
+    "history": [
+      {
+        "previous_data_hash": null,
+        "data_hash": "ebd52940e07c45fa85120a8331132bd2034a120b9929964f18ce0c12ddb76e9f",
+        "n_changed": 0,
+        "changed_tickers_or_criteria": [],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F10.1": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "simulated_median_drawdown": -0.0031575778864463278,
+                "analytical_median_drawdown": 0.0007476399624163979,
+                "relative_gap_at_median": 5.223393672324481,
+                "n_bootstrap": 2000
+              }
+            }
+          },
+          "F10.2": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "control_mean_sharpe_diff": 0.0,
+                "control_improves_sharpe": false,
+                "seed_ew_real_sharpe_diff": 0.0,
+                "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+              }
+            }
+          },
+          "F10.3": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "raw_dispersion": 0.3363196867297028,
+                "targeted_dispersion": 0.3496501511168894,
+                "dispersion_reduction": -0.03963628926040297,
+                "n_years": 15
+              }
+            }
+          }
+        }
+      },
+      {
+        "previous_data_hash": "ebd52940e07c45fa85120a8331132bd2034a120b9929964f18ce0c12ddb76e9f",
+        "data_hash": "877a403dca85365826e986d429034f4e8c6f7bf72b8a358ed41cbcb2d54567d6",
+        "n_changed": 3,
+        "changed_tickers_or_criteria": [
+          "F10.1",
+          "F10.2",
+          "F10.3"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F10.1": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "simulated_median_drawdown": -0.0031575778864463278,
+                "analytical_median_drawdown": 0.0007476399624163979,
+                "relative_gap_at_median": 5.223393672324481,
+                "n_bootstrap": 2000
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "simulated_median_drawdown": -0.14030834893682936,
+                "analytical_median_drawdown": 0.0354329710482708,
+                "relative_gap_at_median": 4.959824558479318,
+                "n_bootstrap": 2000
+              }
+            }
+          },
+          "F10.2": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "control_mean_sharpe_diff": 0.0,
+                "control_improves_sharpe": false,
+                "seed_ew_real_sharpe_diff": 0.0,
+                "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "control_mean_sharpe_diff": -0.487285170300088,
+                "control_improves_sharpe": false,
+                "seed_ew_real_sharpe_diff": 0.0,
+                "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+              }
+            }
+          },
+          "F10.3": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "raw_dispersion": 0.3363196867297028,
+                "targeted_dispersion": 0.3496501511168894,
+                "dispersion_reduction": -0.03963628926040297,
+                "n_years": 15
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "raw_dispersion": 0.26634752464307776,
+                "targeted_dispersion": 0.2762423993889848,
+                "dispersion_reduction": -0.0371502410588076,
+                "n_years": 15
+              }
+            }
+          }
+        }
+      },
+      {
+        "previous_data_hash": "877a403dca85365826e986d429034f4e8c6f7bf72b8a358ed41cbcb2d54567d6",
+        "data_hash": "416fa7b89507fb1a0bc14dbd8dfe7a5c571b606441f04fc9562359345bded572",
+        "n_changed": 1,
+        "changed_tickers_or_criteria": [
+          "F10.3"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F10.1": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "simulated_median_drawdown": -0.14030834893682936,
+                "analytical_median_drawdown": 0.0354329710482708,
+                "relative_gap_at_median": 4.959824558479318,
+                "n_bootstrap": 2000
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "simulated_median_drawdown": -0.14030834893682936,
+                "analytical_median_drawdown": 0.0354329710482708,
+                "relative_gap_at_median": 4.959824558479318,
+                "n_bootstrap": 2000
+              }
+            }
+          },
+          "F10.2": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "control_mean_sharpe_diff": -0.487285170300088,
+                "control_improves_sharpe": false,
+                "seed_ew_real_sharpe_diff": 0.0,
+                "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "control_mean_sharpe_diff": -0.487285170300088,
+                "control_improves_sharpe": false,
+                "seed_ew_real_sharpe_diff": 0.0,
+                "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+              }
+            }
+          },
+          "F10.3": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "raw_dispersion": 0.26634752464307776,
+                "targeted_dispersion": 0.2762423993889848,
+                "dispersion_reduction": -0.0371502410588076,
+                "n_years": 15
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "raw_dispersion": 0.2663475246430778,
+                "targeted_dispersion": 0.2338401979010474,
+                "dispersion_reduction": 0.12204854085125161,
+                "n_years": 15
+              }
+            }
+          }
+        }
+      },
+      {
+        "previous_data_hash": "416fa7b89507fb1a0bc14dbd8dfe7a5c571b606441f04fc9562359345bded572",
+        "data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
+        "n_changed": 0,
+        "changed_tickers_or_criteria": [],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F10.1": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "simulated_median_drawdown": -0.14030834893682936,
+                "analytical_median_drawdown": 0.0354329710482708,
+                "relative_gap_at_median": 4.959824558479318,
+                "n_bootstrap": 2000
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "simulated_median_drawdown": -0.14030834893682936,
+                "analytical_median_drawdown": 0.0354329710482708,
+                "relative_gap_at_median": 4.959824558479318,
+                "n_bootstrap": 2000
+              }
+            }
+          },
+          "F10.2": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "control_mean_sharpe_diff": -0.487285170300088,
+                "control_improves_sharpe": false,
+                "seed_ew_real_sharpe_diff": 0.0,
+                "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "control_mean_sharpe_diff": -0.487285170300088,
+                "control_improves_sharpe": false,
+                "seed_ew_real_sharpe_diff": 0.0,
+                "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+              }
+            }
+          },
+          "F10.3": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "raw_dispersion": 0.2663475246430778,
+                "targeted_dispersion": 0.2338401979010474,
+                "dispersion_reduction": 0.12204854085125161,
+                "n_years": 15
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "raw_dispersion": 0.2663475246430778,
+                "targeted_dispersion": 0.2338401979010474,
+                "dispersion_reduction": 0.12204854085125161,
+                "n_years": 15
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "reference_values": {
+    "data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
+    "verdicts": {
+      "F10.1": "fail",
+      "F10.2": "pass",
+      "F10.3": "fail"
+    },
+    "stored_numbers": {
+      "F10.1": {
+        "simulated_median_drawdown": -0.14030834893682936,
+        "analytical_median_drawdown": 0.0354329710482708,
+        "relative_gap_at_median": 4.959824558479318,
+        "n_bootstrap": 2000
+      },
+      "F10.2": {
+        "control_mean_sharpe_diff": -0.487285170300088,
+        "control_improves_sharpe": false,
+        "seed_ew_real_sharpe_diff": 0.0,
+        "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+      },
+      "F10.3": {
+        "raw_dispersion": 0.2663475246430778,
+        "targeted_dispersion": 0.2338401979010474,
+        "dispersion_reduction": 0.12204854085125161,
+        "n_years": 15
+      }
+    }
+  }
+}

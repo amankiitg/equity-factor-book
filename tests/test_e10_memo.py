@@ -18,7 +18,8 @@ RESULTS = ROOT / "sprints" / "E10" / "RESULTS.json"
 @pytest.fixture(scope="module")
 def stored_numbers() -> list[float]:
     results = json.loads(RESULTS.read_text())
-    texts = [json.dumps(results)]
+    config = json.loads((DATA / "allocation" / "config.json").read_text())
+    texts = [json.dumps(results), json.dumps(config)]
     for stem in ("kelly", "drawdown", "voltarget", "stoploss", "regime"):
         frame = pd.read_parquet(DATA / "allocation" / f"{stem}.parquet")
         texts.append(frame.select_dtypes(include="number").to_string())

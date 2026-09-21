@@ -271,13 +271,18 @@ def _trade_cost(
 
 
 def _realized_returns(weights_wide: pd.DataFrame, root: Path) -> pd.Series:
-    """The per-rebalance realized specific return of a weight series."""
+    """The per-rebalance realized specific return of a weight series.
+
+    The result is indexed by the rebalance date, so a caller can align the
+    realized returns with the cost series by date rather than by position.
+    """
     specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
     specific["date"] = pd.to_datetime(specific["date"])
     specific_wide = specific.pivot(
         index="date", columns="ticker", values="specific_return"
     )
     values: list[float] = []
+    dates: list[object] = []
     for date in weights_wide.index:
         names = [t for t in weights_wide.columns if t in specific_wide.columns]
         w = weights_wide.loc[date].reindex(names).to_numpy(dtype=float)
@@ -290,7 +295,8 @@ def _realized_returns(weights_wide: pd.DataFrame, root: Path) -> pd.Series:
         )
         both = np.isfinite(w) & np.isfinite(e)
         values.append(float((w[both] * e[both]).sum()))
-    return pd.Series(values)
+        dates.append(date)
+    return pd.Series(values, index=pd.DatetimeIndex(dates))
 
 
 def capacity_curve(
@@ -337,7 +343,6 @@ def capacity_curve(
                     if realized.std(ddof=1) > 0
                     else float("nan")
                 )
-                dates = w_wide.index
                 # per-name spread, daily specific volatility and ADV
                 names = [t for t in w_wide.columns]
                 spread_map = spread.reindex(names).fillna(spread.median())
@@ -351,14 +356,26 @@ def capacity_curve(
                     .reindex(names)
                     .fillna(specific_returns["specific_return"].std(ddof=1))
                 )
+                # the cost is paid to move between the rebalances that have a
+                # realized return, so the cost series aligns with realized by date
+                realized_dates = realized.index
+                aligned = w_wide.reindex(realized_dates)
                 for aum in aum_grid:
                     costs: list[float] = []
-                    prev = w_wide.iloc[0].fillna(0.0).to_numpy(dtype=float)
-                    for index in range(1, len(dates)):
-                        current = w_wide.iloc[index].reindex(names).fillna(0.0)
-                        current_np = current.to_numpy(dtype=float)
-                        prev_np = pd.Series(prev, index=names).reindex(names).to_numpy()
-                        delta = current_np - prev_np
+                    for index in range(1, len(realized_dates)):
+                        current = (
+                            aligned.iloc[index]
+                            .reindex(names)
+                            .fillna(0.0)
+                            .to_numpy(dtype=float)
+                        )
+                        prev = (
+                            aligned.iloc[index - 1]
+                            .reindex(names)
+                            .fillna(0.0)
+                            .to_numpy(dtype=float)
+                        )
+                        delta = current - prev
                         costs.append(
                             _trade_cost(
                                 delta,
@@ -369,7 +386,6 @@ def capacity_curve(
                                 k,
                             )
                         )
-                        prev = current_np
                     net = realized.iloc[1:] - pd.Series(costs, index=realized.index[1:])
                     net_sharpe = float(
                         net.mean() / net.std(ddof=1) * np.sqrt(ANNUAL / HORIZON)
@@ -541,19 +557,28 @@ def capacity_curve_phi(data_root: Path = DATA_ROOT, store: bool = True) -> pd.Da
                     if realized.std(ddof=1) > 0
                     else float("nan")
                 )
-                dates = w_wide.index
                 names = [t for t in w_wide.columns]
                 spread_map = spread.reindex(names).fillna(spread.median())
                 adv_map = adv.reindex(names).fillna(adv.median())
                 sigma_map = sigma_all.reindex(names).fillna(sigma_all.median())
+                realized_dates = realized.index
+                aligned = w_wide.reindex(realized_dates)
                 for aum in aum_grid:
                     costs: list[float] = []
-                    prev = w_wide.iloc[0].reindex(names).fillna(0.0).to_numpy(float)
-                    for index in range(1, len(dates)):
-                        current = w_wide.iloc[index].reindex(names).fillna(0.0)
-                        current_np = current.to_numpy(float)
-                        prev_np = pd.Series(prev, index=names).reindex(names).to_numpy()
-                        delta = current_np - prev_np
+                    for index in range(1, len(realized_dates)):
+                        current = (
+                            aligned.iloc[index]
+                            .reindex(names)
+                            .fillna(0.0)
+                            .to_numpy(float)
+                        )
+                        prev = (
+                            aligned.iloc[index - 1]
+                            .reindex(names)
+                            .fillna(0.0)
+                            .to_numpy(float)
+                        )
+                        delta = current - prev
                         costs.append(
                             _trade_cost(
                                 delta,
@@ -564,7 +589,6 @@ def capacity_curve_phi(data_root: Path = DATA_ROOT, store: bool = True) -> pd.Da
                                 k,
                             )
                         )
-                        prev = current_np
                     net = realized.iloc[1:] - pd.Series(costs, index=realized.index[1:])
                     net_sharpe = float(
                         net.mean() / net.std(ddof=1) * np.sqrt(ANNUAL / HORIZON)

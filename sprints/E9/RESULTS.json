@@ -1,6 +1,6 @@
 {
   "sprint": "E9",
-  "evaluated_at": "2026-09-21T23:12:40+00:00",
+  "evaluated_at": "2026-09-21T23:25:35+00:00",
   "data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
   "criteria": {
     "F9.1": {
@@ -160,12 +160,10 @@
     }
   },
   "revisions": {
-    "previous_data_hash": "79d2335491c2d27675ea9b911f6e77407c66ecf918df3fa357bc3f2a9ea085d2",
+    "previous_data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
     "data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
-    "n_changed": 1,
-    "changed_tickers_or_criteria": [
-      "F9.3"
-    ],
+    "n_changed": 0,
+    "changed_tickers_or_criteria": [],
     "cross_sprint_criteria": [],
     "changed": {
       "F9.1": {
@@ -247,13 +245,14 @@
         }
       },
       "F9.3": {
-        "changed": true,
+        "changed": false,
         "old": {
-          "verdict": "fail",
+          "verdict": "not evaluable",
           "stored_numbers": {
             "spread_size_rank_correlation": NaN,
             "raw_cs_size_rank_correlation": -0.47129396780020943,
-            "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906
+            "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906,
+            "cost_input": "size-decile schedule, an assumption not a measurement"
           }
         },
         "new": {

@@ -18,6 +18,7 @@ RESULTS = ROOT / "sprints" / "E10" / "RESULTS.json"
 
 def main() -> None:
     results = json.loads(RESULTS.read_text())
+    config = json.loads((DATA / "allocation" / "config.json").read_text())
     kelly = pd.read_parquet(DATA / "allocation" / "kelly.parquet").iloc[0]
     drawdown = pd.read_parquet(DATA / "allocation" / "drawdown.parquet").iloc[0]
     voltarget = pd.read_parquet(DATA / "allocation" / "voltarget.parquet").iloc[0]
@@ -40,8 +41,14 @@ def main() -> None:
 
 The input is the synthetic book's net returns on corrected costs, at the
 (rho, phi) configuration whose net annualized Sharpe is closest to 1.0,
-treated as a design parameter, with the two seed books run alongside. The
-synthetic label travels with every number.
+scaled to the 10% volatility target, with the two seed books run
+alongside. The synthetic label travels with every number.
+
+The design book is rho {config['rho']}, phi {config['phi']}, seed
+{int(config['seed'])}, with a net annualized Sharpe of
+{config['net_sharpe_seed']:.3f} (the seed-averaged capacity table reads
+{config['net_sharpe']:.3f}, and the book is one realization, not the
+average of five).
 
 ## The Kelly analysis
 
