@@ -170,6 +170,33 @@ E7_ARTIFACTS = [
     for stem in ("ic", "audit", "neutral_ic", "quantiles", "regime_ic", "alpha")
 ]
 
+# Sprint E8: the construction run on synthetic alpha. The f71b audit joins
+# the E7 set in E8 Task 0a.
+E8_ARTIFACTS = [
+    "alpha/f71b_audit.parquet",
+    "portfolios/e8_summary.parquet",
+    "portfolios/e8_f84_resampling.parquet",
+] + [
+    f"portfolios/{name}.parquet"
+    for name in (
+        "proportional",
+        "sharpe",
+        "procedure_6_3",
+        "mv_unconstrained",
+        "mv_constrained",
+        "combined",
+        "shrunk",
+    )
+]
+
+# Sprint E9: the cost model and the capacity curve.
+E9_ARTIFACTS = [
+    "costs/cost_curves.parquet",
+    "costs/capacity.parquet",
+    "costs/capacity_halving.parquet",
+    "costs/turnover_tradeoff.parquet",
+]
+
 MODEL_START = 2010
 REGISTRY_PATH = DATA_ROOT / "models" / "registry.json"
 
@@ -2043,11 +2070,124 @@ def rebuild_e7(
     }
 
 
+def rebuild_e8(
+    data_root: Path = DATA_ROOT,
+    results_path: Path | None = None,
+    full: bool = False,
+) -> dict[str, object]:
+    """Run the E8 build: the construction run on synthetic alpha.
+
+    `full` first runs the E1 through E7 legs. Without it, the earlier
+    artifacts are read from disk. The run stores the per-construction
+    weights and the construction summary, the F8.4 resampling and the
+    criteria read from those artifacts.
+    """
+    from efb import evaluate, size
+
+    e7: dict[str, object] | None = None
+    if full:
+        e7 = rebuild_e7(data_root=data_root, results_path=None, full=True)
+    engine = size.run(data_root=data_root, store=True)
+    size.f84_resampling(data_root=data_root, store=True)
+    artifact_paths = [
+        data_root / rel
+        for rel in (
+            ARTIFACTS
+            + E2_ARTIFACTS
+            + E3_ARTIFACTS
+            + E4_ARTIFACTS
+            + E5_ARTIFACTS
+            + E6_ARTIFACTS
+            + E7_ARTIFACTS
+            + E8_ARTIFACTS
+        )
+    ]
+    version_path = data_root / "VERSION.json"
+    old_hash = previous_data_hash(version_path)
+    payload = write_version(
+        artifact_paths,
+        version_path,
+        note=(
+            "Built by make rebuild (Sprint E8). The construction artifacts and "
+            "the sizing summary join the versioned set; the dashboard sidebar "
+            "shows this version."
+        ),
+    )
+    if results_path is not None:
+        evaluate.main_e8(data_root=data_root)
+    summary = engine.get("summary")
+    return {
+        "n_steps": 17,
+        "full": full,
+        "e7": e7,
+        "engine": summary.shape if isinstance(summary, pd.DataFrame) else None,
+        "version": payload,
+        "previous_data_hash": old_hash,
+    }
+
+
+def rebuild_e9(
+    data_root: Path = DATA_ROOT,
+    results_path: Path | None = None,
+    full: bool = False,
+) -> dict[str, object]:
+    """Run the E9 build: the cost model and the capacity curve.
+
+    `full` first runs the E1 through E8 legs. Without it, the earlier
+    artifacts are read from disk.
+    """
+    from efb import costs, evaluate
+
+    e8: dict[str, object] | None = None
+    if full:
+        e8 = rebuild_e8(data_root=data_root, results_path=None, full=True)
+    engine = costs.run(data_root=data_root, store=True)
+    artifact_paths = [
+        data_root / rel
+        for rel in (
+            ARTIFACTS
+            + E2_ARTIFACTS
+            + E3_ARTIFACTS
+            + E4_ARTIFACTS
+            + E5_ARTIFACTS
+            + E6_ARTIFACTS
+            + E7_ARTIFACTS
+            + E8_ARTIFACTS
+            + E9_ARTIFACTS
+        )
+    ]
+    version_path = data_root / "VERSION.json"
+    old_hash = previous_data_hash(version_path)
+    payload = write_version(
+        artifact_paths,
+        version_path,
+        note=(
+            "Built by make rebuild (Sprint E9). The cost and capacity "
+            "artifacts join the versioned set; the dashboard sidebar shows "
+            "this version."
+        ),
+    )
+    if results_path is not None:
+        evaluate.main_e9(data_root=data_root)
+    return {
+        "n_steps": 17,
+        "full": full,
+        "e8": e8,
+        "engine": {key: value.shape for key, value in engine.items()},
+        "version": payload,
+        "previous_data_hash": old_hash,
+    }
+
+
 def main() -> None:
     if "--all" in sys.argv:
-        summary = rebuild_e7(
-            results_path=ROOT / "sprints" / "E7" / "RESULTS.json", full=True
+        summary = rebuild_e9(
+            results_path=ROOT / "sprints" / "E9" / "RESULTS.json", full=True
         )
+    elif "--e9" in sys.argv:
+        summary = rebuild_e9(results_path=ROOT / "sprints" / "E9" / "RESULTS.json")
+    elif "--e8" in sys.argv:
+        summary = rebuild_e8(results_path=ROOT / "sprints" / "E8" / "RESULTS.json")
     elif "--e7" in sys.argv:
         summary = rebuild_e7(results_path=ROOT / "sprints" / "E7" / "RESULTS.json")
     elif "--e6" in sys.argv:
