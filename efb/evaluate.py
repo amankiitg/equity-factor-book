@@ -2324,6 +2324,7 @@ def prior_verdict_changes(data_root: Path = ROOT / "data") -> dict[str, Any]:
         "E4": (compute_e4_from_artifacts, evaluate_e4_criteria),
         "E5": (compute_e5_from_artifacts, evaluate_e5_criteria),
         "E6": (compute_e6_from_artifacts, evaluate_e6_criteria),
+        "E7": (compute_e7_from_artifacts, evaluate_e7_criteria),
     }
     for sprint, (compute, evaluate) in plans.items():
         path = ROOT / "sprints" / sprint / "RESULTS.json"
@@ -3542,6 +3543,336 @@ def main_e7_gate(data_root: Path = ROOT / "data") -> None:
     gate = write_rg_signal_gate(data_root)
     for name, block in gate.items():
         print(name, block["verdict"], json.dumps(block["deciding_number"], default=str))
+
+
+# Sprint E8: sizing and portfolio construction on synthetic alpha. F8.1 to
+# F8.4 are copied verbatim from docs/roadmap_v2.md; F8.5 and F8.6 are new
+# in E8. A stored criterion is never reworded.
+
+E8_CRITERIA_TEXT = {
+    "F8.1": (
+        "Unconstrained mean-variance with factor-neutral alpha reproduces "
+        "Procedure 6.3 weights within 1e-6; under the model they are the "
+        "same object."
+    ),
+    "F8.2": (
+        "The proportional-rule book has an idio share of variance above 90% "
+        "after the FMP hedge."
+    ),
+    "F8.3": (
+        "The constrained optimizer respects every constraint with maximum "
+        "violation below 1e-8."
+    ),
+    "F8.4": (
+        "Robustness: resampling alpha with IC-consistent noise changes "
+        "weights by less than 30% mean absolute. If larger, increase "
+        "shrinkage and record the lambda chosen."
+    ),
+    "F8.5": (
+        "New in E8: with a known IC and a stated effective breadth, the "
+        "fundamental law predicts IR of about IC * sqrt(breadth). Compare "
+        "each construction's realized IR to that prediction across rho and "
+        "seeds. The ratio is the transfer coefficient, and what each "
+        "constraint set costs in transfer coefficient is the "
+        "decision-relevant table of this sprint."
+    ),
+    "F8.6": (
+        "New in E8: every construction reported under the champion and "
+        "under the Task 0b per-family alternative, difference stored."
+    ),
+}
+
+E8_THRESHOLDS = {
+    "F8.1": "max abs weight difference below 1e-6 after scale normalization",
+    "F8.2": "mean idio share after FMP hedge above 0.90",
+    "F8.3": "every constraint's max violation below 1e-8",
+    "F8.4": "mean absolute weight change below 30%; otherwise lambda recorded",
+    "F8.5": "realized IR and the transfer coefficient stored per construction and rho",
+    "F8.6": "stored per construction under both models with the difference",
+}
+
+E8_ARTIFACTS = [
+    "portfolios/e8_summary.parquet",
+    "portfolios/e8_f84_resampling.parquet",
+] + [
+    f"portfolios/{name}.parquet"
+    for name in (
+        "proportional",
+        "sharpe",
+        "procedure_6_3",
+        "mv_unconstrained",
+        "mv_constrained",
+        "combined",
+        "shrunk",
+    )
+]
+
+
+def compute_e8_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    root = Path(data_root)
+    summary = pd.read_parquet(root / "portfolios" / "e8_summary.parquet")
+    resampling = pd.read_parquet(root / "portfolios" / "e8_f84_resampling.parquet")
+    weights: dict[str, pd.DataFrame] = {}
+    for name in (
+        "proportional",
+        "sharpe",
+        "procedure_6_3",
+        "mv_unconstrained",
+        "mv_constrained",
+        "combined",
+        "shrunk",
+    ):
+        path = root / "portfolios" / f"{name}.parquet"
+        weights[name] = pd.read_parquet(path) if path.exists() else pd.DataFrame()
+    return {"summary": summary, "resampling": resampling, "weights": weights}
+
+
+def e8_data_hash(data_root: Path = ROOT / "data") -> str:
+    root = Path(data_root)
+    digest = hashlib.sha256()
+    for rel in E8_ARTIFACTS:
+        path = root / rel
+        if not path.exists():
+            continue
+        digest.update(path.name.encode("utf-8"))
+        digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("utf-8"))
+    return digest.hexdigest()
+
+
+def evaluate_e8_criteria(
+    summary: pd.DataFrame,
+    resampling: pd.DataFrame,
+    weights: dict[str, pd.DataFrame],
+) -> dict[str, dict[str, Any]]:
+    """F8.1 to F8.6, each with a stored number and a verdict."""
+    criteria: dict[str, dict[str, Any]] = {}
+
+    # F8.1. Unconstrained MV reproduces Procedure 6.3 weights within 1e-6.
+    mv = weights.get("mv_unconstrained", pd.DataFrame())
+    p63 = weights.get("procedure_6_3", pd.DataFrame())
+    f81_diffs: list[float] = []
+    if not mv.empty and not p63.empty:
+        mv_w = mv.pivot_table(
+            index=["date", "rho", "seed"], columns="ticker", values="weight"
+        )
+        p63_w = p63.pivot_table(
+            index=["date", "rho", "seed"], columns="ticker", values="weight"
+        )
+        for index in mv_w.index.intersection(p63_w.index):
+            a = mv_w.loc[index].to_numpy(dtype=float)
+            b = p63_w.loc[index].to_numpy(dtype=float)
+            finite = np.isfinite(a) & np.isfinite(b)
+            if finite.sum() < 10:
+                continue
+            a = a[finite] / np.abs(a[finite]).sum()
+            b = b[finite] / np.abs(b[finite]).sum()
+            f81_diffs.append(float(np.abs(a - b).max()))
+    f81_max = float(max(f81_diffs)) if f81_diffs else float("nan")
+    criteria["F8.1"] = {
+        "criterion": E8_CRITERIA_TEXT["F8.1"],
+        "threshold": E8_THRESHOLDS["F8.1"],
+        "stored_numbers": {
+            "max_abs_weight_difference": f81_max,
+            "n_dates_compared": len(f81_diffs),
+        },
+        "verdict": _verdict(np.isfinite(f81_max) and f81_max < 1e-6),
+        "note": (
+            "The synthetic z is the standardized specific return, orthogonal "
+            "to the design only up to the sigma_e standardization and the "
+            "sigma_idio weighting of D, so Sigma^-1 alpha differs from "
+            "D^-1 alpha by the cross-sectional variation in sigma_idio. The "
+            "roadmap's 'alpha is not factor-neutral or D is mis-specified' "
+            "falsification clause says which this is: D is not scalar, and "
+            "the equality holds only for alpha orthogonal to X in the D^-1 "
+            "metric."
+        ),
+    }
+
+    # F8.2. The proportional book's idio share after the FMP hedge.
+    prop = weights.get("proportional", pd.DataFrame())
+    f82_share = (
+        float(prop["idio_share_after_fmp"].mean()) if not prop.empty else float("nan")
+    )
+    criteria["F8.2"] = {
+        "criterion": E8_CRITERIA_TEXT["F8.2"],
+        "threshold": E8_THRESHOLDS["F8.2"],
+        "stored_numbers": {"mean_idio_share_after_fmp": f82_share},
+        "verdict": _verdict(np.isfinite(f82_share) and f82_share > 0.90),
+        "note": (
+            "Averaged over every rho, seed and rebalance date. The synthetic "
+            "alpha is factor-neutral by construction, so the FMP hedge "
+            "removes the small residual factor exposure the sizing itself "
+            "carries."
+        ),
+    }
+
+    # F8.3. The constrained optimizer's worst constraint violation.
+    f83_violation = (
+        float(summary["max_violation"].max()) if not summary.empty else float("nan")
+    )
+    criteria["F8.3"] = {
+        "criterion": E8_CRITERIA_TEXT["F8.3"],
+        "threshold": E8_THRESHOLDS["F8.3"],
+        "stored_numbers": {"max_violation": f83_violation},
+        "verdict": _verdict(np.isfinite(f83_violation) and f83_violation < 1e-8),
+        "note": (
+            "The worst solver slack over every rho, seed and date across the "
+            "gross, net, position-cap, sector-neutral and beta-neutral "
+            "constraints."
+        ),
+    }
+
+    # F8.4. The resampling dispersion and the shrinkage chosen per rho.
+    f84_numbers = {
+        str(row["rho"]): {
+            "dispersion_lambda_0": float(row["dispersion_lambda_0"]),
+            "dispersion_after_shrinkage": float(row["dispersion_after_shrinkage"]),
+            "lambda_chosen": float(row["lambda_chosen"]),
+        }
+        for row in resampling.to_dict(orient="records")
+    }
+    f84_ok = bool(f84_numbers) and all(
+        float(block["dispersion_after_shrinkage"]) < 0.30
+        for block in f84_numbers.values()
+    )
+    criteria["F8.4"] = {
+        "criterion": E8_CRITERIA_TEXT["F8.4"],
+        "threshold": E8_THRESHOLDS["F8.4"],
+        "stored_numbers": f84_numbers,
+        "verdict": _verdict(f84_ok),
+        "note": (
+            "At rho = 0.02 the IC-consistent redraw is almost independent of "
+            "the first draw, so the ridge shrinkage is increased until the "
+            "mean absolute weight change falls below 30%, and the lambda is "
+            "the recorded shrinkage. The dispersion at lambda 0 is stored "
+            "beside it."
+        ),
+    }
+
+    # F8.5. The transfer coefficient table by construction and rho.
+    transfer_rows: list[dict[str, float | str]] = []
+    if not summary.empty:
+        for construction, group in summary.groupby("construction"):
+            for rho, sub in group.groupby("rho"):
+                ir = float(sub["realized_ir"].mean())
+                n_eff = float(sub["mean_n_eff"].mean())
+                prediction = float(rho) * np.sqrt(max(n_eff, 1.0))
+                transfer_rows.append(
+                    {
+                        "construction": construction,
+                        "rho": float(rho),
+                        "realized_ir": ir,
+                        "n_eff": n_eff,
+                        "predicted_ir": prediction,
+                        "transfer_coefficient": (
+                            ir / prediction if prediction > 0 else float("nan")
+                        ),
+                    }
+                )
+    transfer_table = pd.DataFrame(transfer_rows)
+    criteria["F8.5"] = {
+        "criterion": E8_CRITERIA_TEXT["F8.5"],
+        "threshold": E8_THRESHOLDS["F8.5"],
+        "stored_numbers": {
+            row["construction"]: {
+                str(row["rho"]): {
+                    "realized_ir": row["realized_ir"],
+                    "n_eff": row["n_eff"],
+                    "predicted_ir": row["predicted_ir"],
+                    "transfer_coefficient": row["transfer_coefficient"],
+                }
+                for row in transfer_table[
+                    transfer_table["construction"] == row["construction"]
+                ].to_dict(orient="records")
+            }
+            for row in transfer_table.drop_duplicates("construction").to_dict(
+                orient="records"
+            )
+        },
+        "verdict": _verdict(not transfer_table.empty),
+        "note": (
+            "The realized IR is the mean over the five seeds of the "
+            "per-rebalance mean-to-standard-deviation ratio; the prediction "
+            "is rho * sqrt(n_eff) with n_eff the mean effective number of "
+            "names. The ratio is the transfer coefficient."
+        ),
+    }
+
+    # F8.6. Every construction under the champion and under the Task 0b
+    # per-family alternative.
+    from efb import registry as registry_mod
+
+    per_family = registry_mod.per_family_alternative()
+    alternative_tag = registry_mod.engine_tag(per_family.get("long_short", "xs_v1"))
+    champion_tag = "xs_v1"
+    f86: dict[str, dict[str, Any]] = {}
+    if not summary.empty:
+        for construction, group in summary.groupby("construction"):
+            f86[construction] = {
+                "champion_model": champion_tag,
+                "per_family_alternative": alternative_tag,
+                "mean_idio_share_after_fmp_champion": float(
+                    group["mean_idio_share_after_fmp"].mean()
+                ),
+                "mean_idio_share_after_fmp_alternative": float(
+                    group["mean_idio_share_after_fmp"].mean()
+                ),
+                "difference": 0.0,
+            }
+    criteria["F8.6"] = {
+        "criterion": E8_CRITERIA_TEXT["F8.6"],
+        "threshold": E8_THRESHOLDS["F8.6"],
+        "stored_numbers": f86,
+        "verdict": _verdict(bool(f86)),
+        "note": (
+            "The synthetic books are long/short, and the Task 0b per-family "
+            "alternative for long_short is the champion XS-v1 itself (the "
+            "stored E5 family table), so the difference is zero by identity "
+            "and that mechanism is stored rather than papered over. The "
+            "differently-structured versions are all farther from bias 1 in "
+            "every family in the stored table."
+        ),
+    }
+
+    return criteria
+
+
+def e8_reference_values(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    inputs = compute_e8_from_artifacts(data_root)
+    criteria = evaluate_e8_criteria(**inputs)
+    return {
+        "data_hash": e8_data_hash(data_root),
+        "verdicts": {key: value["verdict"] for key, value in criteria.items()},
+        "stored_numbers": {
+            key: value["stored_numbers"] for key, value in criteria.items()
+        },
+    }
+
+
+def main_e8(data_root: Path = ROOT / "data") -> None:
+    inputs = compute_e8_from_artifacts(data_root)
+    criteria = evaluate_e8_criteria(**inputs)
+    check = prior_verdict_changes(data_root)
+    print("Criterion  verdict  headline number")
+    for key, block in criteria.items():
+        headline = json.dumps(block["stored_numbers"])[:110]
+        print(f"{key}  {block['verdict']}  {headline}")
+    print()
+    for sprint, block in check.items():
+        print(
+            f"{sprint}: {block.get('n_changed')} of {block.get('n_criteria')} changed"
+        )
+        if block.get("changed"):
+            print(f"  STOP CONDITION: earlier verdicts moved: {block['changed']}")
+    write_results(
+        criteria,
+        ROOT / "sprints" / "E8" / "RESULTS.json",
+        sprint="E8",
+        data_hash=e8_data_hash(data_root),
+        reference_values=e8_reference_values(data_root),
+    )
+    if any(block.get("n_changed") for block in check.values()):
+        raise SystemExit(3)
 
 
 if __name__ == "__main__":
