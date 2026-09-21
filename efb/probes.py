@@ -1540,10 +1540,144 @@ def run_e4_probes(offline: bool = False) -> None:
     momentum_factor_vol_by_tercile()
 
 
+def probe_finra_short_interest(sample_tickers: list[str] | None = None) -> ProbeReport:
+    """Sprint E7 Task 0: can the FINRA consolidated short interest be read?
+
+    The consolidated short interest endpoint is settled twice a month; the
+    probe asks for one settlement date and prints the rows it gets for a
+    handful of known tickers. A probe that prints nothing records the source
+    as unavailable in the multiple-testing ledger, not as a NULL signal.
+    """
+    tickers = sample_tickers or ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"]
+    url = "https://api.finra.org/data/group/otcMarket/name/" "consolidatedShortInterest"
+    payload = {
+        "limit": 1000,
+        "compareFilters": [
+            {
+                "compareType": "equal",
+                "fieldName": "settlementDate",
+                "fieldValue": "2026-07-31",
+            }
+        ],
+    }
+    try:
+        response = requests.post(
+            url,
+            headers={**HEADERS, "Content-Type": "application/json"},
+            data=json.dumps(payload),
+            timeout=30,
+        )
+        if response.status_code != 200:
+            return ProbeReport(
+                source="FINRA consolidated short interest",
+                status="FAIL",
+                n_rows=0,
+                first_date=None,
+                last_date=None,
+                coverage=None,
+                nan_share=None,
+                notes=f"HTTP {response.status_code}",
+            )
+        frame = pd.read_csv(io.StringIO(response.text))
+    except (requests.RequestException, ValueError) as error:
+        return ProbeReport(
+            source="FINRA consolidated short interest",
+            status="FAIL",
+            n_rows=0,
+            first_date=None,
+            last_date=None,
+            coverage=None,
+            nan_share=None,
+            notes=f"{type(error).__name__}: {error}",
+        )
+    if frame.empty:
+        return ProbeReport(
+            source="FINRA consolidated short interest",
+            status="EMPTY",
+            n_rows=0,
+            first_date=None,
+            last_date=None,
+            coverage=None,
+            nan_share=None,
+            notes="no rows returned for the settlement date",
+        )
+    ticker_col = "symbolCode" if "symbolCode" in frame.columns else frame.columns[0]
+    frame = frame.loc[frame[ticker_col].isin(tickers)]
+    print(frame.head(3).to_string())
+    return ProbeReport(
+        source="FINRA consolidated short interest",
+        status="OK" if len(frame) else "EMPTY",
+        n_rows=int(len(frame)),
+        first_date=None,
+        last_date=None,
+        coverage=float(frame[ticker_col].nunique()) / len(tickers),
+        nan_share=float(frame.isna().mean().mean()),
+        notes=f"columns: {sorted(frame.columns)}",
+    )
+
+
+def probe_earnings_dates(sample_tickers: list[str] | None = None) -> ProbeReport:
+    """Sprint E7 Task 0: can yfinance supply point-in-time earnings dates?
+
+    Earnings dates are the raw input of post-earnings drift. The probe asks
+    yfinance for one ticker's history and prints the rows it gets. A probe
+    that prints nothing records the source as unavailable in the ledger.
+    """
+    tickers = sample_tickers or ["AAPL", "MSFT", "NVDA"]
+    frames: list[pd.DataFrame] = []
+    notes: list[str] = []
+    for ticker in tickers:
+        try:
+            instrument = yf.Ticker(ticker)
+            frame = instrument.get_earnings_dates(limit=12)
+            if frame is not None and not frame.empty:
+                frame = frame.reset_index()
+                frame["ticker"] = ticker
+                frames.append(frame)
+            else:
+                notes.append(f"{ticker}: empty")
+        except Exception as error:  # pragma: no cover - network shape varies
+            notes.append(f"{ticker}: {type(error).__name__}: {error}")
+    if not frames:
+        return ProbeReport(
+            source="yfinance earnings dates",
+            status="EMPTY",
+            n_rows=0,
+            first_date=None,
+            last_date=None,
+            coverage=None,
+            nan_share=None,
+            notes="; ".join(notes) if notes else "no rows for any ticker",
+        )
+    frame = pd.concat(frames, ignore_index=True)
+    print(frame.head(3).to_string())
+    return ProbeReport(
+        source="yfinance earnings dates",
+        status="OK",
+        n_rows=int(len(frame)),
+        first_date=str(frame.iloc[:, 0].min()),
+        last_date=str(frame.iloc[:, 0].max()),
+        coverage=float(frame["ticker"].nunique()) / len(tickers),
+        nan_share=float(frame.isna().mean().mean()),
+        notes=f"columns: {sorted(frame.columns)}"
+        + ("; " + "; ".join(notes) if notes else ""),
+    )
+
+
+def run_e7_probes() -> None:
+    """Task 0 of Sprint E7: the optional data sources, in order."""
+    print(probe_finra_short_interest().render())
+    print()
+    print(probe_earnings_dates().render())
+
+
 def main() -> None:
     import sys
 
     args = sys.argv[1:]
+    if "--e7" in args:
+        run_e7_probes()
+        return
     if "--e4-offline" in args:
         run_e4_probes(offline=True)
         return

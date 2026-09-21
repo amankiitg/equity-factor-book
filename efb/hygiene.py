@@ -12,6 +12,8 @@ Policies, mirrored in docs/hygiene_ledger.md:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -180,3 +182,325 @@ def build_events(
     out = pd.DataFrame(rows)
     out["date"] = pd.to_datetime(out["date"])
     return out.sort_values(["date", "ticker"]).reset_index(drop=True)
+
+
+# --------------------------------------------------------------------------
+# Sprint E7: the alpha evaluation harness and the multiple-testing ledger.
+# The E1 hygiene rules above detect bad data; this section measures whether
+# a signal survives hygiene: the shift audit, the IC and its decay, factor
+# neutralization, quantile portfolios, the fundamental-law check, and the
+# multiple-testing corrections.
+# --------------------------------------------------------------------------
+
+NEWEY_WEST_LAGS = 5
+HLZ_T_HURDLE = 3.0
+
+
+def _signal_wide(signal_frame: pd.DataFrame) -> pd.DataFrame:
+    """The signal as dates down, tickers across, NaN kept."""
+    wide = signal_frame.pivot(index="date", columns="ticker", values="signal")
+    return wide.sort_index()
+
+
+def spearman_ic(
+    signal_frame: pd.DataFrame, wide: pd.DataFrame, horizon: int = 1
+) -> pd.Series:
+    """IC_t = rank-correlation(s_t, r_{t..t+horizon-1}), per date.
+
+    INPUT: the signal long frame and the returns panel.
+    OUTPUT: the daily IC series, NaN where fewer than 10 pairs exist.
+    """
+    s_wide = _signal_wide(signal_frame)
+    forward = (1.0 + wide).rolling(horizon).apply(lambda x: x.prod(), raw=True).shift(
+        -(horizon - 1)
+    ) - 1.0
+    common_dates = s_wide.index.intersection(forward.index)
+    values: list[float] = []
+    dates: list[pd.Timestamp] = []
+    for date in common_dates:
+        s = s_wide.loc[date]
+        r = forward.loc[date]
+        both = pd.concat([s, r], axis=1).dropna()
+        if len(both) < 10:
+            values.append(float("nan"))
+        else:
+            values.append(float(both.iloc[:, 0].rank().corr(both.iloc[:, 1].rank())))
+        dates.append(date)
+    return pd.Series(values, index=pd.DatetimeIndex(dates), name="ic")
+
+
+def newey_west_t(series: pd.Series) -> float:
+    """The Newey-West t-statistic of a series against zero."""
+    values = series.dropna().to_numpy(dtype=float)
+    n = len(values)
+    if n < 10:
+        return float("nan")
+    mean = float(values.mean())
+    centered = values - mean
+    variance = float(np.sum(centered**2)) / n
+    lag_sum = 0.0
+    for lag in range(1, NEWEY_WEST_LAGS + 1):
+        if n <= lag:
+            break
+        weight = 1.0 - lag / (NEWEY_WEST_LAGS + 1)
+        lag_sum += weight * float(np.sum(centered[lag:] * centered[:-lag])) / n
+    variance = max(variance + 2.0 * lag_sum, 1e-12)
+    return float(mean / np.sqrt(variance / n))
+
+
+def shift_audit(signal_frame: pd.DataFrame, wide: pd.DataFrame) -> pd.DataFrame:
+    """F7.1: does the signal survive being moved forward one day?
+
+    The shifted signal claims, on day t, the value the honest signal only
+    had on day t+1, so its IC with r_t is the leakage probe. A signal that
+    flips sign or loses its significance when shifted is clean.
+    """
+    ic_honest = spearman_ic(signal_frame, wide, horizon=1)
+    shifted = signal_frame.copy()
+    shifted["date"] = shifted["date"] + pd.Timedelta(days=1)
+    ic_shifted = spearman_ic(shifted, wide, horizon=1)
+    joined = pd.concat(
+        [ic_honest.rename("ic"), ic_shifted.rename("ic_shifted")], axis=1
+    )
+    mean_honest = float(ic_honest.mean())
+    mean_shifted = float(ic_shifted.mean())
+    t_shifted = newey_west_t(ic_shifted)
+    flipped = bool(
+        (mean_honest > 0 and mean_shifted < 0) or (mean_honest < 0 and mean_shifted > 0)
+    )
+    killed = bool(abs(t_shifted) < HLZ_T_HURDLE or not np.isfinite(t_shifted))
+    joined["leak_flag"] = bool(not (flipped or killed))
+    joined["flipped"] = flipped
+    joined["killed"] = killed
+    joined["mean_ic"] = mean_honest
+    joined["mean_ic_shifted"] = mean_shifted
+    joined["t_ic_shifted"] = t_shifted
+    return joined
+
+
+def neutralize(
+    signal_frame: pd.DataFrame,
+    wide: pd.DataFrame,
+    date: pd.Timestamp,
+    root: Path,
+) -> pd.DataFrame:
+    """s_perp = s - X (X'X)^-1 X' s on one rebalance date.
+
+    INPUT: the signal long frame, the returns panel, the date, the data
+    root. OUTPUT: the neutralized signal for that date, NaN kept.
+    """
+    from efb import eval_risk, race
+
+    names = eval_risk._window_names(wide, date)
+    if len(names) < 50:
+        return pd.DataFrame(columns=["date", "ticker", "signal"])
+    design = race._descriptor_design(date, names, root)
+    design = np.nan_to_num(design, nan=0.0, posinf=0.0, neginf=0.0)
+    rows = signal_frame.loc[pd.to_datetime(signal_frame["date"]) == date]
+    if rows.empty:
+        return pd.DataFrame(columns=["date", "ticker", "signal"])
+    s = rows.set_index("ticker")["signal"].reindex(names).to_numpy(dtype=float)
+    s = np.where(np.isnan(s), np.nanmedian(s), s)
+    factor_loadings = np.linalg.solve(design.T @ design, design.T @ s)
+    residual = s - design @ factor_loadings
+    return pd.DataFrame({"date": date, "ticker": names, "signal": residual})
+
+
+def neutralized_ic(
+    signal_frame: pd.DataFrame,
+    wide: pd.DataFrame,
+    grid: list[pd.Timestamp],
+    root: Path,
+    horizon: int = 21,
+) -> pd.Series:
+    """The factor-neutral IC measured at each rebalance date.
+
+    The signal is neutralized on the rebalance date's design and correlated
+    with the forward return from that date. NaN kept.
+    """
+    forward = (1.0 + wide).rolling(horizon).apply(lambda x: x.prod(), raw=True).shift(
+        -(horizon - 1)
+    ) - 1.0
+    values: list[float] = []
+    dates: list[pd.Timestamp] = []
+    for date in grid:
+        s_perp = neutralize(signal_frame, wide, date, root)
+        if s_perp.empty:
+            continue
+        returns = forward.loc[date].reindex(s_perp["ticker"])
+        both = pd.concat(
+            [s_perp.set_index("ticker")["signal"], returns], axis=1
+        ).dropna()
+        if len(both) < 10:
+            values.append(float("nan"))
+        else:
+            values.append(float(both.iloc[:, 0].rank().corr(both.iloc[:, 1].rank())))
+        dates.append(date)
+    return pd.Series(values, index=pd.DatetimeIndex(dates), name="ic_neutralized")
+
+
+def quantile_portfolios(
+    signal_frame: pd.DataFrame,
+    wide: pd.DataFrame,
+    grid: list[pd.Timestamp],
+    n_quantiles: int = 5,
+) -> pd.DataFrame:
+    """Equal-weight quintile portfolios of the signal, rebalanced monthly.
+
+    OUTPUT: one row per portfolio-day with the portfolio return under the
+    E5 missing-data semantics. The spread is Q5 minus Q1.
+    """
+    from efb import eval_risk
+
+    s_wide = _signal_wide(signal_frame)
+    collected: list[pd.Series] = []
+    last = grid[-1] + pd.Timedelta(days=40)
+    for start, end in zip(grid, grid[1:] + [last], strict=True):
+        s = s_wide.loc[s_wide.index <= start].iloc[-1]
+        valid = s.dropna()
+        if len(valid) < n_quantiles * 5:
+            continue
+        buckets = pd.qcut(valid.rank(method="first"), n_quantiles, labels=False)
+        window = wide.loc[(wide.index > start) & (wide.index <= end)]
+        for bucket in range(n_quantiles):
+            names = valid.index[buckets == bucket]
+            weights = pd.Series(1.0 / len(names), index=names)
+            weight_row = weights.reindex(wide.columns).fillna(0.0).to_numpy(dtype=float)
+            returns = eval_risk._portfolio_returns(
+                weight_row[None, :], window.to_numpy(dtype=float)
+            )[0]
+            collected.append(
+                pd.Series(returns, index=window.index, name=f"q{bucket + 1}")
+            )
+    if not collected:
+        return pd.DataFrame(columns=["date", "quantile", "return"])
+    frame = pd.concat(collected, axis=1)
+    long = frame.stack(future_stack=True).rename("return").reset_index()
+    long.columns = ["date", "quantile", "return"]
+    long["quantile"] = long["quantile"].str.replace("q", "").astype(int)
+    return long
+
+
+def fundamental_law(ic: pd.Series, breadth: int) -> dict[str, float]:
+    """IR = IC x sqrt(breadth) against the realized IR of the IC stream."""
+    mean_ic = float(ic.mean())
+    realized_ir = (
+        float(ic.mean() / ic.std(ddof=1)) if ic.std(ddof=1) > 0 else float("nan")
+    )
+    implied_ir = mean_ic * float(np.sqrt(breadth))
+    return {
+        "mean_ic": mean_ic,
+        "std_ic": float(ic.std(ddof=1)),
+        "breadth": float(breadth),
+        "implied_ir": implied_ir,
+        "realized_ir": realized_ir,
+    }
+
+
+def _norm_ppf(probability: float) -> float:
+    """The standard normal quantile, from scipy's ndtri."""
+    from scipy.special import ndtri  # type: ignore[import-untyped]
+
+    return float(ndtri(probability))
+
+
+def deflated_sharpe(sharpe: float, n_trials: int, n_obs: int) -> dict[str, float]:
+    """Bailey and Lopez de Prado's deflated Sharpe with normal returns."""
+    import math
+
+    if n_obs <= 1 or not np.isfinite(sharpe):
+        return {
+            "sharpe": float(sharpe),
+            "deflated_sharpe": float("nan"),
+            "expected_max_sharpe": float("nan"),
+            "n_trials": float(n_trials),
+            "n_obs": float(n_obs),
+        }
+    variance = (1.0 + 0.5 * sharpe**2) / (n_obs - 1)
+    gamma = 0.5772156649
+    expected_max = math.sqrt(variance) * (
+        (1.0 - gamma) * _norm_ppf(1.0 - 1.0 / max(n_trials, 1))
+        + gamma * _norm_ppf(1.0 - 1.0 / (max(n_trials, 1) * math.e))
+    )
+    return {
+        "sharpe": float(sharpe),
+        "deflated_sharpe": float(sharpe - expected_max),
+        "expected_max_sharpe": float(expected_max),
+        "n_trials": float(n_trials),
+        "n_obs": float(n_obs),
+    }
+
+
+def bonferroni_t_threshold(n_trials: int) -> float:
+    """The Bonferroni t-threshold for M variants at 5 percent, two-sided."""
+    return float(_norm_ppf(1.0 - 0.025 / max(n_trials, 1)))
+
+
+def regime_ic(ic: pd.Series, vix: pd.Series) -> pd.DataFrame:
+    """The IC within VIX terciles, with the pooled mean for comparison."""
+    aligned = pd.concat(
+        [ic.rename("ic"), vix.reindex(ic.index).rename("vix")], axis=1
+    ).dropna()
+    if aligned.empty:
+        return pd.DataFrame(columns=["regime", "mean_ic", "n_days"])
+    aligned["regime"] = pd.qcut(
+        aligned["vix"], 3, labels=["vix_low", "vix_mid", "vix_high"]
+    )
+    table = (
+        aligned.groupby("regime", observed=False)["ic"]
+        .agg(mean_ic="mean", n_days="count")
+        .reset_index()
+    )
+    pooled = pd.DataFrame(
+        {
+            "regime": ["pooled"],
+            "mean_ic": [float(ic.mean())],
+            "n_days": [int(ic.notna().sum())],
+        }
+    )
+    return pd.concat([pooled, table], ignore_index=True)
+
+
+def write_ledger(rows: list[dict[str, object]], path: Path) -> None:
+    """Append signal runs to the multiple-testing ledger, never rewrite it."""
+    if not rows:
+        return
+    header = (
+        "| run_id | signal | variant | horizon | ic_mean | t_stat | "
+        "deflated_sharpe | hlz_t_hurdle | bonferroni_t | verdict | note |\n"
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+    )
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "# Multiple-Testing Ledger\n\n"
+            "Append-only. One row per signal run, including every failed "
+            "variant. Written by the engine in `efb/hygiene.py`, never edited "
+            "by hand. The row count is a stored number in sprints/E7.\n\n"
+            + header
+            + "\n"
+        )
+    lines: list[str] = []
+    for row in rows:
+        template = (
+            "| {run_id} | {signal} | {variant} | {horizon} | {ic_mean} | "
+            "{t_stat} | {deflated_sharpe} | {hlz_t_hurdle} | {bonferroni_t} | "
+            "{verdict} | {note} |"
+        )
+        lines.append(
+            template.format(
+                run_id=row["run_id"],
+                signal=row["signal"],
+                variant=row["variant"],
+                horizon=row["horizon"],
+                ic_mean=row["ic_mean"],
+                t_stat=row["t_stat"],
+                deflated_sharpe=row["deflated_sharpe"],
+                hlz_t_hurdle=row["hlz_t_hurdle"],
+                bonferroni_t=row["bonferroni_t"],
+                verdict=row["verdict"],
+                note=row["note"],
+            )
+        )
+    with path.open("a") as handle:
+        handle.write("\n".join(lines) + "\n")

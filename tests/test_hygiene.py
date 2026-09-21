@@ -1,7 +1,14 @@
-"""Tests for Task 6: hygiene detection rules and the event log."""
+"""Tests for Task 6: hygiene detection rules and the event log.
+
+Sprint E7 appends the alpha-harness tests: the harness is the deliverable,
+so its pieces are tested on synthetic data with known answers.
+"""
+
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from efb import hygiene
 
@@ -98,3 +105,94 @@ def test_build_events_corporate_actions_and_flags() -> None:
     assert "dividend_large" in types  # 1.5 / 101.0 > 1%
     assert "split" in types  # split factor 2.0 on the last day
     assert "outlier" in types  # |r| = 0.6
+
+
+# --------------------------------------------------------------------------
+# Sprint E7: the alpha harness. The harness is the deliverable, so its pieces
+# are tested on synthetic data with known answers before any real signal runs
+# through it.
+# --------------------------------------------------------------------------
+
+
+def _wide(seed: int = 0, n_days: int = 500, n_names: int = 80) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    index = pd.bdate_range("2018-01-02", periods=n_days)
+    columns = [f"T{i:03d}" for i in range(n_names)]
+    return pd.DataFrame(
+        rng.normal(0.0004, 0.012, size=(n_days, n_names)),
+        index=index,
+        columns=columns,
+    )
+
+
+def _long_signal(wide: pd.DataFrame) -> pd.DataFrame:
+    """The same-day return as a signal: perfect, and a pure leak."""
+    forward = wide.fillna(0.0)
+    long = forward.stack(future_stack=True).rename("signal").reset_index()
+    long.columns = ["date", "ticker", "signal"]
+    return long
+
+
+def test_spearman_ic_is_one_for_a_perfect_signal() -> None:
+    wide = _wide()
+    signal = _long_signal(wide)
+    ic = hygiene.spearman_ic(signal, wide, horizon=1)
+    assert ic.mean() > 0.99
+
+
+def test_newey_west_t_is_large_for_a_perfect_signal() -> None:
+    wide = _wide()
+    signal = _long_signal(wide)
+    ic = hygiene.spearman_ic(signal, wide, horizon=1)
+    assert hygiene.newey_west_t(ic) > 20
+
+
+def test_the_deflated_sharpe_sinks_as_trials_grow() -> None:
+    one = hygiene.deflated_sharpe(2.0, 1, 500)["deflated_sharpe"]
+    many = hygiene.deflated_sharpe(2.0, 1000, 500)["deflated_sharpe"]
+    assert one > many
+
+
+def test_the_bonferroni_threshold_grows_with_trials() -> None:
+    assert hygiene.bonferroni_t_threshold(10) < hygiene.bonferroni_t_threshold(1000)
+
+
+def test_regime_ic_returns_the_three_terciles_and_pooled() -> None:
+    index = pd.bdate_range("2020-01-02", periods=400)
+    ic = pd.Series(np.random.default_rng(2).normal(0.02, 0.1, size=400), index=index)
+    vix = pd.Series(np.linspace(12, 45, 400), index=index)
+    table = hygiene.regime_ic(ic, vix)
+    assert set(table["regime"]) == {"pooled", "vix_low", "vix_mid", "vix_high"}
+
+
+def test_write_ledger_is_append_only(tmp_path: Path) -> None:
+    path = tmp_path / "ledger.md"
+    row = {
+        "run_id": 1,
+        "signal": "s",
+        "variant": "raw_h1",
+        "horizon": 1,
+        "ic_mean": 0.01,
+        "t_stat": 1.2,
+        "deflated_sharpe": -1.0,
+        "hlz_t_hurdle": 1.2,
+        "bonferroni_t": 2.5,
+        "verdict": "NULL",
+        "note": "below the hurdle",
+    }
+    hygiene.write_ledger([row], path)
+    before = path.read_text()
+    hygiene.write_ledger([dict(row, run_id=2, verdict="PASS", note="survives")], path)
+    after = path.read_text()
+    assert before in after
+    assert sum(line.startswith("| 1 | s |") for line in after.splitlines()) == 1
+    assert sum(line.startswith("| 2 | s |") for line in after.splitlines()) == 1
+    assert "Append-only" in after
+
+
+def test_fundamental_law_uses_the_stored_breadth() -> None:
+    index = pd.bdate_range("2020-01-02", periods=300)
+    ic = pd.Series(np.random.default_rng(3).normal(0.02, 0.1, size=300), index=index)
+    law = hygiene.fundamental_law(ic, breadth=100)
+    assert law["implied_ir"] == pytest.approx(law["mean_ic"] * np.sqrt(100))
+    assert "breadth" in law
