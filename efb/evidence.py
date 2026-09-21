@@ -38,6 +38,7 @@ MANIFEST = EVIDENCE / "MANIFEST.json"
 EVIDENCE_GLOBS = (
     "data/eval/*.parquet",
     "data/hedge/*.parquet",
+    "data/alpha/*/*.parquet",
     "data/models/*/*.parquet",
 )
 EVIDENCE_FILES = ("data/models/registry.json", "data/VERSION.json")

@@ -82,3 +82,20 @@ def test_signals_return_long_frames_with_expected_columns() -> None:
     signal = alpha.momentum_12_1(wide)
     assert list(signal.columns) == ["date", "ticker", "signal"]
     assert signal["date"].dtype.kind == "M"
+
+
+def test_every_wide_based_builder_is_point_in_time() -> None:
+    """Perturbing the returns row at t must not change the signal at t."""
+    wide = _wide(seed=3)
+    for name in ("momentum_12_1", "short_term_reversal"):
+        signal = alpha._signal_for(name, wide, alpha.DATA_ROOT)
+        perturbed = wide.copy()
+        perturbed.iloc[-1] = perturbed.iloc[-1] + 0.05
+        signal_perturbed = alpha._signal_for(name, perturbed, alpha.DATA_ROOT)
+        before = signal.loc[signal["date"] == signal["date"].max()].set_index("ticker")[
+            "signal"
+        ]
+        after = signal_perturbed.loc[
+            signal_perturbed["date"] == signal_perturbed["date"].max()
+        ].set_index("ticker")["signal"]
+        assert np.allclose(before, after, equal_nan=True), name

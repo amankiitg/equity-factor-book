@@ -1,8 +1,36 @@
 {
-  "note": "Built by make rebuild (Sprint E6). The hedging toolkit artifacts join the versioned set; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-21T02:57:34+00:00",
-  "data_hash": "d695589a30822a7600863128fafcf2abffcfd40b12c09783be0c5f126f1a02b1",
+  "note": "Built by make rebuild (Sprint E7). The alpha lab artifacts and the multiple-testing ledger join the versioned set; the dashboard sidebar shows this version.",
+  "built_at": "2026-09-21T05:16:29+00:00",
+  "data_hash": "e58e4611e3bf6df3219e1c07499065b543e1b53ab894b6812eea4cef1d25138b",
   "artifacts": {
+    "alpha.parquet": {
+      "sha256": "5f092a88afb0468f6835f0fc5397b4840fc7fa2fe0807c0156f79370ea79b1b2",
+      "bytes": 4083282
+    },
+    "audit.parquet": {
+      "sha256": "5099ebb170af12b67b05a76ff9d43329bca2b897bf158ccb26c32ec4adc7f5b7",
+      "bytes": 161229
+    },
+    "ic.parquet": {
+      "sha256": "eeaa46c32e85c2b226f500d6ff32d7eded0b8aeb0e3e205e87206aeade0a5bb7",
+      "bytes": 196415
+    },
+    "neutral_ic.parquet": {
+      "sha256": "0c3935d018d9825926962b2dce451bd7956b8ab44d3a62c85486ac7ee14c4b09",
+      "bytes": 5052
+    },
+    "quantiles.parquet": {
+      "sha256": "abc29be5eef2f21a8397fecdbff11c6539c23b6eb6ddaf720df5bb257c7825d4",
+      "bytes": 210104
+    },
+    "regime_ic.parquet": {
+      "sha256": "bb6dc748d6b64bfd19f26bac900418188e6d92531feddc42f43003bc615fd834",
+      "bytes": 2768
+    },
+    "summary.parquet": {
+      "sha256": "527fe1cdf5a3021c4b9694f28699f04a97ce22df7bb615c51a175d4644c29bdf",
+      "bytes": 16820
+    },
     "beta_horse_race.parquet": {
       "sha256": "862891ca3d6e712d6a2f6267274368d4c055e0f85077d7e23bb2e22759920005",
       "bytes": 3487
@@ -403,6 +431,10 @@
       "sha256": "532623d541928c67dd165b8a6e49c1e890ba7a57a5c732c6b2b688c819944615",
       "bytes": 426994
     },
+    "earnings_dates.parquet": {
+      "sha256": "357c72fb99fa56dc4bd6723ad8003c0c6f922e230a242f64d5fc6b3d7f6fd2fd",
+      "bytes": 242028
+    },
     "etf_prices.parquet": {
       "sha256": "c0f401c3ede79dc4793990e89d1c35d182b22eba919f21589ca1a7b3ef76300e",
       "bytes": 455352
@@ -418,6 +450,10 @@
     "shares_history.parquet": {
       "sha256": "1bca9fff8f5ce86db0dcb9539f5684ce89e8035d1c8fd785ba15ff1466892bf7",
       "bytes": 2112831
+    },
+    "short_interest.parquet": {
+      "sha256": "c991f183f0fdee16228079e6dc0cf32c85ea156d732b637708b7a4391314f780",
+      "bytes": 4238241
     },
     "vix.parquet": {
       "sha256": "50665467e8ff89123b694aef4cf5b310dbb750757786ac879e56087d5287b43d",

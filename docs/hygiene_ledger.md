@@ -1186,3 +1186,42 @@ Reason. The roadmap says to understand that the FMP hedge is exact
 in-model and unusable in practice; scoring the criterion on the capped
 tradeable form would have failed it for cap drift while hiding the
 exactness that is the point of the exercise.
+
+## 2026-09-21: the shift audit is the lagged-construction probe, not a pairing trick
+
+Decision. The F7.1 audit rebuilds every signal with all inputs moved one day
+back and compares the lagged IC against the original IC against r_t. The
+first two drafts paired the stored signal with shifted returns; both flagged
+fast-decaying honest signals (reversal, earnings drift) because their edge
+genuinely dies within one day, which the pairing cannot tell apart from
+same-day leakage.
+
+Reason. The lagged reconstruction simulates data available one day earlier:
+a clean signal keeps its IC (the information was already there), a leaked
+signal flips or dies (the extra day carried the edge). A flagged signal that
+is point-in-time by construction, pinned by the perturbation test in
+tests/test_alpha.py, carries a fast-decay finding rather than a leak, and
+both the flag and the PIT property are stored per signal.
+
+## 2026-09-21: post-earnings drift is tradable only from the next session
+
+Decision. The earnings surprise is dated at the announcement, so the signal
+is shifted one session before any pairing. The first draft paired the
+announcement-day surprise with the same-day return and produced an IC of
+0.20 with t of 21, which was the announcement reaction, not drift.
+
+Reason. The corrected signal's IC is 0.124 with t of 14.0, and the lag
+probe shows the edge dies within the lag window: a fast-decay finding, not
+a leak.
+
+## 2026-09-21: every E7 signal is NULL and that is a successful sprint
+
+Decision. All six signals fail the RG-Signal checklist on the stored
+out-of-sample numbers; every one is labeled NULL in the ledger and the
+gate. The F7.2 momentum criterion also fails: the factor-neutral momentum
+IC mean is negative (-0.0107 with t -1.55) against the 0.02 threshold.
+
+Reason. The roadmap says every signal NULL is a successful sprint and the
+E8 construction machinery runs on synthetic alpha with a known IC. The
+negative results are kept in full: six reports, a 111-row ledger, and the
+gate JSON.

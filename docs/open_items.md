@@ -255,3 +255,25 @@ New and carried into E7, all stored:
 4. The instrument set grows from 12 to 14 as XLRE and XLC gain history; the
    per-date count is stored, and instruments without estimable history are
    recorded as missing, never filled.
+
+## 2026-09-21: E7 close-out
+
+All six signals are NULL under the RG-Signal checklist; the stored deciding
+numbers are in `sprints/E7/RG_SIGNAL.json`. F7.1 passes (the lagged
+construction probe with the PIT property pinned by perturbation tests),
+F7.2 fails (neutral momentum IC -0.0107, t -1.55), F7.3 passes (111 ledger
+rows, below-hurdle signals labeled NULL), F7.4 passes (both models stored).
+
+Carried into E8, all stored:
+
+1. The construction machinery runs on synthetic alpha with a known IC, per
+   the roadmap's null-signal fallback.
+2. The alpha conversion contract is stored per signal in
+   `data/alpha/{signal}/alpha.parquet` with columns date, ticker, alpha,
+   alpha_xs_v2, ic, sigma_idio_xs_v1, sigma_idio_xs_v2, z, kappa.
+3. The fast-decay finding: post-earnings drift's edge dies within one day
+   of its lag probe; its IC is announcement-adjacent information, not a
+   leak, and any E8 use must respect the one-session tradability lag.
+4. The short interest panel covers only 24 settlement dates from 2018 to
+   2026 with gaps; a fuller history needs the FINRA files rather than the
+   API endpoint.

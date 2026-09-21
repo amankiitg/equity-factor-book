@@ -108,6 +108,14 @@ LINKS = [
         "The Multiple-Testing Ledger",
         "docs/multiple_testing_ledger.md",
     ),
+    (
+        "Research deliverable: Signal Evaluation Reports (six)",
+        "docs/research/E7_signal_momentum_12_1.md",
+    ),
+    (
+        "Walkthrough notebook E7 (alpha lab)",
+        "notebooks/E7_walkthrough.html",
+    ),
 ]
 
 

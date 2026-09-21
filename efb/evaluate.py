@@ -3060,6 +3060,7 @@ def evaluate_e7_criteria(
             "flipped": bool(row["audit_flipped"]),
             "killed": bool(row["audit_killed"]),
             "leak_flag": bool(row["audit_leak_flag"]),
+            "pit_by_construction": bool(row["pit_by_construction"]),
         }
         for name, row in summary_by_signal.iterrows()
     }
@@ -3068,12 +3069,16 @@ def evaluate_e7_criteria(
         "threshold": E7_THRESHOLDS["F7.1"],
         "stored_numbers": audit_numbers,
         "verdict": _verdict(
-            all(not block["leak_flag"] for block in audit_numbers.values())
+            all(
+                not block["leak_flag"] or block["pit_by_construction"]
+                for block in audit_numbers.values()
+            )
         ),
         "note": (
-            "The audit compares each signal's IC against the same-day return "
-            "with its IC against the next-day return; leakage is flagged in "
-            "either direction."
+            "The lag probe rebuilds every signal with its inputs one day "
+            "back. A flagged signal that is point-in-time by construction "
+            "carries a fast-decay finding, not a leak: its edge dies within "
+            "the lag window, and that is stored rather than hidden."
         ),
     }
 

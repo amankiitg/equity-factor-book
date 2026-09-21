@@ -74,17 +74,21 @@ def quantile_panel(name: str) -> pd.DataFrame:
     spread = (
         pivot[5] - pivot[1] if {1, 5} <= set(pivot.columns) else pd.Series(dtype=float)
     )
-    summary = {
-        "hit_rate": float((spread > 0).mean()) if len(spread) else float("nan"),
-        "spread_mean_daily": float(spread.mean()) if len(spread) else float("nan"),
-    }
-    return pd.DataFrame(
-        [summary]
-        + [
-            {"quantile": int(q), "mean_return": float(pivot[q].mean())}
-            for q in pivot.columns
-        ]
+    rows: list[dict[str, object]] = [
+        {
+            "quantile": "hit_rate",
+            "mean_return": float((spread > 0).mean()) if len(spread) else float("nan"),
+        },
+        {
+            "quantile": "spread_mean_daily",
+            "mean_return": float(spread.mean()) if len(spread) else float("nan"),
+        },
+    ]
+    rows.extend(
+        {"quantile": int(q), "mean_return": float(pivot[q].mean())}
+        for q in pivot.columns
     )
+    return pd.DataFrame(rows)
 
 
 def regime_panel(name: str) -> pd.DataFrame:

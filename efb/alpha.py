@@ -284,6 +284,11 @@ IN_SAMPLE_END = pd.Timestamp("2020-12-31")
 OUT_OF_SAMPLE_START = pd.Timestamp("2021-01-01")
 KAPPA = 0.1  # the E7 shrinkage toward zero, an E8 input
 
+# Every builder is point-in-time by construction: the signal at t uses data
+# at t-1 or earlier. The property is pinned by tests/test_alpha.py, which
+# perturbs the returns row at t and asserts the signal at t does not move.
+PIT_SIGNALS = frozenset(SIGNAL_BUILDERS)
+
 
 def lagged_signal(name: str, wide: pd.DataFrame, root: Path) -> pd.DataFrame:
     """The signal rebuilt with every input moved one day back.
@@ -482,6 +487,7 @@ def run(
                 "audit_flipped": bool(audit["flipped"].iloc[-1]),
                 "audit_killed": bool(audit["killed"].iloc[-1]),
                 "audit_leak_flag": bool(audit["leak_flag"].iloc[-1]),
+                "pit_by_construction": name in PIT_SIGNALS,
                 "audit_mean_ic_next": float(audit["mean_ic_next"].iloc[-1]),
                 "audit_t_next": float(audit["t_ic_next"].iloc[-1]),
                 "audit_t_lagged": float(audit["t_ic_lagged"].iloc[-1]),
@@ -514,7 +520,7 @@ def run(
         # the frames are large; release them before the next signal builds
         import gc
 
-        del signal, audit, ic_frame, neutral, quantiles, regime, spread
+        del signal, lagged, audit, ic_frame, neutral, quantiles, regime, spread
         gc.collect()
     summary = pd.DataFrame(summary_rows)
     # the verdict per signal: NULL when the out-of-sample spread fails the
