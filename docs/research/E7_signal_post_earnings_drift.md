@@ -60,3 +60,15 @@ Q7. Answer: yes, on paper
 ## Champion against alternative
 
 The raw IC is shared by both models; the stored difference is in the converted alpha under the champion's idio volatility and the alternative's, which is the quantity the models actually move.
+
+## Empirical shift audit (F7.1b, recorded in E8 Task 0a)
+
+The empirical shift audit rebuilds the signal with every input advanced
+one day and pairs it with the same-day return. This signal's after-shift
+IC is 0.2015 with t 21.15 against 0.124 with t 14.05 before the shift: the
+IC not only survives, it grows. The shifted construction is the
+announcement-day signal itself, so the survival is the announcement
+adjacent edge, and that is leakage. The one-session lag this signal
+carries is exactly what removes it, and any use of the unlagged surprise
+on the announcement day is same-day leakage. The traded form stays the
+lagged one.

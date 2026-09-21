@@ -303,6 +303,45 @@ def shift_audit(
     return joined
 
 
+def empirical_shift_audit(
+    signal_frame: pd.DataFrame,
+    forward_signal_frame: pd.DataFrame,
+    wide: pd.DataFrame,
+) -> dict[str, float | bool]:
+    """F7.1b: the empirical shift audit.
+
+    The signal is rebuilt with every input advanced one day and paired with
+    the same-day return. An honest signal that predicts r_t from data
+    through t-1 flips or dies once the extra day enters its window. A
+    signal whose IC survives the shift is carrying the shifted window's
+    edge: announcement-day information for a lagged publication, or edge
+    persistence for a construction whose window still skips the same-day
+    return. Which one it is, the caller records, never this function.
+    """
+    ic_before = spearman_ic(signal_frame, wide, horizon=1)
+    ic_after = spearman_ic(forward_signal_frame, wide, horizon=1)
+    mean_before = float(ic_before.mean())
+    mean_after = float(ic_after.mean())
+    t_before = newey_west_t(ic_before)
+    t_after = newey_west_t(ic_after)
+    flipped = bool(
+        (mean_before > 0 and mean_after < 0) or (mean_before < 0 and mean_after > 0)
+    )
+    killed = bool(not np.isfinite(t_after) or abs(t_after) < LEAK_T_SIGNIFICANCE)
+    survives = bool(
+        not flipped and not killed and np.isfinite(t_before) and np.isfinite(t_after)
+    )
+    return {
+        "ic_before_mean": mean_before,
+        "t_before": t_before,
+        "ic_after_mean": mean_after,
+        "t_after": t_after,
+        "flipped": flipped,
+        "killed": killed,
+        "survives": survives,
+    }
+
+
 def neutralize(
     signal_frame: pd.DataFrame,
     wide: pd.DataFrame,

@@ -312,6 +312,73 @@ def lagged_signal(name: str, wide: pd.DataFrame, root: Path) -> pd.DataFrame:
     return short_term_reversal(wide.shift(1))
 
 
+def forward_signal(name: str, wide: pd.DataFrame, root: Path) -> pd.DataFrame:
+    """The signal rebuilt with every input advanced one day.
+
+    This is the F7.1b construction shift: the signal claims to be
+    computable one day later, so pairing it with the same-day return shows
+    whether the extra day's data carries the edge. For a construction whose
+    window still skips the same-day return (momentum and idio momentum skip
+    21 sessions), the extra day cannot be mechanical, so a surviving IC is
+    edge persistence, recorded as such and never rewritten as leakage. For
+    a lagged publication (post-earnings drift) the shifted construction is
+    the announcement-day signal itself, and a surviving IC is the
+    announcement-adjacent edge the one-session lag exists to remove.
+    """
+    tickers = [t for t in wide.columns if t.isalpha()]
+    if name == "short_interest":
+        return short_interest_signal(tickers, root, lag=-1)
+    if name == "post_earnings_drift":
+        return post_earnings_drift(tickers, root, lag=-1)
+    if name == "idio_momentum":
+        return idio_momentum(root, lag=-1)
+    if name == "low_residual_volatility":
+        return low_residual_volatility(root, lag=-1)
+    if name == "momentum_12_1":
+        return momentum_12_1(wide.shift(-1))
+    return short_term_reversal(wide.shift(-1))
+
+
+def run_f71b(
+    data_root: Path = DATA_ROOT,
+    store: bool = True,
+    signals: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
+    """F7.1b: the empirical shift audit, one row per signal.
+
+    Each signal is rebuilt with every input advanced one day and its IC is
+    recomputed against the same-day return. OUTPUT: a frame with the IC
+    before and after the shift, their Newey-West t-stats, and the flags
+    flipped (sign changed), killed (|t| below the leak hurdle) and survives
+    (neither). Stored as data/alpha/f71b_audit.parquet.
+    """
+    from efb import hygiene
+
+    root = Path(data_root)
+    wide, _counts = eval_risk.load_clean_wide(root)
+    rows: list[dict[str, object]] = []
+    for name in SIGNAL_BUILDERS:
+        if signals is not None and name not in signals:
+            continue
+        print(f"f71b {name}")
+        signal = _signal_for(name, wide, root)
+        if signal.empty:
+            continue
+        forward = forward_signal(name, wide, root)
+        audit = hygiene.empirical_shift_audit(signal, forward, wide)
+        rows.append({"signal": name, **audit})
+        del signal, forward
+        import gc
+
+        gc.collect()
+    frame = pd.DataFrame(rows)
+    if store:
+        out = root / "alpha" / "f71b_audit.parquet"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(out, index=False)
+    return frame
+
+
 def _signal_for(name: str, wide: pd.DataFrame, root: Path) -> pd.DataFrame:
     tickers = [t for t in wide.columns if t.isalpha()]
     if name == "short_interest":

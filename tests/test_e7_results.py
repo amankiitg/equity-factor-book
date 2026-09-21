@@ -19,7 +19,7 @@ RESULTS = ROOT / "sprints" / "E7" / "RESULTS.json"
 GATE = ROOT / "sprints" / "E7" / "RG_SIGNAL.json"
 LEDGER = ROOT / "docs" / "multiple_testing_ledger.md"
 
-CRITERIA = ["F7.1", "F7.2", "F7.3", "F7.4"]
+CRITERIA = ["F7.1", "F7.1b", "F7.2", "F7.3", "F7.4"]
 
 
 def _results() -> dict:
@@ -82,3 +82,16 @@ def test_the_rg_signal_gate_labels_every_signal() -> None:
         assert block["verdict"] in ("PASS", "NULL"), name
         assert block["deciding_number"] is not None, name
         assert len(block["answers"]) == 7, name
+
+
+@pytest.mark.integration
+def test_f71b_records_the_empirical_shift_audit() -> None:
+    payload = _results()
+    f71b = payload["criteria"]["F7.1b"]["stored_numbers"]
+    assert payload["criteria"]["F7.1b"]["verdict"] == "fail"
+    assert f71b["post_earnings_drift"]["survives"] is True
+    assert f71b["post_earnings_drift"]["ic_after_mean"] > (
+        f71b["post_earnings_drift"]["ic_before_mean"]
+    )
+    assert f71b["short_term_reversal"]["flipped"] is True
+    assert f71b["low_residual_volatility"]["killed"] is True

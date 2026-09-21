@@ -1225,3 +1225,18 @@ Reason. The roadmap says every signal NULL is a successful sprint and the
 E8 construction machinery runs on synthetic alpha with a known IC. The
 negative results are kept in full: six reports, a 111-row ledger, and the
 gate JSON.
+
+## 2026-09-21: E8 Task 0a, F7.1b records leakage in post-earnings drift
+
+The empirical shift audit (each signal rebuilt with every input advanced
+one day, paired with the same-day return) finds post-earnings drift's
+after-shift IC 0.2015 with t 21.15 against 0.124 with t 14.05 before the
+shift. The IC survives and grows, so under the F7.1 criterion text the
+signal is leaking: its edge is announcement-day information, which the
+one-session tradability lag removes. Recorded as leakage in the signal
+report per the E8 Task 0a instruction. The construction probe's fast-decay
+finding stands beside it. The same audit flips short-term reversal (t
+-184.72, the shifted window contains the same-day return) and kills low
+residual volatility and short interest; momentum and idio momentum
+survive by persistence, because their windows still skip the same-day
+return, and that confound is stored, not rewritten.

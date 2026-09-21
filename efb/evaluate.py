@@ -2701,6 +2701,12 @@ E6_CRITERIA_TEXT = {
         "New in E6: the residual factor exposure the instrument set cannot "
         "reach, quantified per factor."
     ),
+    "F6.4b": (
+        "Registered in E8 Task 0b, not pre-registered: F6.4 is rerun "
+        "against a real alternative, the per-portfolio-family "
+        "best-calibrated model in E5's family table, and the difference "
+        "is stored."
+    ),
 }
 
 E6_THRESHOLDS = {
@@ -2709,6 +2715,7 @@ E6_THRESHOLDS = {
     "F6.3": "realized beta to Mkt-RF inside +/- 0.1 over 2018 to 2026",
     "F6.4": "headline numbers present for both models with the difference",
     "F6.5": "per-factor post-hedge exposure stored for the instrument set",
+    "F6.4b": "the per-family alternative and the three headline differences stored",
 }
 
 E6_ARTIFACTS = [
@@ -2873,7 +2880,101 @@ def evaluate_e6_criteria(
         ),
         "note": (
             "The champion is provisional (F5.1 failed), so the hedge study "
-            "reports every headline number under both models."
+            "reports every headline number under both models. The zero "
+            "difference is by construction: XS-v2 shares XS-v1's X and F, "
+            "and the hedge weights depend only on the shared factor block."
+        ),
+    }
+
+    # F6.4b. E8 Task 0b: the same headline numbers under the per-family
+    # best-calibrated alternative from the stored E5 family table, which is
+    # the alternative every later champion-against-alternative comparison
+    # uses.
+    from efb import registry as registry_mod
+
+    per_family = registry_mod.per_family_alternative()
+    book_family = {"seed_ew": "long_only", "seed_mom_ls": "long_short"}
+    champion_numbers: dict[str, dict[str, float]] = {}
+    alternative_numbers: dict[str, dict[str, float]] = {}
+    difference_numbers: dict[str, dict[str, float]] = {}
+    for book, family in book_family.items():
+        alt_tag = registry_mod.engine_tag(per_family.get(family, "xs_v2"))
+        fmp_by_book = fmp_metrics.loc[fmp_metrics["book"] == book]
+        mv_by_book = metrics.loc[
+            (metrics["method"] == "min_variance") & (metrics["book"] == book)
+        ]
+        mv_idio_v1 = float(
+            mv_by_book.loc[mv_by_book["model"] == "xs_v1", "idio_share_after"].mean()
+        )
+        mv_idio_alt = float(
+            mv_by_book.loc[mv_by_book["model"] == alt_tag, "idio_share_after"].mean()
+        )
+        if book == "seed_ew":
+            champion_numbers[family] = {
+                "fmp_idio_share": float(
+                    fmp_by_book.loc[
+                        fmp_by_book["model"] == "xs_v1", "idio_share_after"
+                    ].mean()
+                ),
+                "mv_share": share_v1,
+                "mv_idio_share_after": mv_idio_v1,
+            }
+            alternative_numbers[family] = {
+                "fmp_idio_share": float(
+                    fmp_by_book.loc[
+                        fmp_by_book["model"] == alt_tag, "idio_share_after"
+                    ].mean()
+                ),
+                "mv_share": share_v2,
+                "mv_idio_share_after": mv_idio_alt,
+            }
+        else:
+            champion_numbers[family] = {
+                "fmp_idio_share": float(
+                    fmp_by_book.loc[
+                        fmp_by_book["model"] == "xs_v1", "idio_share_after"
+                    ].mean()
+                ),
+                "realized_beta_to_mkt_rf": beta_v1,
+                "mv_idio_share_after": mv_idio_v1,
+            }
+            alternative_numbers[family] = {
+                "fmp_idio_share": float(
+                    fmp_by_book.loc[
+                        fmp_by_book["model"] == alt_tag, "idio_share_after"
+                    ].mean()
+                ),
+                "realized_beta_to_mkt_rf": float(
+                    momentum_rows.loc[
+                        momentum_rows["model"] == alt_tag, "realized_beta_to_mkt_rf"
+                    ].iloc[0]
+                ),
+                "mv_idio_share_after": mv_idio_alt,
+            }
+        difference_numbers[family] = {
+            key: float(champion_numbers[family][key] - alternative_numbers[family][key])
+            for key in champion_numbers[family]
+        }
+    criteria["F6.4b"] = {
+        "criterion": E6_CRITERIA_TEXT["F6.4b"],
+        "threshold": E6_THRESHOLDS["F6.4b"],
+        "stored_numbers": {
+            "per_family_alternative": per_family,
+            "book_family": book_family,
+            "champion": champion_numbers,
+            "alternative": alternative_numbers,
+            "difference_champion_minus_alternative": difference_numbers,
+        },
+        "verdict": _verdict(bool(per_family) and bool(difference_numbers)),
+        "note": (
+            "The literal per-family best in the stored E5 table is the "
+            "champion XS-v1 on factor_tilted and long_short, so the "
+            "difference there is zero by identity; on long_only and "
+            "sector_concentrated the best is XS-v2, which shares X and F, "
+            "so the stored differences live in the idio-share accounting. "
+            "The differently-structured versions (PCA-v1, PCA-v1c, TS-v1, "
+            "sample) are all farther from bias 1 in every family in the "
+            "stored table, which is the mechanism this criterion names."
         ),
     }
 
@@ -2980,6 +3081,13 @@ E7_CRITERIA_TEXT = {
         "New in E7: every signal's IC under the champion's idio volatility "
         "and under the alternative's, with the difference stored."
     ),
+    "F7.1b": (
+        "Registered in E8 Task 0a, not pre-registered: the empirical shift "
+        "audit. Each signal is rebuilt with every input advanced one day "
+        "and its IC is recomputed against the same-day return; a signal "
+        "whose IC survives the shift is leaking. The IC before and after "
+        "the shift is stored per signal."
+    ),
 }
 
 E7_THRESHOLDS = {
@@ -2987,12 +3095,14 @@ E7_THRESHOLDS = {
     "F7.2": "neutral momentum IC mean > 0.02 and t > 2, both periods stored",
     "F7.3": "below-hurdle signals labeled NULL; ledger rows >= runs",
     "F7.4": "stored per signal under both models with the difference",
+    "F7.1b": "every signal's after-shift IC flips or loses significance",
 }
 
 E7_ARTIFACTS = [
     "raw/short_interest.parquet",
     "raw/earnings_dates.parquet",
     "alpha/summary.parquet",
+    "alpha/f71b_audit.parquet",
 ] + [
     f"alpha/{name}/{stem}.parquet"
     for name in (
@@ -3011,6 +3121,12 @@ def compute_e7_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     """The artifacts the E7 criteria are read from, all stored by the engine."""
     root = Path(data_root)
     summary = pd.read_parquet(root / "alpha" / "summary.parquet")
+    f71b_path = root / "alpha" / "f71b_audit.parquet"
+    f71b = (
+        pd.read_parquet(f71b_path)
+        if f71b_path.exists()
+        else pd.DataFrame(columns=["signal"])
+    )
     ledger_path = ROOT / "docs" / "multiple_testing_ledger.md"
     ledger = ledger_path.read_text() if ledger_path.exists() else ""
     neutral: dict[str, pd.Series] = {}
@@ -3025,6 +3141,7 @@ def compute_e7_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "ledger": ledger,
         "neutral": neutral,
         "alphas": alpha_frames,
+        "f71b": f71b,
     }
 
 
@@ -3046,6 +3163,7 @@ def evaluate_e7_criteria(
     ledger: str,
     neutral: dict[str, pd.Series],
     alphas: dict[str, pd.DataFrame],
+    f71b: pd.DataFrame | None = None,
 ) -> dict[str, dict[str, Any]]:
     """F7.1 to F7.4, each with a stored number and a verdict."""
     criteria: dict[str, dict[str, Any]] = {}
@@ -3171,6 +3289,38 @@ def evaluate_e7_criteria(
         "note": (
             "The IC is shared by both models; the stored difference is in the "
             "converted alpha, which is the quantity the models actually move."
+        ),
+    }
+
+    # F7.1b. The empirical shift audit, registered in E8 Task 0a.
+    f71b_numbers: dict[str, dict[str, float | bool]] = {}
+    if f71b is not None and not f71b.empty:
+        for row in f71b.to_dict(orient="records"):
+            name = str(row["signal"])
+            f71b_numbers[name] = {
+                "ic_before_mean": float(row["ic_before_mean"]),
+                "t_before": float(row["t_before"]),
+                "ic_after_mean": float(row["ic_after_mean"]),
+                "t_after": float(row["t_after"]),
+                "flipped": bool(row["flipped"]),
+                "killed": bool(row["killed"]),
+                "survives": bool(row["survives"]),
+            }
+    survivors = [name for name, block in f71b_numbers.items() if block["survives"]]
+    criteria["F7.1b"] = {
+        "criterion": E7_CRITERIA_TEXT["F7.1b"],
+        "threshold": E7_THRESHOLDS["F7.1b"],
+        "stored_numbers": f71b_numbers,
+        "verdict": _verdict(bool(f71b_numbers) and not survivors),
+        "note": (
+            "The shifted construction is paired with the same-day return. "
+            "Momentum and idio momentum keep their IC through the shift "
+            "because their windows skip the same-day return, so survival "
+            "there is edge persistence, not leakage; post-earnings drift "
+            "survives because the shifted construction is the "
+            "announcement-day signal itself, which is the leakage its "
+            "one-session lag exists to remove, and that is recorded in its "
+            "signal report and the ledger."
         ),
     }
 
