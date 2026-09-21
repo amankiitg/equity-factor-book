@@ -25,13 +25,12 @@ def _load() -> dict:
 
 def _rule_table(summary: pd.DataFrame) -> str:
     lines = [
-        "| construction | rho | realized IR | n_eff | idio share after FMP |",
-        "| --- | --- | --- | --- | --- |",
+        "| construction | rho | realized IR | idio share after FMP |",
+        "| --- | --- | --- | --- |",
     ]
     for (_construction, _rho), group in summary.groupby(["construction", "rho"]):
         lines.append(
             f"| {_construction} | {_rho} | {group['realized_ir'].mean():.3f} | "
-            f"{group['mean_n_eff'].mean():.1f} | "
             f"{group['mean_idio_share_after_fmp'].mean():.3f} |"
         )
     return "\n".join(lines)

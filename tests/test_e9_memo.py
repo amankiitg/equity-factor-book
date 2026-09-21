@@ -34,7 +34,7 @@ def test_the_memo_exists_and_is_traceable(stored_numbers: list[float]) -> None:
     assert MEMO.exists()
     text = " ".join(MEMO.read_text().split())
     offenders: list[str] = []
-    for match in re.findall(r"-?\d+\.\d+", text):
+    for match in re.findall(r"-?\d+\.\d+(?:e-?\d+)?", text):
         value = abs(float(match))
         digits = len(match.split(".")[1])
         tolerance = 0.5 * 10 ** (-digits)

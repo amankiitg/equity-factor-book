@@ -41,8 +41,8 @@ def test_the_stored_criteria_equal_the_recomputed_ones() -> None:
     payload = _results()
     fresh = evaluate.evaluate_e9_criteria(**evaluate.compute_e9_from_artifacts())
     for name in CRITERIA:
-        assert (
-            fresh[name]["stored_numbers"] == payload["criteria"][name]["stored_numbers"]
+        assert json.dumps(fresh[name]["stored_numbers"], sort_keys=True) == json.dumps(
+            payload["criteria"][name]["stored_numbers"], sort_keys=True
         ), name
         assert fresh[name]["verdict"] == payload["criteria"][name]["verdict"], name
 

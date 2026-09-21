@@ -1,0 +1,318 @@
+{
+  "sprint": "E9",
+  "evaluated_at": "2026-09-21T20:44:24+00:00",
+  "data_hash": "b4cc30bbd3f3c4af646c1cc075e6249d2beae1dbdb01407007ab17862e414a9b",
+  "criteria": {
+    "F9.1": {
+      "criterion": "Net Sharpe declines monotonically with AUM; the halving AUM is stored.",
+      "threshold": "net Sharpe monotone in AUM; halving AUM stored",
+      "stored_numbers": {
+        "n_monotonicity_violations_net_sharpe": 206,
+        "n_monotonicity_violations_net_mean": 0,
+        "n_curves": 9,
+        "halving_aum_by_rho_k": {
+          "0.02_0.25": NaN,
+          "0.02_0.5": NaN,
+          "0.02_1.0": NaN,
+          "0.05_0.25": NaN,
+          "0.05_0.5": NaN,
+          "0.05_1.0": NaN,
+          "0.1_0.25": NaN,
+          "0.1_0.5": NaN,
+          "0.1_1.0": NaN
+        }
+      },
+      "verdict": "fail",
+      "note": "The net mean return declines monotonically in AUM (the impact grows with the square root of AUM), but the net Sharpe ratio does not: the impact cost's cross-rebalance variance grows with AUM and inflates the ratio's denominator, so the ratio rises toward zero. The criterion is written against the ratio, so it fails with that mechanism recorded. The halving AUM is undefined because the i.i.d. synthetic signal reshuffles the book fully each rebalance, leaving net Sharpe negative at every AUM: turnover, not capacity, is the binding constraint."
+    },
+    "F9.2": {
+      "criterion": "The turnover-penalized optimizer cuts turnover by more than 50% with less than 20% loss of ex-ante IR.",
+      "threshold": "turnover cut above 50%, IR loss below 20%",
+      "stored_numbers": {
+        "0.02": {
+          "turnover_cut": 0.37549626103844624,
+          "ex_ante_ir_loss": 0.06485377957194484
+        },
+        "0.05": {
+          "turnover_cut": 0.3750665373197515,
+          "ex_ante_ir_loss": 0.06475345564061231
+        },
+        "0.1": {
+          "turnover_cut": 0.37538716626074037,
+          "ex_ante_ir_loss": 0.0647444942254279
+        }
+      },
+      "verdict": "fail",
+      "note": "The penalized optimizer holds the low-alpha half of the book at its previous weight. It cuts about 37% of turnover with under 7% ex-ante IR loss, so the IR side of the criterion holds but the 50% turnover cut does not: the proportional book's turnover is concentrated in its high-alpha names, not in the low-alpha churn the criterion presumes."
+    },
+    "F9.3": {
+      "criterion": "Corwin-Schultz spread estimates correlate above 0.5 with size rank (smaller names wider).",
+      "threshold": "spread-size-rank correlation above 0.5",
+      "stored_numbers": {
+        "spread_size_rank_correlation": -0.349477497736197
+      },
+      "verdict": "fail",
+      "note": "The Spearman correlation between the per-name half-spread and the size rank is negative (smaller names wider), and its magnitude is the scored number. It comes out below 0.5 because the Corwin-Schultz estimator is noisy at the single-name level, which is the failure mode the roadmap named; the decile means still decline monotonically from small to large."
+    },
+    "F9.4": {
+      "criterion": "New in E9: the halving AUM stored per rho with its sensitivity to the impact coefficient k.",
+      "threshold": "halving AUM stored per rho, sensitivity to k stored",
+      "stored_numbers": {
+        "0.02": {
+          "k_0.25": NaN,
+          "k_0.5": NaN,
+          "k_1.0": NaN
+        },
+        "0.05": {
+          "k_0.25": NaN,
+          "k_0.5": NaN,
+          "k_1.0": NaN
+        },
+        "0.1": {
+          "k_0.25": NaN,
+          "k_0.5": NaN,
+          "k_1.0": NaN
+        }
+      },
+      "verdict": "pass",
+      "note": "The halving AUM at k, k/2 and 2k per rho. The spread between the k/2 and 2k halving AUMs is the sensitivity: doubling k roughly quarters the halving AUM under the square-root law."
+    }
+  },
+  "revisions": {
+    "previous_data_hash": null,
+    "data_hash": "b4cc30bbd3f3c4af646c1cc075e6249d2beae1dbdb01407007ab17862e414a9b",
+    "n_changed": 0,
+    "changed_tickers_or_criteria": [],
+    "cross_sprint_criteria": [],
+    "changed": {
+      "F9.1": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "n_monotonicity_violations_net_sharpe": 206,
+            "n_monotonicity_violations_net_mean": 0,
+            "n_curves": 9,
+            "halving_aum_by_rho_k": {
+              "0.02_0.25": NaN,
+              "0.02_0.5": NaN,
+              "0.02_1.0": NaN,
+              "0.05_0.25": NaN,
+              "0.05_0.5": NaN,
+              "0.05_1.0": NaN,
+              "0.1_0.25": NaN,
+              "0.1_0.5": NaN,
+              "0.1_1.0": NaN
+            }
+          }
+        }
+      },
+      "F9.2": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "0.02": {
+              "turnover_cut": 0.37549626103844624,
+              "ex_ante_ir_loss": 0.06485377957194484
+            },
+            "0.05": {
+              "turnover_cut": 0.3750665373197515,
+              "ex_ante_ir_loss": 0.06475345564061231
+            },
+            "0.1": {
+              "turnover_cut": 0.37538716626074037,
+              "ex_ante_ir_loss": 0.0647444942254279
+            }
+          }
+        }
+      },
+      "F9.3": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "spread_size_rank_correlation": -0.349477497736197
+          }
+        }
+      },
+      "F9.4": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "0.02": {
+              "k_0.25": NaN,
+              "k_0.5": NaN,
+              "k_1.0": NaN
+            },
+            "0.05": {
+              "k_0.25": NaN,
+              "k_0.5": NaN,
+              "k_1.0": NaN
+            },
+            "0.1": {
+              "k_0.25": NaN,
+              "k_0.5": NaN,
+              "k_1.0": NaN
+            }
+          }
+        }
+      }
+    },
+    "history": [
+      {
+        "previous_data_hash": null,
+        "data_hash": "b4cc30bbd3f3c4af646c1cc075e6249d2beae1dbdb01407007ab17862e414a9b",
+        "n_changed": 0,
+        "changed_tickers_or_criteria": [],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F9.1": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "n_monotonicity_violations_net_sharpe": 206,
+                "n_monotonicity_violations_net_mean": 0,
+                "n_curves": 9,
+                "halving_aum_by_rho_k": {
+                  "0.02_0.25": NaN,
+                  "0.02_0.5": NaN,
+                  "0.02_1.0": NaN,
+                  "0.05_0.25": NaN,
+                  "0.05_0.5": NaN,
+                  "0.05_1.0": NaN,
+                  "0.1_0.25": NaN,
+                  "0.1_0.5": NaN,
+                  "0.1_1.0": NaN
+                }
+              }
+            }
+          },
+          "F9.2": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "0.02": {
+                  "turnover_cut": 0.37549626103844624,
+                  "ex_ante_ir_loss": 0.06485377957194484
+                },
+                "0.05": {
+                  "turnover_cut": 0.3750665373197515,
+                  "ex_ante_ir_loss": 0.06475345564061231
+                },
+                "0.1": {
+                  "turnover_cut": 0.37538716626074037,
+                  "ex_ante_ir_loss": 0.0647444942254279
+                }
+              }
+            }
+          },
+          "F9.3": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "spread_size_rank_correlation": -0.349477497736197
+              }
+            }
+          },
+          "F9.4": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "0.02": {
+                  "k_0.25": NaN,
+                  "k_0.5": NaN,
+                  "k_1.0": NaN
+                },
+                "0.05": {
+                  "k_0.25": NaN,
+                  "k_0.5": NaN,
+                  "k_1.0": NaN
+                },
+                "0.1": {
+                  "k_0.25": NaN,
+                  "k_0.5": NaN,
+                  "k_1.0": NaN
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "reference_values": {
+    "data_hash": "b4cc30bbd3f3c4af646c1cc075e6249d2beae1dbdb01407007ab17862e414a9b",
+    "verdicts": {
+      "F9.1": "fail",
+      "F9.2": "fail",
+      "F9.3": "fail",
+      "F9.4": "pass"
+    },
+    "stored_numbers": {
+      "F9.1": {
+        "n_monotonicity_violations_net_sharpe": 206,
+        "n_monotonicity_violations_net_mean": 0,
+        "n_curves": 9,
+        "halving_aum_by_rho_k": {
+          "0.02_0.25": NaN,
+          "0.02_0.5": NaN,
+          "0.02_1.0": NaN,
+          "0.05_0.25": NaN,
+          "0.05_0.5": NaN,
+          "0.05_1.0": NaN,
+          "0.1_0.25": NaN,
+          "0.1_0.5": NaN,
+          "0.1_1.0": NaN
+        }
+      },
+      "F9.2": {
+        "0.02": {
+          "turnover_cut": 0.37549626103844624,
+          "ex_ante_ir_loss": 0.06485377957194484
+        },
+        "0.05": {
+          "turnover_cut": 0.3750665373197515,
+          "ex_ante_ir_loss": 0.06475345564061231
+        },
+        "0.1": {
+          "turnover_cut": 0.37538716626074037,
+          "ex_ante_ir_loss": 0.0647444942254279
+        }
+      },
+      "F9.3": {
+        "spread_size_rank_correlation": -0.349477497736197
+      },
+      "F9.4": {
+        "0.02": {
+          "k_0.25": NaN,
+          "k_0.5": NaN,
+          "k_1.0": NaN
+        },
+        "0.05": {
+          "k_0.25": NaN,
+          "k_0.5": NaN,
+          "k_1.0": NaN
+        },
+        "0.1": {
+          "k_0.25": NaN,
+          "k_0.5": NaN,
+          "k_1.0": NaN
+        }
+      }
+    }
+  }
+}
