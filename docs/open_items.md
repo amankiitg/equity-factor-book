@@ -286,3 +286,20 @@ lack of signal: the panel covers only 24 settlement dates from 2018 to
 21.02 bp per rebalance. It is the one signal to revisit with a longer
 panel (the FINRA files rather than the API endpoint), and it stays carried
 into a later sprint rather than re-scored here.
+
+## 2026-09-21: E8 Task 0d, evidence policy: fetched inputs only, large files on LFS
+
+Sizes measured: .git 162 MB, committed evidence 81 MB before the change,
+whole tracked tree 89 MB. From this task on the evidence snapshot covers
+only the fetched inputs that make rebuild cannot regenerate
+(data/raw/*.parquet plus registry and VERSION); the derived artifacts
+(eval, hedge, alpha, models, processed) are rebuilt deterministically by
+make rebuild and are no longer snapshotted. The previous per-sprint
+snapshot directories were removed from the tree; git history retains them.
+
+The new snapshot is 109.54 MB compressed, above the 100 MB line, so it is
+committed through Git LFS (pattern evidence/data/raw/*.gz). Cost: about
+0.11 GB of the free GitHub LFS quota (1 GB storage, 1 GB per month
+bandwidth). The E4 descriptor probe cache (228 MB) stays skipped by the
+size cap; it is a cache rebuild regenerates from the snapshotted prices
+and factors.

@@ -36,17 +36,22 @@ MANIFEST = EVIDENCE / "MANIFEST.json"
 # they read. `data/processed` and `data/raw` are inputs rather than evidence
 # and are excluded: they are large, and they are rebuildable from source.
 EVIDENCE_GLOBS = (
-    "data/eval/*.parquet",
-    "data/hedge/*.parquet",
-    "data/alpha/*/*.parquet",
-    "data/alpha/*.parquet",
-    "data/models/*/*.parquet",
+    # E8 Task 0d: only the fetched inputs that make rebuild cannot
+    # regenerate. Everything derived (eval, hedge, alpha, models,
+    # processed) is rebuilt deterministically by make rebuild and is no
+    # longer snapshotted; the previous per-sprint snapshots were dropped
+    # from the tree in the same task. The raw parquet files are tracked
+    # through Git LFS, recorded with its cost in docs/open_items.md.
+    "data/raw/*.parquet",
 )
 EVIDENCE_FILES = ("data/models/registry.json", "data/VERSION.json")
 
 # A snapshot is for the record, not for distribution. Anything above this is
-# listed as skipped rather than committed, and the cost is reported.
-MAX_BYTES = 4 * 1024 * 1024
+# listed as skipped rather than committed, and the cost is reported. The cap
+# sits above every fetched input except the E4 descriptor probe cache, which
+# rebuild regenerates from the prices and factors that are themselves
+# snapshotted.
+MAX_BYTES = 64 * 1024 * 1024
 
 
 def sha256_file(path: Path) -> str:
