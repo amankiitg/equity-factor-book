@@ -116,6 +116,28 @@ LINKS = [
         "Walkthrough notebook E7 (alpha lab)",
         "notebooks/E7_walkthrough.html",
     ),
+    ("Sprint E8 PRD", "sprints/E8/PRD.md"),
+    ("Sprint E8 tasks", "sprints/E8/TASKS.md"),
+    ("Sprint E8 results (F criteria)", "sprints/E8/RESULTS.json"),
+    (
+        "Research deliverable: Portfolio Construction Memo",
+        "docs/research/E8_construction_memo.md",
+    ),
+    (
+        "Walkthrough notebook E8 (sizing)",
+        "notebooks/E8_walkthrough.html",
+    ),
+    ("Sprint E9 PRD", "sprints/E9/PRD.md"),
+    ("Sprint E9 tasks", "sprints/E9/TASKS.md"),
+    ("Sprint E9 results (F criteria)", "sprints/E9/RESULTS.json"),
+    (
+        "Research deliverable: Transaction Cost and Capacity Analysis",
+        "docs/research/E9_tcost_capacity.md",
+    ),
+    (
+        "Walkthrough notebook E9 (cost and capacity)",
+        "notebooks/E9_walkthrough.html",
+    ),
 ]
 
 
