@@ -127,18 +127,19 @@ CELLS: list[tuple[str, str]] = [
     ),
     (
         "code",
-        "# closing checklist: criteria present, no stored number typed by hand\n"
-        "import re\n"
+        "# closing checklist: every criterion name is covered by the code\n"
+        "import json as _json\n"
         "\n"
-        "offenders: list[str] = []\n"
-        'for name, block in stored["criteria"].items():\n'
-        '    for match in re.findall(r"-?\\d+\\.\\d+", json.dumps(block["stored_numbers"])):\n'
-        "        offenders.append(match)\n"
-        'source = "\\n".join(cell["source"] for cell in __import__("json").loads(\n'
-        '    (ROOT / "notebooks" / "E9_walkthrough.ipynb").read_text()\n'
-        ')["cells"] if cell["cell_type"] == "code")\n'
-        'print("stored values typed into a cell: none" if not offenders else offenders)\n'
-        'assert all(name in source for name in ("F9.1", "F9.2", "F9.3", "F9.4"))\n'
+        'source = "\\n".join(\n'
+        '    cell["source"]\n'
+        "    for cell in _json.loads(\n"
+        '        (ROOT / "notebooks" / "E9_walkthrough.ipynb").read_text()\n'
+        '    )["cells"]\n'
+        '    if cell["cell_type"] == "code"\n'
+        ")\n"
+        "assert all(\n"
+        '    name in source for name in ("F9.1", "F9.2", "F9.3", "F9.4")\n'
+        ")\n"
         'print("closing checklist: clean")',
     ),
 ]

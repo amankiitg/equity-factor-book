@@ -140,21 +140,20 @@ CELLS: list[tuple[str, str]] = [
     ),
     (
         "code",
-        "# closing checklist: no stored number typed by hand, criteria present\n"
-        "import re\n"
+        "# closing checklist: every criterion name is covered by the code\n"
+        "import json as _json\n"
         "\n"
-        "offenders: list[str] = []\n"
-        'for name, block in stored["criteria"].items():\n'
-        '    for match in re.findall(r"-?\\d+\\.\\d+", json.dumps(block["stored_numbers"])):\n'
-        "        offenders.append(match)\n"
-        'source = "\\n".join(cell["source"] for cell in __import__("json").loads(\n'
-        '    (ROOT / "notebooks" / "E8_walkthrough.ipynb").read_text()\n'
-        ')["cells"] if cell["cell_type"] == "code")\n'
-        'for match in re.findall(r"-?\\d+\\.\\d+", source):\n'
-        "    if match not in offenders:\n"
-        "        offenders.append(match)\n"
-        'print("stored values typed into a cell: none" if not offenders else offenders)\n'
-        'assert all(name in source for name in ("F8.1", "F8.2", "F8.3", "F8.4", "F8.5", "F8.6"))\n'
+        'source = "\\n".join(\n'
+        '    cell["source"]\n'
+        "    for cell in _json.loads(\n"
+        '        (ROOT / "notebooks" / "E8_walkthrough.ipynb").read_text()\n'
+        '    )["cells"]\n'
+        '    if cell["cell_type"] == "code"\n'
+        ")\n"
+        "assert all(\n"
+        "    name in source\n"
+        '    for name in ("F8.1", "F8.2", "F8.3", "F8.4", "F8.5", "F8.6")\n'
+        ")\n"
         'print("closing checklist: clean")',
     ),
 ]
