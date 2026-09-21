@@ -47,7 +47,8 @@ def _transfer_table(results: dict) -> str:
         for rho, numbers in block.items():
             lines.append(
                 f"| {construction} | {rho} | {numbers['predicted_ir']:.3f} | "
-                f"{numbers['realized_ir']:.3f} | {numbers['transfer_coefficient']:.3f} |"
+                f"{numbers['realized_ir']:.3f} | "
+                f"{numbers['transfer_coefficient']:.3f} |"
             )
     return "\n".join(lines)
 
