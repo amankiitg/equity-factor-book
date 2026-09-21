@@ -68,17 +68,20 @@ def short_term_reversal(wide: pd.DataFrame) -> pd.DataFrame:
     return long
 
 
-def idio_momentum(root: Path = DATA_ROOT) -> pd.DataFrame:
+def idio_momentum(root: Path = DATA_ROOT, lag: int = 0) -> pd.DataFrame:
     """Momentum of the XS-v1 specific returns: total residual over t-252..t-21.
 
     INPUT: the stored specific returns of the champion model.
-    OUTPUT: long frame date/ticker/signal with NaN kept.
+    OUTPUT: long frame date/ticker/signal with NaN kept. `lag` moves every
+    input one day back for the F7.1 construction probe.
     """
     specific = pd.read_parquet(
         Path(root) / "models" / "XS-v1" / "specific_returns.parquet"
     )
     specific["date"] = pd.to_datetime(specific["date"])
     wide = specific.pivot(index="date", columns="ticker", values="specific_return")
+    if lag:
+        wide = wide.shift(lag)
     window = (
         (1.0 + wide)
         .rolling(MOMENTUM_LOOKBACK - MOMENTUM_SKIP)
@@ -90,17 +93,20 @@ def idio_momentum(root: Path = DATA_ROOT) -> pd.DataFrame:
     return long
 
 
-def low_residual_volatility(root: Path = DATA_ROOT) -> pd.DataFrame:
+def low_residual_volatility(root: Path = DATA_ROOT, lag: int = 0) -> pd.DataFrame:
     """Minus the trailing idio volatility: low residual risk as a signal.
 
     INPUT: the stored specific returns of the champion model.
-    OUTPUT: long frame date/ticker/signal with NaN kept.
+    OUTPUT: long frame date/ticker/signal with NaN kept. `lag` moves every
+    input one day back for the F7.1 construction probe.
     """
     specific = pd.read_parquet(
         Path(root) / "models" / "XS-v1" / "specific_returns.parquet"
     )
     specific["date"] = pd.to_datetime(specific["date"])
     wide = specific.pivot(index="date", columns="ticker", values="specific_return")
+    if lag:
+        wide = wide.shift(lag)
     vol = wide.rolling(VOL_WINDOW).std(ddof=1)
     signal = -vol.shift(1)
     long = signal.stack(future_stack=True).rename("signal").reset_index()
@@ -174,13 +180,14 @@ def fetch_short_interest(
 
 
 def short_interest_signal(
-    universe_tickers: list[str], data_root: Path = DATA_ROOT
+    universe_tickers: list[str], data_root: Path = DATA_ROOT, lag: int = 0
 ) -> pd.DataFrame:
     """Minus days-to-cover, the classic short-interest direction.
 
     The stored panel is forward-filled to the daily grid and the signal is
     cross-sectionally ranked per day, so the units are comparable across
-    time. NaN kept where the source had no row.
+    time. NaN kept where the source had no row. `lag` moves the publication
+    one day back for the F7.1 construction probe.
     """
     panel = pd.read_parquet(Path(data_root) / "raw" / "short_interest.parquet")
     panel = panel.loc[panel["ticker"].isin(universe_tickers)]
@@ -188,21 +195,23 @@ def short_interest_signal(
     wide = wide.reindex(columns=universe_tickers).sort_index()
     wide = wide.reindex(eval_risk.load_clean_wide(data_root)[0].index, method="ffill")
     signal = wide.rank(axis=1, pct=True).mul(-1.0)
+    if lag:
+        signal = signal.shift(lag)
     long = signal.stack(future_stack=True).rename("signal").reset_index()
     long.columns = ["date", "ticker", "signal"]
     return long
 
 
 def post_earnings_drift(
-    universe_tickers: list[str], data_root: Path = DATA_ROOT
+    universe_tickers: list[str], data_root: Path = DATA_ROOT, lag: int = 0
 ) -> pd.DataFrame:
     """The earnings surprise, carried forward until the next report.
 
     INPUT: the universe tickers. OUTPUT: long frame date/ticker/signal where
     the signal is the reported surprise from the latest earnings date,
-    forward-filled to the daily grid. NaN kept between dates the source has
-    no report for. The per-ticker fetch is cached in
-    `data/raw/earnings_dates.parquet` so a re-run resumes.
+    forward-filled to the daily grid and tradable from the next session.
+    NaN kept between dates the source has no report for. `lag` moves the
+    publication one more day back for the F7.1 construction probe.
     """
     import yfinance as yf
 
@@ -249,7 +258,12 @@ def post_earnings_drift(
     wide = combined.pivot_table(index="date", columns="ticker", values="surprise")
     wide = wide.reindex(columns=universe_tickers).sort_index()
     wide = wide.reindex(eval_risk.load_clean_wide(data_root)[0].index, method="ffill")
-    signal = wide
+    # the surprise becomes known at the announcement, so the first return it
+    # can predict is the next session's; using it on the announcement day
+    # itself would be same-day leakage
+    signal = wide.shift(1)
+    if lag:
+        signal = signal.shift(lag)
     long = signal.stack(future_stack=True).rename("signal").reset_index()
     long.columns = ["date", "ticker", "signal"]
     return long
@@ -269,6 +283,28 @@ GRID_HORIZON = 21
 IN_SAMPLE_END = pd.Timestamp("2020-12-31")
 OUT_OF_SAMPLE_START = pd.Timestamp("2021-01-01")
 KAPPA = 0.1  # the E7 shrinkage toward zero, an E8 input
+
+
+def lagged_signal(name: str, wide: pd.DataFrame, root: Path) -> pd.DataFrame:
+    """The signal rebuilt with every input moved one day back.
+
+    This is the F7.1 construction probe: the lagged signal simulates data
+    available one day earlier, so a signal whose edge survives the lag was
+    built on data that was already there, and one whose edge dies was built
+    on the extra day.
+    """
+    tickers = [t for t in wide.columns if t.isalpha()]
+    if name == "short_interest":
+        return short_interest_signal(tickers, root, lag=1)
+    if name == "post_earnings_drift":
+        return post_earnings_drift(tickers, root, lag=1)
+    if name == "idio_momentum":
+        return idio_momentum(root, lag=1)
+    if name == "low_residual_volatility":
+        return low_residual_volatility(root, lag=1)
+    if name == "momentum_12_1":
+        return momentum_12_1(wide.shift(1))
+    return short_term_reversal(wide.shift(1))
 
 
 def _signal_for(name: str, wide: pd.DataFrame, root: Path) -> pd.DataFrame:
@@ -300,7 +336,11 @@ def _split_ic(ic: pd.Series) -> dict[str, dict[str, float]]:
     return out
 
 
-def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
+def run(
+    data_root: Path = DATA_ROOT,
+    store: bool = True,
+    signals: tuple[str, ...] | None = None,
+) -> dict[str, object]:
     """The full E7 pipeline: every admitted signal through the harness."""
     from efb import eval_risk, hygiene, race
 
@@ -314,6 +354,8 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
     results: dict[str, object] = {}
     run_counter = 0
     for name in SIGNAL_BUILDERS:
+        if signals is not None and name not in signals:
+            continue
         print(f"signal {name}")
         signal = _signal_for(name, wide, root)
         if signal.empty:
@@ -335,7 +377,8 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
                 }
             )
             continue
-        audit = hygiene.shift_audit(signal, wide)
+        lagged = lagged_signal(name, wide, root)
+        audit = hygiene.shift_audit(signal, lagged, wide)
         ic_frame = pd.DataFrame(index=audit.index)
         for horizon in HORIZONS:
             ic_frame[f"ic_h{horizon}"] = hygiene.spearman_ic(signal, wide, horizon)
@@ -441,6 +484,7 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
                 "audit_leak_flag": bool(audit["leak_flag"].iloc[-1]),
                 "audit_mean_ic_next": float(audit["mean_ic_next"].iloc[-1]),
                 "audit_t_next": float(audit["t_ic_next"].iloc[-1]),
+                "audit_t_lagged": float(audit["t_ic_lagged"].iloc[-1]),
                 "breadth": float(law["breadth"]),
                 "implied_ir": law["implied_ir"],
                 "realized_ir": law["realized_ir"],
@@ -467,11 +511,24 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
             "out_of_sample_mean": split["out_of_sample"]["mean"],
             "out_of_sample_t": split["out_of_sample"]["t"],
         }
+        # the frames are large; release them before the next signal builds
+        import gc
+
+        del signal, audit, ic_frame, neutral, quantiles, regime, spread
+        gc.collect()
     summary = pd.DataFrame(summary_rows)
     # the verdict per signal: NULL when the out-of-sample spread fails the
     # deflated-Sharpe hurdle, PASS otherwise; every ledger row of the signal
     # carries the same verdict, and the deciding number is stored per row
     total_runs = run_counter
+    ledger_path = ROOT / "docs" / "multiple_testing_ledger.md"
+    if signals is not None and ledger_path.exists():
+        existing_runs = sum(
+            1
+            for line in ledger_path.read_text().splitlines()
+            if line.startswith("| ") and not line.startswith("| run_id")
+        )
+        total_runs = max(run_counter, existing_runs)
     verdict_by_signal: dict[str, str] = {}
     for row in summary_rows:
         oos_sharpe = float(row["oos_spread_sharpe"])  # type: ignore[arg-type]
@@ -486,7 +543,29 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
     for row in ledger_rows:
         row["verdict"] = verdict_by_signal.get(str(row["signal"]), "UNAVAILABLE")
     if store:
-        summary.to_parquet(root / "alpha" / "summary.parquet", index=False)
+        summary_path = root / "alpha" / "summary.parquet"
+        if signals is not None and summary_path.exists():
+            existing = pd.read_parquet(summary_path)
+            rerun_names = set(summary["signal"])
+            merged = pd.concat(
+                [existing.loc[~existing["signal"].isin(rerun_names)], summary],
+                ignore_index=True,
+            )
+            merged.sort_values("signal").to_parquet(summary_path, index=False)
+        else:
+            summary.to_parquet(summary_path, index=False)
+        if signals is not None:
+            existing_runs = (
+                sum(
+                    1
+                    for line in ledger_path.read_text().splitlines()
+                    if line.startswith("| ") and not line.startswith("| run_id")
+                )
+                if ledger_path.exists()
+                else 0
+            )
+            for row in ledger_rows:
+                row["run_id"] = int(row["run_id"]) + existing_runs  # type: ignore[call-overload]
         hygiene.write_ledger(ledger_rows, ROOT / "docs" / "multiple_testing_ledger.md")
     return {
         "summary": summary,

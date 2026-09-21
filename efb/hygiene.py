@@ -249,40 +249,57 @@ def newey_west_t(series: pd.Series) -> float:
     return float(mean / np.sqrt(variance / n))
 
 
-def shift_audit(signal_frame: pd.DataFrame, wide: pd.DataFrame) -> pd.DataFrame:
-    """F7.1: does the signal's information live in the same day or the next?
+def shift_audit(
+    signal_frame: pd.DataFrame,
+    lagged_signal_frame: pd.DataFrame,
+    wide: pd.DataFrame,
+) -> pd.DataFrame:
+    """F7.1: does the signal lose its edge when its inputs are lagged?
 
-    A clean signal built from data at t-1 or earlier predicts r_t and r_{t+1}
-    about equally. A leaked signal's information is contemporaneous: its
-    IC against r_t is significant while its IC against r_{t+1} flips or
-    dies, because tomorrow's return is not in the signal. The leak flag is
-    set exactly when the contemporaneous IC is significant and the next-day
-    IC flips sign or loses its t-statistic.
+    The lagged signal is rebuilt on the same construction with every input
+    moved one day back, simulating data available one day earlier. A clean
+    signal keeps its IC against r_t: the information was already in the
+    lagged data. A leaked signal flips or dies, because the extra day's
+    data carried the edge. The reverse probe pairs s_t with r_{t+1}: a
+    signal that predicts tomorrow but not today carries future data.
     """
     ic_now = spearman_ic(signal_frame, wide, horizon=1)
-    next_returns = wide.shift(-1)
-    ic_next = spearman_ic(signal_frame, next_returns, horizon=1)
-    joined = pd.concat([ic_now.rename("ic"), ic_next.rename("ic_next")], axis=1)
+    ic_lagged = spearman_ic(lagged_signal_frame, wide, horizon=1)
+    ic_forward = spearman_ic(signal_frame, wide.shift(-1), horizon=1)
+    joined = pd.concat(
+        [
+            ic_now.rename("ic"),
+            ic_lagged.rename("ic_back"),
+            ic_forward.rename("ic_next"),
+        ],
+        axis=1,
+    )
     mean_now = float(ic_now.mean())
-    mean_next = float(ic_next.mean())
+    mean_lagged = float(ic_lagged.mean())
     t_now = newey_west_t(ic_now)
-    t_next = newey_west_t(ic_next)
-    flipped = bool((mean_now > 0 and mean_next < 0) or (mean_now < 0 and mean_next > 0))
-    killed = bool(abs(t_next) < LEAK_T_SIGNIFICANCE or not np.isfinite(t_next))
+    t_lagged = newey_west_t(ic_lagged)
+    t_forward = newey_west_t(ic_forward)
+    flipped = bool(
+        (mean_now > 0 and mean_lagged < 0) or (mean_now < 0 and mean_lagged > 0)
+    )
+    killed = bool(abs(t_lagged) < LEAK_T_SIGNIFICANCE or not np.isfinite(t_lagged))
     significant_now = bool(abs(t_now) >= LEAK_T_SIGNIFICANCE and np.isfinite(t_now))
-    significant_next = bool(abs(t_next) >= LEAK_T_SIGNIFICANCE and np.isfinite(t_next))
+    significant_forward = bool(
+        abs(t_forward) >= LEAK_T_SIGNIFICANCE and np.isfinite(t_forward)
+    )
     same_day_leak = bool(significant_now and (flipped or killed))
     # the reverse direction: the signal predicts tomorrow but not today,
     # which means it carries information from the future
-    future_leak = bool(significant_next and not significant_now)
+    future_leak = bool(significant_forward and not significant_now)
     joined["leak_flag"] = bool(same_day_leak or future_leak)
     joined["flipped"] = flipped
     joined["killed"] = killed
     joined["significant_now"] = significant_now
     joined["mean_ic"] = mean_now
-    joined["mean_ic_next"] = mean_next
+    joined["mean_ic_next"] = float(ic_forward.mean())
     joined["t_ic"] = t_now
-    joined["t_ic_next"] = t_next
+    joined["t_ic_next"] = t_forward
+    joined["t_ic_lagged"] = t_lagged
     return joined
 
 

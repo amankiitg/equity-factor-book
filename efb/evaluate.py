@@ -3055,6 +3055,7 @@ def evaluate_e7_criteria(
     audit_numbers = {
         name: {
             "t_now": float(row["ic_h1_t"]),
+            "t_lagged": float(row["audit_t_lagged"]),
             "t_next": float(row["audit_t_next"]),
             "flipped": bool(row["audit_flipped"]),
             "killed": bool(row["audit_killed"]),

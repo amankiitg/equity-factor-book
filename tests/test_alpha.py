@@ -59,9 +59,12 @@ def test_the_shift_audit_catches_a_leaked_signal() -> None:
     report it, which is what proves the audit works."""
     wide = _wide(seed=1)
     future = wide.fillna(0.0)  # the same-day return: pure leakage
+    lagged = wide.shift(1).fillna(0.0)  # one day earlier: nothing left
     leaked = future.stack(future_stack=True).rename("signal").reset_index()
     leaked.columns = ["date", "ticker", "signal"]
-    audit = hygiene.shift_audit(leaked, wide)
+    lagged_long = lagged.stack(future_stack=True).rename("signal").reset_index()
+    lagged_long.columns = ["date", "ticker", "signal"]
+    audit = hygiene.shift_audit(leaked, lagged_long, wide)
     assert audit["leak_flag"].any(), "the audit missed a leaked signal"
 
 
@@ -69,7 +72,8 @@ def test_the_shift_audit_clears_an_honest_signal() -> None:
     wide = _wide(seed=2)
     honest = alpha.momentum_12_1(wide)
     honest = honest.loc[honest["date"].isin(wide.index)]
-    audit = hygiene.shift_audit(honest, wide)
+    lagged = alpha.lagged_signal("momentum_12_1", wide, alpha.DATA_ROOT)
+    audit = hygiene.shift_audit(honest, lagged, wide)
     assert not audit["leak_flag"].any()
 
 

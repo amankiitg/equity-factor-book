@@ -1,0 +1,558 @@
+{
+  "sprint": "E7",
+  "evaluated_at": "2026-09-21T04:39:40+00:00",
+  "data_hash": "31729e96e130820f060d074d5542cc734e5070ca5786e42fa8955a25877a0b22",
+  "criteria": {
+    "F7.1": {
+      "criterion": "Shift audit: moving every signal forward by one day flips or kills its IC. This proves the absence of leakage.",
+      "threshold": "no admitted signal flags leakage in the shift audit",
+      "stored_numbers": {
+        "momentum_12_1": {
+          "t_now": 4.461372051995127,
+          "t_next": 4.5177000659039885,
+          "flipped": false,
+          "killed": false,
+          "leak_flag": false
+        },
+        "short_term_reversal": {
+          "t_now": 4.708956513908862,
+          "t_next": 2.941253458735498,
+          "flipped": true,
+          "killed": false,
+          "leak_flag": true
+        },
+        "idio_momentum": {
+          "t_now": 5.0435495844141,
+          "t_next": 5.141445172653162,
+          "flipped": false,
+          "killed": false,
+          "leak_flag": false
+        },
+        "low_residual_volatility": {
+          "t_now": -0.46447772002990256,
+          "t_next": -0.5174751197042713,
+          "flipped": false,
+          "killed": true,
+          "leak_flag": false
+        },
+        "short_interest": {
+          "t_now": 1.420239046579605,
+          "t_next": 1.351739601144357,
+          "flipped": false,
+          "killed": true,
+          "leak_flag": false
+        },
+        "post_earnings_drift": {
+          "t_now": 14.045656753281332,
+          "t_next": 0.7661938499616245,
+          "flipped": false,
+          "killed": false,
+          "leak_flag": false
+        }
+      },
+      "verdict": "fail",
+      "note": "The audit compares each signal's IC against the same-day return with its IC against the next-day return; leakage is flagged in either direction."
+    },
+    "F7.2": {
+      "criterion": "Factor-neutral momentum IC mean above 0.02 with t above 2, reported separately in-sample 2010 to 2020 and out-of-sample 2021 to 2026.",
+      "threshold": "neutral momentum IC mean > 0.02 and t > 2, both periods stored",
+      "stored_numbers": {
+        "mean": -0.010683646861635072,
+        "t": -1.5490014973675446,
+        "in_sample": {
+          "mean": -0.006059038694501872,
+          "t": -0.7074147838845868,
+          "n": 108
+        },
+        "out_of_sample": {
+          "mean": -0.01813823913104381,
+          "t": -1.6387118619136074,
+          "n": 67
+        }
+      },
+      "verdict": "fail",
+      "note": "Both periods are stored and reported either way."
+    },
+    "F7.3": {
+      "criterion": "Any signal failing the out-of-sample deflated-Sharpe hurdle is labeled NULL in the ledger, and the ledger contains at least as many rows as signal runs executed.",
+      "threshold": "below-hurdle signals labeled NULL; ledger rows >= runs",
+      "stored_numbers": {
+        "ledger_rows": 71,
+        "runs_executed": 71,
+        "null_labels_in_ledger": 40,
+        "verdict_by_signal": {
+          "---": "---",
+          "momentum_12_1": "PASS",
+          "short_term_reversal": "NULL",
+          "idio_momentum": "PASS",
+          "low_residual_volatility": "NULL",
+          "short_interest": "NULL",
+          "post_earnings_drift": "NULL"
+        },
+        "below_hurdle_signals": {
+          "short_term_reversal": "NULL",
+          "low_residual_volatility": "NULL",
+          "short_interest": "NULL",
+          "post_earnings_drift": "NULL"
+        }
+      },
+      "verdict": "pass",
+      "note": "Every below-hurdle signal is labeled NULL by the engine, and the ledger row count equals the runs executed."
+    },
+    "F7.4": {
+      "criterion": "New in E7: every signal's IC under the champion's idio volatility and under the alternative's, with the difference stored.",
+      "threshold": "stored per signal under both models with the difference",
+      "stored_numbers": {
+        "momentum_12_1": {
+          "mean_alpha_xs_v1": 3.279769876726583e-07,
+          "mean_alpha_xs_v2": 3.1862359490475617e-07,
+          "difference_v1_minus_v2": 9.353392767902102e-09
+        },
+        "short_term_reversal": {
+          "mean_alpha_xs_v1": 2.5545298502223975e-07,
+          "mean_alpha_xs_v2": 2.493783492836331e-07,
+          "difference_v1_minus_v2": 6.07463573860678e-09
+        },
+        "idio_momentum": {
+          "mean_alpha_xs_v1": 2.6747869891522153e-07,
+          "mean_alpha_xs_v2": 2.597792584670079e-07,
+          "difference_v1_minus_v2": 7.699440448213664e-09
+        },
+        "low_residual_volatility": {
+          "mean_alpha_xs_v1": 3.77731705910478e-08,
+          "mean_alpha_xs_v2": 3.659863207988229e-08,
+          "difference_v1_minus_v2": 1.17453851116551e-09
+        },
+        "short_interest": {
+          "mean_alpha_xs_v1": 3.3148434238578e-08,
+          "mean_alpha_xs_v2": 3.2796545093439655e-08,
+          "difference_v1_minus_v2": 3.5188914513834376e-10
+        },
+        "post_earnings_drift": {
+          "mean_alpha_xs_v1": 5.867234511635e-08,
+          "mean_alpha_xs_v2": 5.7947385846110253e-08,
+          "difference_v1_minus_v2": 7.249592702397493e-10
+        }
+      },
+      "verdict": "pass",
+      "note": "The IC is shared by both models; the stored difference is in the converted alpha, which is the quantity the models actually move."
+    }
+  },
+  "revisions": {
+    "previous_data_hash": null,
+    "data_hash": "31729e96e130820f060d074d5542cc734e5070ca5786e42fa8955a25877a0b22",
+    "n_changed": 0,
+    "changed_tickers_or_criteria": [],
+    "cross_sprint_criteria": [],
+    "changed": {
+      "F7.1": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "momentum_12_1": {
+              "t_now": 4.461372051995127,
+              "t_next": 4.5177000659039885,
+              "flipped": false,
+              "killed": false,
+              "leak_flag": false
+            },
+            "short_term_reversal": {
+              "t_now": 4.708956513908862,
+              "t_next": 2.941253458735498,
+              "flipped": true,
+              "killed": false,
+              "leak_flag": true
+            },
+            "idio_momentum": {
+              "t_now": 5.0435495844141,
+              "t_next": 5.141445172653162,
+              "flipped": false,
+              "killed": false,
+              "leak_flag": false
+            },
+            "low_residual_volatility": {
+              "t_now": -0.46447772002990256,
+              "t_next": -0.5174751197042713,
+              "flipped": false,
+              "killed": true,
+              "leak_flag": false
+            },
+            "short_interest": {
+              "t_now": 1.420239046579605,
+              "t_next": 1.351739601144357,
+              "flipped": false,
+              "killed": true,
+              "leak_flag": false
+            },
+            "post_earnings_drift": {
+              "t_now": 14.045656753281332,
+              "t_next": 0.7661938499616245,
+              "flipped": false,
+              "killed": false,
+              "leak_flag": false
+            }
+          }
+        }
+      },
+      "F7.2": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "fail",
+          "stored_numbers": {
+            "mean": -0.010683646861635072,
+            "t": -1.5490014973675446,
+            "in_sample": {
+              "mean": -0.006059038694501872,
+              "t": -0.7074147838845868,
+              "n": 108
+            },
+            "out_of_sample": {
+              "mean": -0.01813823913104381,
+              "t": -1.6387118619136074,
+              "n": 67
+            }
+          }
+        }
+      },
+      "F7.3": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "ledger_rows": 71,
+            "runs_executed": 71,
+            "null_labels_in_ledger": 40,
+            "verdict_by_signal": {
+              "---": "---",
+              "momentum_12_1": "PASS",
+              "short_term_reversal": "NULL",
+              "idio_momentum": "PASS",
+              "low_residual_volatility": "NULL",
+              "short_interest": "NULL",
+              "post_earnings_drift": "NULL"
+            },
+            "below_hurdle_signals": {
+              "short_term_reversal": "NULL",
+              "low_residual_volatility": "NULL",
+              "short_interest": "NULL",
+              "post_earnings_drift": "NULL"
+            }
+          }
+        }
+      },
+      "F7.4": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "momentum_12_1": {
+              "mean_alpha_xs_v1": 3.279769876726583e-07,
+              "mean_alpha_xs_v2": 3.1862359490475617e-07,
+              "difference_v1_minus_v2": 9.353392767902102e-09
+            },
+            "short_term_reversal": {
+              "mean_alpha_xs_v1": 2.5545298502223975e-07,
+              "mean_alpha_xs_v2": 2.493783492836331e-07,
+              "difference_v1_minus_v2": 6.07463573860678e-09
+            },
+            "idio_momentum": {
+              "mean_alpha_xs_v1": 2.6747869891522153e-07,
+              "mean_alpha_xs_v2": 2.597792584670079e-07,
+              "difference_v1_minus_v2": 7.699440448213664e-09
+            },
+            "low_residual_volatility": {
+              "mean_alpha_xs_v1": 3.77731705910478e-08,
+              "mean_alpha_xs_v2": 3.659863207988229e-08,
+              "difference_v1_minus_v2": 1.17453851116551e-09
+            },
+            "short_interest": {
+              "mean_alpha_xs_v1": 3.3148434238578e-08,
+              "mean_alpha_xs_v2": 3.2796545093439655e-08,
+              "difference_v1_minus_v2": 3.5188914513834376e-10
+            },
+            "post_earnings_drift": {
+              "mean_alpha_xs_v1": 5.867234511635e-08,
+              "mean_alpha_xs_v2": 5.7947385846110253e-08,
+              "difference_v1_minus_v2": 7.249592702397493e-10
+            }
+          }
+        }
+      }
+    },
+    "history": [
+      {
+        "previous_data_hash": null,
+        "data_hash": "31729e96e130820f060d074d5542cc734e5070ca5786e42fa8955a25877a0b22",
+        "n_changed": 0,
+        "changed_tickers_or_criteria": [],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F7.1": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "momentum_12_1": {
+                  "t_now": 4.461372051995127,
+                  "t_next": 4.5177000659039885,
+                  "flipped": false,
+                  "killed": false,
+                  "leak_flag": false
+                },
+                "short_term_reversal": {
+                  "t_now": 4.708956513908862,
+                  "t_next": 2.941253458735498,
+                  "flipped": true,
+                  "killed": false,
+                  "leak_flag": true
+                },
+                "idio_momentum": {
+                  "t_now": 5.0435495844141,
+                  "t_next": 5.141445172653162,
+                  "flipped": false,
+                  "killed": false,
+                  "leak_flag": false
+                },
+                "low_residual_volatility": {
+                  "t_now": -0.46447772002990256,
+                  "t_next": -0.5174751197042713,
+                  "flipped": false,
+                  "killed": true,
+                  "leak_flag": false
+                },
+                "short_interest": {
+                  "t_now": 1.420239046579605,
+                  "t_next": 1.351739601144357,
+                  "flipped": false,
+                  "killed": true,
+                  "leak_flag": false
+                },
+                "post_earnings_drift": {
+                  "t_now": 14.045656753281332,
+                  "t_next": 0.7661938499616245,
+                  "flipped": false,
+                  "killed": false,
+                  "leak_flag": false
+                }
+              }
+            }
+          },
+          "F7.2": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "mean": -0.010683646861635072,
+                "t": -1.5490014973675446,
+                "in_sample": {
+                  "mean": -0.006059038694501872,
+                  "t": -0.7074147838845868,
+                  "n": 108
+                },
+                "out_of_sample": {
+                  "mean": -0.01813823913104381,
+                  "t": -1.6387118619136074,
+                  "n": 67
+                }
+              }
+            }
+          },
+          "F7.3": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "ledger_rows": 71,
+                "runs_executed": 71,
+                "null_labels_in_ledger": 40,
+                "verdict_by_signal": {
+                  "---": "---",
+                  "momentum_12_1": "PASS",
+                  "short_term_reversal": "NULL",
+                  "idio_momentum": "PASS",
+                  "low_residual_volatility": "NULL",
+                  "short_interest": "NULL",
+                  "post_earnings_drift": "NULL"
+                },
+                "below_hurdle_signals": {
+                  "short_term_reversal": "NULL",
+                  "low_residual_volatility": "NULL",
+                  "short_interest": "NULL",
+                  "post_earnings_drift": "NULL"
+                }
+              }
+            }
+          },
+          "F7.4": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "momentum_12_1": {
+                  "mean_alpha_xs_v1": 3.279769876726583e-07,
+                  "mean_alpha_xs_v2": 3.1862359490475617e-07,
+                  "difference_v1_minus_v2": 9.353392767902102e-09
+                },
+                "short_term_reversal": {
+                  "mean_alpha_xs_v1": 2.5545298502223975e-07,
+                  "mean_alpha_xs_v2": 2.493783492836331e-07,
+                  "difference_v1_minus_v2": 6.07463573860678e-09
+                },
+                "idio_momentum": {
+                  "mean_alpha_xs_v1": 2.6747869891522153e-07,
+                  "mean_alpha_xs_v2": 2.597792584670079e-07,
+                  "difference_v1_minus_v2": 7.699440448213664e-09
+                },
+                "low_residual_volatility": {
+                  "mean_alpha_xs_v1": 3.77731705910478e-08,
+                  "mean_alpha_xs_v2": 3.659863207988229e-08,
+                  "difference_v1_minus_v2": 1.17453851116551e-09
+                },
+                "short_interest": {
+                  "mean_alpha_xs_v1": 3.3148434238578e-08,
+                  "mean_alpha_xs_v2": 3.2796545093439655e-08,
+                  "difference_v1_minus_v2": 3.5188914513834376e-10
+                },
+                "post_earnings_drift": {
+                  "mean_alpha_xs_v1": 5.867234511635e-08,
+                  "mean_alpha_xs_v2": 5.7947385846110253e-08,
+                  "difference_v1_minus_v2": 7.249592702397493e-10
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "reference_values": {
+    "data_hash": "31729e96e130820f060d074d5542cc734e5070ca5786e42fa8955a25877a0b22",
+    "verdicts": {
+      "F7.1": "fail",
+      "F7.2": "fail",
+      "F7.3": "pass",
+      "F7.4": "pass"
+    },
+    "stored_numbers": {
+      "F7.1": {
+        "momentum_12_1": {
+          "t_now": 4.461372051995127,
+          "t_next": 4.5177000659039885,
+          "flipped": false,
+          "killed": false,
+          "leak_flag": false
+        },
+        "short_term_reversal": {
+          "t_now": 4.708956513908862,
+          "t_next": 2.941253458735498,
+          "flipped": true,
+          "killed": false,
+          "leak_flag": true
+        },
+        "idio_momentum": {
+          "t_now": 5.0435495844141,
+          "t_next": 5.141445172653162,
+          "flipped": false,
+          "killed": false,
+          "leak_flag": false
+        },
+        "low_residual_volatility": {
+          "t_now": -0.46447772002990256,
+          "t_next": -0.5174751197042713,
+          "flipped": false,
+          "killed": true,
+          "leak_flag": false
+        },
+        "short_interest": {
+          "t_now": 1.420239046579605,
+          "t_next": 1.351739601144357,
+          "flipped": false,
+          "killed": true,
+          "leak_flag": false
+        },
+        "post_earnings_drift": {
+          "t_now": 14.045656753281332,
+          "t_next": 0.7661938499616245,
+          "flipped": false,
+          "killed": false,
+          "leak_flag": false
+        }
+      },
+      "F7.2": {
+        "mean": -0.010683646861635072,
+        "t": -1.5490014973675446,
+        "in_sample": {
+          "mean": -0.006059038694501872,
+          "t": -0.7074147838845868,
+          "n": 108
+        },
+        "out_of_sample": {
+          "mean": -0.01813823913104381,
+          "t": -1.6387118619136074,
+          "n": 67
+        }
+      },
+      "F7.3": {
+        "ledger_rows": 71,
+        "runs_executed": 71,
+        "null_labels_in_ledger": 40,
+        "verdict_by_signal": {
+          "---": "---",
+          "momentum_12_1": "PASS",
+          "short_term_reversal": "NULL",
+          "idio_momentum": "PASS",
+          "low_residual_volatility": "NULL",
+          "short_interest": "NULL",
+          "post_earnings_drift": "NULL"
+        },
+        "below_hurdle_signals": {
+          "short_term_reversal": "NULL",
+          "low_residual_volatility": "NULL",
+          "short_interest": "NULL",
+          "post_earnings_drift": "NULL"
+        }
+      },
+      "F7.4": {
+        "momentum_12_1": {
+          "mean_alpha_xs_v1": 3.279769876726583e-07,
+          "mean_alpha_xs_v2": 3.1862359490475617e-07,
+          "difference_v1_minus_v2": 9.353392767902102e-09
+        },
+        "short_term_reversal": {
+          "mean_alpha_xs_v1": 2.5545298502223975e-07,
+          "mean_alpha_xs_v2": 2.493783492836331e-07,
+          "difference_v1_minus_v2": 6.07463573860678e-09
+        },
+        "idio_momentum": {
+          "mean_alpha_xs_v1": 2.6747869891522153e-07,
+          "mean_alpha_xs_v2": 2.597792584670079e-07,
+          "difference_v1_minus_v2": 7.699440448213664e-09
+        },
+        "low_residual_volatility": {
+          "mean_alpha_xs_v1": 3.77731705910478e-08,
+          "mean_alpha_xs_v2": 3.659863207988229e-08,
+          "difference_v1_minus_v2": 1.17453851116551e-09
+        },
+        "short_interest": {
+          "mean_alpha_xs_v1": 3.3148434238578e-08,
+          "mean_alpha_xs_v2": 3.2796545093439655e-08,
+          "difference_v1_minus_v2": 3.5188914513834376e-10
+        },
+        "post_earnings_drift": {
+          "mean_alpha_xs_v1": 5.867234511635e-08,
+          "mean_alpha_xs_v2": 5.7947385846110253e-08,
+          "difference_v1_minus_v2": 7.249592702397493e-10
+        }
+      }
+    }
+  }
+}
