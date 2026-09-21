@@ -1097,3 +1097,42 @@ race, which carried the XS-v1 row that F4.3 was scored on. A content hash in
 has found eight defects by reading outputs; this is the first that destroyed
 evidence, and the lesson is that a criterion's inputs have to be as durable as
 its stored numbers.
+
+## 2026-09-20: the evaluation engine's missing-data semantics, first draft corrected
+
+Decision. A portfolio return is `W R'` with explicit missing-data semantics,
+not IEEE arithmetic: an unpriced name contributes zero because its weight is
+zero, and a held name with a stale or outlier day makes that portfolio-day
+missing. The first draft multiplied the raw matrices, so `0 x NaN` poisoned
+every dot product and 98.6 percent of portfolio-days silently collapsed to
+NaN before the bias statistics dropped them.
+
+Reason. The bias statistics silently drop non-finite z, so a poisoned engine
+still produced a table. The corrected engine keeps 94 percent of
+portfolio-days, and the excluded remainder are exactly the stale-day
+exclusions the panel carries.
+
+## 2026-09-20: E4's stored data hash survives the E5 registry append
+
+Decision. `evaluate.e4_data_hash` reconstructs the registry as E4 left it:
+the four E4-era entries, the champion flag forced false, and the E5-added
+`artifacts_hash` dropped from the PCA entries' parameters.
+
+Reason. `registry.json` is append-only but its entries gain keys in later
+sprints, and E4's stored data hash covers the file's bytes as of E4 close.
+Without the reconstruction, registering XS-v2 moved E4's hash; with it, the
+stored hash reproduces byte-for-byte and no earlier sprint's number moves.
+
+## 2026-09-20: F5.1 fails and the champion is declared under the session's stop list
+
+Decision. F5.1 fails: no version lands inside 0.9 to 1.1 on every family
+(every version overshoots long-only, the factor versions at about 1.105).
+The failure is recorded with its mechanism and the champion rule's
+arithmetic ran to its end: XS-v1, mean |bias-1| 0.0607, no tie, no
+stress-regime conflict.
+
+Reason. The PRD's stop condition 3 would halt before declaring, and this
+sprint's session instruction named only the stress-regime conflict as a
+stop, with every other unfavourable number recorded and the run continued.
+This entry records the tension so the next sprint knows the champion was
+declared with F5.1 failing, on instruction, and not hidden.

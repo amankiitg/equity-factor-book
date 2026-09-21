@@ -1884,13 +1884,25 @@ E4_REGISTRY_VERSIONS = ("TS-v1", "XS-v1", "PCA-v1", "PCA-v1c")
 
 
 def _registry_as_of_e4(path: Path) -> str:
-    """The registry serialized as E4 left it, before any E5 entry or flag."""
+    """The registry serialized as E4 left it, before any E5 entry or flag.
+
+    The E5 close adds `artifacts_hash` to the PCA entries' parameters, a key
+    the E4-era file did not carry, so the reconstruction drops it alongside
+    forcing the champion flag back to false; only then are the bytes E4's
+    hash was computed from.
+    """
     payload = json.loads(path.read_text())
-    payload["models"] = {
-        name: {**entry, "champion": False}
-        for name, entry in payload["models"].items()
-        if name in E4_REGISTRY_VERSIONS
-    }
+    models: dict[str, Any] = {}
+    for name, entry in payload["models"].items():
+        if name not in E4_REGISTRY_VERSIONS:
+            continue
+        rebuilt: dict[str, Any] = {**entry, "champion": False}
+        if name in ("PCA-v1", "PCA-v1c"):
+            params = dict(entry.get("parameters", {}))
+            params.pop("artifacts_hash", None)
+            rebuilt["parameters"] = params
+        models[name] = rebuilt
+    payload["models"] = models
     return json.dumps(payload, indent=2) + "\n"
 
 

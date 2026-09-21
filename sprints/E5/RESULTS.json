@@ -1,7 +1,7 @@
 {
   "sprint": "E5",
-  "evaluated_at": "2026-09-21T00:29:27+00:00",
-  "data_hash": "f42dd9214be908d523b3057a8494ec1159f3b53843d75762d518a45624fe96a8",
+  "evaluated_at": "2026-09-21T00:55:38+00:00",
+  "data_hash": "210769d6ec92a325ec2f5553875ea4de0de29bf52051a527f69ab674c098b293",
   "criteria": {
     "F5.1": {
       "criterion": "At least one model version achieves mean bias between 0.9 and 1.1 across all portfolio families.",
@@ -104,11 +104,9 @@
   },
   "revisions": {
     "previous_data_hash": null,
-    "data_hash": "f42dd9214be908d523b3057a8494ec1159f3b53843d75762d518a45624fe96a8",
-    "n_changed": 1,
-    "changed_tickers_or_criteria": [
-      "F5.4"
-    ],
+    "data_hash": "210769d6ec92a325ec2f5553875ea4de0de29bf52051a527f69ab674c098b293",
+    "n_changed": 0,
+    "changed_tickers_or_criteria": [],
     "cross_sprint_criteria": [],
     "changed": {
       "F5.1": {
@@ -223,9 +221,9 @@
         }
       },
       "F5.4": {
-        "changed": true,
+        "changed": false,
         "old": {
-          "verdict": "fail",
+          "verdict": "pass",
           "stored_numbers": {
             "n_versions_in_regime_table": 6,
             "champion": "XS-v1",
@@ -405,11 +403,201 @@
             }
           }
         }
+      },
+      {
+        "previous_data_hash": null,
+        "data_hash": "210769d6ec92a325ec2f5553875ea4de0de29bf52051a527f69ab674c098b293",
+        "n_changed": 0,
+        "changed_tickers_or_criteria": [],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F5.1": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "family_bias": {
+                  "XS-v1": 1.0469839503253322,
+                  "PCA-v1": 1.1388412938997308,
+                  "PCA-v1c": 1.1391854728617519,
+                  "XS-v2": 1.0384709489361823
+                },
+                "inside_all_families": {
+                  "XS-v1": false,
+                  "PCA-v1": false,
+                  "PCA-v1c": false,
+                  "XS-v2": false
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "family_bias": {
+                  "XS-v1": 1.0469839503253322,
+                  "PCA-v1": 1.1388412938997308,
+                  "PCA-v1c": 1.1391854728617519,
+                  "XS-v2": 1.0384709489361823
+                },
+                "inside_all_families": {
+                  "XS-v1": false,
+                  "PCA-v1": false,
+                  "PCA-v1c": false,
+                  "XS-v2": false
+                }
+              }
+            }
+          },
+          "F5.2": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "long_short_abs_bias_minus_1": {
+                  "ts_v1": 0.06632785175621136,
+                  "xs_v1": 0.018568115349799186,
+                  "xs_v2": 0.02563794967801525,
+                  "pca_v1": 0.07288545487816167,
+                  "pca_v1c": 0.07545776635627166
+                },
+                "sample_long_short_abs_bias_minus_1": 0.07522700661959725
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "long_short_abs_bias_minus_1": {
+                  "ts_v1": 0.06632785175621136,
+                  "xs_v1": 0.018568115349799186,
+                  "xs_v2": 0.02563794967801525,
+                  "pca_v1": 0.07288545487816167,
+                  "pca_v1c": 0.07545776635627166
+                },
+                "sample_long_short_abs_bias_minus_1": 0.07522700661959725
+              }
+            }
+          },
+          "F5.3": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "bias_2020_q1": {
+                  "pca_v1": 3.2235857142567585,
+                  "pca_v1c": 3.2320487695936655,
+                  "sample": 3.205007104643809,
+                  "ts_v1": 3.498892154914531,
+                  "xs_v1": 2.8470668684488754,
+                  "xs_v2": 2.830534414326818
+                },
+                "bias_2022": {
+                  "pca_v1": 1.1992676970117708,
+                  "pca_v1c": 1.201279826475275,
+                  "sample": 1.1892311574499652,
+                  "ts_v1": 1.3552221759980636,
+                  "xs_v1": 1.139278188172363,
+                  "xs_v2": 1.1291929280554092
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "bias_2020_q1": {
+                  "pca_v1": 3.2235857142567585,
+                  "pca_v1c": 3.2320487695936655,
+                  "sample": 3.205007104643809,
+                  "ts_v1": 3.498892154914531,
+                  "xs_v1": 2.8470668684488754,
+                  "xs_v2": 2.830534414326818
+                },
+                "bias_2022": {
+                  "pca_v1": 1.1992676970117708,
+                  "pca_v1c": 1.201279826475275,
+                  "sample": 1.1892311574499652,
+                  "ts_v1": 1.3552221759980636,
+                  "xs_v1": 1.139278188172363,
+                  "xs_v2": 1.1291929280554092
+                }
+              }
+            }
+          },
+          "F5.4": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "n_versions_in_regime_table": 6,
+                "champion": "XS-v1",
+                "champion_stress_bias_vix_high": 1.3238537403338062,
+                "champion_recovery_trading_days_2020_q1": 13.0
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "n_versions_in_regime_table": 6,
+                "champion": "XS-v1",
+                "champion_stress_bias_vix_high": 1.3238537403338062,
+                "champion_recovery_trading_days_2020_q1": 13.0
+              }
+            }
+          },
+          "F5.5": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "bias_xs_v2": {
+                  "factor_tilted": 0.9425535200403738,
+                  "long_only": 1.1047683895087224,
+                  "long_short": 1.0256379496780152,
+                  "sector_concentrated": 1.0809239365176175
+                },
+                "bias_xs_v1": {
+                  "factor_tilted": 0.9726392879532143,
+                  "long_only": 1.1050225721518874,
+                  "long_short": 1.0185681153497992,
+                  "sector_concentrated": 1.0917058258464278
+                },
+                "ratio_xs_v2_over_xs_v1": {
+                  "factor_tilted": 0.9690679080256445,
+                  "long_only": 0.9997699751574576,
+                  "long_short": 1.0069409538956442,
+                  "sector_concentrated": 0.9901238144255108
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "bias_xs_v2": {
+                  "factor_tilted": 0.9425535200403738,
+                  "long_only": 1.1047683895087224,
+                  "long_short": 1.0256379496780152,
+                  "sector_concentrated": 1.0809239365176175
+                },
+                "bias_xs_v1": {
+                  "factor_tilted": 0.9726392879532143,
+                  "long_only": 1.1050225721518874,
+                  "long_short": 1.0185681153497992,
+                  "sector_concentrated": 1.0917058258464278
+                },
+                "ratio_xs_v2_over_xs_v1": {
+                  "factor_tilted": 0.9690679080256445,
+                  "long_only": 0.9997699751574576,
+                  "long_short": 1.0069409538956442,
+                  "sector_concentrated": 0.9901238144255108
+                }
+              }
+            }
+          }
+        }
       }
     ]
   },
   "reference_values": {
-    "data_hash": "f42dd9214be908d523b3057a8494ec1159f3b53843d75762d518a45624fe96a8",
+    "data_hash": "210769d6ec92a325ec2f5553875ea4de0de29bf52051a527f69ab674c098b293",
     "verdicts": {
       "F5.1": "fail",
       "F5.2": "fail",

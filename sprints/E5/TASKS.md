@@ -4,7 +4,7 @@ Sprint E5, Risk Model Evaluation. Ten tasks including Task 0, each with a test.
 A stored criterion is never reworded and no number in a walkthrough or a
 deliverable is typed by hand. Stop conditions are marked where they belong.
 
-- [ ] Task 0: three items, before any bias statistic (P0)
+- [x] Task 0: three items, before any bias statistic (P0)
   - Acceptance: the covariance race grid is derived from an artifact and
     `data/eval/cov_horse_race.parquet` is rebuilt from it with F4.3's verdict
     confirmed, so `make rebuild` reproduces F4.3 from raw; the champion rule is
@@ -16,7 +16,7 @@ deliverable is typed by hand. Stop conditions are marked where they belong.
   - STOP CONDITION 1: if the derived grid moves F4.3's verdict, store it as F5.0
     and report before continuing.
 
-- [ ] Task 1: build and register XS-v2 (P0)
+- [x] Task 1: build and register XS-v2 (P0)
   - Acceptance: `efb/models/statistical.py` gains a residual-covariance
     estimator and `efb/build.py` gains `build_xs_v2`: XS-v1's factor structure
     with `D` replaced by k leading residual principal components plus the shrunk
@@ -31,7 +31,7 @@ deliverable is typed by hand. Stop conditions are marked where they belong.
   - STOP CONDITION 2: if XS-v2 cannot be built as specified, report before
     improvising a variant.
 
-- [ ] Task 2: portfolio families and the daily bias engine (P0)
+- [x] Task 2: portfolio families and the daily bias engine (P0)
   - Acceptance: `efb/eval_risk.py` with the four families built from the panel
     with no look-ahead, at least 50 random portfolios each plus the two seed
     books, and a daily bias engine computing z_t = r_t / sigma_hat_{t|t-1} per
@@ -44,7 +44,7 @@ deliverable is typed by hand. Stop conditions are marked where they belong.
   - Files: `efb/eval_risk.py`, `data/eval/bias_*.parquet`,
     `tests/test_eval_risk.py`
 
-- [ ] Task 3: horizon consistency and the asset-level check (P1)
+- [x] Task 3: horizon consistency and the asset-level check (P1)
   - Acceptance: the 1-day model scaled by sqrt(21) against a directly estimated
     21-day model, stored as a table per version; asset-level bias and coverage
     beside the portfolio-level numbers. Tests: the sqrt(21) scaling is applied
@@ -53,7 +53,7 @@ deliverable is typed by hand. Stop conditions are marked where they belong.
   - Files: `efb/eval_risk.py`, `data/eval/e5_horizon.parquet`,
     `data/eval/e5_asset_level.parquet`
 
-- [ ] Task 4: regimes, recovery times and the stress haircut (P0)
+- [x] Task 4: regimes, recovery times and the stress haircut (P0)
   - Acceptance: bias, coverage and recovery time within VIX terciles and within
     the episodes 2020 Q1 and 2022, for every version; the recovery time in
     trading days and a recommended stress haircut for the champion. The VIX
@@ -64,7 +64,7 @@ deliverable is typed by hand. Stop conditions are marked where they belong.
   - Files: `efb/eval_risk.py`, `data/raw/vix.parquet`,
     `data/eval/e5_regimes.parquet`, `tests/test_e5_regimes.py`
 
-- [ ] Task 5: the champion rule and the registry update (P0)
+- [x] Task 5: the champion rule and the registry update (P0)
   - Acceptance: the rule is applied exactly as printed in Task 0b with the
     arithmetic stored, `champion: true` is set on one entry alone, and the
     registry's `champion_rule` is byte-identical to its previous value. Tests:
@@ -77,7 +77,7 @@ deliverable is typed by hand. Stop conditions are marked where they belong.
   - STOP CONDITION 4: if two versions tie inside the confidence band and the
     tiebreak does not separate them.
 
-- [ ] Task 6: evaluate every criterion into RESULTS.json (P0)
+- [x] Task 6: evaluate every criterion into RESULTS.json (P0)
   - Acceptance: F5.0 if earned, F5.1 to F5.5 evaluated with a stored number each
     and written to `sprints/E5/RESULTS.json`, with the revisions block reporting
     any moved number and the data hash. Earlier sprints re-evaluated from
@@ -86,7 +86,7 @@ deliverable is typed by hand. Stop conditions are marked where they belong.
   - Files: `efb/evaluate.py`, `sprints/E5/RESULTS.json`,
     `tests/test_e5_results.py`
 
-- [ ] Task 7: the research deliverable (P0)
+- [x] Task 7: the research deliverable (P0)
   - Acceptance: `docs/research/E5_risk_model_diagnostic.md` with the PM answer
     in one paragraph, the champion decision with its rule and deciding number,
     the full heatmap, the regime table with recovery times and the recommended
@@ -96,7 +96,7 @@ deliverable is typed by hand. Stop conditions are marked where they belong.
     value.
   - Files: `docs/research/E5_risk_model_diagnostic.md`, `tests/test_e5_memo.py`
 
-- [ ] Task 8: dashboard D4 and the version selector (P1)
+- [x] Task 8: dashboard D4 and the version selector (P1)
   - Acceptance: `dashboard/tabs/d04_risk_eval.py` with the bias heatmap by
     version, family and regime, rolling 12-month bias with bands, calibration
     and Q-Q, the horizon table and the champion badge showing the rule and the
@@ -106,7 +106,7 @@ deliverable is typed by hand. Stop conditions are marked where they belong.
   - Files: `dashboard/tabs/d04_risk_eval.py`, `dashboard/app.py`,
     `tests/test_dashboard_d4.py`
 
-- [ ] Task 9: the walkthrough, the render and the engineering close (P0)
+- [x] Task 9: the walkthrough, the render and the engineering close (P0)
   - Acceptance: `notebooks/E5_walkthrough.ipynb` with the hash cell comparing
     stored against recomputed and typing neither, the by-hand derivations (the
     standardized returns, the bias statistic and its band, the coverage share,

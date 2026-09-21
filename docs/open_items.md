@@ -203,3 +203,20 @@ which `efb/cov.py` catches and drops, and the cause is the scale of
 session should fix the design's scale first, then rebuild
 `data/eval/cov_horse_race.parquet` with nine estimators and compare the XS-v1
 median against the 0.088007 that F4.3 stores.
+
+## 2026-09-20: E5 close-out
+
+The race-grid item is closed: E5 Task 0a derived the grid from the artifacts
+and the eight window-only estimators reproduce the published medians exactly;
+the XS-v1 row stays closed under F5.0b and is not re-opened here.
+
+New and carried into E6, all stored:
+
+1. F5.1 fails: no version is inside 0.9 to 1.1 on every family, every
+   version overshoots the long-only family, so no model is fully calibrated.
+2. The sqrt(21) scaled forecast and the directly estimated 21-day model
+   disagree per family (`data/eval/e5_horizon.parquet`), so the horizon
+   question is open.
+3. The survivor-only universe caveat is inherited by every E5 number.
+4. The champion XS-v1 carries a stored stress haircut of 1.8471 until a
+   stress model replaces it.

@@ -75,6 +75,21 @@ LINKS = [
         "Walkthrough notebook E4 (PCA and the covariance lab)",
         "notebooks/E4_walkthrough.html",
     ),
+    ("Sprint E5 PRD", "sprints/E5/PRD.md"),
+    ("Sprint E5 tasks", "sprints/E5/TASKS.md"),
+    (
+        "Sprint E5 probes (race grid, champion rule, eligibility)",
+        "sprints/E5/PROBES.md",
+    ),
+    ("Sprint E5 results (F criteria)", "sprints/E5/RESULTS.json"),
+    (
+        "Research deliverable: Risk Model Diagnostic and Champion Decision",
+        "docs/research/E5_risk_model_diagnostic.md",
+    ),
+    (
+        "Walkthrough notebook E5 (risk evaluation and the champion)",
+        "notebooks/E5_walkthrough.html",
+    ),
 ]
 
 

@@ -195,12 +195,12 @@ def test_version_manifest_covers_e1_e2_and_e3() -> None:
 def test_e3_results_hash_matches_the_manifest() -> None:
     results = json.loads((ROOT / "sprints" / "E3" / "RESULTS.json").read_text())
     version = json.loads((_exists("VERSION.json")).read_text())
-    # E4 owns VERSION.json now: the manifest hash is the E4-wide reading, and
+    # E5 owns VERSION.json now: the manifest hash is the E5-wide reading, and
     # E3's stored hash is the E1 to E3 reading taken when E3 was built, from
     # the same files. The strong comparison of the two needs `combined_hash`'s
     # exact fold over the E1 to E3 artifact subset, which is recorded in
     # docs/open_items.md rather than guessed at in a test.
-    assert "Sprint E4" in str(version["note"])
+    assert "Sprint E5" in str(version["note"])
     assert len(str(results["data_hash"])) == 64
     assert len(str(version["data_hash"])) == 64
     assert set(results["criteria"]) == {f"F3.{index}" for index in range(1, 10)}
