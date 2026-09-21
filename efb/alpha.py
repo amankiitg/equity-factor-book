@@ -39,11 +39,14 @@ def momentum_12_1(wide: pd.DataFrame) -> pd.DataFrame:
     OUTPUT: long frame date/ticker/signal with NaN kept.
     """
     returns = wide.fillna(np.nan)
+    # the classic 12-1: the 252-session window ending at t-21, so the
+    # signal at t uses only data through t-21, never the same-day return
     window = (
-        (1.0 + returns).rolling(MOMENTUM_LOOKBACK).apply(lambda s: np.prod(s), raw=True)
+        (1.0 + returns)
+        .rolling(MOMENTUM_LOOKBACK - MOMENTUM_SKIP)
+        .apply(lambda s: np.prod(s), raw=True)
     )
-    skip = (1.0 + returns).rolling(MOMENTUM_SKIP).apply(lambda s: np.prod(s), raw=True)
-    signal = (window.shift(MOMENTUM_SKIP) / skip).sub(1.0)
+    signal = window.shift(MOMENTUM_SKIP).sub(1.0)
     long = signal.stack(future_stack=True).rename("signal").reset_index()
     long.columns = ["date", "ticker", "signal"]
     return long
@@ -59,7 +62,7 @@ def short_term_reversal(wide: pd.DataFrame) -> pd.DataFrame:
     week = (
         (1.0 + returns).rolling(REVERSAL_LOOKBACK).apply(lambda s: np.prod(s), raw=True)
     )
-    signal = -week.sub(1.0)
+    signal = -week.shift(1).sub(1.0)
     long = signal.stack(future_stack=True).rename("signal").reset_index()
     long.columns = ["date", "ticker", "signal"]
     return long
@@ -77,10 +80,11 @@ def idio_momentum(root: Path = DATA_ROOT) -> pd.DataFrame:
     specific["date"] = pd.to_datetime(specific["date"])
     wide = specific.pivot(index="date", columns="ticker", values="specific_return")
     window = (
-        (1.0 + wide).rolling(MOMENTUM_LOOKBACK).apply(lambda s: np.prod(s), raw=True)
+        (1.0 + wide)
+        .rolling(MOMENTUM_LOOKBACK - MOMENTUM_SKIP)
+        .apply(lambda s: np.prod(s), raw=True)
     )
-    skip = (1.0 + wide).rolling(MOMENTUM_SKIP).apply(lambda s: np.prod(s), raw=True)
-    signal = (window.shift(MOMENTUM_SKIP) / skip).sub(1.0)
+    signal = window.shift(MOMENTUM_SKIP).sub(1.0)
     long = signal.stack(future_stack=True).rename("signal").reset_index()
     long.columns = ["date", "ticker", "signal"]
     return long
@@ -234,7 +238,9 @@ def post_earnings_drift(
     if not frames:
         return pd.DataFrame(columns=["date", "ticker", "signal"])
     combined = pd.concat(frames, ignore_index=True)
-    combined["date"] = pd.to_datetime(combined["Earnings Date"]).dt.normalize()
+    combined["date"] = (
+        pd.to_datetime(combined["Earnings Date"]).dt.tz_localize(None).dt.normalize()
+    )
     surprise_col = "Surprise(%)"
     if surprise_col not in combined.columns:
         return pd.DataFrame(columns=["date", "ticker", "signal"])
@@ -425,7 +431,9 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
                 "out_of_sample_t": split["out_of_sample"]["t"],
                 "audit_flipped": bool(audit["flipped"].iloc[-1]),
                 "audit_killed": bool(audit["killed"].iloc[-1]),
-                "audit_mean_ic_shifted": float(audit["mean_ic_shifted"].iloc[-1]),
+                "audit_leak_flag": bool(audit["leak_flag"].iloc[-1]),
+                "audit_mean_ic_next": float(audit["mean_ic_next"].iloc[-1]),
+                "audit_t_next": float(audit["t_ic_next"].iloc[-1]),
                 "breadth": float(law["breadth"]),
                 "implied_ir": law["implied_ir"],
                 "realized_ir": law["realized_ir"],

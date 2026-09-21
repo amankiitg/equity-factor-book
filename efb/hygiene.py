@@ -194,6 +194,7 @@ def build_events(
 
 NEWEY_WEST_LAGS = 5
 HLZ_T_HURDLE = 3.0
+LEAK_T_SIGNIFICANCE = 1.96  # two-sided 5 percent for the leakage test
 
 
 def _signal_wide(signal_frame: pd.DataFrame) -> pd.DataFrame:
@@ -249,32 +250,39 @@ def newey_west_t(series: pd.Series) -> float:
 
 
 def shift_audit(signal_frame: pd.DataFrame, wide: pd.DataFrame) -> pd.DataFrame:
-    """F7.1: does the signal survive being moved forward one day?
+    """F7.1: does the signal's information live in the same day or the next?
 
-    The shifted signal claims, on day t, the value the honest signal only
-    had on day t+1, so its IC with r_t is the leakage probe. A signal that
-    flips sign or loses its significance when shifted is clean.
+    A clean signal built from data at t-1 or earlier predicts r_t and r_{t+1}
+    about equally. A leaked signal's information is contemporaneous: its
+    IC against r_t is significant while its IC against r_{t+1} flips or
+    dies, because tomorrow's return is not in the signal. The leak flag is
+    set exactly when the contemporaneous IC is significant and the next-day
+    IC flips sign or loses its t-statistic.
     """
-    ic_honest = spearman_ic(signal_frame, wide, horizon=1)
-    shifted = signal_frame.copy()
-    shifted["date"] = shifted["date"] + pd.Timedelta(days=1)
-    ic_shifted = spearman_ic(shifted, wide, horizon=1)
-    joined = pd.concat(
-        [ic_honest.rename("ic"), ic_shifted.rename("ic_shifted")], axis=1
-    )
-    mean_honest = float(ic_honest.mean())
-    mean_shifted = float(ic_shifted.mean())
-    t_shifted = newey_west_t(ic_shifted)
-    flipped = bool(
-        (mean_honest > 0 and mean_shifted < 0) or (mean_honest < 0 and mean_shifted > 0)
-    )
-    killed = bool(abs(t_shifted) < HLZ_T_HURDLE or not np.isfinite(t_shifted))
-    joined["leak_flag"] = bool(not (flipped or killed))
+    ic_now = spearman_ic(signal_frame, wide, horizon=1)
+    next_returns = wide.shift(-1)
+    ic_next = spearman_ic(signal_frame, next_returns, horizon=1)
+    joined = pd.concat([ic_now.rename("ic"), ic_next.rename("ic_next")], axis=1)
+    mean_now = float(ic_now.mean())
+    mean_next = float(ic_next.mean())
+    t_now = newey_west_t(ic_now)
+    t_next = newey_west_t(ic_next)
+    flipped = bool((mean_now > 0 and mean_next < 0) or (mean_now < 0 and mean_next > 0))
+    killed = bool(abs(t_next) < LEAK_T_SIGNIFICANCE or not np.isfinite(t_next))
+    significant_now = bool(abs(t_now) >= LEAK_T_SIGNIFICANCE and np.isfinite(t_now))
+    significant_next = bool(abs(t_next) >= LEAK_T_SIGNIFICANCE and np.isfinite(t_next))
+    same_day_leak = bool(significant_now and (flipped or killed))
+    # the reverse direction: the signal predicts tomorrow but not today,
+    # which means it carries information from the future
+    future_leak = bool(significant_next and not significant_now)
+    joined["leak_flag"] = bool(same_day_leak or future_leak)
     joined["flipped"] = flipped
     joined["killed"] = killed
-    joined["mean_ic"] = mean_honest
-    joined["mean_ic_shifted"] = mean_shifted
-    joined["t_ic_shifted"] = t_shifted
+    joined["significant_now"] = significant_now
+    joined["mean_ic"] = mean_now
+    joined["mean_ic_next"] = mean_next
+    joined["t_ic"] = t_now
+    joined["t_ic_next"] = t_next
     return joined
 
 

@@ -55,10 +55,10 @@ def test_missing_signal_values_stay_nan() -> None:
 
 
 def test_the_shift_audit_catches_a_leaked_signal() -> None:
-    """A signal that uses tomorrow's return survives the shift audit; the
-    audit must report it, which is what proves the audit works."""
+    """A signal that carries the same-day return is flagged; the audit must
+    report it, which is what proves the audit works."""
     wide = _wide(seed=1)
-    future = wide.shift(-1).fillna(0.0)  # tomorrow's return: pure leakage
+    future = wide.fillna(0.0)  # the same-day return: pure leakage
     leaked = future.stack(future_stack=True).rename("signal").reset_index()
     leaked.columns = ["date", "ticker", "signal"]
     audit = hygiene.shift_audit(leaked, wide)
