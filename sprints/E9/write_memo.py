@@ -26,6 +26,7 @@ def main() -> None:
         DATA / "costs" / "capacity_spread_sensitivity.parquet"
     )
     tradeoff = pd.read_parquet(DATA / "costs" / "turnover_tradeoff.parquet")
+    capacity_phi = pd.read_parquet(DATA / "costs" / "capacity_phi_halving.parquet")
     f91 = results["criteria"]["F9.1"]["stored_numbers"]
     f93 = results["criteria"]["F9.3"]["stored_numbers"]
     f95 = results["criteria"]["F9.5"]["stored_numbers"]
@@ -44,6 +45,11 @@ def main() -> None:
     sensitivity_lines = "\n".join(
         f"| {row['rho']} | {row['spread_multiplier']} | {row['halving_aum']:.3g} |"
         for row in sensitivity.to_dict(orient="records")
+    )
+    capacity_phi_lines = "\n".join(
+        f"| {row['rho']} | {row['phi']} | {row['gross_sharpe']:.3f} | "
+        f"{row['halving_aum']:.3g} |"
+        for row in capacity_phi.to_dict(orient="records")
     )
     tradeoff_lines = "\n".join(
         f"| {row['rho']} | {row['turnover_cut']:.3f} | {row['ex_ante_ir_loss']:.3f} |"
@@ -136,11 +142,13 @@ The halving AUM under the schedule at half and double, per rho, at k = 0.5:
   optimizer cuts about 37% of turnover with under 7% ex-ante IR loss, so
   the 50% cut is not reached because the turnover is concentrated in the
   high-alpha names.
-- F9.3 (verdict {verdicts['F9.3']['verdict']}): the corrected
-  overnight-adjusted Corwin-Schultz estimator floors every name at zero,
-  so the size-rank correlation is undefined; the raw estimator reads
+- F9.3 (verdict {verdicts['F9.3']['verdict']}): not evaluable on the
+  corrected run, because the cost input is an assumed schedule that makes
+  the spread fall with size by construction. The corrected estimator
+  floors every name at zero, the raw estimator reads
   {f93['raw_cs_size_rank_correlation']:.3f} and the Abdi-Ranaldo estimate
-  {f93['abdi_ranaldo_size_rank_correlation']:.3f}, neither above 0.5.
+  {f93['abdi_ranaldo_size_rank_correlation']:.3f}, neither a measurement
+  of the spread.
 - F9.4 (verdict {verdicts['F9.4']['verdict']}): the halving AUM is stored
   per rho with its sensitivity to k, finite for rho 0.05 and 0.1.
 - F9.5 (verdict {verdicts['F9.5']['verdict']}): the chosen schedule's
@@ -174,6 +182,24 @@ rho 0.05 and 0.1. The rho 0.02 book remains cost-impaired at any size
 because its alpha is too weak to pay even the fixed spread and
 commission. Both data hashes are on the record in the revisions block of
 sprints/E9/RESULTS.json.
+
+## The persistent-book capacity table
+
+With persistent noise, eta(t) = phi eta(t-1) + sqrt(1 - phi^2) u(t), the
+book does not reshuffle fully each month, and the capacity question
+becomes meaningful. The halving AUM per rho and phi on the corrected
+schedule, at the central impact coefficient k = 0.5:
+
+| rho | phi | gross Sharpe | halving AUM |
+| --- | --- | --- | --- |
+{capacity_phi_lines}
+
+At phi 0 the book reshuffles fully and the weak rho 0.02 book is already
+below half its gross Sharpe at the 1 million dollar grid floor, so its
+halving AUM is undefined. At phi 0.95 the turnover falls to about 35% of
+gross, and the strong rho 0.10 book never halves within the 10 billion
+dollar grid, so its halving AUM is also undefined, for the opposite
+reason: persistence, not the spread, is what gives a defined capacity.
 
 ## Practitioner conclusion
 

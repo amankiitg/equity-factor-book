@@ -19,7 +19,7 @@ RESULTS = ROOT / "sprints" / "E7" / "RESULTS.json"
 GATE = ROOT / "sprints" / "E7" / "RG_SIGNAL.json"
 LEDGER = ROOT / "docs" / "multiple_testing_ledger.md"
 
-CRITERIA = ["F7.1", "F7.1b", "F7.2", "F7.3", "F7.4"]
+CRITERIA = ["F7.1", "F7.1b", "F7.1c", "F7.2", "F7.3", "F7.4"]
 
 
 def _results() -> dict:

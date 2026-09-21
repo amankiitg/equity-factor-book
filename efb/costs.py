@@ -496,6 +496,130 @@ def turnover_tradeoff(data_root: Path = DATA_ROOT, store: bool = True) -> pd.Dat
     return frame
 
 
+def capacity_curve_phi(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFrame:
+    """The capacity table in (rho, phi) on the corrected costs.
+
+    The persistent proportional book's net Sharpe against AUM per rho and
+    persistence phi at the central impact coefficient k = 0.5, with the
+    halving AUM stored beside the gross Sharpe. phi 0 is the i.i.d. book,
+    which reproduces the (rho, k = 0.5) column of the F9.1 table.
+    """
+    root = Path(data_root)
+    prices = pd.read_parquet(root / "raw" / "prices.parquet")
+    spread = spread_schedule(prices, root)
+    adv = _adv_per_ticker(prices)
+    weights = pd.read_parquet(root / "portfolios" / "persistent_proportional.parquet")
+    specific_returns = pd.read_parquet(
+        root / "models" / "XS-v1" / "specific_returns.parquet"
+    )
+    sigma_all = specific_returns.groupby("ticker")["specific_return"].std(ddof=1)
+    rows: list[dict[str, object]] = []
+    halving_rows: list[dict[str, object]] = []
+    aum_grid = np.logspace(6, 10, 25)
+    k = IMPACT_K
+    for rho in RHOS:
+        for phi in (0.0, 0.8, 0.95):
+            net_by_aum: dict[float, float] = {}
+            net_mean_by_aum: dict[float, float] = {}
+            gross_sharpe = float("nan")
+            for seed in SEEDS:
+                frame = weights.loc[
+                    (weights["rho"] == rho)
+                    & (weights["phi"] == phi)
+                    & (weights["seed"] == seed)
+                ]
+                if frame.empty:
+                    continue
+                w_wide = frame.pivot_table(
+                    index="date", columns="ticker", values="weight"
+                )
+                gross = w_wide.abs().sum(axis=1)
+                w_wide = w_wide.div(gross, axis=0)
+                realized = _realized_returns(w_wide, root)
+                gross_sharpe = float(
+                    realized.mean() / realized.std(ddof=1) * np.sqrt(ANNUAL / HORIZON)
+                    if realized.std(ddof=1) > 0
+                    else float("nan")
+                )
+                dates = w_wide.index
+                names = [t for t in w_wide.columns]
+                spread_map = spread.reindex(names).fillna(spread.median())
+                adv_map = adv.reindex(names).fillna(adv.median())
+                sigma_map = sigma_all.reindex(names).fillna(sigma_all.median())
+                for aum in aum_grid:
+                    costs: list[float] = []
+                    prev = w_wide.iloc[0].reindex(names).fillna(0.0).to_numpy(float)
+                    for index in range(1, len(dates)):
+                        current = w_wide.iloc[index].reindex(names).fillna(0.0)
+                        current_np = current.to_numpy(float)
+                        prev_np = pd.Series(prev, index=names).reindex(names).to_numpy()
+                        delta = current_np - prev_np
+                        costs.append(
+                            _trade_cost(
+                                delta,
+                                spread_map.to_numpy(float),
+                                sigma_map.to_numpy(float),
+                                adv_map.to_numpy(float),
+                                aum,
+                                k,
+                            )
+                        )
+                        prev = current_np
+                    net = realized.iloc[1:] - pd.Series(costs, index=realized.index[1:])
+                    net_sharpe = float(
+                        net.mean() / net.std(ddof=1) * np.sqrt(ANNUAL / HORIZON)
+                        if net.std(ddof=1) > 0
+                        else float("nan")
+                    )
+                    net_by_aum[aum] = net_by_aum.get(aum, 0.0) + net_sharpe
+                    net_mean_by_aum[aum] = net_mean_by_aum.get(aum, 0.0) + float(
+                        net.mean()
+                    )
+            for aum in aum_grid:
+                net_sharpe = float(net_by_aum.get(aum, float("nan"))) / len(SEEDS)
+                net_mean = float(net_mean_by_aum.get(aum, float("nan"))) / len(SEEDS)
+                rows.append(
+                    {
+                        "rho": rho,
+                        "phi": phi,
+                        "aum": float(aum),
+                        "gross_sharpe": gross_sharpe,
+                        "net_sharpe": net_sharpe,
+                        "net_mean": net_mean,
+                    }
+                )
+            halving = float("nan")
+            first_net = float(net_by_aum.get(float(aum_grid[0]), float("nan"))) / len(
+                SEEDS
+            )
+            if (
+                np.isfinite(gross_sharpe)
+                and np.isfinite(first_net)
+                and first_net > gross_sharpe / 2.0
+            ):
+                for aum in aum_grid:
+                    net_sharpe = float(net_by_aum.get(aum, float("nan"))) / len(SEEDS)
+                    if np.isfinite(net_sharpe) and net_sharpe <= gross_sharpe / 2.0:
+                        halving = float(aum)
+                        break
+            halving_rows.append(
+                {
+                    "rho": rho,
+                    "phi": phi,
+                    "gross_sharpe": gross_sharpe,
+                    "halving_aum": halving,
+                }
+            )
+    frame = pd.DataFrame(rows)
+    halving = pd.DataFrame(halving_rows)
+    if store:
+        out = root / "costs"
+        out.mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(out / "capacity_phi.parquet", index=False)
+        halving.to_parquet(out / "capacity_phi_halving.parquet", index=False)
+    return frame
+
+
 def spread_sensitivity(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFrame:
     """The halving AUM under the half and double spread schedule.
 
@@ -565,10 +689,15 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, pd.DataFra
     capacity = capacity_curve(data_root, store=store)
     tradeoff = turnover_tradeoff(data_root, store=store)
     sensitivity = spread_sensitivity(data_root, store=store)
+    capacity_phi = pd.DataFrame()
+    persistent = Path(data_root) / "portfolios" / "persistent_proportional.parquet"
+    if persistent.exists():
+        capacity_phi = capacity_curve_phi(data_root, store=store)
     return {
         "spread_probe": probe,
         "cost_curves": curves,
         "capacity": capacity,
         "turnover_tradeoff": tradeoff,
         "spread_sensitivity": sensitivity,
+        "capacity_phi": capacity_phi,
     }

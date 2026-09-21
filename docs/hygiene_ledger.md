@@ -1299,3 +1299,117 @@ halving AUM is NaN, undefined, at every rho and k).
 The headline finding: turnover, not capacity, is the binding constraint.
 A real signal with persistence would have far lower turnover and a defined
 capacity; that persistence is what the next signal must demonstrate.
+
+## 2026-09-21: E9 cost magnitude correction, the Corwin-Schultz spreads were volatility
+
+Decision. The spread input is a size-decile schedule from 10 bp (smallest
+names) to 1 bp (largest) of half-spread, stated as an assumption with a
+half and double sensitivity, replacing the stored Corwin-Schultz
+half-spreads of 2.5 to 5.2 percent. New criterion F9.5 stores the schedule
+beside the anchor estimators it replaced, and E9 is re-run on the
+corrected costs.
+
+Old value. The Corwin-Schultz (2012) estimator, as first implemented, was
+missing the overnight (gamma) adjustment from the paper, and its two-day
+high-low range is dominated by intraday volatility for S&P 500 names, so
+the unadjusted estimate reads about 100 times the quoted spread: 2.5 to
+5.2 percent per decile, with a size-rank correlation magnitude of 0.349.
+The capacity curve was negative at every AUM and the halving AUM was NaN
+everywhere, which produced the headline that turnover, not AUM, is the
+binding constraint.
+
+New value. Applying the paper's overnight adjustment floors every two-day
+estimate at zero (the true spread is below the estimator's resolution on
+daily data), and the Abdi-Ranaldo (2017) close-high-low estimate has no
+size gradient either (rank correlation 0.003). The schedule is therefore
+an assumption, not a measurement, and is stated as such. On the schedule
+the spread cost of a 140% turnover rebalance is about 0.07% of AUM, net
+Sharpe is monotone in AUM (the violation count moves from 206 to 0), and
+the halving AUM is defined for rho 0.05 (100 million dollars at k 0.5) and
+rho 0.1 (464 million dollars), still undefined for rho 0.02 because that
+book's IC of 0.019 cannot pay the fixed spread and commission at any size.
+Both data hashes are on the record in the revisions block of
+sprints/E9/RESULTS.json.
+
+Reason. A cost model built on a spread estimate 100 times the quoted
+spread makes the capacity question about the spread, when the question is
+the impact cost. The estimator comparison is stored in
+data/costs/spread_probe.parquet so a later reader can see the failure mode
+rather than trust the schedule.
+
+## 2026-09-21: F8.1b, the APM central identity holds in the D^-1 metric
+
+Decision. New criterion F8.1b neutralizes the synthetic alpha in the
+D^-1 metric, alpha_perp = alpha - X (X' D^-1 X)^-1 X' D^-1 alpha, and
+stores the max absolute weight difference among unconstrained
+mean-variance, the proportional rule and Procedure 6.3. F8.1 keeps its
+verdict and its number.
+
+Old value. F8.1 stored 0.0085 as the max absolute weight difference
+between unconstrained mean-variance and Procedure 6.3, above the 1e-6 the
+identity would require.
+
+New value. With alpha GLS-neutralized in the D^-1 metric the Woodbury
+correction vanishes exactly and the three constructions are the same
+vector to 3.5e-17 (max over the sample).
+
+Reason. The synthetic z is standardized in the equal-weight (sqrt(mcap)
+analog) metric, not the D^-1 metric the identity needs, so the 0.0085 gap
+is a metric mismatch, not a violation of the identity. F8.1b is the check
+that separates the two.
+
+## 2026-09-21: F8.4's 1.416 is sqrt(2), recorded beside F4.1 and F7.2
+
+Decision. Recorded, not fixed. The resampling dispersion of 1.416 is the
+relative distance between two IC-consistent redraws of the alpha.
+
+Reason. Two redraws share only correlation rho squared with the original
+(0.0004 to 0.01 at rho 0.02 to 0.10), so they are nearly independent and
+their relative distance is sqrt(2 * (1 - rho squared)), which is 1.416 at
+rho 0.02 and 1.411 at rho 0.10. Getting the dispersion below the 0.30
+threshold needs rho above 0.977. Shrinkage multiplies the alpha by a
+scalar, and a scalar cancels in a relative distance, so no ridge lambda on
+the grid can reduce the dispersion. The 30% threshold was written for a
+signal near rho 0.98, not for the experiment's realistic ICs, the same
+category of pre-registered threshold error as F4.1 and F7.2.
+
+## 2026-09-21: F7.1c, post-earnings drift's h1 edge is the after-close announcement reaction
+
+Decision. New criterion F7.1c lags each signal one extra day and
+re-measures its IC against the same-day return. The direction is opposite
+to F7.1b and is the one that discriminates: F7.1b proves the harness sees
+injected leakage, F7.1c asks whether the real signals are clean.
+
+New value. Momentum moves 0.0151 to 0.0152 and idio momentum 0.0121 to
+0.0123 under the extra lag, so their edges are persistent; short-term
+reversal decays 0.0120 to 0.0077 but keeps significance. Post-earnings
+drift collapses from an IC of 0.1240 with t 14.05 to 0.0073 with t 0.77:
+its horizon-1 edge is the after-close announcement reaction captured
+close-to-close, not a persistent drift.
+
+Reason. F7.1b alone cannot say whether a surviving signal is leaking or
+persistent, because the forward shift and the extra lag probe different
+things. The collapse under the extra lag is the specific evidence that
+the edge lives in the announcement-day return, which the one-session lag
+exists to remove.
+
+## 2026-09-21: free daily OHLC data cannot measure spreads for S&P 500 names
+
+Decision. F9.3 is recorded as not evaluable on the corrected run. The
+criterion asks whether the spread estimate falls with size, but the cost
+input is now an assumed size-decile schedule that makes that ordering true
+by construction, so the criterion can neither pass nor fail on a
+measurement.
+
+Reason. Both free estimators fail on liquid names. The corrected
+overnight-adjusted Corwin-Schultz floors every two-day estimate at zero
+(the spread is below the estimator's resolution on daily high-low data),
+and the Abdi-Ranaldo close-high-low estimate has no size gradient (rank
+correlation 0.003). The raw Corwin-Schultz measures volatility, not the
+spread (2.5 to 5.2 percent against a quoted range of single-digit basis
+points). The consequence is recorded, not patched: every cost number in
+this project is an assumption with a sensitivity band, never a
+measurement, until a source that actually observes spreads is available.
+That changes for credit, where trade prints make spreads measurable, which
+is tracked in the open items.
+

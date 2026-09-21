@@ -1,4 +1,4 @@
-"""Sprint E9 Task 7: the cost and capacity memo is traceable to artifacts."""
+"""Sprint E10 Task 8: the risk policy memo is traceable to artifacts."""
 
 from __future__ import annotations
 
@@ -11,25 +11,16 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-MEMO = ROOT / "docs" / "research" / "E9_tcost_capacity.md"
-RESULTS = ROOT / "sprints" / "E9" / "RESULTS.json"
+MEMO = ROOT / "docs" / "research" / "E10_risk_policy.md"
+RESULTS = ROOT / "sprints" / "E10" / "RESULTS.json"
 
 
 @pytest.fixture(scope="module")
 def stored_numbers() -> list[float]:
     results = json.loads(RESULTS.read_text())
     texts = [json.dumps(results)]
-    for stem in (
-        "spread_probe",
-        "cost_curves",
-        "capacity",
-        "capacity_halving",
-        "capacity_spread_sensitivity",
-        "capacity_phi",
-        "capacity_phi_halving",
-        "turnover_tradeoff",
-    ):
-        frame = pd.read_parquet(DATA / "costs" / f"{stem}.parquet")
+    for stem in ("kelly", "drawdown", "voltarget", "stoploss", "regime"):
+        frame = pd.read_parquet(DATA / "allocation" / f"{stem}.parquet")
         texts.append(frame.select_dtypes(include="number").to_string())
     return [
         float(match)
@@ -53,9 +44,8 @@ def test_the_memo_exists_and_is_traceable(stored_numbers: list[float]) -> None:
 
 
 @pytest.mark.integration
-def test_the_memo_states_the_corrected_capacity_and_the_addendum() -> None:
+def test_the_memo_states_the_kelly_verdict() -> None:
     text = " ".join(MEMO.read_text().split())
-    assert "synthetic" in text
     assert "What would falsify this?" in text
-    assert "Addendum: the cost magnitude correction" in text
-    assert "size-decile schedule" in text
+    assert "half Kelly" in text
+    assert "synthetic" in text

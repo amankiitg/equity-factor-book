@@ -20,7 +20,7 @@ HTML = ROOT / "notebooks" / "E7_walkthrough.html"
 RESULTS = ROOT / "sprints" / "E7" / "RESULTS.json"
 GATE = ROOT / "sprints" / "E7" / "RG_SIGNAL.json"
 
-CRITERIA = [f"F7.{index}" for index in range(1, 5)]
+CRITERIA = ["F7.1", "F7.1b", "F7.1c", "F7.2", "F7.3", "F7.4"]
 
 
 def _notebook() -> dict:

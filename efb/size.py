@@ -550,6 +550,87 @@ def run(
     return {"weights": weights, "summary": summary}
 
 
+def f81b_gls_identity(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFrame:
+    """F8.1b: the APM central identity with alpha GLS-neutralized in D^-1.
+
+    By Woodbury, Sigma^-1 alpha = D^-1 alpha - D^-1 X (F^-1 + X' D^-1 X)^-1
+    X' D^-1 alpha, so when X' D^-1 alpha = 0 the correction vanishes and
+    unconstrained mean-variance, the proportional rule and Procedure 6.3 are
+    the same vector. The alpha is neutralized as
+    alpha_perp = alpha - X (X' D^-1 X)^-1 X' D^-1 alpha, and the max
+    absolute weight difference among the three is stored per rho and seed.
+    F8.1 failed at 0.0085 because the synthetic z is standardized in the
+    equal-weight metric, not because the identity is wrong.
+    """
+    root = Path(data_root)
+    pieces = date_pieces(root)
+    rows: list[dict[str, object]] = []
+    for rho in RHOS:
+        for seed in SEEDS:
+            frame = synthetic_alpha(root, rho, seed, pieces=pieces)
+            diffs: list[float] = []
+            for date, group in frame.groupby("date"):
+                if date not in pieces:
+                    continue
+                names = list(pieces[date]["names"])
+                design = pieces[date]["design"]
+                factor_covariance = pieces[date]["factor_covariance"]
+                specific = pieces[date]["specific"]
+                alpha = (
+                    group.set_index("ticker")["alpha"]
+                    .reindex(names)
+                    .to_numpy(dtype=float)
+                )
+                finite = np.isfinite(alpha)
+                if finite.sum() < 50:
+                    continue
+                alpha_m = alpha[finite]
+                design_m = design[finite]
+                specific_m = specific[finite]
+                d_inv = 1.0 / np.maximum(specific_m, 1e-12)
+                gram = design_m.T @ (design_m * d_inv[:, None])
+                projection = design_m @ np.linalg.solve(
+                    gram, design_m.T @ (d_inv * alpha_m)
+                )
+                alpha_perp = alpha_m - projection
+                w_prop = alpha_perp * d_inv
+                w_mv = _sigma_inverse_alpha(
+                    alpha_perp, design_m, factor_covariance, specific_m
+                )
+                w_p63 = procedure_6_3(
+                    alpha_perp, design_m, factor_covariance, specific_m
+                )
+                for w in (w_prop, w_mv, w_p63):
+                    scale = float(np.abs(w).sum())
+                    if np.isfinite(scale) and scale > 0:
+                        w /= scale
+                diffs.append(
+                    float(
+                        max(
+                            np.abs(w_prop - w_mv).max(),
+                            np.abs(w_prop - w_p63).max(),
+                            np.abs(w_mv - w_p63).max(),
+                        )
+                    )
+                )
+            rows.append(
+                {
+                    "rho": rho,
+                    "seed": seed,
+                    "max_abs_weight_difference": (
+                        float(max(diffs)) if diffs else float("nan")
+                    ),
+                    "n_dates": len(diffs),
+                }
+            )
+    frame = pd.DataFrame(rows)
+    if store:
+        frame.to_parquet(
+            root / "portfolios" / "e8_f81b_gls_identity.parquet", index=False
+        )
+    return frame
+
+
 def f84_resampling(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFrame:
     """F8.4: the resampling dispersion per rho and the shrinkage needed.
 
@@ -624,4 +705,273 @@ def f84_resampling(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFr
     frame = pd.DataFrame(rows)
     if store:
         frame.to_parquet(root / "portfolios" / "e8_f84_resampling.parquet", index=False)
+    return frame
+
+
+def synthetic_alpha_persistent(
+    data_root: Path = DATA_ROOT,
+    rho: float = 0.05,
+    seed: int = 0,
+    phi: float = 0.8,
+    pieces: dict[pd.Timestamp, dict[str, np.ndarray]] | None = None,
+) -> pd.DataFrame:
+    """The synthetic alpha with persistent noise, labeled as such.
+
+    The noise follows eta(t) = phi * eta(t-1) + sqrt(1 - phi^2) * u(t) in
+    rebalance time, so the book does not reshuffle fully each month and a
+    capacity number becomes meaningful. OUTPUT columns match
+    `synthetic_alpha` plus `phi` and a persistent-noise source label.
+    """
+    root = Path(data_root)
+    grid = race.race_grid(root)
+    pieces = pieces if pieces is not None else date_pieces(root)
+    specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
+    specific["date"] = pd.to_datetime(specific["date"])
+    specific_wide = specific.pivot(
+        index="date", columns="ticker", values="specific_return"
+    )
+    rng = np.random.default_rng(seed + 200_000)
+    eta_state: dict[str, float] = {}
+    rows: list[pd.DataFrame] = []
+    for date in grid:
+        if date not in pieces:
+            continue
+        names = list(pieces[date]["names"])
+        sigma = pieces[date]["sigma"]
+        e_h = _forward_specific(specific_wide, date, names)
+        finite = np.isfinite(e_h)
+        u = rng.normal(size=len(names))
+        eta = np.zeros(len(names))
+        for index, ticker in enumerate(names):
+            previous = eta_state.get(ticker, 0.0)
+            eta[index] = phi * previous + np.sqrt(1.0 - phi**2) * u[index]
+            eta_state[ticker] = float(eta[index])
+        z = np.full(len(names), np.nan)
+        z[finite] = (
+            rho * _standardize(e_h[finite]) + np.sqrt(1.0 - rho**2) * eta[finite]
+        )
+        alpha = rho * sigma * z * KAPPA
+        rows.append(
+            pd.DataFrame(
+                {
+                    "date": date,
+                    "ticker": names,
+                    "z": z,
+                    "e_h": e_h,
+                    "sigma_idio": sigma,
+                    "alpha": alpha,
+                    "rho": rho,
+                    "seed": seed,
+                    "phi": phi,
+                    "ic": np.nan,
+                    "source": "synthetic persistent-noise experiment",
+                }
+            )
+        )
+    if not rows:
+        return pd.DataFrame()
+    frame = pd.concat(rows, ignore_index=True)
+    ics: dict[pd.Timestamp, float] = {}
+    for date, group in frame.groupby("date"):
+        both = group[["z", "e_h"]].dropna()
+        if len(both) < 10:
+            continue
+        ics[pd.Timestamp(date)] = float(both["z"].rank().corr(both["e_h"].rank()))
+    frame["ic"] = frame["date"].map(ics)
+    return frame
+
+
+def store_persistence_turnover(
+    data_root: Path = DATA_ROOT,
+    store: bool = True,
+    phis: tuple[float, ...] = (0.0, 0.8, 0.95),
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """B2: the persistent-noise book's turnover, predicted against realized.
+
+    The prediction is sqrt(2 * (1 - phi)) of gross turnover. The realized
+    turnover is the mean absolute weight change per rebalance, gross
+    normalized, averaged over the seeds. OUTPUT: the (rho, phi) table and
+    the stored persistent proportional weights.
+    """
+    root = Path(data_root)
+    pieces = date_pieces(root)
+    rows: list[dict[str, object]] = []
+    weight_rows: list[pd.DataFrame] = []
+    for rho in RHOS:
+        for phi in phis:
+            predicted = float(np.sqrt(2.0 * (1.0 - phi)))
+            turnovers: list[float] = []
+            gross_sharpes: list[float] = []
+            for seed in SEEDS:
+                frame = synthetic_alpha_persistent(root, rho, seed, phi, pieces)
+                built = construct(frame, "proportional", root, pieces=pieces)
+                if built.empty:
+                    continue
+                weights_wide = built.pivot_table(
+                    index="date", columns="ticker", values="weight"
+                )
+                gross = weights_wide.abs().sum(axis=1)
+                normalized = weights_wide.div(gross, axis=0)
+                diffs = normalized.diff().abs().sum(axis=1).iloc[1:]
+                turnovers.append(float(diffs.mean()))
+                realized = _realized_returns(normalized, frame)
+                gross_sharpes.append(
+                    float(
+                        realized.mean() / realized.std(ddof=1)
+                        if realized.std(ddof=1) > 0
+                        else float("nan")
+                    )
+                )
+                long = built.copy()
+                long["phi"] = phi
+                weight_rows.append(long)
+            rows.append(
+                {
+                    "rho": rho,
+                    "phi": phi,
+                    "predicted_turnover": predicted,
+                    "realized_turnover": (
+                        float(np.mean(turnovers)) if turnovers else float("nan")
+                    ),
+                    "gross_sharpe": (
+                        float(np.mean(gross_sharpes)) if gross_sharpes else float("nan")
+                    ),
+                }
+            )
+    turnover = pd.DataFrame(rows)
+    weights = (
+        pd.concat(weight_rows, ignore_index=True) if weight_rows else pd.DataFrame()
+    )
+    if store:
+        turnover.to_parquet(root / "portfolios" / "e8_persistence.parquet", index=False)
+        if not weights.empty:
+            weights.to_parquet(
+                root / "portfolios" / "persistent_proportional.parquet", index=False
+            )
+    return turnover, weights
+
+
+def store_f87(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFrame:
+    """F8.7: the transfer coefficient under correlated noise.
+
+    The noise eta is drawn from the XS-v2 specific correlation structure,
+    the low-rank-plus-diagonal generator, so the noise breadth is the
+    generator's own participation ratio N_eff rather than the name count.
+    The fundamental law predicts IR = IC * sqrt(N_eff), and the transfer
+    coefficient over N_eff and over N is stored beside the prediction for
+    the proportional and Procedure 6.3 constructions.
+    """
+    from efb import eval_risk
+
+    root = Path(data_root)
+    pieces = date_pieces(root)
+    grid = race.race_grid(root)
+    specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
+    specific["date"] = pd.to_datetime(specific["date"])
+    specific_wide = specific.pivot(
+        index="date", columns="ticker", values="specific_return"
+    )
+    date_blocks: dict[pd.Timestamp, tuple[np.ndarray, np.ndarray, float, int]] = {}
+    for date in grid:
+        if date not in pieces:
+            continue
+        names = list(pieces[date]["names"])
+        low, diagonal, low_diag, _fallback = eval_risk._xs_v2_block(date, names, root)
+        remainder = np.clip(diagonal - low_diag, 1e-20, None)
+        total = low + np.diag(remainder)
+        d = np.sqrt(np.maximum(np.diag(total), 1e-20))
+        corr = total / np.outer(d, d)
+        corr = np.clip(corr, -1.0, 1.0)
+        np.fill_diagonal(corr, 1.0)
+        n = len(names)
+        neff = n**2 / float(np.sum(corr**2))
+        date_blocks[pd.Timestamp(date)] = (total, d, neff, n)
+    rows: list[dict[str, object]] = []
+    for rho in RHOS:
+        for seed in SEEDS:
+            rng = np.random.default_rng(seed + 50_000)
+            alpha_rows: list[pd.DataFrame] = []
+            for date in grid:
+                if date not in date_blocks:
+                    continue
+                names = list(pieces[date]["names"])
+                sigma = pieces[date]["sigma"]
+                e_h = _forward_specific(specific_wide, date, names)
+                finite = np.isfinite(e_h)
+                if finite.sum() < 50:
+                    continue
+                total, d, _neff, _n = date_blocks[pd.Timestamp(date)]
+                v = rng.multivariate_normal(np.zeros(_n), total)
+                eta = v / d
+                z = np.full(_n, np.nan)
+                z[finite] = (
+                    rho * _standardize(e_h[finite])
+                    + np.sqrt(1.0 - rho**2) * eta[finite]
+                )
+                alpha = rho * sigma * z * KAPPA
+                alpha_rows.append(
+                    pd.DataFrame(
+                        {
+                            "date": date,
+                            "ticker": names,
+                            "z": z,
+                            "e_h": e_h,
+                            "sigma_idio": sigma,
+                            "alpha": alpha,
+                            "rho": rho,
+                            "seed": seed,
+                            "ic": np.nan,
+                            "source": "synthetic correlated-noise experiment",
+                        }
+                    )
+                )
+            frame = pd.concat(alpha_rows, ignore_index=True)
+            ics: dict[pd.Timestamp, float] = {}
+            for date, group in frame.groupby("date"):
+                both = group[["z", "e_h"]].dropna()
+                if len(both) < 10:
+                    continue
+                ics[pd.Timestamp(date)] = float(
+                    both["z"].rank().corr(both["e_h"].rank())
+                )
+            frame["ic"] = frame["date"].map(ics)
+            realized_ic = float(pd.Series(list(ics.values())).mean())
+            neff_mean = float(np.mean([b[2] for b in date_blocks.values()]))
+            n_mean = float(np.mean([b[3] for b in date_blocks.values()]))
+            for construction in ("proportional", "procedure_6_3"):
+                built = construct(frame, construction, root, pieces=pieces)
+                if built.empty:
+                    continue
+                weights_wide = built.pivot_table(
+                    index="date", columns="ticker", values="weight"
+                )
+                realized = _realized_returns(weights_wide, frame)
+                ir = (
+                    float(realized.mean() / realized.std(ddof=1))
+                    if len(realized) > 10 and realized.std(ddof=1) > 0
+                    else float("nan")
+                )
+                predicted_neff = realized_ic * np.sqrt(max(neff_mean, 1.0))
+                predicted_n = realized_ic * np.sqrt(max(n_mean, 1.0))
+                rows.append(
+                    {
+                        "construction": construction,
+                        "rho": rho,
+                        "seed": seed,
+                        "realized_ic": realized_ic,
+                        "realized_ir": ir,
+                        "n_eff": neff_mean,
+                        "n_names": n_mean,
+                        "predicted_ir_neff": predicted_neff,
+                        "transfer_coefficient_neff": (
+                            ir / predicted_neff if predicted_neff > 0 else float("nan")
+                        ),
+                        "transfer_coefficient_n": (
+                            ir / predicted_n if predicted_n > 0 else float("nan")
+                        ),
+                    }
+                )
+    frame = pd.DataFrame(rows)
+    if store:
+        frame.to_parquet(root / "portfolios" / "e8_f87_correlated.parquet", index=False)
     return frame

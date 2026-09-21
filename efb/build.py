@@ -174,8 +174,13 @@ E7_ARTIFACTS = [
 # the E7 set in E8 Task 0a.
 E8_ARTIFACTS = [
     "alpha/f71b_audit.parquet",
+    "alpha/f71c_audit.parquet",
     "portfolios/e8_summary.parquet",
     "portfolios/e8_f84_resampling.parquet",
+    "portfolios/e8_f81b_gls_identity.parquet",
+    "portfolios/e8_f87_correlated.parquet",
+    "portfolios/e8_persistence.parquet",
+    "portfolios/persistent_proportional.parquet",
 ] + [
     f"portfolios/{name}.parquet"
     for name in (
@@ -196,7 +201,18 @@ E9_ARTIFACTS = [
     "costs/capacity.parquet",
     "costs/capacity_halving.parquet",
     "costs/capacity_spread_sensitivity.parquet",
+    "costs/capacity_phi.parquet",
+    "costs/capacity_phi_halving.parquet",
     "costs/turnover_tradeoff.parquet",
+]
+
+# Sprint E10: dynamic risk allocation and loss management.
+E10_ARTIFACTS = [
+    "allocation/kelly.parquet",
+    "allocation/drawdown.parquet",
+    "allocation/voltarget.parquet",
+    "allocation/stoploss.parquet",
+    "allocation/regime.parquet",
 ]
 
 MODEL_START = 2010
@@ -2091,6 +2107,9 @@ def rebuild_e8(
         e7 = rebuild_e7(data_root=data_root, results_path=None, full=True)
     engine = size.run(data_root=data_root, store=True)
     size.f84_resampling(data_root=data_root, store=True)
+    size.f81b_gls_identity(data_root=data_root, store=True)
+    size.store_f87(data_root=data_root, store=True)
+    size.store_persistence_turnover(data_root=data_root, store=True)
     artifact_paths = [
         data_root / rel
         for rel in (
@@ -2181,11 +2200,70 @@ def rebuild_e9(
     }
 
 
+def rebuild_e10(
+    data_root: Path = DATA_ROOT,
+    results_path: Path | None = None,
+    full: bool = False,
+) -> dict[str, object]:
+    """Run the E10 build: risk allocation and loss management.
+
+    `full` first runs the E1 through E9 legs. Without it, the earlier
+    artifacts are read from disk.
+    """
+    from efb import allocate, evaluate
+
+    e9: dict[str, object] | None = None
+    if full:
+        e9 = rebuild_e9(data_root=data_root, results_path=None, full=True)
+    engine = allocate.run(data_root=data_root, store=True)
+    artifact_paths = [
+        data_root / rel
+        for rel in (
+            ARTIFACTS
+            + E2_ARTIFACTS
+            + E3_ARTIFACTS
+            + E4_ARTIFACTS
+            + E5_ARTIFACTS
+            + E6_ARTIFACTS
+            + E7_ARTIFACTS
+            + E8_ARTIFACTS
+            + E9_ARTIFACTS
+            + E10_ARTIFACTS
+        )
+    ]
+    version_path = data_root / "VERSION.json"
+    old_hash = previous_data_hash(version_path)
+    payload = write_version(
+        artifact_paths,
+        version_path,
+        note=(
+            "Built by make rebuild (Sprint E10). The risk-allocation artifacts "
+            "join the versioned set; the dashboard sidebar shows this version."
+        ),
+    )
+    if results_path is not None:
+        evaluate.main_e10(data_root=data_root)
+    engine_summary = {
+        key: (len(value) if hasattr(value, "__len__") else value)
+        for key, value in engine.items()
+    }
+    return {
+        "n_steps": 17,
+        "full": full,
+        "e9": e9,
+        "engine": engine_summary,
+        "version": payload,
+        "previous_data_hash": old_hash,
+    }
+
+
 def main() -> None:
     if "--all" in sys.argv:
-        summary = rebuild_e9(
-            results_path=ROOT / "sprints" / "E9" / "RESULTS.json", full=True
+        summary = rebuild_e10(
+            results_path=ROOT / "sprints" / "E10" / "RESULTS.json", full=True
         )
+    elif "--e10" in sys.argv:
+        summary = rebuild_e10(results_path=ROOT / "sprints" / "E10" / "RESULTS.json")
     elif "--e9" in sys.argv:
         summary = rebuild_e9(results_path=ROOT / "sprints" / "E9" / "RESULTS.json")
     elif "--e8" in sys.argv:

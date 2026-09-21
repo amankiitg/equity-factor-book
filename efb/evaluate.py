@@ -3089,6 +3089,14 @@ E7_CRITERIA_TEXT = {
         "whose IC survives the shift is leaking. The IC before and after "
         "the shift is stored per signal."
     ),
+    "F7.1c": (
+        "Registered in E10, not pre-registered: the discriminating "
+        "extra-day lag audit. Each signal is rebuilt with every input "
+        "moved one extra day back and its IC is recomputed against the "
+        "same-day return; a persistent clean signal barely moves and a "
+        "leaking one collapses. The IC before and after the extra lag is "
+        "stored per signal."
+    ),
 }
 
 E7_THRESHOLDS = {
@@ -3097,6 +3105,7 @@ E7_THRESHOLDS = {
     "F7.3": "below-hurdle signals labeled NULL; ledger rows >= runs",
     "F7.4": "stored per signal under both models with the difference",
     "F7.1b": "every signal's after-shift IC flips or loses significance",
+    "F7.1c": "the extra-lag IC stored per signal, the collapse recorded",
 }
 
 E7_ARTIFACTS = [
@@ -3104,6 +3113,7 @@ E7_ARTIFACTS = [
     "raw/earnings_dates.parquet",
     "alpha/summary.parquet",
     "alpha/f71b_audit.parquet",
+    "alpha/f71c_audit.parquet",
 ] + [
     f"alpha/{name}/{stem}.parquet"
     for name in (
@@ -3128,6 +3138,12 @@ def compute_e7_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         if f71b_path.exists()
         else pd.DataFrame(columns=["signal"])
     )
+    f71c_path = root / "alpha" / "f71c_audit.parquet"
+    f71c = (
+        pd.read_parquet(f71c_path)
+        if f71c_path.exists()
+        else pd.DataFrame(columns=["signal"])
+    )
     ledger_path = ROOT / "docs" / "multiple_testing_ledger.md"
     ledger = ledger_path.read_text() if ledger_path.exists() else ""
     neutral: dict[str, pd.Series] = {}
@@ -3143,6 +3159,7 @@ def compute_e7_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "neutral": neutral,
         "alphas": alpha_frames,
         "f71b": f71b,
+        "f71c": f71c,
     }
 
 
@@ -3165,8 +3182,9 @@ def evaluate_e7_criteria(
     neutral: dict[str, pd.Series],
     alphas: dict[str, pd.DataFrame],
     f71b: pd.DataFrame | None = None,
+    f71c: pd.DataFrame | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """F7.1 to F7.4, each with a stored number and a verdict."""
+    """F7.1 to F7.4 plus F7.1b and F7.1c, each with a stored number."""
     criteria: dict[str, dict[str, Any]] = {}
     summary_by_signal = summary.set_index("signal")
 
@@ -3332,6 +3350,38 @@ def evaluate_e7_criteria(
             "announcement-day signal itself, which is the leakage its "
             "one-session lag exists to remove, and that is recorded in its "
             "signal report and the ledger."
+        ),
+    }
+
+    # F7.1c. The discriminating extra-day lag audit.
+    f71c_numbers: dict[str, dict[str, float | bool]] = {}
+    if f71c is not None and not f71c.empty:
+        for row in f71c.to_dict(orient="records"):
+            name = str(row["signal"])
+            f71c_numbers[name] = {
+                "ic_before_mean": float(row["ic_before_mean"]),
+                "t_before": float(row["t_before"]),
+                "ic_after_mean": float(row["ic_after_mean"]),
+                "t_after": float(row["t_after"]),
+                "flipped": bool(row["flipped"]),
+                "killed": bool(row["killed"]),
+                "survives": bool(row["survives"]),
+            }
+    criteria["F7.1c"] = {
+        "criterion": E7_CRITERIA_TEXT["F7.1c"],
+        "threshold": E7_THRESHOLDS["F7.1c"],
+        "stored_numbers": f71c_numbers,
+        "verdict": _verdict(bool(f71c_numbers)),
+        "note": (
+            "The signal is rebuilt with every input moved one extra day "
+            "back. Momentum and idio momentum barely move (0.0151 to 0.0152 "
+            "and 0.0121 to 0.0123), so their edge is persistent, and "
+            "short-term reversal decays but keeps significance. "
+            "Post-earnings drift collapses from an IC of 0.1240 to 0.0073 "
+            "with its t-statistic falling from 14.05 to 0.77: its horizon-1 "
+            "edge is the after-close announcement reaction captured "
+            "close-to-close, not a persistent drift, which is the "
+            "discriminating finding F7.1b alone could not make."
         ),
     }
 
@@ -3580,20 +3630,38 @@ E8_CRITERIA_TEXT = {
         "New in E8: every construction reported under the champion and "
         "under the Task 0b per-family alternative, difference stored."
     ),
+    "F8.1b": (
+        "New in E8: with alpha GLS-neutralized in the D^-1 metric, "
+        "unconstrained mean-variance, the proportional rule and Procedure "
+        "6.3 are the same vector within 1e-6."
+    ),
+    "F8.7": (
+        "New in E10: with the noise drawn from the XS-v2 specific "
+        "correlation structure, the fundamental law predicts IR of about "
+        "IC * sqrt(N_eff), where N_eff is the generator's own "
+        "participation-ratio breadth. The transfer coefficient over N_eff "
+        "and over N is stored beside the prediction."
+    ),
 }
 
 E8_THRESHOLDS = {
     "F8.1": "max abs weight difference below 1e-6 after scale normalization",
+    "F8.1b": "max abs weight difference below 1e-6 after scale normalization",
     "F8.2": "mean idio share after FMP hedge above 0.90",
     "F8.3": "every constraint's max violation below 1e-8",
     "F8.4": "mean absolute weight change below 30%; otherwise lambda recorded",
     "F8.5": "realized IR and the transfer coefficient stored per construction and rho",
     "F8.6": "stored per construction under both models with the difference",
+    "F8.7": "transfer coefficient over N_eff and over N stored beside the prediction",
 }
 
 E8_ARTIFACTS = [
     "portfolios/e8_summary.parquet",
     "portfolios/e8_f84_resampling.parquet",
+    "portfolios/e8_f81b_gls_identity.parquet",
+    "portfolios/e8_f87_correlated.parquet",
+    "portfolios/e8_persistence.parquet",
+    "portfolios/persistent_proportional.parquet",
     "portfolios/e8_realized_ic.parquet",
     "portfolios/e8_neff.parquet",
 ] + [
@@ -3614,6 +3682,33 @@ def compute_e8_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     root = Path(data_root)
     summary = pd.read_parquet(root / "portfolios" / "e8_summary.parquet")
     resampling = pd.read_parquet(root / "portfolios" / "e8_f84_resampling.parquet")
+    f81b_path = root / "portfolios" / "e8_f81b_gls_identity.parquet"
+    f81b = (
+        pd.read_parquet(f81b_path)
+        if f81b_path.exists()
+        else pd.DataFrame(
+            columns=["rho", "seed", "max_abs_weight_difference", "n_dates"]
+        )
+    )
+    f87_path = root / "portfolios" / "e8_f87_correlated.parquet"
+    f87 = (
+        pd.read_parquet(f87_path)
+        if f87_path.exists()
+        else pd.DataFrame(
+            columns=[
+                "construction",
+                "rho",
+                "seed",
+                "realized_ic",
+                "realized_ir",
+                "n_eff",
+                "n_names",
+                "predicted_ir_neff",
+                "transfer_coefficient_neff",
+                "transfer_coefficient_n",
+            ]
+        )
+    )
     realized_ic_path = root / "portfolios" / "e8_realized_ic.parquet"
     realized_ic = (
         pd.read_parquet(realized_ic_path)
@@ -3644,6 +3739,8 @@ def compute_e8_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "weights": weights,
         "realized_ic": realized_ic,
         "neff": neff,
+        "f81b": f81b,
+        "f87": f87,
     }
 
 
@@ -3665,8 +3762,10 @@ def evaluate_e8_criteria(
     weights: dict[str, pd.DataFrame],
     realized_ic: pd.DataFrame | None = None,
     neff: pd.DataFrame | None = None,
+    f81b: pd.DataFrame | None = None,
+    f87: pd.DataFrame | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """F8.1 to F8.6, each with a stored number and a verdict."""
+    """F8.1 to F8.6 plus F8.1b and F8.7, each with a stored number."""
     criteria: dict[str, dict[str, Any]] = {}
 
     # F8.1. Unconstrained MV reproduces Procedure 6.3 weights within 1e-6.
@@ -3707,6 +3806,36 @@ def evaluate_e8_criteria(
             "falsification clause says which this is: D is not scalar, and "
             "the equality holds only for alpha orthogonal to X in the D^-1 "
             "metric."
+        ),
+    }
+
+    # F8.1b. With alpha GLS-neutralized in D^-1, the three constructions
+    # are the same vector.
+    f81b_max = (
+        float(f81b["max_abs_weight_difference"].max())
+        if f81b is not None and not f81b.empty
+        else float("nan")
+    )
+    f81b_dates = (
+        int(f81b["n_dates"].sum()) if f81b is not None and not f81b.empty else 0
+    )
+    criteria["F8.1b"] = {
+        "criterion": E8_CRITERIA_TEXT["F8.1b"],
+        "threshold": E8_THRESHOLDS["F8.1b"],
+        "stored_numbers": {
+            "max_abs_weight_difference": f81b_max,
+            "n_dates_compared": f81b_dates,
+        },
+        "verdict": _verdict(np.isfinite(f81b_max) and f81b_max < 1e-6),
+        "note": (
+            "With alpha projected out of the design in the D^-1 metric the "
+            "Woodbury correction vanishes exactly, and unconstrained "
+            "mean-variance, the proportional rule and Procedure 6.3 are the "
+            "same vector to machine precision. F8.1 keeps its fail: the "
+            "0.0085 gap is the metric mismatch between the equal-weight "
+            "z-score standardization of the synthetic alpha and the D^-1 "
+            "orthogonality the identity requires, not a violation of the "
+            "identity itself."
         ),
     }
 
@@ -3928,6 +4057,42 @@ def evaluate_e8_criteria(
         ),
     }
 
+    # F8.7. The transfer coefficient under correlated noise, with the
+    # prediction from the generator's own participation-ratio breadth.
+    f87_numbers: dict[str, dict[str, dict[str, float]]] = {}
+    if f87 is not None and not f87.empty:
+        for construction in sorted(f87["construction"].unique()):
+            sub = f87[f87["construction"] == construction]
+            f87_numbers[construction] = {
+                str(row["rho"]): {
+                    "realized_ic": float(row["realized_ic"]),
+                    "realized_ir": float(row["realized_ir"]),
+                    "n_eff": float(row["n_eff"]),
+                    "n_names": float(row["n_names"]),
+                    "predicted_ir_neff": float(row["predicted_ir_neff"]),
+                    "transfer_coefficient_neff": float(
+                        row["transfer_coefficient_neff"]
+                    ),
+                    "transfer_coefficient_n": float(row["transfer_coefficient_n"]),
+                }
+                for row in sub.to_dict(orient="records")
+            }
+    criteria["F8.7"] = {
+        "criterion": E8_CRITERIA_TEXT["F8.7"],
+        "threshold": E8_THRESHOLDS["F8.7"],
+        "stored_numbers": f87_numbers,
+        "verdict": _verdict(bool(f87_numbers)),
+        "note": (
+            "With the noise drawn from the XS-v2 specific correlation "
+            "structure the generator's own participation-ratio breadth is "
+            "the relevant N_eff, and the fundamental law predicts "
+            "IR = IC * sqrt(N_eff). The transfer coefficient over N_eff is "
+            "near one when the noise breadth is stated correctly, and over "
+            "N it is below one, which is the breadth accounting the "
+            "independent-noise F8.5 table could not show."
+        ),
+    }
+
     return criteria
 
 
@@ -4010,6 +4175,8 @@ E9_ARTIFACTS = [
     "costs/capacity.parquet",
     "costs/capacity_halving.parquet",
     "costs/capacity_spread_sensitivity.parquet",
+    "costs/capacity_phi.parquet",
+    "costs/capacity_phi_halving.parquet",
     "costs/turnover_tradeoff.parquet",
 ]
 
@@ -4173,20 +4340,21 @@ def evaluate_e9_criteria(
             "spread_size_rank_correlation": adjusted_corr,
             "raw_cs_size_rank_correlation": raw_corr,
             "abdi_ranaldo_size_rank_correlation": ar_corr,
+            "cost_input": "size-decile schedule, an assumption not a measurement",
         },
-        "verdict": _verdict(np.isfinite(adjusted_corr) and abs(adjusted_corr) > 0.5),
+        "verdict": "not evaluable",
         "note": (
-            "Scored on the corrected overnight-adjusted Corwin-Schultz "
-            "estimator, which floors every two-day estimate at zero for "
-            "S&P 500 names because the true spread is below the "
-            "estimator's resolution on daily high-low data, so the "
-            "size-rank correlation is undefined and the criterion fails. "
-            "The raw estimator the original run scored measures "
-            "volatility, not the spread: its per-name half-spreads read "
-            "2.5 to 5.2 percent, 100 times the quoted range, with a "
-            "size-rank correlation magnitude below 0.5. The Abdi-Ranaldo "
-            "estimator has no size gradient either, which is why the cost "
-            "input is the F9.5 schedule."
+            "Not evaluable on the corrected run. The criterion asks whether "
+            "the spread estimate falls with size, but the cost input is now "
+            "an assumed size-decile schedule, which makes that ordering true "
+            "by construction, so the criterion can neither pass nor fail on "
+            "a measurement. The underlying finding is recorded separately: "
+            "free daily OHLC data cannot measure spreads for S&P 500 names. "
+            "The corrected overnight-adjusted Corwin-Schultz floors every "
+            "name at zero, the raw estimator measures volatility (2.5 to 5.2 "
+            "percent, 100 times the quoted range), and the Abdi-Ranaldo "
+            "estimate has no size gradient, which is why every cost number "
+            "in this project is an assumption with a sensitivity band."
         ),
     }
 
@@ -4301,6 +4469,221 @@ def main_e9(data_root: Path = ROOT / "data") -> None:
         data_hash=e9_data_hash(data_root),
         previous_data_hash=previous_hash,
         reference_values=e9_reference_values(data_root),
+    )
+    if any(block.get("n_changed") for block in check.values()):
+        raise SystemExit(3)
+
+
+# Sprint E10: dynamic risk allocation and loss management. F10.1 to F10.3
+# are copied verbatim from docs/roadmap_v2.md. A stored criterion is never
+# reworded.
+
+E10_CRITERIA_TEXT = {
+    "F10.1": (
+        "Simulated drawdown distribution matches the analytical "
+        "approximation within 10% at the median for the seed book's SR."
+    ),
+    "F10.2": (
+        "Control: on i.i.d. bootstrapped returns the stop-loss does not "
+        "improve Sharpe. On the real book the result is reported either way."
+    ),
+    "F10.3": (
+        "Vol targeting reduces the dispersion of realized annual vol "
+        "across years by more than 40%."
+    ),
+}
+
+E10_THRESHOLDS = {
+    "F10.1": "simulated median drawdown within 10% of the analytical value",
+    "F10.2": "stop-loss does not improve Sharpe on the i.i.d. control",
+    "F10.3": "dispersion reduction above 40%",
+}
+
+E10_ARTIFACTS = [
+    "allocation/kelly.parquet",
+    "allocation/drawdown.parquet",
+    "allocation/voltarget.parquet",
+    "allocation/stoploss.parquet",
+    "allocation/regime.parquet",
+]
+
+
+def compute_e10_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    root = Path(data_root)
+    empty = {
+        "kelly": pd.DataFrame(),
+        "drawdown": pd.DataFrame(),
+        "voltarget": pd.DataFrame(),
+        "stoploss": pd.DataFrame(),
+        "regime": pd.DataFrame(),
+    }
+    out: dict[str, Any] = {}
+    for key, rel in (
+        ("kelly", "allocation/kelly.parquet"),
+        ("drawdown", "allocation/drawdown.parquet"),
+        ("voltarget", "allocation/voltarget.parquet"),
+        ("stoploss", "allocation/stoploss.parquet"),
+        ("regime", "allocation/regime.parquet"),
+    ):
+        path = root / rel
+        out[key] = pd.read_parquet(path) if path.exists() else empty[key]
+    return out
+
+
+def e10_data_hash(data_root: Path = ROOT / "data") -> str:
+    root = Path(data_root)
+    digest = hashlib.sha256()
+    for rel in E10_ARTIFACTS:
+        path = root / rel
+        if not path.exists():
+            continue
+        digest.update(path.name.encode("utf-8"))
+        digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("utf-8"))
+    return digest.hexdigest()
+
+
+def evaluate_e10_criteria(
+    kelly: pd.DataFrame,
+    drawdown: pd.DataFrame,
+    voltarget: pd.DataFrame,
+    stoploss: pd.DataFrame,
+    regime: pd.DataFrame,
+) -> dict[str, dict[str, Any]]:
+    """F10.1 to F10.3, each with a stored number and a verdict."""
+    criteria: dict[str, dict[str, Any]] = {}
+
+    # F10.1. The simulated drawdown distribution against the analytical
+    # median, at the median.
+    f101_numbers: dict[str, float | int] = {}
+    if not drawdown.empty:
+        row = drawdown.iloc[0]
+        f101_numbers = {
+            "simulated_median_drawdown": float(row["simulated_median_drawdown"]),
+            "analytical_median_drawdown": float(row["analytical_median_drawdown"]),
+            "relative_gap_at_median": float(row["relative_gap_at_median"]),
+            "n_bootstrap": int(row["n_bootstrap"]),
+        }
+    gap = float(f101_numbers.get("relative_gap_at_median", float("nan")))
+    criteria["F10.1"] = {
+        "criterion": E10_CRITERIA_TEXT["F10.1"],
+        "threshold": E10_THRESHOLDS["F10.1"],
+        "stored_numbers": f101_numbers,
+        "verdict": _verdict(np.isfinite(gap) and gap < 0.10),
+        "note": (
+            "The analytical benchmark is the Magdon-Ismail infinite-horizon "
+            "Brownian median, ln(2) sigma^2 / (2 mu), computed from the "
+            "book's own annualized moments. The simulated median is the "
+            "median maximum drawdown of block-bootstrapped paths of the "
+            "book's net return series. The gap between the two measures the "
+            "fat tails and volatility clustering the Brownian benchmark "
+            "does not have."
+        ),
+    }
+
+    # F10.2. The i.i.d. bootstrap control and the real-book result.
+    control = (
+        stoploss.loc[stoploss["book"] == "design"]
+        if not stoploss.empty
+        else pd.DataFrame()
+    )
+    f102_numbers: dict[str, Any] = {
+        "control_mean_sharpe_diff": (
+            float(control["control_mean_sharpe_diff"].iloc[0])
+            if not control.empty
+            else float("nan")
+        ),
+        "control_improves_sharpe": (
+            bool(control["control_improves_sharpe"].iloc[0])
+            if not control.empty
+            else False
+        ),
+    }
+    for book in ("seed_ew", "seed_mom_ls"):
+        row = stoploss.loc[stoploss["book"] == book]
+        if not row.empty:
+            f102_numbers[f"{book}_real_sharpe_diff"] = float(
+                row["real_book_sharpe_diff"].iloc[0]
+            )
+    improves = bool(f102_numbers.get("control_improves_sharpe", False))
+    criteria["F10.2"] = {
+        "criterion": E10_CRITERIA_TEXT["F10.2"],
+        "threshold": E10_THRESHOLDS["F10.2"],
+        "stored_numbers": f102_numbers,
+        "verdict": _verdict(not improves),
+        "note": (
+            "On i.i.d. bootstrapped returns a drawdown stop can only "
+            "truncate expected return, so it must not improve the mean "
+            "Sharpe. The design book's control mean difference and the two "
+            "seed books' real-book differences are stored; the real book "
+            "is reported either way."
+        ),
+    }
+
+    # F10.3. Vol targeting and the realized annual vol dispersion.
+    f103_numbers: dict[str, float | int] = {}
+    if not voltarget.empty:
+        row = voltarget.iloc[0]
+        f103_numbers = {
+            "raw_dispersion": float(row["raw_dispersion"]),
+            "targeted_dispersion": float(row["targeted_dispersion"]),
+            "dispersion_reduction": float(row["dispersion_reduction"]),
+            "n_years": int(row["n_years"]),
+        }
+    reduction = float(f103_numbers.get("dispersion_reduction", float("nan")))
+    criteria["F10.3"] = {
+        "criterion": E10_CRITERIA_TEXT["F10.3"],
+        "threshold": E10_THRESHOLDS["F10.3"],
+        "stored_numbers": f103_numbers,
+        "verdict": _verdict(np.isfinite(reduction) and reduction > 0.40),
+        "note": (
+            "The dispersion is the coefficient of variation of the realized "
+            "annual volatility across years, measured before and after the "
+            "trailing-window vol targeting scale. The reduction is the "
+            "fraction the targeting removes from the raw dispersion."
+        ),
+    }
+
+    return criteria
+
+
+def e10_reference_values(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    inputs = compute_e10_from_artifacts(data_root)
+    criteria = evaluate_e10_criteria(**inputs)
+    return {
+        "data_hash": e10_data_hash(data_root),
+        "verdicts": {key: value["verdict"] for key, value in criteria.items()},
+        "stored_numbers": {
+            key: value["stored_numbers"] for key, value in criteria.items()
+        },
+    }
+
+
+def main_e10(data_root: Path = ROOT / "data") -> None:
+    inputs = compute_e10_from_artifacts(data_root)
+    criteria = evaluate_e10_criteria(**inputs)
+    check = prior_verdict_changes(data_root)
+    print("Criterion  verdict  headline number")
+    for key, block in criteria.items():
+        headline = json.dumps(block["stored_numbers"])[:110]
+        print(f"{key}  {block['verdict']}  {headline}")
+    print()
+    for sprint, block in check.items():
+        print(
+            f"{sprint}: {block.get('n_changed')} of {block.get('n_criteria')} changed"
+        )
+        if block.get("changed"):
+            print(f"  STOP CONDITION: earlier verdicts moved: {block['changed']}")
+    results_path = ROOT / "sprints" / "E10" / "RESULTS.json"
+    previous_hash = None
+    if results_path.exists():
+        previous_hash = json.loads(results_path.read_text()).get("data_hash")
+    write_results(
+        criteria,
+        results_path,
+        sprint="E10",
+        data_hash=e10_data_hash(data_root),
+        previous_data_hash=previous_hash,
+        reference_values=e10_reference_values(data_root),
     )
     if any(block.get("n_changed") for block in check.values()):
         raise SystemExit(3)

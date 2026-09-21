@@ -320,3 +320,15 @@ Carried forward, all stored:
 3. The Corwin-Schultz spread estimates are noisy at the single-name level
    (rank correlation magnitude 0.349); a vendor spread feed would firm up
    the cost model before E11's realized-fill comparison.
+
+## 2026-09-21: spreads are assumptions for equities, measurable for credit
+
+Owner: E13 (credit port). The E9 cost correction found that free daily
+OHLC data cannot measure spreads for S&P 500 names: the corrected
+Corwin-Schultz floors at zero and the Abdi-Ranaldo estimate has no size
+gradient. Every equity cost number in this project is therefore a
+size-decile schedule stated as an assumption with a half and double
+sensitivity band, never a measurement. This changes for credit, where
+trade prints make spreads directly measurable, so the credit port can
+calibrate a real spread model rather than assume one. Tracked here, not
+scheduled for E10.

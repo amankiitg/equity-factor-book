@@ -138,6 +138,18 @@ LINKS = [
         "Walkthrough notebook E9 (cost and capacity)",
         "notebooks/E9_walkthrough.html",
     ),
+    ("Sprint E10 PRD", "sprints/E10/PRD.md"),
+    ("Sprint E10 tasks", "sprints/E10/TASKS.md"),
+    ("Sprint E10 results (F criteria)", "sprints/E10/RESULTS.json"),
+    (
+        "Research deliverable: Risk Allocation and Drawdown Policy",
+        "docs/research/E10_risk_policy.md",
+    ),
+    (
+        "Walkthrough notebook E10 (risk allocation)",
+        "notebooks/E10_walkthrough.html",
+    ),
+    ("RG-Operate checklist", "docs/research/RG_OPERATE.md"),
 ]
 
 

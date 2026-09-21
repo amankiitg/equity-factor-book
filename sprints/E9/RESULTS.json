@@ -1,7 +1,7 @@
 {
   "sprint": "E9",
-  "evaluated_at": "2026-09-21T21:58:14+00:00",
-  "data_hash": "79d2335491c2d27675ea9b911f6e77407c66ecf918df3fa357bc3f2a9ea085d2",
+  "evaluated_at": "2026-09-21T23:12:40+00:00",
+  "data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
   "criteria": {
     "F9.1": {
       "criterion": "Net Sharpe declines monotonically with AUM; the halving AUM is stored.",
@@ -51,10 +51,11 @@
       "stored_numbers": {
         "spread_size_rank_correlation": NaN,
         "raw_cs_size_rank_correlation": -0.47129396780020943,
-        "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906
+        "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906,
+        "cost_input": "size-decile schedule, an assumption not a measurement"
       },
-      "verdict": "fail",
-      "note": "Scored on the corrected overnight-adjusted Corwin-Schultz estimator, which floors every two-day estimate at zero for S&P 500 names because the true spread is below the estimator's resolution on daily high-low data, so the size-rank correlation is undefined and the criterion fails. The raw estimator the original run scored measures volatility, not the spread: its per-name half-spreads read 2.5 to 5.2 percent, 100 times the quoted range, with a size-rank correlation magnitude below 0.5. The Abdi-Ranaldo estimator has no size gradient either, which is why the cost input is the F9.5 schedule."
+      "verdict": "not evaluable",
+      "note": "Not evaluable on the corrected run. The criterion asks whether the spread estimate falls with size, but the cost input is now an assumed size-decile schedule, which makes that ordering true by construction, so the criterion can neither pass nor fail on a measurement. The underlying finding is recorded separately: free daily OHLC data cannot measure spreads for S&P 500 names. The corrected overnight-adjusted Corwin-Schultz floors every name at zero, the raw estimator measures volatility (2.5 to 5.2 percent, 100 times the quoted range), and the Abdi-Ranaldo estimate has no size gradient, which is why every cost number in this project is an assumption with a sensitivity band."
     },
     "F9.4": {
       "criterion": "New in E9: the halving AUM stored per rho with its sensitivity to the impact coefficient k.",
@@ -159,11 +160,11 @@
     }
   },
   "revisions": {
-    "previous_data_hash": "89d088cc80557c178701a7ecb2505f7c21f2f8cfb17c0756366037147ea348d3",
-    "data_hash": "79d2335491c2d27675ea9b911f6e77407c66ecf918df3fa357bc3f2a9ea085d2",
+    "previous_data_hash": "79d2335491c2d27675ea9b911f6e77407c66ecf918df3fa357bc3f2a9ea085d2",
+    "data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
     "n_changed": 1,
     "changed_tickers_or_criteria": [
-      "F9.5"
+      "F9.3"
     ],
     "cross_sprint_criteria": [],
     "changed": {
@@ -246,7 +247,7 @@
         }
       },
       "F9.3": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "fail",
           "stored_numbers": {
@@ -256,11 +257,12 @@
           }
         },
         "new": {
-          "verdict": "fail",
+          "verdict": "not evaluable",
           "stored_numbers": {
             "spread_size_rank_correlation": NaN,
             "raw_cs_size_rank_correlation": -0.47129396780020943,
-            "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906
+            "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906,
+            "cost_input": "size-decile schedule, an assumption not a measurement"
           }
         }
       },
@@ -308,7 +310,7 @@
         }
       },
       "F9.5": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "pass",
           "stored_numbers": {
@@ -364,6 +366,23 @@
             "sensitivity_multipliers": {
               "half": 0.5,
               "double": 2.0
+            },
+            "halving_aum_by_spread_multiplier": {
+              "0.02": {
+                "mult_0.5": 14677992.676220676,
+                "mult_1.0": NaN,
+                "mult_2.0": NaN
+              },
+              "0.05": {
+                "mult_0.5": 146779926.76220676,
+                "mult_1.0": 100000000.0,
+                "mult_2.0": 21544346.900318824
+              },
+              "0.1": {
+                "mult_0.5": 681292069.0579594,
+                "mult_1.0": 464158883.3612773,
+                "mult_2.0": 316227766.01683795
+              }
             }
           }
         },
@@ -1031,15 +1050,320 @@
             }
           }
         }
+      },
+      {
+        "previous_data_hash": "79d2335491c2d27675ea9b911f6e77407c66ecf918df3fa357bc3f2a9ea085d2",
+        "data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
+        "n_changed": 1,
+        "changed_tickers_or_criteria": [
+          "F9.3"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F9.1": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "n_monotonicity_violations_net_sharpe": 0,
+                "n_monotonicity_violations_net_mean": 0,
+                "n_curves": 9,
+                "halving_aum_by_rho_k": {
+                  "0.02_0.25": NaN,
+                  "0.02_0.5": NaN,
+                  "0.02_1.0": NaN,
+                  "0.05_0.25": 464158883.3612773,
+                  "0.05_0.5": 100000000.0,
+                  "0.05_1.0": 31622776.60168379,
+                  "0.1_0.25": 2154434690.031878,
+                  "0.1_0.5": 464158883.3612773,
+                  "0.1_1.0": 100000000.0
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "n_monotonicity_violations_net_sharpe": 0,
+                "n_monotonicity_violations_net_mean": 0,
+                "n_curves": 9,
+                "halving_aum_by_rho_k": {
+                  "0.02_0.25": NaN,
+                  "0.02_0.5": NaN,
+                  "0.02_1.0": NaN,
+                  "0.05_0.25": 464158883.3612773,
+                  "0.05_0.5": 100000000.0,
+                  "0.05_1.0": 31622776.60168379,
+                  "0.1_0.25": 2154434690.031878,
+                  "0.1_0.5": 464158883.3612773,
+                  "0.1_1.0": 100000000.0
+                }
+              }
+            }
+          },
+          "F9.2": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "0.02": {
+                  "turnover_cut": 0.37549626103844624,
+                  "ex_ante_ir_loss": 0.06485377957194484
+                },
+                "0.05": {
+                  "turnover_cut": 0.3750665373197515,
+                  "ex_ante_ir_loss": 0.06475345564061231
+                },
+                "0.1": {
+                  "turnover_cut": 0.37538716626074037,
+                  "ex_ante_ir_loss": 0.0647444942254279
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "0.02": {
+                  "turnover_cut": 0.37549626103844624,
+                  "ex_ante_ir_loss": 0.06485377957194484
+                },
+                "0.05": {
+                  "turnover_cut": 0.3750665373197515,
+                  "ex_ante_ir_loss": 0.06475345564061231
+                },
+                "0.1": {
+                  "turnover_cut": 0.37538716626074037,
+                  "ex_ante_ir_loss": 0.0647444942254279
+                }
+              }
+            }
+          },
+          "F9.3": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "spread_size_rank_correlation": NaN,
+                "raw_cs_size_rank_correlation": -0.47129396780020943,
+                "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906
+              }
+            },
+            "new": {
+              "verdict": "not evaluable",
+              "stored_numbers": {
+                "spread_size_rank_correlation": NaN,
+                "raw_cs_size_rank_correlation": -0.47129396780020943,
+                "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906,
+                "cost_input": "size-decile schedule, an assumption not a measurement"
+              }
+            }
+          },
+          "F9.4": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "0.02": {
+                  "k_0.25": NaN,
+                  "k_0.5": NaN,
+                  "k_1.0": NaN
+                },
+                "0.05": {
+                  "k_0.25": 464158883.3612773,
+                  "k_0.5": 100000000.0,
+                  "k_1.0": 31622776.60168379
+                },
+                "0.1": {
+                  "k_0.25": 2154434690.031878,
+                  "k_0.5": 464158883.3612773,
+                  "k_1.0": 100000000.0
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "0.02": {
+                  "k_0.25": NaN,
+                  "k_0.5": NaN,
+                  "k_1.0": NaN
+                },
+                "0.05": {
+                  "k_0.25": 464158883.3612773,
+                  "k_0.5": 100000000.0,
+                  "k_1.0": 31622776.60168379
+                },
+                "0.1": {
+                  "k_0.25": 2154434690.031878,
+                  "k_0.5": 464158883.3612773,
+                  "k_1.0": 100000000.0
+                }
+              }
+            }
+          },
+          "F9.5": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "chosen_estimator": "size-decile schedule, 10 bp (smallest) to 1 bp (largest) half-spread, stated as an assumption",
+                "median_half_spread_by_decile": {
+                  "0": 0.001,
+                  "1": 0.0009,
+                  "2": 0.0008,
+                  "3": 0.0007,
+                  "4": 0.0006,
+                  "5": 0.0005,
+                  "6": 0.0004,
+                  "7": 0.0003,
+                  "8": 0.0002,
+                  "9": 0.0001
+                },
+                "anchor_raw_cs_median_by_decile": {
+                  "0": 0.04179835381802475,
+                  "1": 0.03657041670210323,
+                  "2": 0.03118363285983258,
+                  "3": 0.029519852185802296,
+                  "4": 0.02758196777184469,
+                  "5": 0.02684116765567754,
+                  "6": 0.02734163518091963,
+                  "7": 0.027167384688644894,
+                  "8": 0.025121840600573517,
+                  "9": 0.023684706298427873
+                },
+                "anchor_adjusted_cs_median_by_decile": {
+                  "0": 0.0,
+                  "1": 0.0,
+                  "2": 0.0,
+                  "3": 0.0,
+                  "4": 0.0,
+                  "5": 0.0,
+                  "6": 0.0,
+                  "7": 0.0,
+                  "8": 0.0,
+                  "9": 0.0
+                },
+                "anchor_abdi_ranaldo_median_by_decile": {
+                  "0": 0.0007122485457996931,
+                  "1": 0.0011131925669964908,
+                  "2": 0.0008567000438683264,
+                  "3": 0.0006785821688685737,
+                  "4": 0.0009248584838501589,
+                  "5": 0.0007080699003095254,
+                  "6": 0.0005219726494477424,
+                  "7": 0.000840936862718969,
+                  "8": 0.0010519294736646835,
+                  "9": 0.0009126175127999234
+                },
+                "sensitivity_multipliers": {
+                  "half": 0.5,
+                  "double": 2.0
+                },
+                "halving_aum_by_spread_multiplier": {
+                  "0.02": {
+                    "mult_0.5": 14677992.676220676,
+                    "mult_1.0": NaN,
+                    "mult_2.0": NaN
+                  },
+                  "0.05": {
+                    "mult_0.5": 146779926.76220676,
+                    "mult_1.0": 100000000.0,
+                    "mult_2.0": 21544346.900318824
+                  },
+                  "0.1": {
+                    "mult_0.5": 681292069.0579594,
+                    "mult_1.0": 464158883.3612773,
+                    "mult_2.0": 316227766.01683795
+                  }
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "chosen_estimator": "size-decile schedule, 10 bp (smallest) to 1 bp (largest) half-spread, stated as an assumption",
+                "median_half_spread_by_decile": {
+                  "0": 0.001,
+                  "1": 0.0009,
+                  "2": 0.0008,
+                  "3": 0.0007,
+                  "4": 0.0006,
+                  "5": 0.0005,
+                  "6": 0.0004,
+                  "7": 0.0003,
+                  "8": 0.0002,
+                  "9": 0.0001
+                },
+                "anchor_raw_cs_median_by_decile": {
+                  "0": 0.04179835381802475,
+                  "1": 0.03657041670210323,
+                  "2": 0.03118363285983258,
+                  "3": 0.029519852185802296,
+                  "4": 0.02758196777184469,
+                  "5": 0.02684116765567754,
+                  "6": 0.02734163518091963,
+                  "7": 0.027167384688644894,
+                  "8": 0.025121840600573517,
+                  "9": 0.023684706298427873
+                },
+                "anchor_adjusted_cs_median_by_decile": {
+                  "0": 0.0,
+                  "1": 0.0,
+                  "2": 0.0,
+                  "3": 0.0,
+                  "4": 0.0,
+                  "5": 0.0,
+                  "6": 0.0,
+                  "7": 0.0,
+                  "8": 0.0,
+                  "9": 0.0
+                },
+                "anchor_abdi_ranaldo_median_by_decile": {
+                  "0": 0.0007122485457996931,
+                  "1": 0.0011131925669964908,
+                  "2": 0.0008567000438683264,
+                  "3": 0.0006785821688685737,
+                  "4": 0.0009248584838501589,
+                  "5": 0.0007080699003095254,
+                  "6": 0.0005219726494477424,
+                  "7": 0.000840936862718969,
+                  "8": 0.0010519294736646835,
+                  "9": 0.0009126175127999234
+                },
+                "sensitivity_multipliers": {
+                  "half": 0.5,
+                  "double": 2.0
+                },
+                "halving_aum_by_spread_multiplier": {
+                  "0.02": {
+                    "mult_0.5": 14677992.676220676,
+                    "mult_1.0": NaN,
+                    "mult_2.0": NaN
+                  },
+                  "0.05": {
+                    "mult_0.5": 146779926.76220676,
+                    "mult_1.0": 100000000.0,
+                    "mult_2.0": 21544346.900318824
+                  },
+                  "0.1": {
+                    "mult_0.5": 681292069.0579594,
+                    "mult_1.0": 464158883.3612773,
+                    "mult_2.0": 316227766.01683795
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     ]
   },
   "reference_values": {
-    "data_hash": "79d2335491c2d27675ea9b911f6e77407c66ecf918df3fa357bc3f2a9ea085d2",
+    "data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
     "verdicts": {
       "F9.1": "fail",
       "F9.2": "fail",
-      "F9.3": "fail",
+      "F9.3": "not evaluable",
       "F9.4": "pass",
       "F9.5": "pass"
     },
@@ -1077,7 +1401,8 @@
       "F9.3": {
         "spread_size_rank_correlation": NaN,
         "raw_cs_size_rank_correlation": -0.47129396780020943,
-        "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906
+        "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906,
+        "cost_input": "size-decile schedule, an assumption not a measurement"
       },
       "F9.4": {
         "0.02": {

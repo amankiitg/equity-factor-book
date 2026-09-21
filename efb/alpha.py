@@ -379,6 +379,48 @@ def run_f71b(
     return frame
 
 
+def run_f71c(
+    data_root: Path = DATA_ROOT,
+    store: bool = True,
+    signals: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
+    """F7.1c: the discriminating extra-day lag audit, one row per signal.
+
+    Each signal is rebuilt with every input moved one extra day back and its
+    IC is recomputed against the same-day return. A persistent clean signal
+    barely moves under the extra lag; a leaking one collapses, because the
+    extra day removes the target-day information from its window. This is
+    the direction opposite to F7.1b, and it is the one that discriminates:
+    F7.1b proves the harness sees injected leakage, F7.1c asks whether the
+    real signals are clean. Stored as data/alpha/f71c_audit.parquet.
+    """
+    from efb import hygiene
+
+    root = Path(data_root)
+    wide, _counts = eval_risk.load_clean_wide(root)
+    rows: list[dict[str, object]] = []
+    for name in SIGNAL_BUILDERS:
+        if signals is not None and name not in signals:
+            continue
+        print(f"f71c {name}")
+        signal = _signal_for(name, wide, root)
+        if signal.empty:
+            continue
+        lagged = lagged_signal(name, wide, root)
+        audit = hygiene.empirical_shift_audit(signal, lagged, wide)
+        rows.append({"signal": name, **audit})
+        del signal, lagged
+        import gc
+
+        gc.collect()
+    frame = pd.DataFrame(rows)
+    if store:
+        out = root / "alpha" / "f71c_audit.parquet"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(out, index=False)
+    return frame
+
+
 def _signal_for(name: str, wide: pd.DataFrame, root: Path) -> pd.DataFrame:
     tickers = [t for t in wide.columns if t.isalpha()]
     if name == "short_interest":

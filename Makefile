@@ -7,7 +7,7 @@ RUFF ?= $(if $(VENV_BIN),$(VENV_BIN)/ruff,ruff)
 MYPY ?= $(if $(VENV_BIN),$(VENV_BIN)/mypy,mypy)
 BLACK ?= $(if $(VENV_BIN),$(VENV_BIN)/black,black)
 
-.PHONY: help test lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild-e4 rebuild-e5 rebuild-e6 rebuild-e7 rebuild-e8 rebuild-e9 rebuild evidence verify-evidence clean
+.PHONY: help test lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild-e4 rebuild-e5 rebuild-e6 rebuild-e7 rebuild-e8 rebuild-e9 rebuild-e10 rebuild evidence verify-evidence clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-15s %s\n", $$1, $$2}'
@@ -57,7 +57,10 @@ rebuild-e8: ## Rebuilds the E8 construction run on synthetic alpha (Sprint E8)
 rebuild-e9: ## Rebuilds the E9 cost model and capacity curve (Sprint E9)
 	$(PYTHON) -m efb.build --e9
 
-rebuild: ## Rebuilds E1 through E9 end to end, the gate G1 one-command path
+rebuild-e10: ## Rebuilds the E10 risk allocation and loss management (Sprint E10)
+	$(PYTHON) -m efb.build --e10
+
+rebuild: ## Rebuilds E1 through E10 end to end, the gate G1 one-command path
 	$(PYTHON) -m efb.build --all
 
 evidence: ## Refresh the tracked evidence snapshot (E5 R1)
