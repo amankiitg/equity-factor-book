@@ -131,7 +131,7 @@ CELLS: list[tuple[str, str]] = [
         "import json as _json\n"
         "\n"
         'source = "\\n".join(\n'
-        '    cell["source"]\n'
+        '    "".join(cell["source"])\n'
         "    for cell in _json.loads(\n"
         '        (ROOT / "notebooks" / "E9_walkthrough.ipynb").read_text()\n'
         '    )["cells"]\n'

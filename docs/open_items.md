@@ -303,3 +303,20 @@ committed through Git LFS (pattern evidence/data/raw/*.gz). Cost: about
 bandwidth). The E4 descriptor probe cache (228 MB) stays skipped by the
 size cap; it is a cache rebuild regenerates from the snapshotted prices
 and factors.
+
+## 2026-09-21: E8 and E9 close-out
+
+Carried forward, all stored:
+
+1. The construction stack runs end to end on synthetic alpha (gate G3
+   confirmed), but the unhedged proportional rule loses information ratio
+   at high IC because it carries factor exposure; Procedure 6.3 (the FMP
+   hedge) restores it, which is the E8 teaching point.
+2. The synthetic z is i.i.d. across rebalance dates, so the book reshuffles
+   fully each month. The E9 cost model shows this turnover, not AUM, is the
+   binding constraint: net Sharpe is negative at every AUM and the halving
+   AUM is undefined. A persistent signal is what would make a capacity
+   number meaningful.
+3. The Corwin-Schultz spread estimates are noisy at the single-name level
+   (rank correlation magnitude 0.349); a vendor spread feed would firm up
+   the cost model before E11's realized-fill comparison.

@@ -1,8 +1,12 @@
 {
-  "note": "Built by make rebuild (Sprint E7). The alpha lab artifacts and the multiple-testing ledger join the versioned set; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-21T05:16:29+00:00",
-  "data_hash": "e58e4611e3bf6df3219e1c07499065b543e1b53ab894b6812eea4cef1d25138b",
+  "note": "Built by make rebuild (Sprint E9). The construction artifacts, the cost model and the capacity curve join the versioned set; the dashboard sidebar shows this version.",
+  "built_at": "2026-09-21T20:50:20+00:00",
+  "data_hash": "52c3a2e435d886aeceb3cedf54a06857cf9b8ae9557a4354c28bfb54fcfb7acc",
   "artifacts": {
+    "f71b_audit.parquet": {
+      "sha256": "7695b0ba7e4d4bc2dc3696c9250fcd391311d46aad7f7619fff616f76c538fb2",
+      "bytes": 5154
+    },
     "alpha.parquet": {
       "sha256": "5f092a88afb0468f6835f0fc5397b4840fc7fa2fe0807c0156f79370ea79b1b2",
       "bytes": 4083282
@@ -30,6 +34,22 @@
     "summary.parquet": {
       "sha256": "527fe1cdf5a3021c4b9694f28699f04a97ce22df7bb615c51a175d4644c29bdf",
       "bytes": 16820
+    },
+    "capacity.parquet": {
+      "sha256": "0a32755c0483193071a0dbf84ccbba4786368bef5c1a399c93e8ca1702f4a585",
+      "bytes": 8472
+    },
+    "capacity_halving.parquet": {
+      "sha256": "1be5e876d2d1a9c06330a226082dc45f48e018cdc6fd2e1288a8c41bf354b253",
+      "bytes": 2834
+    },
+    "cost_curves.parquet": {
+      "sha256": "0a9fe58bea9767a851a042090104ce8f07daf2179fc034475f029703537f3619",
+      "bytes": 4654
+    },
+    "turnover_tradeoff.parquet": {
+      "sha256": "8ef202d7b31cca2ba4351bbd68da3a5af61040b941451fb036e3f26116e226bb",
+      "bytes": 2459
     },
     "beta_horse_race.parquet": {
       "sha256": "862891ca3d6e712d6a2f6267274368d4c055e0f85077d7e23bb2e22759920005",
@@ -375,6 +395,34 @@
       "sha256": "4a505f2ac869f6d114eadf22b8ce85b33d73cb5b528c5c6ddc2d259ab9c472f0",
       "bytes": 14376
     },
+    "combined.parquet": {
+      "sha256": "7c5102d77ea407648a13d82efce52081b6f4333cf1d3a977ecdd2fde42f849f5",
+      "bytes": 11100562
+    },
+    "e8_f84_resampling.parquet": {
+      "sha256": "2a386c41b4f51a86cb59a99736c423547662d88c3e833df493ffb1d95c7e205e",
+      "bytes": 3205
+    },
+    "e8_summary.parquet": {
+      "sha256": "3f944e7193ed341dc5adb77507a9596e35df8fb86e5af88a79a537d82dfada81",
+      "bytes": 9510
+    },
+    "mv_constrained.parquet": {
+      "sha256": "f90a964337035a453cd76879c6edbdda213b379fcf3d54ea2f6a038b1eb478c6",
+      "bytes": 11108964
+    },
+    "mv_unconstrained.parquet": {
+      "sha256": "9a4fd38d3265c11cf6d762b3755d2a14d76f65305fcf7d7c05fd1a9fccb21310",
+      "bytes": 10984090
+    },
+    "procedure_6_3.parquet": {
+      "sha256": "741dd7245fde3c25225db3d28ffbed011565342e7e4e18070160191450d138b9",
+      "bytes": 10892350
+    },
+    "proportional.parquet": {
+      "sha256": "27f8b1d006edf08f2961eae30800f561ce0a37f8aee99581c47b418e9d9de87d",
+      "bytes": 11100562
+    },
     "seed_ew.parquet": {
       "sha256": "0c16d1773ce3b60cefd2e53dfe87c5c68ced9b3e9c4c3af47c0160de448cf120",
       "bytes": 522630
@@ -394,6 +442,14 @@
     "seed_mom_ls_risk_21.parquet": {
       "sha256": "be706bbdaa8144a205cc9b8554aefef0a9781f91be2f3f768047dcca3ee87d9a",
       "bytes": 18691
+    },
+    "sharpe.parquet": {
+      "sha256": "27f8b1d006edf08f2961eae30800f561ce0a37f8aee99581c47b418e9d9de87d",
+      "bytes": 11100562
+    },
+    "shrunk.parquet": {
+      "sha256": "27f8b1d006edf08f2961eae30800f561ce0a37f8aee99581c47b418e9d9de87d",
+      "bytes": 11100562
     },
     "events.parquet": {
       "sha256": "ddc1eebadf0d4367288394962a116cadaae529bcfe881b67477ac26f086229da",

@@ -1259,3 +1259,43 @@ above 2) is the right test only against a design that does not contain
 momentum. Against the champion XS-v1 design it measures what is left after
 the signal's own factor is removed, which is near zero by construction of
 the signal being tested.
+
+## 2026-09-21: E8 close-out
+
+Construction on synthetic alpha with a known IC (rho 0.02, 0.05, 0.10, five
+seeds each), a controlled experiment, never a backtest. F8.1 fails (MV
+minus Procedure 6.3 is 0.0085, above 1e-6, because the standardized
+specific return is orthogonal to the design only up to the sigma_idio
+weighting and D is not scalar); F8.2 passes (idio share after the FMP hedge
+is 1.0); F8.3 passes (max constraint violation 3.95e-09, zero solver
+fallbacks); F8.4 fails (resampling dispersion 1.416 at every rho, and no
+shrinkage reduces the relative dispersion because two IC-consistent draws
+share only correlation rho squared); F8.5 passes (the transfer table);
+F8.6 passes (the long/short per-family alternative is the champion itself,
+difference zero by identity).
+
+The headline finding: the synthetic z is i.i.d. across names, so its
+breadth is the name count, and the hedged rules realize IC * sqrt(N) with a
+transfer coefficient near one; the participation ratio of the
+specific-return correlation matrix (N_eff 128.7 against N 456.6, mean
+largest residual eigenvalue 16.5) is the return co-movement E4 measured,
+not the signal breadth, and used as breadth it over-corrects.
+
+## 2026-09-21: E9 close-out
+
+Transaction costs and capacity. The Corwin-Schultz half-spread is 2.5 to
+5.2% by size decile (smaller names wider), and the capacity curve is
+negative at every AUM because the i.i.d. synthetic signal reshuffles the
+book about 140% of gross each month, which at a 3% half-spread is roughly
+4% of AUM per rebalance in spread cost. F9.1 fails (the net Sharpe ratio is
+not monotone in AUM: the impact cost's cross-rebalance variance grows with
+AUM and inflates the denominator, while the net mean is monotone with zero
+violations); F9.2 fails (the turnover-penalized optimizer cuts 37.5% of
+turnover with 6.5% ex-ante IR loss, short of the 50% cut); F9.3 fails (the
+spread-size-rank correlation magnitude is 0.349, below 0.5, the
+Corwin-Schultz noise the roadmap named); F9.4 passes by storage (the
+halving AUM is NaN, undefined, at every rho and k).
+
+The headline finding: turnover, not capacity, is the binding constraint.
+A real signal with persistence would have far lower turnover and a defined
+capacity; that persistence is what the next signal must demonstrate.

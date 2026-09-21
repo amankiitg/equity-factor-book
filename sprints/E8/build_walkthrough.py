@@ -89,7 +89,8 @@ CELLS: list[tuple[str, str]] = [
         "for construction, block in table.items():\n"
         "    for rho, numbers in block.items():\n"
         '        print(construction, rho, "IR", round(numbers["realized_ir"], 3),\n'
-        '              "TC", round(numbers["transfer_coefficient"], 3))',
+        '              "TC_neff", round(numbers["transfer_coefficient_neff"], 3),\n'
+        '              "TC_n", round(numbers["transfer_coefficient_n"], 3))',
     ),
     (
         "markdown",
@@ -144,7 +145,7 @@ CELLS: list[tuple[str, str]] = [
         "import json as _json\n"
         "\n"
         'source = "\\n".join(\n'
-        '    cell["source"]\n'
+        '    "".join(cell["source"])\n'
         "    for cell in _json.loads(\n"
         '        (ROOT / "notebooks" / "E8_walkthrough.ipynb").read_text()\n'
         '    )["cells"]\n'
