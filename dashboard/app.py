@@ -29,6 +29,8 @@ from dashboard.tabs import (  # noqa: E402
     d04_risk_eval,
     d05_hedging,
     d06_alpha_lab,
+    d07_sizing,
+    d08_costs,
     methodology,
 )
 
@@ -68,6 +70,8 @@ def main() -> None:
             "D4 Risk Model Evaluation",
             "D5 Hedging",
             "D6 Alpha Lab",
+            "D7 Sizing and Optimizer",
+            "D8 Cost and Capacity",
             "Methodology",
         ]
     )
@@ -86,6 +90,10 @@ def main() -> None:
     with tabs[6]:
         d06_alpha_lab.render()
     with tabs[7]:
+        d07_sizing.render()
+    with tabs[8]:
+        d08_costs.render()
+    with tabs[9]:
         methodology.render()
 
 
