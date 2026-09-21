@@ -1,6 +1,6 @@
 {
   "sprint": "E6",
-  "evaluated_at": "2026-09-21T02:53:03+00:00",
+  "evaluated_at": "2026-09-21T17:18:01+00:00",
   "data_hash": "27d3ce7343ca5d1e8d2cc8bcf8d5b64e1ae9ad451a48c2f913ceae3ef90a5f61",
   "criteria": {
     "F6.1": {
@@ -65,7 +65,61 @@
         }
       },
       "verdict": "pass",
-      "note": "The champion is provisional (F5.1 failed), so the hedge study reports every headline number under both models."
+      "note": "The champion is provisional (F5.1 failed), so the hedge study reports every headline number under both models. The zero difference is by construction: XS-v2 shares XS-v1's X and F, and the hedge weights depend only on the shared factor block."
+    },
+    "F6.4b": {
+      "criterion": "Registered in E8 Task 0b, not pre-registered: F6.4 is rerun against a real alternative, the per-portfolio-family best-calibrated model in E5's family table, and the difference is stored.",
+      "threshold": "the per-family alternative and the three headline differences stored",
+      "stored_numbers": {
+        "per_family_alternative": {
+          "factor_tilted": "xs_v1",
+          "long_only": "xs_v2",
+          "long_short": "xs_v1",
+          "sector_concentrated": "xs_v2"
+        },
+        "book_family": {
+          "seed_ew": "long_only",
+          "seed_mom_ls": "long_short"
+        },
+        "champion": {
+          "long_only": {
+            "fmp_idio_share": 1.0,
+            "mv_share": 0.9784935060330155,
+            "mv_idio_share_after": 0.02699369982241376
+          },
+          "long_short": {
+            "fmp_idio_share": 1.0,
+            "realized_beta_to_mkt_rf": -0.027160228642736272,
+            "mv_idio_share_after": 0.6719561534724836
+          }
+        },
+        "alternative": {
+          "long_only": {
+            "fmp_idio_share": 1.0,
+            "mv_share": 0.9784935060330155,
+            "mv_idio_share_after": 0.02699401318687413
+          },
+          "long_short": {
+            "fmp_idio_share": 1.0,
+            "realized_beta_to_mkt_rf": -0.027160228642736272,
+            "mv_idio_share_after": 0.6719561534724836
+          }
+        },
+        "difference_champion_minus_alternative": {
+          "long_only": {
+            "fmp_idio_share": 0.0,
+            "mv_share": 0.0,
+            "mv_idio_share_after": -3.1336446036991927e-07
+          },
+          "long_short": {
+            "fmp_idio_share": 0.0,
+            "realized_beta_to_mkt_rf": 0.0,
+            "mv_idio_share_after": 0.0
+          }
+        }
+      },
+      "verdict": "pass",
+      "note": "The literal per-family best in the stored E5 table is the champion XS-v1 on factor_tilted and long_short, so the difference there is zero by identity; on long_only and sector_concentrated the best is XS-v2, which shares X and F, so the stored differences live in the idio-share accounting. The differently-structured versions (PCA-v1, PCA-v1c, TS-v1, sample) are all farther from bias 1 in every family in the stored table, which is the mechanism this criterion names."
     },
     "F6.5": {
       "criterion": "New in E6: the residual factor exposure the instrument set cannot reach, quantified per factor.",
@@ -227,6 +281,61 @@
               "fmp_idio_share": 0.0,
               "mv_share_long_only": 0.0,
               "momentum_realized_beta": 0.0
+            }
+          }
+        }
+      },
+      "F6.4b": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "per_family_alternative": {
+              "factor_tilted": "xs_v1",
+              "long_only": "xs_v2",
+              "long_short": "xs_v1",
+              "sector_concentrated": "xs_v2"
+            },
+            "book_family": {
+              "seed_ew": "long_only",
+              "seed_mom_ls": "long_short"
+            },
+            "champion": {
+              "long_only": {
+                "fmp_idio_share": 1.0,
+                "mv_share": 0.9784935060330155,
+                "mv_idio_share_after": 0.02699369982241376
+              },
+              "long_short": {
+                "fmp_idio_share": 1.0,
+                "realized_beta_to_mkt_rf": -0.027160228642736272,
+                "mv_idio_share_after": 0.6719561534724836
+              }
+            },
+            "alternative": {
+              "long_only": {
+                "fmp_idio_share": 1.0,
+                "mv_share": 0.9784935060330155,
+                "mv_idio_share_after": 0.02699401318687413
+              },
+              "long_short": {
+                "fmp_idio_share": 1.0,
+                "realized_beta_to_mkt_rf": -0.027160228642736272,
+                "mv_idio_share_after": 0.6719561534724836
+              }
+            },
+            "difference_champion_minus_alternative": {
+              "long_only": {
+                "fmp_idio_share": 0.0,
+                "mv_share": 0.0,
+                "mv_idio_share_after": -3.1336446036991927e-07
+              },
+              "long_short": {
+                "fmp_idio_share": 0.0,
+                "realized_beta_to_mkt_rf": 0.0,
+                "mv_idio_share_after": 0.0
+              }
             }
           }
         }
@@ -836,6 +945,7 @@
       "F6.2": "pass",
       "F6.3": "pass",
       "F6.4": "pass",
+      "F6.4b": "pass",
       "F6.5": "pass",
       "F6_decay": "pass"
     },
@@ -878,6 +988,54 @@
           "fmp_idio_share": 0.0,
           "mv_share_long_only": 0.0,
           "momentum_realized_beta": 0.0
+        }
+      },
+      "F6.4b": {
+        "per_family_alternative": {
+          "factor_tilted": "xs_v1",
+          "long_only": "xs_v2",
+          "long_short": "xs_v1",
+          "sector_concentrated": "xs_v2"
+        },
+        "book_family": {
+          "seed_ew": "long_only",
+          "seed_mom_ls": "long_short"
+        },
+        "champion": {
+          "long_only": {
+            "fmp_idio_share": 1.0,
+            "mv_share": 0.9784935060330155,
+            "mv_idio_share_after": 0.02699369982241376
+          },
+          "long_short": {
+            "fmp_idio_share": 1.0,
+            "realized_beta_to_mkt_rf": -0.027160228642736272,
+            "mv_idio_share_after": 0.6719561534724836
+          }
+        },
+        "alternative": {
+          "long_only": {
+            "fmp_idio_share": 1.0,
+            "mv_share": 0.9784935060330155,
+            "mv_idio_share_after": 0.02699401318687413
+          },
+          "long_short": {
+            "fmp_idio_share": 1.0,
+            "realized_beta_to_mkt_rf": -0.027160228642736272,
+            "mv_idio_share_after": 0.6719561534724836
+          }
+        },
+        "difference_champion_minus_alternative": {
+          "long_only": {
+            "fmp_idio_share": 0.0,
+            "mv_share": 0.0,
+            "mv_idio_share_after": -3.1336446036991927e-07
+          },
+          "long_short": {
+            "fmp_idio_share": 0.0,
+            "realized_beta_to_mkt_rf": 0.0,
+            "mv_idio_share_after": 0.0
+          }
         }
       },
       "F6.5": {

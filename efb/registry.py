@@ -206,3 +206,29 @@ def engine_tag(version: str) -> str:
 
 def parameters_of(payload: dict[str, Any], version: str) -> dict[str, Any]:
     return dict(payload.get("models", {}).get(version, {}).get("parameters", {}))
+
+
+def per_family_alternative(data_root: Path | None = None) -> dict[str, str]:
+    """The per-portfolio-family best-calibrated model in E5's family table.
+
+    Fixed by E8 Task 0b as the alternative every later
+    champion-against-alternative comparison uses. For families whose
+    best-calibrated entry is the champion itself the comparison degenerates
+    to identity, and that is recorded where it happens, never papered over.
+    """
+    import pandas as pd
+
+    root = (
+        Path(data_root)
+        if data_root is not None
+        else Path(__file__).resolve().parents[1] / "data"
+    )
+    table = pd.read_parquet(root / "eval" / "e5_family_bias.parquet")
+    pooled = table.loc[table["portfolio"] == "pooled"].copy()
+    pooled["gap"] = (pooled["bias"] - 1.0).abs()
+    return {
+        str(row["family"]): str(row["version"])
+        for row in pooled.loc[pooled.groupby("family")["gap"].idxmin()].to_dict(
+            orient="records"
+        )
+    }
