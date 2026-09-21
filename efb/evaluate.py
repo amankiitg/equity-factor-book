@@ -3794,11 +3794,15 @@ def evaluate_e8_criteria(
         "stored_numbers": f84_numbers,
         "verdict": _verdict(f84_ok),
         "note": (
-            "At rho = 0.02 the IC-consistent redraw is almost independent of "
-            "the first draw, so the ridge shrinkage is increased until the "
-            "mean absolute weight change falls below 30%, and the lambda is "
-            "the recorded shrinkage. The dispersion at lambda 0 is stored "
-            "beside it."
+            "At rho 0.02 to 0.10 two IC-consistent redraws of z share only "
+            "correlation rho squared (0.0004 to 0.01), so they are nearly "
+            "independent and the mean absolute weight change is about 141% "
+            "at every rho. No shrinkage on the ridge grid reduces the "
+            "relative dispersion, because both the original and the "
+            "resampled alpha scale identically under a scalar lambda or "
+            "kappa, so the lambda chosen stays 0 and the criterion is "
+            "recorded as a fail: the 30% threshold is written for a signal "
+            "near rho 0.98, not for the experiment's realistic ICs."
         ),
     }
 

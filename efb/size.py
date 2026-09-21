@@ -282,6 +282,12 @@ def _resample_dispersion(
     lam: float = 0.0,
 ) -> float:
     """The mean absolute weight change under one IC-consistent redraw."""
+    finite = np.isfinite(alpha) & np.isfinite(specific) & np.isfinite(e_std)
+    if finite.sum() < 10:
+        return 0.0
+    alpha = alpha[finite]
+    specific = specific[finite]
+    e_std = e_std[finite]
     z_resampled = rho * e_std + np.sqrt(1.0 - rho**2) * rng.normal(size=len(alpha))
     sigma = np.sqrt(np.maximum(specific, 1e-12))
     alpha_new = rho * sigma * z_resampled * KAPPA
@@ -290,7 +296,7 @@ def _resample_dispersion(
         shrunk(alpha_new, specific, lam) if lam else proportional(alpha_new, specific)
     )
     scale_before = np.abs(before).mean()
-    if scale_before <= 0:
+    if not np.isfinite(scale_before) or scale_before <= 0:
         return 0.0
     return float(np.abs(before - after).mean() / scale_before)
 
@@ -361,7 +367,13 @@ def construct(
             raw = shrunk(alpha, specific, lam)
         else:
             raw = proportional(alpha, specific)
-        weights = _vol_target(raw, design, factor_covariance, specific)
+        if construction == "mv_constrained":
+            # the QP's risk aversion already sets the scale; vol targeting
+            # after the fact would scale the constrained solution straight
+            # through the gross and position caps
+            weights = raw
+        else:
+            weights = _vol_target(raw, design, factor_covariance, specific)
         decomposition = _decompose(weights, design, factor_covariance, specific)
         # the FMP-hedged book: the exposure the exact in-model FMPs remove
         # and the idio share that is left, the number F8.2 and F8.6 score
@@ -572,7 +584,7 @@ def f84_resampling(data_root: Path = DATA_ROOT, store: bool = True) -> pd.DataFr
         if dispersion > 0.30:
             for lam_candidate in np.logspace(-6, -1, 24):
                 sample: list[float] = []
-                rng = np.random.default_rng(0)
+                rng = np.random.default_rng(10_000)
                 frame = synthetic_alpha(root, rho, 0, pieces=pieces)
                 for _date, group in list(frame.groupby("date"))[:12]:
                     if _date not in pieces:

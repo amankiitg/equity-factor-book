@@ -79,14 +79,18 @@ def main() -> None:
     text = f"""# E8 Construction Memo
 
 Sizing and portfolio construction on synthetic alpha with a known IC. The
-most interesting result is the transfer-coefficient shortfall: the
-realized IR falls short of IC * sqrt(N) mostly because the effective
-breadth is the participation ratio of the specific-return correlation
-matrix, N_eff = {n_eff:.1f} against {n_names:.0f} names, not the name
-count. E4 already measured that residual co-movement, and this sprint
-quantifies what it costs the construction: the mean largest residual
-eigenvalue is {largest_eig:.1f}, and the transfer coefficient over
-sqrt(N_eff) is far closer to one than over sqrt(N).
+most interesting result is the breadth accounting. The synthetic z is
+i.i.d. across names, so its breadth is the name count N = {n_names:.0f},
+and the hedged rules (Procedure 6.3 and unconstrained mean-variance)
+realize IC * sqrt(N) with a transfer coefficient near one. The
+participation ratio of the specific-return correlation matrix,
+N_eff = {n_eff:.1f}, with a mean largest residual eigenvalue of
+{largest_eig:.1f}, is the return co-movement E4 measured, not the signal
+breadth: used as the breadth it over-corrects and pushes the transfer
+coefficient above one, because that co-movement shows up in the realized
+volatility the book must carry rather than in the number of independent
+signals. Both transfer coefficients are stored in the table below, so the
+difference between the two is the statement of where the shortfall lives.
 
 This is a controlled experiment, never a backtest: z(i,t) = rho *
 standardized e(i,t+h) + sqrt(1 - rho^2) * eps(i,t) over the XS-v1 specific
@@ -138,8 +142,12 @@ rho:
 - F8.3 (verdict {verdicts['F8.3']['verdict']}): the worst constraint
   violation is {f83:.3g}; the solver fell back to a zero book on
   {f83_fallbacks} dates ({f83_rate:.4%} of the constrained solves).
-- F8.4 (verdict {verdicts['F8.4']['verdict']}): the shrinkage chosen per rho
-  above keeps the resampling dispersion below 30%.
+- F8.4 (verdict {verdicts['F8.4']['verdict']}): the resampling dispersion
+  is about 141% at every rho, and no shrinkage on the ridge grid reduces
+  the relative dispersion, because two IC-consistent redraws share only
+  correlation rho squared. The 30% threshold is written for a signal near
+  rho 0.98, not the experiment's realistic ICs; the lambda chosen is 0 and
+  the fail is recorded with that mechanism.
 - F8.5 (verdict {verdicts['F8.5']['verdict']}): the transfer coefficient
   table above is the decision-relevant output.
 - F8.6 (verdict {verdicts['F8.6']['verdict']}): every construction is
@@ -160,8 +168,10 @@ is the proportional rule hedged with the exact FMPs.
 
 - Rules and mean-variance differ materially: this happened for F8.1, and
   the cause is the sigma_idio weighting, stored above.
-- The optimizer is unstable under alpha resampling: the dispersion at
-  lambda 0 exceeds 30% at low rho, and the lambda chosen per rho is stored.
+- The optimizer is unstable under alpha resampling: the dispersion is
+  about 141% at every rho and no shrinkage reduces it, which is the F8.4
+  record, so the instability is intrinsic to a low-IC signal rather than a
+  missing shrinkage knob.
 - Excessive concentration or turnover under the chosen constraints: the
   constraint set is revised, and the trade-off is the transfer table.
 """
