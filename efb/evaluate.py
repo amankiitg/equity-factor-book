@@ -2322,6 +2322,7 @@ def prior_verdict_changes(data_root: Path = ROOT / "data") -> dict[str, Any]:
         "E2": (compute_e2_from_artifacts, evaluate_e2_criteria),
         "E3": (compute_e3_from_artifacts, evaluate_e3_criteria),
         "E4": (compute_e4_from_artifacts, evaluate_e4_criteria),
+        "E5": (compute_e5_from_artifacts, evaluate_e5_criteria),
     }
     for sprint, (compute, evaluate) in plans.items():
         path = ROOT / "sprints" / sprint / "RESULTS.json"
@@ -2805,6 +2806,7 @@ def evaluate_e6_criteria(
                 "xs_v1": share_v1,
                 "xs_v2": share_v2,
             },
+            "mean_n_instruments": float(mv_long_only["n_instruments"].mean()),
             "residual_reported": "per-factor post-hedge exposures in F6.5",
         },
         "verdict": _verdict(share_v1 > 0.7),

@@ -272,7 +272,16 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
         betas, idio = _instrument_betas(date, instrument_returns, root)
         if betas is None or idio is None:
             continue
-        sigma_hh = betas.T @ factor_covariance @ betas + np.diag(idio)
+        # an instrument whose prices do not span the factor window cannot be
+        # regressed: its beta column and idio variance are NaN. It is dropped
+        # from the hedge on that date and the count is stored, never filled.
+        usable = np.isfinite(betas).all(axis=0) & np.isfinite(idio)
+        if usable.sum() < 2:
+            continue
+        betas_used = betas[:, usable]
+        idio_used = idio[usable]
+        n_instruments = int(usable.sum())
+        sigma_hh = betas_used.T @ factor_covariance @ betas_used + np.diag(idio_used)
         stamp = race._as_of(fmp, date)
         if stamp is None:
             continue
@@ -291,8 +300,10 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
                 .to_numpy(dtype=float)
             )
             exposures = design.T @ weights
-            sigma_hw = betas.T @ factor_covariance @ exposures
+            sigma_hw = betas_used.T @ factor_covariance @ exposures
             h_star = min_variance_hedge(sigma_hh, sigma_hw)
+            h_full = pd.Series(h_star, index=np.array(INSTRUMENTS)[usable])
+            h_full = h_full.reindex(list(INSTRUMENTS)).to_numpy(dtype=float)
             # beta hedge: h = -beta_p against SPY over the trailing window
             book_returns = book_returns_cache[book]
             h_spy = beta_hedge(book_returns, spy)
@@ -314,7 +325,7 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
             )
             exposure_after_fmp = design.T @ (weights + exact_hedge)
             exposure_after_fmp_capped = design.T @ (weights + capped_on_names)
-            exposure_after_mv = exposures + betas @ h_star
+            exposure_after_mv = exposures + betas_used @ h_star
             for factor, before, after_fmp, after_capped, after_mv in zip(
                 factor_names,
                 exposures,
@@ -371,9 +382,10 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
                         "turnover": turnover,
                         "short_notional": short_notional,
                         "cost": hedge_cost(turnover, short_notional),
+                        "n_instruments": n_instruments,
                     }
                 )
-                for instrument, value in zip(INSTRUMENTS, h_star, strict=True):
+                for instrument, value in zip(INSTRUMENTS, h_full, strict=True):
                     position_rows.append(
                         {
                             "book": book,
@@ -381,7 +393,7 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
                             "date": date,
                             "model": model,
                             "instrument": instrument,
-                            "weight": float(value),
+                            "weight": float(value) if np.isfinite(value) else None,
                         }
                     )
             # FMP and beta rows are model-independent in their weights but the
@@ -494,13 +506,6 @@ def _realized_efficacy(
     grid: list[pd.Timestamp],
 ) -> pd.DataFrame:
     """Realized factor P&L and realized beta to Mkt-RF, 2018 to 2026."""
-    from efb.models import fundamental as fx
-
-    factor_returns = pd.read_parquet(
-        root / "models" / "XS-v1" / "factor_returns.parquet"
-    )
-    factor_wide = factor_returns.pivot(index="date", columns="factor", values="f")
-    factor_wide = factor_wide[list(fx.ESTIMATED_NAMES)]
     ff = pd.read_parquet(root / "raw" / "factors_ff.parquet")
     mkt = ff["mkt_rf"] if "mkt_rf" in ff.columns else ff["Mkt-RF"]
     start = pd.Timestamp("2018-01-01")
@@ -524,7 +529,7 @@ def _realized_efficacy(
                         sub, book, wide, portfolios, instrument_returns, grid
                     )
                 elif method == "fmp":
-                    hedged = _apply_fmp_hedge(book, wide, portfolios, grid, factor_wide)
+                    hedged = _apply_fmp_hedge(book, wide, portfolios, grid)
                 else:
                     hedged = _apply_beta_hedge(
                         book, wide, portfolios, instrument_returns, grid
@@ -558,6 +563,8 @@ def _apply_instrument_hedge(
     instrument_returns: pd.DataFrame,
     grid: list[pd.Timestamp],
 ) -> pd.Series:
+    from efb import eval_risk as er
+
     book_returns = _seed_book_returns(book, wide, portfolios)
     dates = sorted(pd.to_datetime(sub["date"].unique()))
     collected: list[pd.Series] = []
@@ -568,11 +575,14 @@ def _apply_instrument_hedge(
             block.set_index("instrument")["weight"]
             .reindex(list(INSTRUMENTS))
             .fillna(0.0)
+            .to_numpy(dtype=float)
         )
         window = instrument_returns.loc[
             (instrument_returns.index > start) & (instrument_returns.index <= end)
         ]
-        hedge_return = window.to_numpy(dtype=float) @ h.to_numpy(dtype=float)
+        hedge_return = er._portfolio_returns(h[None, :], window.to_numpy(dtype=float))[
+            0
+        ]
         collected.append(pd.Series(hedge_return, index=window.index))
     hedge_series = pd.concat(collected) if collected else pd.Series(dtype=float)
     return book_returns.reindex(hedge_series.index).add(hedge_series)
@@ -583,7 +593,6 @@ def _apply_fmp_hedge(
     wide: pd.DataFrame,
     portfolios: pd.DataFrame,
     grid: list[pd.Timestamp],
-    factor_wide: pd.DataFrame,
 ) -> pd.Series:
     from efb import eval_risk as er
 
@@ -626,7 +635,9 @@ def _apply_fmp_hedge(
         book_part = er._portfolio_returns(
             weights[None, :], window.to_numpy(dtype=float)
         )[0]
-        hedge_part = window.to_numpy(dtype=float) @ hedge
+        hedge_part = er._portfolio_returns(
+            hedge[None, :], window.to_numpy(dtype=float)
+        )[0]
         collected.append(pd.Series(book_part + hedge_part, index=window.index))
     if not collected:
         return pd.Series(dtype=float)

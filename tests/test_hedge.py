@@ -121,3 +121,24 @@ def test_the_hedged_momentum_book_beta_is_stored() -> None:
     ]
     assert not rows.empty
     assert rows["realized_beta_to_mkt_rf"].notna().all()
+
+
+@pytest.mark.integration
+def test_instruments_without_history_are_nan_not_silent_zeros() -> None:
+    metrics_path = HEDGE / "hedge_metrics.parquet"
+    positions_path = HEDGE / "hedge_positions.parquet"
+    if not metrics_path.exists() or not positions_path.exists():
+        pytest.skip("the hedge run has not happened yet")
+    metrics = pd.read_parquet(metrics_path)
+    positions = pd.read_parquet(positions_path)
+    mv = metrics.loc[metrics["method"] == "min_variance"]
+    # XLRE and XLC only have price history from their launch dates, so their
+    # hedge weights are missing before then and the stored instrument count
+    # moves with it
+    assert mv["n_instruments"].notna().all()
+    assert (mv["n_instruments"] <= len(hedge.INSTRUMENTS)).all()
+    nan_rows = positions.loc[
+        (positions["method"] == "min_variance") & positions["weight"].isna()
+    ]
+    if not nan_rows.empty:
+        assert set(nan_rows["instrument"]) <= {"XLRE", "XLC"}
