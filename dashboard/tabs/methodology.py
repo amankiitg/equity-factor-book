@@ -90,6 +90,13 @@ LINKS = [
         "Walkthrough notebook E5 (risk evaluation and the champion)",
         "notebooks/E5_walkthrough.html",
     ),
+    ("Sprint E6 PRD", "sprints/E6/PRD.md"),
+    ("Sprint E6 tasks", "sprints/E6/TASKS.md"),
+    ("Sprint E6 results (F criteria)", "sprints/E6/RESULTS.json"),
+    (
+        "Research deliverable: Hedge Effectiveness Study",
+        "docs/research/E6_hedge_study.md",
+    ),
 ]
 
 
