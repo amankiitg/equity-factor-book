@@ -20,10 +20,14 @@ def stored_numbers() -> list[float]:
     results = json.loads(RESULTS.read_text())
     summary = pd.read_parquet(DATA / "portfolios" / "e8_summary.parquet")
     resampling = pd.read_parquet(DATA / "portfolios" / "e8_f84_resampling.parquet")
+    neff = pd.read_parquet(DATA / "portfolios" / "e8_neff.parquet")
+    realized_ic = pd.read_parquet(DATA / "portfolios" / "e8_realized_ic.parquet")
     texts = [
         json.dumps(results),
         summary.select_dtypes(include="number").to_string(),
         resampling.select_dtypes(include="number").to_string(),
+        neff.select_dtypes(include="number").to_string(),
+        realized_ic.select_dtypes(include="number").to_string(),
     ]
     return [
         float(match)

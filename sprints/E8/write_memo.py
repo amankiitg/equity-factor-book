@@ -83,10 +83,10 @@ most interesting result is the transfer-coefficient shortfall: the
 realized IR falls short of IC * sqrt(N) mostly because the effective
 breadth is the participation ratio of the specific-return correlation
 matrix, N_eff = {n_eff:.1f} against {n_names:.0f} names, not the name
-count. E4 already measured that residual co-movement (its largest residual
-eigenvalue was 22.3 against a 3.95 edge), and this sprint quantifies what
-it costs the construction: the transfer coefficient over sqrt(N_eff) is far
-closer to one than over sqrt(N).
+count. E4 already measured that residual co-movement, and this sprint
+quantifies what it costs the construction: the mean largest residual
+eigenvalue is {largest_eig:.1f}, and the transfer coefficient over
+sqrt(N_eff) is far closer to one than over sqrt(N).
 
 This is a controlled experiment, never a backtest: z(i,t) = rho *
 standardized e(i,t+h) + sqrt(1 - rho^2) * eps(i,t) over the XS-v1 specific
