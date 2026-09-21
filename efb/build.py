@@ -139,6 +139,18 @@ E5_ARTIFACTS = [
     )
 ]
 
+# Sprint E6: the hedging toolkit's outputs. The ETF prices are a fetched input
+# rather than a computed artifact, but they are versioned with the rest so a
+# re-fetch moves the hash instead of silently changing numbers.
+E6_ARTIFACTS = [
+    "raw/etf_prices.parquet",
+    "hedge/hedge_metrics.parquet",
+    "hedge/hedge_positions.parquet",
+    "hedge/e6_exposures.parquet",
+    "hedge/e6_efficacy.parquet",
+    "hedge/e6_decay.parquet",
+]
+
 MODEL_START = 2010
 REGISTRY_PATH = DATA_ROOT / "models" / "registry.json"
 
@@ -1897,11 +1909,68 @@ def rebuild_e5(
     }
 
 
+def rebuild_e6(
+    data_root: Path = DATA_ROOT,
+    results_path: Path | None = None,
+    full: bool = False,
+) -> dict[str, object]:
+    """Run the E6 build: the hedging toolkit over the E5 seed books.
+
+    `full` first runs the E1 through E5 legs. Without it, the earlier
+    artifacts are read from disk. The hedge run stores the positions, the
+    metrics, the per-factor residual exposures, the realized efficacy and the
+    rebalancing decay curve; the criteria are then read from those artifacts.
+    """
+    from efb import evaluate, hedge
+
+    e5: dict[str, object] | None = None
+    if full:
+        e5 = rebuild_e5(data_root=data_root, results_path=None, full=True)
+    engine = hedge.run(data_root=data_root, store=True)
+    artifact_paths = [
+        data_root / rel
+        for rel in (
+            ARTIFACTS
+            + E2_ARTIFACTS
+            + E3_ARTIFACTS
+            + E4_ARTIFACTS
+            + E5_ARTIFACTS
+            + E6_ARTIFACTS
+        )
+    ]
+    version_path = data_root / "VERSION.json"
+    old_hash = previous_data_hash(version_path)
+    payload = write_version(
+        artifact_paths,
+        version_path,
+        note=(
+            "Built by make rebuild (Sprint E6). The hedging toolkit artifacts "
+            "join the versioned set; the dashboard sidebar shows this version."
+        ),
+    )
+    if results_path is not None:
+        evaluate.main_e6(data_root=data_root)
+    engine_metrics = engine.get("metrics")
+    engine_shape = (
+        engine_metrics.shape if isinstance(engine_metrics, pd.DataFrame) else None
+    )
+    return {
+        "n_steps": 16,
+        "full": full,
+        "e5": e5,
+        "engine": engine_shape,
+        "version": payload,
+        "previous_data_hash": old_hash,
+    }
+
+
 def main() -> None:
     if "--all" in sys.argv:
-        summary = rebuild_e5(
-            results_path=ROOT / "sprints" / "E5" / "RESULTS.json", full=True
+        summary = rebuild_e6(
+            results_path=ROOT / "sprints" / "E6" / "RESULTS.json", full=True
         )
+    elif "--e6" in sys.argv:
+        summary = rebuild_e6(results_path=ROOT / "sprints" / "E6" / "RESULTS.json")
     elif "--e5" in sys.argv:
         summary = rebuild_e5(results_path=ROOT / "sprints" / "E5" / "RESULTS.json")
     elif "--e4" in sys.argv:

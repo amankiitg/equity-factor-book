@@ -2673,5 +2673,286 @@ def main_e4(data_root: Path = ROOT / "data") -> None:
         raise SystemExit(3)
 
 
+# Sprint E6: hedging. F6.1 to F6.3 are copied verbatim from
+# docs/roadmap_v2.md; F6.4 and F6.5 are new in E6. A stored criterion is never
+# reworded, so these strings are the record.
+
+E6_CRITERIA_TEXT = {
+    "F6.1": (
+        "Full FMP hedge drives every factor exposure below 1e-6 in absolute "
+        "value and lifts the idio share of variance above 95%."
+    ),
+    "F6.2": (
+        "ETF minimum-variance hedge removes more than 70% of the factor "
+        "variance of the long-only seed book. ETFs cannot span every factor; "
+        "the residual is reported."
+    ),
+    "F6.3": (
+        "Realized: the hedged momentum long/short book has a beta to Mkt-RF "
+        "within plus or minus 0.1 over 2018 to 2026."
+    ),
+    "F6.4": (
+        "New in E6: every headline hedge result stored under the champion "
+        "model and under the alternative model, with the difference stored."
+    ),
+    "F6.5": (
+        "New in E6: the residual factor exposure the instrument set cannot "
+        "reach, quantified per factor."
+    ),
+}
+
+E6_THRESHOLDS = {
+    "F6.1": "every factor's post-FMP exposure below 1e-6 in absolute value",
+    "F6.2": "long-only seed book factor variance removed above 70%",
+    "F6.3": "realized beta to Mkt-RF inside +/- 0.1 over 2018 to 2026",
+    "F6.4": "headline numbers present for both models with the difference",
+    "F6.5": "per-factor post-hedge exposure stored for the instrument set",
+}
+
+E6_ARTIFACTS = [
+    "raw/etf_prices.parquet",
+    "hedge/hedge_metrics.parquet",
+    "hedge/hedge_positions.parquet",
+    "hedge/e6_exposures.parquet",
+    "hedge/e6_efficacy.parquet",
+    "hedge/e6_decay.parquet",
+]
+
+
+def compute_e6_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    """The artifacts the E6 criteria are read from, all stored by the engine."""
+    root = Path(data_root)
+    return {
+        "metrics": pd.read_parquet(root / "hedge" / "hedge_metrics.parquet"),
+        "positions": pd.read_parquet(root / "hedge" / "hedge_positions.parquet"),
+        "exposures": pd.read_parquet(root / "hedge" / "e6_exposures.parquet"),
+        "efficacy": pd.read_parquet(root / "hedge" / "e6_efficacy.parquet"),
+        "decay": pd.read_parquet(root / "hedge" / "e6_decay.parquet"),
+    }
+
+
+def e6_data_hash(data_root: Path = ROOT / "data") -> str:
+    """The combined hash of the artifacts the E6 criteria are read from."""
+    root = Path(data_root)
+    digest = hashlib.sha256()
+    for rel in E6_ARTIFACTS:
+        path = root / rel
+        if not path.exists():
+            continue
+        digest.update(path.name.encode("utf-8"))
+        digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("utf-8"))
+    return digest.hexdigest()
+
+
+def evaluate_e6_criteria(
+    metrics: pd.DataFrame,
+    positions: pd.DataFrame,
+    exposures: pd.DataFrame,
+    efficacy: pd.DataFrame,
+    decay: pd.DataFrame,
+) -> dict[str, dict[str, Any]]:
+    """F6.1 to F6.5, each with a stored number and a verdict."""
+    criteria: dict[str, dict[str, Any]] = {}
+
+    # F6.1. The FMP hedge on the seed books: every post-hedge exposure below
+    # 1e-6 in absolute value, and the idio share above 95%.
+    fmp_exposures = exposures[["book", "date", "factor", "exposure_after_fmp"]]
+    worst = float(fmp_exposures["exposure_after_fmp"].abs().max())
+    worst_capped = float(exposures["exposure_after_fmp_capped"].abs().max())
+    fmp_metrics = metrics.loc[metrics["method"] == "fmp"]
+    mean_idio_share = float(fmp_metrics["idio_share_after"].mean())
+    criteria["F6.1"] = {
+        "criterion": E6_CRITERIA_TEXT["F6.1"],
+        "threshold": E6_THRESHOLDS["F6.1"],
+        "stored_numbers": {
+            "worst_abs_exposure_after_fmp": worst,
+            "mean_idio_share_after_fmp": mean_idio_share,
+            "worst_abs_exposure_after_fmp_capped_stored": worst_capped,
+            "mean_fmp_name_count": float(fmp_metrics["name_count"].mean()),
+            "mean_fmp_name_count_capped": float(
+                fmp_metrics["name_count_capped"].mean()
+            ),
+            "n_fmp_dates": int(fmp_exposures["date"].nunique()),
+        },
+        "verdict": _verdict(worst < 1e-6 and mean_idio_share > 0.95),
+        "note": (
+            "The exact in-model FMP hedge is zero by construction; the "
+            "quarterly capped FMP weights keep cap drift, which is basis risk "
+            "and is stored beside the criterion number."
+        ),
+    }
+
+    # F6.2. The long-only seed book's minimum-variance hedge removes more than
+    # 70% of its factor variance, with the residual stored.
+    mv_long_only = metrics.loc[
+        (metrics["method"] == "min_variance") & (metrics["book"] == "seed_ew")
+    ]
+    share_v1 = float(
+        mv_long_only.loc[
+            mv_long_only["model"] == "xs_v1", "factor_variance_removed_share"
+        ].mean()
+    )
+    share_v2 = float(
+        mv_long_only.loc[
+            mv_long_only["model"] == "xs_v2", "factor_variance_removed_share"
+        ].mean()
+    )
+    criteria["F6.2"] = {
+        "criterion": E6_CRITERIA_TEXT["F6.2"],
+        "threshold": E6_THRESHOLDS["F6.2"],
+        "stored_numbers": {
+            "mean_factor_variance_removed_share": {
+                "xs_v1": share_v1,
+                "xs_v2": share_v2,
+            },
+            "residual_reported": "per-factor post-hedge exposures in F6.5",
+        },
+        "verdict": _verdict(share_v1 > 0.7),
+        "note": (
+            "Both models' shares are stored; the residual the instrument set "
+            "cannot reach is quantified per factor under F6.5."
+        ),
+    }
+
+    # F6.3. The realized beta of the hedged momentum long/short book to
+    # Mkt-RF over 2018 to 2026.
+    momentum_rows = efficacy.loc[
+        (efficacy["book"] == "seed_mom_ls") & (efficacy["method"] == "min_variance")
+    ]
+    beta_v1 = float(
+        momentum_rows.loc[
+            momentum_rows["model"] == "xs_v1", "realized_beta_to_mkt_rf"
+        ].iloc[0]
+    )
+    beta_v2 = float(
+        momentum_rows.loc[
+            momentum_rows["model"] == "xs_v2", "realized_beta_to_mkt_rf"
+        ].iloc[0]
+    )
+    unhedged = float(momentum_rows["unhedged_realized_beta_to_mkt_rf"].iloc[0])
+    criteria["F6.3"] = {
+        "criterion": E6_CRITERIA_TEXT["F6.3"],
+        "threshold": E6_THRESHOLDS["F6.3"],
+        "stored_numbers": {
+            "realized_beta_to_mkt_rf": {"xs_v1": beta_v1, "xs_v2": beta_v2},
+            "unhedged_realized_beta_to_mkt_rf": unhedged,
+        },
+        "verdict": _verdict(abs(beta_v1) <= 0.1),
+        "note": "Both models are stored; the criterion is scored on the champion.",
+    }
+
+    # F6.4. Every headline result under both models with the difference.
+    headline_v1 = {
+        "fmp_idio_share": mean_idio_share,
+        "mv_share_long_only": share_v1,
+        "momentum_realized_beta": beta_v1,
+    }
+    headline_v2 = {
+        "fmp_idio_share": float(
+            fmp_metrics.loc[fmp_metrics["model"] == "xs_v2", "idio_share_after"].mean()
+        ),
+        "mv_share_long_only": share_v2,
+        "momentum_realized_beta": beta_v2,
+    }
+    differences = {
+        key: float(headline_v1[key] - headline_v2[key]) for key in headline_v1
+    }
+    criteria["F6.4"] = {
+        "criterion": E6_CRITERIA_TEXT["F6.4"],
+        "threshold": E6_THRESHOLDS["F6.4"],
+        "stored_numbers": {
+            "xs_v1": headline_v1,
+            "xs_v2": headline_v2,
+            "difference_v1_minus_v2": differences,
+        },
+        "verdict": _verdict(
+            all(k in headline_v1 and k in headline_v2 for k in headline_v1)
+        ),
+        "note": (
+            "The champion is provisional (F5.1 failed), so the hedge study "
+            "reports every headline number under both models."
+        ),
+    }
+
+    # F6.5. The residual per-factor exposure after the instrument hedge.
+    residual = (
+        exposures.loc[exposures["book"] == "seed_ew"]
+        .groupby("factor")["exposure_after_min_variance"]
+        .apply(lambda s: float(s.abs().mean()))
+    )
+    residual_dict = {str(factor): float(value) for factor, value in residual.items()}
+    criteria["F6.5"] = {
+        "criterion": E6_CRITERIA_TEXT["F6.5"],
+        "threshold": E6_THRESHOLDS["F6.5"],
+        "stored_numbers": {
+            "mean_abs_exposure_after_instrument_hedge": residual_dict,
+        },
+        "verdict": _verdict(bool(residual_dict)),
+        "note": (
+            "Averaged over the long-only seed book's rebalance dates; the "
+            "instrument set cannot span every factor and this is the gap."
+        ),
+    }
+
+    # The decay curve is not scored but is stored beside the criteria.
+    criteria["F6_decay"] = {
+        "criterion": (
+            "New in E6: beta-hedge efficacy against rebalancing frequency, "
+            "stored as a curve for the hedge study."
+        ),
+        "threshold": "curve stored",
+        "stored_numbers": {
+            "realized_beta_by_frequency": {
+                f"{int(row['rebalance_frequency'])}d": float(
+                    row["realized_beta_to_mkt_rf"]
+                )
+                for _, row in decay.loc[decay["book"] == "seed_mom_ls"].iterrows()
+            }
+        },
+        "verdict": _verdict(not decay.empty),
+        "note": "Reported in the E6 hedge study, not scored.",
+    }
+
+    return criteria
+
+
+def e6_reference_values(data_root: Path = ROOT / "data") -> dict[str, Any]:
+    inputs = compute_e6_from_artifacts(data_root)
+    criteria = evaluate_e6_criteria(**inputs)
+    return {
+        "data_hash": e6_data_hash(data_root),
+        "verdicts": {key: value["verdict"] for key, value in criteria.items()},
+        "stored_numbers": {
+            key: value["stored_numbers"] for key, value in criteria.items()
+        },
+    }
+
+
+def main_e6(data_root: Path = ROOT / "data") -> None:
+    inputs = compute_e6_from_artifacts(data_root)
+    criteria = evaluate_e6_criteria(**inputs)
+    check = prior_verdict_changes(data_root)
+    print("Criterion  verdict  headline number")
+    for key, block in criteria.items():
+        headline = json.dumps(block["stored_numbers"])[:110]
+        print(f"{key}  {block['verdict']}  {headline}")
+    print()
+    for sprint, block in check.items():
+        print(
+            f"{sprint}: {block.get('n_changed')} of {block.get('n_criteria')} changed"
+        )
+        if block.get("changed"):
+            print(f"  STOP CONDITION: earlier verdicts moved: {block['changed']}")
+    write_results(
+        criteria,
+        ROOT / "sprints" / "E6" / "RESULTS.json",
+        sprint="E6",
+        data_hash=e6_data_hash(data_root),
+        reference_values=e6_reference_values(data_root),
+    )
+    if any(block.get("n_changed") for block in check.values()):
+        raise SystemExit(3)
+
+
 if __name__ == "__main__":
     main_e4()
