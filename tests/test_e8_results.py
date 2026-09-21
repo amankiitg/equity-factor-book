@@ -63,7 +63,10 @@ def test_the_transfer_coefficient_table_is_stored() -> None:
         for _rho, numbers in block.items():
             assert {
                 "realized_ir",
+                "realized_ic",
                 "n_eff",
-                "predicted_ir",
-                "transfer_coefficient",
+                "n_names",
+                "predicted_ir_neff",
+                "transfer_coefficient_neff",
+                "transfer_coefficient_n",
             } <= set(numbers)

@@ -40,15 +40,18 @@ def _rule_table(summary: pd.DataFrame) -> str:
 def _transfer_table(results: dict) -> str:
     stored = results["criteria"]["F8.5"]["stored_numbers"]
     lines = [
-        "| construction | rho | predicted IR | realized IR | transfer coefficient |",
-        "| --- | --- | --- | --- | --- |",
+        "| construction | rho | realized IC | N | N_eff | predicted IR (N_eff) | "
+        "realized IR | TC over N_eff | TC over N |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for construction, block in stored.items():
         for rho, numbers in block.items():
             lines.append(
-                f"| {construction} | {rho} | {numbers['predicted_ir']:.3f} | "
-                f"{numbers['realized_ir']:.3f} | "
-                f"{numbers['transfer_coefficient']:.3f} |"
+                f"| {construction} | {rho} | {numbers['realized_ic']:.3f} | "
+                f"{numbers['n_names']:.0f} | {numbers['n_eff']:.1f} | "
+                f"{numbers['predicted_ir_neff']:.3f} | {numbers['realized_ir']:.3f} | "
+                f"{numbers['transfer_coefficient_neff']:.3f} | "
+                f"{numbers['transfer_coefficient_n']:.3f} |"
             )
     return "\n".join(lines)
 
@@ -61,6 +64,12 @@ def main() -> None:
     f81 = results["criteria"]["F8.1"]["stored_numbers"]["max_abs_weight_difference"]
     f82 = results["criteria"]["F8.2"]["stored_numbers"]["mean_idio_share_after_fmp"]
     f83 = results["criteria"]["F8.3"]["stored_numbers"]["max_violation"]
+    f83_fallbacks = results["criteria"]["F8.3"]["stored_numbers"]["solver_fallbacks"]
+    f83_rate = results["criteria"]["F8.3"]["stored_numbers"]["solver_fallback_rate"]
+    neff = pd.read_parquet(DATA / "portfolios" / "e8_neff.parquet")
+    n_eff = float(neff["n_eff"].mean())
+    n_names = float(neff["n_names"].mean())
+    largest_eig = float(neff["largest_eigenvalue"].mean())
     f84_rows = "\n".join(
         f"| {row['rho']} | {row['dispersion_lambda_0']:.3f} | "
         f"{row['dispersion_after_shrinkage']:.3f} | {row['lambda_chosen']:.2e} |"
@@ -69,10 +78,20 @@ def main() -> None:
     verdicts = results["criteria"]
     text = f"""# E8 Construction Memo
 
-Sizing and portfolio construction on synthetic alpha with a known IC. This
-is a controlled experiment, never a backtest: z(i,t) = rho * standardized
-e(i,t+h) + sqrt(1 - rho^2) * eps(i,t) over the XS-v1 specific returns, with
-rho in 0.02, 0.05, 0.10 and five fixed seeds each. The synthetic label
+Sizing and portfolio construction on synthetic alpha with a known IC. The
+most interesting result is the transfer-coefficient shortfall: the
+realized IR falls short of IC * sqrt(N) mostly because the effective
+breadth is the participation ratio of the specific-return correlation
+matrix, N_eff = {n_eff:.1f} against {n_names:.0f} names, not the name
+count. E4 already measured that residual co-movement (its largest residual
+eigenvalue was 22.3 against a 3.95 edge), and this sprint quantifies what
+it costs the construction: the transfer coefficient over sqrt(N_eff) is far
+closer to one than over sqrt(N).
+
+This is a controlled experiment, never a backtest: z(i,t) = rho *
+standardized e(i,t+h) + sqrt(1 - rho^2) * eps(i,t) over the XS-v1 specific
+returns, with rho in 0.02, 0.05, 0.10 and five fixed seeds each. The
+synthetic label
 travels with every number in this memo.
 
 ## The rule comparison
@@ -117,7 +136,8 @@ rho:
 - F8.2 (verdict {verdicts['F8.2']['verdict']}): the proportional book's mean
   idio share after the FMP hedge is {f82:.4f}.
 - F8.3 (verdict {verdicts['F8.3']['verdict']}): the worst constraint
-  violation is {f83:.3g}.
+  violation is {f83:.3g}; the solver fell back to a zero book on
+  {f83_fallbacks} dates ({f83_rate:.4%} of the constrained solves).
 - F8.4 (verdict {verdicts['F8.4']['verdict']}): the shrinkage chosen per rho
   above keeps the resampling dispersion below 30%.
 - F8.5 (verdict {verdicts['F8.5']['verdict']}): the transfer coefficient
