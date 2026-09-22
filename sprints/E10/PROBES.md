@@ -105,3 +105,40 @@ membership matrix entirely. Their stored history is lost: BLDR 715 dates from
 P is a reused symbol: it was Pandora Media's ticker before Sirius XM acquired
 it, and today it is Everpure. That lands on the reused-symbol finding in
 docs/open_items.md.
+
+## Evidence-and-archive-hardening S1: the printed errors
+
+`make verify-evidence` fails at HEAD:
+
+```
+data/VERSION.json: the artifact on disk has moved since the snapshot
+make: *** [verify-evidence] Error 1
+```
+
+The evidence manifest's VERSION.json sha256 is from 5b77d6f; the rebuild
+refreshed VERSION.json without `make evidence`, so the chain is broken.
+
+The SPY archive, the one artifact whose value is that it cannot be
+regenerated, is the least protected thing in the repo:
+`data/raw/spy_holdings/spy_holdings_2026-09-18.parquet` (34358 bytes) is
+matched by `.gitignore:20`, so `git ls-files data/raw/spy_holdings/` counts
+0; it is absent from `data/VERSION.json`; and it is absent from
+`evidence/MANIFEST.json`. SSGA serves only the current file, so a later
+fetch cannot reproduce 18-Sep.
+
+F10.3b's year alignment is fixed at the year level and broken inside the
+first year. The daily estimator's warmup consumes part of 2012 on the
+targeted side only:
+
+| window | 2012 raw obs | 2012 targeted obs | stored reduction | reduction dropping unequal years |
+| --- | --- | --- | --- | --- |
+| daily 21 | 11 | 9 | 0.206317 | 0.286842 |
+| daily 42 | 11 | 8 | 0.176613 | 0.195261 |
+| daily 63 | 11 | 7 | 0.106923 | 0.163429 |
+| daily 126 | 11 | 4 | 0.204057 | 0.202698 |
+| daily 252 | 11 | 0 (2013: 12 vs 10) | 0.144861 | 0.126479 |
+
+An annual volatility built from 4 monthly returns is not the same statistic
+as one built from 11, and it enters the coefficient of variation on one
+side only. The maximum stays below 40%, so F10.3 and F10.3b both stand; the
+stored headline is biased.
