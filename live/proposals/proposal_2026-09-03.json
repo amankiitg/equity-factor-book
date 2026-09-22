@@ -1,0 +1,35 @@
+{
+  "achieved_annual_vol": 0.04226921971256746,
+  "as_of": "2026-09-03",
+  "aum": 100000000.0,
+  "excluded": [
+    "BE",
+    "DD",
+    "ILMN",
+    "P"
+  ],
+  "expected_establishment_cost_bps": 75.34348012608805,
+  "gross": 1.0,
+  "gross_cap_bound": true,
+  "ic": 0.01210198660523347,
+  "idio_share_after_fmp": 1.0,
+  "input_hashes": {
+    "alpha/summary.parquet": "527fe1cdf5a3021c4b9694f28699f04a97ce22df7bb615c51a175d4644c29bdf",
+    "models/XS-v1/descriptors.parquet": "f88055f0ee2733c75630c72a2a76c1d7b2462024fb6e42f6d7946b6b3ea5ff05",
+    "models/XS-v1/factor_returns.parquet": "250944f25dbd8b918ea93252c360c720ec9578f6ef63f21c5b086bd468cdd395",
+    "models/XS-v1/specific_returns.parquet": "5d1c60ae6009f2505856503fcace487eadd486c3fc5f8fe6b257124e47756e53",
+    "models/XS-v1/specific_var.parquet": "893b78d86e3476cf202f065ec93e87c9e278754468613c71aaf05d2f13e4e9e6",
+    "processed/sectors.parquet": "66d1b7fad9e5829e103accfc15befa2c2770e70478c6123c6635468655d31c6c"
+  },
+  "kappa": 0.1,
+  "max_abs_exposure_after_fmp": 2.518818487118324e-15,
+  "n_eff": 158.86628216586777,
+  "n_excluded": 4,
+  "n_names": 499,
+  "n_nonzero": 499,
+  "net": -1.4710455076283324e-15,
+  "signal": "idio_momentum",
+  "target_annual_vol": 0.1,
+  "universe_as_of": "2026-09-18",
+  "universe_source": "raw/spy_holdings/spy_holdings_2026-09-18.parquet"
+}
