@@ -114,11 +114,17 @@ CELLS: list[tuple[str, str]] = [
         "qp = 0.25 * np.log(x) + 0.49088\n"
         "expected = 2.0 * kelly['vol_ann'] ** 2 / kelly['mean_ann'] * qp\n"
         "assert abs(expected - drawdown['expected_mdd_at_horizon']) < 1e-9\n"
-        "assert 0.15 <= drawdown['expected_mdd_at_horizon'] <= 0.25\n"
-        "assert drawdown['expected_mdd_relative_gap'] < 1.0\n"
+        "# the median-versus-expected gap, recomputed from the stored\n"
+        "# simulated median, fails F10.1's own 10% bar\n"
+        "gap = abs(abs(drawdown['simulated_median_drawdown']) - expected) / expected\n"
+        "assert abs(gap - drawdown['expected_mdd_relative_gap']) < 1e-9\n"
+        "assert gap >= 0.10\n"
+        "mean_gap = abs(abs(drawdown['simulated_mean_drawdown']) - expected) / expected\n"
+        "assert abs(mean_gap - drawdown['expected_mdd_mean_relative_gap']) < 1e-9\n"
         "print('horizon years', round(drawdown['horizon_years'], 1))\n"
         "print('expected max drawdown', round(drawdown['expected_mdd_at_horizon'], 4))\n"
-        "print('expected-vs-simulated gap', round(drawdown['expected_mdd_relative_gap'], 4))",
+        "print('expected-vs-simulated-median gap', round(drawdown['expected_mdd_relative_gap'], 4))\n"
+        "print('expected-vs-simulated-mean gap', round(drawdown['expected_mdd_mean_relative_gap'], 4))",
     ),
     (
         "markdown",

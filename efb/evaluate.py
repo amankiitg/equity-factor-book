@@ -184,7 +184,7 @@ def evaluate_criteria(
 def _measurement(criterion: dict[str, Any]) -> dict[str, Any]:
     """The parts of a stored criterion that a re-run can change."""
     out: dict[str, Any] = {"verdict": criterion.get("verdict")}
-    for key in ("stored_number", "stored_numbers"):
+    for key in ("criterion", "threshold", "stored_number", "stored_numbers"):
         if key in criterion:
             out[key] = criterion[key]
     return out
@@ -4484,9 +4484,9 @@ E10_CRITERIA_TEXT = {
         "approximation within 10% at the median for the seed book's SR."
     ),
     "F10.1b": (
-        "The expected maximum drawdown at the book's horizon, "
-        "n_obs * 21 / 252 years, is between 0.15 and 0.25 and within 100% "
-        "of the simulated median."
+        "Simulated drawdown distribution matches the horizon-matched "
+        "analytical approximation within 10% at the median for the seed "
+        "book's SR."
     ),
     "F10.2": (
         "Control: on i.i.d. bootstrapped returns the stop-loss does not "
@@ -4508,10 +4508,7 @@ E10_CRITERIA_TEXT = {
 
 E10_THRESHOLDS = {
     "F10.1": "simulated median drawdown within 10% of the analytical value",
-    "F10.1b": (
-        "expected maximum drawdown between 0.15 and 0.25 and a relative "
-        "gap below 1.0"
-    ),
+    "F10.1b": "simulated median drawdown within 10% of the analytical value",
     "F10.2": "stop-loss does not improve Sharpe on the i.i.d. control",
     "F10.2b": "re-entering stop does not improve Sharpe on the i.i.d. control",
     "F10.3": "dispersion reduction above 40%",
@@ -4607,7 +4604,8 @@ def evaluate_e10_criteria(
         ),
     }
 
-    # F10.1b. The horizon-matched expected maximum drawdown.
+    # F10.1b. The horizon-matched expected maximum drawdown, scored on
+    # F10.1's own threshold.
     f101b_numbers: dict[str, float | int] = {}
     if not drawdown.empty:
         row = drawdown.iloc[0]
@@ -4615,29 +4613,32 @@ def evaluate_e10_criteria(
             "horizon_years": float(row["horizon_years"]),
             "expected_mdd_at_horizon": float(row["expected_mdd_at_horizon"]),
             "expected_mdd_relative_gap": float(row["expected_mdd_relative_gap"]),
+            "simulated_median_drawdown": float(row["simulated_median_drawdown"]),
+            "simulated_mean_drawdown": float(row["simulated_mean_drawdown"]),
+            "expected_mdd_mean_relative_gap": float(
+                row["expected_mdd_mean_relative_gap"]
+            ),
             "n_obs": int(row["n_obs"]),
         }
-    expected_mdd = float(f101b_numbers.get("expected_mdd_at_horizon", float("nan")))
     expected_gap = float(f101b_numbers.get("expected_mdd_relative_gap", float("nan")))
     criteria["F10.1b"] = {
         "criterion": E10_CRITERIA_TEXT["F10.1b"],
         "threshold": E10_THRESHOLDS["F10.1b"],
         "stored_numbers": f101b_numbers,
-        "verdict": _verdict(
-            np.isfinite(expected_mdd)
-            and 0.15 <= expected_mdd <= 0.25
-            and np.isfinite(expected_gap)
-            and expected_gap < 1.0
-        ),
+        "verdict": _verdict(np.isfinite(expected_gap) and expected_gap < 0.10),
         "note": (
-            "The horizon is n_obs * 21 / 252 years from the same series the "
-            "simulation uses, and the expected maximum drawdown is the "
-            "Magdon-Ismail positive-drift value 2 sigma^2 / mu times "
-            "Qp(mu^2 T / (2 sigma^2)) with the large-argument form "
-            "Qp(x) ~ 0.25 ln x + 0.49088. The infinite-horizon median used "
-            "by F10.1 is the stationary drawdown median, not a maximum, "
-            "which is why F10.1's benchmark and its simulation were never "
-            "measuring the same thing."
+            "The horizon is n_obs * 21 / 252 years and the analytical "
+            "approximation is the Magdon-Ismail positive-drift expected "
+            "maximum drawdown 2 sigma^2 / mu times Qp(mu^2 T / (2 sigma^2)) "
+            "with the large-argument form Qp(x) ~ 0.25 ln x + 0.49088. The "
+            "horizon fix cuts the gap from 296% against the stationary "
+            "median to about 30% and does not close it. Part of what is "
+            "left is that Magdon-Ismail gives an expected maximum drawdown "
+            "while the simulation reports a median: comparing like for "
+            "like, the simulated mean against the expected value, the gap "
+            "is about 26%, so the mean-versus-median mismatch accounts for "
+            "roughly four points of the remainder and the rest is the "
+            "Brownian benchmark not matching the book."
         ),
     }
 

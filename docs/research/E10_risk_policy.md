@@ -37,18 +37,21 @@ variance.
 
 ## The drawdown distribution
 
-The simulated median maximum drawdown against the analytical median, the
-Gaussian control, and the horizon-matched expected maximum drawdown:
+The simulated median and mean maximum drawdown against the analytical
+median, the Gaussian control, and the horizon-matched expected maximum
+drawdown:
 
 | quantity | value |
 | --- | --- |
 | simulated median drawdown | -0.1403 |
+| simulated mean drawdown | -0.1480 |
 | analytical median drawdown | 0.0354 |
 | relative gap at the median | 2.9598 |
 | Gaussian control median drawdown | -0.1540 |
 | horizon (years) | 14.5 |
 | expected max drawdown at horizon | 0.1994 |
-| expected-vs-simulated relative gap | 0.2963 |
+| expected-vs-simulated-median relative gap | 0.2963 |
+| expected-vs-simulated-mean relative gap | 0.2578 |
 | bootstrap samples | 2000 |
 
 The analytical benchmark is the Magdon-Ismail infinite-horizon Brownian
@@ -58,6 +61,15 @@ Gaussian paths at the book's own moments and length, draws down deeper
 than the bootstrap, so the gap is the mismatch between a stationary
 median and a finite-sample maximum, not fat tails or volatility
 clustering.
+
+The horizon-matched benchmark is the Magdon-Ismail positive-drift expected
+maximum drawdown. Switching to it cuts the gap from 296% against the
+stationary median to about 30% and does not close it, so F10.1b fails on
+F10.1's own 10% bar. Part of what is left is that the benchmark is an
+expected value while the simulation reports a median: comparing like for
+like, the simulated mean against the expected value, the gap is about
+26%, so the mean-versus-median mismatch is roughly four points of the
+remainder and the rest is the Brownian benchmark not matching the book.
 
 ## The stop-loss verdict
 
@@ -94,11 +106,11 @@ does no better:
 
 | estimator | window | dispersion reduction |
 | --- | --- | --- |
-| daily | 21 | 0.2063 |
-| daily | 42 | 0.1766 |
-| daily | 63 | 0.1069 |
-| daily | 126 | 0.2041 |
-| daily | 252 | 0.1449 |
+| daily | 21 | 0.2868 |
+| daily | 42 | 0.1953 |
+| daily | 63 | 0.1634 |
+| daily | 126 | 0.2027 |
+| daily | 252 | 0.1265 |
 
 The reduction is below the 40% bar not because the estimator is too
 noisy: the year-to-year dispersion of this book's realized volatility is
@@ -119,8 +131,8 @@ The risk budget is written per regime, not as one number.
 
 - F10.1 (verdict fail, threshold "simulated median drawdown within 10% of the analytical value"):
   Simulated drawdown distribution matches the analytical approximation within 10% at the median for the seed book's SR.
-- F10.1b (verdict pass, threshold "expected maximum drawdown between 0.15 and 0.25 and a relative gap below 1.0"):
-  The expected maximum drawdown at the book's horizon, n_obs * 21 / 252 years, is between 0.15 and 0.25 and within 100% of the simulated median.
+- F10.1b (verdict fail, threshold "simulated median drawdown within 10% of the analytical value"):
+  Simulated drawdown distribution matches the horizon-matched analytical approximation within 10% at the median for the seed book's SR.
 - F10.2 (verdict pass, threshold "stop-loss does not improve Sharpe on the i.i.d. control"):
   Control: on i.i.d. bootstrapped returns the stop-loss does not improve Sharpe. On the real book the result is reported either way.
 - F10.2b (verdict pass, threshold "re-entering stop does not improve Sharpe on the i.i.d. control"):

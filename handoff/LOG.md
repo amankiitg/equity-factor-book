@@ -744,3 +744,200 @@ Why: E10-F18. F10.1b was registered against the 0.15 to 0.25 band I wrote into
 criterion material, and rule 1 only forbids rewording an existing criterion, not
 inventing a new one around a known answer. The rule closes that gap and names
 the instance so the next reader sees the example. No other rule changed.
+
+---
+
+## 2026-09-22 review: task evidence-and-archive-hardening at c263021
+
+Reviewed HEAD c263021 against base 3a82ccb. Four commits, tree clean, status
+`done`. **Every acceptance item met.** This is the cleanest task of the three:
+the numbers I predicted are the numbers stored, to six places, and the two weak
+claims I called out last time were both corrected without being argued about.
+
+**E10 is closed.** What remains under E10 is yours, not DeepSeek's.
+
+### Verified, run or recomputed by me
+
+- `make test`: **595 passed, exit 0**, 413.69s. Matches the report.
+- `make lint`: clean, 33 source files, 131 black files, exit 0.
+- `make verify-evidence`: **evidence OK, exit 0.** It failed at the previous
+  HEAD and passes now. E10-F20 fixed.
+- Walkthrough: 23 cells, 13 code, zero unexecuted, zero errors.
+- No em dashes in any of the 26 changed files.
+- F10.3b's five revised reductions reproduce **exactly** from a fresh
+  `allocate.run`: 0.286842, 0.195261, 0.163429, 0.202698, 0.126479. These are
+  the values I computed independently on 2026-09-22 before the task was written.
+- The within-year asymmetry is genuinely closed. I recomputed the per-year
+  counts at all five windows: the only unequal year is 2012 (and 2013 at the
+  252 window), and those are exactly the years dropped. Every kept year carries
+  the same count on both sides. The artifact now stores `n_years_dropped` and
+  `dropped_years`, which was not asked for and is the right addition.
+- F10.3b's criterion text and `pass` verdict unchanged; old values in the
+  `revisions` block; `n_changed` 1.
+- **F10.1b is byte-identical to 3a82ccb** in criterion, threshold, verdict and
+  stored_numbers. The out-of-scope instruction was respected exactly.
+- E1 through E10: **0 of 71 criteria changed verdict.**
+- Membership unchanged, proven by the four `VERSION.json` sha256 values, which
+  is the evidence I asked for and the evidence the report now cites.
+- SPY archive: snapshot tracked at
+  `evidence/data/raw/spy_holdings/spy_holdings_2026-09-18.parquet.gz`,
+  registered in `data/VERSION.json` (sha `e8c726ef...`, 34358 bytes) and in
+  `evidence/MANIFEST.json`, which grew from 11 entries to 12. Growth claim
+  checked: 24025 compressed bytes times 252 sessions is 6.05 MB a year, the
+  report says 6.1.
+- The verify-evidence gate is now `tests/test_evidence.py`, an integration test
+  calling the same `evidence.verify()` that failed at the previous HEAD, so the
+  gate is real and not decorative.
+
+### Two new findings, both small, both carried into the next task
+
+**E10-F25. The SPY side of the crosscheck is archived; the Wikipedia side is
+not.** `data/processed/constituent_crosscheck.parquet` is absent from both
+`data/VERSION.json` and `evidence/MANIFEST.json`. As a derived artifact that is
+defensible, except that one of its three inputs is the **live** Wikipedia page,
+which changes daily and is archived nowhere. So the crosscheck is only
+half-reproducible: re-running it tomorrow compares against a different
+Wikipedia list and the 2026-09-22 record of six disagreeing names cannot be
+reconstructed. The whole point of the archive is a point-in-time record, and
+one of its two sides is not being kept. The eventual reconstruction will also
+need a dated sector map, which only Wikipedia supplies. Fix is the same shape
+as the SPY fix and is one step in the next task.
+
+**E10-F26. There is no restore path.** `efb.evidence` has `snapshot` and
+`verify` and no `restore`. After a clean checkout the raw parquet is absent and
+nothing repopulates it from the `.gz`. This is pre-existing across all eleven
+evidence artifacts and is not a regression from this task, and the report is
+honest about it, saying the file survives "in compressed form". It matters more
+now than it did: every other evidence artifact can be re-fetched from its
+source, and the SPY archive cannot.
+
+**E10-F27, and it is the one you asked about.** The sprint task lists were never
+ticked:
+
+| sprint | tasks done | tasks open | real state |
+| --- | --- | --- | --- |
+| E1 | 11 | 0 | correct |
+| E2 | 20 | 2 | correct, both open are marked OPTIONAL and deferred |
+| E3 | 16 | 4 | correct, all four are marked OPTIONAL and deferred |
+| E4 to E7 | 10, 10, 8, 9 | 0 | correct |
+| **E8** | **0** | **10** | complete: F8.1 to F8.7 evaluated, memo, walkthrough |
+| **E9** | **0** | **9** | complete: F9.1 to F9.5 evaluated, memo, walkthrough |
+| **E10** | **0** | **10** | complete: F10.x evaluated, memo, walkthrough, RG-Operate |
+
+Three consecutive sprints report every task open while their criteria are
+evaluated, their memos written and their walkthroughs rendered. Anyone reading
+`sprints/E*/TASKS.md` to find the project's state would conclude E8 never
+started. Folded into the next task along with the README, which stopped at E2
+and still quotes the superseded 349 bp (E10-F13).
+
+### Decisions still with you, unchanged and now blocking
+
+Nothing DeepSeek can do next touches these, and two of them gate the schedule.
+
+1. **F10.1b's criterion is fitted to the answer.** My error. Recommendation:
+   re-register against F10.1's own 10% bar, verdict `fail` at 26 to 30%,
+   mechanism being that the horizon fix cuts the gap from 296% to 26% without
+   closing it. Reserved decision 3.
+2. **What E11 trades.** Open since 2026-09-21. Recommendation (b),
+   idio_momentum through the full stack. E11 needs 30 trading days and the
+   clock cannot start until this lands.
+3. **Sign-off to re-run the universe reconstruction.** Reserved.
+4. **Where the Credit Trading Lab v8.x daily loop lives.** `live/` still holds
+   only a `.gitkeep`.
+
+### Next
+
+`handoff/TASK.md` rewritten as `e12-attribution-engine`, status **ready**, base
+commit c263021. This moves the project to the next sprint. Per the plan's step
+4, E12's machinery depends on nothing live and can be built and tested on the
+seed books now, so that E12 is a run rather than a build on day 30 of E11. The
+task covers the E12 PRD with F12.1 to F12.3 copied verbatim from the roadmap,
+`efb/attribution.py`, the three criteria evaluated on the seed books, the two
+housekeeping items above, and the README refresh you asked for. D11, the memo
+and the walkthrough are the task after, because one TASK.md is one sprint or
+less and this is already a full one.
+
+One thing to watch in E12, carried from E10-F5: under the E5 missing-data
+semantics `seed_ew` has 207 usable days against `seed_mom_ls`'s 4091. F12.1 is
+an algebraic identity and holds on any complete day, but F12.2 and F12.3 are
+statistical and must be read off `seed_mom_ls`, with n stated beside every
+number on both books.
+
+---
+
+## 2026-09-22 PROJECT_CONTEXT.md update
+
+Refreshed three things after E10 closed: the E10 state line now lists the six
+criteria and the SPY source rather than the pre-review state; remaining-plan
+steps 1 and 2 are struck through as done with what they did and did not solve;
+and step 2b is inserted for E12's engine, brought forward from step 4 because
+steps 3 and 4 are blocked on the owner or waiting on E11. Header counts moved
+to HEAD c263021 and 595 tests. No standing finding and no reserved decision
+changed.
+
+---
+
+## 2026-09-22 role change, STANDARDS rules 19 and 20, and four decisions
+
+**Role change, effective now.** I am a lightweight reviewer: read the report,
+check its Verification section, apply judgment to the reported numbers, log,
+and write the next task. I no longer run gates, read source or notebooks, or
+recompute. Deep review on request only, once per round when asked.
+
+**STANDARDS.md gains rules 19 and 20.** Why: verification has to live where the
+work lives. Three rounds of review found real defects, but every one cost a full
+gate run and a recomputation by the reviewer, which does not scale and puts the
+checking furthest from the person who can fix it. Rule 19 moves verification to
+DeepSeek. Rule 20 makes the evidence mandatory and pasted, so a claim can be
+checked in seconds rather than re-derived. The seven yes-or-no questions are the
+defect classes this project has actually hit, turned into a checklist the
+implementer answers before the reviewer sees it.
+
+### Decisions recorded
+
+1. **F10.1b: approved.** Re-register against F10.1's original 10% bar, verdict
+   `fail`, through a `revisions` block, with the mean-versus-median note. In the
+   current task.
+2. **E11 trades idio_momentum through the full stack**, Procedure 6.3 sizing
+   plus the FMP hedge, documented as a null book. Paper only. Clock starts as
+   soon as setup is done. Confirmed 2026-09-22 after the decision arrived with
+   both options still bracketed.
+3. **Universe reconstruction: not yet.** The paragraph you asked for is below.
+4. **The v8.x loop is at `/Users/amankesarwani/PycharmProjects/credit-trading-lab`.**
+   Structure noted: `execution/`, `dashboard/`, `scripts/`, `render.yaml`,
+   `.streamlit/`, `sprints/v8.1` and `sprints/v8.6`. Its README also carries a
+   lesson E11 should inherit: fixed-entry P&L accounting is mandatory, because
+   rolling residuals marked to market with drifting parameters produced up to
+   $13M of phantom P&L there. E12's attribution must not repeat it.
+
+### Decision 3: what re-running the universe reconstruction would change
+
+`build_membership` seeds every date with today's live constituents and then
+walks the pinned changes table backward to correct history, so re-running it
+today rewrites membership on both ends at once: the four processed artifacts
+move first (`universe_membership.parquet` 532623d5, `universe_constituents`
+d14736b7, `universe_changes` 86411430, `sectors` 66d1b7fa), and because the
+point-in-time universe is the input to the seed books, the TS-v1 estimation
+panel, the XS-v1 cross-section and its sector dummies, descriptors and
+regression weights, essentially every derived artifact and every sprint
+`data_hash` moves with them, E1 through E10. The verdicts genuinely at risk are
+the ones computed on the composition of the universe rather than on an algebraic
+identity: F1.1 and F1.5, because the deleted-member set changes and 365.10 bp is
+a statistic about exactly that set; F3.1 and F3.6, because the cross-section's
+membership changes its R squared and its bias; F5.1 and F5.2, which is the
+serious one, because a change in bias across families can move the champion, and
+the champion is itself a reserved decision; then F7's ICs, F8.5 and F8.7's
+breadth, F9's capacity and F10's design book, each on a different panel. Against
+that, the gain from re-running history is zero, because the SPY archive
+reconstructs nothing before 2026-09-18 and the pinned table remains the only
+source for the past. **Your preference is the right design, not a compromise**:
+freeze every historical artifact on the pinned table, where it is reproducible
+and already scored, and use the SPY archive only for the live universe from
+today forward. E11 needs today-forward membership and nothing else, so it is
+unblocked by the split, and the retroactive-membership defect stops growing
+because the live universe stops coming from the backward walk. What it costs is
+one documented seam: history ends on the pinned table at 2026-08-05 and the live
+record begins on the SPY archive at 2026-09-18, with a gap between the two that
+must be labelled and never silently bridged. I recommend signing off on the
+split and leaving the full re-run permanently unscheduled unless a later sprint
+needs a restated history for its own reason.

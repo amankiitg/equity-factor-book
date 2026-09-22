@@ -91,18 +91,21 @@ variance.
 
 ## The drawdown distribution
 
-The simulated median maximum drawdown against the analytical median, the
-Gaussian control, and the horizon-matched expected maximum drawdown:
+The simulated median and mean maximum drawdown against the analytical
+median, the Gaussian control, and the horizon-matched expected maximum
+drawdown:
 
 | quantity | value |
 | --- | --- |
 | simulated median drawdown | {drawdown['simulated_median_drawdown']:.4f} |
+| simulated mean drawdown | {drawdown['simulated_mean_drawdown']:.4f} |
 | analytical median drawdown | {drawdown['analytical_median_drawdown']:.4f} |
 | relative gap at the median | {drawdown['relative_gap_at_median']:.4f} |
 | Gaussian control median drawdown | {drawdown['gaussian_median_drawdown']:.4f} |
 | horizon (years) | {drawdown['horizon_years']:.1f} |
 | expected max drawdown at horizon | {drawdown['expected_mdd_at_horizon']:.4f} |
-| expected-vs-simulated relative gap | {drawdown['expected_mdd_relative_gap']:.4f} |
+| expected-vs-simulated-median relative gap | {drawdown['expected_mdd_relative_gap']:.4f} |
+| expected-vs-simulated-mean relative gap | {drawdown['expected_mdd_mean_relative_gap']:.4f} |
 | bootstrap samples | {int(drawdown['n_bootstrap'])} |
 
 The analytical benchmark is the Magdon-Ismail infinite-horizon Brownian
@@ -112,6 +115,15 @@ Gaussian paths at the book's own moments and length, draws down deeper
 than the bootstrap, so the gap is the mismatch between a stationary
 median and a finite-sample maximum, not fat tails or volatility
 clustering.
+
+The horizon-matched benchmark is the Magdon-Ismail positive-drift expected
+maximum drawdown. Switching to it cuts the gap from 296% against the
+stationary median to about 30% and does not close it, so F10.1b fails on
+F10.1's own 10% bar. Part of what is left is that the benchmark is an
+expected value while the simulation reports a median: comparing like for
+like, the simulated mean against the expected value, the gap is about
+26%, so the mean-versus-median mismatch is roughly four points of the
+remainder and the rest is the Brownian benchmark not matching the book.
 
 ## The stop-loss verdict
 

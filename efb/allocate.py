@@ -312,14 +312,15 @@ def drawdown_analysis(
     x = net.dropna().to_numpy(dtype=float)
     n = len(x)
     rng = np.random.default_rng(BOOTSTRAP_SEED)
-    medians: list[float] = []
+    max_drawdowns: list[float] = []
     for _ in range(n_bootstrap):
         path = rng.choice(x, size=n, replace=True)
         wealth = np.cumprod(1.0 + path)
         peak = np.maximum.accumulate(wealth)
         drawdown = wealth / peak - 1.0
-        medians.append(float(drawdown.min()))
-    simulated_median = float(np.median(medians))
+        max_drawdowns.append(float(drawdown.min()))
+    simulated_median = float(np.median(max_drawdowns))
+    simulated_mean = float(np.mean(max_drawdowns))
 
     # the Gaussian control: i.i.d. Gaussian paths at the book's own
     # moments, same length, so a deeper control shows the gap is not fat
@@ -348,14 +349,21 @@ def drawdown_analysis(
         if np.isfinite(expected_mdd) and expected_mdd != 0
         else float("nan")
     )
+    expected_mean_relative = (
+        abs(abs(simulated_mean) - expected_mdd) / expected_mdd
+        if np.isfinite(expected_mdd) and expected_mdd != 0
+        else float("nan")
+    )
     out = {
         "simulated_median_drawdown": simulated_median,
+        "simulated_mean_drawdown": simulated_mean,
         "analytical_median_drawdown": analytical,
         "relative_gap_at_median": relative,
         "gaussian_median_drawdown": gaussian_median,
         "horizon_years": horizon_years,
         "expected_mdd_at_horizon": expected_mdd,
         "expected_mdd_relative_gap": expected_relative,
+        "expected_mdd_mean_relative_gap": expected_mean_relative,
         "n_bootstrap": int(n_bootstrap),
         "n_obs": int(n),
     }

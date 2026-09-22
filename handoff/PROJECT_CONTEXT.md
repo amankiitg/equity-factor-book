@@ -28,7 +28,8 @@ that returns a negative answer has done its job.
 
 ## State
 
-Ten sprints built. HEAD 5b77d6f. `make test` 586 passed; `make lint` clean.
+Ten sprints built, E12's engine opening. HEAD c263021. `make test` 595
+passed; `make lint` clean; `make verify-evidence` clean.
 Five model versions in `data/models/registry.json`; XS-v1 is champion, TS-v1 is
 diagnostic only and ineligible. Dashboard tabs D0 to D9 exist; D10 and D11 do
 not. `data/VERSION.json` hashes 143 artifacts at
@@ -84,10 +85,13 @@ Verdicts and headline numbers, all from `sprints/E*/RESULTS.json`:
   cost's cross-rebalance variance inflates the denominator. F9.2: turnover cut
   37.55% against a 50% bar, at an ex-ante IR loss of 6.49%.
 - **E10** Kelly, vol targeting, stop-loss, drawdowns by regime. Gate RG-Operate.
-  F10.2 passes; F10.1 and F10.3 fail. **RG-Operate is not cleared**: the ongoing
-  constituent source is negative and blocks E11. Under review as of 2026-09-21;
-  nine defects found, see the LOG entry of that date. The failing verdicts
-  survive review; the arithmetic and the recorded mechanisms behind them do not.
+  Six criteria after the corrections: F10.2, F10.2b and F10.3b pass, F10.1 and
+  F10.3 fail, F10.1b passes on a criterion fitted to the answer and is with the
+  owner. **RG-Operate is not cleared**: the constituent source is stood up but
+  not applied. Closed 2026-09-22 after two review rounds and 27 findings.
+  The SSGA SPY daily holdings file is the ongoing source: 503 equity rows with
+  CUSIP and SEDOL, archived dated and protected in the evidence snapshot.
+  iShares IVV is recorded as a failing source, gated behind a disclaimer.
 
 ## Standing findings
 
@@ -125,13 +129,43 @@ Later work must respect these. They are measured, not assumed.
    momentum against a risk model that contains momentum projects the signal out;
    that is F7.2's mechanism and it matters for the E11 decision.
 
+## Decisions the owner has made
+
+Settled 2026-09-22. These are no longer open; build on them.
+
+- **E11 trades `idio_momentum` through the full stack**, Procedure 6.3 sizing
+  plus the FMP hedge, documented as a null book. **Paper only.** The 30-day
+  clock starts as soon as setup is done, so E11 setup is the critical path.
+- **F10.1b is re-registered** against F10.1's original 10% bar, verdict `fail`,
+  through a `revisions` block, with the mean-versus-median note.
+- **The universe stays split.** Historical artifacts stay frozen on the pinned
+  Wikipedia changes table; the SPY archive supplies the live universe from
+  2026-09-18 forward. The full reconstruction is **not** scheduled: it would
+  move every artifact and hash E1 to E10 and put F1.1, F1.5, F3.1, F3.6, F5.1
+  and F5.2 at risk, including the champion, and it recovers no history. The
+  seam between the two sources is documented and never silently bridged.
+- **The v8.x daily loop is at `/Users/amankesarwani/PycharmProjects/credit-trading-lab`**:
+  `execution/`, `dashboard/`, `scripts/`, `render.yaml`, `.streamlit/`,
+  `sprints/v8.1` and `v8.6`. **Guidance, not a template.** Reuse its loop
+  shape, its Option A governance and its fail-safes; do not inherit its
+  dashboard design. Its own README carries a lesson E12 must inherit:
+  fixed-entry P&L accounting is mandatory, because rolling residuals marked to
+  market with drifting parameters produced up to $13M of phantom P&L there.
+
+## How the two agents split
+
+Since 2026-09-22: **DeepSeek executes and verifies everything.** The reviewer
+reads reports, keeps this file current, helps the owner decide, and writes the
+next task. Every REPORT.md ends with a `## Verification` section per STANDARDS
+rules 19 and 20; a report without it comes back unreviewed.
+
 ## Reserved decisions
 
 Only the project owner makes these. Set `handoff/TASK.md` to `blocked` with the
 question and write it at the top of the LOG entry. Do not decide these and do
 not work around them.
 
-1. **What E11 trades.**
+1. **Any change to what E11 trades, or any move from paper to real money.**
 2. **Anything that declares or changes the champion.**
 3. **Any change to a stored criterion outside a `revisions` block.**
 4. **Deleting or rewriting evidence, artifacts or git history.**
@@ -141,16 +175,16 @@ not work around them.
 
 In order. Each numbered item is roughly one TASK.md or less.
 
-1. **The E10 review fixes.** F10.1's sign and horizon, F10.3's estimator
-   frequency, and the seven other defects in the 2026-09-21 LOG entry. Verdicts
-   do not change.
-2. **The ongoing constituent source**, iShares IVV or SSGA SPY daily holdings.
-   This clears the blocking RG-Operate item. Assessed 2026-09-21: SPY fetches
-   clean and carries CUSIP and SEDOL; IVV is behind a disclaimer and bot gate
-   and returns HTTP 200 with HTML; sector still comes from the live Wikipedia
-   page. Neither fund archives past files, so this fixes membership forward
-   only and reconstructs no history.
-3. **The E11 decision, then E11 setup.** The daily loop is reused from the
+1. ~~The E10 review fixes.~~ **Done 2026-09-22**, two rounds, 27 findings.
+2. ~~The ongoing constituent source.~~ **Done 2026-09-22.** SPY is the source,
+   archived and protected; IVV is a recorded failing source; sector stays on
+   the live Wikipedia page. It fixes membership forward only and reconstructs
+   no history, so RG-Operate item 5 is stood up but not yet positive: applying
+   it means re-running the universe reconstruction, which is reserved.
+2b. **E12's attribution engine on the seed books**, which depends on nothing
+   live. In progress; brought forward from step 4 because steps 3 and 4 are
+   blocked or waiting.
+3. **E11 setup, then the 30-day clock. This is the critical path.** The daily loop is reused from the
    owner's earlier Credit Trading Lab v8.x: evening proposal, morning execute,
    Alpaca paper, Render cron, Supabase state, Option A governance, two fail-safe
    guards. **That code is not in this repository** (`live/` holds only a

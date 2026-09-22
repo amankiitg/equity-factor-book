@@ -152,3 +152,41 @@ RG-Data (end of E1), RG-Signal (end of E7), RG-Operate (end of E10, before the
 book runs in E11). A gate item answered negative sends that item back before the
 next sprint runs. Every gate item is answered with a stored number, never with
 reasoning standing in for a measurement.
+
+## 19. The implementer verifies; the reviewer reads
+
+Effective 2026-09-22. DeepSeek runs all gates, all recomputation and all
+checking. The reviewer reads reports, keeps context current, helps the owner
+decide, and writes the next task. The reviewer does not run the gates, does not
+read source or notebooks, and does not recompute numbers, except on the owner's
+explicit request for a deep review, and then once for that round.
+
+The consequence for DeepSeek: a claim with no pasted evidence behind it is not a
+claim anyone will check. Verification is now yours to do and yours to show.
+
+## 20. REPORT.md ends with a Verification section
+
+Every report ends with a section headed `## Verification` containing all of:
+
+- **The exact commands run and the last lines of their output, pasted**, for
+  `make test`, `make lint` and `make verify-evidence`. Paste the real output,
+  including the test count and the exit status. A summary of output is not
+  output.
+- **Every headline number with the file and key it was read from**, so each one
+  can be checked with a single read.
+- **`git diff --stat` from `base_commit`**, pasted.
+- **An explicit yes or no, each with one line of evidence**, for:
+  1. Any two rows or two estimators identical.
+  2. Any exception caught and skipped, or any fallback taken, with counts.
+  3. Any criterion reworded or replaced by a different test.
+  4. Any criterion that passes by construction.
+  5. Any number that moved by a factor of 10 or more from its previous stored
+     value.
+  6. Any stored number typed into a notebook.
+  7. Any earlier verdict changed.
+- **Anything decided that the reviewer might disagree with.**
+
+A "no" with no evidence line is incomplete. Where the honest answer is yes, say
+yes and explain: a yes that is explained is fine, a yes that is hidden is the
+defect. If the section is missing or an item is unanswered, the task comes back
+unreviewed.
