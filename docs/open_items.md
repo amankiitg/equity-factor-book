@@ -332,3 +332,19 @@ sensitivity band, never a measurement. This changes for credit, where
 trade prints make spreads directly measurable, so the credit port can
 calibrate a real spread model rather than assume one. Tracked here, not
 scheduled for E10.
+
+## 2026-09-21: E10 close-out, RG-Operate is not cleared
+
+RG-Operate is answered with stored numbers and is not cleared. The
+negative item is the ongoing constituent source: the universe is frozen at
+the pinned Wikipedia revision 1368675864 (2026-08-05), and a paper-traded
+book cannot run on a frozen universe. E11 must secure a vendor feed or a
+maintained open source and re-run the universe reconstruction before the
+book goes live. The other RG-Operate items are positive and stored: the
+champion XS-v1 with stress haircut 1.8471, the exact FMP hedge at 0.1053%
+of notional per rebalance, G3, and the cost parameters with their
+uncertainty. What E11 would trade is also recorded: a documented-null book
+on momentum_12_1, the best-behaved signal, whose edge survives both the
+forward shift and the extra-day lag, labeled as such with the expected E12
+verdict of luck written down before E11 starts. The full checklist is in
+docs/research/RG_OPERATE.md.

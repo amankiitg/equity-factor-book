@@ -1,6 +1,6 @@
 {
   "sprint": "E10",
-  "evaluated_at": "2026-09-21T23:37:22+00:00",
+  "evaluated_at": "2026-09-21T23:40:37+00:00",
   "data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
   "criteria": {
     "F10.1": {
@@ -41,7 +41,7 @@
     }
   },
   "revisions": {
-    "previous_data_hash": "416fa7b89507fb1a0bc14dbd8dfe7a5c571b606441f04fc9562359345bded572",
+    "previous_data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
     "data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
     "n_changed": 0,
     "changed_tickers_or_criteria": [],

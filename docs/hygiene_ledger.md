@@ -1413,3 +1413,25 @@ measurement, until a source that actually observes spreads is available.
 That changes for credit, where trade prints make spreads measurable, which
 is tracked in the open items.
 
+## 2026-09-21: E10 close-out
+
+Dynamic risk allocation and loss management. The design book is rho 0.02,
+phi 0.95, seed 1 on corrected costs, net annualized Sharpe 0.978, the
+(rho, phi, seed) closest to 1.0. Kelly: full 9.78 times, half 4.89 times,
+growth 0.478 at full and 0.359 at half, growth loss 0.036 when the Sharpe
+is overstated by one standard error. F10.1 fails: the simulated median
+maximum drawdown is 14.0% against the Magdon-Ismail Brownian median of
+3.5%, so the constant-vol Brownian benchmark understates the book's
+drawdowns by a factor of five (fat tails and vol clustering). F10.2
+passes: the drawdown stop does not improve Sharpe on the i.i.d. control
+(mean difference -0.49), and on the real books it helps the momentum seed
+book by 0.23 while hurting the design book by 0.39, reported either way.
+F10.3 fails: vol targeting reduces the dispersion of realized annual vol
+by only 12%, below the 40% threshold, because the trailing 12-window
+estimate lags and is noisy at monthly frequency.
+
+The practitioner numbers that carry into E11: the chosen fraction is half
+Kelly, the vol-targeting rule is scale_t = 10% / trailing vol clipped at
+3 times, and the risk budget is written per VIX regime (the middle tercile
+carries the deepest drawdown of 0.1309).
+
