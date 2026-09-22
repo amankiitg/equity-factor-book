@@ -1,5 +1,5 @@
 task_id: e11-live-data-and-clock-restart
-status: ready
+status: in_progress
 base_commit: 14d25bf
 
 ## Goal
