@@ -141,15 +141,16 @@ def guards_panel() -> pd.DataFrame:
 
 
 def clock_panel() -> pd.DataFrame:
-    """The thirty-trading-day clock, day 1 and the end date."""
+    """The continuous clock: open-ended run, a thirty-day reporting window."""
     clock = load_clock()
     return _require(
         pd.DataFrame(
             [
                 {
                     "day 1": clock["day_1"],
-                    "end date": clock["end_date"],
-                    "trading days": clock["trading_days"],
+                    "reporting window end": clock["end_date"],
+                    "reporting window days": clock["trading_days"],
+                    "run condition": clock.get("run_condition", "open_ended"),
                     "started": clock.get("started", True),
                 }
             ]
@@ -189,4 +190,4 @@ def render() -> None:
     _render_frame("The book", book_panel)
     _render_frame("Forecast against outcome", reconciliation_panel)
     _render_frame("Guard events", guards_panel)
-    _render_frame("The thirty-trading-day clock", clock_panel)
+    _render_frame("The continuous live clock", clock_panel)

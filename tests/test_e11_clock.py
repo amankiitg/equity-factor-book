@@ -1,4 +1,4 @@
-"""Sprint E11: the thirty-trading-day clock, void and restart."""
+"""Sprint E11: the continuous live clock, void and restart."""
 
 from __future__ import annotations
 
@@ -17,6 +17,23 @@ def test_start_clock_records_day_1_and_the_end_date(tmp_path: Path) -> None:
     assert payload["started"] is True
     # 30 business days from 2026-09-22 inclusive lands on 2026-11-02
     assert payload["end_date"] == "2026-11-02"
+
+
+def test_start_clock_records_the_open_ended_run_condition(tmp_path: Path) -> None:
+    path = tmp_path / "clock.json"
+    payload = clock.start_clock("2026-09-22", path=path)
+    assert payload["run_condition"] == "open_ended"
+    assert payload["reporting_window_days"] == 30
+    # the window end is a reporting slice, not the life of the loop
+    assert payload["end_date"] == "2026-11-02"
+    assert payload["day_1"] == "2026-09-22"
+
+
+def test_run_condition_is_open_ended() -> None:
+    condition = clock.run_condition()
+    assert condition["run_condition"] == "open_ended"
+    assert "reporting window" in condition["reason"]
+    assert condition["reporting_window_days"] == 30
 
 
 def test_void_start_records_the_reason_and_leaves_the_clock_stopped(

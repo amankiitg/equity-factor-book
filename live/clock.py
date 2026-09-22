@@ -1,9 +1,10 @@
-"""Sprint E11: the thirty-trading-day clock.
+"""Sprint E11: the continuous live clock.
 
-The clock is pre-registered: day 1 and the end date are written before
-any window outcome is seen. A start can be voided (discarded, never
-counted) and the clock restarted from a new day 1, but every start,
-voided or live, stays on the record.
+The loop runs indefinitely. Day 1 is recorded, and the thirty trading
+days from day 1 are a reporting window over the history, not the life
+of the run. A start can be voided (discarded, never counted) and the
+clock restarted from a new day 1, but every start, voided or live,
+stays on the record.
 """
 
 from __future__ import annotations
@@ -17,6 +18,20 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 CLOCK_PATH = ROOT / "live" / "clock.json"
 TRADING_DAYS = 30
+RUN_CONDITION = "open_ended"
+RUN_CONDITION_REASON = (
+    "the book runs indefinitely; the thirty trading days from day 1 are a "
+    "reporting window over the history, not the life of the run"
+)
+
+
+def run_condition() -> dict:
+    """The loop's run condition: open-ended, the window a reporting slice."""
+    return {
+        "run_condition": RUN_CONDITION,
+        "reason": RUN_CONDITION_REASON,
+        "reporting_window_days": TRADING_DAYS,
+    }
 
 
 def _end_date(day_1: str, trading_days: int) -> str:
@@ -77,6 +92,8 @@ def void_start(
         "started": False,
         "day_1": None,
         "end_date": None,
+        "run_condition": RUN_CONDITION,
+        "reporting_window_days": existing.get("trading_days", TRADING_DAYS),
         "trading_days": existing.get("trading_days", TRADING_DAYS),
         "history": history,
     }
@@ -96,6 +113,8 @@ def start_clock(
         "started": True,
         "day_1": day_1,
         "end_date": _end_date(day_1, trading_days),
+        "reporting_window_days": trading_days,
+        "run_condition": RUN_CONDITION,
         "trading_days": trading_days,
         "history": existing.get("history", []),
     }

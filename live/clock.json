@@ -10,6 +10,8 @@
       "voided_at": "2026-09-22T18:42:18.105380+00:00"
     }
   ],
+  "reporting_window_days": 30,
+  "run_condition": "open_ended",
   "started": true,
   "trading_days": 30
 }
