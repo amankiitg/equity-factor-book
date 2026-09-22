@@ -6,31 +6,52 @@ roadmap in
 [`docs/Equity_Factor_Book_Roadmap_v2.docx`](docs/Equity_Factor_Book_Roadmap_v2.docx)
 (searchable text copy: [`docs/roadmap_v2.md`](docs/roadmap_v2.md)).
 
-**Committed milestone**: Gate G1, Sunday September 20, 2026. Sprints E1 to E3
-running end to end. Later dates are indicative and re-planned at each gate.
+**Committed milestone**: Sprints E1 to E10 built, gates RG-Data through
+RG-Operate answered, and the live paper book stood up on Render (Sprint E11,
+Part B). The book runs indefinitely on `idio_momentum` through the full stack,
+paper only. The handoff files live in [`handoff/`](handoff/): the standing
+rules, the current task, the reviewer's log and the implementer report.
 
 ## Status
 
 - [x] Repo skeleton and engineering standards (Roadmap Appendix B)
 - [x] E1  Universe, returns, Hygiene Ledger, perf library (Sep 1 to 6), gate RG-Data
-  - F1.3 passes (0.9557); F1.1, F1.2, F1.4, F1.5 fail with stored numbers;
-    survivorship bias 349 bp per year recorded. See
+  - F1.3 passes (0.9564); F1.1, F1.2, F1.4, F1.5 fail with stored numbers;
+    survivorship bias 365.10 bp per year recorded. See
     docs/research/E1_data_note.md and sprints/E1/RESULTS.json.
 - [x] E2  Time-series factor models, volatility, TS-v1 (Sep 7 to 13)
   - F2.0a, F2.0b, F2.0c, F2.1, F2.2, F2.4 and F2.5 pass; F2.3 and F2.6 fail
-    with stored numbers. F2.3: GARCH 44.4% and EWMA(0.94) 36.0% of names
-    beat trailing 252d vol on out-of-sample QLIKE, against a 60% bar, so
-    EWMA stays the production default. F2.6 is a successor criterion added
-    after the fact: four tickers (CPWR, EP, MI, POM) have reused symbols
-    and spliced price histories, so they are dropped from the estimation
-    panel and the missing issuer histories are an open item. Bias: Vasicek
-    is the least biased beta forecast (RMSE 0.4052, bias +0.0063 against
-    raw 0.4090 and +0.0177), EWMA(126) is the most accurate (0.3992) but
-    the most biased. TS-v1 is registered as diagnostic only and is
-    ineligible for champion under the pre-registered rule. See
-    docs/research/E2_exposure_study.md and sprints/E2/RESULTS.json.
-- [ ] E3  Cross-sectional model, Fama-MacBeth, XS-v1 (Sep 14 to 20), gate G1
-- [ ] E4 to E13  See the roadmap sprint plan
+    with stored numbers, so EWMA stays the production default. TS-v1 is
+    registered as diagnostic only and is ineligible for champion under the
+    pre-registered rule. See docs/research/E2_exposure_study.md and
+    sprints/E2/RESULTS.json.
+- [x] E3  Cross-sectional model, Fama-MacBeth, XS-v1 (Sep 14 to 20), gate G1
+- [x] E4  Covariance, PCA-v1 and PCA-v1c
+- [x] E5  Risk evaluation and the champion: XS-v1 is the provisional champion,
+  stress haircut 1.8471. See docs/research/E5_risk_model_diagnostic.md.
+- [x] E6  Hedging toolkit over the seed books
+- [x] E7  Alpha lab; RG-Signal returned all six signals NULL. See
+  docs/research/E7_signal_idio_momentum.md.
+- [x] E8  Construction on synthetic alpha
+- [x] E9  Cost model and the capacity curve
+- [x] E10  Risk allocation and loss management; RG-Operate not cleared (item 5,
+  the ongoing constituent source is stood up but not yet applied). See
+  docs/research/RG_OPERATE.md.
+- [x] E11  The live paper book (paper only, loop runs indefinitely)
+- [ ] E12 to E13  Attribution and the credit port
+
+## The live book
+
+The book is a **documented null book**: `idio_momentum` through the full stack,
+Procedure 6.3 plus the exact FMP hedge, paper only. Its factor-neutral IC is
+-0.0031 (t -0.51) at horizon 21, null rather than negative, against a raw IC of
+0.0121 (t 5.04) at horizon 1, read from data/alpha/summary.parquet. The loop
+runs indefinitely (run_condition open_ended, day 1 2026-09-22) with a
+30-trading-day reporting window. Render runs two services, `efb-live-dashboard`
+(web) and `efb-live-daily` (the daily cron that extends, proposes, executes and
+reconciles); the blueprint is `render.yaml` and the deployed URL is assigned by
+Render at deploy time. The live series lives in Supabase; research artifacts
+stay in git and the evidence snapshot.
 
 ## Workflow
 
@@ -62,7 +83,12 @@ full tree and the engineering discipline. Quick map:
 - `sprints/` - one folder per sprint: PRD, TASKS, RESULTS, PROBES
 - `docs/` - ledgers, research deliverables, standards
 - `notebooks/` - hand-derived walkthroughs
-- `live/` - evening and morning paper-trading jobs (E11)
+- `live/` - the paper-trading loop and the Render dashboard (E11)
+- `render.yaml` - the Render blueprint (dashboard web service plus daily cron)
+- `scripts/` - the daily cron entrypoint and the Supabase provisioning script
+- `.streamlit/` - the Streamlit server configuration
+- `handoff/` - the standing rules, the current task, the reviewer's log, the
+  report
 
 ## Setup
 
