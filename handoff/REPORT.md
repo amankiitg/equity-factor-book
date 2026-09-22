@@ -1,126 +1,218 @@
-# Evidence and archive hardening: report
+# Sprint E11 setup: report
 
-Task `evidence-and-archive-hardening`, base commit 3a82ccb. Three things:
-protect the SPY archive, repair the evidence chain the last rebuild broke,
-and close the within-year sample asymmetry in F10.3b. Every number below
-is read from an artifact.
+Task `e11-setup`, base commit c263021. The daily paper-trading loop is
+stood up and the thirty-trading-day clock has started.
 
-## Table 1: gates
+**The clock started. Day 1 is 2026-09-22; the thirty-day end date is
+2026-11-02.** The loop runs end to end on one paper day, in dry run, and
+F11.1 to F11.3 are pre-registered with verdicts pending. Every number
+below is read from an artifact.
 
-| gate | result |
-| --- | --- |
-| make test | 595 passed, exit 0 |
-| make lint | clean, exit 0 |
-| make verify-evidence | evidence OK, exit 0 |
-| walkthrough total cells | 23 |
-| walkthrough code cells | 13 |
-| walkthrough error outputs | 0 |
-| walkthrough null execution counts | 0 |
+## Table 1: the clock
 
-## Table 2: the archive
+| quantity | value | file / key |
+| --- | --- | --- |
+| day 1 | 2026-09-22 | live/clock.json `day_1` |
+| end date | 2026-11-02 | live/clock.json `end_date` |
+| trading days | 30 | live/clock.json `trading_days` |
+| started | true | live/clock.json `started` |
+| calendar | business days, day 1 included | live/clock.py `_end_date` |
 
-| quantity | value |
-| --- | --- |
-| file | data/raw/spy_holdings/spy_holdings_2026-09-18.parquet |
-| bytes | 34358 |
-| sha256 | e8c726ef112f9aeeb3ddc5fd92167e1ed62f53d377118f3300d1659398ab5c97 |
-| present in data/VERSION.json | yes |
-| present in evidence/MANIFEST.json | yes |
-| survives a clean checkout | yes, as evidence/data/raw/spy_holdings/spy_holdings_2026-09-18.parquet.gz (24025 bytes) |
-| projected growth | 6.1 MB per year of daily files |
+The end date is 30 business days from day 1, computed by
+`pd.bdate_range(day_1, periods=30)`, which is a business-day calendar, not
+the exchange holiday calendar. The clock is never restarted with a
+different day.
 
-The archive is protected through the evidence snapshot, not by tracking
-the data parquet. `git ls-files data/raw/spy_holdings/` counts 0, but the
-compressed snapshot under evidence/ is tracked, and `make verify-evidence`
-decompresses it and hashes it against VERSION.json. A fresh clone contains
-the 18-Sep archive in compressed form.
+## Table 2: F10.1b re-registered to fail
 
-## Table 3: F10.3b revisions
+The criterion was re-registered against F10.1's verbatim threshold, per
+the owner's approval. Verdict: fail. The old values stay in the revisions
+block.
 
-| window | old reduction | new reduction | years dropped | n_years both sides |
+| quantity | value | file / key |
+| --- | --- | --- |
+| verdict | fail | sprints/E10/RESULTS.json `criteria.F10.1b.verdict` |
+| threshold | simulated median drawdown within 10% of the analytical value | sprints/E10/RESULTS.json `criteria.F10.1b.threshold` |
+| median relative gap | 0.296266 | sprints/E10/RESULTS.json `criteria.F10.1b.stored_numbers.expected_mdd_relative_gap` |
+| mean relative gap | 0.257764 | sprints/E10/RESULTS.json `criteria.F10.1b.stored_numbers.expected_mdd_mean_relative_gap` |
+| simulated median drawdown | -0.140308 | sprints/E10/RESULTS.json `criteria.F10.1b.stored_numbers.simulated_median_drawdown` |
+| old verdict | pass | sprints/E10/RESULTS.json `revisions.changed.F10.1b.old.verdict` |
+| new verdict | fail | sprints/E10/RESULTS.json `revisions.changed.F10.1b.new.verdict` |
+
+The horizon fix cut the gap from 296% to about 26%, and the remaining
+mean-versus-median part is recorded in the criterion note. No other E10
+criterion moved.
+
+## Table 3: the day-1 proposal
+
+The evening job builds the null book from `idio_momentum` through the full
+stack. Nothing executes.
+
+| quantity | value | file / key |
+| --- | --- | --- |
+| signal | idio_momentum | live/proposals/proposal_2026-09-03.json `signal` |
+| proposal as-of close | 2026-09-03 | live/proposals/proposal_2026-09-03.json `as_of` |
+| universe source | raw/spy_holdings/spy_holdings_2026-09-18.parquet | live/proposals/proposal_2026-09-03.json `universe_source` |
+| n names | 499 | live/proposals/proposal_2026-09-03.json `n_names` |
+| n excluded from the frozen model | 4 (BE, DD, ILMN, P) | live/proposals/proposal_2026-09-03.json `n_excluded` |
+| idio share after FMP | 1.0 | live/proposals/proposal_2026-09-03.json `idio_share_after_fmp` |
+| max factor exposure after FMP | 2.5e-15 | live/proposals/proposal_2026-09-03.json `max_abs_exposure_after_fmp` |
+| gross | 1.0 | live/proposals/proposal_2026-09-03.json `gross` |
+| net | -1.47e-15 | live/proposals/proposal_2026-09-03.json `net` |
+| target annual vol | 0.10 | live/proposals/proposal_2026-09-03.json `target_annual_vol` |
+| achieved annual vol | 0.0423 | live/proposals/proposal_2026-09-03.json `achieved_annual_vol` |
+| gross cap bound | true | live/proposals/proposal_2026-09-03.json `gross_cap_bound` |
+| expected establishment cost | 75.34 bps | live/proposals/proposal_2026-09-03.json `expected_establishment_cost_bps` |
+
+The universe is the SPY archive and is asserted, not assumed: the loader
+rejects any archive dated before the 2026-09-18 seam. The null book is
+factor-neutral to machine precision after the exact FMP hedge, and its
+null-ness is the point: factor-neutral IC -0.0031 (t -0.51) at horizon 21,
+read from data/alpha/summary.parquet.
+
+## Table 4: the two fail-safe guards
+
+Ported from v8.x and restated for the E11 book. Each has a test that
+trips it.
+
+| guard | condition that trips it | action | constant | file |
 | --- | --- | --- | --- | --- |
-| daily 21 | 0.206317 | 0.286842 | 2012 | 14 |
-| daily 42 | 0.176613 | 0.195261 | 2012 | 14 |
-| daily 63 | 0.106923 | 0.163429 | 2012 | 14 |
-| daily 126 | 0.204057 | 0.202698 | 2012 | 14 |
-| daily 252 | 0.144861 | 0.126479 | 2012, 2013 | 13 |
+| 1 position-size cap | abs(target notional) > 40% of NAV | REJECTED_CAP, never submitted | MAX_POSITION_PCT_OF_NAV = 0.40 | live/guards.py |
+| 2 traded-notional brake | run traded notional would exceed the absolute brake | REJECTED_TRADED_NOTIONAL, never submitted | MAX_TRADED_NOTIONAL_PER_RUN = 200000 | live/guards.py |
 
-The old values are in the revisions block of
-sprints/E10/RESULTS.json. The criterion text and the pass verdict are
-unchanged, and every window stays below 40%, so F10.3's fail stands.
+Guard 1 is NAV-relative, Guard 2 is absolute. The brake was restated from
+v8.x's 16000 to 200000, one full flip of the 100k gross book, so a
+fat-finger ten times the book is still caught while the book establishes
+in one run. Each guard has a firing test in tests/test_e11_guards.py.
 
-## Table 4: per-year observation counts
+## Table 5: what is reused from v8.x and what is rebuilt
 
-Raw observations per year are 11 in 2012, 12 in 2013 through 2025, and 7
-in 2026. Targeted observations per year, per window:
-
-| window | 2012 targeted | 2013 targeted | 2014-2025 targeted | 2026 targeted | years dropped |
-| --- | --- | --- | --- | --- | --- |
-| daily 21 | 9 | 12 | 12 | 7 | 2012 |
-| daily 42 | 8 | 12 | 12 | 7 | 2012 |
-| daily 63 | 7 | 12 | 12 | 7 | 2012 |
-| daily 126 | 4 | 12 | 12 | 7 | 2012 |
-| daily 252 | 0 | 10 | 12 | 7 | 2012, 2013 |
-
-Every kept year now carries the same count on both sides; 2026 is a
-partial year with 7 observations on both sides and is kept, because the
-two sides agree. The within-year asymmetry is gone.
-
-## Table 5: no-change
-
-| sprint | criteria | verdicts changed |
+| piece | decision | why |
 | --- | --- | --- |
-| E1 | 5 | 0 |
-| E2 | 13 | 0 |
-| E3 | 9 | 0 |
-| E4 | 7 | 0 |
-| E5 | 5 | 0 |
-| E6 | 7 | 0 |
-| E7 | 6 | 0 |
-| E8 | 8 | 0 |
-| E9 | 5 | 0 |
-| E10 | 6 | 0 |
+| loop shape (evening propose, morning execute, reconcile) | reused | proven operational shape |
+| Option A governance | reused, ported | propose, rules decide, nothing discretionary; dated decisions |
+| two fail-safe guards | reused, restated | different units on purpose; constants resized for E11 |
+| idio_momentum alpha, Procedure 6.3, FMP hedge, E8 constraints, E9 costs, E10 vol | rebuilt from the EFB stack | the stack E11 exists to run |
+| dashboard D10 | rebuilt, not copied | the strategy-review view, answer first |
+| state store | rebuilt on EFB artifacts, no Supabase | the owner's artifacts are the state |
 
-E10 per-criterion before and after, verdicts only: F10.1 fail to fail,
-F10.1b pass to pass, F10.2 pass to pass, F10.2b pass to pass, F10.3 fail
-to fail, F10.3b pass to pass. F10.3b's five stored reductions moved, but
-the verdict did not. F10.1b is byte-identical to 3a82ccb in criterion,
-threshold, verdict and stored_numbers.
+The morning job's live Alpaca path is stubbed: it reads paper keys from
+the environment only and raises clearly when `alpaca-py` is missing. The
+loop runs in dry run today.
 
-## Table 6: membership unchanged
+## Table 6: no other verdict moved
 
-Proven by data/VERSION.json sha256, not by git status, because
-data/**/*.parquet is gitignored and git status proves nothing there.
+Only two RESULTS.json files differ from base: `sprints/E10/RESULTS.json`
+(F10.1b pass to fail, by the owner's approval) and the new
+`sprints/E11/RESULTS.json` (three pending). Every F1.x to F9.x and every
+other F10.x is byte-identical, because their RESULTS.json files did not
+change:
 
-| artifact | sha256 at 3a82ccb | sha256 at HEAD |
-| --- | --- | --- |
-| universe_membership.parquet | 532623d541928c67dd165b8a6e49c1e890ba7a57a5c732c6b2b688c819944615 | 532623d541928c67dd165b8a6e49c1e890ba7a57a5c732c6b2b688c819944615 |
-| universe_constituents.parquet | d14736b7dfe56f4646a8ac5cfe4ac3b9a87dae99f9674959260e3f780d1de2d0 | d14736b7dfe56f4646a8ac5cfe4ac3b9a87dae99f9674959260e3f780d1de2d0 |
-| universe_changes.parquet | 8641143074228883c2a20278e0f67e05423601be333128328f3fc116ad4c1102 | 8641143074228883c2a20278e0f67e05423601be333128328f3fc116ad4c1102 |
-| sectors.parquet | 66d1b7fad9e5829e103accfc15befa2c2770e70478c6123c6635468655d31c6c | 66d1b7fad9e5829e103accfc15befa2c2770e70478c6123c6635468655d31c6c |
+```
+git diff --name-only c263021..HEAD -- 'sprints/*/RESULTS.json'
+sprints/E10/RESULTS.json
+sprints/E11/RESULTS.json
+```
 
 ## Decisions
 
-Where the task left the choice to me: the archive is tracked through the
-evidence snapshot, not through a .gitignore negation for the data
-directory, because the project's evidence policy already names that as the
-mechanism for non-regenerable fetched inputs. The verify-evidence gate
-went into the test suite as an integration test, so a rebuild that forgets
-make evidence fails make test, not only a make target. The within-year fix
-drops a year whenever the two sides disagree in count, with no separate
-minimum count, because the requirement is equality of the two sides and a
-partial year with equal counts (2026, seven observations) is the same
-statistic on both sides. The size line was checked: the snapshot is 109.57
-MB, already committed through Git LFS by the E8 Task 0d open item, and the
-archive adds 24 KB a day, about 6.1 MB a year.
+- **The E8 constraint set is satisfied by the hedge plus two caps.** The
+  exact FMP hedge drives every modeled factor exposure, styles and sectors
+  included, to machine precision, so sector-neutrality and beta-neutrality
+  are exact in model. The remaining constraints, gross at most 1 and net
+  zero, hold to 1e-15. The position cap does not bind at this book's
+  scale. The E10 vol target is applied and capped by gross 1: a null
+  alpha cannot reach 10% annual vol inside gross 1, so the cap binds and
+  the achieved 4.23% is stored beside the 10% target.
+- **Day 1 is 2026-09-22, the day the loop first ran.** The proposal's
+  as-of close is 2026-09-03, the last close in the frozen model data. The
+  seam is stated, not bridged: going forward the loop needs live data, and
+  until then it re-runs on the frozen close.
+- **The loop runs dry.** Live Alpaca paper submission needs `alpaca-py`
+  plus paper keys from the environment. Neither is available to me, so
+  the dry-run path is complete and the live path fails loudly rather than
+  silently.
+- **F11.x are pre-registered, not evaluated.** The 30-day window has not
+  closed, so every verdict is pending with empty stored numbers, and the
+  criterion text is copied verbatim out of the roadmap by a script.
 
-## Findings
+## Verification
 
-E10-F24: the retroactive-membership defect counts carried in the previous
-report's Table 7 were measured on a fresh build_membership over a
-business-day range ending 2026-09-21, not on the stored membership
-artifact. BE and P are not columns in data/processed/universe_membership.parquet
-at all, and only RDDT's error (4355 of 4355 dates) is present in it today.
-The stored artifact is unchanged and the reconstruction that would fix it
-remains reserved.
+### Commands and output
+
+`make test` (full suite, output to a log):
+
+```
+640 passed, 3 warnings in 413.02s (0:06:53)
+TEST_EXIT=0
+```
+
+`make lint`:
+
+```
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+.venv/bin/mypy efb
+Success: no issues found in 33 source files
+.venv/bin/black --check efb dashboard live tests
+All done! ✨ 🍰 ✨
+147 files would be left unchanged.
+```
+
+`make verify-evidence`:
+
+```
+.venv/bin/python -c "from efb import evidence; p = evidence.verify(); print('evidence OK' if not p else chr(10).join(p)); raise SystemExit(1 if p else 0)"
+evidence OK
+```
+
+### Headline numbers, file and key
+
+- day 1 2026-09-22, end date 2026-11-02: live/clock.json `day_1`, `end_date`
+- F10.1b verdict fail, old verdict pass: sprints/E10/RESULTS.json `criteria.F10.1b.verdict`, `revisions.changed.F10.1b.old.verdict`
+- F10.1b median gap 0.296266: sprints/E10/RESULTS.json `criteria.F10.1b.stored_numbers.expected_mdd_relative_gap`
+- idio share after FMP 1.0: live/proposals/proposal_2026-09-03.json `idio_share_after_fmp`
+- gross 1.0, achieved annual vol 0.0423: live/proposals/proposal_2026-09-03.json `gross`, `achieved_annual_vol`
+- universe source raw/spy_holdings/spy_holdings_2026-09-18.parquet: live/proposals/proposal_2026-09-03.json `universe_source`
+- factor-neutral IC -0.0031, t -0.51: data/alpha/summary.parquet row `idio_momentum` `neutral_ic_h21_mean`, `neutral_ic_h21_t`
+- position cap 0.40, brake 200000: live/guards.py `MAX_POSITION_PCT_OF_NAV`, `MAX_TRADED_NOTIONAL_PER_RUN`
+
+### git diff --stat from base_commit
+
+```
+57 files changed, 3051 insertions(+), 296 deletions(-)
+```
+
+### Yes or no, each with evidence
+
+1. **Any two rows or two estimators identical?** No. The proposal has 499
+   unique tickers; the book is one estimator, XS-v1.
+2. **Any exception caught and skipped, or any fallback taken?** No
+   exception is caught and skipped. One fallback is taken and counted: the
+   SPY universe minus the frozen model leaves 4 names out (BE, DD, ILMN,
+   P), stored as `n_excluded` in the proposal manifest.
+3. **Any criterion reworded or replaced by a different test?** Yes. F10.1b
+   was re-registered against F10.1's threshold, by the owner's approval.
+   F11.1 to F11.3 are byte-identical to the roadmap, checked by
+   tests/test_e11_results.py.
+4. **Any criterion that passes by construction?** No. F11.x are pending;
+   F10.1b fails. The idio share of 1.0 after the hedge is by construction
+   of the exact FMP hedge, but it is a stored number, not a criterion
+   verdict.
+5. **Any number that moved by a factor of 10 or more?** Yes. F10.1b's gap
+   moved from about 296% to 26%, roughly an 11x change, from the horizon
+   fix. Old and new values are both in the revisions block.
+6. **Any stored number typed into a notebook?** No. No notebook was
+   touched in this task.
+7. **Any earlier verdict changed?** Yes. F10.1b pass to fail, by the
+   owner's approval. No other verdict moved.
+
+### Anything decided that the reviewer might disagree with
+
+The E8 constraint set is treated as satisfied by the exact FMP hedge plus
+gross and net caps, rather than re-running the constrained optimizer over
+the Procedure 6.3 book. The traded-notional brake is restated from 16k to
+200k. Day 1 is 2026-09-22 while the proposal is built on the frozen close
+2026-09-03. The loop runs dry because the live Alpaca path needs
+`alpaca-py` and paper keys that are not available to me.
 
