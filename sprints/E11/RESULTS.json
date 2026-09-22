@@ -1,0 +1,40 @@
+{
+  "clock": {
+    "day_1": "2026-09-22",
+    "end_date": "2026-11-02",
+    "started": true,
+    "trading_days": 30
+  },
+  "criteria": {
+    "F11.1": {
+      "criterion": "30 consecutive trading days unattended with zero missed proposals.",
+      "stored_numbers": [],
+      "verdict": "pending"
+    },
+    "F11.2": {
+      "criterion": "The ex-ante risk decomposition is stored every day and reconciles to the champion model's numbers on D2.",
+      "stored_numbers": [],
+      "verdict": "pending"
+    },
+    "F11.3": {
+      "criterion": "Realized book vol over the window sits inside the champion model's bias band from E5.",
+      "stored_numbers": [],
+      "verdict": "pending"
+    }
+  },
+  "day_1_proposal": {
+    "achieved_annual_vol": 0.04226921971256746,
+    "as_of": "2026-09-03",
+    "gross": 1.0,
+    "idio_share_after_fmp": 1.0,
+    "n_excluded": 4,
+    "n_names": 499,
+    "net": -1.4710455076283324e-15,
+    "signal": "idio_momentum",
+    "target_annual_vol": 0.1,
+    "universe_source": "raw/spy_holdings/spy_holdings_2026-09-18.parquet"
+  },
+  "registered_at": "2026-09-22T17:59:26.595783+00:00",
+  "sprint": "E11",
+  "status": "pending"
+}

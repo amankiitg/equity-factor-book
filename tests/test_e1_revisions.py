@@ -177,14 +177,20 @@ def test_a_second_correction_appends_to_the_history(tmp_path: Path) -> None:
     first = _store(path, "hash1", 0.90)
     second = _store(path, "hash2", 0.88)
     assert [entry["data_hash"] for entry in second["history"]] == ["hash1", "hash2"]
-    # the top level still describes the newest comparison, as before
+    # the top level still describes the newest comparison, as before; the
+    # criterion and threshold ride along in every measurement since the
+    # F10.1b re-registration recorded them with the verdict and numbers
     assert second["data_hash"] == "hash2"
     assert second["changed"]["F1.1"]["old"] == {
         "verdict": "fail",
+        "criterion": "original text",
+        "threshold": "95%",
         "stored_numbers": {"share": 0.90},
     }
     assert second["changed"]["F1.1"]["new"] == {
         "verdict": "fail",
+        "criterion": "original text",
+        "threshold": "95%",
         "stored_numbers": {"share": 0.88},
     }
     # the first entry keeps the values as they were when it was written

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -38,7 +39,7 @@ RECONCILIATION_COLUMNS = [
 ]
 
 
-def _load_manifest(as_of: str) -> dict[str, object]:
+def _load_manifest(as_of: str) -> dict[str, Any]:
     path = PROPOSAL_DIR / f"proposal_{as_of}.json"
     if not path.exists():
         raise FileNotFoundError(f"no proposal manifest for {as_of} at {path}")
