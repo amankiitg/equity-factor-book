@@ -47,6 +47,9 @@ EVIDENCE_GLOBS = (
     # is that it cannot be regenerated: SSGA serves only the current file,
     # so a dated file that is not snapshotted today is unrecoverable.
     "data/raw/spy_holdings/*.parquet",
+    # the live Wikipedia constituents table changes daily and is archived
+    # nowhere, so the same reasoning applies to its dated files.
+    "data/raw/wikipedia_constituents/*.parquet",
 )
 EVIDENCE_FILES = ("data/models/registry.json", "data/VERSION.json")
 

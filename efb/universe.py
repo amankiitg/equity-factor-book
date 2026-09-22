@@ -10,10 +10,15 @@ from __future__ import annotations
 
 import io
 import re
+from datetime import date
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import requests
+
+ROOT = Path(__file__).resolve().parents[1]
+DATA_ROOT = ROOT / "data"
 
 WIKI_PAGE = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 WIKI_API = "https://en.wikipedia.org/w/api.php"
@@ -56,6 +61,29 @@ def fetch_constituents() -> pd.DataFrame:
         }
     )
     return out.sort_values("symbol").reset_index(drop=True)
+
+
+def archive_constituents(
+    data_root: Path = DATA_ROOT,
+    as_of: str | None = None,
+    overwrite: bool = False,
+) -> Path:
+    """Fetch the live constituents and write one dated file per fetch.
+
+    The live Wikipedia table is the sector source and one side of the SPY
+    crosscheck, and it changes daily, so a fetch that is not kept today
+    cannot be rebuilt tomorrow. One file per date, never overwritten,
+    under data/raw/wikipedia_constituents/.
+    """
+    constituents = fetch_constituents()
+    stamp = as_of or date.today().isoformat()
+    out_dir = Path(data_root) / "raw" / "wikipedia_constituents"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"wikipedia_constituents_{stamp}.parquet"
+    if path.exists() and not overwrite:
+        return path
+    constituents.to_parquet(path, index=False)
+    return path
 
 
 def fetch_changes() -> pd.DataFrame:

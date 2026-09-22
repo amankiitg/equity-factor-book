@@ -1,5 +1,7 @@
 """Tests for Task 2: point-in-time universe membership and sectors."""
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -119,3 +121,20 @@ def test_build_sectors() -> None:
         "as_of",
     }
     assert sectors.loc[sectors["ticker"] == "B", "gics_sector"].iloc[0] == "Financials"
+
+
+def test_the_constituents_archive_is_append_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from efb import universe
+
+    def fake_fetch() -> pd.DataFrame:
+        return pd.DataFrame({"symbol": ["AAA", "BBB"]})
+
+    monkeypatch.setattr(universe, "fetch_constituents", fake_fetch)
+    first = universe.archive_constituents(data_root=tmp_path, as_of="2026-09-22")
+    second = universe.archive_constituents(data_root=tmp_path, as_of="2026-09-22")
+    assert first == second
+    files = list((tmp_path / "raw" / "wikipedia_constituents").glob("*.parquet"))
+    assert len(files) == 1
+    assert files[0].name == "wikipedia_constituents_2026-09-22.parquet"

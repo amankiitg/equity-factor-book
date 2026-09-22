@@ -1,7 +1,7 @@
 {
   "note": "Built by make rebuild (Sprint E10). The risk-allocation artifacts join the versioned set; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-22T17:22:35+00:00",
-  "data_hash": "65936f8d9323afc6d714747152d0a70093e847522803452636497039dd2681ae",
+  "built_at": "2026-09-22T17:26:52+00:00",
+  "data_hash": "970ac559db3421659faa0a98eb81d740df30679c91047059a7d70c9f38e399f0",
   "artifacts": {
     "config.json": {
       "sha256": "f501f7296de0a3bec5c2497793a01e937c5f66d2590ba94395efde060913598d",
@@ -582,6 +582,10 @@
     "spy_holdings_2026-09-18.parquet": {
       "sha256": "e8c726ef112f9aeeb3ddc5fd92167e1ed62f53d377118f3300d1659398ab5c97",
       "bytes": 34358
+    },
+    "wikipedia_constituents_2026-09-22.parquet": {
+      "sha256": "595332a2bf79f030c013080bfd650569e084b6c21e4a77c7197390f8480cf704",
+      "bytes": 30612
     }
   }
 }
