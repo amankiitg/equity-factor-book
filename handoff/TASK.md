@@ -1,137 +1,140 @@
-task_id: evidence-and-archive-hardening
-status: done
-base_commit: 3a82ccb0304611fbea508960e243ae1e7b9b04a3
+task_id: e11-setup
+status: in_progress
+base_commit: c26302151fdffce5c14965b9c70f36314e749992
 
 ## Goal
 
-Protect the SPY archive, which is the one artifact in this repository that
-cannot be regenerated, repair the evidence chain the last rebuild broke, and
-close the within-year sample asymmetry left in F10.3b. Small and self-contained:
-no verdict moves, no criterion text changes, no universe reconstruction.
+Stand up Sprint E11's daily paper-trading loop so the thirty-trading-day clock
+can start, and clear the two small items the owner settled on 2026-09-22. The
+clock is the critical path: every day of setup is a day E12 waits, so prefer a
+loop that runs today over a loop that is complete.
 
-## Before you start
+## The owner's decisions, settled. Build on these, do not revisit.
 
-Read `handoff/PROJECT_CONTEXT.md`, then `handoff/STANDARDS.md`, then the
-2026-09-22 LOG entry. The work on the last task was good; these are the four
-things that survived it.
+- **E11 trades `idio_momentum` through the full stack**: Procedure 6.3 sizing
+  plus the exact in-model FMP hedge, documented as a **null book**. Its
+  factor-neutral IC is -0.0031 at t -0.51, null rather than negative, which is
+  why it survives the hedge that would strip `momentum_12_1`. The expected E12
+  verdict is luck, written down before the clock starts.
+- **Paper only.** No real money, no real broker credentials, ever. Alpaca paper
+  keys only, and never committed.
+- **The universe stays split.** History is frozen on the pinned Wikipedia table;
+  the live universe comes from the SPY archive, 2026-09-18 forward. Do not
+  re-run the universe reconstruction. The seam between the two sources is
+  documented and never silently bridged.
+- **The v8.x loop is at `/Users/amankesarwani/PycharmProjects/credit-trading-lab`.**
+  Read it before planning: `execution/`, `dashboard/`, `scripts/`,
+  `render.yaml`, `.streamlit/`, `sprints/v8.1`, `sprints/v8.6`.
 
-**Out of scope, both blocked on the owner.** Do not touch either:
-
-- **F10.1b.** Its criterion is fitted to the answer and its verdict is under
-  review with the owner. Leave the criterion text, the threshold and the verdict
-  exactly as they are.
-- **The universe reconstruction.** Building the new membership from the SPY
-  archive changes stored criteria and is reserved.
+**Guidance, not a template.** Reuse its loop shape, its Option A governance and
+its fail-safe guards, because those are proven. **Do not inherit its dashboard.**
+The owner wants the strategy-review dashboard materially nicer and more
+intuitive than the v8.x one: built for someone deciding whether the book is
+doing what it was built to do, not for someone auditing a pipeline. Lead with
+the answer, not the plumbing. State every number with its n and its units, keep
+one idea per panel, and make the null-book framing impossible to miss. Treat the
+old dashboard as a list of things that must be available somewhere, not as a
+layout to copy.
 
 ## Steps
 
-**S1. Print the errors.** Append to `sprints/E10/PROBES.md`, before any fix:
-`make verify-evidence` failing with its message; the SPY archive's absence from
-`.git`, from `data/VERSION.json` and from `evidence/MANIFEST.json`; and the
-F10.3b per-year observation counts showing 2012 measured from 11 raw against 9,
-9, 8, 4 and 0 targeted observations at the five daily windows. Commit alone.
+**S1. F10.1b, per the owner's approval.** Re-register F10.1b against F10.1's
+original threshold, "within 10% at the median", verdict **fail** at the
+horizon-matched gap. Old criterion, threshold, verdict and stored numbers go
+into the `revisions` block with the new ones beside them. The mechanism to
+record: the horizon fix cuts the gap from 296% to about 26% and does not close
+it, and part of what is left is that Magdon-Ismail gives an expected maximum
+drawdown while the simulation reports a median, which accounts for roughly 4
+points of the remainder. Update the E10 memo and walkthrough from the artifacts.
 
-**S2. Protect the SPY archive.** It is a fetched input that `make rebuild`
-cannot regenerate, because SSGA serves only the current file, so under the
-2026-09-21 evidence policy it belongs in the evidence snapshot. Bring it in:
-register each dated file in `data/VERSION.json`, extend `efb.evidence` to cover
-`data/raw/spy_holdings/`, and refresh the snapshot. Check the size cost before
-committing and report it; one file is about 40 KB, so a year of daily files is
-small, but say what the growth rate is. If `.gitignore` needs a negation for
-this directory, add it and record why in the ledger.
+**S2. Archive the Wikipedia side.** `constituent_crosscheck` compares SPY
+against the **live** Wikipedia page, which is kept nowhere, so today's record
+cannot be rebuilt tomorrow. Snapshot the fetched constituents table one dated
+file per fetch, same shape as the SPY archive, into `data/VERSION.json` and the
+evidence snapshot. Report the size cost.
 
-**S3. Repair the evidence chain.** Run `make evidence` so the snapshot matches
-the current `data/VERSION.json`, then `make verify-evidence` until it exits 0.
-Do not edit `evidence/MANIFEST.json` by hand.
+**S3. Read the v8.x loop and write `sprints/E11/PRD.md` and `TASKS.md`.** Copy
+F11.x verbatim from `docs/roadmap_v2.md`; check the strings against the roadmap
+yourself. In the PRD, state plainly what is reused from v8.x, what is rebuilt,
+and why. Include the null-book label and the pre-written E12 verdict.
 
-**S4. Make the gate non-optional.** Add `make verify-evidence` to the test
-suite as an integration test, or to a documented close-out step, so a rebuild
-that forgets `make evidence` fails loudly instead of leaving a broken target.
-Your call which; record it and the reason.
+**S4. The evening proposal.** `live/evening_job.py`. Build tomorrow's target
+book: `idio_momentum` as alpha, Procedure 6.3 sizing under the champion XS-v1,
+the exact FMP hedge, the E8 constraint set, E9 costs. Universe from the SPY
+archive, never the frozen history. Write the proposal to a dated artifact with
+its inputs' hashes. **Nothing executes here.**
 
-**S5. F10.3b's within-year asymmetry.** Require a minimum observation count per
-year, applied to **both** sides, and drop any year where the two sides differ in
-count. F10.3b keeps its ID, its criterion text and its `pass` verdict; the five
-window reductions move through the `revisions` block with the old values beside
-the new ones. Record in the ledger that E10-F6's year-level fix left a
-within-year version of the same defect, and that an annual volatility built from
-4 monthly returns is not the same statistic as one built from 11.
+**S5. The morning execution.** `live/morning_job.py`. Submit the proposal to
+Alpaca paper, reconcile fills against targets, store both. Option A governance
+from v8.x: the loop proposes, the rules decide, nothing discretionary. Two
+fail-safe guards, ported and named, each with the condition that trips it and
+the action it takes. A guard that cannot fire is not a guard; prove each one
+fires with a test.
 
-**S6. Correct the report's three weak claims.** In `handoff/REPORT.md`, which is
-yours to rewrite for this task: cite `data/VERSION.json` hashes rather than
-`git status` as the proof that membership is unchanged, since
-`data/**/*.parquet` is gitignored and git status proves nothing there; extend
-the F1.x to F9.x no-change row to E8 and E9; and label Table 7's counts as
-measured on a fresh `build_membership`, noting that BE and P are absent from the
-stored membership and only RDDT's error is present in it today.
+**S6. Daily reconciliation and state.** Forecast against outcome, every day,
+stored. Use the project's own artifacts for state unless you have a reason to
+add Supabase; if you do add it, say why and keep credentials out of the repo.
 
-**S7. Close.** `make rebuild-e10`, re-execute and re-render the walkthrough if
-S5 changed a stored number, refresh `data/VERSION.json`, run `make evidence`
-again if needed, then `make test`, `make lint` and `make verify-evidence`.
-Write `handoff/REPORT.md` and set this file's status line to `done`.
+**S7. Dashboard D10, the strategy-review view.** See the guidance above. This is
+the one the owner will actually read. Every panel builder raises on an empty
+read, per the D9 convention.
+
+**S8. Start the clock.** Once S4 to S6 run end to end on one paper day, record
+day 1 with its date and the thirty-day end date, and say so plainly at the top
+of the report. Then `make test`, `make lint`, `make verify-evidence`.
 
 ## Acceptance
 
-1. `make test` passes with at least 594 tests; `make lint` clean;
-   **`make verify-evidence` exits 0**. All three run at the end, in that order.
-2. `evidence/MANIFEST.json` contains an entry for
-   `data/raw/spy_holdings/spy_holdings_2026-09-18.parquet`, and
-   `data/VERSION.json` carries its sha256.
-3. A fresh clone or a `git clean -xdf` would still contain the 18-Sep archive
-   file. Demonstrate it, by whatever check you choose, and print the result.
-4. `make verify-evidence` fails when `data/VERSION.json` is modified without
-   refreshing the snapshot, proven by a test or a printed demonstration.
-5. F10.3b's five stored reductions change, the old values appear in `revisions`,
-   the criterion text and `pass` verdict are unchanged, and daily 21 lands near
-   0.2868 with every window still below 0.40. If any window clears 0.40, stop
-   and report; that would change F10.3's verdict.
-6. Both sides of every F10.3b year carry the same observation count. Print the
-   per-year table for all five windows.
-7. F10.1b's criterion, threshold, stored numbers and verdict are byte-identical
-   to their values at 3a82ccb. Print the comparison.
-8. `data/processed` membership artifacts unchanged, proven by `VERSION.json`
-   sha256 comparison, not by `git status`.
-9. No F1.x to F10.x verdict changes except none. Assert across all ten sprints
-   and print the count per sprint, E1 through E10.
-10. No em dashes in any file touched.
+1. `make test` passes with at least 595 tests, `make lint` clean,
+   `make verify-evidence` exits 0.
+2. F10.1b reads `fail` against the verbatim F10.1 threshold, with the old values
+   in `revisions` and the mean-versus-median note stored. No other E10 criterion
+   moves. No F1.x to F9.x verdict moves.
+3. The Wikipedia snapshot is dated, hashed in `data/VERSION.json`, present in
+   `evidence/MANIFEST.json`, and `make verify-evidence` still exits 0.
+4. F11.x in `sprints/E11/RESULTS.json` are byte-identical to the roadmap.
+5. The evening job produces a proposal from `idio_momentum` with the FMP hedge,
+   and the proposal's idio share after the hedge is stored. The universe used is
+   the SPY archive; assert it, do not assume it.
+6. Both fail-safe guards have a test that makes each one fire.
+7. No credential, key or token appears in any committed file. State how you
+   checked.
+8. The 30-day clock has a recorded day 1 and end date, or the report says
+   plainly why it could not start and what is missing.
+9. No em dashes in any file touched.
 
 ## Stop only if
 
-- Any criterion changes verdict.
-- An F10.3b window clears 40%.
-- Bringing the SPY archive into evidence would push the committed snapshot over
-  the 100 MB line the 2026-09-21 open item records. Report the size instead.
-- A fix would require re-running the universe reconstruction, or touching
-  F10.1b. Neither is in scope.
+- Any F1.x to F10.x criterion other than F10.1b changes verdict.
+- Alpaca paper cannot be reached, or would need anything other than paper keys.
+- A step would need the universe reconstruction, or real money.
+- Setup cannot start the clock within this task. Then stop, commit what runs,
+  and report exactly what blocks day 1. Do not half-start the loop.
 
-Everything else you decide and record: the minimum observation count in S5, how
-the archive is tracked in S2, and where the verify-evidence gate goes in S4.
+Everything else you decide and record: the state store, the proposal artifact
+schema, which v8.x pieces are reused against rebuilt, and the D10 layout.
 
 ## Report back
 
 `handoff/REPORT.md`, every number read from an artifact.
 
-**Table 1, gates.** `make test` count and exit code, `make lint` exit code,
-`make verify-evidence` exit code, walkthrough total cells, code cells, error
-outputs and null execution counts, each stated separately.
+**Table 1, the clock.** Day 1 date, end date, trading days elapsed, or what
+blocks it.
 
-**Table 2, the archive.** File, bytes, sha256, present in `VERSION.json`,
-present in `evidence/MANIFEST.json`, survives a clean checkout, and the
-projected growth in MB per year of daily files.
+**Table 2, F10.1b.** Old and new criterion, threshold, verdict and stored
+numbers, and the revisions entry.
 
-**Table 3, F10.3b revisions.** Per window: old reduction, new reduction, years
-dropped, n_years both sides.
+**Table 3, the proposal.** Date, names, gross, net, idio share after the hedge,
+predicted vol, expected cost, and the universe source with its as-of date.
 
-**Table 4, per-year observation counts.** Per window and year: raw obs,
-targeted obs, kept or dropped.
+**Table 4, the guards.** Per guard: name, condition, action, and the test that
+fires it.
 
-**Table 5, no-change.** Per sprint E1 to E10: criteria count, verdicts changed,
-and for E10 the per-criterion before and after. Include the F10.1b
-byte-identical check.
+**Table 5, reuse.** Per v8.x component: reused, adapted or rebuilt, and why.
 
-**Table 6, membership unchanged.** The four `VERSION.json` entries
-(`universe_membership`, `universe_constituents`, `universe_changes`, `sectors`)
-with sha256 at 3a82ccb and at HEAD.
+**Table 6, no-change.** Per sprint E1 to E10: criteria, verdicts changed.
 
-Plus a paragraph naming every decision you made and why, and any finding this
-task did not anticipate, with a new ID continuing from E10-F23.
+**Include the Verification section per STANDARDS.** Rules 19 and 20: pasted
+command output for the three gates, every headline number with its file and key,
+`git diff --stat` from `base_commit`, the seven yes-or-no questions each with an
+evidence line, and anything you decided that I might disagree with.
