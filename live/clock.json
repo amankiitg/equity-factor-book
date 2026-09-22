@@ -1,6 +1,6 @@
 {
-  "day_1": null,
-  "end_date": null,
+  "day_1": "2026-09-22",
+  "end_date": "2026-11-02",
   "history": [
     {
       "day_1": "2026-09-22",
@@ -10,6 +10,6 @@
       "voided_at": "2026-09-22T18:42:18.105380+00:00"
     }
   ],
-  "started": false,
+  "started": true,
   "trading_days": 30
 }

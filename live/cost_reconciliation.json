@@ -1,0 +1,29 @@
+{
+  "e6_reference": {
+    "book": "seed_mom_ls",
+    "borrow_component_bp": 6.564888697503785,
+    "cost_bp": 10.52718113254709,
+    "method": "fmp",
+    "n": 350,
+    "short_notional": 0.3938933218502271,
+    "source": "data/hedge/hedge_metrics.parquet",
+    "turnover": 0.7924584870086611,
+    "turnover_component_bp": 3.962292435043305
+  },
+  "establishment": {
+    "as_of": "2026-09-21",
+    "avg_trade_size": 194.24526179079604,
+    "borrow_bp": 8.093552574616503,
+    "commission_bp": 0.9712263089539801,
+    "gross": 0.9712263089539802,
+    "impact_bp": 4.142885161830039,
+    "n_names": 500,
+    "nav": 100000.0,
+    "notional": 97122.63089539802,
+    "spread_bp": 4.723374260207236,
+    "total_bp": 17.931038305607757
+  },
+  "mechanism": "E6's 10.53 bp is a steady-state rebalance trading only the delta (turnover 0.79) under the E6 provisional 5 bp-per-unit-turnover plus borrow. The establishment trades the full gross (0.97) from flat under the E9 model (spread schedule, square-root impact, 1 bp commission) plus borrow. The trading leg is 9.84 bp (spread 4.72 + impact 4.14 + commission 0.97) against E6's 3.96 bp, and borrow is 8.09 bp against 6.56 bp. The two borrow legs match; the difference is the richer E9 trading model on the full gross. The 7.15x ratio seen in review came from pricing the old proposal at the 1e8 capacity AUM without borrow; at the paper NAV of 100k the ratio is 1.70x, which this arithmetic closes.",
+  "ratio_establishment_over_e6": 1.7033086141331812,
+  "verdict": "reconciled"
+}

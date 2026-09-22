@@ -1,7 +1,7 @@
 {
-  "note": "Built by make rebuild (Sprint E10). The risk-allocation artifacts join the versioned set; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-22T17:26:52+00:00",
-  "data_hash": "970ac559db3421659faa0a98eb81d740df30679c91047059a7d70c9f38e399f0",
+  "note": "Extended daily by the E11 live loop from 2026-09-04 to 2026-09-21; pre-2026-09-04 rows byte-identical. Universe from the SPY archive.",
+  "built_at": "2026-09-22T19:00:04+00:00",
+  "data_hash": "e4686e0ce04c39af9b8c23f9db6ec18cd0e55993c1febd44c0108418f46f510c",
   "artifacts": {
     "config.json": {
       "sha256": "f501f7296de0a3bec5c2497793a01e937c5f66d2590ba94395efde060913598d",
@@ -376,8 +376,8 @@
       "bytes": 24219
     },
     "factor_returns.parquet": {
-      "sha256": "250944f25dbd8b918ea93252c360c720ec9578f6ef63f21c5b086bd468cdd395",
-      "bytes": 1425303
+      "sha256": "4a83c229048840ebef5004ddb2d47306205daa652d6be0580fc7b803e721b15b",
+      "bytes": 1429292
     },
     "loadings.parquet": {
       "sha256": "c298ff5345ba7d3fbb0a1d0217741b1d7d4884102265eadf05a557d108393757",
@@ -392,7 +392,7 @@
       "bytes": 5064571
     },
     "factor_cov.parquet": {
-      "sha256": "256ae426f5287a576c5df2f76d14f9e1cc0935a0185ef25b1ee0884eeb122e79",
+      "sha256": "3e6b3cefb4bb38d440c06cbbd98bc87503026c5b41c1cd8a34782ab77fc156d8",
       "bytes": 14603
     },
     "idio_vol.parquet": {
@@ -408,24 +408,24 @@
       "bytes": 20344112
     },
     "descriptors.parquet": {
-      "sha256": "f88055f0ee2733c75630c72a2a76c1d7b2462024fb6e42f6d7946b6b3ea5ff05",
-      "bytes": 18190843
+      "sha256": "70bf6b9f1c2fa4df40d240b79722f5db471d0f6d058c020a88ddfa090fe49d0b",
+      "bytes": 19275745
     },
     "fmp_weights.parquet": {
       "sha256": "d709ab959afac123fa4174b106f0060c9a6c63ebcfff948d80cfead70ce38ed5",
       "bytes": 8834286
     },
     "specific_returns.parquet": {
-      "sha256": "5d1c60ae6009f2505856503fcace487eadd486c3fc5f8fe6b257124e47756e53",
-      "bytes": 16126711
+      "sha256": "68ab60b59e2f32796a1fd263b000b5d43e5ed082578a98657fa674fd6bcdd8f4",
+      "bytes": 16171862
     },
     "specific_var.parquet": {
-      "sha256": "893b78d86e3476cf202f065ec93e87c9e278754468613c71aaf05d2f13e4e9e6",
-      "bytes": 2118527
+      "sha256": "24f0e36a4ed96b133b77d6325105b47eee6dd3d1a033d4ffee86a0454d239eda",
+      "bytes": 2247672
     },
     "xs_r2.parquet": {
-      "sha256": "a264ddebf10d007216b809095e07faf6f5c1ec1b3e0240a14d9bcc0f98e7ed4e",
-      "bytes": 105879
+      "sha256": "cdbfacc6e2a7ceced46fc03118bc11667a2fdd3c860e7a6937669c0285a8e750",
+      "bytes": 106153
     },
     "residual_factors.parquet": {
       "sha256": "f17a36395b739a5693652529008a45f926cf6f701ca6fdea0b6bfb9e2acfc2a0",
@@ -524,8 +524,8 @@
       "bytes": 27392000
     },
     "returns.parquet": {
-      "sha256": "e2f6b720d091b6645ba1658f41a4e0573ef9add858c919d742293acd39e11d74",
-      "bytes": 61974614
+      "sha256": "43b1ccb8d970fc547ec86bcb389d48bcf8cf2fa935a8a1a41c75fc9f6777a91d",
+      "bytes": 63576152
     },
     "sectors.parquet": {
       "sha256": "66d1b7fad9e5829e103accfc15befa2c2770e70478c6123c6635468655d31c6c",
@@ -564,12 +564,12 @@
       "bytes": 199378
     },
     "prices.parquet": {
-      "sha256": "302b86ef12e555fb31ec6851dad5d5e8b472f150b9ffa0331486fd49665a510b",
-      "bytes": 61093009
+      "sha256": "f1d4e226bded12cd4d0c8d0eaee8e0c6c4ca65d2b22ca8a32a7eff1fcb64c436",
+      "bytes": 61233059
     },
     "shares_history.parquet": {
-      "sha256": "1bca9fff8f5ce86db0dcb9539f5684ce89e8035d1c8fd785ba15ff1466892bf7",
-      "bytes": 2112831
+      "sha256": "361421babd6f142c5f2cb7be636b5b7446b0edf2dbc5beb102056f20bac85960",
+      "bytes": 2146029
     },
     "short_interest.parquet": {
       "sha256": "c991f183f0fdee16228079e6dc0cf32c85ea156d732b637708b7a4391314f780",
@@ -582,6 +582,10 @@
     "spy_holdings_2026-09-18.parquet": {
       "sha256": "e8c726ef112f9aeeb3ddc5fd92167e1ed62f53d377118f3300d1659398ab5c97",
       "bytes": 34358
+    },
+    "spy_holdings_2026-09-21.parquet": {
+      "sha256": "f9b18133257f6c0d15f75f188dd27f66a107566e61d348bc1adc1b3539913258",
+      "bytes": 34283
     },
     "wikipedia_constituents_2026-09-22.parquet": {
       "sha256": "595332a2bf79f030c013080bfd650569e084b6c21e4a77c7197390f8480cf704",

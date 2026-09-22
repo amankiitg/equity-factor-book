@@ -1,0 +1,12 @@
+{
+  "closes": [
+    "2026-09-18",
+    "2026-09-21"
+  ],
+  "definition": "0.5 * sum(abs(w_t - w_{t-1}))",
+  "n_names_after": 500,
+  "n_names_before": 500,
+  "passed": true,
+  "proposals_differ": true,
+  "weight_turnover": 0.12957758249149315
+}

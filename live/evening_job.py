@@ -35,8 +35,10 @@ SIGNAL = "idio_momentum"
 SPY_UNIVERSE_MIN_AS_OF = date(2026, 9, 18)  # the live-universe seam
 TARGET_ANNUAL_VOL = 0.10  # the E10 target
 GROSS_CAP = 1.0  # the E8 gross cap, a hard ceiling
-REFERENCE_AUM = 1e8
+PAPER_NAV = 100_000.0  # the paper notional the morning job runs
+REFERENCE_AUM = 1e8  # the capacity-curve reference, kept for the E6 finding
 TRADING_DAYS = 252
+HORIZON = 21  # the rebalance horizon, the E6 and E9 convention
 MIN_NAMES = 50
 
 # the frozen model inputs whose content the proposal is pinned to
@@ -128,18 +130,89 @@ def _expected_establishment_cost(
     return float(fraction) * 1e4
 
 
+def _input_as_of(root: Path) -> dict[str, str]:
+    """The as-of date of every model input the proposal reads, one field each."""
+    prices_frame = pd.read_parquet(root / "raw" / "prices.parquet")
+    shares = pd.read_parquet(root / "raw" / "shares_history.parquet")
+    sectors = pd.read_parquet(root / "processed" / "sectors.parquet")
+    descriptors = pd.read_parquet(root / "models" / "XS-v1" / "descriptors.parquet")
+    factor_returns = pd.read_parquet(
+        root / "models" / "XS-v1" / "factor_returns.parquet"
+    )
+    specific_returns = pd.read_parquet(
+        root / "models" / "XS-v1" / "specific_returns.parquet"
+    )
+    specific_var = pd.read_parquet(root / "models" / "XS-v1" / "specific_var.parquet")
+    factor_last = str(pd.to_datetime(factor_returns["date"]).max().date())
+    price_last = str(
+        pd.Timestamp(prices_frame.index.get_level_values("date").max()).date()
+    )
+    return {
+        "prices": price_last,
+        "shares": str(pd.to_datetime(shares["date"]).max().date()),
+        "sectors": str(pd.to_datetime(sectors["as_of"]).max().date()),
+        "descriptors": str(pd.to_datetime(descriptors["date"]).max().date()),
+        "factor_returns": factor_last,
+        "specific_returns": str(pd.to_datetime(specific_returns["date"]).max().date()),
+        "factor_cov": factor_last,
+        "specific_var": str(pd.to_datetime(specific_var["date"]).max().date()),
+    }
+
+
+def _cost_decomposition(
+    weights: np.ndarray,
+    names: list[str],
+    specific: np.ndarray,
+    nav: float,
+    root: Path,
+) -> dict[str, float]:
+    """The establishment cost split into spread, impact, commission and borrow.
+
+    Each component is in basis points of the paper NAV. Borrow is the
+    annualized rate on the short leg over one rebalance horizon, the same
+    horizon E6's per-rebalance number uses.
+    """
+    prices = pd.read_parquet(root / "raw" / "prices.parquet")
+    spread = costs_mod.spread_schedule(prices, root)
+    adv = costs_mod._adv_per_ticker(prices)
+    sigma = np.sqrt(np.maximum(specific, 1e-12))
+    spread_map = spread.reindex(names).fillna(spread.median()).to_numpy(dtype=float)
+    adv_map = adv.reindex(names).fillna(adv.median()).to_numpy(dtype=float)
+    dollar_trade = np.abs(weights) * nav
+    impact = (
+        costs_mod.IMPACT_K
+        * sigma
+        * np.sqrt(np.maximum(dollar_trade, 0.0) / np.maximum(adv_map, 1.0))
+    )
+    spread_bps = float(np.sum(spread_map * np.abs(weights))) * 1e4
+    commission_bps = float(np.sum(costs_mod.COMMISSION * np.abs(weights))) * 1e4
+    impact_bps = float(np.sum(impact * np.abs(weights))) * 1e4
+    short_gross = float(np.maximum(-weights, 0.0).sum())
+    borrow_bps = costs_mod.BORROW_RATE * short_gross * (HORIZON / TRADING_DAYS) * 1e4
+    total = spread_bps + commission_bps + impact_bps + borrow_bps
+    return {
+        "spread_bps": spread_bps,
+        "impact_bps": impact_bps,
+        "commission_bps": commission_bps,
+        "borrow_bps": borrow_bps,
+        "total_bps": total,
+        "notional": float(np.abs(weights).sum()) * nav,
+        "avg_trade_size": float(np.abs(weights).mean()) * nav,
+    }
+
+
 def build_proposal(
     data_root: Path = DATA_ROOT,
     as_of: pd.Timestamp | None = None,
-    aum: float = REFERENCE_AUM,
+    nav: float = PAPER_NAV,
     store: bool = True,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
-    Returns the proposal manifest: universe source and seam, the as-of
-    date, the exclusion count, the decomposition after the hedge, the
-    achieved vol against the E10 target, the E9 expected cost, and the
-    hashes of every frozen input.
+    Returns the proposal manifest: the universe source and seam, the as-of
+    date of every model input and the max staleness, the decomposition
+    after the hedge, the achieved vol against the E10 target, the four-way
+    E9 cost split, and the hashes of every frozen input.
     """
     root = Path(data_root)
     universe, spy_path = load_spy_universe(root)
@@ -202,8 +275,12 @@ def build_proposal(
     weights = weights * scale
     decomposition = _decomposition(weights, design, factor_covariance, specific)
 
-    expected_cost_bps = _expected_establishment_cost(
-        weights, names, specific, aum, root
+    cost = _cost_decomposition(weights, names, specific, nav, root)
+
+    input_as_of = _input_as_of(root)
+    input_as_of["universe"] = universe_as_of
+    staleness = max(
+        (as_of_ts - pd.Timestamp(value)).days for value in input_as_of.values()
     )
 
     manifest: dict[str, object] = {
@@ -228,8 +305,19 @@ def build_proposal(
             * math.sqrt(TRADING_DAYS)
         ),
         "gross_cap_bound": gross_cap_bound,
-        "expected_establishment_cost_bps": expected_cost_bps,
-        "aum": aum,
+        "nav": nav,
+        "expected_establishment_cost_bps": cost["total_bps"],
+        "cost_breakdown_bps": {
+            "spread": cost["spread_bps"],
+            "impact": cost["impact_bps"],
+            "commission": cost["commission_bps"],
+            "borrow": cost["borrow_bps"],
+            "total": cost["total_bps"],
+        },
+        "notional": cost["notional"],
+        "avg_trade_size": cost["avg_trade_size"],
+        "input_as_of": input_as_of,
+        "max_input_staleness_days": staleness,
         "input_hashes": {
             artifact: hash_file(root / artifact) for artifact in INPUT_ARTIFACTS
         },

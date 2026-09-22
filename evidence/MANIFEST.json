@@ -1,8 +1,8 @@
 {
  "note": "Tracked, compressed snapshots of the artifacts a stored criterion was scored on. Written by efb.evidence and verified by make verify-evidence against both this manifest and data/VERSION.json.",
- "n_artifacts": 13,
- "total_bytes": 129720404,
- "total_snapshot_bytes": 109590159,
+ "n_artifacts": 14,
+ "total_bytes": 129928090,
+ "total_snapshot_bytes": 109755148,
  "skipped": [
   {
    "path": "data/raw/e4_raw_descriptors.parquet",
@@ -16,7 +16,7 @@
    "sha256": "357c72fb99fa56dc4bd6723ad8003c0c6f922e230a242f64d5fc6b3d7f6fd2fd",
    "bytes": 242028,
    "snapshot": "evidence/data/raw/earnings_dates.parquet.gz",
-   "snapshot_sha256": "61ea68598a6b1e88054ccaf14a7459490d45ad020adc7a52b455172ac7df8c1c",
+   "snapshot_sha256": "dc930b61dae8cff127cb22541ae58bcde019c61737962f6a398e3af577e7b14c",
    "snapshot_bytes": 220539,
    "version_json_sha256": "357c72fb99fa56dc4bd6723ad8003c0c6f922e230a242f64d5fc6b3d7f6fd2fd"
   },
@@ -25,7 +25,7 @@
    "sha256": "c0f401c3ede79dc4793990e89d1c35d182b22eba919f21589ca1a7b3ef76300e",
    "bytes": 455352,
    "snapshot": "evidence/data/raw/etf_prices.parquet.gz",
-   "snapshot_sha256": "59293a00de865dbaab9ef5147261f121e33b9f4a3e316d3d332a6af7ccf2a970",
+   "snapshot_sha256": "781be343288ea56152728e44355240f9b948331b71514fd207523ac0f1d25521",
    "snapshot_bytes": 354753,
    "version_json_sha256": "c0f401c3ede79dc4793990e89d1c35d182b22eba919f21589ca1a7b3ef76300e"
   },
@@ -34,34 +34,34 @@
    "sha256": "17dcfdb52f74a05bd3894f01b02ac0628a702f73eec1658408aae53483937540",
    "bytes": 199378,
    "snapshot": "evidence/data/raw/factors_ff.parquet.gz",
-   "snapshot_sha256": "1608b1ae8a3eea3d5c45b23f11fd9310806259e622d3e9edb6cbefb89953f20b",
+   "snapshot_sha256": "59acbfa6990871bbbac7bb0a5f2ea28d7b9bd495ef627ae881d7ec0e8811b6e4",
    "snapshot_bytes": 166411,
    "version_json_sha256": "17dcfdb52f74a05bd3894f01b02ac0628a702f73eec1658408aae53483937540"
   },
   {
    "path": "data/raw/prices.parquet",
-   "sha256": "302b86ef12e555fb31ec6851dad5d5e8b472f150b9ffa0331486fd49665a510b",
-   "bytes": 61093009,
+   "sha256": "f1d4e226bded12cd4d0c8d0eaee8e0c6c4ca65d2b22ca8a32a7eff1fcb64c436",
+   "bytes": 61233059,
    "snapshot": "evidence/data/raw/prices.parquet.gz",
-   "snapshot_sha256": "a1b39bb6d450b7d978e3040062610bb0355eec5f0cd840283b5b0e8006360560",
-   "snapshot_bytes": 51677330,
-   "version_json_sha256": "302b86ef12e555fb31ec6851dad5d5e8b472f150b9ffa0331486fd49665a510b"
+   "snapshot_sha256": "32f63ae23dc7800794201e7c03be5cf6c9cca69b63ad8dfbf17e72de57ce28e3",
+   "snapshot_bytes": 51795038,
+   "version_json_sha256": "f1d4e226bded12cd4d0c8d0eaee8e0c6c4ca65d2b22ca8a32a7eff1fcb64c436"
   },
   {
    "path": "data/raw/shares_history.parquet",
-   "sha256": "1bca9fff8f5ce86db0dcb9539f5684ce89e8035d1c8fd785ba15ff1466892bf7",
-   "bytes": 2112831,
+   "sha256": "361421babd6f142c5f2cb7be636b5b7446b0edf2dbc5beb102056f20bac85960",
+   "bytes": 2146029,
    "snapshot": "evidence/data/raw/shares_history.parquet.gz",
-   "snapshot_sha256": "8e9478effdd9f295184e43d18305acc67617e5215d5aa755dcd8b40bd4df6140",
-   "snapshot_bytes": 1531222,
-   "version_json_sha256": "1bca9fff8f5ce86db0dcb9539f5684ce89e8035d1c8fd785ba15ff1466892bf7"
+   "snapshot_sha256": "1d2110c8ce1c1a4e765bb1ca8f21423acb15c51712a0fc9c8db31247b85bfff2",
+   "snapshot_bytes": 1554420,
+   "version_json_sha256": "361421babd6f142c5f2cb7be636b5b7446b0edf2dbc5beb102056f20bac85960"
   },
   {
    "path": "data/raw/short_interest.parquet",
    "sha256": "c991f183f0fdee16228079e6dc0cf32c85ea156d732b637708b7a4391314f780",
    "bytes": 4238241,
    "snapshot": "evidence/data/raw/short_interest.parquet.gz",
-   "snapshot_sha256": "dedb32c9580fda0d365159580f8a856602f302859eab1262718998ac86929e1c",
+   "snapshot_sha256": "445cd6150fcb5e4c62ac6d6cabfb66204eaefdd89cb2a96e4597cd52885df1b6",
    "snapshot_bytes": 3750329,
    "version_json_sha256": "c991f183f0fdee16228079e6dc0cf32c85ea156d732b637708b7a4391314f780"
   },
@@ -70,7 +70,7 @@
    "sha256": "50665467e8ff89123b694aef4cf5b310dbb750757786ac879e56087d5287b43d",
    "bytes": 46935,
    "snapshot": "evidence/data/raw/vix.parquet.gz",
-   "snapshot_sha256": "d322c00f6fda97dd54e3aac27cf4693b00ee4d3b5ababb05c6b72ed20c429a5f",
+   "snapshot_sha256": "6910bd8c2d27a513db3662c16110e9c22fc8db323a7ae2ae10c7c586aadf231e",
    "snapshot_bytes": 33795,
    "version_json_sha256": "50665467e8ff89123b694aef4cf5b310dbb750757786ac879e56087d5287b43d"
   },
@@ -79,7 +79,7 @@
    "sha256": "18d3bbcacdd18aafc4bee4fb5a47206d891aad6bd96d0134f2cf9e625dc90ee1",
    "bytes": 61219272,
    "snapshot": "evidence/data/raw/yf_cache.parquet.gz",
-   "snapshot_sha256": "227f513698962f22d94e06019f0b3c12a536c85ed70f5c5bc0bc39f8ed14351c",
+   "snapshot_sha256": "5de64219dc10142166b3915d0cc2ae2ed04c7208967515d8b49e253acecb413d",
    "snapshot_bytes": 51789129,
    "version_json_sha256": ""
   },
@@ -88,7 +88,7 @@
    "sha256": "9467557c7b13d3c03c578b87ee2b97b128a8c74411bc815240bef87781d66713",
    "bytes": 12359,
    "snapshot": "evidence/data/raw/yf_names.parquet.gz",
-   "snapshot_sha256": "726feff38f9915b5fa6dfd34c6476304fbb91353f786eb139a46597a24f8eb8e",
+   "snapshot_sha256": "022dc9b3fe926975a4e01343901f6ce6c40e0eab16486812d3f79300c04b4aac",
    "snapshot_bytes": 7066,
    "version_json_sha256": ""
   },
@@ -97,16 +97,25 @@
    "sha256": "e8c726ef112f9aeeb3ddc5fd92167e1ed62f53d377118f3300d1659398ab5c97",
    "bytes": 34358,
    "snapshot": "evidence/data/raw/spy_holdings/spy_holdings_2026-09-18.parquet.gz",
-   "snapshot_sha256": "865ed493725d8153c5a70f3e56b83ff8a1283cab24c6c936fe64e6920ef05927",
+   "snapshot_sha256": "02b00ad05abdaa724d0b290947b29de3082cf3fec035a0899eafa278702f076f",
    "snapshot_bytes": 24025,
    "version_json_sha256": "e8c726ef112f9aeeb3ddc5fd92167e1ed62f53d377118f3300d1659398ab5c97"
+  },
+  {
+   "path": "data/raw/spy_holdings/spy_holdings_2026-09-21.parquet",
+   "sha256": "f9b18133257f6c0d15f75f188dd27f66a107566e61d348bc1adc1b3539913258",
+   "bytes": 34283,
+   "snapshot": "evidence/data/raw/spy_holdings/spy_holdings_2026-09-21.parquet.gz",
+   "snapshot_sha256": "bd4ef3c23ad1552a1151a9ab0b72610006d39de271fa9a4efac900793970065f",
+   "snapshot_bytes": 24041,
+   "version_json_sha256": "f9b18133257f6c0d15f75f188dd27f66a107566e61d348bc1adc1b3539913258"
   },
   {
    "path": "data/raw/wikipedia_constituents/wikipedia_constituents_2026-09-22.parquet",
    "sha256": "595332a2bf79f030c013080bfd650569e084b6c21e4a77c7197390f8480cf704",
    "bytes": 30612,
    "snapshot": "evidence/data/raw/wikipedia_constituents/wikipedia_constituents_2026-09-22.parquet.gz",
-   "snapshot_sha256": "b11747b1a321fef59bfd19ff274626f994886c7e3bb9f484bf1e42f0650b03f6",
+   "snapshot_sha256": "43327b4d613db9c21e915f2a9bf750c3a80183986eea073d8232cf9daf2293fc",
    "snapshot_bytes": 23413,
    "version_json_sha256": "595332a2bf79f030c013080bfd650569e084b6c21e4a77c7197390f8480cf704"
   },
@@ -115,17 +124,17 @@
    "sha256": "4a505f2ac869f6d114eadf22b8ce85b33d73cb5b528c5c6ddc2d259ab9c472f0",
    "bytes": 14376,
    "snapshot": "evidence/data/models/registry.json.gz",
-   "snapshot_sha256": "f94fad1b83c4c7d193e5955e9883c3cdbd73009fff9163bd049963cbfd0449da",
+   "snapshot_sha256": "932b1696e964e9391551a963200ce49a009db64abf34c4f4f4b074f2bfed775b",
    "snapshot_bytes": 4207,
    "version_json_sha256": "4a505f2ac869f6d114eadf22b8ce85b33d73cb5b528c5c6ddc2d259ab9c472f0"
   },
   {
    "path": "data/VERSION.json",
-   "sha256": "ac13add17b1e77c8d41c08767e110cf011a8fed4a875402846c35b6e180a9002",
-   "bytes": 21653,
+   "sha256": "15f2aca8a1983bbf6824bf0969579d56898322fc596dfe6407f3b434b5fcef34",
+   "bytes": 21808,
    "snapshot": "evidence/data/VERSION.json.gz",
-   "snapshot_sha256": "d6857aac70fa2d0cfa22baa726a5f2998868895c55be77ee43b584f96420f7a1",
-   "snapshot_bytes": 7940,
+   "snapshot_sha256": "8e131b94ca539c8045a1c6c3bee130a1f532075683c57628166122757edbae2f",
+   "snapshot_bytes": 7982,
    "version_json_sha256": ""
   }
  ]

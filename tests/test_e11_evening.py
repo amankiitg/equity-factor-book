@@ -87,17 +87,57 @@ def test_build_proposal_asserts_the_spy_universe_and_stores_idio_share() -> None
     # the null book is factor-neutral after the exact FMP hedge
     assert manifest["idio_share_after_fmp"] == pytest.approx(1.0, abs=1e-9)
     assert manifest["max_abs_exposure_after_fmp"] < 1e-9
-    # the E8 constraint set holds: gross capped, net zero, position cap
-    assert manifest["gross"] == pytest.approx(1.0)
+    # the E8 constraint set holds: gross within cap, net zero
+    assert manifest["gross"] <= 1.0 + 1e-9
     assert abs(manifest["net"]) < 1e-9
     # the SPY names the frozen model does not know are excluded, not imputed
     assert manifest["n_excluded"] >= 1
     assert manifest["n_names"] + manifest["n_excluded"] >= 490
 
 
-def test_build_proposal_caps_a_null_book_at_the_gross_cap() -> None:
+def test_build_proposal_respects_the_vol_target_and_gross_cap() -> None:
     manifest = ev.build_proposal(store=False)
-    # a null alpha cannot reach the 10% vol target inside gross 1, so the
-    # cap binds and the achieved vol is stored below the target
-    assert manifest["gross_cap_bound"] is True
-    assert manifest["achieved_annual_vol"] < manifest["target_annual_vol"]
+    assert manifest["gross"] <= 1.0 + 1e-9
+    assert manifest["achieved_annual_vol"] <= manifest["target_annual_vol"] + 1e-9
+    if manifest["gross_cap_bound"]:
+        assert manifest["gross"] == pytest.approx(1.0)
+    else:
+        assert manifest["achieved_annual_vol"] == pytest.approx(
+            manifest["target_annual_vol"], abs=1e-9
+        )
+
+
+def test_build_proposal_stores_nav_beside_the_cost() -> None:
+    manifest = ev.build_proposal(store=False)
+    assert manifest["nav"] == pytest.approx(ev.PAPER_NAV)
+    breakdown = manifest["cost_breakdown_bps"]
+    total = (
+        breakdown["spread"]
+        + breakdown["impact"]
+        + breakdown["commission"]
+        + breakdown["borrow"]
+    )
+    assert breakdown["total"] == pytest.approx(total)
+    assert manifest["expected_establishment_cost_bps"] == pytest.approx(
+        breakdown["total"]
+    )
+    assert manifest["notional"] > 0
+    assert manifest["avg_trade_size"] > 0
+
+
+def test_build_proposal_stores_every_input_as_of_and_max_staleness() -> None:
+    manifest = ev.build_proposal(store=False)
+    for key in (
+        "prices",
+        "shares",
+        "universe",
+        "sectors",
+        "descriptors",
+        "factor_returns",
+        "specific_returns",
+        "factor_cov",
+        "specific_var",
+    ):
+        assert key in manifest["input_as_of"], key
+        assert manifest["input_as_of"][key], key
+    assert manifest["max_input_staleness_days"] >= 0

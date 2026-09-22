@@ -1,0 +1,55 @@
+{
+  "achieved_annual_vol": 0.09999999999999996,
+  "as_of": "2026-09-18",
+  "avg_trade_size": 147.71419240590004,
+  "cost_breakdown_bps": {
+    "borrow": 6.154758016912499,
+    "commission": 0.7385709620295002,
+    "impact": 2.5950676040973897,
+    "spread": 3.5517079783698313,
+    "total": 13.04010456140922
+  },
+  "excluded": [
+    "BE",
+    "ILMN",
+    "P"
+  ],
+  "expected_establishment_cost_bps": 13.04010456140922,
+  "gross": 0.7385709620295002,
+  "gross_cap_bound": false,
+  "ic": 0.01210198660523347,
+  "idio_share_after_fmp": 1.0,
+  "input_as_of": {
+    "descriptors": "2026-09-21",
+    "factor_cov": "2026-09-21",
+    "factor_returns": "2026-09-21",
+    "prices": "2026-09-21",
+    "sectors": "2026-09-11",
+    "shares": "2026-09-22",
+    "specific_returns": "2026-09-21",
+    "specific_var": "2026-09-21",
+    "universe": "2026-09-21"
+  },
+  "input_hashes": {
+    "alpha/summary.parquet": "527fe1cdf5a3021c4b9694f28699f04a97ce22df7bb615c51a175d4644c29bdf",
+    "models/XS-v1/descriptors.parquet": "70bf6b9f1c2fa4df40d240b79722f5db471d0f6d058c020a88ddfa090fe49d0b",
+    "models/XS-v1/factor_returns.parquet": "4a83c229048840ebef5004ddb2d47306205daa652d6be0580fc7b803e721b15b",
+    "models/XS-v1/specific_returns.parquet": "68ab60b59e2f32796a1fd263b000b5d43e5ed082578a98657fa674fd6bcdd8f4",
+    "models/XS-v1/specific_var.parquet": "24f0e36a4ed96b133b77d6325105b47eee6dd3d1a033d4ffee86a0454d239eda",
+    "processed/sectors.parquet": "66d1b7fad9e5829e103accfc15befa2c2770e70478c6123c6635468655d31c6c"
+  },
+  "kappa": 0.1,
+  "max_abs_exposure_after_fmp": 1.7069679003611782e-15,
+  "max_input_staleness_days": 7,
+  "n_eff": 146.95566484618345,
+  "n_excluded": 3,
+  "n_names": 500,
+  "n_nonzero": 500,
+  "nav": 100000.0,
+  "net": 1.6653345369377348e-16,
+  "notional": 73857.09620295002,
+  "signal": "idio_momentum",
+  "target_annual_vol": 0.1,
+  "universe_as_of": "2026-09-21",
+  "universe_source": "raw/spy_holdings/spy_holdings_2026-09-21.parquet"
+}
