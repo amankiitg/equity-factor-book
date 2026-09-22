@@ -17,9 +17,13 @@ def test_alpaca_dry_run_connect_returns_none() -> None:
     assert alpaca.connect(dry_run=True) is None
 
 
-def test_alpaca_live_connect_names_the_missing_dependency() -> None:
+def test_alpaca_live_connect_names_the_missing_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     if importlib.util.find_spec("alpaca") is not None:
         pytest.skip("alpaca-py is installed")
+    monkeypatch.setenv("EFB_ALPACA_PAPER_API_KEY", "k")
+    monkeypatch.setenv("EFB_ALPACA_PAPER_SECRET_KEY", "s")
     with pytest.raises(RuntimeError, match="alpaca-py"):
         alpaca.connect(dry_run=False)
 

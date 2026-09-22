@@ -73,8 +73,8 @@ def test_connect_is_none_in_dry_run() -> None:
 def test_connect_requires_keys_outside_dry_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ALPACA_PAPER_API_KEY", raising=False)
-    monkeypatch.delenv("ALPACA_PAPER_SECRET_KEY", raising=False)
+    monkeypatch.delenv("EFB_ALPACA_PAPER_API_KEY", raising=False)
+    monkeypatch.delenv("EFB_ALPACA_PAPER_SECRET_KEY", raising=False)
     with pytest.raises(RuntimeError, match="paper keys are required"):
         morning_job.connect(dry_run=False)
 

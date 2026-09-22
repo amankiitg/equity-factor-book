@@ -134,7 +134,8 @@ def test_clock_panel_reads_the_clock(
     monkeypatch.setattr(d10, "CLOCK_PATH", clock_path)
     panel = d10.clock_panel()
     assert panel["day 1"].iloc[0] == "2026-09-22"
-    assert panel["trading days"].iloc[0] == 30
+    assert panel["reporting window days"].iloc[0] == 30
+    assert panel["run condition"].iloc[0] == "open_ended"
 
 
 def test_answer_panel_is_the_null_book_verdict(

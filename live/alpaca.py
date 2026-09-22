@@ -52,12 +52,6 @@ def connect(dry_run: bool = DRY_RUN_DEFAULT):
     """
     if dry_run:
         return None
-    try:
-        from alpaca.trading.client import TradingClient
-    except ImportError as exc:  # pragma: no cover - depends on the environment
-        raise RuntimeError(
-            "the live Alpaca path needs alpaca-py; install it or run dry"
-        ) from exc
     key = os.environ.get("EFB_ALPACA_PAPER_API_KEY")
     secret = os.environ.get("EFB_ALPACA_PAPER_SECRET_KEY")
     if not key or not secret:
@@ -65,6 +59,12 @@ def connect(dry_run: bool = DRY_RUN_DEFAULT):
             "Alpaca paper keys are required outside dry run and are read "
             "from EFB_ALPACA_PAPER_API_KEY and EFB_ALPACA_PAPER_SECRET_KEY only"
         )
+    try:
+        from alpaca.trading.client import TradingClient
+    except ImportError as exc:  # pragma: no cover - depends on the environment
+        raise RuntimeError(
+            "the live Alpaca path needs alpaca-py; install it or run dry"
+        ) from exc
     return TradingClient(
         api_key=key,
         secret_key=secret,
