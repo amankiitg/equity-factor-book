@@ -134,8 +134,15 @@ Later work must respect these. They are measured, not assumed.
 Settled 2026-09-22. These are no longer open; build on them.
 
 - **E11 trades `idio_momentum` through the full stack**, Procedure 6.3 sizing
-  plus the FMP hedge, documented as a null book. **Paper only.** The 30-day
-  clock starts as soon as setup is done, so E11 setup is the critical path.
+  plus the FMP hedge, documented as a null book. **Paper only.**
+- **The 30-day clock restarts on live data, and static days do not count.**
+  The 2026-09-22 start is void: the loop ran on the frozen 2026-09-03 close and
+  would have produced thirty identical proposals. Prices, descriptors, factor
+  returns, specific returns and both covariance artifacts all extend **daily by
+  incremental append**, never a refit, with pre-2026-09-04 rows byte-identical.
+  Every proposal stores the as-of date of all nine model inputs. The clock is
+  held until a sanity gate runs two consecutive real closes and shows the
+  proposals differ, with the weight turnover printed.
 - **F10.1b is re-registered** against F10.1's original 10% bar, verdict `fail`,
   through a `revisions` block, with the mean-versus-median note.
 - **The universe stays split.** Historical artifacts stay frozen on the pinned

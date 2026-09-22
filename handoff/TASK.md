@@ -1,140 +1,151 @@
-task_id: e11-setup
-status: in_progress
-base_commit: c26302151fdffce5c14965b9c70f36314e749992
+task_id: e11-live-data-and-clock-restart
+status: ready
+base_commit: 14d25bf
 
 ## Goal
 
-Stand up Sprint E11's daily paper-trading loop so the thirty-trading-day clock
-can start, and clear the two small items the owner settled on 2026-09-22. The
-clock is the critical path: every day of setup is a day E12 waits, so prefer a
-loop that runs today over a loop that is complete.
+Make the E11 loop actually live, then restart the thirty-day clock from a
+clean day 1. The previous setup ran end to end but on the frozen 2026-09-03
+close, so it would have produced thirty identical proposals. The static days
+are discarded and do not count.
 
-## The owner's decisions, settled. Build on these, do not revisit.
+## The owner's decision, settled 2026-09-22
 
-- **E11 trades `idio_momentum` through the full stack**: Procedure 6.3 sizing
-  plus the exact in-model FMP hedge, documented as a **null book**. Its
-  factor-neutral IC is -0.0031 at t -0.51, null rather than negative, which is
-  why it survives the hedge that would strip `momentum_12_1`. The expected E12
-  verdict is luck, written down before the clock starts.
-- **Paper only.** No real money, no real broker credentials, ever. Alpaca paper
-  keys only, and never committed.
-- **The universe stays split.** History is frozen on the pinned Wikipedia table;
-  the live universe comes from the SPY archive, 2026-09-18 forward. Do not
-  re-run the universe reconstruction. The seam between the two sources is
-  documented and never silently bridged.
-- **The v8.x loop is at `/Users/amankesarwani/PycharmProjects/credit-trading-lab`.**
-  Read it before planning: `execution/`, `dashboard/`, `scripts/`,
-  `render.yaml`, `.streamlit/`, `sprints/v8.1`, `sprints/v8.6`.
+**Option (a): stop the clock, wire live data, restart at day 1. Do not count
+the static days.** The clock does not restart until the sanity gate in S5
+passes. Everything else from `e11-setup` stands: `idio_momentum` through the
+full stack, Procedure 6.3 plus the exact FMP hedge, documented null book,
+**paper only**, universe from the SPY archive, history frozen.
 
-**Guidance, not a template.** Reuse its loop shape, its Option A governance and
-its fail-safe guards, because those are proven. **Do not inherit its dashboard.**
-The owner wants the strategy-review dashboard materially nicer and more
-intuitive than the v8.x one: built for someone deciding whether the book is
-doing what it was built to do, not for someone auditing a pipeline. Lead with
-the answer, not the plumbing. State every number with its n and its units, keep
-one idea per panel, and make the null-book framing impossible to miss. Treat the
-old dashboard as a list of things that must be available somewhere, not as a
-layout to copy.
+## The problem in one line
+
+Live prices are necessary but not sufficient. `descriptors`, `factor_returns`,
+`specific_returns`, `factor_cov` and `specific_var` are all frozen at
+2026-09-03 too, so a live-price book priced by a three-week-old Sigma is stale
+in a second way, and nothing in the artifact says so.
+
+## Cadence, and why
+
+**Daily. Every model input extends one session per trading day, incrementally.**
+
+Not a slower cadence, because any lag reintroduces exactly the staleness this
+task exists to remove: a weekly Sigma is a five-day-old Sigma four days out of
+five, and the proposal cannot tell you which. Daily is affordable because
+XS-v1 is a cross-sectional fit, so one new session is one new WLS fit of 17
+estimated columns, not a refit of 3,941 days, and `factor_cov` and
+`specific_var` are rolling window estimates that update by appending a
+session rather than by rebuilding history.
+
+**Incremental append only, never a refit.** Rows dated on or before 2026-09-03
+must come back byte-identical after every extension. Restating history would
+move stored criteria, which is reserved. XS-v1 estimates its own factor
+returns from the cross-section and does not read the Kenneth French series, so
+the daily extension needs only prices, share counts and sectors, and is not
+blocked by the French library ending 2026-07-31.
 
 ## Steps
 
-**S1. F10.1b, per the owner's approval.** Re-register F10.1b against F10.1's
-original threshold, "within 10% at the median", verdict **fail** at the
-horizon-matched gap. Old criterion, threshold, verdict and stored numbers go
-into the `revisions` block with the new ones beside them. The mechanism to
-record: the horizon fix cuts the gap from 296% to about 26% and does not close
-it, and part of what is left is that Magdon-Ismail gives an expected maximum
-drawdown while the simulation reports a median, which accounts for roughly 4
-points of the remainder. Update the E10 memo and walkthrough from the artifacts.
+**S1. Stop the clock and discard the static days.** Record in `live/clock.json`
+that the 2026-09-22 start is void, with the reason, so the record shows a
+restart rather than a silent edit. Nothing about the static run is deleted.
 
-**S2. Archive the Wikipedia side.** `constituent_crosscheck` compares SPY
-against the **live** Wikipedia page, which is kept nowhere, so today's record
-cannot be rebuilt tomorrow. Snapshot the fetched constituents table one dated
-file per fetch, same shape as the SPY archive, into `data/VERSION.json` and the
-evidence snapshot. Report the size cost.
+**S2. Extend the price and universe layer daily.** Fetch the session's prices
+and share counts from the same vendor E1 uses, append, and take the universe
+from the newest SPY archive file. Fetch and archive a fresh SPY holdings file
+and a fresh Wikipedia constituents snapshot each session, both dated, both
+into `data/VERSION.json` and the evidence snapshot. The 2026-08-05 to
+2026-09-18 seam stays documented and unbridged.
 
-**S3. Read the v8.x loop and write `sprints/E11/PRD.md` and `TASKS.md`.** Copy
-F11.x verbatim from `docs/roadmap_v2.md`; check the strings against the roadmap
-yourself. In the PRD, state plainly what is reused from v8.x, what is rebuilt,
-and why. Include the null-book label and the pre-written E12 verdict.
+**S3. Extend the model artifacts daily.** Append one session to `descriptors`,
+`factor_returns` and `specific_returns` by fitting that day's cross-section
+under the frozen XS-v1 specification, then roll `factor_cov` and
+`specific_var` forward by one session. The specification does not change: this
+extends the champion, it does not re-estimate or re-declare it.
 
-**S4. The evening proposal.** `live/evening_job.py`. Build tomorrow's target
-book: `idio_momentum` as alpha, Procedure 6.3 sizing under the champion XS-v1,
-the exact FMP hedge, the E8 constraint set, E9 costs. Universe from the SPY
-archive, never the frozen history. Write the proposal to a dated artifact with
-its inputs' hashes. **Nothing executes here.**
+**S4. Make staleness visible in the artifact.** Every proposal stores the
+as-of date of **every** model input it used, one field each, at minimum:
+prices, shares, universe (SPY file), sectors, descriptors, factor_returns,
+specific_returns, factor_cov, specific_var. Add a single `max_input_staleness_days`
+beside them. Staleness is read off the artifact, never inferred.
 
-**S5. The morning execution.** `live/morning_job.py`. Submit the proposal to
-Alpaca paper, reconcile fills against targets, store both. Option A governance
-from v8.x: the loop proposes, the rules decide, nothing discretionary. Two
-fail-safe guards, ported and named, each with the condition that trips it and
-the action it takes. A guard that cannot fire is not a guard; prove each one
-fires with a test.
+**S5. The day-1 sanity gate. The clock does not start until this passes.**
+Run the loop on **two consecutive real closes** and confirm the proposals
+differ. Print and store the weight turnover between them, defined as
+`0.5 * sum(abs(w_t - w_{t-1}))` with the definition stated. Identical
+proposals on two different closes means the data is not actually live and the
+gate fails. Report the number either way; do not tune anything to pass it.
 
-**S6. Daily reconciliation and state.** Forecast against outcome, every day,
-stored. Use the project's own artifacts for state unless you have a reason to
-add Supabase; if you do add it, say why and keep credentials out of the repo.
+**S6. The cost item.** Store `nav` beside `expected_establishment_cost_bps` in
+every proposal, and show the arithmetic that reaches 75.34 bp, decomposed into
+spread, impact, commission and borrow, each in bp, with the notional and the
+average per-name trade size stated. Then reconcile against E6's stored 10.53 bp
+per rebalance for the hedged momentum book, which is a **steady-state
+rebalance** trading only the delta, against an **establishment** trading the
+full gross from flat plus the hedge book. The ratio to explain is about 7.15x.
+**If the two cannot be reconciled, that is a finding: record it with an ID and
+its mechanism, do not adjust either number to close the gap.**
 
-**S7. Dashboard D10, the strategy-review view.** See the guidance above. This is
-the one the owner will actually read. Every panel builder raises on an empty
-read, per the D9 convention.
-
-**S8. Start the clock.** Once S4 to S6 run end to end on one paper day, record
-day 1 with its date and the thirty-day end date, and say so plainly at the top
-of the report. Then `make test`, `make lint`, `make verify-evidence`.
+**S7. Restart the clock.** Only after S5 passes. Record the new day 1, the end
+date and the void first start. Then `make test`, `make lint`,
+`make verify-evidence`.
 
 ## Acceptance
 
-1. `make test` passes with at least 595 tests, `make lint` clean,
+1. `make test` passes with at least 640 tests, `make lint` clean,
    `make verify-evidence` exits 0.
-2. F10.1b reads `fail` against the verbatim F10.1 threshold, with the old values
-   in `revisions` and the mean-versus-median note stored. No other E10 criterion
-   moves. No F1.x to F9.x verdict moves.
-3. The Wikipedia snapshot is dated, hashed in `data/VERSION.json`, present in
-   `evidence/MANIFEST.json`, and `make verify-evidence` still exits 0.
-4. F11.x in `sprints/E11/RESULTS.json` are byte-identical to the roadmap.
-5. The evening job produces a proposal from `idio_momentum` with the FMP hedge,
-   and the proposal's idio share after the hedge is stored. The universe used is
-   the SPY archive; assert it, do not assume it.
-6. Both fail-safe guards have a test that makes each one fire.
-7. No credential, key or token appears in any committed file. State how you
-   checked.
-8. The 30-day clock has a recorded day 1 and end date, or the report says
-   plainly why it could not start and what is missing.
-9. No em dashes in any file touched.
+2. Rows dated on or before 2026-09-03 in `descriptors`, `factor_returns`,
+   `specific_returns` are byte-identical before and after an extension.
+   Assert it with a test; print the hashes.
+3. Every proposal carries an as-of date for all nine inputs in S4 plus
+   `max_input_staleness_days`.
+4. The sanity gate ran on two consecutive real closes, the proposals differ,
+   and the weight turnover between them is stored with its definition. If the
+   gate failed, the clock did not start and the report says what is not live.
+5. `nav` is stored beside the cost in every proposal, and the four-way bp
+   decomposition sums to the stored total.
+6. The E6 reconciliation is either closed with arithmetic or recorded as a
+   finding with an ID.
+7. `live/clock.json` shows the void 2026-09-22 start with its reason, and the
+   new day 1 and end date if the gate passed.
+8. No F1.x to F10.x verdict changes, F10.1b included. Print the count per
+   sprint.
+9. No credential, key or token in any committed file. State how you checked.
+10. No em dashes in any file touched.
 
 ## Stop only if
 
-- Any F1.x to F10.x criterion other than F10.1b changes verdict.
-- Alpaca paper cannot be reached, or would need anything other than paper keys.
-- A step would need the universe reconstruction, or real money.
-- Setup cannot start the clock within this task. Then stop, commit what runs,
-  and report exactly what blocks day 1. Do not half-start the loop.
+- The sanity gate fails. Then stop, do not start the clock, and report exactly
+  which input is not advancing.
+- Extending a model artifact would restate any row dated on or before
+  2026-09-03.
+- The vendor cannot supply a session's prices or share counts. Record the
+  failing source per the ledger rule; do not fill it.
+- A step would need the universe reconstruction, real money, or a change to
+  the XS-v1 specification.
 
-Everything else you decide and record: the state store, the proposal artifact
-schema, which v8.x pieces are reused against rebuilt, and the D10 layout.
+Everything else you decide and record: the extension's storage layout, the
+retry policy on a failed fetch, and the D10 panels that surface staleness.
 
 ## Report back
 
 `handoff/REPORT.md`, every number read from an artifact.
 
-**Table 1, the clock.** Day 1 date, end date, trading days elapsed, or what
-blocks it.
+**Table 1, the clock.** Void start and reason, new day 1, end date, whether
+the gate passed.
 
-**Table 2, F10.1b.** Old and new criterion, threshold, verdict and stored
-numbers, and the revisions entry.
+**Table 2, the sanity gate.** The two closes, weight turnover between them,
+n names each, and whether the proposals differ.
 
-**Table 3, the proposal.** Date, names, gross, net, idio share after the hedge,
-predicted vol, expected cost, and the universe source with its as-of date.
+**Table 3, staleness.** Per proposal, the as-of date of all nine inputs and
+`max_input_staleness_days`.
 
-**Table 4, the guards.** Per guard: name, condition, action, and the test that
-fires it.
+**Table 4, incremental integrity.** Per extended artifact: rows before, rows
+after, hash of the pre-2026-09-04 block before and after.
 
-**Table 5, reuse.** Per v8.x component: reused, adapted or rebuilt, and why.
+**Table 5, the cost.** nav, gross, n names, average per-name trade size, the
+four bp components, the total, and the E6 reconciliation with its arithmetic
+or its finding ID.
 
 **Table 6, no-change.** Per sprint E1 to E10: criteria, verdicts changed.
 
-**Include the Verification section per STANDARDS.** Rules 19 and 20: pasted
-command output for the three gates, every headline number with its file and key,
-`git diff --stat` from `base_commit`, the seven yes-or-no questions each with an
-evidence line, and anything you decided that I might disagree with.
+**Include the Verification section per STANDARDS.** Rules 19 and 20.

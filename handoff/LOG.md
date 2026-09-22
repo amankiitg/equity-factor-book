@@ -941,3 +941,55 @@ record begins on the SPY archive at 2026-09-18, with a gap between the two that
 must be labelled and never silently bridged. I recommend signing off on the
 split and leaving the full re-run permanently unscheduled unless a later sprint
 needs a restated history for its own reason.
+
+---
+
+## 2026-09-22 review: e11-setup at 14d25bf
+
+**Decision needed: the clock is counting days of frozen data.** Day 1 is
+2026-09-22 but the proposal is built on the 2026-09-03 close, the last in the
+frozen model data, and the report says the loop "re-runs on the frozen close"
+until live data arrives. Thirty runs on one close gives thirty identical
+proposals and nothing for E12 to attribute. Options: (a) stop the clock, wire
+live prices, restart at day 1, my recommendation, because a 30-day window on a
+single close produces no forward evidence; (b) let it run and label days before
+live data as warm-up outside the 30; (c) accept 30 static days and say so now.
+
+Verified by report: Verification section complete, all seven questions answered
+with evidence. `make test` 640 passed exit 0, `make lint` clean,
+`make verify-evidence` OK, all pasted. F10.1b re-registered to `fail` at 0.2963
+with the old `pass` in revisions and the mean-versus-median note, as approved.
+Clock arithmetic checks: 30 business days from 2026-09-22 inclusive is
+2026-11-02. Guards, reuse table and the universe seam are all stated honestly,
+including the 4 excluded names and the dry-run Alpaca path.
+
+Concern, not blocking: the proposal stores
+`expected_establishment_cost_bps` 75.34 with `nav` null, so neither the cost nor
+the two notional-based guards can be checked from the artifact. 75.34 bp is
+about 7x E6's stored 10.53 bp per rebalance for the hedged momentum book.
+Wants one line of arithmetic and the NAV stored beside it.
+
+---
+
+## 2026-09-22 decision (a), and the task rewritten
+
+Owner chose (a): stop the clock, wire live data, restart at day 1, static days
+not counted. Scope widened correctly by the owner: prices alone are not enough,
+because descriptors, factor returns and specific variances are frozen at
+2026-09-03 too, so a live-price book priced by a three-week-old Sigma is stale
+in a second way. TASK.md is `e11-live-data-and-clock-restart`, status ready.
+
+Cadence set to daily incremental append, stated with its reason in TASK.md: any
+slower cadence reintroduces the staleness being removed, and one session is one
+cross-sectional WLS fit rather than a refit of 3,941 days. XS-v1 estimates its
+own factor returns, so the extension needs only prices, shares and sectors and
+is not blocked by the French series ending 2026-07-31. Pre-2026-09-04 rows must
+return byte-identical, because restating history would move stored criteria.
+
+Added per the owner: every proposal stores the as-of date of all nine model
+inputs plus max staleness; a day-1 sanity gate that runs two consecutive real
+closes and prints the weight turnover, with the clock held until it passes; and
+the cost item, nav stored beside the bp figure, a four-way spread, impact,
+commission and borrow decomposition, and a reconciliation against E6's 10.53 bp
+steady-state rebalance, ratio about 7.15x, recorded as a finding if it will not
+close.
