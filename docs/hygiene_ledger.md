@@ -1499,3 +1499,35 @@ The file is a single worksheet of eight columns whose text cells are all
 shared strings, which the zipfile and ElementTree reader recovers
 directly; the parser asserts the header row and the row count so a changed
 layout fails loudly rather than parsing silently.
+
+## 2026-09-22: the SPY archive joins the versioned and evidence sets
+
+Decision. Each dated file under data/raw/spy_holdings/ is registered in
+data/VERSION.json and snapshotted by efb.evidence under
+evidence/data/raw/spy_holdings/, the same mechanism that protects the
+other fetched inputs make rebuild cannot regenerate. No .gitignore
+negation is added for the directory.
+
+Reason. SSGA serves only the current holdings file, so a dated archive
+file that is not kept today is unrecoverable. The raw parquet stays
+gitignored by design, because the project's evidence policy protects
+non-regenerable inputs through the tracked compressed snapshot, not by
+tracking the data parquet itself. The snapshot .gz sits under evidence/,
+which is tracked and not gitignored, so no negation is required. Cost:
+one file is about 34 KB (24 KB compressed), so a year of daily files grows
+the committed snapshot by about 6 MB, well inside the size line the E8
+Task 0d open item records.
+
+## 2026-09-22: F10.3b drops years whose two sides carry different counts
+
+Decision. F10.3b's dispersion is now computed only over years where the
+raw and the targeted side carry the same number of monthly observations;
+the dropped years are stored beside the reduction.
+
+Reason. E10-F6 fixed the year-level version of the defect (different year
+sets on the two sides) but left the within-year version: the daily
+estimator's warmup consumes part of 2012 on the targeted side only, so an
+annual volatility built from four monthly returns was being compared with
+one built from eleven. The fix drops 2012 at every window and 2013 at the
+252-day window; the daily-21 reduction moves from 0.206317 to 0.286842,
+still far below the 40% bar, so F10.3b keeps its pass verdict.

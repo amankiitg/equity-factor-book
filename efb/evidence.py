@@ -43,6 +43,10 @@ EVIDENCE_GLOBS = (
     # from the tree in the same task. The raw parquet files are tracked
     # through Git LFS, recorded with its cost in docs/open_items.md.
     "data/raw/*.parquet",
+    # the SPY holdings archive is the one fetched input whose whole value
+    # is that it cannot be regenerated: SSGA serves only the current file,
+    # so a dated file that is not snapshotted today is unrecoverable.
+    "data/raw/spy_holdings/*.parquet",
 )
 EVIDENCE_FILES = ("data/models/registry.json", "data/VERSION.json")
 

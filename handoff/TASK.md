@@ -1,5 +1,5 @@
 task_id: evidence-and-archive-hardening
-status: in_progress
+status: done
 base_commit: 3a82ccb0304611fbea508960e243ae1e7b9b04a3
 
 ## Goal

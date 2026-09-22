@@ -717,7 +717,10 @@ def vol_target_daily_analysis(
     window's realized vol, shifted one period, applied to the next
     rebalance return. The daily series is first scaled to the target vol
     so the scale sits near one and the clip does not bind. Rows sweep the
-    daily windows 21, 42, 63, 126 and 252 sessions.
+    daily windows 21, 42, 63, 126 and 252 sessions. A year counts toward
+    the dispersion only when both sides carry the same observation count,
+    so an annual volatility built from four monthly returns is never
+    compared with one built from eleven.
     """
     root = Path(data_root)
     factor = float(np.sqrt(TRADING_DAYS))
@@ -726,6 +729,8 @@ def vol_target_daily_analysis(
     if full_vol > 0:
         x = x * (TARGET_ANNUAL_VOL / full_vol)
     raw_by_year = _realized_annual_vol_by_year(net)
+    raw_clean = net.dropna()
+    raw_counts = raw_clean.groupby(raw_clean.index.year).size()
     rows: list[dict[str, object]] = []
     for window in (21, 42, 63, 126, 252):
         realized = x.rolling(window).std(ddof=1) * factor
@@ -737,9 +742,17 @@ def vol_target_daily_analysis(
         )
         targeted = net * scale
         target_by_year = _realized_annual_vol_by_year(targeted)
+        target_clean = targeted.dropna()
+        target_counts = target_clean.groupby(target_clean.index.year).size()
         common = raw_by_year.index.intersection(target_by_year.index)
-        raw_aligned = raw_by_year.reindex(common)
-        target_aligned = target_by_year.reindex(common)
+        kept = [
+            year
+            for year in common
+            if raw_counts.get(year, 0) == target_counts.get(year, 0)
+        ]
+        dropped = sorted(set(raw_by_year.index) - set(kept))
+        raw_aligned = raw_by_year.reindex(kept)
+        target_aligned = target_by_year.reindex(kept)
         raw_dispersion = float(raw_aligned.std(ddof=1) / raw_aligned.mean())
         target_dispersion = float(target_aligned.std(ddof=1) / target_aligned.mean())
         reduction = (
@@ -754,7 +767,9 @@ def vol_target_daily_analysis(
                 "raw_dispersion": raw_dispersion,
                 "targeted_dispersion": target_dispersion,
                 "dispersion_reduction": reduction,
-                "n_years_aligned": int(len(common)),
+                "n_years_aligned": int(len(kept)),
+                "n_years_dropped": int(len(dropped)),
+                "dropped_years": ",".join(str(y) for y in dropped),
             }
         )
     frame = pd.DataFrame(rows)

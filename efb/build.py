@@ -276,6 +276,16 @@ def write_version(artifact_paths: list[Path], out_path: Path, note: str) -> dict
             "sha256": hash_file(path),
             "bytes": path.stat().st_size,
         }
+    # the SPY holdings archive is a fetched input that no rebuild target
+    # writes, but make rebuild cannot regenerate it, so its dated files
+    # join the versioned set beside the build products
+    spy_dir = out_path.parent / "raw" / "spy_holdings"
+    if spy_dir.exists():
+        for path in sorted(spy_dir.glob("*.parquet")):
+            artifacts[path.name] = {
+                "sha256": hash_file(path),
+                "bytes": path.stat().st_size,
+            }
     payload = {
         "note": note,
         "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
