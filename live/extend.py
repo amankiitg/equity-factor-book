@@ -80,14 +80,26 @@ def extend_prices(
 def extend_returns(data_root: Path = DATA_ROOT) -> int:
     """Recompute returns and flags over the extended price frame.
 
-    Returns the number of new sessions now in processed/returns.parquet.
+    Identity drops and truncations are applied exactly as the E1 build
+    applies them, so a reused symbol does not reappear with another
+    company's history. Returns the number of new sessions.
     """
+    from efb import identity
+
     root = Path(data_root)
     path = root / "processed" / "returns.parquet"
     before = pd.read_parquet(path).index.get_level_values("date").nunique()
     prices_frame = pd.read_parquet(root / "raw" / "prices.parquet")
     factors_frame = pd.read_parquet(root / "raw" / "factors_ff.parquet")
     returns_frame = returns.compute_returns(prices_frame, factors_frame["rf"])
+    identity_table = pd.read_parquet(root / "processed" / "ticker_identity.parquet")
+    readded_path = root / "processed" / "ticker_identity_readded.parquet"
+    readded = pd.read_parquet(readded_path) if readded_path.exists() else None
+    drops, truncations = identity.exclusions(identity_table, readded=readded)
+    if truncations:
+        returns_frame = identity.drop_truncated(returns_frame, truncations)
+    if drops:
+        returns_frame = returns_frame[~returns_frame.index.isin(drops, level="ticker")]
     returns_frame = hygiene.apply_flags(returns_frame)
     returns_frame.to_parquet(path)
     after = pd.read_parquet(path).index.get_level_values("date").nunique()
@@ -274,6 +286,75 @@ def extend_model(data_root: Path = DATA_ROOT) -> dict[str, object]:
         "new_dates": [str(d.date()) for d in new_dates],
         "last_date": str(new_dates[-1].date()),
     }
+
+
+def revert_model_to_frozen(data_root: Path = DATA_ROOT) -> None:
+    """Trim every XS-v1 artifact back to the frozen as-of.
+
+    Used after an extension is rolled back: the rows dated after
+    FROZEN_AS_OF are removed and the factor covariance snapshot is
+    recomputed from the frozen factor returns, so the next extension
+    restarts from the frozen state.
+    """
+    root = Path(data_root)
+    xs_dir = root / "models" / "XS-v1"
+    trimmed_names = (
+        "descriptors",
+        "factor_returns",
+        "specific_returns",
+        "xs_r2",
+        "specific_var",
+    )
+    for name in trimmed_names:
+        path = xs_dir / f"{name}.parquet"
+        frame = pd.read_parquet(path)
+        trimmed = frame.loc[pd.to_datetime(frame["date"]) <= FROZEN_AS_OF]
+        trimmed.to_parquet(path, index=False)
+    factor = pd.read_parquet(xs_dir / "factor_returns.parquet")
+    factor_wide = (
+        factor.pivot(index="date", columns="factor", values="f")
+        .reindex(columns=list(fx.FACTOR_NAMES))
+        .dropna()
+    )
+    fx.ewma_factor_cov(factor_wide, half_life=fx.F_HALF_LIFE).to_parquet(
+        xs_dir / "factor_cov.parquet"
+    )
+
+
+def refresh_version(data_root: Path = DATA_ROOT) -> dict[str, object]:
+    """Rehash every versioned artifact into data/VERSION.json.
+
+    The live extension appends sessions, so the content hashes of the
+    extended artifacts move and the version file must be re-read rather
+    than rebuilt from source. The artifact set and the note follow the
+    E10 rebuild; the archive files join through `write_version`.
+    """
+    from efb import build
+
+    root = Path(data_root)
+    rels = (
+        build.ARTIFACTS
+        + build.E2_ARTIFACTS
+        + build.E3_ARTIFACTS
+        + build.E4_ARTIFACTS
+        + build.E5_ARTIFACTS
+        + build.E6_ARTIFACTS
+        + build.E7_ARTIFACTS
+        + build.E8_ARTIFACTS
+        + build.E9_ARTIFACTS
+        + build.E10_ARTIFACTS
+    )
+    paths = [root / rel for rel in rels if (root / rel).exists()]
+    returns_path = root / "processed" / "returns.parquet"
+    dates = pd.read_parquet(returns_path).index.get_level_values("date")
+    new_dates = sorted(pd.unique(dates[dates > FROZEN_AS_OF]))
+    first = new_dates[0].date() if len(new_dates) else FROZEN_AS_OF.date()
+    last = new_dates[-1].date() if len(new_dates) else FROZEN_AS_OF.date()
+    note = (
+        f"Extended daily by the E11 live loop from {first} to {last}; "
+        "pre-2026-09-04 rows byte-identical. Universe from the SPY archive."
+    )
+    return build.write_version(paths, root / "VERSION.json", note=note)
 
 
 def _block_hash(frame: pd.DataFrame, cutoff: pd.Timestamp) -> str:

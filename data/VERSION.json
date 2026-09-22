@@ -1,7 +1,7 @@
 {
   "note": "Extended daily by the E11 live loop from 2026-09-04 to 2026-09-21; pre-2026-09-04 rows byte-identical. Universe from the SPY archive.",
-  "built_at": "2026-09-22T19:00:04+00:00",
-  "data_hash": "e4686e0ce04c39af9b8c23f9db6ec18cd0e55993c1febd44c0108418f46f510c",
+  "built_at": "2026-09-22T19:37:09+00:00",
+  "data_hash": "c3e0db6f92209ebce7bd46180b35845f3b75a98dbbcf359634dedcbd0da1aea8",
   "artifacts": {
     "config.json": {
       "sha256": "f501f7296de0a3bec5c2497793a01e937c5f66d2590ba94395efde060913598d",
@@ -376,8 +376,8 @@
       "bytes": 24219
     },
     "factor_returns.parquet": {
-      "sha256": "4a83c229048840ebef5004ddb2d47306205daa652d6be0580fc7b803e721b15b",
-      "bytes": 1429292
+      "sha256": "2a53292bee4ecb658517464431277c1ce371252362e5debecc213386f1bf76b6",
+      "bytes": 1429289
     },
     "loadings.parquet": {
       "sha256": "c298ff5345ba7d3fbb0a1d0217741b1d7d4884102265eadf05a557d108393757",
@@ -392,7 +392,7 @@
       "bytes": 5064571
     },
     "factor_cov.parquet": {
-      "sha256": "3e6b3cefb4bb38d440c06cbbd98bc87503026c5b41c1cd8a34782ab77fc156d8",
+      "sha256": "ae5fd9cdb9bc55f78bfe0ff05235e1bb9a06260d5f4fba2fc7379cf5c68feffb",
       "bytes": 14603
     },
     "idio_vol.parquet": {
@@ -408,24 +408,24 @@
       "bytes": 20344112
     },
     "descriptors.parquet": {
-      "sha256": "70bf6b9f1c2fa4df40d240b79722f5db471d0f6d058c020a88ddfa090fe49d0b",
-      "bytes": 19275745
+      "sha256": "05c94ef1de0ac409db39cdb386a22d46999bed5e33a7333c52e3b389f08901ec",
+      "bytes": 19258626
     },
     "fmp_weights.parquet": {
       "sha256": "d709ab959afac123fa4174b106f0060c9a6c63ebcfff948d80cfead70ce38ed5",
       "bytes": 8834286
     },
     "specific_returns.parquet": {
-      "sha256": "68ab60b59e2f32796a1fd263b000b5d43e5ed082578a98657fa674fd6bcdd8f4",
-      "bytes": 16171862
+      "sha256": "88767b12492012a3648300999a706cf47e7f697c7ce5f7f8784b75711eb6b31d",
+      "bytes": 16172221
     },
     "specific_var.parquet": {
-      "sha256": "24f0e36a4ed96b133b77d6325105b47eee6dd3d1a033d4ffee86a0454d239eda",
-      "bytes": 2247672
+      "sha256": "3f25e09be6e13822f9c83af5bd7ee0bab4c9979b362a7bbb8cd99f67b14022ee",
+      "bytes": 2247771
     },
     "xs_r2.parquet": {
-      "sha256": "cdbfacc6e2a7ceced46fc03118bc11667a2fdd3c860e7a6937669c0285a8e750",
-      "bytes": 106153
+      "sha256": "030ce318cddfd37a3893a23f4713af547f91d9af8ad7826290d45e9416222048",
+      "bytes": 106138
     },
     "residual_factors.parquet": {
       "sha256": "f17a36395b739a5693652529008a45f926cf6f701ca6fdea0b6bfb9e2acfc2a0",
@@ -524,8 +524,8 @@
       "bytes": 27392000
     },
     "returns.parquet": {
-      "sha256": "43b1ccb8d970fc547ec86bcb389d48bcf8cf2fa935a8a1a41c75fc9f6777a91d",
-      "bytes": 63576152
+      "sha256": "9335c4feac138997fddb9d5180c88a5f7ba8bee17ba0601f11395a54b16549e9",
+      "bytes": 62086841
     },
     "sectors.parquet": {
       "sha256": "66d1b7fad9e5829e103accfc15befa2c2770e70478c6123c6635468655d31c6c",

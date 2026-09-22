@@ -60,3 +60,16 @@ def test_sessions_after_the_frozen_as_of_were_appended() -> None:
         frame = pd.read_parquet(XS / f"{name}.parquet")
         last = pd.to_datetime(frame["date"]).max()
         assert last > pd.Timestamp("2026-09-03"), name
+
+
+@pytest.mark.integration
+def test_identity_drops_do_not_reappear_in_the_extension() -> None:
+    """The extension applies the E1 identity exclusions, so a reused
+    symbol does not come back with another company's history. DD is the
+    one dropped ticker the sector file maps, so it is the one the buggy
+    extension put back into returns and specific_returns.
+    """
+    returns_frame = pd.read_parquet(ROOT / "data" / "processed" / "returns.parquet")
+    specific = pd.read_parquet(XS / "specific_returns.parquet")
+    assert "DD" not in set(returns_frame.index.get_level_values("ticker"))
+    assert "DD" not in set(specific["ticker"])

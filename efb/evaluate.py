@@ -1230,12 +1230,18 @@ def compute_e2_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
             break
 
     # F2.0c: audit mean and large days matched to events
+    # The audit is frozen at the last model session, so rows the live loop
+    # appended after it cannot change the stored verdict.
+    frozen_as_of = pd.Timestamp("2026-09-03")
+    frozen_prices = prices_frame[
+        prices_frame.index.get_level_values("date") <= frozen_as_of
+    ]
     covered = sorted(
         prices_mod.covered_tickers(pd.read_parquet(raw / "yf_cache.parquet"))
     )
-    audit = prices_mod.audit_adjusted_close(prices_frame, covered, n_names=20, seed=42)
+    audit = prices_mod.audit_adjusted_close(frozen_prices, covered, n_names=20, seed=42)
     details = prices_mod.audit_adjusted_close_details(
-        prices_frame, covered, n_names=20, seed=42, threshold_bp=50.0
+        frozen_prices, covered, n_names=20, seed=42, threshold_bp=50.0
     )
     matched = 0
     for row in details.itertuples(index=False):

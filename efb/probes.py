@@ -1170,6 +1170,11 @@ def eigenvalue_feasibility(
     assert isinstance(returns, pd.DataFrame)
     assert isinstance(mapped, list)
 
+    # Freeze at the last model session: the live loop appends sessions after
+    # it, and the feasibility arithmetic is a stored probe, not a live one.
+    frozen_as_of = pd.Timestamp("2026-09-03")
+    returns = returns[returns.index <= frozen_as_of]
+
     model_start = pd.Timestamp("2011-01-03")
     index = returns.index[returns.index >= model_start]
     frames = {"model_universe": returns.loc[index, mapped], "panel": returns.loc[index]}
@@ -1448,6 +1453,10 @@ def momentum_factor_vol_by_tercile(data_root: Path | None = None) -> pd.DataFram
     bias = pd.read_parquet(root / "eval" / "xs_bias.parquet")
     stored = pd.read_parquet(root / "eval" / "xs_bias_by_exposure.parquet")
     factors = pd.read_parquet(root / "models" / "XS-v1" / "factor_returns.parquet")
+    # The tercile probe is stored at the last model session; the live loop's
+    # appended factor rows must not change its forward windows.
+    frozen_as_of = pd.Timestamp("2026-09-03")
+    factors = factors[pd.to_datetime(factors["date"]) <= frozen_as_of]
 
     momentum_exposure = (
         exposure.loc[
