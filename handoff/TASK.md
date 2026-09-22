@@ -1,5 +1,5 @@
 task_id: e10-fixes-and-constituent-source
-status: in_progress
+status: done
 base_commit: 5b77d6f2f8b983cb106304e239a4b2c9b709e49f
 
 ## Goal

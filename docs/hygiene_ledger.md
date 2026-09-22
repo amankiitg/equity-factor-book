@@ -1473,3 +1473,29 @@ means:
   realized-volatility dispersion is not forecastable at this horizon, and
   the 40% bar was written for a higher-frequency object than a monthly
   book.
+
+## 2026-09-22: iShares IVV holdings endpoint recorded as a failing source
+
+Decision. The iShares IVV holdings CSV endpoint is recorded as a failing
+source and is not built on. The SPY holdings file from SSGA is the
+constituent and identity source instead.
+
+Reason. The documented CSV endpoint returns HTTP 200 with about 2.25 MB of
+HTML, the product page behind an investor-type disclaimer and bot
+protection; the content-type header still says text/csv. Seeding a cookie
+jar from the product page does not clear it. `raise_for_status()` passes
+on this, which is why the SPY fetcher validates the parsed payload shape,
+not the status code, and why a test feeds the stored IVV HTML to the SPY
+parser and asserts it raises.
+
+## 2026-09-22: SPY xlsx is read without openpyxl
+
+Decision. The SSGA SPY holdings xlsx is parsed through its zip and sheet
+XML with the standard library, not through pandas and openpyxl.
+
+Reason. openpyxl is not a project dependency, and adding it plus its
+transitive packages for one flat, shared-string sheet is not warranted.
+The file is a single worksheet of eight columns whose text cells are all
+shared strings, which the zipfile and ElementTree reader recovers
+directly; the parser asserts the header row and the row count so a changed
+layout fails loudly rather than parsing silently.

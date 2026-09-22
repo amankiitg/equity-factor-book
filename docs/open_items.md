@@ -348,3 +348,20 @@ on momentum_12_1, the best-behaved signal, whose edge survives both the
 forward shift and the extra-day lag, labeled as such with the expected E12
 verdict of luck written down before E11 starts. The full checklist is in
 docs/research/RG_OPERATE.md.
+
+## 2026-09-22: constituent source stood up, reconstruction still pending
+
+The ongoing constituent source is built and the daily archive has begun.
+The SSGA SPY holdings file supplies dated membership plus CUSIP and SEDOL,
+validated by shape and filtered to 503 equity rows matching Wikipedia's
+503; sector stays on Wikipedia. The dated archive starts 2026-09-18 in
+data/raw/spy_holdings, one file per as-of date, never overwritten.
+
+What remains: re-running the universe reconstruction against the corrected
+point-in-time membership. This is a plan-changing event (it moves the seed
+books and every stored criterion E1 through E10) and gets its own task
+with the owner's sign-off. The measured defect it fixes: BE, P and RDDT
+are marked members back to 2010 (4360, 4360, 4336 wrong dates), ILMN has a
+585-day false-membership gap, and BLDR, TAP and TTD are dropped entirely.
+The three-way disagreement is stored in
+data/processed/constituent_crosscheck.parquet.

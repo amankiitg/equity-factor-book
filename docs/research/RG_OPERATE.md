@@ -63,11 +63,43 @@ design book's persistent alpha re-sizes away from the risk.
 
 ## 5. Added: an ongoing constituent source
 
-Negative, and it blocks E11. The universe is frozen at the pinned Wikipedia
-revision 1368675864 (2026-08-05); a paper-traded book cannot run on a
-frozen universe. E11 must secure an ongoing constituent source (a vendor
-feed or a maintained open source) and re-run the universe reconstruction
-before the book goes live. Tracked in docs/open_items.md.
+The source now exists and is stood up, but the item is not yet positive,
+because standing it up is not the same as applying it.
+
+**What the source provides.** The SSGA SPY daily holdings file, fetched
+with a plain unauthenticated GET, is validated by parsed shape (header,
+row count, as-of date) and archived one dated file per as-of date, never
+overwritten, starting 2026-09-18. It returns 505 holding rows; the cash
+line (US DOLLAR) and the contingent-value-right line (TPG INC) are
+dropped explicitly and logged, leaving 503 equity rows, which matches the
+live Wikipedia constituent count of 503 exactly. Every equity row carries
+a CUSIP and a SEDOL, which is the security-identity source open_items
+named: a ticker symbol is not an identity, and this file supplies both
+daily, free.
+
+**What it does not provide.** No history. Neither fund publishes an
+archive of past daily files, so the point-in-time record starts
+accumulating from today and reconstructs nothing before it. The pre-2026
+universe still comes from the pinned Wikipedia changes table, and the
+survivor-only cross-section E4 owns is untouched. The SPY file's Sector
+column is "-" for all rows, so the sector map stays on the live Wikipedia
+constituents table, which returns 503 rows with full GICS sector.
+
+**What remains before the item is positive.** The universe reconstruction
+must be re-run against the corrected point-in-time membership. The frozen
+universe is not merely frozen; it is retroactively wrong and degrading,
+which is worse. Measured against the live list: BE, P and RDDT are live
+members added after the pin with no event row, so the stored membership
+marks each a member back to 2010 (4360, 4360 and 4336 wrong dates), and
+ILMN's re-add is uncovered, leaving a 585-day false-membership gap. The
+symmetric case drops BLDR, TAP and TTD entirely. The three-way
+disagreement is stored in data/processed/constituent_crosscheck.parquet:
+six names, three added after the pin and three removed after the pin, all
+against the stored membership, none between SPY and Wikipedia. Re-running
+the reconstruction changes point-in-time membership, which changes the
+seed books and ripples into every stored criterion from E1 to E10; that is
+a plan-changing event and gets its own task with the owner's sign-off.
+Tracked in docs/open_items.md.
 
 ## 6. Added: what E11 would trade given RG-Signal returned all NULL
 
@@ -81,6 +113,9 @@ the expected E12 verdict is luck, written down before E11 starts.
 
 ## Verdict
 
-RG-Operate is not cleared: item 5 (the ongoing constituent source) is
-negative. The missing item is finished first; the book waits. Everything
-else (1, 2, 3, 4, 6) is answered with stored numbers.
+RG-Operate is not cleared: item 5 (the ongoing constituent source) is now
+stood up but not yet applied. The source exists and the daily archive has
+begun; what remains is the owner's sign-off to re-run the universe
+reconstruction against it, which changes the stored criteria and so gets
+its own task. Everything else (1, 2, 3, 4, 6) is answered with stored
+numbers.
