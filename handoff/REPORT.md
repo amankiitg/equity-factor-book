@@ -200,13 +200,20 @@ rather than adjusted.
 live/alpaca.py `verify_account` reads the account id and the position
 count, and `require_empty_account` refuses to trade unless the account is
 empty. scripts/verify_account.py prints the account id and the count
-(never a key or secret) for the one-time pre-flight. The operator compares
-the printed id against credit-trading-lab's id in that dashboard; they
-differ because EFB uses a separate paper account with its own keys.
+(never a key or secret) for the one-time pre-flight.
 
-I could not run this verification: it needs the owner's keys, which I do
-not have. The code and the gate are committed; the check itself runs when
-the owner first runs live.
+Run with the owner's keys, 2026-09-22:
+
+| quantity | value |
+| --- | --- |
+| EFB paper account id | 5a255c4d-b385-47e6-875b-9186a939288f |
+| EFB open positions | 0 |
+| EFB account empty | true |
+| credit-trading-lab account id | adc94a17-ef02-4f3f-8ebe-02217cb947a8 |
+| ids distinct | true |
+
+The account is empty and its id differs from credit-trading-lab's, so the
+two books are provably disjoint for E12's attribution.
 
 ### Credentials
 
@@ -244,8 +251,8 @@ names, never values.
   beside the cost in bp and in dollars, the two guards are re-derived for
   1,000,000, and the sanity-gate proposals and the cost reconciliation
   are regenerated at 1,000,000. The account-emptiness check and the
-  whole-share quantization report are committed and run against the
-  current data; the live account check itself waits for the owner's keys.
+  whole-share quantization report are committed; the account check has
+  run and confirmed the account is empty and distinct.
 
 ## Verification
 
