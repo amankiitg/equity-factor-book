@@ -75,3 +75,33 @@ with the measured 0.1220.
 
 `test_e10_memo.py` matches with `abs(abs(v) - value)`, so a memo that
 printed +0.1403 for a stored -0.1403 would pass.
+
+## Part B1: the frozen-universe defect, reproduced
+
+`build_membership` seeds every date with today's live members and walks the
+pinned changes table backward, so a live name added after the pin has no
+event row and is marked a member back to 2010. Measured against the live
+Wikipedia table (503 rows, fetched 2026-09-22, the same table the reviewer
+read on 2026-09-21):
+
+| symbol | security | date_added | event row in changes | dates marked member | wrongly marked before add |
+| --- | --- | --- | --- | --- | --- |
+| BE | Bloom Energy | 2026-09-21 | no | 4361 | 4360 |
+| P | Everpure | 2026-09-21 | no | 4361 | 4360 |
+| RDDT | Reddit | 2026-08-18 | no | 4361 | 4336 |
+| ILMN | Illumina | 2026-09-21 | yes (2015 add, 2024 remove) | 2828 | 585 gap |
+
+The first three have no event row, so every business day from 2010-01-04 is
+marked member. ILMN is the one the changes table covers: its 2015 add and
+2024-06-24 removal are pinned, but its 2026-09-21 re-add is not, so it is
+wrongly marked member for the 585 business days of the 2024-06-24 to
+2026-09-18 gap when it was out of the index.
+
+The symmetric case, names removed after the pin: BLDR, TAP and TTD are not in
+the live list and have no removal event row, so a rebuild drops them from the
+membership matrix entirely. Their stored history is lost: BLDR 715 dates from
+2023-12-18, TAP 4355 dates from 2010-01-04, TTD 301 dates from 2025-07-18.
+
+P is a reused symbol: it was Pandora Media's ticker before Sirius XM acquired
+it, and today it is Everpure. That lands on the reused-symbol finding in
+docs/open_items.md.
