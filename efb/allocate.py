@@ -213,6 +213,27 @@ def magdon_ismail_median(mean_ann: float, vol_ann: float) -> float:
     return float(np.log(2.0) * var / (2.0 * mean_ann))
 
 
+def magdon_ismail_expected_mdd(
+    mean_ann: float, vol_ann: float, horizon_years: float
+) -> float:
+    """The Magdon-Ismail expected maximum drawdown at a horizon.
+
+    A positive-drift Brownian motion's expected maximum drawdown over a
+    horizon of `horizon_years` years is 2 sigma^2 / mu times
+    Qp(mu^2 T / (2 sigma^2)), with the large-argument form
+    Qp(x) ~ 0.25 ln x + 0.49088. This is the horizon-matched quantity the
+    PRD specifies, unlike the infinite-horizon median in
+    `magdon_ismail_median`.
+    """
+    if mean_ann <= 0 or vol_ann <= 0 or horizon_years <= 0:
+        return float("nan")
+    x = mean_ann**2 * horizon_years / (2.0 * vol_ann**2)
+    if x <= 0:
+        return float("nan")
+    qp = 0.25 * np.log(x) + 0.49088
+    return float(2.0 * vol_ann**2 / mean_ann * qp)
+
+
 def kelly_analysis(
     net: pd.Series,
     horizon: int = HORIZON,
@@ -277,12 +298,20 @@ def drawdown_analysis(
     store: bool = True,
 ) -> dict[str, float]:
     """F10.1: the simulated drawdown distribution against the analytical
-    median, at the median."""
+    median, at the median.
+
+    The simulated median is a signed drawdown and the analytical median is
+    a magnitude, so the gap takes the magnitude of the simulated side
+    before differencing. The same simulation also stores the Gaussian
+    control's median maximum drawdown (i.i.d. Gaussian paths at the book's
+    own moments) and the horizon-matched expected maximum drawdown, which
+    F10.1b is scored on.
+    """
     root = Path(data_root)
     moments = _annualized_moments(net, horizon)
     x = net.dropna().to_numpy(dtype=float)
-    rng = np.random.default_rng(BOOTSTRAP_SEED)
     n = len(x)
+    rng = np.random.default_rng(BOOTSTRAP_SEED)
     medians: list[float] = []
     for _ in range(n_bootstrap):
         path = rng.choice(x, size=n, replace=True)
@@ -291,16 +320,42 @@ def drawdown_analysis(
         drawdown = wealth / peak - 1.0
         medians.append(float(drawdown.min()))
     simulated_median = float(np.median(medians))
+
+    # the Gaussian control: i.i.d. Gaussian paths at the book's own
+    # moments, same length, so a deeper control shows the gap is not fat
+    # tails or volatility clustering the i.i.d. bootstrap already destroys
+    gaussian = np.random.default_rng(BOOTSTRAP_SEED)
+    gaussian_medians: list[float] = []
+    for _ in range(n_bootstrap):
+        path = gaussian.normal(x.mean(), x.std(ddof=1), size=n)
+        wealth = np.cumprod(1.0 + path)
+        peak = np.maximum.accumulate(wealth)
+        gaussian_medians.append(float((wealth / peak - 1.0).min()))
+    gaussian_median = float(np.median(gaussian_medians))
+
     analytical = magdon_ismail_median(moments["mean"], moments["vol"])
     relative = (
-        abs(simulated_median - analytical) / abs(analytical)
+        (abs(simulated_median) - analytical) / analytical
         if np.isfinite(analytical) and analytical != 0
+        else float("nan")
+    )
+    horizon_years = n * HORIZON / TRADING_DAYS
+    expected_mdd = magdon_ismail_expected_mdd(
+        moments["mean"], moments["vol"], horizon_years
+    )
+    expected_relative = (
+        abs(abs(simulated_median) - expected_mdd) / expected_mdd
+        if np.isfinite(expected_mdd) and expected_mdd != 0
         else float("nan")
     )
     out = {
         "simulated_median_drawdown": simulated_median,
         "analytical_median_drawdown": analytical,
         "relative_gap_at_median": relative,
+        "gaussian_median_drawdown": gaussian_median,
+        "horizon_years": horizon_years,
+        "expected_mdd_at_horizon": expected_mdd,
+        "expected_mdd_relative_gap": expected_relative,
         "n_bootstrap": int(n_bootstrap),
         "n_obs": int(n),
     }
@@ -333,13 +388,21 @@ def _realized_annual_vol_by_year(series: pd.Series) -> pd.Series:
 def vol_target_analysis(
     net: pd.Series, data_root: Path = DATA_ROOT, store: bool = True
 ) -> pd.DataFrame:
-    """F10.3: vol targeting reduces the dispersion of realized annual vol."""
+    """F10.3: vol targeting reduces the dispersion of realized annual vol.
+
+    Both dispersions are computed on the intersection of the raw and the
+    targeted year sets, so the comparison is like with like; the counts
+    per side are stored separately.
+    """
     root = Path(data_root)
     raw_by_year = _realized_annual_vol_by_year(net)
     targeted = _vol_target_returns(net)
     target_by_year = _realized_annual_vol_by_year(targeted)
-    raw_dispersion = float(raw_by_year.std(ddof=1) / raw_by_year.mean())
-    target_dispersion = float(target_by_year.std(ddof=1) / target_by_year.mean())
+    common_years = raw_by_year.index.intersection(target_by_year.index)
+    raw_aligned = raw_by_year.reindex(common_years)
+    target_aligned = target_by_year.reindex(common_years)
+    raw_dispersion = float(raw_aligned.std(ddof=1) / raw_aligned.mean())
+    target_dispersion = float(target_aligned.std(ddof=1) / target_aligned.mean())
     reduction = (
         1.0 - target_dispersion / raw_dispersion if raw_dispersion > 0 else float("nan")
     )
@@ -349,9 +412,11 @@ def vol_target_analysis(
                 "raw_dispersion": raw_dispersion,
                 "targeted_dispersion": target_dispersion,
                 "dispersion_reduction": reduction,
-                "raw_mean_vol": float(raw_by_year.mean()),
-                "targeted_mean_vol": float(target_by_year.mean()),
-                "n_years": int(len(raw_by_year)),
+                "raw_mean_vol": float(raw_aligned.mean()),
+                "targeted_mean_vol": float(target_aligned.mean()),
+                "n_years_raw": int(len(raw_by_year)),
+                "n_years_targeted": int(len(target_by_year)),
+                "n_years_aligned": int(len(common_years)),
             }
         ]
     )
@@ -382,6 +447,52 @@ def _apply_stop_loss(
                 invested = True
             out[index] = 0.0
     return out
+
+
+def _drawdown_fired(returns: np.ndarray, threshold: float) -> bool:
+    """Whether the running drawdown ever crosses the stop threshold."""
+    wealth = np.cumprod(1.0 + returns)
+    peak = np.maximum.accumulate(wealth)
+    return bool(((wealth / peak - 1.0) < threshold).any())
+
+
+def _apply_stop_loss_reentering(
+    returns: np.ndarray, threshold: float, reentry: float
+) -> tuple[np.ndarray, dict[str, int]]:
+    """A drawdown stop that can re-enter.
+
+    The original stop freezes wealth and peak while flat, so the re-entry
+    test is unreachable. This one keeps tracking the unstopped equity
+    curve while flat, so when the curve the book would have ridden
+    recovers above the re-entry level the stop re-enters at the next
+    session.
+    """
+    out = np.zeros_like(returns)
+    unstopped = np.cumprod(1.0 + returns)
+    unstopped_peak = np.maximum.accumulate(unstopped)
+    invested = True
+    wealth = 1.0
+    peak = 1.0
+    entries = 0
+    exits = 0
+    days_flat = 0
+    for index, r in enumerate(returns):
+        if invested:
+            wealth *= 1.0 + r
+            peak = max(peak, wealth)
+            out[index] = r
+            if wealth / peak - 1.0 < threshold:
+                invested = False
+                exits += 1
+        else:
+            out[index] = 0.0
+            days_flat += 1
+            if unstopped[index] / unstopped_peak[index] - 1.0 > reentry:
+                invested = True
+                entries += 1
+                wealth = unstopped[index]
+                peak = unstopped_peak[index]
+    return out, {"entries": entries, "exits": exits, "days_flat": days_flat}
 
 
 def _sharpe_period(returns: np.ndarray, horizon: int) -> float:
@@ -420,6 +531,25 @@ def stop_loss_analysis(
     control_improves = bool(mean_diff > 0)
     real_stopped = _apply_stop_loss(x, STOP_LOSS_THRESHOLD, STOP_REENTRY)
     real_diff = _sharpe_period(real_stopped, horizon) - base_sharpe
+
+    # the re-entering stop, scored separately as F10.2b
+    reenter_rng = np.random.default_rng(BOOTSTRAP_SEED + 2)
+    reenter_control_diffs: list[float] = []
+    for _ in range(n_bootstrap):
+        path = reenter_rng.choice(x, size=n, replace=True)
+        re_stopped, _ = _apply_stop_loss_reentering(
+            path, STOP_LOSS_THRESHOLD, STOP_REENTRY
+        )
+        reenter_control_diffs.append(
+            _sharpe_period(re_stopped, horizon) - _sharpe_period(path, horizon)
+        )
+    reenter_mean_diff = float(np.mean(reenter_control_diffs))
+    reenter_control_improves = bool(reenter_mean_diff > 0)
+    reenter_real, reenter_state = _apply_stop_loss_reentering(
+        x, STOP_LOSS_THRESHOLD, STOP_REENTRY
+    )
+    reenter_real_diff = _sharpe_period(reenter_real, horizon) - base_sharpe
+
     row = pd.DataFrame(
         [
             {
@@ -428,15 +558,30 @@ def stop_loss_analysis(
                 "control_mean_sharpe_diff": mean_diff,
                 "control_improves_sharpe": control_improves,
                 "real_book_sharpe_diff": real_diff,
+                "reentering_control_mean_sharpe_diff": reenter_mean_diff,
+                "reentering_control_improves_sharpe": reenter_control_improves,
+                "reentering_real_sharpe_diff": reenter_real_diff,
+                "reentering_entries": reenter_state["entries"],
+                "reentering_exits": reenter_state["exits"],
+                "reentering_days_flat": reenter_state["days_flat"],
                 "n_bootstrap": int(n_bootstrap),
+                "n_obs": int(n),
+                "n_dates_available": int(n),
+                "first_date": net.index[0].date() if len(net) else None,
+                "last_date": net.index[-1].date() if len(net) else None,
+                "stop_fired": _drawdown_fired(x, STOP_LOSS_THRESHOLD),
             }
         ]
     )
     for book in ("seed_ew", "seed_mom_ls"):
-        daily = seed_book_daily_returns(book, root).dropna()
+        full = seed_book_daily_returns(book, root)
+        daily = full.dropna()
         daily_np = daily.to_numpy(dtype=float)
         daily_sharpe = _sharpe_period(daily_np, 1)
         stopped = _apply_stop_loss(daily_np, STOP_LOSS_THRESHOLD, STOP_REENTRY)
+        re_stopped, re_state = _apply_stop_loss_reentering(
+            daily_np, STOP_LOSS_THRESHOLD, STOP_REENTRY
+        )
         row = pd.concat(
             [
                 row,
@@ -449,7 +594,21 @@ def stop_loss_analysis(
                             "control_improves_sharpe": False,
                             "real_book_sharpe_diff": _sharpe_period(stopped, 1)
                             - daily_sharpe,
+                            "reentering_control_mean_sharpe_diff": float("nan"),
+                            "reentering_control_improves_sharpe": False,
+                            "reentering_real_sharpe_diff": _sharpe_period(re_stopped, 1)
+                            - daily_sharpe,
+                            "reentering_entries": re_state["entries"],
+                            "reentering_exits": re_state["exits"],
+                            "reentering_days_flat": re_state["days_flat"],
                             "n_bootstrap": 0,
+                            "n_obs": int(len(daily_np)),
+                            "n_dates_available": int(len(full)),
+                            "first_date": daily.index[0].date() if len(daily) else None,
+                            "last_date": daily.index[-1].date() if len(daily) else None,
+                            "stop_fired": _drawdown_fired(
+                                daily_np, STOP_LOSS_THRESHOLD
+                            ),
                         }
                     ]
                 ),
@@ -500,6 +659,111 @@ def regime_analysis(
     return frame
 
 
+def design_book_daily_returns(
+    rho: float, phi: float, seed: int, data_root: Path = DATA_ROOT
+) -> pd.Series:
+    """The design book's daily return series under the E5 missing-data
+    semantics.
+
+    The weights chosen at a rebalance date are held for the next HORIZON
+    sessions, and the daily return is the held weights times the daily
+    specific return. A held name with a missing return makes that day
+    missing; an unpriced name contributes zero.
+    """
+    root = Path(data_root)
+    weights = pd.read_parquet(root / "portfolios" / "persistent_proportional.parquet")
+    frame = weights.loc[
+        (weights["rho"] == rho) & (weights["phi"] == phi) & (weights["seed"] == seed)
+    ]
+    w_wide = frame.pivot_table(index="date", columns="ticker", values="weight")
+    gross = w_wide.abs().sum(axis=1)
+    w_wide = w_wide.div(gross, axis=0)
+    specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
+    specific["date"] = pd.to_datetime(specific["date"])
+    sp_wide = specific.pivot(
+        index="date", columns="ticker", values="specific_return"
+    ).sort_index()
+    sessions = sp_wide.index
+    held: dict[pd.Timestamp, pd.Series] = {}
+    for date in w_wide.index:
+        forward = sessions[sessions > date][:HORIZON]
+        if len(forward) < HORIZON:
+            continue
+        weights_row = w_wide.loc[date]
+        for session in forward:
+            held[session] = weights_row
+    idx = sorted(held)
+    W = pd.DataFrame(held).T.reindex(columns=w_wide.columns).fillna(0.0).loc[idx]
+    sp = sp_wide.loc[idx]
+    common = [t for t in W.columns if t in sp.columns]
+    Wn = W[common].to_numpy(dtype=float)
+    Rn = sp[common].to_numpy(dtype=float)
+    missing = np.isnan(Rn) & (Wn != 0)
+    safe = np.nan_to_num(Rn, nan=0.0)
+    daily = pd.Series(np.sum(Wn * safe, axis=1), index=sp.index)
+    daily[missing.any(axis=1)] = np.nan
+    return daily.rename("daily_return")
+
+
+def vol_target_daily_analysis(
+    net: pd.Series,
+    daily: pd.Series,
+    data_root: Path = DATA_ROOT,
+    store: bool = True,
+) -> pd.DataFrame:
+    """F10.3b: the dispersion reduction from a daily vol estimate.
+
+    The scale at each rebalance date is target over the trailing daily
+    window's realized vol, shifted one period, applied to the next
+    rebalance return. The daily series is first scaled to the target vol
+    so the scale sits near one and the clip does not bind. Rows sweep the
+    daily windows 21, 42, 63, 126 and 252 sessions.
+    """
+    root = Path(data_root)
+    factor = float(np.sqrt(TRADING_DAYS))
+    x = daily.dropna()
+    full_vol = float(x.std(ddof=1) * factor)
+    if full_vol > 0:
+        x = x * (TARGET_ANNUAL_VOL / full_vol)
+    raw_by_year = _realized_annual_vol_by_year(net)
+    rows: list[dict[str, object]] = []
+    for window in (21, 42, 63, 126, 252):
+        realized = x.rolling(window).std(ddof=1) * factor
+        scale = (
+            (TARGET_ANNUAL_VOL / realized)
+            .reindex(net.index, method="ffill")
+            .shift(1)
+            .clip(0.0, 3.0)
+        )
+        targeted = net * scale
+        target_by_year = _realized_annual_vol_by_year(targeted)
+        common = raw_by_year.index.intersection(target_by_year.index)
+        raw_aligned = raw_by_year.reindex(common)
+        target_aligned = target_by_year.reindex(common)
+        raw_dispersion = float(raw_aligned.std(ddof=1) / raw_aligned.mean())
+        target_dispersion = float(target_aligned.std(ddof=1) / target_aligned.mean())
+        reduction = (
+            1.0 - target_dispersion / raw_dispersion
+            if raw_dispersion > 0
+            else float("nan")
+        )
+        rows.append(
+            {
+                "estimator": "daily",
+                "window": int(window),
+                "raw_dispersion": raw_dispersion,
+                "targeted_dispersion": target_dispersion,
+                "dispersion_reduction": reduction,
+                "n_years_aligned": int(len(common)),
+            }
+        )
+    frame = pd.DataFrame(rows)
+    if store:
+        (root / "allocation").mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(root / "allocation" / "voltarget_daily.parquet", index=False)
+    return frame
+
+
 def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
     """The full E10 pipeline on the design book and the two seed books."""
     root = Path(data_root)
@@ -524,6 +788,10 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
     voltarget = vol_target_analysis(net, data_root=root, store=store)
     stoploss = stop_loss_analysis(net, data_root=root, store=store)
     regime = regime_analysis(net, data_root=root, store=store)
+    daily = design_book_daily_returns(
+        float(config["rho"]), float(config["phi"]), int(config["seed"]), root
+    )
+    voltarget_daily = vol_target_daily_analysis(net, daily, data_root=root, store=store)
     return {
         "config": config,
         "net": net,
@@ -532,4 +800,6 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
         "voltarget": voltarget,
         "stoploss": stoploss,
         "regime": regime,
+        "daily": daily,
+        "voltarget_daily": voltarget_daily,
     }

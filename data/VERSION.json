@@ -1,15 +1,15 @@
 {
   "note": "Built by make rebuild (Sprint E10). The risk-allocation artifacts join the versioned set; the dashboard sidebar shows this version.",
-  "built_at": "2026-09-21T23:39:10+00:00",
-  "data_hash": "810a1ef6ef615330771bab91e946fda701441db9a7ac28ae3666bf42a6aab524",
+  "built_at": "2026-09-22T01:34:09+00:00",
+  "data_hash": "5de2461cbddc9650937acdf4fa7a17bb89bff76102dee80863f08623082e28d1",
   "artifacts": {
     "config.json": {
       "sha256": "f501f7296de0a3bec5c2497793a01e937c5f66d2590ba94395efde060913598d",
       "bytes": 180
     },
     "drawdown.parquet": {
-      "sha256": "ab107cb9c7ad8f1b6adce4642dc65d819d14aac1c08c150d3f3bc51dd6ebee4e",
-      "bytes": 3876
+      "sha256": "62089d6cb4183e1eacb190cd028da43a377efbc2e30da6fac23afff5906ec411",
+      "bytes": 6564
     },
     "kelly.parquet": {
       "sha256": "71c997d882c3290f55bc8a2c683c84d6e62b9d8a54ed1287119c8819f483b45b",
@@ -20,11 +20,15 @@
       "bytes": 3609
     },
     "stoploss.parquet": {
-      "sha256": "a72303a4b5bb4103e298cc1f977b924fdd1c7957f8442854ca9f65cf0402b171",
-      "bytes": 4349
+      "sha256": "f6199b1c958aad5731d2956fd5105e6303852374469bc7d4b9042f251eafa675",
+      "bytes": 11229
     },
     "voltarget.parquet": {
-      "sha256": "6ebee412c0d7320865ed7337bd22cff48088702d80c6a6e945b3ee9ec081f618",
+      "sha256": "68934b0205d555d8c7177d0b310d0bf578db74c1a5fec2bd21e41fbefd50e6f9",
+      "bytes": 5666
+    },
+    "voltarget_daily.parquet": {
+      "sha256": "6eafbc2e16d3211307b726d6d800e8362ca4640b672449a47e34d772c562a1df",
       "bytes": 4394
     },
     "f71b_audit.parquet": {

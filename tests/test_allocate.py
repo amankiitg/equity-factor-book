@@ -52,6 +52,19 @@ def test_stop_loss_goes_flat_after_a_deep_drawdown() -> None:
     assert stopped[-1] == 0.0
 
 
+def test_the_reentering_stop_reenters_after_a_recovery() -> None:
+    # the original stop freezes the drawdown while flat, so on a path that
+    # drops below -10% then rockets the re-entry test is never reached; the
+    # re-entering stop tracks the unstopped curve and re-enters
+    x = np.array([-0.2, 0.5, 0.5, 0.5, 0.5, 0.5])
+    stopped, state = allocate._apply_stop_loss_reentering(x, -0.10, -0.05)
+    assert not np.allclose(stopped[1:], 0.0)
+    assert state["entries"] >= 1 and state["exits"] >= 1
+    # the original stop stays flat forever after the first breach
+    original = allocate._apply_stop_loss(x, -0.10, -0.05)
+    assert np.allclose(original[1:], 0.0)
+
+
 @pytest.mark.integration
 def test_the_design_config_is_picked_close_to_sharpe_one() -> None:
     config = allocate.pick_design_config(DATA)

@@ -1,7 +1,7 @@
 {
   "sprint": "E10",
-  "evaluated_at": "2026-09-21T23:40:37+00:00",
-  "data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
+  "evaluated_at": "2026-09-22T01:35:40+00:00",
+  "data_hash": "a78f15b04b999c5c5668df5c5a62bb6404daad1574f4b497963ec37b18a5fb6d",
   "criteria": {
     "F10.1": {
       "criterion": "Simulated drawdown distribution matches the analytical approximation within 10% at the median for the seed book's SR.",
@@ -9,11 +9,24 @@
       "stored_numbers": {
         "simulated_median_drawdown": -0.14030834893682936,
         "analytical_median_drawdown": 0.0354329710482708,
-        "relative_gap_at_median": 4.959824558479318,
+        "relative_gap_at_median": 2.9598245584793177,
+        "gaussian_median_drawdown": -0.1539687769091203,
         "n_bootstrap": 2000
       },
       "verdict": "fail",
-      "note": "The analytical benchmark is the Magdon-Ismail infinite-horizon Brownian median, ln(2) sigma^2 / (2 mu), computed from the book's own annualized moments. The simulated median is the median maximum drawdown of block-bootstrapped paths of the book's net return series. The gap between the two measures the fat tails and volatility clustering the Brownian benchmark does not have."
+      "note": "The analytical benchmark is the Magdon-Ismail infinite-horizon Brownian median, ln(2) sigma^2 / (2 mu), computed from the book's own annualized moments. The simulated median is the median maximum drawdown of i.i.d. bootstrapped paths of the book's net return series. The gap is not fat tails or volatility clustering: the Gaussian control, i.i.d. Gaussian paths at the book's own moments and length, draws down deeper than the bootstrap, so the gap is the mismatch between a stationary median and a finite-sample maximum drawdown."
+    },
+    "F10.1b": {
+      "criterion": "The expected maximum drawdown at the book's horizon, n_obs * 21 / 252 years, is between 0.15 and 0.25 and within 100% of the simulated median.",
+      "threshold": "expected maximum drawdown between 0.15 and 0.25 and a relative gap below 1.0",
+      "stored_numbers": {
+        "horizon_years": 14.5,
+        "expected_mdd_at_horizon": 0.1993770805683501,
+        "expected_mdd_relative_gap": 0.2962664086721387,
+        "n_obs": 174
+      },
+      "verdict": "pass",
+      "note": "The horizon is n_obs * 21 / 252 years from the same series the simulation uses, and the expected maximum drawdown is the Magdon-Ismail positive-drift value 2 sigma^2 / mu times Qp(mu^2 T / (2 sigma^2)) with the large-argument form Qp(x) ~ 0.25 ln x + 0.49088. The infinite-horizon median used by F10.1 is the stationary drawdown median, not a maximum, which is why F10.1's benchmark and its simulation were never measuring the same thing."
     },
     "F10.2": {
       "criterion": "Control: on i.i.d. bootstrapped returns the stop-loss does not improve Sharpe. On the real book the result is reported either way.",
@@ -22,33 +35,70 @@
         "control_mean_sharpe_diff": -0.487285170300088,
         "control_improves_sharpe": false,
         "seed_ew_real_sharpe_diff": 0.0,
-        "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+        "seed_ew_n_obs": 207,
+        "seed_ew_n_dates_available": 4193,
+        "seed_mom_ls_real_sharpe_diff": 0.22596605244168746,
+        "seed_mom_ls_n_obs": 4091,
+        "seed_mom_ls_n_dates_available": 4092
       },
       "verdict": "pass",
       "note": "On i.i.d. bootstrapped returns a drawdown stop can only truncate expected return, so it must not improve the mean Sharpe. The design book's control mean difference and the two seed books' real-book differences are stored; the real book is reported either way."
+    },
+    "F10.2b": {
+      "criterion": "The stop-loss that can re-enter does not improve Sharpe on the i.i.d. control.",
+      "threshold": "re-entering stop does not improve Sharpe on the i.i.d. control",
+      "stored_numbers": {
+        "reentering_control_mean_sharpe_diff": -0.07161747413052198,
+        "reentering_control_improves_sharpe": false,
+        "reentering_real_sharpe_diff": -0.07716140464418775,
+        "reentering_entries": 2,
+        "reentering_exits": 3,
+        "reentering_days_flat": 9
+      },
+      "verdict": "pass",
+      "note": "The original stop freezes wealth and peak while flat, so its re-entry test is unreachable. The re-entering stop tracks the unstopped equity curve while flat and re-enters at the next session once that curve recovers above the re-entry level. On i.i.d. control paths it still does not improve Sharpe."
     },
     "F10.3": {
       "criterion": "Vol targeting reduces the dispersion of realized annual vol across years by more than 40%.",
       "threshold": "dispersion reduction above 40%",
       "stored_numbers": {
-        "raw_dispersion": 0.2663475246430778,
+        "raw_dispersion": 0.27535511464122947,
         "targeted_dispersion": 0.2338401979010474,
-        "dispersion_reduction": 0.12204854085125161,
-        "n_years": 15
+        "dispersion_reduction": 0.1507686421378931,
+        "n_years_raw": 15,
+        "n_years_targeted": 14,
+        "n_years_aligned": 14
       },
       "verdict": "fail",
-      "note": "The dispersion is the coefficient of variation of the realized annual volatility across years, measured before and after the trailing-window vol targeting scale. The targeting reduces the dispersion by only 12% at monthly frequency: the trailing 12-window volatility estimate lags and is noisy, so the targeting cannot remove the year-to-year dispersion the 40% threshold asks for."
+      "note": "The dispersion is the coefficient of variation of the realized annual volatility across years, measured before and after the trailing-window vol targeting scale, on the aligned year set so both sides cover the same years. The reduction is below the 40% bar not because the estimator is too noisy: the year-to-year dispersion of this book's realized volatility is not forecastable at this horizon, and the 40% bar was written for a higher-frequency object than a monthly book."
+    },
+    "F10.3b": {
+      "criterion": "A daily-return volatility estimate's dispersion reduction stays below 40% at every window.",
+      "threshold": "maximum daily-estimator reduction below 40%",
+      "stored_numbers": {
+        "daily_21_reduction": 0.2063173006483877,
+        "daily_42_reduction": 0.17661311373854993,
+        "daily_63_reduction": 0.10692300604861404,
+        "daily_126_reduction": 0.2040567572765496,
+        "daily_252_reduction": 0.14486143480878588
+      },
+      "verdict": "pass",
+      "note": "The scale at each rebalance date is the target over the trailing daily window's realized vol, shifted one period and applied to the next rebalance return, the daily analogue of the monthly rule. The best daily window reaches below the 40% bar, so F10.3's verdict stands: the 40% bar is not reachable by changing the estimator."
     }
   },
   "revisions": {
     "previous_data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
-    "data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
-    "n_changed": 0,
-    "changed_tickers_or_criteria": [],
+    "data_hash": "a78f15b04b999c5c5668df5c5a62bb6404daad1574f4b497963ec37b18a5fb6d",
+    "n_changed": 3,
+    "changed_tickers_or_criteria": [
+      "F10.1",
+      "F10.2",
+      "F10.3"
+    ],
     "cross_sprint_criteria": [],
     "changed": {
       "F10.1": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "fail",
           "stored_numbers": {
@@ -63,13 +113,27 @@
           "stored_numbers": {
             "simulated_median_drawdown": -0.14030834893682936,
             "analytical_median_drawdown": 0.0354329710482708,
-            "relative_gap_at_median": 4.959824558479318,
+            "relative_gap_at_median": 2.9598245584793177,
+            "gaussian_median_drawdown": -0.1539687769091203,
             "n_bootstrap": 2000
+          }
+        }
+      },
+      "F10.1b": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "horizon_years": 14.5,
+            "expected_mdd_at_horizon": 0.1993770805683501,
+            "expected_mdd_relative_gap": 0.2962664086721387,
+            "n_obs": 174
           }
         }
       },
       "F10.2": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "stored_numbers": {
@@ -85,12 +149,31 @@
             "control_mean_sharpe_diff": -0.487285170300088,
             "control_improves_sharpe": false,
             "seed_ew_real_sharpe_diff": 0.0,
-            "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+            "seed_ew_n_obs": 207,
+            "seed_ew_n_dates_available": 4193,
+            "seed_mom_ls_real_sharpe_diff": 0.22596605244168746,
+            "seed_mom_ls_n_obs": 4091,
+            "seed_mom_ls_n_dates_available": 4092
+          }
+        }
+      },
+      "F10.2b": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "reentering_control_mean_sharpe_diff": -0.07161747413052198,
+            "reentering_control_improves_sharpe": false,
+            "reentering_real_sharpe_diff": -0.07716140464418775,
+            "reentering_entries": 2,
+            "reentering_exits": 3,
+            "reentering_days_flat": 9
           }
         }
       },
       "F10.3": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "fail",
           "stored_numbers": {
@@ -103,10 +186,26 @@
         "new": {
           "verdict": "fail",
           "stored_numbers": {
-            "raw_dispersion": 0.2663475246430778,
+            "raw_dispersion": 0.27535511464122947,
             "targeted_dispersion": 0.2338401979010474,
-            "dispersion_reduction": 0.12204854085125161,
-            "n_years": 15
+            "dispersion_reduction": 0.1507686421378931,
+            "n_years_raw": 15,
+            "n_years_targeted": 14,
+            "n_years_aligned": 14
+          }
+        }
+      },
+      "F10.3b": {
+        "changed": false,
+        "old": null,
+        "new": {
+          "verdict": "pass",
+          "stored_numbers": {
+            "daily_21_reduction": 0.2063173006483877,
+            "daily_42_reduction": 0.17661311373854993,
+            "daily_63_reduction": 0.10692300604861404,
+            "daily_126_reduction": 0.2040567572765496,
+            "daily_252_reduction": 0.14486143480878588
           }
         }
       }
@@ -381,34 +480,190 @@
             }
           }
         }
+      },
+      {
+        "previous_data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
+        "data_hash": "a78f15b04b999c5c5668df5c5a62bb6404daad1574f4b497963ec37b18a5fb6d",
+        "n_changed": 3,
+        "changed_tickers_or_criteria": [
+          "F10.1",
+          "F10.2",
+          "F10.3"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F10.1": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "simulated_median_drawdown": -0.14030834893682936,
+                "analytical_median_drawdown": 0.0354329710482708,
+                "relative_gap_at_median": 4.959824558479318,
+                "n_bootstrap": 2000
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "simulated_median_drawdown": -0.14030834893682936,
+                "analytical_median_drawdown": 0.0354329710482708,
+                "relative_gap_at_median": 2.9598245584793177,
+                "gaussian_median_drawdown": -0.1539687769091203,
+                "n_bootstrap": 2000
+              }
+            }
+          },
+          "F10.1b": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "horizon_years": 14.5,
+                "expected_mdd_at_horizon": 0.1993770805683501,
+                "expected_mdd_relative_gap": 0.2962664086721387,
+                "n_obs": 174
+              }
+            }
+          },
+          "F10.2": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "control_mean_sharpe_diff": -0.487285170300088,
+                "control_improves_sharpe": false,
+                "seed_ew_real_sharpe_diff": 0.0,
+                "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "control_mean_sharpe_diff": -0.487285170300088,
+                "control_improves_sharpe": false,
+                "seed_ew_real_sharpe_diff": 0.0,
+                "seed_ew_n_obs": 207,
+                "seed_ew_n_dates_available": 4193,
+                "seed_mom_ls_real_sharpe_diff": 0.22596605244168746,
+                "seed_mom_ls_n_obs": 4091,
+                "seed_mom_ls_n_dates_available": 4092
+              }
+            }
+          },
+          "F10.2b": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "reentering_control_mean_sharpe_diff": -0.07161747413052198,
+                "reentering_control_improves_sharpe": false,
+                "reentering_real_sharpe_diff": -0.07716140464418775,
+                "reentering_entries": 2,
+                "reentering_exits": 3,
+                "reentering_days_flat": 9
+              }
+            }
+          },
+          "F10.3": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "raw_dispersion": 0.2663475246430778,
+                "targeted_dispersion": 0.2338401979010474,
+                "dispersion_reduction": 0.12204854085125161,
+                "n_years": 15
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "stored_numbers": {
+                "raw_dispersion": 0.27535511464122947,
+                "targeted_dispersion": 0.2338401979010474,
+                "dispersion_reduction": 0.1507686421378931,
+                "n_years_raw": 15,
+                "n_years_targeted": 14,
+                "n_years_aligned": 14
+              }
+            }
+          },
+          "F10.3b": {
+            "changed": false,
+            "old": null,
+            "new": {
+              "verdict": "pass",
+              "stored_numbers": {
+                "daily_21_reduction": 0.2063173006483877,
+                "daily_42_reduction": 0.17661311373854993,
+                "daily_63_reduction": 0.10692300604861404,
+                "daily_126_reduction": 0.2040567572765496,
+                "daily_252_reduction": 0.14486143480878588
+              }
+            }
+          }
+        }
       }
     ]
   },
   "reference_values": {
-    "data_hash": "c8fd9fc781f03cd0bf7217e4d9c37ecf6512ae76b8983ade8cc10c97d2205cee",
+    "data_hash": "a78f15b04b999c5c5668df5c5a62bb6404daad1574f4b497963ec37b18a5fb6d",
     "verdicts": {
       "F10.1": "fail",
+      "F10.1b": "pass",
       "F10.2": "pass",
-      "F10.3": "fail"
+      "F10.2b": "pass",
+      "F10.3": "fail",
+      "F10.3b": "pass"
     },
     "stored_numbers": {
       "F10.1": {
         "simulated_median_drawdown": -0.14030834893682936,
         "analytical_median_drawdown": 0.0354329710482708,
-        "relative_gap_at_median": 4.959824558479318,
+        "relative_gap_at_median": 2.9598245584793177,
+        "gaussian_median_drawdown": -0.1539687769091203,
         "n_bootstrap": 2000
+      },
+      "F10.1b": {
+        "horizon_years": 14.5,
+        "expected_mdd_at_horizon": 0.1993770805683501,
+        "expected_mdd_relative_gap": 0.2962664086721387,
+        "n_obs": 174
       },
       "F10.2": {
         "control_mean_sharpe_diff": -0.487285170300088,
         "control_improves_sharpe": false,
         "seed_ew_real_sharpe_diff": 0.0,
-        "seed_mom_ls_real_sharpe_diff": 0.22596605244168746
+        "seed_ew_n_obs": 207,
+        "seed_ew_n_dates_available": 4193,
+        "seed_mom_ls_real_sharpe_diff": 0.22596605244168746,
+        "seed_mom_ls_n_obs": 4091,
+        "seed_mom_ls_n_dates_available": 4092
+      },
+      "F10.2b": {
+        "reentering_control_mean_sharpe_diff": -0.07161747413052198,
+        "reentering_control_improves_sharpe": false,
+        "reentering_real_sharpe_diff": -0.07716140464418775,
+        "reentering_entries": 2,
+        "reentering_exits": 3,
+        "reentering_days_flat": 9
       },
       "F10.3": {
-        "raw_dispersion": 0.2663475246430778,
+        "raw_dispersion": 0.27535511464122947,
         "targeted_dispersion": 0.2338401979010474,
-        "dispersion_reduction": 0.12204854085125161,
-        "n_years": 15
+        "dispersion_reduction": 0.1507686421378931,
+        "n_years_raw": 15,
+        "n_years_targeted": 14,
+        "n_years_aligned": 14
+      },
+      "F10.3b": {
+        "daily_21_reduction": 0.2063173006483877,
+        "daily_42_reduction": 0.17661311373854993,
+        "daily_63_reduction": 0.10692300604861404,
+        "daily_126_reduction": 0.2040567572765496,
+        "daily_252_reduction": 0.14486143480878588
       }
     }
   }

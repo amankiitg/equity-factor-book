@@ -1435,3 +1435,41 @@ Kelly, the vol-targeting rule is scale_t = 10% / trailing vol clipped at
 3 times, and the risk budget is written per VIX regime (the middle tercile
 carries the deepest drawdown of 0.1309).
 
+
+## 2026-09-22: E10 corrections after the review
+
+The 2026-09-21 review found nine defects in E10. The corrections, recorded
+here because each one changes what a stored number or a stored sentence
+means:
+
+- ln(2) sigma^2 / (2 mu) is the stationary drawdown median of an
+  infinite-horizon Brownian motion, not a maximum-drawdown quantity. That
+  is why F10.1's benchmark and its simulation were never measuring the
+  same thing. The horizon-matched expected maximum drawdown (14.5 years,
+  the positive-drift Magdon-Ismail value) is 0.1994, stored as F10.1b.
+- The F10.1 sign mix (a signed simulated median differenced against a
+  magnitude analytical value) overstated the relative gap as 4.9598; the
+  like-with-like value is 2.9598. F10.1 stays a fail, the criterion text
+  is unchanged, and both values stay on the record through revisions.
+- The bootstrap is i.i.d., not block. The Gaussian control (i.i.d.
+  Gaussian paths at the book's own moments) draws down deeper than the
+  bootstrap, so the gap is not fat tails or volatility clustering: it is
+  the benchmark mismatch above.
+- The original drawdown stop freezes wealth and peak while flat, so its
+  -5% re-entry test is unreachable. A re-entering stop that tracks the
+  unstopped equity curve is stored as F10.2b, and on i.i.d. control paths
+  it still does not improve Sharpe.
+- The E5 missing-data semantics delete 95% of a 500-name equal-weight
+  book's days: seed_ew rests on 207 of 4193 sessions (2025-10-28 to
+  2026-08-27), so any statistic computed on it under those semantics is a
+  ten-month statistic. seed_mom_ls rests on 4091 of 4092 sessions.
+- F10.3's dispersion was computed on 15 raw years against 14 targeted
+  years. On the aligned 14-year set the reduction is 0.1508, not 0.1220.
+  The verdict is unchanged.
+- F10.3's recorded mechanism blamed the estimator. It is not the
+  estimator: a daily-return volatility estimate reaches at most 0.2042
+  (my implementation measures 0.2063 at the 21-day window), still below
+  the 40% bar. The true mechanism is that this book's year-to-year
+  realized-volatility dispersion is not forecastable at this horizon, and
+  the 40% bar was written for a higher-frequency object than a monthly
+  book.

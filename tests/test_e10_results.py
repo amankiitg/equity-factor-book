@@ -12,7 +12,7 @@ from efb import evaluate
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "sprints" / "E10" / "RESULTS.json"
 
-CRITERIA = ["F10.1", "F10.2", "F10.3"]
+CRITERIA = ["F10.1", "F10.1b", "F10.2", "F10.2b", "F10.3", "F10.3b"]
 
 
 def _results() -> dict:

@@ -212,6 +212,7 @@ E10_ARTIFACTS = [
     "allocation/kelly.parquet",
     "allocation/drawdown.parquet",
     "allocation/voltarget.parquet",
+    "allocation/voltarget_daily.parquet",
     "allocation/stoploss.parquet",
     "allocation/regime.parquet",
 ]
