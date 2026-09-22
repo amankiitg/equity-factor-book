@@ -27,6 +27,21 @@ A criterion keeps its ID and its verdict. A better measurement of the same
 question is a new ID beside the old one, never an edit of the old one. The
 project's convention for this is the letter suffix: F4.1, F7.1b, F7.1c, F8.1b.
 
+## 2b. An acceptance band is not a criterion
+
+A criterion states the question that was asked before the numbers existed. A
+numeric band drawn around a value that has already been measured is not a
+criterion, whatever it is stored as: it passes by construction and it hides the
+result the pre-registered threshold would have given.
+
+Acceptance items in `handoff/TASK.md` are the reviewer's guards on the
+implementation. They are never lifted into criterion text. When a task registers
+a new criterion, the criterion restates the original question against the
+corrected object, and keeps the original threshold unless the owner changes it.
+Recorded 2026-09-22 after F10.1b was registered against the reviewer's own
+0.15 to 0.25 sanity band and scored `pass`, where the pre-registered 10% bar
+would have scored it `fail` at 26 to 30%.
+
 ## 3. A threshold that is wrong for the built object fails, with the mechanism
 
 Hygiene ledger, 2026-09-21 on F7.2: "the threshold was written for a different

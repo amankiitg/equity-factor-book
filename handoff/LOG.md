@@ -519,3 +519,228 @@ the artifacts the way E2 onward do, and refresh the README status block, which
 stopped at E2 and still shows E3 unchecked (E10-F13). Note that storing a number
 for a criterion that currently stores none touches reserved decision 3, so that
 task needs your sign-off before it runs.
+
+---
+
+## 2026-09-22 review: task e10-fixes-and-constituent-source at 3a82ccb
+
+Reviewed HEAD 3a82ccb against base 5b77d6f. Five commits, working tree clean,
+`handoff/TASK.md` status `done`, `handoff/REPORT.md` 149 lines. Both parts were
+delivered. The work is good: nine defects corrected, none papered over, two
+failing verdicts kept failing, and the RG-Operate rewrite is honest about what
+the new source does not solve. Five new findings, one of which is mine.
+
+### Decisions needed from you
+
+**Decision 1, new: F10.1b's criterion was fitted to the answer, and the honest
+version is a fail. Reserved decision 3, so I have not touched it.**
+
+F10.1b is registered as:
+
+> "The expected maximum drawdown at the book's horizon, n_obs * 21 / 252 years,
+> is between 0.15 and 0.25 and within 100% of the simulated median."
+> threshold: "expected maximum drawdown between 0.15 and 0.25 and a relative gap
+> below 1.0", verdict **pass**.
+
+That band is not a criterion. It is the acceptance guard I wrote into
+`handoff/TASK.md` so I could check DeepSeek's Qp implementation, and I did not
+say what F10.1b should actually test, so DeepSeek reasonably lifted my numbers
+into the criterion text. The result passes by construction: the band was chosen
+because the answer was already known. My error to fix, not DeepSeek's.
+
+The honest version applies F10.1's own pre-registered threshold, "within 10% at
+the median", to the corrected benchmark. Measured:
+
+| comparison | gap | vs the 10% bar |
+| --- | --- | --- |
+| simulated median vs stationary median (F10.1, as stored) | 2.9598 | fail |
+| simulated median vs horizon-matched E[MDD] (F10.1b, as stored) | 0.2963 | **fail** |
+| simulated **mean** vs horizon-matched E[MDD] (like for like) | 0.2578 | **fail** |
+
+So F10.1b should read `fail` at roughly 26 to 30%, and that is a far better
+result than the `pass` on the record. It says the horizon fix cuts the gap by an
+order of magnitude, from 296% to 26%, and does not close it. The residual is
+real: I checked whether it was the mean-versus-median mismatch, since
+Magdon-Ismail gives an expected maximum drawdown while the simulation reports a
+median, and correcting that moves 0.2963 only to 0.2578. Something the Brownian
+benchmark does not capture is still there at 26%, which is an open question
+worth recording rather than a band worth widening.
+
+Note the third row: the stored F10.1b compares a simulated **median** against an
+analytical **mean**. That is a smaller instance of the exact like-for-unlike
+comparison that E10-F1 and E10-F2 were about, surviving into the correction.
+
+Options:
+
+1. **Re-register F10.1b against F10.1's own 10% threshold, verdict fail, with
+   the 296% to 26% reduction and the open residual recorded as the mechanism.**
+   My recommendation. It keeps the pre-registered bar, records a negative result
+   the way the project does everywhere else, and leaves a real question open.
+2. Keep F10.1b as a diagnostic but rename it so it does not read as a
+   falsification criterion, and put the 10% comparison in the memo prose.
+3. Leave it. I would not: a `pass` on a band drawn around the answer is the
+   defect class this project keeps hitting, and it is now in a deliverable.
+
+**Decision 2, still open from 2026-09-21: what E11 trades.** Unanswered. It is
+now the binding constraint on the schedule: RG-Operate item 5 is as clear as it
+can get without your sign-off, item 6 is yours, and E11 needs 30 trading days of
+calendar time. Everything else I can queue is small. My recommendation remains
+(b), idio_momentum through the full stack.
+
+**Decision 3: re-running the universe reconstruction.** DeepSeek correctly
+stopped short of it and said why. It changes point-in-time membership and
+ripples into every stored criterion E1 to E10. Needs your sign-off before it is
+scheduled. Related: I also need to know where the Credit Trading Lab v8.x daily
+loop lives. `live/` still holds only a `.gitkeep`.
+
+### Verified, independently recomputed
+
+Gates, run by me, not taken from the report:
+
+- `make test`: **594 passed, exit 0**, 409.65s. Matches the report. Suite grew
+  from 586 by 8.
+- `make lint`: ruff, mypy (33 source files, up from 32), black (130 files) all
+  clean, exit 0.
+- Walkthrough: 23 cells, 13 code cells, zero unexecuted, zero error outputs,
+  execution counts 1 to 13 monotonic, HTML rendered. The forbidden-literal guard
+  is present and real.
+- No em dashes in any of the 25 changed files.
+
+Numbers, recomputed from the stored artifacts:
+
+- F10.1 `relative_gap_at_median` 2.9598245584793177. Reproduces exactly.
+- F10.1b horizon 14.5 years, E[MDD] 0.1993770805683501, gap 0.2962664086721387.
+  Reproduces exactly, including the Qp asymptote.
+- F10.3 raw 0.275355, targeted 0.233840, reduction 0.1507686421378931 on the
+  aligned 14-year set. Reproduces exactly.
+- F10.3b sweep reproduces at all five windows.
+- Gaussian control -0.1539687769091203, deeper than the bootstrap's -0.140308,
+  so the fat-tail explanation is correctly retired.
+- Memo: all six `criterion` strings appear verbatim. E10-F8 is properly fixed;
+  the memo now interpolates criterion and threshold from `RESULTS.json`.
+- Traceability test is sign-aware and carries a regression case that a flipped
+  sign is rejected. E10-F9 fixed.
+- E1 through E9: **0 of 65 criteria changed verdict.** I checked all nine
+  sprints, including E8 and E9, which the report's Table 8 omits.
+- Membership artifacts unchanged: `universe_membership`, `universe_constituents`,
+  `universe_changes` and `sectors` all carry identical sha256 in
+  `data/VERSION.json` at base and HEAD. Only `drawdown`, `stoploss` and
+  `voltarget` changed and `voltarget_daily` was added.
+- SPY: 503 equity rows, CUSIP and SEDOL non-null on 503 of 503, no blanks.
+  The parser raises `ValueError` on the IVV HTML fixture with a message naming
+  the cause. `archive_snapshot` returns the existing path without rewriting.
+
+Defect classes checked specifically:
+
+- **Two rows identical.** `seed_mom_ls` shows the same +0.225966 under both the
+  old and the re-entering stop, and both zero 1229 observations. I checked
+  whether the new function was silently falling back. It is not: the re-entering
+  stop works on the probe case, and on `seed_mom_ls` the unstopped equity curve
+  never recovers above -5% after the first breach on 2021-10-11, so a correct
+  re-entering stop also never re-enters. The identical rows are genuine.
+- **A criterion that passes by construction.** `cross_check` enumerates the union
+  of all three sources and reports every disagreement, so its zero SPY-versus-
+  Wikipedia disagreement is a real result, not an artifact of only looking at
+  Wikipedia-versus-stored. Verified by reading the implementation.
+- **My own suspicion, and it was wrong.** I expected SPY as of 18-Sep to
+  disagree with Wikipedia on BE, ILMN and P, since Wikipedia dates those
+  additions 21-Sep. The file genuinely holds all three. SPY leads Wikipedia's
+  `date_added`, which is a point in the new source's favour and worth carrying
+  into the reconstruction task: the two sources date the same change
+  differently.
+
+### E10-F17, raised by DeepSeek, resolved in DeepSeek's favour
+
+DeepSeek reported daily-21 at 0.206317 against my 0.2042 and could not recover
+my convention. The sampling convention is identical; the difference is the daily
+series. Mine treated a missing specific return as zero. `design_book_daily_returns`
+applies the E5 missing-data semantics, marking the day missing if any held name
+is missing, which is the project's convention everywhere else. **DeepSeek's
+number is correct and mine was the looser construction.** Correcting my
+2026-09-21 entry accordingly.
+
+### New findings
+
+**E10-F18. F10.1b's criterion is fitted to the answer.** Decision 1 above.
+
+**E10-F19. F10.3b's year alignment is fixed at the year level and broken inside
+the first year.** E10-F6 was that raw and targeted covered different year sets;
+that is fixed. But the daily estimator's warmup still consumes part of 2012 on
+the targeted side only, so the two sides estimate the same year's annual
+volatility from different numbers of observations:
+
+| window | 2012 raw obs | 2012 targeted obs | stored reduction | reduction dropping unequal years |
+| --- | --- | --- | --- | --- |
+| daily 21 | 11 | 9 | 0.206317 | **0.286842** |
+| daily 42 | 11 | 9 | 0.176613 | 0.195261 |
+| daily 63 | 11 | 8 | 0.106923 | 0.163429 |
+| daily 126 | 11 | 4 | 0.204057 | 0.202698 |
+| daily 252 | 11 | 0 (2013: 12 vs 10) | 0.144861 | 0.126479 |
+
+The headline moves 8 points, from 0.2063 to 0.2869. An annual volatility built
+from 4 monthly returns is not the same statistic as one built from 11, and it
+enters the coefficient of variation on one side only. **The verdict is
+unaffected**: the maximum is still far below 40%, so F10.3 stands and F10.3b's
+conclusion stands. The stored headline is biased and the fix is a minimum
+observation count per year applied to both sides.
+
+**E10-F20. `make verify-evidence` fails at HEAD and passed at base.** It reports
+"data/VERSION.json: the artifact on disk has moved since the snapshot". Proven:
+the evidence manifest's VERSION.json sha256 is `a180ec69...`, which is exactly
+the sha at 5b77d6f, and on disk it is now `eb28c01f...`. The rebuild refreshed
+`VERSION.json` without `make evidence`. A one-command fix, but the evidence
+chain is currently broken and a `make` target exits 1. My acceptance list did
+not name this gate; it should have.
+
+**E10-F21. The SPY archive, the one artifact whose whole value is that it cannot
+be regenerated, is the least protected thing in the repo.**
+`data/raw/spy_holdings/spy_holdings_2026-09-18.parquet` is matched by
+`.gitignore:20` (`data/**/*.parquet`), is untracked, is absent from
+`data/VERSION.json`, and is absent from `evidence/MANIFEST.json`. SSGA serves
+only the current file, so tomorrow's fetch cannot reproduce 18-Sep. The
+project's own evidence policy, the 2026-09-21 open item, says the snapshot
+covers "only the fetched inputs that make rebuild cannot regenerate", which is
+precisely what this is. The E5 lesson, verbatim from the ledger: "an untracked,
+underived artifact is one run away from being unrecoverable." Every day this
+sits unprotected, a day of point-in-time record is at risk.
+
+**E10-F22. Reporting, not work: Table 7's numbers are not recoverable from the
+stored membership artifact.** The column reads "history dates wrongly marked a
+member", but BE and P are **not columns in
+`data/processed/universe_membership.parquet` at all**, and RDDT's stored count
+is 4355 of 4355, not the reported 4336. The 4360/4360/4336 figures come from a
+fresh `build_membership` over a business-day range ending today, which is 4361
+rows, not the stored 4355. `sprints/E10/PROBES.md` is explicit and correct about
+this, saying "a rebuild drops them" and naming the fresh range. REPORT.md's
+table header is not, and a reader of the report alone would think the stored
+artifact contains all four errors. Only RDDT's is present today.
+
+**E10-F23. Reporting: two claims in Table 8 are weaker than they look.** The
+"F1.x to F9.x no-change" row lists E1 to E7 and omits E8 and E9; I verified both
+are unchanged, so the conclusion holds. And the proof that membership is
+unchanged is given as "git status clean for data/processed", which proves
+nothing, because `data/**/*.parquet` is gitignored and git status would be clean
+whatever happened. The `VERSION.json` hashes do prove it, and they are the
+evidence to cite. Also "23 cells executed" is 23 total cells and 13 code cells.
+
+### Next
+
+`handoff/TASK.md` rewritten as `evidence-and-archive-hardening`, status **ready**,
+base commit 3a82ccb. It covers E10-F19, E10-F20, E10-F21 and the REPORT
+corrections, all of which need no decision from you. **F10.1b is explicitly out
+of scope** pending Decision 1, and the universe reconstruction is out of scope
+pending Decision 3. The task is deliberately small so it does not consume time
+you may want spent on E11 setup once Decision 2 lands.
+
+---
+
+## 2026-09-22 STANDARDS.md change
+
+Added rule 2b, "An acceptance band is not a criterion", between rules 2 and 3.
+
+Why: E10-F18. F10.1b was registered against the 0.15 to 0.25 band I wrote into
+`handoff/TASK.md` as a reviewer's guard on the Qp implementation, and scored
+`pass`. Nothing in `handoff/STANDARDS.md` said a TASK.md acceptance item is not
+criterion material, and rule 1 only forbids rewording an existing criterion, not
+inventing a new one around a known answer. The rule closes that gap and names
+the instance so the next reader sees the example. No other rule changed.
