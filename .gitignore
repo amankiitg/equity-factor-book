@@ -26,6 +26,11 @@ data/**/*.feather
 .env.*
 .streamlit/credentials.toml
 
+# Daily loop runtime state: decisions, positions, pnl and execution logs
+# accumulate every trading day and are rebuilt by the jobs, not by git.
+live/state/
+live/logs/
+
 # Copies of the sprint documents and notebooks served by the Methodology tab
 dashboard/static/docs/
 
