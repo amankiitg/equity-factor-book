@@ -56,6 +56,14 @@ def load_proposal(as_of: str, data_root: Path = DATA_ROOT) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
+def _close_prices(as_of: str, data_root: Path = DATA_ROOT) -> dict[str, float]:
+    """{ticker: close} at the proposal close, for short-share quantization."""
+    prices = pd.read_parquet(data_root / "raw" / "prices.parquet")
+    day = prices[prices.index.get_level_values("date") == pd.Timestamp(as_of)]
+    close = day["close"].droplevel("date") if not day.empty else pd.Series(dtype=float)
+    return {str(ticker): float(value) for ticker, value in close.items()}
+
+
 def target_orders(
     proposal: pd.DataFrame,
     nav: float,
@@ -74,43 +82,27 @@ def target_orders(
 def connect(dry_run: bool = True) -> object | None:
     """The Alpaca paper client, or None in dry run.
 
-    The live path reads paper keys from the environment, never from a
-    file, and never from the repo. `alpaca-py` is an optional dependency;
-    a clear error names it when it is missing.
+    Delegates to live.alpaca, which reads paper keys from the environment
+    (`EFB_ALPACA_PAPER_API_KEY`, `EFB_ALPACA_PAPER_SECRET_KEY`), never
+    from a file and never from the repo. The names are distinct from
+    credit-trading-lab's so a stale shell cannot cross the two books.
     """
-    if dry_run:
-        return None
-    import os
+    from live import alpaca
 
-    key = os.environ.get("ALPACA_PAPER_API_KEY")
-    secret = os.environ.get("ALPACA_PAPER_SECRET_KEY")
-    if not key or not secret:
-        raise RuntimeError(
-            "Alpaca paper keys are required outside dry run and are read "
-            "from ALPACA_PAPER_API_KEY and ALPACA_PAPER_SECRET_KEY only"
-        )
-    try:
-        import importlib
-
-        trading = importlib.import_module("alpaca.trading.client")
-        TradingClient = trading.TradingClient
-    except ImportError as exc:  # pragma: no cover - depends on the environment
-        raise RuntimeError(
-            "the live Alpaca path needs alpaca-py; install it or run dry"
-        ) from exc
-    return TradingClient(paper=True, url_override="https://paper-api.alpaca.markets")
+    return alpaca.connect(dry_run)
 
 
 def submit_orders(
     orders: list[OrderSpec],
     client: object | None,
     dry_run: bool,
+    prices: dict[str, float] | None = None,
 ) -> pd.DataFrame:
     """Submit guarded orders and record one row per order, filled or not.
 
-    Dry run records every order with zero fill and status DRY_RUN; the
-    live path is a placeholder that fails loudly rather than silently
-    doing nothing, because no order may be dropped without a record.
+    Dry run records every order with zero fill and status DRY_RUN. The
+    live path submits market orders through live.alpaca and records the
+    fills, so no order is dropped without a record.
     """
     records: list[dict[str, object]] = []
     for order in orders:
@@ -138,9 +130,20 @@ def submit_orders(
             continue
         if client is None:  # pragma: no cover - guarded by connect()
             raise RuntimeError("live submission needs a client")
-        raise NotImplementedError(
-            "the live Alpaca submission is not wired; run dry"
-        )  # pragma: no cover - replaced when paper keys arrive
+    if not dry_run and client is not None:
+        from live import alpaca
+
+        fills = alpaca.submit_market_orders(orders, client, prices or {})
+        for fill in fills:
+            records.append(
+                {
+                    "ticker": fill.ticker,
+                    "intended_notional": fill.intended_notional,
+                    "filled_notional": fill.filled_notional,
+                    "status": fill.status,
+                    "reason": "live paper fill",
+                }
+            )
     return pd.DataFrame(records, columns=EXECUTION_COLUMNS[1:])
 
 
@@ -172,7 +175,8 @@ def run_morning(
     orders = target_orders(proposal, nav)
     guarded = guards.apply_guards(orders, nav)
     client = connect(dry_run)
-    records = submit_orders(guarded, client, dry_run)
+    prices = _close_prices(as_of, data_root)
+    records = submit_orders(guarded, client, dry_run, prices)
     records["trade_date"] = as_of
     positions = _positions_from_records(records, proposal)
     state.write_positions(as_of, positions.to_dict("records"))

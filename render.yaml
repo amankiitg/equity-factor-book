@@ -1,0 +1,48 @@
+# Render deployment blueprint -- EFB live book (Sprint E11, Part B).
+#
+# Two services:
+#   1. efb-live-dashboard: always-on Streamlit web service. Supabase only.
+#   2. efb-live-daily:     the daily cron that extends the data and model,
+#                          proposes the book, runs the morning execution and
+#                          reconciles. Supabase plus Alpaca paper keys.
+#
+# UTC cron schedule:
+#   "30 22 * * 1-5" = 18:30 EDT / 17:30 EST, after the 16:00 ET close.
+#
+# Secret isolation:
+#   Dashboard gets EFB_SUPABASE_* only. NO Alpaca keys.
+#   Cron gets EFB_SUPABASE_* plus EFB_ALPACA_PAPER_*.
+#   Env var VALUES are set manually in the Render dashboard (sync: false).
+#   This file commits the KEY names only; no credentials appear here.
+
+services:
+  - type: web
+    name: efb-live-dashboard
+    runtime: python
+    buildCommand: pip install -r requirements.txt && pip install -e .
+    startCommand: streamlit run live/dashboard_app.py --server.port $PORT --server.address 0.0.0.0
+    envVars:
+      - key: EFB_SUPABASE_URL
+        sync: false
+      - key: EFB_SUPABASE_SECRET_KEY
+        sync: false
+      # EFB_ALPACA_* are intentionally absent from this service: the
+      # dashboard never calls Alpaca directly.
+
+  - type: cron
+    name: efb-live-daily
+    runtime: python
+    buildCommand: pip install -r requirements.txt && pip install -e .
+    schedule: "30 22 * * 1-5"
+    startCommand: python scripts/run_live_daily.py
+    envVars:
+      - key: EFB_SUPABASE_URL
+        sync: false
+      - key: EFB_SUPABASE_SECRET_KEY
+        sync: false
+      - key: EFB_ALPACA_PAPER_API_KEY
+        sync: false
+      - key: EFB_ALPACA_PAPER_SECRET_KEY
+        sync: false
+      - key: EFB_DRY_RUN
+        sync: false

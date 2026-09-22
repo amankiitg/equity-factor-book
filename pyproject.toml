@@ -32,6 +32,10 @@ dev = [
     "nbconvert>=7.16",
     "types-requests>=2.31",
 ]
+live = [
+    "alpaca-py>=0.20",
+    "supabase>=2.5",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -64,5 +68,5 @@ warn_unused_configs = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["yfinance", "pandas", "requests"]
+module = ["yfinance", "pandas", "requests", "alpaca", "alpaca.trading.*", "supabase"]
 ignore_missing_imports = true

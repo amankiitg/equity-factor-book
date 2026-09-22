@@ -1,0 +1,5 @@
+# Render runtime dependencies for the live book. The research stack comes
+# from pyproject.toml via `pip install -e .`; these two are the live-only
+# extras that connect to Alpaca paper and Supabase.
+alpaca-py>=0.20
+supabase>=2.5

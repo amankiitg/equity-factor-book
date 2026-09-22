@@ -84,6 +84,18 @@ def _stored_ic(signal: str, data_root: Path) -> float:
     return float(rows["ic_h1_mean"].iloc[0])
 
 
+def _stored_neutral_ic(signal: str, data_root: Path) -> dict[str, float]:
+    """The stored horizon-21 factor-neutral IC and its t, read, never typed."""
+    summary = pd.read_parquet(data_root / "alpha" / "summary.parquet")
+    rows = summary.loc[summary["signal"] == signal]
+    if rows.empty:
+        raise ValueError(f"no stored alpha summary row for signal {signal!r}")
+    return {
+        "factor_neutral_ic_h21": float(rows["neutral_ic_h21_mean"].iloc[0]),
+        "factor_neutral_t_h21": float(rows["neutral_ic_h21_t"].iloc[0]),
+    }
+
+
 def _decomposition(
     weights: np.ndarray,
     design: np.ndarray,
@@ -238,6 +250,7 @@ def build_proposal(
     specific = pieces["specific"]
 
     ic = _stored_ic(SIGNAL, root)
+    neutral_ic = _stored_neutral_ic(SIGNAL, root)
     kappa = alpha_mod.KAPPA
     signal = alpha_mod.idio_momentum(root)
     day = signal.loc[pd.to_datetime(signal["date"]) == as_of_ts]
@@ -293,6 +306,8 @@ def build_proposal(
         "excluded": excluded,
         "ic": ic,
         "kappa": kappa,
+        "factor_neutral_ic_h21": neutral_ic["factor_neutral_ic_h21"],
+        "factor_neutral_t_h21": neutral_ic["factor_neutral_t_h21"],
         "idio_share_after_fmp": decomposition["idio_share"],
         "max_abs_exposure_after_fmp": decomposition["max_abs_exposure"],
         "gross": decomposition["gross"],
