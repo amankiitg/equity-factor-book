@@ -32,6 +32,7 @@ from dashboard.tabs import (  # noqa: E402
     d07_sizing,
     d08_costs,
     d09_risk_allocation,
+    d10_book,
     methodology,
 )
 
@@ -74,6 +75,7 @@ def main() -> None:
             "D7 Sizing and Optimizer",
             "D8 Cost and Capacity",
             "D9 Risk Allocation",
+            "D10 Book Monitor",
             "Methodology",
         ]
     )
@@ -98,6 +100,8 @@ def main() -> None:
     with tabs[9]:
         d09_risk_allocation.render()
     with tabs[10]:
+        d10_book.render()
+    with tabs[11]:
         methodology.render()
 
 

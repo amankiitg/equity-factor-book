@@ -35,11 +35,11 @@ def test_publish_skips_documents_that_do_not_exist(
 ) -> None:
     # the rendered notebooks are gitignored, so a fresh clone has none yet
     monkeypatch.setattr(
-        methodology, "LINKS", [*methodology.LINKS, ("Nope", "sprints/E11/PRD.md")]
+        methodology, "LINKS", [*methodology.LINKS, ("Nope", "sprints/ENOPE/PRD.md")]
     )
     published = publish.publish(static_dir=tmp_path)
-    assert "sprints/E11/PRD.md" not in published
-    assert not (tmp_path / "sprints" / "E11" / "PRD.md").exists()
+    assert "sprints/ENOPE/PRD.md" not in published
+    assert not (tmp_path / "sprints" / "ENOPE" / "PRD.md").exists()
 
 
 def test_static_serving_is_enabled() -> None:
