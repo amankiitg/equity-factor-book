@@ -96,6 +96,47 @@ def test_render_dashboard_reads_no_research_parquet() -> None:
     assert "data/" not in source
 
 
+def test_whole_share_quantization_counts_zero_rounds() -> None:
+    rows = pd.DataFrame({"ticker": ["A", "B"], "weight": [0.000001, -0.000001]})
+    prices = {"A": 100.0, "B": 100.0}
+    nav = 1_000_000.0
+    # each target notional is 1 dollar, one whole share costs 100, so both
+    # round to zero shares, one long and one short
+    result = alpaca.whole_share_quantization(rows, prices, nav)
+    assert result["long_targets_rounding_to_zero"] == 1
+    assert result["short_targets_rounding_to_zero"] == 1
+    assert result["gross_weight_error"] > 0
+
+
+def test_require_empty_account_rejects_existing_positions() -> None:
+    class Account:
+        id = "acct-efb"
+
+    class Client:
+        def get_account(self):
+            return Account()
+
+        def get_all_positions(self):
+            return [object()]
+
+    with pytest.raises(RuntimeError, match="refusing to trade"):
+        alpaca.require_empty_account(Client())
+
+
+def test_env_example_names_the_keys_without_values() -> None:
+    text = (ROOT / ".env.example").read_text()
+    lines = text.splitlines()
+    for name in (
+        "EFB_ALPACA_PAPER_API_KEY",
+        "EFB_ALPACA_PAPER_SECRET_KEY",
+        "EFB_SUPABASE_URL",
+        "EFB_SUPABASE_SECRET_KEY",
+    ):
+        match = [line for line in lines if line.startswith(name)]
+        assert match, f"{name} missing from .env.example"
+        assert match[0] == f"{name}=", "the example carries a name, never a value"
+
+
 def test_render_yaml_commits_key_names_not_values() -> None:
     render = (ROOT / "render.yaml").read_text()
     assert "EFB_ALPACA_PAPER_API_KEY" in render

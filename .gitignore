@@ -24,6 +24,7 @@ data/**/*.feather
 # Secrets and local config
 .env
 .env.*
+!.env.example
 .streamlit/credentials.toml
 
 # Daily loop runtime state: decisions, positions, pnl and execution logs

@@ -12,18 +12,18 @@
   },
   "establishment": {
     "as_of": "2026-09-21",
-    "avg_trade_size": 194.24526179079604,
-    "borrow_bp": 8.093552574616503,
-    "commission_bp": 0.9712263089539801,
-    "gross": 0.9712263089539802,
-    "impact_bp": 4.142885161830039,
-    "n_names": 500,
-    "nav": 100000.0,
-    "notional": 97122.63089539802,
-    "spread_bp": 4.723374260207236,
-    "total_bp": 17.931038305607757
+    "avg_trade_size": 1940.9572599093256,
+    "borrow_bp": 8.071147272456288,
+    "commission_bp": 0.9685376726947534,
+    "gross": 0.9685376726947534,
+    "impact_bp": 13.182112210073752,
+    "n_names": 499,
+    "nav": 1000000.0,
+    "notional": 968537.6726947534,
+    "spread_bp": 4.713262872845437,
+    "total_bp": 26.935060028070232
   },
-  "mechanism": "E6's 10.53 bp is a steady-state rebalance trading only the delta (turnover 0.79) under the E6 provisional 5 bp-per-unit-turnover plus borrow. The establishment trades the full gross (0.97) from flat under the E9 model (spread schedule, square-root impact, 1 bp commission) plus borrow. The trading leg is 9.84 bp (spread 4.72 + impact 4.14 + commission 0.97) against E6's 3.96 bp, and borrow is 8.09 bp against 6.56 bp. The two borrow legs match; the difference is the richer E9 trading model on the full gross. The 7.15x ratio seen in review came from pricing the old proposal at the 1e8 capacity AUM without borrow; at the paper NAV of 100k the ratio is 1.70x, which this arithmetic closes.",
-  "ratio_establishment_over_e6": 1.7033086141331812,
+  "mechanism": "E6's 10.53 bp is a steady-state rebalance trading only the delta (turnover 0.79) under the E6 provisional 5 bp-per-unit-turnover plus borrow. The establishment trades the full gross from flat under the E9 model (spread schedule, square-root impact, 1 bp commission) plus borrow. The trading leg is spread 4.71 + impact 13.18 + commission 0.97 = 18.86 bp against E6's 3.96 bp, and borrow is 8.07 bp against 6.56 bp. The two borrow legs match; the difference is the richer E9 trading model on the full gross, whose square-root impact raises the per-dollar cost at the 1,000,000 notional. The 7.15x ratio seen in review came from pricing the old proposal at the 1e8 capacity AUM without borrow; at the 1,000,000 paper NAV with borrow the ratio is 2.56x, which this arithmetic closes.",
+  "ratio_establishment_over_e6": 2.55862036464772,
   "verdict": "reconciled"
 }

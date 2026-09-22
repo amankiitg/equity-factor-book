@@ -16,11 +16,13 @@ import os
 from dataclasses import dataclass
 
 MAX_POSITION_PCT_OF_NAV: float = 0.40
-# the absolute throughput brake, restated for the E11 paper book: one full
-# flip of the $100k gross book is 2x NAV, so 200k allows the loop to run
-# while still catching a fat-finger order ten times the book.
+# The absolute throughput brake, re-derived for the $1,000,000 paper book.
+# One full flip of the gross-1 book is 2 x NAV = 2,000,000, so the brake
+# admits a full flip while still catching a fat-finger order at ten times
+# the book (10,000,000). At the previous 100k book the same arithmetic gave
+# 200,000; NAV is now a 1,000,000 design parameter, so the brake is 2,000,000.
 MAX_TRADED_NOTIONAL_PER_RUN: float = float(
-    os.environ.get("MAX_TRADED_NOTIONAL_PER_RUN", "200000")
+    os.environ.get("MAX_TRADED_NOTIONAL_PER_RUN", "2000000")
 )
 
 PASSED = "PASSED"

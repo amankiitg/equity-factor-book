@@ -35,7 +35,7 @@ SIGNAL = "idio_momentum"
 SPY_UNIVERSE_MIN_AS_OF = date(2026, 9, 18)  # the live-universe seam
 TARGET_ANNUAL_VOL = 0.10  # the E10 target
 GROSS_CAP = 1.0  # the E8 gross cap, a hard ceiling
-PAPER_NAV = 100_000.0  # the paper notional the morning job runs
+PAPER_NAV = 1_000_000.0  # the paper notional the morning job runs
 REFERENCE_AUM = 1e8  # the capacity-curve reference, kept for the E6 finding
 TRADING_DAYS = 252
 HORIZON = 21  # the rebalance horizon, the E6 and E9 convention
@@ -226,6 +226,11 @@ def build_proposal(
     after the hedge, the achieved vol against the E10 target, the four-way
     E9 cost split, and the hashes of every frozen input.
     """
+    if nav is None or not math.isfinite(nav) or nav <= 0:
+        raise ValueError(
+            "nav must be a finite positive number; a proposal with a null "
+            "nav is a failed run"
+        )
     root = Path(data_root)
     universe, spy_path = load_spy_universe(root)
     universe_as_of = str(pd.to_datetime(universe["as_of"].iloc[0]).date())
@@ -322,6 +327,7 @@ def build_proposal(
         "gross_cap_bound": gross_cap_bound,
         "nav": nav,
         "expected_establishment_cost_bps": cost["total_bps"],
+        "expected_establishment_cost_usd": cost["total_bps"] / 1e4 * nav,
         "cost_breakdown_bps": {
             "spread": cost["spread_bps"],
             "impact": cost["impact_bps"],

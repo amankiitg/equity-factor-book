@@ -121,8 +121,16 @@ def test_build_proposal_stores_nav_beside_the_cost() -> None:
     assert manifest["expected_establishment_cost_bps"] == pytest.approx(
         breakdown["total"]
     )
+    assert manifest["expected_establishment_cost_usd"] == pytest.approx(
+        breakdown["total"] / 1e4 * manifest["nav"]
+    )
     assert manifest["notional"] > 0
     assert manifest["avg_trade_size"] > 0
+
+
+def test_build_proposal_rejects_a_null_nav() -> None:
+    with pytest.raises(ValueError, match="null"):
+        ev.build_proposal(nav=None, store=False)
 
 
 def test_build_proposal_stores_every_input_as_of_and_max_staleness() -> None:

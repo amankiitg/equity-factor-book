@@ -185,7 +185,7 @@ def store_reconciliation(as_of: str, row: dict) -> None:
         [
             {
                 "trade_date": as_of,
-                "nav": 100_000.0,
+                "nav": 1_000_000.0,
                 "realized_pnl": (
                     0.0 if row.get("dry_run") else float(row.get("realized_pnl") or 0.0)
                 ),

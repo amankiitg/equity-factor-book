@@ -43,11 +43,12 @@ def test_brake_accumulates_across_orders() -> None:
 
 
 def test_brake_is_absolute_and_independent_of_nav() -> None:
-    # the brake constant itself does not move with NAV
-    assert guards.MAX_TRADED_NOTIONAL_PER_RUN == 200_000.0
+    # the brake constant itself does not move with NAV; for the 1,000,000
+    # book it is one full flip, 2 x NAV = 2,000,000
+    assert guards.MAX_TRADED_NOTIONAL_PER_RUN == 2_000_000.0
     # at any NAV, a single leg under the brake passes the brake guard
-    assert guards.traded_notional_brake(0.0, 9_000.0) is False
-    assert guards.traded_notional_brake(150_000.0, 60_000.0) is True
+    assert guards.traded_notional_brake(0.0, 900_000.0) is False
+    assert guards.traded_notional_brake(1_900_000.0, 200_000.0) is True
 
 
 def test_a_rejected_order_never_reaches_submit() -> None:

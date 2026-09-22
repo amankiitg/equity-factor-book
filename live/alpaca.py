@@ -21,10 +21,14 @@ import logging
 import os
 from dataclasses import dataclass
 
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 PAPER_ENDPOINT = "https://paper-api.alpaca.markets"
-PAPER_NAV_DEFAULT = 100_000.0
+# The effective REST base is PAPER_ENDPOINT/v2; alpaca-py appends the version
+# itself, so url_override carries the base without the /v2 suffix.
+PAPER_NAV_DEFAULT = 1_000_000.0
 DRY_RUN_DEFAULT = True
 DELTA_MIN_NOTIONAL = 250.0
 FILL_POLL_TIMEOUT_SECS = 30
@@ -90,6 +94,70 @@ def get_nav(client) -> float:
             "get_nav failed, falling back to %.0f: %s", PAPER_NAV_DEFAULT, exc
         )
         return PAPER_NAV_DEFAULT
+
+
+def verify_account(client) -> dict[str, object]:
+    """Read the paper account: its id and whether it holds anything."""
+    account = client.get_account()
+    account_id = str(getattr(account, "id", ""))
+    positions = client.get_all_positions()
+    return {
+        "account_id": account_id,
+        "n_positions": len(positions),
+        "empty": len(positions) == 0,
+    }
+
+
+def require_empty_account(client) -> dict[str, object]:
+    """Raise unless the paper account holds nothing.
+
+    The first live order must start from a clean book, so the account is
+    checked empty before any submission. A non-empty account would mix
+    someone else's positions into EFB's attribution.
+    """
+    state = verify_account(client)
+    if not state["empty"]:
+        raise RuntimeError(
+            f"refusing to trade: paper account {state['account_id']} already "
+            f"holds {state['n_positions']} positions"
+        )
+    return state
+
+
+def whole_share_quantization(
+    rows: pd.DataFrame, prices: dict[str, float], nav: float
+) -> dict[str, object]:
+    """The whole-share rounding effect of one proposal.
+
+    Shorts must be whole shares (Alpaca paper rejects fractional
+    sell-to-open), so every target notional is quantized to integer shares
+    at the proposal close. Returns the gross-weight error from rounding,
+    the count of long targets rounding to zero shares, and the same for
+    shorts.
+    """
+    gross_error = 0.0
+    long_zero = 0
+    short_zero = 0
+    for row in rows.itertuples(index=False):
+        price = prices.get(str(row.ticker), 0.0)
+        if price <= 0:
+            continue
+        target_notional = float(row.weight) * nav
+        shares = int(abs(target_notional) / price)
+        rounded_notional = shares * price * (1.0 if target_notional >= 0 else -1.0)
+        gross_error += abs(rounded_notional - target_notional)
+        if shares == 0:
+            if target_notional >= 0:
+                long_zero += 1
+            else:
+                short_zero += 1
+    return {
+        "nav": float(nav),
+        "gross_weight_error": gross_error / nav if nav else 0.0,
+        "gross_notional_error_usd": gross_error,
+        "long_targets_rounding_to_zero": long_zero,
+        "short_targets_rounding_to_zero": short_zero,
+    }
 
 
 def get_positions(client, dry_run: bool = DRY_RUN_DEFAULT) -> dict[str, float]:

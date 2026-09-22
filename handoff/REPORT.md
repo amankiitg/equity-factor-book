@@ -36,10 +36,10 @@ code reads an end date as a stop condition.
 | close 2 | 2026-09-21 | live/sanity_gate.json `closes[1]` |
 | proposals differ | true | live/sanity_gate.json `proposals_differ` |
 | passed | true | live/sanity_gate.json `passed` |
-| weight turnover | 0.12957758249149315 | live/sanity_gate.json `weight_turnover` |
+| weight turnover | 0.12909727295192375 | live/sanity_gate.json `weight_turnover` |
 | turnover definition | 0.5 * sum(abs(w_t - w_{t-1})) | live/sanity_gate.json `definition` |
-| names before | 500 | live/sanity_gate.json `n_names_before` |
-| names after | 500 | live/sanity_gate.json `n_names_after` |
+| names before | 499 | live/sanity_gate.json `n_names_before` |
+| names after | 499 | live/sanity_gate.json `n_names_after` |
 
 ## Table 3: staleness, per proposal
 
@@ -75,26 +75,28 @@ byte-identical before and after.
 
 | quantity | value | file / key |
 | --- | --- | --- |
-| nav | 100000.0 | live/proposals/proposal_2026-09-21.json `nav` |
-| gross | 0.9712263089539802 | live/proposals/proposal_2026-09-21.json `gross` |
-| n names | 500 | live/proposals/proposal_2026-09-21.json `n_names` |
-| average trade size | 194.24526179079604 | live/proposals/proposal_2026-09-21.json `avg_trade_size` |
-| spread | 4.723374260207236 bp | `cost_breakdown_bps.spread` |
-| impact | 4.142885161830039 bp | `cost_breakdown_bps.impact` |
-| commission | 0.9712263089539801 bp | `cost_breakdown_bps.commission` |
-| borrow | 8.093552574616503 bp | `cost_breakdown_bps.borrow` |
-| total | 17.931038305607757 bp | `cost_breakdown_bps.total` |
+| nav | 1000000.0 | live/proposals/proposal_2026-09-21.json `nav` |
+| gross | 0.9685376726947534 | live/proposals/proposal_2026-09-21.json `gross` |
+| n names | 499 | live/proposals/proposal_2026-09-21.json `n_names` |
+| average trade size | 1940.9572599093256 | live/proposals/proposal_2026-09-21.json `avg_trade_size` |
+| spread | 4.713262872845437 bp | `cost_breakdown_bps.spread` |
+| impact | 13.182112210073752 bp | `cost_breakdown_bps.impact` |
+| commission | 0.9685376726947534 bp | `cost_breakdown_bps.commission` |
+| borrow | 8.071147272456288 bp | `cost_breakdown_bps.borrow` |
+| total | 26.935060028070232 bp | `cost_breakdown_bps.total` |
+| establishment cost in dollars | 2693.5060028070234 | live/proposals/proposal_2026-09-21.json `expected_establishment_cost_usd` |
 | E6 steady-state rebalance | 10.52718113254709 bp | live/cost_reconciliation.json `e6_reference.cost_bp` |
-| ratio, establishment over E6 | 1.7033086141331812 | live/cost_reconciliation.json `ratio_establishment_over_e6` |
+| ratio, establishment over E6 | 2.55862036464772 | live/cost_reconciliation.json `ratio_establishment_over_e6` |
 | verdict | reconciled | live/cost_reconciliation.json `verdict` |
 
-The four legs sum to the total. The 75.34 bp figure in the task is the
-e11-setup proposal priced at the 1e8 capacity AUM without borrow, stored
-as live/proposals/proposal_2026-09-03.json
-`expected_establishment_cost_bps` (75.34348012608805); at the paper NAV
-of 100k with borrow the same establishment is 17.93 bp, so the ratio to
-E6 is 1.70x, not the 7.15x that came from the capacity AUM without
-borrow.
+The four legs sum to the total, and the dollar equivalent is the total
+in bp times the 1,000,000 NAV over 1e4. The 75.34 bp figure in the task
+is the e11-setup proposal priced at the 1e8 capacity AUM without borrow;
+at the 1,000,000 paper NAV with borrow the same establishment is 26.94 bp,
+so the ratio to E6 is 2.56x, not the 7.15x from the capacity AUM without
+borrow. The two borrow legs match; the difference is the richer E9
+trading model on the full gross, whose square-root impact raises the
+per-dollar cost at the larger notional.
 
 ## Table 6: Render
 
@@ -154,6 +156,67 @@ E8 through E10 are covered by their own results tests
 (tests/test_e8_results.py, test_e9_results.py, test_e10_results.py), all
 passing.
 
+## The 1,000,000 NAV is a design parameter
+
+The paper account is new, separate from credit-trading-lab's, funded at
+1,000,000 dollars, with the REST base https://paper-api.alpaca.markets/v2
+(alpaca-py appends the version, so live/alpaca.py carries the base
+without the /v2 suffix). NAV enters every proposal beside the cost in bp
+and in dollars; a proposal with a null nav raises and is a failed run
+(live/evening_job.py, pinned by tests/test_e11_evening.py).
+
+### The two guards, re-derived for 1,000,000
+
+| guard | arithmetic | value | file |
+| --- | --- | --- | --- |
+| position cap | 0.40 x 1,000,000 | 400,000 per position | live/guards.py `MAX_POSITION_PCT_OF_NAV` |
+| traded-notional brake | one full flip of the gross-1 book, 2 x 1,000,000 | 2,000,000 per run | live/guards.py `MAX_TRADED_NOTIONAL_PER_RUN` |
+
+The brake was 200,000 at the previous 100,000 book (2 x 100,000). At
+1,000,000 the same one-full-flip arithmetic gives 2,000,000, which still
+catches a fat-finger order at ten times the book (10,000,000).
+
+### Whole-share quantization, the first proposal
+
+Shorts must be whole shares (Alpaca paper rejects fractional sell-to-open),
+so every target notional is quantized to integer shares at the proposal
+close. live/alpaca.py `whole_share_quantization` reports it for the
+2026-09-21 proposal at 1,000,000:
+
+| quantity | value | source |
+| --- | --- | --- |
+| gross-weight error from rounding | 0.05389283244759932 | live/alpaca.py `whole_share_quantization` |
+| gross notional error in dollars | 53892.83244759932 | same |
+| long targets rounding to zero shares | 23 | same |
+| short targets rounding to zero shares | 13 | same |
+
+The gross-weight error is 0.054 of NAV, about 5.4 percent of the book,
+from quantizing to whole shares. It is below the gross cap and is the
+mechanical cost of whole-share execution, not a finding; it is reported
+rather than adjusted.
+
+### Account emptiness and separation, before the first live order
+
+live/alpaca.py `verify_account` reads the account id and the position
+count, and `require_empty_account` refuses to trade unless the account is
+empty. scripts/verify_account.py prints the account id and the count
+(never a key or secret) for the one-time pre-flight. The operator compares
+the printed id against credit-trading-lab's id in that dashboard; they
+differ because EFB uses a separate paper account with its own keys.
+
+I could not run this verification: it needs the owner's keys, which I do
+not have. The code and the gate are committed; the check itself runs when
+the owner first runs live.
+
+### Credentials
+
+.env.example names the variables with one comment each, with EFB-specific
+names distinct from credit-trading-lab's. .env is gitignored (and
+!.env.example is the one exception so the example is committed). No key
+or secret appears in any committed file, log, artifact, notebook output
+or test fixture; tests/test_e11_render.py pins that the example carries
+names, never values.
+
 ## Decisions
 
 - **The Alpaca account is a separate paper account under the existing
@@ -177,6 +240,12 @@ passing.
   need the owner's credentials, which I do not have. The deployable
   artifacts (render.yaml, the dashboard, the cron, the schema, the
   provisioning script) are committed and tested.
+- **NAV is 1,000,000, a design parameter.** Every proposal stores nav
+  beside the cost in bp and in dollars, the two guards are re-derived for
+  1,000,000, and the sanity-gate proposals and the cost reconciliation
+  are regenerated at 1,000,000. The account-emptiness check and the
+  whole-share quantization report are committed and run against the
+  current data; the live account check itself waits for the owner's keys.
 
 ## Verification
 
@@ -185,7 +254,7 @@ passing.
 `make test`:
 
 ```
-666 passed, 3 warnings in 433.50s (0:07:13)
+670 passed, 3 warnings in 427.57s (0:07:07)
 ```
 
 `make lint` (plus `mypy live`, which the Makefile does not run):
@@ -214,10 +283,10 @@ Exit status 0.
 ### Headline numbers, file and key
 
 - day 1 2026-09-22, run_condition open_ended, window end 2026-11-02: live/clock.json `day_1`, `run_condition`, `end_date`
-- sanity gate turnover 0.12957758249149315, passed true: live/sanity_gate.json
+- sanity gate turnover 0.12909727295192375, passed true: live/sanity_gate.json
 - max_input_staleness_days 10: live/proposals/proposal_2026-09-21.json
 - pre-cutoff block hashes and row counts: tests/test_e11_extend.py, data/models/XS-v1/*.parquet
-- nav 100000.0, establishment cost 17.931038305607757 bp, E6 10.52718113254709 bp, ratio 1.7033086141331812: live/cost_reconciliation.json
+- nav 1000000.0, establishment cost 26.935060028070232 bp, 2693.5060028070234 dollars, E6 10.52718113254709 bp, ratio 2.55862036464772: live/cost_reconciliation.json
 - trade reasons, five-name sample: live/proposals/proposal_2026-09-21.parquet against proposal_2026-09-18.parquet
 - verdict changes: efb.evaluate.prior_verdict_changes(), all n_changed 0
 
@@ -231,13 +300,13 @@ Exit status 0.
 
 1. **Any two rows or two estimators identical?** No. The sanity gate ran
    two consecutive closes and the proposals differ
-   (live/sanity_gate.json `proposals_differ` true, turnover 0.1296).
+   (live/sanity_gate.json `proposals_differ` true, turnover 0.1291).
    One estimator, XS-v1, is extended one session at a time.
 2. **Any exception caught and skipped, or any fallback taken?** No
    exception is caught and skipped. Three fallbacks are taken and
    counted: the store falls back to local parquet when Supabase is not
    configured (live/store.py `get_client` returns None); the live NAV
-   falls back to 100000.0 when the account read fails (live/alpaca.py
+   falls back to 1,000,000.0 when the account read fails (live/alpaca.py
    `get_nav`); and the SPY universe minus the frozen model leaves 3 names
    out (BE, ILMN, P), stored as `n_excluded`.
 3. **Any criterion reworded or replaced by a different test?** No. No
@@ -246,7 +315,13 @@ Exit status 0.
    an acceptance guard, not a criterion; the idio share of 1.0 after the
    FMP hedge is by construction of the hedge but is a stored number, not
    a verdict.
-5. **Any number that moved by a factor of 10 or more?** No.
+5. **Any number that moved by a factor of 10 or more?** Yes. The NAV
+   moved from 100,000 to 1,000,000 (10x), by the owner's explicit
+   instruction, and the traded-notional brake moved from 200,000 to
+   2,000,000 (10x) as its arithmetic consequence. The establishment cost
+   in bp moved from 17.93 to 26.94 (1.5x), which follows from the
+   square-root impact at the larger notional. All three are recorded
+   here, not hidden.
 6. **Any stored number typed into a notebook?** No. No notebook was
    touched in this task.
 7. **Any earlier verdict changed?** No. prior_verdict_changes() returns
