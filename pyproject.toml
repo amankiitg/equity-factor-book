@@ -49,6 +49,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "integration: reads the built artifacts or an executed notebook instead of a fixture",
+    "slow: over about two seconds; the fast subset skips it, the full run does not",
 ]
 
 [tool.black]

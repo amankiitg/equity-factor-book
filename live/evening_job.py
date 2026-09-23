@@ -26,7 +26,7 @@ from efb import alpha as alpha_mod
 from efb import costs as costs_mod
 from efb import eval_risk, registry, size
 from efb.build import hash_file
-from live import alpaca
+from live import alpaca, sizing
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
@@ -258,14 +258,19 @@ def _cost_decomposition(
     short_gross = float(np.maximum(-weights, 0.0).sum())
     borrow_bps = costs_mod.BORROW_RATE * short_gross * (HORIZON / TRADING_DAYS) * 1e4
     total = spread_bps + commission_bps + impact_bps + borrow_bps
+    notional = float(np.abs(weights).sum()) * nav
+    n_traded = int((np.abs(weights) > 1e-12).sum())
     return {
         "spread_bps": spread_bps,
         "impact_bps": impact_bps,
         "commission_bps": commission_bps,
         "borrow_bps": borrow_bps,
         "total_bps": total,
-        "notional": float(np.abs(weights).sum()) * nav,
-        "avg_trade_size": float(np.abs(weights).mean()) * nav,
+        "notional": notional,
+        # The average trade size divides by the number of names that actually
+        # trade, not by the full name list: a book with a dropped tail must not
+        # understate the average position (E11-F2).
+        "avg_trade_size": notional / n_traded if n_traded else 0.0,
     }
 
 
@@ -337,18 +342,30 @@ def build_proposal(
 
     # Minimum-position drop, a registry parameter not a code constant. Names
     # whose target notional is below the threshold are dropped rather than held
-    # at a badly rounded weight. The kept names keep their full-book weights;
-    # the drop is not re-hedged and not re-scaled, so the residual factor
-    # exposure the dropped tail carried is reported, not hidden. Zero means
-    # no minimum, so nothing is dropped.
+    # at a badly rounded weight. The kept subset is re-sized and re-hedged from
+    # scratch (the 499-name hedge does not survive a drop), then renormalized to
+    # gross 1.0 so the book is fully invested and the quantization is measured
+    # on the positions that actually trade (E11-F4). Zero means no minimum, so
+    # nothing is dropped.
     reg = registry.load(root / "models" / "registry.json")
     min_pos_dollars = registry.min_position_dollars(reg, MODEL_VERSION)
     n_dropped = 0
+    n_selected = len(names)
     if min_pos_dollars > 0:
         keep = np.abs(weights) * nav >= min_pos_dollars
         n_dropped = int((~keep).sum())
-        weights = weights.copy()
-        weights[~keep] = 0.0
+        n_selected = int(keep.sum())
+        idx = np.where(keep)[0]
+        if n_dropped > 0 and len(idx) > 0:
+            w_sub = sizing.procedure_6_3_robust(
+                alpha_vec[idx],
+                design[idx],
+                factor_covariance,
+                specific[idx],
+            )
+            w_sub = sizing.renormalize(w_sub, gross=1.0)
+            weights = np.zeros(len(names), dtype=float)
+            weights[idx] = w_sub
 
     kept_decomposition = _decomposition(weights, design, factor_covariance, specific)
 
@@ -384,7 +401,8 @@ def build_proposal(
         "net": full_decomposition["net"],
         "n_eff": full_decomposition["n_eff"],
         "n_nonzero": full_decomposition["n_nonzero"],
-        "n_kept": kept_decomposition["n_nonzero"],
+        "n_kept": n_selected,
+        "n_effective": kept_decomposition["n_nonzero"],
         "n_dropped": n_dropped,
         "min_position_dollars": min_pos_dollars,
         "min_position_pct_of_nav": min_pos_dollars / nav if nav else 0.0,
@@ -394,6 +412,7 @@ def build_proposal(
         "kept_net": kept_decomposition["net"],
         "kept_idio_share": kept_decomposition["idio_share"],
         "kept_max_abs_exposure": kept_decomposition["max_abs_exposure"],
+        "max_kept_weight": float(np.max(np.abs(weights))),
         "kept_achieved_annual_vol": float(
             math.sqrt(
                 kept_decomposition["idio_variance"]
@@ -401,9 +420,7 @@ def build_proposal(
             )
             * math.sqrt(TRADING_DAYS)
         ),
-        "breadth_naive_bound": math.sqrt(
-            460.0 / max(kept_decomposition["n_nonzero"], 1)
-        ),
+        "breadth_naive_bound": math.sqrt(460.0 / max(n_selected, 1)),
         "breadth_governing": math.sqrt(
             full_decomposition["n_eff"] / max(kept_decomposition["n_eff"], 1e-12)
         ),

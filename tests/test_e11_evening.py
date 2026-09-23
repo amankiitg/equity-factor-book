@@ -126,6 +126,11 @@ def test_build_proposal_stores_nav_beside_the_cost() -> None:
     )
     assert manifest["notional"] > 0
     assert manifest["avg_trade_size"] > 0
+    # E11-F2: the average trade size divides by the names that actually trade,
+    # not the full list, so a dropped tail cannot understate the average.
+    assert manifest["avg_trade_size"] == pytest.approx(
+        manifest["notional"] / manifest["n_effective"]
+    )
 
 
 def test_build_proposal_rejects_a_null_nav() -> None:

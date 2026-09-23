@@ -1582,3 +1582,19 @@ is 0.326 and still cleared 0.40. The distribution is max |weight| 0.0326, q99
 0.0119, q95 0.0053 across 499 names. A cap of 0.10 sits clear of the largest
 legitimate target with 3.1x headroom and still trips a 10x fat-finger on the
 largest name (0.326 > 0.10). The boundary and the 10x trip are pinned by tests.
+
+
+## 2026-09-22: E5 RESULTS.json data_hash bump is accounted for
+
+Decision. The six-line change to sprints/E5/RESULTS.json is a data_hash bump
+carried by the registry edit (adding XS-v1 live.min_position_dollars), and it
+is recorded through the revisions block with both hashes. No criterion,
+verdict, threshold or stored number moved, so per STANDARDS rule 22 the task
+continues rather than halting.
+
+Reason. e5_data_hash hashes models/registry.json directly, so the registry
+edit moved it from 210769d6... to a4c40c67... . The diff is the top-level
+data_hash, revisions.previous_data_hash (null -> 210769d6...) and
+revisions.data_hash (210769d6... -> a4c40c67...), and nothing else. n_changed
+stays 0. The E4 hash is unaffected because _registry_as_of_e4 strips the live
+key, and the E5 walkthrough was re-executed so its printed hash matches.
