@@ -396,6 +396,7 @@ def test_design_matrix_flags_missing_descriptors() -> None:
     assert len(day.tickers) == 59
 
 
+@pytest.mark.slow
 def test_full_design_has_a_constant_for_the_market() -> None:
     panel = _panel()
     result = fx.build_design(
@@ -419,6 +420,7 @@ def test_full_design_has_a_constant_for_the_market() -> None:
     assert float(result.standardized["market"].loc[last.date].iloc[0]) == 1.0
 
 
+@pytest.mark.slow
 def test_shift_test_reports_the_two_vintages_and_their_difference() -> None:
     panel = _panel()
     design = fx.build_design(

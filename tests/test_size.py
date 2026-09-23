@@ -67,6 +67,7 @@ def test_mv_unconstrained_equals_proportional_when_alpha_is_factor_free() -> Non
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_synthetic_alpha_ic_is_close_to_rho() -> None:
     frame = size.synthetic_alpha(size.DATA_ROOT, rho=0.05, seed=0)
     assert not frame.empty

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -103,10 +104,13 @@ def _row_for_selection(
     w_sub = sizing.renormalize(w_sub, gross=1.0)
 
     decomp = _decomposition(w_sub, design_sub, factor_covariance, specific_sub)
-    quant = alpaca.whole_share_quantization(
-        pd.DataFrame({"ticker": names_sub, "weight": w_sub}), close, nav
+    quant = cast(
+        dict[str, Any],
+        alpaca.whole_share_quantization(
+            pd.DataFrame({"ticker": names_sub, "weight": w_sub}), close, nav
+        ),
     )
-    dist = quant["distribution"]
+    dist = cast(dict[str, Any], quant["distribution"])
 
     sides = alpha_sub if side_by_alpha else full_weights[idx]
     n_selected = int(len(idx))

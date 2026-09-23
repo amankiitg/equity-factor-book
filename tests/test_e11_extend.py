@@ -46,6 +46,7 @@ def test_block_hash_is_deterministic() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_pre_cutoff_blocks_are_byte_identical() -> None:
     if not (XS / "factor_returns.parquet").exists():
         pytest.skip("XS-v1 artifacts not built")
@@ -63,6 +64,7 @@ def test_sessions_after_the_frozen_as_of_were_appended() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_identity_drops_do_not_reappear_in_the_extension() -> None:
     """The extension applies the E1 identity exclusions, so a reused
     symbol does not come back with another company's history. DD is the

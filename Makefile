@@ -7,13 +7,16 @@ RUFF ?= $(if $(VENV_BIN),$(VENV_BIN)/ruff,ruff)
 MYPY ?= $(if $(VENV_BIN),$(VENV_BIN)/mypy,mypy)
 BLACK ?= $(if $(VENV_BIN),$(VENV_BIN)/black,black)
 
-.PHONY: help test lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild-e4 rebuild-e5 rebuild-e6 rebuild-e7 rebuild-e8 rebuild-e9 rebuild-e10 rebuild evidence verify-evidence clean
+.PHONY: help test test-fast lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild-e4 rebuild-e5 rebuild-e6 rebuild-e7 rebuild-e8 rebuild-e9 rebuild-e10 rebuild evidence verify-evidence clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-15s %s\n", $$1, $$2}'
 
 test: ## Run the test suite (it never shrinks)
 	$(PYTEST) tests/ -q
+
+test-fast: ## Run only the fast subset, skipping tests marked slow
+	$(PYTEST) tests/ -q -m "not slow"
 
 lint: ## Static checks: ruff, mypy, black
 	$(RUFF) check efb dashboard live tests

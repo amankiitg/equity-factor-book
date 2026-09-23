@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # Same conditions as `streamlit run dashboard/app.py`: the script folder is
@@ -25,6 +27,7 @@ RUNNER = (
 )
 
 
+@pytest.mark.slow
 def test_app_runs_with_dashboard_folder_first_on_sys_path() -> None:
     env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
     result = subprocess.run(

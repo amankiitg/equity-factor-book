@@ -132,6 +132,7 @@ def test_the_data_hash_covers_the_artifacts_read() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_no_earlier_verdict_moved() -> None:
     """The stop condition that outranks every number in the sprint."""
     check = evaluate.prior_verdict_changes()

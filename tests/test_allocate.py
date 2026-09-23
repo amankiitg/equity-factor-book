@@ -66,6 +66,7 @@ def test_the_reentering_stop_reenters_after_a_recovery() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_the_design_config_is_picked_close_to_sharpe_one() -> None:
     config = allocate.pick_design_config(DATA)
     assert "rho" in config and "phi" in config

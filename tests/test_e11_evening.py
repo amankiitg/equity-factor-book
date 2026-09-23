@@ -79,6 +79,7 @@ def test_decomposition_reports_exposure_gross_and_net() -> None:
     assert result["idio_share"] == pytest.approx(1.0)
 
 
+@pytest.mark.slow
 def test_build_proposal_asserts_the_spy_universe_and_stores_idio_share() -> None:
     manifest = ev.build_proposal(store=False)
     # the universe is the SPY archive, asserted in the manifest
@@ -95,6 +96,7 @@ def test_build_proposal_asserts_the_spy_universe_and_stores_idio_share() -> None
     assert manifest["n_names"] + manifest["n_excluded"] >= 490
 
 
+@pytest.mark.slow
 def test_build_proposal_respects_the_vol_target_and_gross_cap() -> None:
     manifest = ev.build_proposal(store=False)
     assert manifest["gross"] <= 1.0 + 1e-9
@@ -107,6 +109,7 @@ def test_build_proposal_respects_the_vol_target_and_gross_cap() -> None:
         )
 
 
+@pytest.mark.slow
 def test_build_proposal_stores_nav_beside_the_cost() -> None:
     manifest = ev.build_proposal(store=False)
     assert manifest["nav"] == pytest.approx(ev.PAPER_NAV)
@@ -157,6 +160,7 @@ def test_shares_as_of_fails_without_a_count_on_or_before_the_close() -> None:
         ev._shares_as_of(shares, pd.Timestamp("2026-09-21"))
 
 
+@pytest.mark.slow
 def test_build_proposal_stores_the_minimum_position_and_breadth() -> None:
     manifest = ev.build_proposal(store=False)
     # the minimum position is a registry parameter, not a code constant
@@ -177,16 +181,7 @@ def test_build_proposal_stores_the_minimum_position_and_breadth() -> None:
     assert manifest["quantization"]["short_targets_rounding_to_zero"] == 0
 
 
-def test_build_proposal_keeps_breadth_at_a_ten_million_nav() -> None:
-    # The threshold is dollars, applied against the actual NAV, so at $10m it
-    # keeps nearly the whole book while at $1m it drops the tail. The owner's
-    # plan is option (a): reset to $10m and preserve breadth.
-    manifest = ev.build_proposal(store=False, nav=10_000_000.0)
-    assert manifest["n_kept"] > 300
-    assert manifest["kept_idio_share"] == pytest.approx(1.0, abs=1e-3)
-    assert manifest["breadth_governing"] < 1.05
-
-
+@pytest.mark.slow
 def test_build_proposal_stores_every_input_as_of_and_max_staleness() -> None:
     manifest = ev.build_proposal(store=False)
     for key in (

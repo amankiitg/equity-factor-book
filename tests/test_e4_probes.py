@@ -50,6 +50,7 @@ def terciles() -> object:
     return probes.momentum_factor_vol_by_tercile()
 
 
+@pytest.mark.slow
 def test_feasibility_states_n_and_t_for_both_universes(feasibility) -> None:
     frame = feasibility
     assert set(frame["universe"]) == {"model_universe", "panel"}

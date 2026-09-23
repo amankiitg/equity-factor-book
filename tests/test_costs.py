@@ -61,6 +61,7 @@ def test_the_chosen_spread_schedule_is_monotone_in_size() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_the_probe_records_why_the_free_estimators_were_set_aside() -> None:
     probe = costs.spread_probe(DATA, store=False)
     assert not probe.empty

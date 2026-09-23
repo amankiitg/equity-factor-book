@@ -13,6 +13,7 @@ DATA = ROOT / "data"
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_the_constrained_optimizer_respects_every_constraint() -> None:
     from efb import size as size_mod
 

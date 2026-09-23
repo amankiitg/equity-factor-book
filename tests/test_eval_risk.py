@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EVAL = ROOT / "data" / "eval"
 
 
+@pytest.mark.slow
 def test_bias_statistic_equals_one_on_model_draws() -> None:
     rng = np.random.default_rng(21)
     z = rng.normal(size=100_000)
@@ -35,6 +36,7 @@ def test_bias_statistic_equals_one_on_model_draws() -> None:
     assert stats["bias_lower"] < 1.0 < stats["bias_upper"]
 
 
+@pytest.mark.slow
 def test_bias_statistic_reads_miscalibration() -> None:
     rng = np.random.default_rng(22)
     low = eval_risk.bias_statistics(rng.normal(scale=0.5, size=100_000))
@@ -43,6 +45,7 @@ def test_bias_statistic_reads_miscalibration() -> None:
     assert low["coverage"] < 0.05 < high["coverage"]
 
 
+@pytest.mark.slow
 def test_families_are_deterministic_under_a_fixed_seed() -> None:
     first = eval_risk.build_families(seed=11, store=False)
     second = eval_risk.build_families(seed=11, store=False)
@@ -63,6 +66,7 @@ def test_families_are_deterministic_under_a_fixed_seed() -> None:
     )
 
 
+@pytest.mark.slow
 def test_no_portfolio_uses_a_weight_dated_after_its_own_day() -> None:
     """Replicate the engine's period application and check the weight date.
 
