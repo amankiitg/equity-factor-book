@@ -2,7 +2,7 @@
  "note": "Tracked, compressed snapshots of the artifacts a stored criterion was scored on. Written by efb.evidence and verified by make verify-evidence against both this manifest and data/VERSION.json.",
  "n_artifacts": 14,
  "total_bytes": 129928437,
- "total_snapshot_bytes": 109755321,
+ "total_snapshot_bytes": 109755320,
  "skipped": [
   {
    "path": "data/raw/e4_raw_descriptors.parquet",
@@ -130,11 +130,11 @@
   },
   {
    "path": "data/VERSION.json",
-   "sha256": "0366113728d0e07c17262b54eff09af7b7a45933a0639678ea561bf8dc533c10",
+   "sha256": "a9bb6ba7c83daac05fdde894f13ec44a2fbabcd62749cb9b10047c338c33de91",
    "bytes": 21808,
    "snapshot": "evidence/data/VERSION.json.gz",
-   "snapshot_sha256": "4b36140eee60b84c1f7a1f596ab324cef7839c827ea790b4fd7fe5e93e6202b4",
-   "snapshot_bytes": 7973,
+   "snapshot_sha256": "8587b1a66534a41635196abb7ab665e95c003e8eb011e2739744d5a341c308d8",
+   "snapshot_bytes": 7972,
    "version_json_sha256": ""
   }
  ]
