@@ -15,7 +15,15 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-MAX_POSITION_PCT_OF_NAV: float = 0.40
+MAX_POSITION_PCT_OF_NAV: float = 0.10
+# Guard 1, re-derived from the actual target-weight distribution instead of
+# the inherited 0.40. At the 2026-09-21 proposal the 499-name book had
+# max |weight| = 0.0326 (MU), q99 = 0.0119, q95 = 0.0053, so ten times the
+# largest legitimate position is 0.326. The old 0.40 admitted that fat-finger
+# and so was not a guard. A cap of 0.10 sits clear of the largest legitimate
+# target with 3.1x headroom (0.0326 -> 0.10) and still trips a 10x order on
+# the largest name (0.326 > 0.10). It is NAV-relative, so it scales with the
+# book; it is re-checked against the live distribution before each run.
 # The absolute throughput brake, re-derived for the $1,000,000 paper book.
 # One full flip of the gross-1 book is 2 x NAV = 2,000,000, so the brake
 # admits a full flip while still catching a fat-finger order at ten times

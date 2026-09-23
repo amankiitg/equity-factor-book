@@ -1,7 +1,7 @@
 {
   "sprint": "E5",
   "evaluated_at": "2026-09-21T00:55:38+00:00",
-  "data_hash": "210769d6ec92a325ec2f5553875ea4de0de29bf52051a527f69ab674c098b293",
+  "data_hash": "a4c40c676234f73a015f9e4f27a4c96ebb96f7e03030d433d82f14c657716f55",
   "criteria": {
     "F5.1": {
       "criterion": "At least one model version achieves mean bias between 0.9 and 1.1 across all portfolio families.",
@@ -103,8 +103,8 @@
     }
   },
   "revisions": {
-    "previous_data_hash": null,
-    "data_hash": "210769d6ec92a325ec2f5553875ea4de0de29bf52051a527f69ab674c098b293",
+    "previous_data_hash": "210769d6ec92a325ec2f5553875ea4de0de29bf52051a527f69ab674c098b293",
+    "data_hash": "a4c40c676234f73a015f9e4f27a4c96ebb96f7e03030d433d82f14c657716f55",
     "n_changed": 0,
     "changed_tickers_or_criteria": [],
     "cross_sprint_criteria": [],

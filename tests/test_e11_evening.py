@@ -133,6 +133,55 @@ def test_build_proposal_rejects_a_null_nav() -> None:
         ev.build_proposal(nav=None, store=False)
 
 
+def test_shares_as_of_is_clamped_to_the_close() -> None:
+    # A count filed the day after the close it prices is look-ahead, so the
+    # reported as-of is the latest count on or before the close, never the
+    # global maximum.
+    shares = pd.DataFrame({"date": ["2026-09-21", "2026-09-22"], "shares": [1, 2]})
+    assert ev._shares_as_of(shares, pd.Timestamp("2026-09-21")) == pd.Timestamp(
+        "2026-09-21"
+    )
+    assert ev._shares_as_of(shares, pd.Timestamp("2026-09-22")) == pd.Timestamp(
+        "2026-09-22"
+    )
+
+
+def test_shares_as_of_fails_without_a_count_on_or_before_the_close() -> None:
+    shares = pd.DataFrame({"date": ["2026-09-22"], "shares": [1]})
+    with pytest.raises(ValueError, match="no share count on or before"):
+        ev._shares_as_of(shares, pd.Timestamp("2026-09-21"))
+
+
+def test_build_proposal_stores_the_minimum_position_and_breadth() -> None:
+    manifest = ev.build_proposal(store=False)
+    # the minimum position is a registry parameter, not a code constant
+    assert manifest["min_position_dollars"] == pytest.approx(5000.0)
+    assert manifest["min_position_pct_of_nav"] == pytest.approx(0.005, abs=1e-9)
+    # names below the threshold are dropped, not held at a badly rounded weight
+    assert manifest["n_kept"] + manifest["n_dropped"] == manifest["n_names"]
+    assert manifest["n_kept"] < manifest["n_names"]
+    assert manifest["n_dropped"] > 0
+    # both breadth measures are recorded: the naive N-bound and the governing
+    # n_eff-bound, which uses the E8 effective-breadth construction
+    assert manifest["breadth_naive_bound"] >= 1.0
+    assert manifest["breadth_governing"] >= 1.0
+    assert manifest["n_eff_full"] == manifest["n_eff"]
+    assert manifest["n_eff_kept"] <= manifest["n_eff_full"]
+    # the new quantization distribution is on the kept book only
+    assert manifest["quantization"]["long_targets_rounding_to_zero"] == 0
+    assert manifest["quantization"]["short_targets_rounding_to_zero"] == 0
+
+
+def test_build_proposal_keeps_breadth_at_a_ten_million_nav() -> None:
+    # The threshold is dollars, applied against the actual NAV, so at $10m it
+    # keeps nearly the whole book while at $1m it drops the tail. The owner's
+    # plan is option (a): reset to $10m and preserve breadth.
+    manifest = ev.build_proposal(store=False, nav=10_000_000.0)
+    assert manifest["n_kept"] > 300
+    assert manifest["kept_idio_share"] == pytest.approx(1.0, abs=1e-3)
+    assert manifest["breadth_governing"] < 1.05
+
+
 def test_build_proposal_stores_every_input_as_of_and_max_staleness() -> None:
     manifest = ev.build_proposal(store=False)
     for key in (

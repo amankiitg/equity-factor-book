@@ -20,14 +20,24 @@ def test_position_cap_rejects_an_oversized_destination() -> None:
 
 def test_position_cap_accepts_the_boundary() -> None:
     nav = 100_000.0
-    assert guards.position_cap(0.40 * nav, nav) is False
-    assert guards.position_cap(0.4001 * nav, nav) is True
+    assert guards.position_cap(0.10 * nav, nav) is False
+    assert guards.position_cap(0.1001 * nav, nav) is True
 
 
 def test_position_cap_scales_with_nav() -> None:
     # the same dollar position is oversized at a small NAV and fine at a large one
-    assert guards.position_cap(50_000.0, nav=100_000.0) is True
-    assert guards.position_cap(50_000.0, nav=200_000.0) is False
+    assert guards.position_cap(50_000.0, nav=100_000.0) is True  # 0.5 > 0.10
+    assert guards.position_cap(50_000.0, nav=1_000_000.0) is False  # 0.05 < 0.10
+
+
+def test_a_ten_times_order_on_the_largest_target_trips_the_cap() -> None:
+    # The largest legitimate target in the 2026-09-21 proposal is 0.0326 of
+    # NAV; a fat-finger at ten times that must trip the cap while the
+    # legitimate target itself is admitted.
+    nav = 1_000_000.0
+    largest = 0.0326
+    assert guards.position_cap(largest * nav, nav) is False
+    assert guards.position_cap(10 * largest * nav, nav) is True
 
 
 def test_brake_accumulates_across_orders() -> None:

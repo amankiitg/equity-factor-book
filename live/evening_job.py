@@ -24,14 +24,16 @@ import pandas as pd
 
 from efb import alpha as alpha_mod
 from efb import costs as costs_mod
-from efb import eval_risk, size
+from efb import eval_risk, registry, size
 from efb.build import hash_file
+from live import alpaca
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
 PROPOSAL_DIR = ROOT / "live" / "proposals"
 
 SIGNAL = "idio_momentum"
+MODEL_VERSION = "XS-v1"  # the champion the book is built and run under
 SPY_UNIVERSE_MIN_AS_OF = date(2026, 9, 18)  # the live-universe seam
 TARGET_ANNUAL_VOL = 0.10  # the E10 target
 GROSS_CAP = 1.0  # the E8 gross cap, a hard ceiling
@@ -122,6 +124,33 @@ def _decomposition(
     }
 
 
+def _scale_to_target(
+    weights: np.ndarray,
+    design: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific: np.ndarray,
+) -> tuple[np.ndarray, bool]:
+    """Scale raw weights to the E10 vol target, capped by the E8 gross cap.
+
+    Returns the scaled weights and whether the gross cap bound instead of
+    the vol target. A null alpha cannot reach the 10% target inside gross 1,
+    so the cap binds and the achieved vol is stored beside the target.
+    """
+    daily_var = float(
+        weights @ design @ factor_covariance @ design.T @ weights
+        + weights @ (specific * weights)
+    )
+    daily_vol = math.sqrt(daily_var) if daily_var > 0 else 0.0
+    target_daily_vol = TARGET_ANNUAL_VOL / math.sqrt(TRADING_DAYS)
+    gross = float(np.abs(weights).sum())
+    scale = target_daily_vol / daily_vol if daily_vol > 0 else 1.0
+    gross_cap_bound = False
+    if scale * gross > GROSS_CAP:
+        scale = GROSS_CAP / gross
+        gross_cap_bound = True
+    return weights * scale, gross_cap_bound
+
+
 def _expected_establishment_cost(
     weights: np.ndarray,
     names: list[str],
@@ -142,10 +171,29 @@ def _expected_establishment_cost(
     return float(fraction) * 1e4
 
 
-def _input_as_of(root: Path) -> dict[str, str]:
-    """The as-of date of every model input the proposal reads, one field each."""
+def _shares_as_of(shares: pd.DataFrame, as_of: pd.Timestamp) -> pd.Timestamp:
+    """The latest share count dated on or before the close.
+
+    A count filed the day after the close it prices is look-ahead, so the
+    reported as-of is clamped to the close and never the global maximum.
+    """
+    dates = pd.to_datetime(shares["date"])
+    valid = dates[dates <= as_of]
+    if valid.empty:
+        raise ValueError(f"no share count on or before the close {as_of.date()}")
+    return pd.Timestamp(valid.max())
+
+
+def _input_as_of(root: Path, as_of: pd.Timestamp) -> dict[str, str]:
+    """The as-of date of every model input the proposal reads, one field each.
+
+    The share count is dated at the latest count on or before the close,
+    never the day after it, because a count filed after the close is
+    look-ahead against the standing no-look-ahead rule.
+    """
     prices_frame = pd.read_parquet(root / "raw" / "prices.parquet")
     shares = pd.read_parquet(root / "raw" / "shares_history.parquet")
+    shares_as_of = _shares_as_of(shares, as_of)
     sectors = pd.read_parquet(root / "processed" / "sectors.parquet")
     descriptors = pd.read_parquet(root / "models" / "XS-v1" / "descriptors.parquet")
     factor_returns = pd.read_parquet(
@@ -161,7 +209,7 @@ def _input_as_of(root: Path) -> dict[str, str]:
     )
     return {
         "prices": price_last,
-        "shares": str(pd.to_datetime(shares["date"]).max().date()),
+        "shares": str(shares_as_of.date()),
         "sectors": str(pd.to_datetime(sectors["as_of"]).max().date()),
         "descriptors": str(pd.to_datetime(descriptors["date"]).max().date()),
         "factor_returns": factor_last,
@@ -169,6 +217,14 @@ def _input_as_of(root: Path) -> dict[str, str]:
         "factor_cov": factor_last,
         "specific_var": str(pd.to_datetime(specific_var["date"]).max().date()),
     }
+
+
+def _close_prices(as_of: pd.Timestamp, root: Path) -> dict[str, float]:
+    """{ticker: close} at the proposal close, for the quantization report."""
+    prices = pd.read_parquet(root / "raw" / "prices.parquet")
+    day = prices[prices.index.get_level_values("date") == as_of]
+    close = day["close"].droplevel("date") if not day.empty else pd.Series(dtype=float)
+    return {str(ticker): float(value) for ticker, value in close.items()}
 
 
 def _cost_decomposition(
@@ -274,28 +330,37 @@ def build_proposal(
     # in-model FMPs. The hedge drives every factor exposure, styles and
     # sectors included, to zero to machine precision.
     weights = size.procedure_6_3(alpha_vec, design, factor_covariance, specific)
-    pre_scale = _decomposition(weights, design, factor_covariance, specific)
-
-    # E10 vol target, capped by the E8 gross cap. A null alpha cannot reach
-    # the 10% target inside gross 1, so the cap binds and the achieved vol
-    # is stored beside the target.
-    daily_var = float(
-        weights @ design @ factor_covariance @ design.T @ weights
-        + weights @ (specific * weights)
+    weights, gross_cap_bound = _scale_to_target(
+        weights, design, factor_covariance, specific
     )
-    daily_vol = math.sqrt(daily_var) if daily_var > 0 else 0.0
-    target_daily_vol = TARGET_ANNUAL_VOL / math.sqrt(TRADING_DAYS)
-    scale = target_daily_vol / daily_vol if daily_vol > 0 else 1.0
-    gross_cap_bound = False
-    if scale * pre_scale["gross"] > GROSS_CAP:
-        scale = GROSS_CAP / pre_scale["gross"]
-        gross_cap_bound = True
-    weights = weights * scale
-    decomposition = _decomposition(weights, design, factor_covariance, specific)
+    full_decomposition = _decomposition(weights, design, factor_covariance, specific)
+
+    # Minimum-position drop, a registry parameter not a code constant. Names
+    # whose target notional is below the threshold are dropped rather than held
+    # at a badly rounded weight. The kept names keep their full-book weights;
+    # the drop is not re-hedged and not re-scaled, so the residual factor
+    # exposure the dropped tail carried is reported, not hidden. Zero means
+    # no minimum, so nothing is dropped.
+    reg = registry.load(root / "models" / "registry.json")
+    min_pos_dollars = registry.min_position_dollars(reg, MODEL_VERSION)
+    n_dropped = 0
+    if min_pos_dollars > 0:
+        keep = np.abs(weights) * nav >= min_pos_dollars
+        n_dropped = int((~keep).sum())
+        weights = weights.copy()
+        weights[~keep] = 0.0
+
+    kept_decomposition = _decomposition(weights, design, factor_covariance, specific)
 
     cost = _cost_decomposition(weights, names, specific, nav, root)
 
-    input_as_of = _input_as_of(root)
+    kept_rows = pd.DataFrame({"ticker": names, "weight": weights})
+    kept_rows = kept_rows.loc[kept_rows["weight"].abs() > 1e-12].reset_index(drop=True)
+    quantization = alpaca.whole_share_quantization(
+        kept_rows, _close_prices(as_of_ts, root), nav
+    )
+
+    input_as_of = _input_as_of(root, as_of_ts)
     input_as_of["universe"] = universe_as_of
     staleness = max(
         (as_of_ts - pd.Timestamp(value)).days for value in input_as_of.values()
@@ -313,15 +378,42 @@ def build_proposal(
         "kappa": kappa,
         "factor_neutral_ic_h21": neutral_ic["factor_neutral_ic_h21"],
         "factor_neutral_t_h21": neutral_ic["factor_neutral_t_h21"],
-        "idio_share_after_fmp": decomposition["idio_share"],
-        "max_abs_exposure_after_fmp": decomposition["max_abs_exposure"],
-        "gross": decomposition["gross"],
-        "net": decomposition["net"],
-        "n_eff": decomposition["n_eff"],
-        "n_nonzero": decomposition["n_nonzero"],
+        "idio_share_after_fmp": full_decomposition["idio_share"],
+        "max_abs_exposure_after_fmp": full_decomposition["max_abs_exposure"],
+        "gross": full_decomposition["gross"],
+        "net": full_decomposition["net"],
+        "n_eff": full_decomposition["n_eff"],
+        "n_nonzero": full_decomposition["n_nonzero"],
+        "n_kept": kept_decomposition["n_nonzero"],
+        "n_dropped": n_dropped,
+        "min_position_dollars": min_pos_dollars,
+        "min_position_pct_of_nav": min_pos_dollars / nav if nav else 0.0,
+        "n_eff_full": full_decomposition["n_eff"],
+        "n_eff_kept": kept_decomposition["n_eff"],
+        "kept_gross": kept_decomposition["gross"],
+        "kept_net": kept_decomposition["net"],
+        "kept_idio_share": kept_decomposition["idio_share"],
+        "kept_max_abs_exposure": kept_decomposition["max_abs_exposure"],
+        "kept_achieved_annual_vol": float(
+            math.sqrt(
+                kept_decomposition["idio_variance"]
+                + kept_decomposition["factor_variance"]
+            )
+            * math.sqrt(TRADING_DAYS)
+        ),
+        "breadth_naive_bound": math.sqrt(
+            460.0 / max(kept_decomposition["n_nonzero"], 1)
+        ),
+        "breadth_governing": math.sqrt(
+            full_decomposition["n_eff"] / max(kept_decomposition["n_eff"], 1e-12)
+        ),
+        "quantization": quantization,
         "target_annual_vol": TARGET_ANNUAL_VOL,
         "achieved_annual_vol": float(
-            math.sqrt(decomposition["idio_variance"] + decomposition["factor_variance"])
+            math.sqrt(
+                full_decomposition["idio_variance"]
+                + full_decomposition["factor_variance"]
+            )
             * math.sqrt(TRADING_DAYS)
         ),
         "gross_cap_bound": gross_cap_bound,

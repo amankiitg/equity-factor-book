@@ -86,3 +86,49 @@ def test_target_orders_converts_weights_to_notional() -> None:
     assert by_ticker["AAA"].target_notional == pytest.approx(60_000.0)
     assert by_ticker["BBB"].target_notional == pytest.approx(-40_000.0)
     assert by_ticker["AAA"].traded_notional == pytest.approx(60_000.0)
+
+
+class _FakeAccount:
+    def __init__(self, equity: float | None, raise_on_read: bool = False) -> None:
+        self._equity = equity
+        self._raise = raise_on_read
+
+    @property
+    def equity(self) -> float:
+        if self._raise:
+            raise ConnectionError("account read failed")
+        return float(self._equity)
+
+
+class _FakeClient:
+    def __init__(
+        self, equity: float | None = 1_000_000.0, raise_on_read: bool = False
+    ) -> None:
+        self._account = _FakeAccount(equity, raise_on_read)
+
+    def get_account(self) -> _FakeAccount:
+        return self._account
+
+
+def test_get_nav_returns_the_live_equity() -> None:
+    from live import alpaca
+
+    assert alpaca.get_nav(_FakeClient(equity=1_234_567.89)) == pytest.approx(
+        1_234_567.89
+    )
+
+
+def test_get_nav_has_no_fallback_it_raises_on_a_failed_read() -> None:
+    from live import alpaca
+
+    with pytest.raises(ConnectionError, match="account read failed"):
+        alpaca.get_nav(_FakeClient(raise_on_read=True))
+
+
+def test_get_nav_raises_on_a_non_positive_equity() -> None:
+    from live import alpaca
+
+    with pytest.raises(RuntimeError, match="invalid live account equity"):
+        alpaca.get_nav(_FakeClient(equity=0.0))
+    with pytest.raises(RuntimeError, match="invalid live account equity"):
+        alpaca.get_nav(_FakeClient(equity=-5.0))

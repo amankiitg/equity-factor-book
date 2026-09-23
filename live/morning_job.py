@@ -172,9 +172,15 @@ def run_morning(
             "orders": 0,
         }
     proposal = load_proposal(as_of, data_root)
+    client = connect(dry_run)
+    if not dry_run:
+        # The live NAV anchors every guard. A failed read raises, so the run
+        # fails before any order is built or submitted: no fallback NAV.
+        from live import alpaca
+
+        nav = alpaca.get_nav(client)
     orders = target_orders(proposal, nav)
     guarded = guards.apply_guards(orders, nav)
-    client = connect(dry_run)
     prices = _close_prices(as_of, data_root)
     records = submit_orders(guarded, client, dry_run, prices)
     records["trade_date"] = as_of

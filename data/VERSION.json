@@ -440,8 +440,8 @@
       "bytes": 2512501
     },
     "registry.json": {
-      "sha256": "4a505f2ac869f6d114eadf22b8ce85b33d73cb5b528c5c6ddc2d259ab9c472f0",
-      "bytes": 14376
+      "sha256": "84f80ecdf0d39bdf93f5a6ab4ddafd3a790f4a2f46f540fe70d5f5200241248f",
+      "bytes": 14723
     },
     "combined.parquet": {
       "sha256": "7c5102d77ea407648a13d82efce52081b6f4333cf1d3a977ecdd2fde42f849f5",

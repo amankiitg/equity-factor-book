@@ -1903,6 +1903,10 @@ def _registry_as_of_e4(path: Path) -> str:
         if name not in E4_REGISTRY_VERSIONS:
             continue
         rebuilt: dict[str, Any] = {**entry, "champion": False}
+        # A later sprint appends live-execution parameters under `live`; the
+        # E4-era file did not carry them, so the reconstruction drops them
+        # alongside the champion flag and the E5 artifacts_hash.
+        rebuilt.pop("live", None)
         if name in ("PCA-v1", "PCA-v1c"):
             params = dict(entry.get("parameters", {}))
             params.pop("artifacts_hash", None)

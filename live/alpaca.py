@@ -18,6 +18,7 @@ credit-trading-lab's without a second login.
 from __future__ import annotations
 
 import logging
+import math
 import os
 from dataclasses import dataclass
 
@@ -28,7 +29,6 @@ logger = logging.getLogger(__name__)
 PAPER_ENDPOINT = "https://paper-api.alpaca.markets"
 # The effective REST base is PAPER_ENDPOINT/v2; alpaca-py appends the version
 # itself, so url_override carries the base without the /v2 suffix.
-PAPER_NAV_DEFAULT = 1_000_000.0
 DRY_RUN_DEFAULT = True
 DELTA_MIN_NOTIONAL = 250.0
 FILL_POLL_TIMEOUT_SECS = 30
@@ -78,22 +78,17 @@ def connect(dry_run: bool = DRY_RUN_DEFAULT):
 
 
 def get_nav(client) -> float:
-    """The live account equity, falling back to the paper default.
+    """The live account equity, or a raised failure.
 
-    Used to anchor the NAV-relative position cap to the actual book size.
-    The fallback only guards the guard: the cap still runs when the
-    account read fails.
+    There is no fallback. Both guards are fractions of NAV, so a read that
+    silently restored the design default would report healthy while blind,
+    which is worse than no guard. A failed or invalid read raises and the
+    run fails with no orders.
     """
-    try:
-        equity = float(client.get_account().equity)
-        if equity <= 0:
-            raise ValueError(f"non-positive equity: {equity}")
-        return equity
-    except Exception as exc:  # noqa: BLE001 - a guard fallback, not a skip
-        logger.warning(
-            "get_nav failed, falling back to %.0f: %s", PAPER_NAV_DEFAULT, exc
-        )
-        return PAPER_NAV_DEFAULT
+    equity = float(client.get_account().equity)
+    if not math.isfinite(equity) or equity <= 0:
+        raise RuntimeError(f"invalid live account equity: {equity}")
+    return equity
 
 
 def verify_account(client) -> dict[str, object]:
@@ -132,12 +127,15 @@ def whole_share_quantization(
     Shorts must be whole shares (Alpaca paper rejects fractional
     sell-to-open), so every target notional is quantized to integer shares
     at the proposal close. Returns the gross-weight error from rounding,
-    the count of long targets rounding to zero shares, and the same for
-    shorts.
+    the count of long targets rounding to zero shares, the same for shorts,
+    and the per-name distribution: the error is driven by the smallest
+    targets, so the zero-share count is reported against each weight decile
+    rather than only as a total.
     """
     gross_error = 0.0
     long_zero = 0
     short_zero = 0
+    per_name: list[dict[str, object]] = []
     for row in rows.itertuples(index=False):
         price = prices.get(str(row.ticker), 0.0)
         if price <= 0:
@@ -145,18 +143,57 @@ def whole_share_quantization(
         target_notional = float(row.weight) * nav
         shares = int(abs(target_notional) / price)
         rounded_notional = shares * price * (1.0 if target_notional >= 0 else -1.0)
-        gross_error += abs(rounded_notional - target_notional)
+        error = abs(rounded_notional - target_notional)
+        gross_error += error
         if shares == 0:
             if target_notional >= 0:
                 long_zero += 1
             else:
                 short_zero += 1
+        per_name.append(
+            {
+                "ticker": str(row.ticker),
+                "weight": float(row.weight),
+                "target_notional": target_notional,
+                "shares": shares,
+                "rounding_error_usd": error,
+                "rounding_error_pct_of_target": (
+                    error / abs(target_notional) if target_notional else 0.0
+                ),
+                "rounds_to_zero": shares == 0,
+            }
+        )
+    frame = pd.DataFrame(per_name)
     return {
         "nav": float(nav),
         "gross_weight_error": gross_error / nav if nav else 0.0,
         "gross_notional_error_usd": gross_error,
         "long_targets_rounding_to_zero": long_zero,
         "short_targets_rounding_to_zero": short_zero,
+        "distribution": _quantization_distribution(frame),
+    }
+
+
+def _quantization_distribution(frame: pd.DataFrame) -> dict[str, object]:
+    """The per-name rounding error and zero-share counts by weight decile."""
+    if frame.empty:
+        return {"n": 0}
+    error = frame["rounding_error_usd"]
+    decile = pd.qcut(frame["weight"].abs(), 10, labels=False, duplicates="drop") + 1
+    zero_by_decile = {
+        int(d): int(sub["rounds_to_zero"].sum()) for d, sub in frame.groupby(decile)
+    }
+    quantiles = (0.0, 0.25, 0.5, 0.75, 0.9, 0.99, 1.0)
+    return {
+        "n": int(len(frame)),
+        "rounding_error_usd_quantiles": {
+            str(q): float(error.quantile(q)) for q in quantiles
+        },
+        "rounding_error_pct_of_target_quantiles": {
+            str(q): float(frame["rounding_error_pct_of_target"].quantile(q))
+            for q in quantiles
+        },
+        "zero_share_count_by_weight_decile": zero_by_decile,
     }
 
 

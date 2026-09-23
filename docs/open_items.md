@@ -365,3 +365,15 @@ are marked members back to 2010 (4360, 4360, 4336 wrong dates), ILMN has a
 585-day false-membership gap, and BLDR, TAP and TTD are dropped entirely.
 The three-way disagreement is stored in
 data/processed/constituent_crosscheck.parquet.
+
+
+## 2026-09-22: E8's minimum-position gap is closed by E11
+
+E8's construction stack had no minimum-position concept, so the
+smallest-weight names quantize badly at any NAV. E11 now carries a minimum
+position size as a registry parameter (data/models/registry.json, XS-v1
+`live.min_position_dollars`): names whose target notional is below the
+threshold are dropped rather than held at a badly rounded weight. The
+residue left open is small: a later sprint revisiting construction should
+fold the rule back into E8's own construction stack rather than leaving it
+only in the live path.

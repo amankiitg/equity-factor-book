@@ -76,3 +76,14 @@ def test_write_registry_preserves_rules_and_upserts(tmp_path: Path) -> None:
     reloaded = json.loads(path.read_text())
     assert set(reloaded["models"]) == {"TS-v1"}
     assert reloaded["models"]["TS-v1"]["parameters"] == {"window": 252}
+
+
+def test_min_position_dollars_reads_the_registry_and_defaults_to_zero() -> None:
+    payload = {
+        "models": {
+            "XS-v1": {"live": {"min_position_dollars": 5000}},
+            "XS-v2": {},
+        }
+    }
+    assert registry.min_position_dollars(payload, "XS-v1") == 5000.0
+    assert registry.min_position_dollars(payload, "XS-v2") == 0.0

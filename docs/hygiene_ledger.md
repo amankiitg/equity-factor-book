@@ -1531,3 +1531,54 @@ annual volatility built from four monthly returns was being compared with
 one built from eleven. The fix drops 2012 at every window and 2013 at the
 252-day window; the daily-21 reduction moves from 0.206317 to 0.286842,
 still far below the 40% bar, so F10.3b keeps its pass verdict.
+
+
+## 2026-09-22: the impact sigma is daily, the annualization hypothesis is refuted
+
+Decision. The impact leg's sigma stays daily. No fix is applied to the cost
+model and nothing cascades into E9 or E10: the 13.18 bp impact stands as
+written.
+
+Reason. The slip hypothesis was that _trade_cost's sigma is annualized, which
+would inflate the impact leg by sqrt(252) and cascade a re-run of the E9 cost
+model and the E10 reconciliation. Tested and refuted. _cost_decomposition
+takes sigma = sqrt(specific_var), and specific_var is the EWMA of squared
+daily specific returns, so it is a daily standard deviation. Worked example:
+MU's daily specific_return std is 0.02217 and its sqrt(specific_var) is
+0.03020, both daily; MRNA's are 0.05984 and 0.19050. A 32,631 MU trade
+against a 852,351,955 ADV at that sigma costs 0.934 bp of the trade. The
+book's total impact is 13.18 bp under the daily sigma; annualizing it would
+give 13.18 x 15.874 = 209.3 bp, and the full-sample daily std (the E9
+convention) would give 15.01 bp, or 238.3 bp annualized. The reported 13.18
+bp matches the daily sigma, so the sigma is daily and the cost is correct.
+
+
+## 2026-09-22: E11-F1: whole-share quantization breaches the establishment bar
+
+Decision. The establishment quantization is recorded as a finding, E11-F1,
+continuing the finding sequence from E10-F27. It is a breach, not a mechanical
+cost, and it stays recorded as a finding until the minimum-position parameter
+closes it.
+
+Reason. Whole-share rounding of the smallest-weight tail breaches both clauses
+of the establishment bar as written. The measured gross weight error is 0.0539,
+which is 5.39% of NAV and, against a gross of 0.9685, 5.56% of gross notional,
+the first clause. On the name-count clause, 23 of 256 long names and 13 of 243
+short names round to zero shares, each leg past its share of the bar. The
+mechanism is the whole-share quantization step itself: a target whose notional
+is below half a share prices to zero shares, so the error concentrates in the
+smallest-weight tail instead of spreading across the book.
+
+
+## 2026-09-22: Guard 1's position cap is re-derived, not rescaled
+
+Decision. Guard 1's NAV-relative position cap moves from 0.40 to 0.10 of NAV,
+re-derived from the actual target-weight distribution of the 2026-09-21
+proposal. A ten-times order on the largest name now trips it.
+
+Reason. The 0.40 cap was rescaled, not re-derived: the largest target in the
+proposal is MU at 0.0326 of NAV, so ten times the largest legitimate position
+is 0.326 and still cleared 0.40. The distribution is max |weight| 0.0326, q99
+0.0119, q95 0.0053 across 499 names. A cap of 0.10 sits clear of the largest
+legitimate target with 3.1x headroom and still trips a 10x fat-finger on the
+largest name (0.326 > 0.10). The boundary and the 10x trip are pinned by tests.

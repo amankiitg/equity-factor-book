@@ -208,6 +208,19 @@ def parameters_of(payload: dict[str, Any], version: str) -> dict[str, Any]:
     return dict(payload.get("models", {}).get(version, {}).get("parameters", {}))
 
 
+def min_position_dollars(payload: dict[str, Any], version: str) -> float:
+    """The minimum position size in dollars, from the registry.
+
+    E11 Addition 4: names whose target notional is below this dollar size are
+    dropped rather than held at a badly rounded weight. It is stored with the
+    model version so a later sprint can see what the book was run under, and
+    it is applied against the actual NAV so it works at any NAV. Zero means
+    no minimum: no name is dropped on size.
+    """
+    live = payload.get("models", {}).get(version, {}).get("live", {})
+    return float(live.get("min_position_dollars", 0.0))
+
+
 def per_family_alternative(data_root: Path | None = None) -> dict[str, str]:
     """The per-portfolio-family best-calibrated model in E5's family table.
 

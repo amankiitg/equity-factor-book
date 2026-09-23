@@ -374,7 +374,11 @@
       "eligible_for_champion": true,
       "walkthrough": "notebooks/E3_walkthrough.html",
       "deliverable": "docs/research/E3_factor_model_note.md",
-      "results": "sprints/E3/RESULTS.json"
+      "results": "sprints/E3/RESULTS.json",
+      "live": {
+        "min_position_dollars": 5000,
+        "min_position_dollars_note": "names whose target notional is below this dollar size are dropped, not held at a badly rounded weight; about $5,000 at the $1m design NAV, roughly 25 shares of a $200 stock. Applied against the actual NAV so it works at any NAV. E11 Addition 4."
+      }
     },
     "PCA-v1": {
       "version": "PCA-v1",
