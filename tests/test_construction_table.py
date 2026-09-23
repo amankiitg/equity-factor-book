@@ -59,6 +59,24 @@ def test_the_table_has_all_seven_rows_and_renormalizes() -> None:
         assert table[column].notna().all(), column
     # the post-renormalization net is hedged away: gross is 1.0, net is ~0
     assert float(table["net_dollar_share_of_gross"].abs().max()) < 0.01
+    # the beta decomposition columns are present and populated
+    for column in (
+        "n_beta_filled",
+        "realized_market_beta_ex_fills",
+        "realized_market_beta_shrunk",
+        "realized_market_beta_descriptor",
+        "corr_raw_vs_descriptor",
+    ):
+        assert table[column].notna().all(), column
+    # the FMP hedge zeroes XS-v1's own beta descriptor on every row
+    assert float(table["realized_market_beta_descriptor"].abs().max()) < 1e-9
+    # the raw CAPM beta the realized-beta column reports is what the
+    # descriptor does not span, so it is strictly larger in magnitude than
+    # the shrunk pre-winsorization value on every row
+    assert (
+        table["realized_market_beta"].abs()
+        >= table["realized_market_beta_shrunk"].abs()
+    ).all()
 
 
 @pytest.mark.slow

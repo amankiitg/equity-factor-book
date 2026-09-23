@@ -27,10 +27,26 @@ def _proposal(tmp_path: Path) -> None:
         "achieved_annual_vol": 0.0423,
         "gross_cap_bound": True,
         "expected_establishment_cost_bps": 75.3,
+        "min_position_dollars": 5000.0,
+        "n_kept": 27,
+        "n_dropped": 472,
+        "kept_gross": 0.2734,
     }
     (proposal_dir / "proposal_2026-09-03.json").write_text(json.dumps(manifest))
-    weights = pd.DataFrame({"ticker": ["AAA"], "weight": [0.01]})
+    weights = pd.DataFrame(
+        {
+            "ticker": ["AAA", "BBB"],
+            "weight": [0.01, -0.02],
+            "side": ["long", "short"],
+            "z": [1.5, -2.0],
+            "alpha": [1e-6, -2e-6],
+        }
+    )
     weights.to_parquet(proposal_dir / "proposal_2026-09-03.parquet", index=False)
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    reconciliation = pd.DataFrame({"dry_run": [True, True]})
+    reconciliation.to_parquet(state_dir / "reconciliation.parquet", index=False)
 
 
 def test_latest_proposal_raises_on_empty(
@@ -160,3 +176,62 @@ def test_answer_panel_is_the_null_book_verdict(
     assert answer["what this book is"] == "null book"
     assert answer["expected E12 verdict (pre-written)"] == "luck"
     assert answer["factor-neutral IC, horizon 21"] == pytest.approx(-0.003094)
+
+
+def test_construction_label_names_the_construction_and_dry_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _proposal(tmp_path)
+    monkeypatch.setattr(d10, "PROPOSAL_DIR", tmp_path / "proposals")
+    monkeypatch.setattr(d10, "STATE_DIR", tmp_path / "state")
+    label = d10.construction_label()
+    assert label["construction on disk"] == "min position $5,000"
+    assert label["n names kept"] == 27
+    assert label["n names dropped"] == 472
+    assert label["run state"] == "dry run (the clock has not started)"
+
+
+def test_proposal_names_panel_reads_weights_and_reasons(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _proposal(tmp_path)
+    monkeypatch.setattr(d10, "PROPOSAL_DIR", tmp_path / "proposals")
+    panel = d10.proposal_names_panel()
+    assert len(panel) == 2
+    assert set(panel["side"]) == {"long", "short"}
+    # largest absolute weight first
+    assert panel["ticker"].iloc[0] == "BBB"
+
+
+def test_construction_table_and_weights_raise_on_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(d10, "CONSTRUCTION_TABLE_PATH", tmp_path / "missing.parquet")
+    monkeypatch.setattr(d10, "CONSTRUCTION_WEIGHTS_PATH", tmp_path / "missing2.parquet")
+    with pytest.raises(ValueError, match="construction table"):
+        d10.load_construction_table()
+    with pytest.raises(ValueError, match="construction weights"):
+        d10.load_construction_weights()
+
+
+def test_construction_table_and_weights_read_the_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    table = pd.DataFrame(
+        {
+            "construction": ["min_position_5000"],
+            "n_kept": [99],
+            "n_effective": [99],
+        }
+    )
+    weights = pd.DataFrame(
+        {"construction": ["min_position_5000"], "ticker": ["AAA"], "weight": [0.01]}
+    )
+    table_path = tmp_path / "construction_table.parquet"
+    weights_path = tmp_path / "construction_weights.parquet"
+    table.to_parquet(table_path, index=False)
+    weights.to_parquet(weights_path, index=False)
+    monkeypatch.setattr(d10, "CONSTRUCTION_TABLE_PATH", table_path)
+    monkeypatch.setattr(d10, "CONSTRUCTION_WEIGHTS_PATH", weights_path)
+    assert len(d10.load_construction_table()) == 1
+    assert len(d10.load_construction_weights()) == 1
