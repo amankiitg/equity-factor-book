@@ -1,12 +1,16 @@
 """Sprint E11: the construction table, the owner's decision surface.
 
-Six rows: minimum position size of $1,500, $2,000, $3,000 and $5,000, plus
-top N by absolute alpha at N = 150 and N = 200. Each row drops names, re-runs
-Procedure 6.3 on the kept subset (so the exact FMP hedge is recomputed on the
-subset, never carried over from the 499-name book), renormalizes to gross 1.0,
-then quantizes to whole shares. The rows report post-hedge exposure and idio
-share, the per-name quantization error distribution, the maximum
-post-renormalization weight, and both breadth bounds.
+Rows: minimum position size of $1,500, $2,000, $3,000 and $5,000, plus top N
+by absolute alpha at N = 150 and N = 200, plus one flagged two-part floor row
+(min $1,500 dollars and min 20 shares). Each row drops names, re-runs
+Procedure 6.3 on the kept subset, renormalizes to gross 1.0, then quantizes to
+whole shares. The dollar floor is applied iteratively to a fixed point, so a
+name admitted after the kept set is scaled up is reported.
+
+Every row reports net dollar three ways, the realized market beta, the
+per-name share-count distribution and what drives the p90 rounding-error tail,
+plus post-hedge exposure and idio share, the maximum post-renormalization
+weight, and both breadth bounds.
 
 Nothing executes here and nothing is chosen: the owner picks from the table.
 """
@@ -39,6 +43,7 @@ TABLE_PATH = ROOT / "live" / "construction_table.parquet"
 
 MIN_POSITION_ROWS = (1500.0, 2000.0, 3000.0, 5000.0)
 TOP_N_ROWS = (150, 200)
+MIN_SHARES_ROW = 20  # the two-part floor's share leg
 
 
 def _raw_pieces(
@@ -73,7 +78,51 @@ def _raw_pieces(
     return names, alpha_vec, design, factor_covariance, specific
 
 
-def _row_for_selection(
+def _load_market_beta(names: list[str], root: Path) -> dict[str, float]:
+    """{ticker: raw CAPM beta} at the latest TS-v1 beta date, NaN -> median."""
+    beta = pd.read_parquet(root / "models" / "TS-v1" / "beta_history.parquet")
+    beta = beta[beta["method"] == "raw"]
+    latest = pd.to_datetime(beta["date"]).max()
+    series = beta.loc[pd.to_datetime(beta["date"]) == latest].set_index("ticker")[
+        "beta"
+    ]
+    median = float(series.median())
+    out: dict[str, float] = {}
+    for ticker in names:
+        value = series.get(ticker)
+        out[ticker] = median if value is None or pd.isna(value) else float(value)
+    return out
+
+
+def _iterative_floor(full_weights: np.ndarray, nav: float, floor: float) -> np.ndarray:
+    """The dollar floor applied to a fixed point.
+
+    A dropped name worth x pre-renormalization is worth x / kept_gross after
+    the kept set is scaled to gross 1.0, so it clears the floor when
+    x >= floor * kept_gross. Admitting names raises kept_gross, which lowers
+    the scale, which shrinks every survivor: the iteration admits names back
+    until no further name clears the floor.
+    """
+    # A name i is kept iff d_i >= (floor / nav) * S where d_i is its dollar
+    # size and S is the kept gross. Sorting by descending d_i makes the kept
+    # set a prefix, so the fixed point is the longest prefix whose last name
+    # still clears the floor against the prefix's own gross. Naive iteration
+    # of this map oscillates (the map reverses inclusion), so solve it directly.
+    dollars = np.abs(full_weights) * nav
+    order = np.argsort(-dollars)
+    running = 0.0
+    keep = np.zeros(len(dollars), dtype=bool)
+    for position in order:
+        weight = abs(float(full_weights[position]))
+        if dollars[position] >= floor * (running + weight):
+            running += weight
+            keep[position] = True
+        else:
+            break
+    return keep
+
+
+def _compute_row(
     names: list[str],
     alpha_vec: np.ndarray,
     design: np.ndarray,
@@ -81,23 +130,23 @@ def _row_for_selection(
     specific: np.ndarray,
     full_weights: np.ndarray,
     close: dict[str, float],
+    beta_map: dict[str, float],
     nav: float,
     n_eff_full: float,
     keep: np.ndarray,
+    sides: np.ndarray,
     label: str,
-    side_by_alpha: bool,
+    flagged_for_veto: bool,
 ) -> dict[str, object]:
-    """One construction row: drop, re-hedge, renormalize, quantize, report."""
+    """Size, renormalize, quantize and measure one kept set."""
     idx = np.where(keep)[0]
     alpha_sub = alpha_vec[idx]
     design_sub = design[idx]
     specific_sub = specific[idx]
     names_sub = [names[i] for i in idx]
 
-    # kept gross before renormalization: the kept names' share of the full book
     gross_before = float(np.abs(full_weights[idx]).sum())
 
-    # re-run Procedure 6.3 on the subset, then renormalize to gross 1.0
     w_sub = sizing.procedure_6_3_robust(
         alpha_sub, design_sub, factor_covariance, specific_sub
     )
@@ -112,25 +161,73 @@ def _row_for_selection(
     )
     dist = cast(dict[str, Any], quant["distribution"])
 
-    sides = alpha_sub if side_by_alpha else full_weights[idx]
+    # net dollar, three ways
+    net_share_of_gross = float(w_sub.sum())  # gross is 1.0 after renormalization
+    if abs(net_share_of_gross) < 1e-9:
+        net_share_of_gross = 0.0
+    prices = np.array([close.get(t, 0.0) for t in names_sub])
+    shares = np.floor(np.abs(w_sub) * nav / np.maximum(prices, 1e-12)).astype(int)
+    q_notional = shares * prices * np.sign(w_sub)
+    gross_q = float(np.abs(q_notional).sum())
+    net_share_post_quantization = (
+        float(q_notional.sum()) / gross_q if gross_q > 0 else 0.0
+    )
+    if abs(net_share_post_quantization) < 1e-9:
+        net_share_post_quantization = 0.0
+
+    # realized market beta: w' beta over the raw CAPM betas
+    beta_sub = np.array([beta_map[t] for t in names_sub])
+    realized_market_beta = float(w_sub @ beta_sub)
+
+    # per-name share counts
+    median_shares = float(np.median(shares))
+    p10_shares = float(np.quantile(shares, 0.1))
+
+    # what drives the p90 rounding-error tail
+    target = np.abs(w_sub) * nav
+    err_pct = np.abs(q_notional - w_sub * nav) / np.maximum(target, 1e-12)
+    p90_thresh = float(np.quantile(err_pct, 0.9))
+    tail = err_pct >= p90_thresh
+    tail_shares = shares[tail]
+    tail_prices = prices[tail]
+    if int(tail.sum()) == 0:
+        driver = "no tail"
+    elif float(np.median(tail_shares)) < 20:
+        driver = (
+            f"high-priced names: {int(tail.sum())} names, median "
+            f"{float(np.median(tail_shares)):.0f} shares at median "
+            f"${float(np.median(tail_prices)):.0f}"
+        )
+    else:
+        driver = (
+            f"small positions: {int(tail.sum())} names, median "
+            f"{float(np.median(tail_shares)):.0f} shares"
+        )
+
     n_selected = int(len(idx))
     n_eff_kept = decomp["n_eff"]
+    p90_error = float(dist["rounding_error_pct_of_target_quantiles"]["0.9"])
 
     return {
         "construction": label,
+        "flagged_for_veto": flagged_for_veto,
         "n_kept": n_selected,
         "n_effective": int(decomp["n_nonzero"]),
         "n_dropped": len(names) - n_selected,
-        "n_long": int((sides > 0).sum()),
-        "n_short": int((sides < 0).sum()),
+        "n_long": int((sides[idx] > 0).sum()),
+        "n_short": int((sides[idx] < 0).sum()),
         "kept_gross_before_renorm": gross_before,
         "kept_gross_after_renorm": float(np.abs(w_sub).sum()),
+        "net_dollar_share_of_gross": net_share_of_gross,
+        "net_dollar_share_of_gross_post_quantization": net_share_post_quantization,
+        "realized_market_beta": realized_market_beta,
+        "median_share_count": median_shares,
+        "p10_share_count": p10_shares,
+        "p90_tail_driver": driver,
         "quant_error_median_pct_of_target": float(
             dist["rounding_error_pct_of_target_quantiles"]["0.5"]
         ),
-        "quant_error_p90_pct_of_target": float(
-            dist["rounding_error_pct_of_target_quantiles"]["0.9"]
-        ),
+        "quant_error_p90_pct_of_target": p90_error,
         "total_gross_error_share_of_nav": float(quant["gross_weight_error"]),
         "post_hedge_max_abs_exposure": float(decomp["max_abs_exposure"]),
         "post_hedge_idio_share": float(decomp["idio_share"]),
@@ -148,13 +245,13 @@ def build_table(
     nav: float = PAPER_NAV,
     store: bool = True,
 ) -> pd.DataFrame:
-    """Build the six-row construction table for the owner's decision."""
+    """Build the construction table for the owner's decision."""
     root = Path(data_root)
-    # resolve the as-of from the wide frame, as build_proposal does
     wide, _counts = eval_risk.load_clean_wide(root)
     as_of_ts = pd.Timestamp(as_of) if as_of is not None else wide.index.max()
     names, alpha_vec, design, factor_covariance, specific = _raw_pieces(root, as_of_ts)
     close = _close_prices(as_of_ts, root)
+    beta_map = _load_market_beta(names, root)
 
     full_weights = size.procedure_6_3(alpha_vec, design, factor_covariance, specific)
     full_weights, _gross_cap_bound = _scale_to_target(
@@ -165,43 +262,104 @@ def build_table(
 
     rows: list[dict[str, object]] = []
     for threshold in MIN_POSITION_ROWS:
-        keep = np.abs(full_weights) * nav >= threshold
-        rows.append(
-            _row_for_selection(
-                names,
-                alpha_vec,
-                design,
-                factor_covariance,
-                specific,
-                full_weights,
-                close,
-                nav,
-                n_eff_full,
-                keep,
-                f"min_position_{int(threshold)}",
-                side_by_alpha=False,
-            )
+        initial_keep = np.abs(full_weights) * nav >= threshold
+        pre = _compute_row(
+            names,
+            alpha_vec,
+            design,
+            factor_covariance,
+            specific,
+            full_weights,
+            close,
+            beta_map,
+            nav,
+            n_eff_full,
+            initial_keep,
+            full_weights,
+            f"min_position_{int(threshold)}",
+            False,
         )
+        iterative_keep = _iterative_floor(full_weights, nav, threshold)
+        post = _compute_row(
+            names,
+            alpha_vec,
+            design,
+            factor_covariance,
+            specific,
+            full_weights,
+            close,
+            beta_map,
+            nav,
+            n_eff_full,
+            iterative_keep,
+            full_weights,
+            f"min_position_{int(threshold)}",
+            False,
+        )
+        post["n_kept_pre_iteration"] = pre["n_kept"]
+        post["n_kept_post_iteration"] = post["n_kept"]
+        post["quant_error_p90_pre_iteration"] = pre["quant_error_p90_pct_of_target"]
+        post["quant_error_p90_post_iteration"] = post["quant_error_p90_pct_of_target"]
+        rows.append(post)
+
     for n_names in TOP_N_ROWS:
         top_idx = np.argsort(np.abs(alpha_vec))[::-1][:n_names]
         keep = np.zeros(len(names), dtype=bool)
         keep[top_idx] = True
-        rows.append(
-            _row_for_selection(
-                names,
-                alpha_vec,
-                design,
-                factor_covariance,
-                specific,
-                full_weights,
-                close,
-                nav,
-                n_eff_full,
-                keep,
-                f"top_n_{n_names}",
-                side_by_alpha=True,
-            )
+        row = _compute_row(
+            names,
+            alpha_vec,
+            design,
+            factor_covariance,
+            specific,
+            full_weights,
+            close,
+            beta_map,
+            nav,
+            n_eff_full,
+            keep,
+            alpha_vec,
+            f"top_n_{n_names}",
+            False,
         )
+        row["n_kept_pre_iteration"] = row["n_kept"]
+        row["n_kept_post_iteration"] = row["n_kept"]
+        row["quant_error_p90_pre_iteration"] = row["quant_error_p90_pct_of_target"]
+        row["quant_error_p90_post_iteration"] = row["quant_error_p90_pct_of_target"]
+        rows.append(row)
+
+    dollar_keep = _iterative_floor(full_weights, nav, 1500.0)
+    prices_full = np.array([close.get(t, 0.0) for t in names])
+    share_keep = (
+        np.abs(full_weights) * nav / np.maximum(prices_full, 1e-12)
+    ) >= MIN_SHARES_ROW
+    two_part = _compute_row(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        full_weights,
+        close,
+        beta_map,
+        nav,
+        n_eff_full,
+        dollar_keep & share_keep,
+        full_weights,
+        "two_part_floor_1500_20shares",
+        True,
+    )
+    # pre is the $1,500 dollar floor alone; post is dollar floor plus the
+    # 20-share leg, so the share leg's effect on breadth and p90 is visible.
+    two_part["n_kept_pre_iteration"] = int(dollar_keep.sum())
+    two_part["n_kept_post_iteration"] = two_part["n_kept"]
+    two_part["quant_error_p90_pre_iteration"] = rows[0][
+        "quant_error_p90_post_iteration"
+    ]
+    two_part["quant_error_p90_post_iteration"] = two_part[
+        "quant_error_p90_pct_of_target"
+    ]
+    rows.append(two_part)
 
     table = pd.DataFrame(rows)
     if store:

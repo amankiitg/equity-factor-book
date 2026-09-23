@@ -1,96 +1,132 @@
-# Sprint E11 construction table: report
+# Sprint E11: net columns, the iterative floor and the share diagnostic
 
-Task `e11-construction-table`, base commit ea821bc. NAV is $1,000,000,
-final: Alpaca's paper funding field is capped at "$1 - $1,000,000" and the
-$10m option is closed. The construction table is the decision surface; the
-owner picks from it, and nothing here chooses for the owner.
+Task `e11-net-column-then-pick`, base commit d9f65e7. NAV is $1,000,000,
+final. This task adds the net-exposure columns, applies the dollar floor
+iteratively to a fixed point, adds the share-count diagnostic and the flagged
+two-part floor row, then reruns the table. Nothing here chooses a construction
+and nothing re-derives Guard 1; the owner picks.
 
-## The three review findings, fixed
+## What changed
 
-- **E11-F2, average trade size divided by the wrong count.** Fixed in
-  live/evening_job.py `_cost_decomposition`: the average now divides the
-  traded notional by the number of names that actually trade, not by the
-  full 499-name list. At the renormalized $5,000 book it is
-  1,000,000 / 23 = 43,478 dollars, not 0.2734 x 1e6 / 499 = 547.81.
-- **E11-F3, E5 RESULTS.json moved.** Resolved, not carried. The six-line
-  diff is the data_hash bump carried by the registry edit, recorded through
-  the `revisions` block with both hashes; no criterion, verdict, threshold
-  or stored number moved. Recorded in docs/hygiene_ledger.md, 2026-09-22.
-- **E11-F4, the book was never renormalized after dropping.** Fixed. The
-  drop now re-runs Procedure 6.3 on the kept subset (with a pseudoinverse
-  fallback for a rank-deficient subset), then renormalizes to gross 1.0,
-  then quantizes. Kept gross before and after renormalization are both
-  reported.
+- **E11-F5, net three ways.** Every row now reports net dollar as a share of
+  gross post-renormalization and post-quantization, the long and short counts,
+  and the realized CAPM beta of the kept book against the market factor.
+- **E11-F6, the floor to a fixed point.** The dollar floor is applied
+  iteratively: a name worth x pre-renormalization is worth x / kept_gross
+  after the survivors are scaled to gross 1.0, so it clears the floor when
+  x >= floor x kept_gross. The kept count and the p90 are reported before and
+  after the iteration. The naive repeat-until-no-change loop oscillates (the
+  map reverses set inclusion), so the fixed point is solved directly as the
+  longest prefix of the dollar-sorted book whose last name still clears.
+- **Share diagnostic.** Every row reports the median and 10th-percentile
+  share count and a one-line statement of what drives the p90 rounding-error
+  tail.
+- **The flagged two-part floor.** One extra row, flagged for veto: min $1,500
+  dollars (iterative) and min 20 shares, computed on the full-book notional
+  before re-sizing, then re-sized, renormalized and quantized like every
+  other row.
 
-## The construction table, at $1m on the 2026-09-21 close
+The realized beta is the raw CAPM beta from
+`data/models/TS-v1/beta_history.parquet` at the latest date (2026-09-03),
+with missing names filled at the cross-sectional median (0.691). The design
+matrix's market column is a constant 1.0, so the FMP hedge zeroes net dollar
+(sum of weights), not this beta; the two are different objects and both are
+reported.
 
-live/construction_table.parquet. Every row drops names, re-hedges on its
-own subset, renormalizes to gross 1.0, then quantizes. "kept" is the
-selected subset; "effective" is the nonzero-weight book after the hedge.
-Per-name quantization error is the whole-share rounding error as a share
-of the name's target, median and 90th percentile.
+## The table, at $1m on the 2026-09-21 close
 
-| construction | kept | effective | dropped | long/short | gross before | median err | p90 err | total err | post-hedge max exposure | idio share | max weight | breadth naive | governing | n_eff |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| min $1,500 | 208 | 208 | 291 | 90/118 | 0.7515 | 1.76% | 9.08% | 2.64% | 1.2e-15 | 1.0 | 4.20% | 1.487 | 1.237 | 102.8 |
-| min $2,000 | 155 | 155 | 344 | 63/92 | 0.6607 | 1.31% | 5.59% | 1.91% | 4.6e-16 | 1.0 | 4.68% | 1.723 | 1.367 | 84.2 |
-| min $3,000 | 82 | 81 | 417 | 24/58 | 0.4838 | 0.65% | 4.57% | 1.06% | 3.7e-16 | 1.0 | 6.48% | 2.368 | 1.826 | 47.2 |
-| min $5,000 | 27 | 23 | 472 | 11/16 | 0.2734 | 0.37% | 41.66% | 0.48% | 6.6e-15 | 1.0 | **14.52%** | 4.128 | 3.340 | 14.1 |
-| top-N 150 | 150 | 150 | 349 | 55/95 | 0.4476 | 1.61% | 13.29% | 2.07% | 1.6e-15 | 1.0 | 6.22% | 1.751 | 1.640 | 58.5 |
-| top-N 200 | 200 | 200 | 299 | 72/128 | 0.5268 | 2.28% | 17.75% | 2.67% | 1.2e-15 | 1.0 | 5.43% | 1.517 | 1.470 | 72.8 |
+`live/construction_table.parquet`. Every row drops names, re-hedges on its
+own subset, renormalizes to gross 1.0, then quantizes. "kept" is the selected
+subset; "effective" is the nonzero-weight book after the hedge. Gross before
+renormalization is the kept subset's gross before the scale-up; gross after
+renormalization is 1.0 on every row, stated rather than omitted. Net dollar
+is the net as a share of gross; the post-quantization column is the net after
+whole-share rounding. p90 is the 90th percentile of per-name whole-share
+rounding error as a share of the name's target.
 
-Full-book reference: 499 names, n_eff 157.33.
+| construction | kept (pre -> post) | effective | long/short | gross before | net $ renorm | net $ quant | realized beta | median / p10 shares | p90 (pre -> post) | max weight |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| min $1,500 | 208 -> 252 | 252 | 113/139 | 0.8124 | 0 | 0.28% | 0.105 | 19.5 / 4 | 9.08% -> 11.93% | 3.95% |
+| min $2,000 | 155 -> 208 | 208 | 90/118 | 0.7515 | 0 | 0.75% | 0.107 | 23 / 5 | 5.59% -> 9.08% | 4.20% |
+| min $3,000 | 82 -> 156 | 156 | 64/92 | 0.6626 | 0 | 0.39% | 0.114 | 33 / 8 | 4.57% -> 5.34% | 4.66% |
+| min $5,000 | 27 -> 99 | 99 | 32/67 | 0.5315 | 0 | 0.63% | 0.130 | 47 / 8.6 | 41.66% -> 7.30% | 5.84% |
+| top-N 150 | 150 -> 150 | 150 | 55/95 | 0.4476 | 0 | 0.10% | 0.135 | 26 / 3 | 13.29% -> 13.29% | 6.22% |
+| top-N 200 | 200 -> 200 | 200 | 72/128 | 0.5268 | 0 | -0.05% | 0.135 | 18.5 / 2 | 17.75% -> 17.75% | 5.43% |
+| two-part 1500+20sh | 252 -> 100 | 100 | 48/52 | 0.4437 | 0 | -0.11% | 0.147 | 90 / 25.9 | 11.93% -> 1.80% | 6.21% |
 
-## The rank prediction held, and so did the concentration warning
+Full-book reference: 499 names, n_eff 157.33. The p90 tail driver per row:
+min $1,500 high-priced names (26 names, median 3 shares at $457); min $2,000
+high-priced (21 names, 4 shares, $536); min $3,000 high-priced (16 names, 8
+shares, $561); min $5,000 high-priced (10 names, 2 shares, $428); top-N 150
+high-priced (15 names, 1 share, $295); top-N 200 high-priced (20 names, 0
+shares, $268); two-part floor small positions (10 names, median 28 shares).
 
-The $5,000 row is the one the task predicted. The 27-name subset hedges
-17 factor columns with 27 names, and the pseudoinverse hedge exactly
-cancels 4 of them (BNY, BG, MRNA, GRMN go to ~1e-16), so the effective
-book is 23 names, not 27. Its max post-renormalization weight is 14.52%,
-which breaches Guard 1's 0.10 cap on a legitimate book. Every other row
-clears the cap: 4.20%, 4.68%, 6.48%, 6.22%, 5.43%.
+## E11-F5: net dollar is zero, but the realized beta is not
 
-Guard 1 must therefore be re-derived against the post-renormalization
-weights of whichever construction the owner picks, not against the
-pre-renormalization weights it was sized from.
+The net dollar column is zero on every row post-renormalization. That is not
+a coincidence to be checked off: the FMP hedge's market column is a constant
+1.0, so zeroing the modeled market exposure is zeroing net dollar, and the
+hedge is re-run on each kept subset inside this table. Post-quantization the
+net is at most 0.75% of gross (min $2,000), from whole-share rounding only.
+So no row's net dollar is material, and no net constraint or different floor
+is needed for dollar directionality.
 
-## How the two approaches compare
+The realized beta column is the part the risk model cannot see, and it is
+small but uniform: 0.105 to 0.147 across all seven rows. The book is
+dollar-neutral but carries about a tenth of a unit of raw CAPM beta, because
+the raw betas are not all 1.0. No row is meaningfully worse on this measure.
 
-At comparable name counts the minimum-position rows dominate the top-N
-rows on both n_eff and total gross error: min $1,500 (208 names, n_eff
-102.8, error 2.64%) is better than top-N 200 (200 names, n_eff 72.8,
-error 2.67%) on both; min $2,000 (155 names, n_eff 84.2, error 1.91%) is
-better than top-N 150 (150 names, n_eff 58.5, error 2.07%) on both. So
-top-N by alpha does not dominate; it drops the names the hedge needs. The
-owner picks.
+The long/short counts are lopsided in count but balanced in dollars. The
+24/58 count at min $3,000 does not survive the iteration: it is 64/92 now,
+because the fixed-point floor admits names back on both sides. The 55/95 at
+top-N 150 and the 72/128 at top-N 200 do survive, because top-N has no floor
+to iterate; those rows stay disqualified as the task directs, which is
+consistent with top-N already being out on n_eff and total error.
 
-## NAV is $1,000,000, final
+## E11-F6: breadth rises as predicted; p90's direction depends on the row
 
-The $10m column is deleted from reporting and nothing is sized against it.
-The $10m test (test_build_proposal_keeps_breadth_at_a_ten_million_nav)
-was removed with it; the suite goes from 683 to 682 passing tests, still
-above the 670 floor, and the removal is named here.
+The iteration buys breadth back on every dollar floor: 208 -> 252, 155 ->
+208, 82 -> 156, 27 -> 99. The prediction that p90 widens holds for $1,500,
+$2,000 and $3,000 (9.08% -> 11.93%, 5.59% -> 9.08%, 4.57% -> 5.34%), and
+the reason is the one the task gives: the admitted names sit at the floor,
+not above it.
 
-## The skipped test, named
+At $5,000 the direction reverses, 41.66% -> 7.30%, and the reason matters:
+the pre-iteration 27-name book was degenerate. Its pseudoinverse hedge
+zeroed 4 names, so the effective book was 23 names with a 14.52% maximum
+weight, which breaches Guard 1's 0.10 cap. The iteration admits 72 names
+back, the hedge no longer degenerates, effective equals kept (99), the
+maximum weight falls to 5.84% below the cap, and p90 narrows. So the $5,000
+row's pre-iteration p90 of 41.66% measures the broken 27-name book, not the
+floor; the post-iteration 7.30% is the number the floor actually produces.
 
-tests/test_e11_render.py `test_alpaca_live_connect_names_the_missing_dependency`
-skips because alpaca-py is installed in the venv. The test exercises the
-missing-dependency error path, which only runs when alpaca-py is absent.
+No row triggers the pseudoinverse fallback after the iteration: effective
+equals kept on every row.
 
-## Addition 5: slow-test markers and the measured shared-module set
+## The share diagnostic and the flagged two-part floor
 
-The `slow` marker is registered in pyproject.toml and `make test-fast`
-runs `pytest -m "not slow"`. 23 tests are marked slow (anything over about
-two seconds).
+The tail driver is high-priced names on every dollar-floor row and both
+top-N rows: a few shares at a several-hundred-dollar price. The dollar floor
+buys error control it does not need to pay for, exactly as the task
+hypothesized.
 
-The shared-module set, measured by import fan-in over tests, efb and live
-(from efb import X / from efb.X import / import efb.X): evaluate (29),
-models (28), registry (18), hygiene (17), eval_risk (16), probes (9), race
-(8), risk (8), universe (7), build (5), size (5), prices (5), identity (5),
-cov (4), costs (3), perf (2), evidence (1). A change to any of these, or to
-anything under efb/models/, triggers a required full run. This task touched
-no efb module (only live/), so the full run below is the rule-21 item-1
-run before `done`, not an import-fanout run.
+The flagged row, min $1,500 dollars plus min 20 shares, keeps 100 names
+(48 long, 52 short) with median 90 shares and p10 25.9. It cuts p90 to
+1.80%, below the $2,000 row's 5.59%, and its tail driver flips to small
+positions (median 28 shares), which is the point. The cost is breadth: it
+keeps 100 of min $1,500's 252 names, so this is not a free win but a
+two-part floor that trades 152 names for a 6.6x tighter error tail. Its
+maximum weight is 6.21%, below Guard 1. The row is flagged for the owner's
+veto; the owner picks.
+
+## Two small reporting items, fixed
+
+- The gross-after-renormalization column is 1.0 on every row; it is stated
+  above rather than omitted silently.
+- The test-count citation now uses rule 21's relative rule: the full-run
+  count must be at least the previous full-run count recorded in LOG.md,
+  which was 682. The full run below is 684, so the rule is met, and the
+  removed $10m test is named in the previous report.
 
 ## Verification
 
@@ -99,16 +135,16 @@ run before `done`, not an import-fanout run.
 `make test` (full run):
 
 ```
-682 passed, 1 skipped, 3 warnings in 449.78s (0:07:29)
+684 passed, 1 skipped, 3 warnings in 556.85s (0:09:16)
 ```
 
-`make test-fast` (the default for per-step work):
+`make test-fast`:
 
 ```
-659 passed, 1 skipped, 23 deselected, 3 warnings in 24.90s
+659 passed, 1 skipped, 25 deselected, 3 warnings in 24.55s
 ```
 
-`make lint` (plus `mypy live`, which the Makefile does not run):
+`make lint` plus `mypy live`:
 
 ```
 .venv/bin/ruff check efb dashboard live tests
@@ -116,10 +152,10 @@ All checks passed!
 .venv/bin/mypy efb
 Success: no issues found in 33 source files
 .venv/bin/black --check efb dashboard live tests
-All done! ✨ 🍰 ✨
-158 files would be left unchanged.
+All done!
+161 files would be left unchanged.
 === mypy live ===
-Success: no issues found in 13 source files
+Success: no issues found in 15 source files
 ```
 
 `make verify-evidence`:
@@ -128,66 +164,47 @@ Success: no issues found in 13 source files
 evidence OK
 ```
 
-Exit status 0.
-
 ### Headline numbers, file and key
 
-- construction table, six rows: live/construction_table.parquet
-- NAV 1,000,000 final: handoff/TASK.md, live/evening_job.py `PAPER_NAV`
-- avg trade size 43,478 at the renormalized $5,000 book: live/proposals/proposal_2026-09-21.json `avg_trade_size` (notional / n_effective)
-- E5 data_hash bump, both hashes: sprints/E5/RESULTS.json `revisions`
-- Guard 1 cap 0.10, max kept weight 0.1452 at $5,000: live/guards.py, live/construction_table.parquet
-- full-run count 682, fast-run count 659, slow 23: make test, make test-fast
+- construction table, seven rows with net, iteration and share columns:
+  live/construction_table.parquet
+- min $1,500 iterative floor: 208 -> 252 names, p90 9.08% -> 11.93%
+- min $5,000 iterative floor: 27 -> 99 names, max weight 14.52% -> 5.84%,
+  Guard 1 breach cleared
+- two-part floor: 100 names, p90 1.80%, flagged for veto
+- realized beta range 0.105 to 0.147: live/construction_table.parquet
 
-### git diff --stat from base_commit (ea821bc)
+### git diff --stat from base_commit (d9f65e7)
 
 ```
- Makefile                         |   5 +-
- docs/hygiene_ledger.md           |  16 ++
- handoff/REPORT.md                | 440 ++++++++++++---------------------------
- live/construction_table.parquet  | Bin 0 -> 12733 bytes
- live/construction_table.py       | 216 +++++++++++++++++++
- live/evening_job.py              |  43 ++--
- live/sizing.py                   |  45 ++++
- pyproject.toml                   |   1 +
- tests/test_allocate.py           |   1 +
- tests/test_construction_table.py |  62 ++++++
- tests/test_costs.py              |   1 +
- tests/test_dashboard_app.py      |   3 +
- tests/test_e11_evening.py        |  20 +-
- tests/test_e11_extend.py         |   2 +
- tests/test_e4_probes.py          |   1 +
- tests/test_e4_results.py         |   1 +
- tests/test_eval_risk.py          |   4 +
- tests/test_fundamental.py        |   2 +
- tests/test_optimize.py           |   1 +
- tests/test_size.py               |   1 +
- 20 files changed, 538 insertions(+), 327 deletions(-)
+ handoff/REPORT.md                | 451 +++++++++++++--------------------------
+ live/construction_table.parquet  | Bin 12733 -> 20918 bytes
+ live/construction_table.py       | 270 ++++++++++++++++++-----
+ tests/test_construction_table.py |  56 ++++-
+ 4 files changed, 416 insertions(+), 361 deletions(-)
 ```
 
 ### Yes or no, each with evidence
 
-1. **Any two rows or two estimators identical?** No. The six construction
-   rows differ on every column (live/construction_table.parquet).
-2. **Any exception caught and skipped, or any fallback taken?** No
-   exception is caught and skipped. One fallback is taken by design: the
-   pseudoinverse hedge fallback in live/sizing.py when a subset's X'X is
-   singular, and the achieved exposure is reported, not hidden.
+1. **Any two rows or two estimators identical?** No. The seven rows differ
+   on every column (live/construction_table.parquet).
+2. **Any exception caught and skipped, or any fallback taken?** No exception
+   is caught and skipped. No row takes the pseudoinverse fallback after the
+   iteration (effective equals kept everywhere), which is stated above.
 3. **Any criterion reworded or replaced by a different test?** No.
 4. **Any criterion that passes by construction?** No. No new criterion was
    registered.
-5. **Any number that moved by a factor of 10 or more?** Yes. The $5,000
-   kept book's max weight is 0.1452 against the 0.10 guard cap, and its
-   effective name count is 23 against 27 selected, both stated here.
+5. **Any number that moved by a factor of 10 or more?** Yes. The min $5,000
+   post-iteration p90 is 7.30% against the pre-iteration 41.66%, and its
+   kept count is 99 against 27, both stated here.
 6. **Any stored number typed into a notebook?** No notebook was touched.
-7. **Any earlier verdict changed?** No. The E5 data_hash bump moved no
-   verdict, and prior_verdict_changes() is 0 for E1 through E7.
+7. **Any earlier verdict changed?** No.
 
 ### Anything decided that the reviewer might disagree with
 
-The $10m test was removed rather than kept as a NAV-flexibility unit test,
-because the task says to delete the $10m column and size nothing against
-it; this removes one test (683 to 682 passing), named above. Guard 1 is
-left at 0.10 until the owner picks a construction, even though the $5,000
-row would breach it; re-deriving it now would choose the construction for
-the owner.
+The iterative floor is solved as the longest dollar-sorted prefix rather
+than by repeat-until-no-change, because the repeat loop oscillates (the
+fixed-point map reverses set inclusion) and would never terminate; the two
+compute the same set, and the prefix method is stated in the code. Guard 1
+is left at 0.10 and is not re-derived, because the construction has not been
+picked.
