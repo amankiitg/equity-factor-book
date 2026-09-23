@@ -56,9 +56,7 @@ def record_run(job: str, run_date: str, status: str, detail: str = "") -> None:
     # The first run sees an empty, columnless frame; guard the filter so the
     # very first cron record does not raise on the missing column.
     if not frame.empty:
-        frame = frame.loc[
-            ~((frame["run_date"] == run_date) & (frame["job"] == job))
-        ]
+        frame = frame.loc[~((frame["run_date"] == run_date) & (frame["job"] == job))]
     rows = frame.to_dict("records")
     rows.append(
         {
