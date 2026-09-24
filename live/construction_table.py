@@ -131,6 +131,10 @@ def _load_beta_stages(names: list[str], root: Path) -> dict[str, Any]:
                 float(standardized) if pd.notna(standardized) else 0.0
             )
             descriptor_map[ticker] = float(descriptor) if pd.notna(descriptor) else 0.0
+            # a name present in the cross-section but with no descriptor value
+            # is filled with 0 just as a name absent from it is: count it.
+            if pd.isna(descriptor):
+                zero_filled.add(ticker)
         else:
             shrunk_map[ticker] = 0.0
             winsor_map[ticker] = 0.0

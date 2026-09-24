@@ -1654,3 +1654,56 @@ Reason. E11-F8 does not join F4.1, F7.2 and F8.4. The pre-winsorization column
 was not an identity: the shrinkage does real, name-specific work, and the clip
 does the rest. The numbers are read from live/construction_table.parquet, the
 residual-exposure columns of the min_position_1500 and full_book_499 rows.
+
+
+## 2026-09-24: E11-F8 correction: undetermined, the 53 percent figure, and the zero fill
+
+Decision. The 2026-09-23 follow-up entry overclaims on three counts, and this
+entry carries the old values beside the new ones; the earlier entry is not
+edited.
+
+1. Arithmetic. The residual exposure at a stage is the part of the raw beta
+that stage fails to carry, so the shrinkage step's increment is the residual
+at the Vasicek stage itself: 0.0555 at min $1,500, which is 53 percent of the
+0.1050 raw beta, not 0.0495 (47 percent). The three increments sum to the
+total only this way: 0.0555 + 0.0526 - 0.0031 = 0.1050. The earlier entry's
+0.0495 + 0.0526 = 0.1021 does not.
+
+2. The nonzero standardization increment is a zero-fill artifact. The
+standardized stage is exactly affine in the clipped stage to machine
+precision (standardized = 1.5475 x clipped - 1.4978, max residual 8.8e-16).
+A regression residual is invariant to an affine regressor change, so the
+measured -0.0031 at min $1,500 (-0.0034 at $2,000, -0.0047 at $3,000,
+-0.0031 on the full book, exactly zero on min $5,000 and both top-N rows) is
+not standardization doing anything. It is the zero fill: two names present in
+the descriptor cross-section but with no descriptor value (FDXF and HONA,
+recent listings) are filled with 0 in every stage, and the affine map does not
+carry 0 to 0, so those two points break it. The earlier entry's zero-fill
+count of 0 everywhere was a miscount; the correct count is 2 in the full book
+and 1 in the minimum-position subsets that keep one of them.
+
+3. Refuted was not established. The Vasicek-stage increment regresses TS-v1's
+raw beta (frozen 2026-09-03) on XS-v1's shrunk beta (2026-09-21), so it mixes
+the shrinkage, the TS-v1/XS-v1 estimator gap and twelve sessions of window
+drift. The candidate is recorded as undetermined, with 0.0555 an upper bound
+on what the shrinkage contributes. The clip's 0.0526 is a clean measurement,
+because both of its stages are XS-v1 at the same date.
+
+## 2026-09-24: E11-F8 diagnostic split: the estimator gap is nil, the shrinkage does the work
+
+Decision. The candidate is refuted, measured. Recomputing XS-v1's
+pre-shrinkage beta at 2026-09-21 under the frozen specification (diagnostic
+only: nothing restated, nothing stored, the specification unchanged) and
+inserting it as a stage splits the 0.0555: the raw-to-XS-v1-raw increment is
+0.000031 (the TS-v1/XS-v1 estimator gap plus the date gap, 0.03 percent of the
+raw beta), and the XS-v1-raw-to-Vasicek increment is 0.054393 (51.8 percent of
+the 0.104987 raw beta). The shrinkage increment is not near zero, so E11-F8
+does not join the identity class. The shrinkage is name-specific through the
+standard error and removes 52 percent of the raw beta; the clip removes the
+rest.
+
+Reason. The estimator gap the undetermined entry named as a possible
+explanation is measured at 0.000031, essentially nil, so the whole of the
+0.054393 residual at the Vasicek stage is the shrinkage. The numbers are
+computed at min $1,500 from live/construction_table.parquet weights and the
+frozen XS-v1 specification in efb/models/fundamental.py.
