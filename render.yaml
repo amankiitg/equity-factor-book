@@ -10,8 +10,10 @@
 #   "30 22 * * 1-5" = 18:30 EDT / 17:30 EST, after the 16:00 ET close.
 #
 # Secret isolation:
-#   Dashboard gets EFB_SUPABASE_* only. NO Alpaca keys.
-#   Cron gets EFB_SUPABASE_* plus EFB_ALPACA_PAPER_*.
+#   Dashboard gets EFB_SUPABASE_DB_URL (a READ-ONLY Postgres role's
+#   connection string) and EFB_DB_SCHEMA. NO Alpaca keys.
+#   Cron gets EFB_SUPABASE_DB_URL (the write role's connection string),
+#   EFB_DB_SCHEMA, EFB_ALPACA_PAPER_* and EFB_DRY_RUN.
 #   Env var VALUES are set manually in the Render dashboard (sync: false).
 #   This file commits the KEY names only; no credentials appear here.
 
@@ -22,12 +24,13 @@ services:
     buildCommand: pip install -r requirements.txt && pip install -e .
     startCommand: streamlit run live/dashboard_app.py --server.port $PORT --server.address 0.0.0.0
     envVars:
-      - key: EFB_SUPABASE_URL
+      - key: EFB_SUPABASE_DB_URL
         sync: false
-      - key: EFB_SUPABASE_SECRET_KEY
+      - key: EFB_DB_SCHEMA
         sync: false
       # EFB_ALPACA_* are intentionally absent from this service: the
-      # dashboard never calls Alpaca directly.
+      # dashboard never calls Alpaca directly. EFB_SUPABASE_DB_URL holds a
+      # read-only role's connection string, never the service-role key.
 
   - type: cron
     name: efb-live-daily
@@ -36,9 +39,9 @@ services:
     schedule: "30 22 * * 1-5"
     startCommand: python scripts/run_live_daily.py
     envVars:
-      - key: EFB_SUPABASE_URL
+      - key: EFB_SUPABASE_DB_URL
         sync: false
-      - key: EFB_SUPABASE_SECRET_KEY
+      - key: EFB_DB_SCHEMA
         sync: false
       - key: EFB_ALPACA_PAPER_API_KEY
         sync: false

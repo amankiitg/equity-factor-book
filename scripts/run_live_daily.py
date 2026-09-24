@@ -199,6 +199,16 @@ def store_reconciliation(as_of: str, row: dict) -> None:
     )
 
 
+def resolve_dry_run(value: str | None) -> bool:
+    """The clock starts only on the literal string "false", any case.
+
+    Unset, empty, unparseable, or any spelling other than an explicit false
+    resolves to dry run. A missing variable must never start the clock by
+    accident; that is the failure this function guards.
+    """
+    return (value or "").strip().lower() != "false"
+
+
 def main() -> int:
     from live import evening_job, extend, morning_job, reconcile
 
@@ -207,7 +217,7 @@ def main() -> int:
         logger.info("already ran for %s, exit 0 (idempotent)", run_date)
         return 0
 
-    dry_run = os.environ.get("EFB_DRY_RUN", "true").lower() != "false"
+    dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
     try:
         # Extend the data and model layers by one session, then rehash.
         extend.extend_archives()

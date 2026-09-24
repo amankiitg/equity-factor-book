@@ -10,9 +10,12 @@ access token from supabase.com, not the service role key). If the token
 is absent, prints the SQL and the SQL editor URL instead.
 
 Env vars:
-    EFB_SUPABASE_URL            project URL (https://<ref>.supabase.co)
-    EFB_SUPABASE_SECRET_KEY     service role key
-    EFB_SUPABASE_ACCESS_TOKEN   personal access token, for the Management API
+    EFB_SUPABASE_PROJECT_URL   project URL (https://<ref>.supabase.co)
+    EFB_SUPABASE_ACCESS_TOKEN  personal access token, for the Management API
+
+The project URL is only for the one-time provisioning script; it is not a
+PostgREST connection (EFB_SUPABASE_URL / EFB_SUPABASE_SECRET_KEY are
+withdrawn and never used). Neither variable appears on a Render service.
 """
 
 from __future__ import annotations
@@ -40,12 +43,12 @@ def _load_env() -> None:
 
 def main() -> int:
     _load_env()
-    url = os.environ.get("EFB_SUPABASE_URL", "")
+    url = os.environ.get("EFB_SUPABASE_PROJECT_URL", "")
     access_token = os.environ.get("EFB_SUPABASE_ACCESS_TOKEN", "")
     schema = SCHEMA_PATH.read_text()
 
     if not url:
-        sys.exit("Set EFB_SUPABASE_URL first.")
+        sys.exit("Set EFB_SUPABASE_PROJECT_URL first.")
 
     project_ref = url.removesuffix("/rest/v1/").removeprefix("https://").split(".")[0]
 

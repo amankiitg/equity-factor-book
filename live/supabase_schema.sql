@@ -1,10 +1,13 @@
--- EFB live series schema. Run once in the Supabase SQL editor, or via
--- scripts/provision_supabase.py. Every table is keyed by date (and
--- ticker where a day has many rows), so the store upserts instead of
--- appending duplicates. The efb_ prefix keeps EFB's tables disjoint from
+-- EFB live series schema, direct Postgres. Run once in the Supabase SQL
+-- editor, or via scripts/provision_supabase.py. Every table is keyed by date
+-- (and ticker where a day has many rows), so the store upserts instead of
+-- appending duplicates. Everything lives in schema `efb`; nothing targets
+-- `public` or an unqualified name, so EFB's tables are disjoint from
 -- credit-trading-lab's in the shared project.
 
-create table if not exists public.efb_proposals (
+create schema if not exists efb;
+
+create table if not exists efb.proposals (
   trade_date date primary key,
   signal text not null,
   as_of date not null,
@@ -30,7 +33,7 @@ create table if not exists public.efb_proposals (
   manifest jsonb not null
 );
 
-create table if not exists public.efb_positions (
+create table if not exists efb.positions (
   trade_date date not null,
   ticker text not null,
   weight double precision not null,
@@ -46,7 +49,7 @@ create table if not exists public.efb_positions (
   primary key (trade_date, ticker)
 );
 
-create table if not exists public.efb_orders (
+create table if not exists efb.orders (
   trade_date date not null,
   ticker text not null,
   intended_notional double precision not null,
@@ -56,7 +59,7 @@ create table if not exists public.efb_orders (
   primary key (trade_date, ticker)
 );
 
-create table if not exists public.efb_fills (
+create table if not exists efb.fills (
   trade_date date not null,
   ticker text not null,
   order_id text not null,
@@ -67,7 +70,7 @@ create table if not exists public.efb_fills (
   primary key (trade_date, ticker, order_id)
 );
 
-create table if not exists public.efb_reconciliation (
+create table if not exists efb.reconciliation (
   trade_date date primary key,
   forecast_annual_vol double precision,
   realized_annual_vol double precision,
@@ -82,7 +85,7 @@ create table if not exists public.efb_reconciliation (
   realized_pnl double precision
 );
 
-create table if not exists public.efb_nav (
+create table if not exists efb.nav (
   trade_date date primary key,
   nav double precision not null,
   realized_pnl double precision not null,
@@ -90,14 +93,14 @@ create table if not exists public.efb_nav (
   cash double precision
 );
 
-create table if not exists public.efb_decisions (
+create table if not exists efb.decisions (
   trade_date date primary key,
   decision text not null,
   reason text not null,
   created_at timestamptz not null
 );
 
-create table if not exists public.efb_cron_runs (
+create table if not exists efb.cron_runs (
   run_date date not null,
   job text not null,
   status text not null,

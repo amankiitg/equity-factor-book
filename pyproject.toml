@@ -34,7 +34,7 @@ dev = [
 ]
 live = [
     "alpaca-py>=0.20",
-    "supabase>=2.5",
+    "psycopg[binary]>=3.1",
 ]
 
 [build-system]
@@ -69,5 +69,5 @@ warn_unused_configs = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["yfinance", "pandas", "requests", "alpaca", "alpaca.trading.*", "supabase"]
+module = ["yfinance", "pandas", "requests", "alpaca", "alpaca.trading.*"]
 ignore_missing_imports = true

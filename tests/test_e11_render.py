@@ -36,8 +36,7 @@ def test_store_unknown_table_raises() -> None:
 def test_store_local_fallback_is_disjoint_from_state_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("EFB_SUPABASE_URL", raising=False)
-    monkeypatch.delenv("EFB_SUPABASE_SECRET_KEY", raising=False)
+    monkeypatch.delenv("EFB_SUPABASE_DB_URL", raising=False)
     monkeypatch.setattr(store, "LOCAL_DIR", tmp_path)
     store.upsert(
         "nav", [{"trade_date": "2026-09-22", "nav": 100000.0, "realized_pnl": 0.0}]
@@ -49,8 +48,7 @@ def test_store_local_fallback_is_disjoint_from_state_files(
 
 
 def test_store_is_supabase_false_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("EFB_SUPABASE_URL", raising=False)
-    monkeypatch.delenv("EFB_SUPABASE_SECRET_KEY", raising=False)
+    monkeypatch.delenv("EFB_SUPABASE_DB_URL", raising=False)
     assert store.is_supabase() is False
 
 
@@ -126,21 +124,35 @@ def test_require_empty_account_rejects_existing_positions() -> None:
 def test_env_example_names_the_keys_without_values() -> None:
     text = (ROOT / ".env.example").read_text()
     lines = text.splitlines()
+    # two keys carry safe non-secret defaults; every other key is empty
+    defaults = {"EFB_DB_SCHEMA": "efb", "EFB_DRY_RUN": "true"}
     for name in (
         "EFB_ALPACA_PAPER_API_KEY",
         "EFB_ALPACA_PAPER_SECRET_KEY",
-        "EFB_SUPABASE_URL",
-        "EFB_SUPABASE_SECRET_KEY",
+        "EFB_SUPABASE_DB_URL",
+        "EFB_DB_SCHEMA",
+        "EFB_SUPABASE_PROJECT_URL",
+        "EFB_SUPABASE_ACCESS_TOKEN",
+        "EFB_DRY_RUN",
     ):
         match = [line for line in lines if line.startswith(name)]
         assert match, f"{name} missing from .env.example"
-        assert match[0] == f"{name}=", "the example carries a name, never a value"
+        expected = f"{name}={defaults.get(name, '')}"
+        assert (
+            match[0] == expected
+        ), "the example carries only safe defaults, never a secret"
 
 
 def test_render_yaml_commits_key_names_not_values() -> None:
     render = (ROOT / "render.yaml").read_text()
     assert "EFB_ALPACA_PAPER_API_KEY" in render
     assert "EFB_ALPACA_PAPER_SECRET_KEY" in render
+    # direct Postgres, never PostgREST
+    assert "EFB_SUPABASE_DB_URL" in render
+    assert "EFB_DB_SCHEMA" in render
+    # the account-wide access token must never reach a Render service
+    assert "EFB_SUPABASE_ACCESS_TOKEN" not in render
+    assert "EFB_SUPABASE_SECRET_KEY" not in render
     assert "sync: false" in render
     assert "AKIA" not in render
     assert "-----BEGIN" not in render
