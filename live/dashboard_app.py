@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -42,7 +43,7 @@ def _latest_proposal() -> dict | None:
     return json.loads(row["manifest"]) if row.get("manifest") else dict(row)
 
 
-def _construction_label(manifest: dict) -> str:
+def _construction_label(manifest: dict[str, Any]) -> str:
     """The proposal's construction, generated only from its stored fields.
 
     Mirrors dashboard/tabs/d10_book.py: the page never asserts a label beside
@@ -52,9 +53,9 @@ def _construction_label(manifest: dict) -> str:
     kind = manifest.get("construction")
     if kind is None:
         return "construction parameters not recorded in this artifact"
-    floor_dollars = manifest.get("construction_floor_dollars")
-    floor_shares = manifest.get("construction_floor_shares")
-    top_n = manifest.get("construction_top_n")
+    floor_dollars = manifest.get("construction_floor_dollars", 0)
+    floor_shares = manifest.get("construction_floor_shares", 0)
+    top_n = manifest.get("construction_top_n", 0)
     iterated = bool(manifest.get("floor_iterated"))
     if kind == "min_position":
         label = f"min position ${floor_dollars:,.0f}"
