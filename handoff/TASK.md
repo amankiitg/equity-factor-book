@@ -11,6 +11,17 @@ new session and writes it back, so a wiped container costs nothing.
 **Staleness fails the run instead of being reported by it.** The owner holds
 the share-only choice until the corrected E11-F13 numbers exist.
 
+**Owner confirmations, 2026-09-24, later:**
+- All four of the reviewer's readings are confirmed.
+- Part 2 builds without a costing gate. Its three stops are the guards, and
+  the size stop is the one that matters.
+- The seed stays in git and new days go in Postgres.
+- Staleness is counted in trading sessions at zero behind the latest close,
+  with shares and sectors judged on fetch age. The risk with slow inputs is
+  the fetch quietly stopping.
+- **The gate runs through the Render cron in dry run.**
+- New: **every run pushes a notification the owner will see** (Part 3b).
+
 Parts 1, 2, 4 and 8 of `e11-share-floor-to-gate` stand. Run the parts below in
 order, committing each alone. `dry_run` stays `true`, and you never flip it.
 
@@ -150,6 +161,52 @@ Requirements:
    - the dashboard shows the failure state when the latest status is
      stale-stopped and when it is missing.
 
+### Part 3b. Every run notifies the owner (owner, 2026-09-24)
+
+This is the first unattended run. Two evenings of remembering to open a page
+is how a silent failure gets missed on exactly the days that count. So **every
+run pushes a notification**, to a Slack incoming webhook or by email. The owner
+places the webhook or the credential. Build for Slack first, with email behind
+the same interface if it costs little.
+
+**Three fields, in this order, readable from the notification preview:**
+1. **Did it run?** One of `ok`, `stale_stopped` or `error`, with the target
+   close.
+2. **Did the proposal produce orders?** In dry run, say so explicitly: "dry
+   run: N orders proposed, $X gross, none sent". It must never read as "0
+   orders". When live: orders sent, fills, and any guard that fired.
+3. **Staleness.** The worst input and how many sessions it is behind. On
+   `stale_stopped`, every failing input.
+
+Requirements:
+- **Notify on every run, including clean ones.** Silence has to mean
+  something, and the owner learns to expect one message per session. A run
+  that never starts cannot send anything, so the absence of the evening
+  message is the alarm. State in the report the time by which the message
+  should arrive.
+- **Notify on unexpected errors too.** Wrap the whole job so an exception
+  still sends `error`, with the exception type and a one-line reason. Scrub
+  the reason: no connection string, key, token or webhook URL may reach the
+  message. Test it with an exception whose text contains a fake DB URL.
+- **The webhook URL is a credential.** It goes in `EFB_NOTIFY_SLACK_WEBHOOK_URL`,
+  listed in `.env.example` with an empty value, set on the cron service only,
+  and never printed, logged or stored in `efb`. Extend the credential check to
+  cover it.
+- **A failed send is recorded, not silent.** It happens after the proposal and
+  orders, never before, so it cannot block or roll back the run. Record
+  `notify_failed` in `run_status` and exit nonzero, so Render marks the cron
+  run failed.
+- **Before the gate evenings**, the owner receives one test notification from
+  the deployed cron and confirms it arrived. That confirmation is part of the
+  deploy steps.
+
+**Offer the owner an outside check that alerts on a missing run**, and do not
+build it: a free external heartbeat service that the cron pings after
+notifying, and that alerts the owner if no ping arrives by the expected time.
+A check that runs inside Render shares Render's failure modes. Name one
+option, what it needs from the owner and what it costs, and leave the choice
+to the owner.
+
 ### Part 4. The owner's deploy steps, corrected
 
 - **The order is wrong.** Step 1 grants on schema `efb`, which does not exist
@@ -164,6 +221,8 @@ Requirements:
   EXISTS efb` on first run. A DML-only write role fails on that statement. If
   it is there, either take it out of the runtime path, since provisioning
   covers it, or say which role owns the schema.
+- **Add the notification variable**: `EFB_NOTIFY_SLACK_WEBHOOK_URL`, on the
+  cron only, and the owner's step to confirm the test notification arrived.
 - **Prefer the SQL editor to the management token.** One-time provisioning
   through the Supabase SQL editor needs no account-wide token. Make that the
   primary path, and the token path the alternative.
@@ -193,10 +252,12 @@ genuinely appending, on two closes **the loop itself fetched**, not replayed.
    sessions as `catch_up` in `run_status`. **They are not gate closes.**
 4. **The gate's two closes are two consecutive sessions, each fetched by a run
    on that session's own evening** through the production entry point, with
-   the fetch timestamps stored as evidence. The cleanest way is the Render
-   cron in dry run, after Parts 2 to 4 and the owner's deploy. A local run of
-   the same entry point on two evenings also counts if the owner prefers. The
-   gate is evaluated from the `run_status` and proposal rows in `efb`.
+   the fetch timestamps stored as evidence. **The owner chose the Render cron
+   in dry run**, after Parts 2 to 5 and the owner's deploy. The owner gets two
+   real evenings of the production path, and the flip then changes one
+   variable on a system already watched working. Both evenings' notifications
+   arrive, and they are quoted in the report. The gate is evaluated from the
+   `run_status` and proposal rows in `efb`.
    Report:
    - the two closes and their fetch times;
    - turnover, with its definition;

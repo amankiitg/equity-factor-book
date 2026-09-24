@@ -1960,3 +1960,35 @@ book (Postgres, the staleness stop, deploy steps) continue meanwhile.
 PROJECT_CONTEXT is updated: three decisions are added, share-only is marked
 held, and plan item 4 is resequenced. TASK.md is rewritten as seven parts,
 with the owner's decisions at the top.
+
+---
+
+## 2026-09-24 owner: readings confirmed, gate on Render, every run notifies
+
+The owner confirmed all four readings:
+- Part 2 builds without a costing gate. Its three stops are the guards, and
+  the size stop matters most given the shared free tier.
+- The seed stays in git and new days go in Postgres.
+- Staleness is counted in trading sessions at zero behind the latest close,
+  with shares and sectors on fetch age. The owner's reason: the risk with slow
+  inputs is the fetch quietly stopping.
+- **The gate runs through the Render cron in dry run.** The owner gets the
+  deploy, the page and two real evenings of the production path, and the flip
+  then changes one variable on a system already watched working.
+
+**New, Part 3b: every run pushes a notification** by Slack webhook or email,
+with three fields: whether it ran, whether the proposal produced orders, and
+the staleness. The owner places the credential. My additions:
+- **Notify on clean runs too.** A cron that never starts cannot report that
+  it did not run, so the missing evening message has to be the alarm.
+- **An external heartbeat is offered, not built.** A check inside Render
+  shares Render's failure modes.
+- **Dry run says "N orders proposed, none sent", never "0 orders".**
+- **Unexpected errors still notify**, with a scrubbed reason.
+- **The webhook URL is treated as a credential.**
+- **A failed send is recorded and fails the cron run**, without blocking or
+  rolling back the book.
+- **A test notification must arrive before the gate evenings.**
+
+TASK.md and PROJECT_CONTEXT are updated. DeepSeek had not started the task, so
+the edits land before any work on it.

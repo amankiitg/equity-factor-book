@@ -206,8 +206,17 @@ Settled 2026-09-22. These are no longer open; build on them.
   status, and shows a stale, failed or missing run as a failure, never as the
   last good book. A book pricing Monday's close on Thursday must not trade.
 - **The sanity gate runs on two closes the loop fetched on their own
-  evenings**, through the production entry point. Catch-up and replays do not
-  count.
+  evenings**, through the **Render cron in dry run**, confirmed 2026-09-24.
+  Catch-up and replays do not count. The owner watches the production path
+  run itself for two evenings, and the flip then changes one variable.
+- **Every run notifies the owner** by Slack webhook or email: whether it ran,
+  whether the proposal produced orders, and the staleness. The notice goes out
+  on clean runs too, so a missing evening message is itself the alarm. The
+  owner places the webhook or credential. An external heartbeat check for a
+  missed run is offered, and the choice is the owner's.
+- **Staleness, confirmed:** trading sessions, zero behind the latest close.
+  Shares and sectors are judged on fetch age, because the risk with slow
+  inputs is the fetch quietly stopping.
 - **Whatever is chosen, the executed book's breadth is reduced and every E11
   number meeting an E8 transfer coefficient must say so.** The naive bound is
   `sqrt(460 / N_kept)`; the governing one is `sqrt(n_eff_full / n_eff_kept)`,
