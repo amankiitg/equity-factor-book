@@ -1631,3 +1631,26 @@ stage and reads the book's exposure to the residual. That task appends a
 follow-up entry either way. If confirmed, the residual exposure at the Vasicek
 stage is near zero and E11-F8 joins the class. If refuted, the entry records
 the measured share that shrinkage explains.
+
+
+## 2026-09-23: E11-F8 measured, and the candidate identity is refuted
+
+Decision. The raw-units decomposition the candidate entry asked for is now
+measured, and it refutes the identity hypothesis. The regression of the raw
+beta on the Vasicek stage (cap-weighted, as XS-v1 fits) leaves a residual
+exposure of 0.0555 at min $1,500, not near zero: the Vasicek shrinkage is not
+a common scalar, because its weight is name-specific through the standard
+error, so it removes about half the raw beta rather than rescaling it.
+
+The measured split of the 0.1050 raw beta at min $1,500: the shrinkage step
+accounts for 0.1050 - 0.0555 = 0.0495 (47 percent), the 3-MAD clip accounts
+for 0.1081 - 0.0555 = 0.0526 (50 percent), and standardization and
+orthogonalization contribute zero to three decimals, as the affine algebra
+predicted. The finished descriptor leaves the full 0.1050 as residual, because
+the hedge zeroes it. The full 499-name book carries 0.0936 raw beta, so most of
+the residual is the signal's own tilt, and the drop adds about 0.011.
+
+Reason. E11-F8 does not join F4.1, F7.2 and F8.4. The pre-winsorization column
+was not an identity: the shrinkage does real, name-specific work, and the clip
+does the rest. The numbers are read from live/construction_table.parquet, the
+residual-exposure columns of the min_position_1500 and full_book_499 rows.

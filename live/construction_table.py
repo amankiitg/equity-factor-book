@@ -80,16 +80,18 @@ def _raw_pieces(
 
 
 def _load_beta_stages(names: list[str], root: Path) -> dict[str, Any]:
-    """The raw CAPM beta beside XS-v1's own beta-descriptor pipeline stages.
+    """TS-v1's raw beta beside XS-v1's beta-descriptor pipeline stages.
 
-    The raw beta is the unshrunk 252-day CAPM beta from TS-v1's beta_history,
-    read at its latest date (it ends 2026-09-03; the live extension did not
-    rebuild it). The descriptor stages come from XS-v1's descriptors artifact
-    at its latest date: `value_raw` is the Vasicek-shrunk beta before
-    winsorization and z-scoring, `value_z_orth` is the finished descriptor the
+    The raw beta is TS-v1's unshrunk 252-day CAPM beta, read at its latest
+    date (2026-09-03; the live extension did not rebuild TS-v1). The stages
+    come from XS-v1's descriptors artifact at its latest date (2026-09-21,
+    the close the book is hedged against): `value_raw` is the Vasicek-shrunk
+    beta, `value_winsor` the 3-MAD clipped value, `value_z` the standardized
+    value before orthogonalization, `value_z_orth` the finished descriptor the
     FMP hedge zeroes. A name the descriptor cross-section drops contributes
-    zero to the hedge, so both stages are filled with 0 to match the design's
-    own nan_to_num.
+    zero to the hedge, so every stage is filled with 0 for it, and the name is
+    recorded as a zero fill. Market cap, the weight XS-v1's fit uses, is read
+    at its own latest date (2026-09-03, frozen beside TS-v1).
     """
     beta = pd.read_parquet(root / "models" / "TS-v1" / "beta_history.parquet")
     beta = beta[beta["method"] == "raw"]
@@ -113,22 +115,71 @@ def _load_beta_stages(names: list[str], root: Path) -> dict[str, Any]:
     stamp = pd.to_datetime(beta_desc["date"]).max()
     day = beta_desc.loc[pd.to_datetime(beta_desc["date"]) == stamp].set_index("ticker")
     shrunk_map: dict[str, float] = {}
+    winsor_map: dict[str, float] = {}
+    standardized_map: dict[str, float] = {}
     descriptor_map: dict[str, float] = {}
+    zero_filled: set[str] = set()
     for ticker in names:
         if ticker in day.index:
             shrunk = day.loc[ticker, "value_raw"]
+            winsor = day.loc[ticker, "value_winsor"]
+            standardized = day.loc[ticker, "value_z"]
             descriptor = day.loc[ticker, "value_z_orth"]
             shrunk_map[ticker] = float(shrunk) if pd.notna(shrunk) else 0.0
+            winsor_map[ticker] = float(winsor) if pd.notna(winsor) else 0.0
+            standardized_map[ticker] = (
+                float(standardized) if pd.notna(standardized) else 0.0
+            )
             descriptor_map[ticker] = float(descriptor) if pd.notna(descriptor) else 0.0
         else:
             shrunk_map[ticker] = 0.0
+            winsor_map[ticker] = 0.0
+            standardized_map[ticker] = 0.0
             descriptor_map[ticker] = 0.0
+            zero_filled.add(ticker)
+
+    mcap = pd.read_parquet(root / "processed" / "market_cap.parquet")
+    mcap_latest = pd.to_datetime(mcap["date"]).max()
+    mcap_day = mcap.loc[pd.to_datetime(mcap["date"]) == mcap_latest].set_index(
+        "ticker"
+    )["market_cap"]
+    mcap_map = {
+        ticker: (float(mcap_day.loc[ticker]) if ticker in mcap_day.index else 0.0)
+        for ticker in names
+    }
+
     return {
         "raw": raw_map,
         "filled": filled,
         "shrunk": shrunk_map,
+        "winsor": winsor_map,
+        "standardized": standardized_map,
         "descriptor": descriptor_map,
+        "zero_filled": zero_filled,
+        "mcap": mcap_map,
+        "raw_date": raw_latest,
+        "descriptor_date": stamp,
     }
+
+
+def _cap_weighted_slope(x: np.ndarray, y: np.ndarray, mcap: np.ndarray) -> float:
+    """The slope of y on x under XS-v1's sqrt-cap weights.
+
+    Only names with positive market cap and finite x and y enter. The
+    intercept is not computed: the book is dollar-neutral, so it cancels out
+    of the exposure to the residual.
+    """
+    ok = (mcap > 0) & np.isfinite(x) & np.isfinite(y)
+    if int(ok.sum()) < 3:
+        return 0.0
+    weights = mcap[ok]
+    xc = x[ok]
+    yc = y[ok]
+    xw = float((weights * xc).sum() / weights.sum())
+    yw = float((weights * yc).sum() / weights.sum())
+    num = float((weights * (xc - xw) * (yc - yw)).sum())
+    den = float((weights * (xc - xw) ** 2).sum())
+    return num / den if den > 0 else 0.0
 
 
 def _iterative_floor(full_weights: np.ndarray, nav: float, floor: float) -> np.ndarray:
@@ -157,6 +208,53 @@ def _iterative_floor(full_weights: np.ndarray, nav: float, floor: float) -> np.n
         else:
             break
     return keep
+
+
+def _iterative_combined_floor(
+    full_weights: np.ndarray,
+    nav: float,
+    prices: np.ndarray,
+    dollar_floor: float,
+    share_floor: int,
+) -> np.ndarray:
+    """The combined dollar-and-share floor applied to a fixed point.
+
+    Name i clears the floor when its post-renormalization notional is at
+    least the dollar floor and at least share_floor whole shares, which is
+    the single condition |w_i| * nav >= max(dollar_floor, share_floor *
+    price_i) * S where S is the kept gross. Sorting by the ratio
+    |w_i| / max(dollar_floor, share_floor * price_i) makes the kept set a
+    prefix, so the longest prefix whose last name still clears against its
+    own gross is the fixed point, exactly as for the dollar-only floor.
+    """
+    thresholds = np.maximum(dollar_floor, share_floor * prices)
+    order = np.argsort(-(np.abs(full_weights) / thresholds))
+    running = 0.0
+    keep = np.zeros(len(full_weights), dtype=bool)
+    for position in order:
+        weight = abs(float(full_weights[position]))
+        if (
+            abs(full_weights[position]) * nav
+            >= (running + weight) * thresholds[position]
+        ):
+            running += weight
+            keep[position] = True
+        else:
+            break
+    return keep
+
+
+def _one_pass_combined_floor(
+    full_weights: np.ndarray,
+    nav: float,
+    prices: np.ndarray,
+    dollar_floor: float,
+    share_floor: int,
+) -> np.ndarray:
+    """The combined floor applied once, before any renormalization."""
+    return (np.abs(full_weights) * nav >= dollar_floor) & (
+        np.abs(full_weights) * nav / np.maximum(prices, 1e-12) >= share_floor
+    )
 
 
 def _compute_row(
@@ -225,14 +323,39 @@ def _compute_row(
     # span.
     raw_map = cast(dict[str, float], beta_stages["raw"])
     shrunk_map = cast(dict[str, float], beta_stages["shrunk"])
+    winsor_map = cast(dict[str, float], beta_stages["winsor"])
+    standardized_map = cast(dict[str, float], beta_stages["standardized"])
     descriptor_map = cast(dict[str, float], beta_stages["descriptor"])
+    mcap_map = cast(dict[str, float], beta_stages["mcap"])
     filled_names = cast(set[str], beta_stages["filled"])
+    zero_filled_names = cast(set[str], beta_stages["zero_filled"])
     beta_sub = np.array([raw_map[t] for t in names_sub])
     realized_market_beta = float(w_sub @ beta_sub)
     shrunk_sub = np.array([shrunk_map[t] for t in names_sub])
     descriptor_sub = np.array([descriptor_map[t] for t in names_sub])
     realized_market_beta_shrunk = float(w_sub @ shrunk_sub)
     realized_market_beta_descriptor = float(w_sub @ descriptor_sub)
+
+    # the raw-units decomposition: for each stage, regress the raw beta on the
+    # stage across the full cross-section with XS-v1's cap weights and report
+    # the book's exposure to the residual. Because the book is dollar-neutral
+    # the intercept cancels, so the exposure is w' raw - slope * w' stage.
+    raw_full = np.array([raw_map[t] for t in names])
+    mcap_full = np.array([mcap_map[t] for t in names])
+    residual_exposures: dict[str, float] = {}
+    for stage_name, stage_map in (
+        ("shrunk", shrunk_map),
+        ("winsor", winsor_map),
+        ("standardized", standardized_map),
+        ("descriptor", descriptor_map),
+    ):
+        stage_full = np.array([stage_map[t] for t in names])
+        slope = _cap_weighted_slope(stage_full, raw_full, mcap_full)
+        stage_sub = np.array([stage_map[t] for t in names_sub])
+        residual_exposures[stage_name] = float(
+            w_sub @ beta_sub - slope * (w_sub @ stage_sub)
+        )
+
     not_filled = np.array([t not in filled_names for t in names_sub])
     n_beta_filled = int((~not_filled).sum())
     if not_filled.sum():
@@ -241,6 +364,15 @@ def _compute_row(
         )
     else:
         realized_market_beta_ex_fills = float("nan")
+    not_zero_filled = np.array([t not in zero_filled_names for t in names_sub])
+    n_beta_zero_filled = int((~not_zero_filled).sum())
+    if not_zero_filled.sum():
+        realized_market_beta_ex_zero_fills = float(
+            (w_sub[not_zero_filled] @ beta_sub[not_zero_filled])
+            / np.abs(w_sub[not_zero_filled]).sum()
+        )
+    else:
+        realized_market_beta_ex_zero_fills = float("nan")
     if not_filled.sum() > 1:
         corr_raw_vs_descriptor = float(
             np.corrcoef(beta_sub[not_filled], descriptor_sub[not_filled])[0, 1]
@@ -307,9 +439,15 @@ def _compute_row(
         "realized_market_beta": realized_market_beta,
         "n_beta_filled": n_beta_filled,
         "realized_market_beta_ex_fills": realized_market_beta_ex_fills,
+        "n_beta_zero_filled": n_beta_zero_filled,
+        "realized_market_beta_ex_zero_fills": realized_market_beta_ex_zero_fills,
         "realized_market_beta_shrunk": realized_market_beta_shrunk,
         "realized_market_beta_descriptor": realized_market_beta_descriptor,
         "corr_raw_vs_descriptor": corr_raw_vs_descriptor,
+        "residual_exposure_shrunk": residual_exposures["shrunk"],
+        "residual_exposure_winsor": residual_exposures["winsor"],
+        "residual_exposure_standardized": residual_exposures["standardized"],
+        "residual_exposure_descriptor": residual_exposures["descriptor"],
         "median_share_count": median_shares,
         "p10_share_count": p10_shares,
         "p90_tail_driver": driver,
@@ -425,12 +563,18 @@ def build_table(
         rows.append(row)
         per_name_rows.extend(row_names)
 
-    dollar_keep = _iterative_floor(full_weights, nav, 1500.0)
     prices_full = np.array([close.get(t, 0.0) for t in names])
-    share_keep = (
-        np.abs(full_weights) * nav / np.maximum(prices_full, 1e-12)
-    ) >= MIN_SHARES_ROW
-    two_part, two_part_names = _compute_row(
+
+    # the two-part floor, one pass and at its fixed point. Pre and post mean
+    # the same thing here as on every dollar row: one-pass versus the
+    # fixed-point iteration of the combined dollar-and-share condition.
+    two_pass_keep = _one_pass_combined_floor(
+        full_weights, nav, prices_full, 1500.0, MIN_SHARES_ROW
+    )
+    two_fixed_keep = _iterative_combined_floor(
+        full_weights, nav, prices_full, 1500.0, MIN_SHARES_ROW
+    )
+    two_pre, _two_pre_names = _compute_row(
         names,
         alpha_vec,
         design,
@@ -441,24 +585,123 @@ def build_table(
         beta_stages,
         nav,
         n_eff_full,
-        dollar_keep & share_keep,
+        two_pass_keep,
         full_weights,
         signal_z,
         "two_part_floor_1500_20shares",
         True,
     )
-    # pre is the $1,500 dollar floor alone; post is dollar floor plus the
-    # 20-share leg, so the share leg's effect on breadth and p90 is visible.
-    two_part["n_kept_pre_iteration"] = int(dollar_keep.sum())
-    two_part["n_kept_post_iteration"] = two_part["n_kept"]
-    two_part["quant_error_p90_pre_iteration"] = rows[0][
-        "quant_error_p90_post_iteration"
-    ]
-    two_part["quant_error_p90_post_iteration"] = two_part[
+    two_post, two_post_names = _compute_row(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        full_weights,
+        close,
+        beta_stages,
+        nav,
+        n_eff_full,
+        two_fixed_keep,
+        full_weights,
+        signal_z,
+        "two_part_floor_1500_20shares",
+        True,
+    )
+    two_post["n_kept_pre_iteration"] = two_pre["n_kept"]
+    two_post["n_kept_post_iteration"] = two_post["n_kept"]
+    two_post["quant_error_p90_pre_iteration"] = two_pre["quant_error_p90_pct_of_target"]
+    two_post["quant_error_p90_post_iteration"] = two_post[
         "quant_error_p90_pct_of_target"
     ]
-    rows.append(two_part)
-    per_name_rows.extend(two_part_names)
+    rows.append(two_post)
+    per_name_rows.extend(two_post_names)
+
+    # the flagged share-only floor: min 20 shares, no dollar leg, at its fixed
+    # point. It tests whether the $1,500 leg does any work once the share leg
+    # bounds the per-name rounding error.
+    share_only_pass = (
+        np.abs(full_weights) * nav / np.maximum(prices_full, 1e-12)
+    ) >= MIN_SHARES_ROW
+    share_only_fixed = _iterative_combined_floor(
+        full_weights, nav, prices_full, 0.0, MIN_SHARES_ROW
+    )
+    share_pre, _share_pre_names = _compute_row(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        full_weights,
+        close,
+        beta_stages,
+        nav,
+        n_eff_full,
+        share_only_pass,
+        full_weights,
+        signal_z,
+        "share_only_20shares",
+        True,
+    )
+    share_post, share_post_names = _compute_row(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        full_weights,
+        close,
+        beta_stages,
+        nav,
+        n_eff_full,
+        share_only_fixed,
+        full_weights,
+        signal_z,
+        "share_only_20shares",
+        True,
+    )
+    share_post["n_kept_pre_iteration"] = share_pre["n_kept"]
+    share_post["n_kept_post_iteration"] = share_post["n_kept"]
+    share_post["quant_error_p90_pre_iteration"] = share_pre[
+        "quant_error_p90_pct_of_target"
+    ]
+    share_post["quant_error_p90_post_iteration"] = share_post[
+        "quant_error_p90_pct_of_target"
+    ]
+    rows.append(share_post)
+    per_name_rows.extend(share_post_names)
+
+    # the full 499-name book as the reference row: no floor, no drop, so it
+    # shows whether the raw-beta residual is the signal's tilt or something
+    # the drop creates.
+    full_keep = np.ones(len(names), dtype=bool)
+    full_row, full_names = _compute_row(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        full_weights,
+        close,
+        beta_stages,
+        nav,
+        n_eff_full,
+        full_keep,
+        full_weights,
+        signal_z,
+        "full_book_499",
+        False,
+    )
+    full_row["n_kept_pre_iteration"] = full_row["n_kept"]
+    full_row["n_kept_post_iteration"] = full_row["n_kept"]
+    full_row["quant_error_p90_pre_iteration"] = full_row[
+        "quant_error_p90_pct_of_target"
+    ]
+    full_row["quant_error_p90_post_iteration"] = full_row[
+        "quant_error_p90_pct_of_target"
+    ]
+    rows.append(full_row)
+    per_name_rows.extend(full_names)
 
     table = pd.DataFrame(rows)
     if store:

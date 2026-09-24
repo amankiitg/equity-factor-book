@@ -1,10 +1,11 @@
 """Sprint E11: the construction table, the owner's decision surface.
 
-The table is seven rows: minimum position size of $1,500 / $2,000 / $3,000 /
+The table is nine rows: minimum position size of $1,500 / $2,000 / $3,000 /
 $5,000 (each applied iteratively to a fixed point), top N by absolute alpha at
-N = 150 and N = 200, and one flagged two-part floor (min $1,500 and min 20
-shares). Each row re-hedges on its own subset, renormalizes to gross 1.0, then
-quantizes.
+N = 150 and N = 200, the flagged two-part floor (min $1,500 and min 20 shares,
+at its fixed point), the flagged share-only floor (min 20 shares, no dollar leg)
+and the full 499-name reference book. Each row re-hedges on its own subset,
+renormalizes to gross 1.0, then quantizes.
 """
 
 from __future__ import annotations
@@ -16,13 +17,15 @@ from live import construction_table as ct
 
 @pytest.mark.slow
 @pytest.mark.integration
-def test_the_table_has_all_seven_rows_and_renormalizes() -> None:
+def test_the_table_has_all_nine_rows_and_renormalizes() -> None:
     table = ct.build_table(store=False)
     assert sorted(table["construction"]) == [
+        "full_book_499",
         "min_position_1500",
         "min_position_2000",
         "min_position_3000",
         "min_position_5000",
+        "share_only_20shares",
         "top_n_150",
         "top_n_200",
         "two_part_floor_1500_20shares",
@@ -63,16 +66,31 @@ def test_the_table_has_all_seven_rows_and_renormalizes() -> None:
     for column in (
         "n_beta_filled",
         "realized_market_beta_ex_fills",
+        "n_beta_zero_filled",
+        "realized_market_beta_ex_zero_fills",
         "realized_market_beta_shrunk",
         "realized_market_beta_descriptor",
         "corr_raw_vs_descriptor",
+        "residual_exposure_shrunk",
+        "residual_exposure_winsor",
+        "residual_exposure_standardized",
+        "residual_exposure_descriptor",
     ):
         assert table[column].notna().all(), column
     # the FMP hedge zeroes XS-v1's own beta descriptor on every row
     assert float(table["realized_market_beta_descriptor"].abs().max()) < 1e-9
-    # the raw CAPM beta the realized-beta column reports is what the
-    # descriptor does not span, so it is strictly larger in magnitude than
-    # the shrunk pre-winsorization value on every row
+    # the descriptor spans none of the raw beta: the residual exposure at the
+    # descriptor stage is the full raw beta (the hedge zeroes the descriptor)
+    assert (
+        float(
+            (table["residual_exposure_descriptor"] - table["realized_market_beta"])
+            .abs()
+            .max()
+        )
+        < 1e-6
+    )
+    # the raw beta is what the descriptor does not span, so it is at least the
+    # magnitude of the shrunk pre-winsorization value on every row
     assert (
         table["realized_market_beta"].abs()
         >= table["realized_market_beta_shrunk"].abs()
@@ -113,16 +131,27 @@ def test_the_iterative_floor_raises_breadth_and_reports_both_p90s() -> None:
 
 @pytest.mark.slow
 @pytest.mark.integration
-def test_the_two_part_floor_is_flagged_and_narrower_than_the_dollar_floor() -> None:
+def test_the_two_part_floor_is_flagged_and_reaches_its_fixed_point() -> None:
     table = ct.build_table(store=False)
     row = table.loc[table["construction"] == "two_part_floor_1500_20shares"].iloc[0]
     assert bool(row["flagged_for_veto"]) is True
-    # the share leg drops names and therefore never adds breadth over the
-    # dollar floor alone
-    assert int(row["n_kept_post_iteration"]) <= int(row["n_kept_pre_iteration"])
-    # the share leg tightens the p90 rounding error
-    assert float(row["quant_error_p90_post_iteration"]) < float(
-        row["quant_error_p90_pre_iteration"]
-    )
-    # the only flagged row is the two-part floor
-    assert int(table["flagged_for_veto"].sum()) == 1
+    # pre is one pass of the combined floor, post is its fixed point; the
+    # iteration only admits names, so post is at least pre, as on the dollar rows
+    assert int(row["n_kept_post_iteration"]) >= int(row["n_kept_pre_iteration"])
+    # the fixed point guarantees every kept name 20 shares in the renormalized
+    # full-book weights; the median share count survives the re-sizing
+    assert float(row["median_share_count"]) >= 20.0
+    # exactly two rows are flagged for the owner's veto
+    assert int(table["flagged_for_veto"].sum()) == 2
+
+
+@pytest.mark.slow
+@pytest.mark.integration
+def test_the_share_only_floor_is_flagged_and_holds_twenty_shares() -> None:
+    table = ct.build_table(store=False)
+    row = table.loc[table["construction"] == "share_only_20shares"].iloc[0]
+    assert bool(row["flagged_for_veto"]) is True
+    # the share-only fixed point keeps at least the one-pass set
+    assert int(row["n_kept_post_iteration"]) >= int(row["n_kept_pre_iteration"])
+    # the median kept name holds at least 20 shares
+    assert float(row["median_share_count"]) >= 20.0

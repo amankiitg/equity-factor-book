@@ -204,22 +204,61 @@ def _render_frame(title: str, builder) -> None:
         st.caption(f"No data yet: {exc}")
 
 
+def _construction_label_from_fields(proposal: dict) -> str:
+    """The label text, generated only from the proposal's stored fields."""
+    kind = proposal.get("construction")
+    floor_dollars = proposal.get("construction_floor_dollars")
+    floor_shares = proposal.get("construction_floor_shares")
+    top_n = proposal.get("construction_top_n")
+    iterated = bool(proposal.get("floor_iterated"))
+    if kind == "min_position":
+        label = f"min position ${floor_dollars:,.0f}"
+    elif kind == "two_part":
+        label = f"min ${floor_dollars:,.0f} and {int(floor_shares)} shares"
+    elif kind == "share_only":
+        label = f"min {int(floor_shares)} shares"
+    elif kind == "top_n":
+        label = f"top {int(top_n)} by absolute alpha"
+    else:
+        label = str(kind)
+    if iterated:
+        label += " (iterated to a fixed point)"
+    else:
+        label += " (one pass, not iterated)"
+    return label
+
+
 def construction_label() -> dict:
-    """Which construction the stored proposal renders, and its parameters."""
+    """The stored proposal's construction, derived from its own fields.
+
+    The label is never asserted beside the artifact: if the proposal does not
+    record its construction, the page says so and does not fill the gap from
+    the registry or the table.
+    """
     proposal = load_latest_proposal()
-    construction = f"min position ${proposal['min_position_dollars']:,.0f}"
+    recorded = "construction" in proposal
+    label = (
+        _construction_label_from_fields(proposal)
+        if recorded
+        else "construction parameters not recorded in this artifact"
+    )
     return {
         "as of (close)": proposal["as_of"],
-        "construction on disk": construction,
-        "n names kept": proposal["n_kept"],
-        "n names dropped": proposal["n_dropped"],
-        "kept gross before renormalization": f"{proposal['kept_gross']:.4f}",
+        "construction recorded": recorded,
+        "construction on disk": label,
+        "n names kept": proposal.get("n_kept"),
+        "n names dropped": proposal.get("n_dropped"),
+        "kept gross": proposal.get("kept_gross"),
+        "kept gross before renormalization": proposal.get("kept_gross_before_renorm"),
+        "kept idio share": proposal.get("kept_idio_share"),
+        "kept max exposure": proposal.get("kept_max_abs_exposure"),
+        "code commit": proposal.get("code_commit"),
         "run state": dry_run_state(),
     }
 
 
 def construction_selector() -> None:
-    """Page through the seven books the construction table computed."""
+    """Page through the nine books the construction table computed."""
     table = load_construction_table()
     weights = load_construction_weights()
     labels = table["construction"].tolist()
@@ -345,17 +384,35 @@ def render() -> None:
         st.caption(f"No data yet: {exc}")
         return
     st.markdown("### What is on screen")
-    st.markdown(
-        f"The stored dry-run proposal is the book for the **{label['as of (close)']}** "
-        f"close, sized at **{label['construction on disk']}**, "
-        f"**{label['n names kept']}** names kept and "
-        f"**{label['n names dropped']}** dropped, kept gross before "
-        f"renormalization **{label['kept gross before renormalization']}**. "
-        f"Run state: **{label['run state']}**. "
-        "The selector below pages through the seven books the construction "
-        "table computed, so the page is the decision surface, not a single "
-        "arbitrary book."
-    )
+    if label["construction recorded"]:
+        st.markdown(
+            f"The stored dry-run proposal is the book for the "
+            f"**{label['as of (close)']}** close, "
+            f"**{label['construction on disk']}**, "
+            f"**{label['n names kept']}** names kept and "
+            f"**{label['n names dropped']}** dropped, kept gross "
+            f"**{label['kept gross before renormalization']:.4f}** before and "
+            f"**{label['kept gross']:.4f}** after renormalization. "
+            f"Run state: **{label['run state']}**. "
+            "The selector below pages through the nine books the construction "
+            "table computed, so the page is the decision surface, not a single "
+            "arbitrary book."
+        )
+    else:
+        st.markdown(
+            f"The stored dry-run proposal is the book for the "
+            f"**{label['as of (close)']}** close, and its construction is "
+            f"**{label['construction on disk']}**. "
+            f"**{label['n names kept']}** names kept, "
+            f"**{label['n names dropped']}** dropped, kept gross "
+            f"**{label['kept gross']:.4f}**, kept idio share "
+            f"**{label['kept idio share']:.4f}**, kept max exposure "
+            f"**{label['kept max exposure']:.4f}**. "
+            f"Run state: **{label['run state']}**. "
+            "The page does not fill the missing fields from the registry or "
+            "the table. The selector below pages through the nine books the "
+            "construction table computed."
+        )
     construction_selector()
     try:
         answer = answer_panel()

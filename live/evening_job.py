@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
 from datetime import date
 from pathlib import Path
 
@@ -52,6 +53,26 @@ INPUT_ARTIFACTS = (
     "alpha/summary.parquet",
     "processed/sectors.parquet",
 )
+
+
+def _git_commit() -> str:
+    """The HEAD the proposal was built from, or a marker when git is absent.
+
+    The proposal records the code commit so the page can say which build
+    produced the book; on a deployment without git the field is honest about
+    being unknown rather than guessed.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=ROOT,
+        )
+        return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
 
 
 def load_spy_universe(data_root: Path = DATA_ROOT) -> tuple[pd.DataFrame, Path]:
@@ -351,12 +372,14 @@ def build_proposal(
     min_pos_dollars = registry.min_position_dollars(reg, MODEL_VERSION)
     n_dropped = 0
     n_selected = len(names)
+    kept_gross_before_renorm = float(np.abs(weights).sum())
     if min_pos_dollars > 0:
         keep = np.abs(weights) * nav >= min_pos_dollars
         n_dropped = int((~keep).sum())
         n_selected = int(keep.sum())
         idx = np.where(keep)[0]
         if n_dropped > 0 and len(idx) > 0:
+            kept_gross_before_renorm = float(np.abs(weights[idx]).sum())
             w_sub = sizing.procedure_6_3_robust(
                 alpha_vec[idx],
                 design[idx],
@@ -406,6 +429,13 @@ def build_proposal(
         "n_dropped": n_dropped,
         "min_position_dollars": min_pos_dollars,
         "min_position_pct_of_nav": min_pos_dollars / nav if nav else 0.0,
+        "construction": "min_position",
+        "construction_floor_dollars": min_pos_dollars,
+        "construction_floor_shares": None,
+        "construction_top_n": None,
+        "floor_iterated": False,
+        "code_commit": _git_commit(),
+        "kept_gross_before_renorm": kept_gross_before_renorm,
         "n_eff_full": full_decomposition["n_eff"],
         "n_eff_kept": kept_decomposition["n_eff"],
         "kept_gross": kept_decomposition["gross"],

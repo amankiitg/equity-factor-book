@@ -179,6 +179,15 @@ def test_build_proposal_stores_the_minimum_position_and_breadth() -> None:
     # the new quantization distribution is on the kept book only
     assert manifest["quantization"]["long_targets_rounding_to_zero"] == 0
     assert manifest["quantization"]["short_targets_rounding_to_zero"] == 0
+    # the construction is recorded in the artifact so the page can label it
+    # from the stored fields rather than asserting a label beside it
+    assert manifest["construction"] == "min_position"
+    assert manifest["construction_floor_dollars"] == pytest.approx(5000.0)
+    assert manifest["construction_floor_shares"] is None
+    assert manifest["construction_top_n"] is None
+    assert manifest["floor_iterated"] is False
+    assert isinstance(manifest["code_commit"], str) and manifest["code_commit"]
+    assert 0.0 < manifest["kept_gross_before_renorm"] < manifest["kept_gross"]
 
 
 @pytest.mark.slow

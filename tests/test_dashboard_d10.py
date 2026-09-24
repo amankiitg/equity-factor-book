@@ -178,17 +178,104 @@ def test_answer_panel_is_the_null_book_verdict(
     assert answer["factor-neutral IC, horizon 21"] == pytest.approx(-0.003094)
 
 
-def test_construction_label_names_the_construction_and_dry_run(
+def test_construction_label_reports_missing_construction_fields(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _proposal(tmp_path)
     monkeypatch.setattr(d10, "PROPOSAL_DIR", tmp_path / "proposals")
     monkeypatch.setattr(d10, "STATE_DIR", tmp_path / "state")
     label = d10.construction_label()
-    assert label["construction on disk"] == "min position $5,000"
+    assert label["construction recorded"] is False
+    assert label["construction on disk"] == (
+        "construction parameters not recorded in this artifact"
+    )
     assert label["n names kept"] == 27
     assert label["n names dropped"] == 472
     assert label["run state"] == "dry run (the clock has not started)"
+
+
+def _construction_manifest(
+    as_of: str, iterated: bool, n_kept: int, gross_before: float
+) -> dict:
+    return {
+        "as_of": as_of,
+        "construction": "min_position",
+        "construction_floor_dollars": 5000.0,
+        "construction_floor_shares": None,
+        "construction_top_n": None,
+        "floor_iterated": iterated,
+        "n_kept": n_kept,
+        "n_dropped": 499 - n_kept,
+        "kept_gross_before_renorm": gross_before,
+        "kept_gross": 1.0,
+        "kept_idio_share": 1.0,
+        "kept_max_abs_exposure": 0.0,
+    }
+
+
+def _write_proposal(tmp_path: Path, manifest: dict) -> None:
+    proposal_dir = tmp_path / "proposals"
+    proposal_dir.mkdir(parents=True, exist_ok=True)
+    (proposal_dir / f"proposal_{manifest['as_of']}.json").write_text(
+        json.dumps(manifest)
+    )
+    weights = pd.DataFrame(
+        {
+            "ticker": ["AAA", "BBB"],
+            "weight": [0.01, -0.02],
+            "side": ["long", "short"],
+            "z": [1.5, -2.0],
+            "alpha": [1e-6, -2e-6],
+        }
+    )
+    weights.to_parquet(
+        proposal_dir / f"proposal_{manifest['as_of']}.parquet", index=False
+    )
+
+
+def test_the_label_is_generated_from_the_stored_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_proposal(
+        tmp_path,
+        _construction_manifest(
+            "2026-09-21", iterated=True, n_kept=99, gross_before=0.5315
+        ),
+    )
+    monkeypatch.setattr(d10, "PROPOSAL_DIR", tmp_path / "proposals")
+    label = d10.construction_label()
+    assert label["construction recorded"] is True
+    assert label["construction on disk"] == (
+        "min position $5,000 (iterated to a fixed point)"
+    )
+    assert label["n names kept"] == 99
+
+
+def test_two_proposals_with_the_same_floor_render_two_labels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(d10, "PROPOSAL_DIR", tmp_path / "proposals")
+    _write_proposal(
+        tmp_path,
+        _construction_manifest(
+            "2026-09-20", iterated=False, n_kept=27, gross_before=0.2734
+        ),
+    )
+    pre = d10.construction_label()
+    _write_proposal(
+        tmp_path,
+        _construction_manifest(
+            "2026-09-21", iterated=True, n_kept=99, gross_before=0.5315
+        ),
+    )
+    post = d10.construction_label()
+    assert pre["construction on disk"] != post["construction on disk"]
+    assert "not iterated" in pre["construction on disk"]
+    assert "iterated to a fixed point" in post["construction on disk"]
+    assert pre["n names kept"] == 27
+    assert post["n names kept"] == 99
+    assert pre["kept gross before renormalization"] == pytest.approx(0.2734)
+    assert post["kept gross before renormalization"] == pytest.approx(0.5315)
 
 
 def test_proposal_names_panel_reads_weights_and_reasons(
