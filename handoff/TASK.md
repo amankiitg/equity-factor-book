@@ -1,6 +1,135 @@
-task_id: e11-two-part-fixed-point-then-pick
+task_id: e11-store-path-and-ledger-fix
 status: ready
-base_commit: 685920b
+base_commit: 190496d
+
+## The owner can pick now. Three things run alongside the choice.
+
+The E11-F9 cycle was good work. The two-part row is at its fixed point, the
+beta is split in raw-beta units, D10 derives its label from the artifact and
+names the stale book honestly, the status report is corrected, and the
+Verification section is complete. **The choice no longer waits on you.** None
+of the three items below changes the ranking of the candidate books, so they
+run in parallel with the owner's decision. **Do not choose. Do not re-derive
+Guard 1. Do not change the live path's construction until the owner picks.**
+
+### E11-F8, the ledger follow-up overclaims: append a correction
+
+The 2026-09-23 follow-up entry in `docs/hygiene_ledger.md` has three problems.
+The ledger is append-only, so fix them with a new dated entry that carries the
+old values beside the new ones. Never edit the existing entry.
+
+1. **Arithmetic.** The entry says shrinkage accounts for
+   `0.1050 - 0.0555 = 0.0495 (47 percent)`. The quantity in the stored columns
+   is the residual exposure at each stage, which is the part of the raw beta
+   that stage fails to carry. The shrinkage step's increment is therefore
+   **0.0555, 53 percent**, which is what REPORT.md's own table says. The three
+   increments sum to the total only this way:
+   `0.0555 + 0.0526 - 0.0031 = 0.1050`. The ledger's `0.0495 + 0.0526` is
+   0.1021 and does not.
+2. **"Standardization contributes zero to three decimals" is not what the
+   columns show.** `residual_exposure_winsor` is 0.1081 and
+   `residual_exposure_standardized` is 0.1050 at min $1,500: -0.0031 there,
+   -0.0034 at $2,000, -0.0047 at $3,000 and -0.0031 on the full book, but
+   exactly zero on min $5,000 and both top-N rows. The pattern across rows is
+   part of what to explain. A regression residual is invariant to an
+   affine change of the regressor on the same sample with the same weights. A
+   nonzero increment therefore means the standardized stage is not an affine
+   map of the clipped stage on that sample: a different cross-section, a
+   different weighting, or orthogonalization folded in. Find which, and say so.
+   It is small, but it is the prediction E11-F8 told you to check, and it came
+   back nonzero.
+3. **"Refuted" is not established.** The Vasicek-stage increment regresses
+   TS-v1's raw beta, frozen at 2026-09-03, on XS-v1's shrunk beta at
+   2026-09-21. It therefore mixes three things: the shrinkage, the gap between
+   the TS-v1 and XS-v1 estimators, and twelve sessions of window drift.
+   REPORT.md says this; the ledger entry drops it and asserts a mechanism
+   ("name-specific through the standard error") that nothing measured. Under
+   the identity hypothesis, the whole 0.0555 could be estimator gap. The
+   correction entry records the candidate as **undetermined**, with 0.0555 as
+   an **upper bound** on what shrinkage contributes. The clip's 0.0526 is a
+   clean measurement, because both of its stages are XS-v1 at the same date.
+
+Then split the 0.0555. Recompute XS-v1's pre-shrinkage beta at 2026-09-21
+under the frozen XS-v1 specification, **as a diagnostic only**: no artifact is
+restated, nothing is stored as a model input, and the specification does not
+change. Insert it as a stage between raw and Vasicek. The raw-to-XS-v1-raw
+increment is the estimator and date gap, and the XS-v1-raw-to-Vasicek
+increment is the shrinkage. Append a second ledger entry with the verdict:
+E11-F8 joins the class if the shrinkage increment is near zero, and is
+refuted otherwise. Either way, record the measured shrinkage share.
+
+### E11-F11: the live store is wired to the path the LOG ruled out
+
+LOG.md at line 1064, and the TASK.md B1 amendment, settled the connection as
+**direct Postgres under `EFB_SUPABASE_DB_URL` with `EFB_DB_SCHEMA=efb`, not
+PostgREST**. `render.yaml` and `.env.example` carry `EFB_SUPABASE_URL` and
+`EFB_SUPABASE_SECRET_KEY`, which are the PostgREST path. Neither file has
+`EFB_SUPABASE_DB_URL`. The owner's deploy steps in REPORT.md use the PostgREST
+variables on both services.
+
+This matters for two reasons. PostgREST serves only schemas added to "Exposed
+schemas" in the project's API settings. On the project shared with
+credit-trading-lab, that is a dashboard change that widens the credit lab's
+public API surface, which is a listed stop condition. And the secret key is
+the service-role key: it bypasses row-level security on the **whole shared
+project**, including credit-trading-lab's data, and it would sit on a public
+web service.
+
+1. State, with the code line as evidence, which connection `live/store.py` and
+   `live/dashboard_app.py` actually use, and which schema the one-time setup
+   creates.
+2. If it is PostgREST, move both to `EFB_SUPABASE_DB_URL` and
+   `EFB_DB_SCHEMA=efb`, as decided. If that cannot work without a dashboard
+   change or a shared-role grant, **stop and report**; the owner moves to Neon
+   or Render Postgres.
+3. The dashboard only reads. Propose the least-privilege credential for it and
+   let the owner decide. Do not create roles or grants on the shared project
+   yourself.
+4. Say what uses `EFB_SUPABASE_ACCESS_TOKEN`. A management token is
+   account-wide, so confirm it never goes to either Render service.
+5. `EFB_DRY_RUN` is how the owner will flip the clock on Render. **Unset,
+   empty or unparseable must resolve to dry run**, and so must any spelling
+   other than an explicit false. Add a test over those cases and paste it.
+   Starting the clock by accident through a missing variable is the failure
+   this guards.
+
+Update the owner's deploy steps in REPORT.md to match.
+
+### E11-F12: the floor is checked on weights that are not traded
+
+REPORT.md: "every kept name holds at least 20 shares in the renormalized
+full-book weights ... but the re-sizing on the kept subset moves about one name
+in ten below 20 shares." So the fixed point is computed on weights from before
+the subset is re-sized and re-hedged, and the book that trades is a different
+vector. The same is presumably true of the dollar rows.
+
+For this task, **measure only**. On every row, report the count of kept names
+that end below their floor in the **final** weights (after re-sizing,
+re-hedging, renormalizing and quantizing), with the worst shortfall. Do not
+change the table.
+
+After the owner picks, the live path implements the chosen construction with
+the floor enforced on the final weights, iterated to a fixed point: drop,
+re-size, re-hedge, check. Guard 1 is then derived from those weights. That is
+the next task, not this one.
+
+### Also
+
+- The report's table dropped total error, net, long/short counts, raw beta,
+  post-hedge exposure and idio share for the two new rows. The parquet has
+  them. The report is where the owner reads the decision, so it carries every
+  decision column, as E11-F7 already required.
+- The previous full-run count recorded in LOG.md is 692, not 682. 695 still
+  clears it.
+- "Neither is close" is the owner's judgment to make. Report the ratio, and
+  leave the word "close" to the owner.
+
+### Stop only if
+
+The standing stop conditions below apply, plus: E11-F11 item 2 needs a
+dashboard change or a grant on the shared project.
+
+---
 
 ## One row to its fixed point, the beta split in the right units, then the owner picks
 

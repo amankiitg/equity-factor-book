@@ -29,9 +29,9 @@ that returns a negative answer has done its job.
 ## State
 
 Ten sprints built. E11 is a dry-run loop waiting on the construction choice,
-and E12's engine has not been started. HEAD 685920b. As reported at that
-commit: `make test` 692 passed, 1 skipped (full path 469.56s; fast path 667 in
-23.51s), `make lint` clean, `make verify-evidence` clean. Five model versions
+and E12's engine has not been started. HEAD 190496d. As reported at that
+commit: `make test` 695 passed, 1 skipped (full path 474.60s; fast path 669 in
+25.98s), `make lint` clean, `make verify-evidence` clean. Five model versions
 in `data/models/registry.json`. XS-v1 is champion and carries the live
 `min_position_dollars`, currently 5000. TS-v1 is diagnostic only and
 ineligible. Dashboard tabs D0 to D10 exist; D11 does not. `data/VERSION.json`
@@ -242,13 +242,17 @@ Sequenced 2026-09-23. Each numbered item is roughly one TASK.md or less.
    not after the gate. `dry_run` stays true throughout.
    **The owner's decision rule, stated before the numbers: if the two-part
    floor's n_eff is close to min $1,500's, it wins outright.**
-   Status at 685920b: the columns are restored. The rule does not fire on the
-   one-pass numbers, 52.82 against 115.46. The two-part row is the only row not
-   at its fixed point, so it is re-run first (E11-F9). D10 renders locally with
-   a selector over all seven books and is not deployed.
+   Status at 190496d: **the owner's choice is unblocked.** Every row is at its
+   fixed point. The two-part floor's n_eff is 83.07 and share-only 20 shares'
+   is 85.69, against min $1,500's 115.46. **The decision surface is the local
+   D10** (`make dashboard`). Render builds a different page,
+   `live/dashboard_app.py`, which reads Supabase and has no selector, so the
+   Render deploy moves to item 4c and no longer gates the choice.
 4. **E11 to completion**, in this order and no other:
-   a. Guard 1 re-derived against the **chosen** construction's
-      post-renormalization weights.
+   a. The live path implements the **chosen** construction, with the floor
+      enforced on the final traded weights (after re-sizing, re-hedging,
+      renormalizing and quantizing) and iterated to a fixed point (E11-F12).
+      Guard 1 is then re-derived against those weights.
    b. The sanity gate rerun on two real closes with `dry_run` still true.
    c. The Render app and D10 already deployed at item 3; confirm it reads from
       Supabase rather than local state. A page that has never displayed a real

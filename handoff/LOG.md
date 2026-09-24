@@ -1677,3 +1677,87 @@ read a stale task, and that is the failure this protocol exists to prevent.
 The committed TASK.md was still `e11-live-data-and-clock-restart` three tasks
 late. PROJECT_CONTEXT's working lessons gain rule 23 and the identity check.
 This commit is the first under the rule.
+
+---
+
+## 2026-09-24 review: e11-two-part-fixed-point-then-pick at 190496d
+
+Good cycle, and the first with a complete Verification section. Item 1 now
+answers yes and explains why, the skipped test is named, and the diffstat is
+pasted raw. The D10 header now shows the stale proposal as what it is:
+"construction parameters not recorded in this artifact", 27 names, gross
+0.2734. The report is honest that Render builds a different page. No
+stored-criteria file moved.
+
+**The owner can pick now.** Every row is at its fixed point. The report's
+table dropped the columns the choice turns on, so these are read directly from
+`live/construction_table.parquet` (reading stored values, no recomputation).
+"IR vs full" is 1 / governing breadth.
+
+| construction | names | n_eff | IR vs full | total error | p90 | max weight | raw beta |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| min $1,500 | 252 | 115.46 | 0.857 | 3.30% | 11.93% | 3.95% | 0.105 |
+| min $2,000 | 208 | 102.77 | 0.808 | 2.64% | 9.08% | 4.20% | 0.107 |
+| share-only 20sh | 188 | 85.69 | 0.738 | 1.25% | 3.44% | 4.68% | 0.125 |
+| two-part 1500+20sh | 172 | 83.07 | 0.727 | 1.06% | 3.22% | 4.75% | 0.125 |
+
+The other rows are dominated on both n_eff and total error. Share-only beats
+min $3,000 (85.69 against 84.52, 1.25% against 1.90%), min $5,000 and top-N
+150. Min $2,000 beats top-N 200. Every row nets to within 0.8% of gross, and
+the two new rows are balanced at 84/88 and 89/99 long/short.
+
+The owner's rule compares n_eff: share-only is at 74% of min $1,500 and
+two-part at 72%. In expected IR, which scales with sqrt(n_eff), that is 86%
+and 85%, so share-only gives up about 14% of IR against min $1,500 in
+exchange for 2.6x less total error and 3.5x less tail. The optional veto row
+answers its own question: the $1,500 leg of the two-part floor costs 2.6
+n_eff and buys 0.19 points of total error. Whether 74% (or 86% in IR) is
+"close" is the owner's call. The report's "neither is close" should have left
+it to the owner.
+
+**E11-F8's ledger follow-up overclaims, and needs a correction entry.** There
+are three problems:
+- The arithmetic: shrinkage is recorded as 0.0495 (47%). The stored
+  increment is 0.0555 (53%), which is what the report's own table shows, and
+  only 0.0555 + 0.0526 - 0.0031 sums to 0.1050.
+- "Standardization contributes zero to three decimals" is false on six rows
+  (-0.0031 to -0.0047). A residual is invariant to an affine change of the
+  regressor, so a nonzero increment means the stages differ in sample or
+  weighting, and that needs finding.
+- "Refuted" is not established. The Vasicek increment regresses TS-v1's beta
+  at 2026-09-03 on XS-v1's shrunk beta at 2026-09-21, so it mixes shrinkage,
+  estimator gap and window drift, and the ledger asserts a standard-error
+  mechanism that nothing measured.
+
+The candidate is **undetermined**: 0.0555 is an upper bound on what shrinkage
+contributes. The clip's 0.0526 is clean. A diagnostic recomputation of XS-v1's
+pre-shrinkage beta at 2026-09-21 splits the rest, without restating anything.
+
+**E11-F11, new: the live store is wired to the path the LOG ruled out.** Line
+1064 settled on direct Postgres under `EFB_SUPABASE_DB_URL`. But
+`render.yaml` and `.env.example` carry only `EFB_SUPABASE_URL` and
+`EFB_SUPABASE_SECRET_KEY`, which are PostgREST, and the owner's deploy steps
+use them. PostgREST needs schema `efb` exposed on the shared project, which is
+a stop condition. The secret key is the service-role key: it bypasses
+row-level security across the whole shared project, credit-trading-lab
+included, and the steps would put it on a public web service. **Owner: do not
+deploy from the current steps.** Also asked for: what uses
+`EFB_SUPABASE_ACCESS_TOKEN`, and a test that an unset or unparseable
+`EFB_DRY_RUN` resolves to dry run, since that variable is the Render flip.
+
+**E11-F12, new: the floor is checked on weights that are not traded.** The
+report says re-sizing the kept subset moves about one name in ten below 20
+shares, which is why p90 lands at 3.22% rather than under the 2.5% bound. The
+fixed point is computed before the re-size and re-hedge. This task only
+measures the count of names below floor in the final weights on every row.
+Whatever the owner picks is then implemented with the floor enforced on the
+final weights, and that is new step 4a in PROJECT_CONTEXT, ahead of Guard 1.
+It may move n_eff by a few percent on the floor rows. It is unlikely to
+reorder the candidates, since the tail rows sit within 2.6 n_eff of each
+other and 30 below min $1,500.
+
+PROJECT_CONTEXT is updated. The State section is at 190496d with 695 tests.
+Plan item 3 is unblocked, with the local D10 as the decision surface and the
+Render deploy moved to 4c. Item 4a now enforces the floor on final weights
+before Guard 1. TASK.md is `e11-store-path-and-ledger-fix` at 190496d and runs
+alongside the owner's choice.
