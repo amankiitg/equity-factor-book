@@ -1598,3 +1598,36 @@ data_hash, revisions.previous_data_hash (null -> 210769d6...) and
 revisions.data_hash (210769d6... -> a4c40c67...), and nothing else. n_changed
 stays 0. The E4 hash is unaffected because _registry_as_of_e4 strips the live
 key, and the E5 walkthrough was re-executed so its printed hash matches.
+
+## 2026-09-23: a number that is an identity, and E11-F8 as a candidate fourth instance
+
+Decision. The pattern is recorded as a class. E11-F8 is recorded as a
+candidate member, pending measurement. The class is a number that reads as a
+result but is fixed by the construction of the object it is computed on, so it
+carries no information about the data. There are three recorded instances.
+F8.4's 1.416 is sqrt(2), because a scalar cancels in a relative distance.
+F7.2's neutralized IC is near zero, because neutralizing a signal against a
+design that contains it projects the signal out. F4.1's 0.7970 is the looser
+form of the same error: a threshold written for one estimator was scored on
+another.
+
+The candidate is E11-F8's pre-winsorization beta column in
+live/construction_table.parquet. The report attributes its fall from 0.105
+raw beta to 0.046 to Vasicek shrinkage. But a shrinkage with one common
+weight k is affine, and with net dollar zero it multiplies the book's exposure
+by k without explaining any of it. The ratio of pre-winsorization to raw beta
+is 0.41 to 0.45 on six of seven construction rows (0.36 on top-N 150), which
+is what a near-common k produces. The algebra is the same as F8.4's: a common
+scalar carries no information.
+
+Reason. If E11-F8 confirms, four occurrences make this a class rather than a
+coincidence, and a future reader should check for it. Before reading a number
+as a result, ask whether it would take the same value for any data, or scale
+with a constant fixed upstream. E11-F8 is recorded as a candidate rather than a
+member because the project writes down a mechanism only after a measurement
+supports it. The measurement is the raw-units decomposition in task
+e11-two-part-fixed-point-then-pick, which regresses raw beta on each pipeline
+stage and reads the book's exposure to the residual. That task appends a
+follow-up entry either way. If confirmed, the residual exposure at the Vasicek
+stage is near zero and E11-F8 joins the class. If refuted, the entry records
+the measured share that shrinkage explains.

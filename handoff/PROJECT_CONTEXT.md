@@ -28,12 +28,15 @@ that returns a negative answer has done its job.
 
 ## State
 
-Ten sprints built, E12's engine opening. HEAD c263021. `make test` 595
-passed; `make lint` clean; `make verify-evidence` clean.
-Five model versions in `data/models/registry.json`; XS-v1 is champion, TS-v1 is
-diagnostic only and ineligible. Dashboard tabs D0 to D9 exist; D10 and D11 do
-not. `data/VERSION.json` hashes 143 artifacts at
-`810a1ef6`. `live/` is empty apart from `.gitkeep`.
+Ten sprints built. E11 is a dry-run loop waiting on the construction choice,
+and E12's engine has not been started. HEAD 685920b. As reported at that
+commit: `make test` 692 passed, 1 skipped (full path 469.56s; fast path 667 in
+23.51s), `make lint` clean, `make verify-evidence` clean. Five model versions
+in `data/models/registry.json`. XS-v1 is champion and carries the live
+`min_position_dollars`, currently 5000. TS-v1 is diagnostic only and
+ineligible. Dashboard tabs D0 to D10 exist; D11 does not. `data/VERSION.json`
+hashes 147 artifacts at `c3e0db6f`. `live/` holds the construction table and
+its per-name weights.
 
 Verdicts and headline numbers, all from `sprints/E*/RESULTS.json`:
 
@@ -135,6 +138,42 @@ Settled 2026-09-22. These are no longer open; build on them.
 
 - **E11 trades `idio_momentum` through the full stack**, Procedure 6.3 sizing
   plus the FMP hedge, documented as a null book. **Paper only.**
+- **The book runs indefinitely.** The thirty trading days are E11's first
+  reporting window, not the life of the run: F11.x are evaluated on days 1 to
+  30 and the loop keeps going, so E12 gets a growing panel. Nothing in the loop
+  may assume an end date.
+- **It is hosted on Render**, following the credit-trading-lab pattern: a daily
+  cron plus a light dashboard web service. Render's filesystem is ephemeral, so
+  live state (proposals, orders, fills, reconciliation, NAV, P&L) goes to
+  Supabase; research artifacts stay in git and the evidence snapshot. The full
+  D0 to D9 research dashboard stays **local**; the Render app carries only the
+  live book.
+- **Alpaca is paper only, on an account provably disjoint from
+  credit-trading-lab's**, because E12 attributes from holdings and commingled
+  fills would make neither book's numbers its own. "Live" in this project means
+  live data and a continuously running loop, never real money.
+- **NAV is $1,000,000 paper, final.** Alpaca's paper funding field is capped at
+  "$1 - $1,000,000", confirmed in the dashboard, so a $10m account is closed by a
+  platform limit; documentation suggesting an arbitrary reset balance is stale.
+  **Do not re-raise a higher NAV, and do not propose switching brokers**: that
+  would rewrite the execution layer to solve a sizing problem a parameter solves.
+  Read from the account each run; a failed read fails the run with no orders.
+- **$1m over 499 names cannot be traded as constructed.** $1,941 a name is about
+  ten shares of a $200 stock, so whole-share rounding moved gross by 5.4%, and a
+  $5,000 minimum position left only 27 names at gross 0.27. The book therefore
+  carries either a minimum position size or a top-N-by-alpha construction, chosen
+  by the owner from a measured table. Two facts that constrain any choice: the
+  book must be **renormalized to gross 1.0 after dropping names**, or it is
+  under-invested and misses the vol target; and **N must clear XS-v1's roughly 18
+  factors by a healthy multiple**, or the exact FMP hedge is rank-deficient and
+  the idio book stops being idio.
+- **Whatever is chosen, the executed book's breadth is reduced and every E11
+  number meeting an E8 transfer coefficient must say so.** The naive bound is
+  `sqrt(460 / N_kept)`; the governing one is `sqrt(n_eff_full / n_eff_kept)`,
+  since E8 measured n_eff near 140 against n_names near 460 and N_eff is limited
+  by residual co-movement rather than name count. **Do not quote the naive bound
+  at E12 without the measured one beside it.** This is a documented null book, so
+  no expected return is lost either way.
 - **The 30-day clock restarts on live data, and static days do not count.**
   The 2026-09-22 start is void: the loop ran on the frozen 2026-09-03 close and
   would have produced thirty identical proposals. Prices, descriptors, factor
@@ -166,6 +205,16 @@ reads reports, keeps this file current, helps the owner decide, and writes the
 next task. Every REPORT.md ends with a `## Verification` section per STANDARDS
 rules 19 and 20; a report without it comes back unreviewed.
 
+## Carried items
+
+- **E8's construction stack has no minimum-position concept.** Recorded and then
+  **closed the same day, 2026-09-22**, by the NAV decision: E11 carries a
+  minimum position size as a registry parameter. The residue is small and still
+  open: folding the rule back into E8's construction stack rather than leaving
+  it only in the live path, owned by whatever sprint next revisits construction.
+- **E11's raw beta is now a required line in E12's scope**, promoted from a
+  note by the owner on 2026-09-23. See remaining plan item 5.
+
 ## Reserved decisions
 
 Only the project owner makes these. Set `handoff/TASK.md` to `blocked` with the
@@ -180,29 +229,69 @@ not work around them.
 
 ## Remaining plan
 
-In order. Each numbered item is roughly one TASK.md or less.
+Sequenced 2026-09-23. Each numbered item is roughly one TASK.md or less.
 
-1. ~~The E10 review fixes.~~ **Done 2026-09-22**, two rounds, 27 findings.
-2. ~~The ongoing constituent source.~~ **Done 2026-09-22.** SPY is the source,
-   archived and protected; IVV is a recorded failing source; sector stays on
-   the live Wikipedia page. It fixes membership forward only and reconstructs
-   no history, so RG-Operate item 5 is stood up but not yet positive: applying
-   it means re-running the universe reconstruction, which is reserved.
-2b. **E12's attribution engine on the seed books**, which depends on nothing
-   live. In progress; brought forward from step 4 because steps 3 and 4 are
-   blocked or waiting.
-3. **E11 setup, then the 30-day clock. This is the critical path.** The daily loop is reused from the
-   owner's earlier Credit Trading Lab v8.x: evening proposal, morning execute,
-   Alpaca paper, Render cron, Supabase state, Option A governance, two fail-safe
-   guards. **That code is not in this repository** (`live/` holds only a
-   `.gitkeep`). Ask the owner where it lives before assuming anything about it.
-   E11 needs **30 trading days of calendar time**, so the clock starts as early
-   as possible once the decision is made.
-4. **While E11 accumulates days**, two things that depend on nothing live:
-   build E12's attribution machinery and test it on the seed books' historical
-   returns, so E12 is a run rather than a build on day 30; and write E13, the
-   credit port design note, a document only.
-5. **E12 on the live data** after 30 trading days.
+1. ~~E10 review fixes.~~ Done 2026-09-22, two rounds, 27 findings.
+2. ~~The ongoing constituent source.~~ Done 2026-09-22. SPY archived and
+   protected; IVV a recorded failing source; sector on live Wikipedia.
+3. **The construction choice, gated on two things in parallel.** The table
+   re-run with the six restored breadth and hedge columns, **and** the Render
+   dashboard deployed showing a real book so the owner can look at names,
+   weights, exposures, hedge and trade reasons before choosing rather than
+   after. Resequenced 2026-09-23: the dashboard now comes **before** the choice,
+   not after the gate. `dry_run` stays true throughout.
+   **The owner's decision rule, stated before the numbers: if the two-part
+   floor's n_eff is close to min $1,500's, it wins outright.**
+   Status at 685920b: the columns are restored. The rule does not fire on the
+   one-pass numbers, 52.82 against 115.46. The two-part row is the only row not
+   at its fixed point, so it is re-run first (E11-F9). D10 renders locally with
+   a selector over all seven books and is not deployed.
+4. **E11 to completion**, in this order and no other:
+   a. Guard 1 re-derived against the **chosen** construction's
+      post-renormalization weights.
+   b. The sanity gate rerun on two real closes with `dry_run` still true.
+   c. The Render app and D10 already deployed at item 3; confirm it reads from
+      Supabase rather than local state. A page that has never displayed a real
+      proposal is not confirmed working.
+   d. The owner flips `dry_run` once. **That act starts day 1.**
+   **F11.1 to F11.3 stay open until 30 live days accumulate.**
+5. **E12, built during the 30-day window, not after it.** See the correction
+   below: the engine does **not** exist yet, so this is a build, not a
+   finishing pass. `efb/attribution.py`, holdings-based and returns-based
+   attribution, the seven-way decomposition, the skill test, D11, the memo and
+   the walkthrough, all exercised against the **historical seed books**, with
+   the live panel wired and empty.
+   **Required in E12's spec, owner 2026-09-23: a raw-market-beta line.** E11's
+   kept books carry 0.105 to 0.147 of raw CAPM beta that XS-v1 cannot see; the
+   decomposition is open under E11-F8. XS-v1 books that market P&L as
+   stock-specific return, which is precisely the error E12 exists to catch. So
+   the attribution reports the book's daily raw CAPM beta and its market P&L
+   as a separate line beside XS-v1's factor lines. The skill test is run on
+   specific return both as XS-v1 reports it and net of that line, and both
+   results are stored. The table's idio share of 1.0 is in-model and overstates
+   the book's true idio share; E12 states the book's idio share net of raw
+   beta too. Rough size, assuming 17% market vol: about 1.8% annualized against
+   the 10% target, small in variance but directional. The E12 task and PRD
+   carry this as a numbered deliverable, not a note.
+   **E12's criteria cannot be evaluated until the live panel has 30 days.**
+   F12.1's reconciliation identity can be exercised now on the seed books as a
+   machinery check, but its stored verdict, and F12.2's and F12.3's, are on the
+   live book and stay pending. On day 30 E12 is a run, not a build.
+6. **E13, the credit port design note**, alongside item 5. A document, no code,
+   no live data. **This is the piece with the most direct value to the owner at
+   Bracebridge, so it is written while the context is fresh rather than
+   reconstructed in January.** F13.1 is about the repository rather than the
+   book, so unlike E12 this sprint can be **completed** inside the window.
+7. **E12 on the live data** once 30 trading days exist: evaluate F12.1 to F12.3,
+   close the sprint.
+
+### Correction, 2026-09-23: E12's engine has not been built
+
+An earlier `e12-attribution-engine` task was written and then superseded by the
+E11 live work before DeepSeek started it. Verified at HEAD: no
+`efb/attribution.py`, no D11 tab, no `sprints/E12/`, no E12 tests, and
+`data/attribution/` empty. Item 5 is therefore a full sprint's build, not a
+finishing pass, and should be scoped that way.
 
 ## Working lessons
 
@@ -224,3 +313,9 @@ In order. Each numbered item is roughly one TASK.md or less.
   written down; a recorded mechanism that a control contradicts is itself a
   defect, even when the verdict above it is right.
 - **No em dashes anywhere**, including files under `handoff/`.
+- **A review ends with a commit of the handoff files** (STANDARDS rule 23).
+  Several uncommitted cycles left a fresh session reading a stale task.
+- **Check whether a number is an identity before reading it as a result.**
+  Three recorded instances (F4.1, F7.2, F8.4) and one candidate (E11-F8); see
+  the hygiene ledger, 2026-09-23. Ask whether it would take the same value for
+  any data, or scale with a constant fixed upstream.

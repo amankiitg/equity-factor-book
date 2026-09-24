@@ -190,3 +190,78 @@ A "no" with no evidence line is incomplete. Where the honest answer is yes, say
 yes and explain: a yes that is explained is fine, a yes that is hidden is the
 defect. If the section is missing or an item is unanswered, the task comes back
 unreviewed.
+
+## 21. Test running: fast per step, full at the points that matter
+
+Effective 2026-09-22. Running 640 tests after every commit is the bottleneck,
+and most of those runs are redundant. The saving comes from running fewer
+redundant suites, never from pasting less evidence.
+
+**Per step.** Run only the tests touching what changed, plus `make lint`. Paste
+that output. **Paste the selection command too**, not just the result, so the
+subset is auditable: a subset that quietly shrinks step by step is the failure
+mode this rule invites.
+
+**The full suite is required, and pasted in the Verification section, at these
+points only:**
+
+1. Before setting `handoff/TASK.md` to `done`.
+2. After any change to an `efb/` module that other sprints import:
+   `build`, `evaluate`, `costs`, `risk`, `size` and anything under `models/`.
+   The criterion is import fanout, not this list, so the list grows: verify the
+   actual fanout once with an import graph and record the resulting set, since
+   `registry`, `evidence`, `perf`, `universe` and `cov` also look shared.
+3. After any artifact rebuild.
+4. Before anything that starts or restarts the live clock.
+
+**If the full suite is skipped on a step, `REPORT.md` says which subset ran and
+why.** A skipped suite that hid a failure is a finding.
+
+**Slow markers.** Any test over about two seconds carries a pytest marker for
+the slow path, so the fast subset is the default and the full run is the
+deliberate one. Report the split: how many tests on each path and how long each
+path takes.
+
+**The suite still never shrinks, measured relatively.** Marking tests slow must
+not reduce what a full run executes. Every full run reports its count, and that
+count must be **greater than or equal to the count in the previous full run
+recorded in `handoff/LOG.md`**. Any decrease is named and explained in
+`REPORT.md`. No fixed floor: DeepSeek is adding tests as the live work lands, so
+a hard number would trip on legitimate growth, get bumped, and the rule would
+fail quietly. A default target that runs fewer tests is fine; a full run that
+does is the rule being broken.
+
+## 22. An unexplained change to a stored-criteria file is a stop
+
+Effective 2026-09-22. `sprints/E*/RESULTS.json` and the registry are the record
+the project is judged on. If one of them changes and the change cannot be
+accounted for, **halt the task and report before doing anything else**. Do not
+carry it forward as a finding, and do not finish the step first.
+
+A `data_hash` bump carried by a legitimate upstream edit is accounted for: record
+it through the `revisions` block with both hashes and continue. Anything else,
+including a stored number, a verdict, a criterion string or a threshold, is a
+stop.
+
+The reason this outranks a finding: a criteria file that moved for a reason nobody
+can name means either the pipeline touched something it should not have, or the
+report is incomplete. Both are cheaper to resolve at the moment of discovery than
+after the next rebuild has layered a second change on top of the first.
+
+## 23. The handoff files are committed at the end of every review
+
+Effective 2026-09-23. A review is not finished until it is committed. The
+reviewer's last act in every review is one commit covering everything the
+review wrote: `handoff/LOG.md`, `handoff/TASK.md`, `handoff/PROJECT_CONTEXT.md`,
+`handoff/STANDARDS.md`, and any ledger line written in the same review.
+
+The reason is the failure this protocol exists to prevent. A fresh session
+reads the committed files, so an uncommitted review leaves the next session a
+stale task. This had already happened for several cycles: the committed
+`TASK.md` still read `e11-live-data-and-clock-restart` three tasks after it
+was superseded.
+
+Every session starts with `git status handoff/`. If a handoff file is
+modified and uncommitted, the committed `TASK.md` may be stale: say so before
+acting on it, and do not start work from it until the owner or the reviewer
+confirms which version is current.
