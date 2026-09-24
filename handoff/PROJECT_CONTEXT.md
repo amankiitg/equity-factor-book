@@ -29,13 +29,14 @@ that returns a negative answer has done its job.
 ## State
 
 Ten sprints built. E11 is a dry-run loop. Its construction is chosen
-(share-only, 20 shares, 2026-09-24) and it is heading to the sanity gate. E12's
-engine has not been started. HEAD 190496d. As reported at that
-commit: `make test` 695 passed, 1 skipped (full path 474.60s; fast path 669 in
-25.98s), `make lint` clean, `make verify-evidence` clean. Five model versions
-in `data/models/registry.json`. XS-v1 is champion and carries the live
-`min_position_dollars`, currently 5000, which moves to the share floor in plan
-item 4c. TS-v1 is diagnostic only and
+(share-only, 20 shares, 2026-09-24). The store is on direct Postgres, and the
+book, Guard 1 and the sanity gate are being redone (task
+`e11-admit-and-live-gate`). E12's engine has not been started. HEAD 938da6c.
+As reported at that commit: `make test` 724 passed, 1 skipped, `make lint`
+clean, `make verify-evidence` clean. Five model versions
+in `data/models/registry.json`. XS-v1 is champion, and its `live` block records
+the construction: `share_only`, `share_floor` 20, `dollar_floor` 0,
+`floor_iterated` true. TS-v1 is diagnostic only and
 ineligible. Dashboard tabs D0 to D10 exist; D11 does not. `data/VERSION.json`
 hashes 147 artifacts at `c3e0db6f`. `live/` holds the construction table and
 its per-name weights.
@@ -282,6 +283,12 @@ Sequenced 2026-09-23. Each numbered item is roughly one TASK.md or less.
       proposal is shown on the Render page from `efb`. A page that has never
       displayed a real proposal is not confirmed working.
    h. The owner flips `dry_run` once. **That act starts day 1.**
+   **Status at 938da6c:** a, c and the store move are done. The regenerated
+   proposal, Guard 1's basis and the sanity gate are redone, because the
+   enforcement loop only dropped names (E11-F13) and the gate replayed
+   historical closes rather than showing live data (E11-F14). Before any
+   deploy, the owner decides where the daily-extended inputs live on Render
+   (E11-F15). The deploy steps are being corrected. **Do not deploy yet.**
    **F11.1 to F11.3 stay open until 30 live days accumulate.**
 5. **E12, built during the 30-day window, not after it.** See the correction
    below: the engine does **not** exist yet, so this is a build, not a
@@ -343,6 +350,14 @@ finishing pass, and should be scoped that way.
 - **No em dashes anywhere**, including files under `handoff/`.
 - **A review ends with a commit of the handoff files** (STANDARDS rule 23).
   Several uncommitted cycles left a fresh session reading a stale task.
+- **A fixed-point spec must name admission as well as dropping.** E11-F6
+  showed that iteration buys breadth by admitting names back. The E11-F12 spec
+  said only "drop, re-size, check, repeat", and it got a drop-only loop that
+  landed at roughly the one-pass count. Name the rule that selects the set
+  (for example the largest valid prefix), not only the loop.
+- **A gate on historical dates is a replay, not a live check.** A gate meant to
+  show the data advances runs on the most recent closes at run time, through
+  the entry point production uses.
 - **Check whether a number is an identity before reading it as a result.**
   Three recorded instances (F4.1, F7.2, F8.4) and one candidate (E11-F8); see
   the hygiene ledger, 2026-09-23. Ask whether it would take the same value for

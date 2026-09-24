@@ -1,8 +1,153 @@
-task_id: e11-share-floor-to-gate
+task_id: e11-admit-and-live-gate
 status: ready
-base_commit: 1957256
+base_commit: 938da6c
 
-## The owner chose share-only, minimum 20 shares. Take it to the gate.
+## Put admission back into the fixed point, then run the gate on live data
+
+Parts 1, 2, 4 and 8 of `e11-share-floor-to-gate` stand, and they are good
+work. The dry-run resolution, the schema-qualification test, the
+`_input_as_of` clamp and the cron import fix all catch real failures. Three
+results do not stand, because they rest on a book that is not the fixed point
+(E11-F13) or on data that is not live (E11-F14): the 119-name proposal,
+Guard 1's basis, and the sanity gate. **The owner does not deploy until this
+task is done.** `dry_run` stays `true`.
+
+Run the parts in order, committing each one alone.
+
+### Part 1. E11-F13: the enforcement loop only drops
+
+`enforce_floor_on_final_weights` says so itself: "The kept set only shrinks."
+Starting from the full book, a drop-only loop lands on roughly the **one-pass**
+count and throws away the breadth that E11-F6's iteration bought back. The
+table shows it on every row:
+
+| row | one-pass (last cycle) | fixed point, pre-resize | enforced now |
+| --- | --- | --- | --- |
+| share-only | 118 | 188 | 119 |
+| two-part | 92 | 172 | 87 |
+| min $1,500 | 208 | 252 | 194 |
+| min $2,000 | 155 | 208 | 145 |
+| min $3,000 | 82 | 156 | 72 |
+| min $5,000 | 27 | 99 | 23 |
+
+**The reviewer's spec invited this.** It said "drop, re-size, re-hedge,
+check, repeat" and never said "admit". The fault in the spec is the
+reviewer's. The fix is yours.
+
+**The fix: the largest valid prefix, checked on final weights.** Order names
+by `|w_i| / (20 * price_i)` on the full-book weights, which is the ordering
+the E11-F9 prefix method used. For k from 499 downward, finalize the prefix-k
+set (size, hedge, renormalize, quantize) and check every kept name against its
+floor **in those final weights**. The first k that passes is the book. The
+scan is not monotone, so do not bisect. Use the same rule on all six floor
+rows, with each row's own floor and ordering.
+
+Pre-registered, before the numbers exist:
+- The prefix result is the book. The drop-only result is reported beside it on
+  every row.
+- If the prefix result keeps **fewer** names than drop-only on any row, stop
+  and report. That would mean a bug, not a finding.
+- Re-evaluate the owner's re-decide trigger exactly as written in the E11-F12
+  section below, on the prefix numbers: enforced share-only against enforced
+  min $2,000, and dominance across all enforced rows. If it fires, stop and
+  send the choice back to the owner.
+- Report share-only's n_eff against the 85.69 the owner chose on, as a plain
+  number.
+
+Then regenerate both stored proposals and re-derive Guard 1 on the prefix
+books, over every close run. State the headroom again: 1.54x is thin for a
+book that rebalances daily. Report how much the largest final weight moves
+from close to close, and say whether 0.10 still clears that movement with
+margin.
+
+### Part 2. E11-F14: the gate replayed history instead of showing live data
+
+The gate ran on 2026-09-24 against closes 2026-09-18 and 2026-09-21.
+`prices.parquet` ends at 09-21, although 09-22 and 09-23 have closed. The gate
+passed on two historical dates. It did not show that the daily path advances,
+which is the whole point of A5.
+
+1. **Extend the data to the latest close through the same entry point the cron
+   runs**, not a one-off script. Rows dated on or before 2026-09-03 stay
+   byte-identical: print the hashes (acceptance item 2).
+2. **Fix the universe look-ahead.** The 09-18 proposal records `universe` as
+   of **2026-09-21**, three days after its close. That is look-ahead under
+   STANDARDS rule 13. Clamp the universe the way `_input_as_of` now clamps
+   everything else, and add a shift-audit test in which a proposal's universe
+   file postdates its close and the proposal is refused.
+3. **Say what the sectors date means.** Sectors read 2026-09-11 on both
+   closes. A2 fetches the Wikipedia snapshot each session. Is 09-11 the date
+   the content last changed, or the last successful fetch? If it is the fetch
+   date, the fetch is not running. If it is the content date, store the fetch
+   date as well, because staleness is about when the data was last checked.
+4. **Rerun the gate on the two most recent real closes at run time**, after
+   Part 1, through the daily entry point. Report the two closes, turnover,
+   n_eff on each, and all nine as-of dates.
+
+### Part 3. E11-F15: where do the daily-extended inputs live on Render?
+
+Render's filesystem is ephemeral. The cron extends prices, descriptors,
+factor returns, specific returns and both covariance artifacts by appending a
+session. Where do those appended rows live between runs? If each run starts
+from the artifacts committed at deploy time, then either every run re-fetches
+and re-extends from that date, which is a growing job, or the loop prices
+from stale inputs, which is the static-days failure again, on the server.
+
+**Do not build anything here.** Answer what the code does now, with the line
+that does it. Then list the options, each with its cost and failure mode: for
+example re-extend from the commit every run, persist the appended rows in
+schema `efb`, a paid persistent disk, or the cron committing back to git with
+a write token on Render. The owner decides. A deploy before this is answered
+could report as live while pricing stale data.
+
+### Part 4. The owner's deploy steps, corrected
+
+- **The order is wrong.** Step 1 grants on schema `efb`, which does not exist
+  until step 2. Create the schema and tables first, then the roles.
+- **Give the owner the SQL for both roles**, as text only; do not run it. Each
+  role gets LOGIN, USAGE on `efb`, and the table privileges it needs, plus
+  `ALTER DEFAULT PRIVILEGES` so future tables are covered. Nothing on `public`
+  or any other schema. Say what username format the session pooler expects
+  for a custom role, and how the owner can test each connection string before
+  pasting it into Render.
+- **Does the store issue DDL at runtime?** B1 says `CREATE SCHEMA IF NOT
+  EXISTS efb` on first run. A DML-only write role fails on that statement. If
+  it is there, either take it out of the runtime path, since provisioning
+  covers it, or say which role owns the schema.
+- **Prefer the SQL editor to the management token.** One-time provisioning
+  through the Supabase SQL editor needs no account-wide token. Make that the
+  primary path, and the token path the alternative.
+
+### Part 5. Three small corrections
+
+- **E11-F8, the 0.000031 gap is too clean to leave unexplained.** TS-v1's raw
+  beta is frozen at 2026-09-03. XS-v1's pre-shrinkage beta was recomputed at
+  2026-09-21. Two estimators twelve sessions apart agree to 3e-5 in book
+  exposure. That happens only if XS-v1's beta at 09-21 is effectively the
+  09-03 value, meaning the beta inside a descriptor dated 09-21 is not
+  advancing, or if the recomputation read TS-v1's frozen beta. Say which. If
+  the beta column is stale, that is a staleness finding for A4, because the
+  descriptors' as-of date would overstate its freshness. The refutation stands
+  either way, because the shrinkage increment is measured inside XS-v1 at a
+  single date.
+- **E5's `evaluated_at` was re-stamped.** The report says "the E5 `data_hash`
+  moved, and only that moved". `evaluated_at` moved too, so the record now
+  dates E5's evaluation to this week. Restore the stored value, or record the
+  move in `revisions` with both values, and correct the sentence.
+- **Em dashes in REPORT.md** at the Guard 1 and part 6 paragraphs (STANDARDS
+  rule 12). Check every file you touch.
+
+### Stop only if
+
+- The standing stop conditions below apply.
+- Part 1 finds prefix fewer than drop-only on any row, or the re-decide
+  trigger fires.
+- Part 2 would restate any pre-2026-09-04 row.
+- Part 4 would need you to create a role or a grant yourself.
+
+---
+
+## Previous task, e11-share-floor-to-gate: the owner chose share-only, minimum 20 shares
 
 **Owner decision, 2026-09-24, reserved decision 1.** E11 trades the
 share-only construction: a minimum of 20 whole shares per name, no dollar

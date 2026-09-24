@@ -1831,3 +1831,81 @@ chosen book is the `share_only_20shares` row in the selector.
 PROJECT_CONTEXT is updated: the decision and the connection rules are added
 to "Decisions the owner has made", plan item 3 is marked done, item 4 is
 resequenced as above, and the State section is refreshed.
+
+---
+
+## 2026-09-24 review: e11-share-floor-to-gate at 938da6c
+
+Eight parts, each committed alone, with a verification section throughout.
+Much of it is good. E11-F11 is closed properly: direct Postgres, schema
+qualification pinned by a test, the service-role key and the management token
+off both services, and `resolve_dry_run` reading anything other than a literal
+"false" as dry run. The E11-F8 correction does what was asked. Undetermined
+first, then measured: shrinkage takes 0.054393 of 0.104987 inside XS-v1 at a
+single date, so the identity candidate is refuted on a clean measurement. The
+nonzero standardization step is traced to two zero-filled names, FDXF and
+HONA. DeepSeek also found and fixed two real bugs nobody asked about:
+`_input_as_of` was reporting the global maximum, and the cron script could not
+import `live`. The E5 criteria and reference values are byte-identical (I
+checked).
+
+**Three results do not stand.**
+
+**E11-F13: the enforcement loop only drops, and my spec invited it.** The
+function's docstring says "The kept set only shrinks". Every enforced count
+lands at or below last cycle's one-pass count: share-only 118 one-pass, 188
+fixed point, 119 enforced; min $1,500 208, 252, 194; and the same on every
+row. So 119 names and n_eff 58.82 are not the enforced fixed point. Most of
+the fall from 188 is lost admission, not enforcement. I wrote "drop, re-size,
+re-hedge, check, repeat" and never "admit", after E11-F6 had established that
+the iteration works by admitting names back. The fix is the largest valid
+prefix under the E11-F9 ordering, checked on final weights. It is
+pre-registered: the prefix result is the book, and if it keeps fewer names
+than drop-only, that is a stop. The re-decide trigger did not fire on the
+drop-only numbers, and it is re-evaluated on the prefix numbers. **Owner: do
+not re-decide on 119 and 58.82.** The true enforced book sits between the
+drop-only and pre-resize numbers.
+
+**E11-F14: the gate replayed history.** It ran on 09-24 against 09-18 and
+09-21, while `prices.parquet` ends at 09-21 and 09-22 and 09-23 have closed.
+Proposals differing between two past dates shows the model responds to data,
+not that the daily path advances. The 09-18 proposal also records its
+universe as of 09-21: look-ahead under rule 13. The gate reruns on the two
+most recent closes at run time through the cron's own entry point, with the
+universe clamped and a shift-audit test. Sectors read 09-11 on both closes,
+and it needs saying whether that is a content date or a fetch that is not
+running.
+
+**E11-F15: nobody has said where the daily extension lives on Render.** The
+filesystem is ephemeral, and the model inputs extend by appending a session.
+If each cron run starts from the committed artifacts, it either re-extends
+from the deploy date every day or prices from stale inputs, which would be the
+static-days failure again, on the server, and could report as live. DeepSeek
+answers what the code does now and lists the options with costs. **The owner
+decides this before any deploy.**
+
+Smaller items:
+- The deploy steps grant on schema `efb` before the step that creates it. They
+  give no SQL for the roles, and they do not say whether the store runs
+  `CREATE SCHEMA` at runtime, which would fail under a DML-only role.
+- The SQL editor should be the primary provisioning path, so no account-wide
+  token is needed.
+- Guard 1's 1.54x headroom sits on the drop-only book, and a daily book needs
+  its day-to-day movement measured.
+- The E11-F8 split's 0.000031 estimator-and-date gap is too clean: two
+  estimators twelve sessions apart agree to 3e-5. It suggests the beta inside
+  descriptors dated 09-21 is still the 09-03 value, which would make it a
+  staleness finding for A4.
+- E5's `evaluated_at` was re-stamped, and the report says only the hash moved.
+- There are em dashes in REPORT.md.
+
+A process note, on the rule-19 boundary: I read one function's source,
+`enforce_floor_on_final_weights`, to confirm E11-F13 before asking the owner to
+hold a deploy. The numbers already made the case, and the docstring confirmed
+it. Nothing else in the source was read, and nothing was recomputed.
+
+PROJECT_CONTEXT is updated. The State section is at 938da6c with 724 tests,
+and the registry's live block is described. Plan item 4 carries the status and
+"do not deploy yet". Two working lessons are added: a fixed-point spec must
+name admission, and a gate on historical dates is a replay. TASK.md is
+`e11-admit-and-live-gate` at 938da6c, in five parts.
