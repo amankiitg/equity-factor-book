@@ -19,13 +19,14 @@ import math
 import subprocess
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from efb import alpha as alpha_mod
 from efb import costs as costs_mod
-from efb import eval_risk, registry, size
+from efb import eval_risk, size
 from efb.build import hash_file
 from live import alpaca, sizing
 
@@ -170,6 +171,135 @@ def _scale_to_target(
         scale = GROSS_CAP / gross
         gross_cap_bound = True
     return weights * scale, gross_cap_bound
+
+
+SHARE_FLOOR = 20  # the owner's chosen share-only floor, in whole shares
+
+
+def finalize_kept_set(
+    keep: np.ndarray,
+    names: list[str],
+    alpha_vec: np.ndarray,
+    design: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific: np.ndarray,
+    close: dict[str, float],
+    nav: float,
+) -> dict[str, Any]:
+    """Size, hedge, renormalize and quantize one kept set to final weights.
+
+    This is the final, tradable vector: Procedure 6.3 on the kept subset,
+    the exact FMP hedge, renormalized to gross 1.0, then quantized to whole
+    shares at the close. Nothing downstream re-weights it, so the floor must
+    be checked against this vector, not the full-book weights.
+    """
+    idx = np.where(keep)[0]
+    alpha_sub = alpha_vec[idx]
+    design_sub = design[idx]
+    specific_sub = specific[idx]
+    names_sub = [names[i] for i in idx]
+    w_sub = sizing.procedure_6_3_robust(
+        alpha_sub, design_sub, factor_covariance, specific_sub
+    )
+    w_sub = sizing.renormalize(w_sub, gross=1.0)
+    decomp = _decomposition(w_sub, design_sub, factor_covariance, specific_sub)
+    quant = alpaca.whole_share_quantization(
+        pd.DataFrame({"ticker": names_sub, "weight": w_sub}), close, nav
+    )
+    prices = np.array([close.get(t, 0.0) for t in names_sub], dtype=float)
+    shares = np.floor(np.abs(w_sub) * nav / np.maximum(prices, 1e-12)).astype(int)
+    q_notional = shares * prices * np.sign(w_sub)
+    gross_q = float(np.abs(q_notional).sum())
+    return {
+        "idx": idx,
+        "names_sub": names_sub,
+        "w_sub": w_sub,
+        "decomp": decomp,
+        "quant": quant,
+        "prices": prices,
+        "shares": shares,
+        "q_notional": q_notional,
+        "gross_q": gross_q,
+    }
+
+
+def below_floor(
+    shares: np.ndarray,
+    prices: np.ndarray,
+    dollar_floor: float,
+    share_floor: int,
+) -> np.ndarray:
+    """Which kept names end below their floor in the final, quantized weights.
+
+    A name clears the floor when its whole-share notional is at least the
+    dollar floor and it holds at least share_floor whole shares. The two legs
+    are independent; failing either is below the floor.
+    """
+    below = np.zeros(len(shares), dtype=bool)
+    if share_floor > 0:
+        below |= shares < share_floor
+    if dollar_floor > 0:
+        below |= shares * prices < dollar_floor
+    return below
+
+
+def floor_shortfalls(
+    shares: np.ndarray,
+    prices: np.ndarray,
+    dollar_floor: float,
+    share_floor: int,
+) -> tuple[float, float]:
+    """The worst shortfall in whole shares and in dollars, across below-floor names."""
+    below = below_floor(shares, prices, dollar_floor, share_floor)
+    if not below.any():
+        return 0.0, 0.0
+    short_shares = (
+        float((share_floor - shares[below]).max()) if share_floor > 0 else 0.0
+    )
+    short_dollars = (
+        float((dollar_floor - shares[below] * prices[below]).max())
+        if dollar_floor > 0
+        else 0.0
+    )
+    return short_shares, short_dollars
+
+
+def enforce_floor_on_final_weights(
+    keep: np.ndarray,
+    names: list[str],
+    alpha_vec: np.ndarray,
+    design: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific: np.ndarray,
+    close: dict[str, float],
+    nav: float,
+    dollar_floor: float,
+    share_floor: int,
+    max_passes: int = 30,
+) -> tuple[np.ndarray, dict[str, Any], int, bool]:
+    """Enforce the floor on the final weights, iterated to a fixed point.
+
+    Drop, re-size, re-hedge, renormalize, quantize, check, repeat until no
+    kept name is below its floor. The kept set only shrinks, so the loop
+    terminates; the pass cap guards a degenerate run and returns converged
+    False rather than silently picking a pass.
+    """
+    keep = keep.copy()
+    finalize: dict[str, Any] = {}
+    for passes in range(1, max_passes + 1):
+        finalize = finalize_kept_set(
+            keep, names, alpha_vec, design, factor_covariance, specific, close, nav
+        )
+        shares = np.asarray(finalize["shares"], dtype=int)
+        prices = np.asarray(finalize["prices"], dtype=float)
+        below = below_floor(shares, prices, dollar_floor, share_floor)
+        if not below.any():
+            return keep, finalize, passes, True
+        idx = np.asarray(finalize["idx"], dtype=int)
+        keep[idx[below]] = False
+        if not keep.any():
+            return keep, finalize, passes, False
+    return keep, finalize, max_passes, False
 
 
 def _expected_establishment_cost(
@@ -361,34 +491,36 @@ def build_proposal(
     )
     full_decomposition = _decomposition(weights, design, factor_covariance, specific)
 
-    # Minimum-position drop, a registry parameter not a code constant. Names
-    # whose target notional is below the threshold are dropped rather than held
-    # at a badly rounded weight. The kept subset is re-sized and re-hedged from
-    # scratch (the 499-name hedge does not survive a drop), then renormalized to
-    # gross 1.0 so the book is fully invested and the quantization is measured
-    # on the positions that actually trade (E11-F4). Zero means no minimum, so
-    # nothing is dropped.
-    reg = registry.load(root / "models" / "registry.json")
-    min_pos_dollars = registry.min_position_dollars(reg, MODEL_VERSION)
-    n_dropped = 0
-    n_selected = len(names)
-    kept_gross_before_renorm = float(np.abs(weights).sum())
-    if min_pos_dollars > 0:
-        keep = np.abs(weights) * nav >= min_pos_dollars
-        n_dropped = int((~keep).sum())
-        n_selected = int(keep.sum())
-        idx = np.where(keep)[0]
-        if n_dropped > 0 and len(idx) > 0:
-            kept_gross_before_renorm = float(np.abs(weights[idx]).sum())
-            w_sub = sizing.procedure_6_3_robust(
-                alpha_vec[idx],
-                design[idx],
-                factor_covariance,
-                specific[idx],
-            )
-            w_sub = sizing.renormalize(w_sub, gross=1.0)
-            weights = np.zeros(len(names), dtype=float)
-            weights[idx] = w_sub
+    # Share-only construction: a minimum of 20 whole shares per name, no
+    # dollar floor, enforced on the final weights (E11-F12). Names whose
+    # final position would be below 20 shares are dropped, the kept subset is
+    # re-sized and re-hedged from scratch, and the loop repeats until no kept
+    # name is below the floor, so the floor holds on the vector that actually
+    # trades, not the pre-drop full-book weights. Part 4 records this
+    # construction in the registry.
+    close = _close_prices(as_of_ts, root)
+    full_keep = np.ones(len(names), dtype=bool)
+    enforced_keep, finalize, _floor_passes, _floor_converged = (
+        enforce_floor_on_final_weights(
+            full_keep,
+            names,
+            alpha_vec,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            nav,
+            dollar_floor=0.0,
+            share_floor=SHARE_FLOOR,
+        )
+    )
+    n_dropped = len(names) - int(enforced_keep.sum())
+    n_selected = int(enforced_keep.sum())
+    kept_gross_before_renorm = float(np.abs(weights[enforced_keep]).sum())
+    weights = np.zeros(len(names), dtype=float)
+    weights[np.asarray(finalize["idx"], dtype=int)] = np.asarray(
+        finalize["w_sub"], dtype=float
+    )
 
     kept_decomposition = _decomposition(weights, design, factor_covariance, specific)
 
@@ -427,13 +559,13 @@ def build_proposal(
         "n_kept": n_selected,
         "n_effective": kept_decomposition["n_nonzero"],
         "n_dropped": n_dropped,
-        "min_position_dollars": min_pos_dollars,
-        "min_position_pct_of_nav": min_pos_dollars / nav if nav else 0.0,
-        "construction": "min_position",
-        "construction_floor_dollars": min_pos_dollars,
-        "construction_floor_shares": None,
+        "min_position_dollars": 0.0,
+        "min_position_pct_of_nav": 0.0,
+        "construction": "share_only",
+        "construction_floor_dollars": None,
+        "construction_floor_shares": SHARE_FLOOR,
         "construction_top_n": None,
-        "floor_iterated": False,
+        "floor_iterated": True,
         "code_commit": _git_commit(),
         "kept_gross_before_renorm": kept_gross_before_renorm,
         "n_eff_full": full_decomposition["n_eff"],

@@ -160,13 +160,49 @@ def test_shares_as_of_fails_without_a_count_on_or_before_the_close() -> None:
         ev._shares_as_of(shares, pd.Timestamp("2026-09-21"))
 
 
+def test_below_floor_checks_the_share_leg_on_final_shares() -> None:
+    shares = np.array([20, 19, 5, 40])
+    prices = np.array([100.0, 100.0, 100.0, 100.0])
+    below = ev.below_floor(shares, prices, dollar_floor=0.0, share_floor=20)
+    assert below.tolist() == [False, True, True, False]
+
+
+def test_below_floor_checks_the_dollar_leg_on_final_notional() -> None:
+    shares = np.array([20, 19, 15, 40])
+    prices = np.array([100.0, 100.0, 100.0, 100.0])
+    below = ev.below_floor(shares, prices, dollar_floor=2000.0, share_floor=0)
+    # notional: 2000, 1900, 1500, 4000 -> only the last clears
+    assert below.tolist() == [False, True, True, False]
+
+
+def test_below_floor_requires_both_legs_when_both_are_set() -> None:
+    shares = np.array([20, 19, 20, 30])
+    prices = np.array([100.0, 100.0, 50.0, 50.0])
+    below = ev.below_floor(shares, prices, dollar_floor=2000.0, share_floor=20)
+    # notional 2000/1900/1000/1500 and shares 20/19/20/30: all but the first fail
+    assert below.tolist() == [False, True, True, True]
+
+
+def test_floor_shortfalls_reports_the_worst_of_each_leg() -> None:
+    shares = np.array([20, 5, 19, 40])
+    prices = np.array([100.0, 100.0, 50.0, 50.0])
+    short_shares, short_dollars = ev.floor_shortfalls(
+        shares, prices, dollar_floor=2000.0, share_floor=20
+    )
+    assert short_shares == pytest.approx(15.0)  # the 5-share name is 15 short
+    # dollar shortfalls: 5*100=500 (1500 short), 19*50=950 (1050 short); 20-share
+    # name at 100 clears dollars; so the worst dollar shortfall is 1500
+    assert short_dollars == pytest.approx(1500.0)
+
+
 @pytest.mark.slow
-def test_build_proposal_stores_the_minimum_position_and_breadth() -> None:
+def test_build_proposal_stores_the_share_only_floor_and_breadth() -> None:
     manifest = ev.build_proposal(store=False)
-    # the minimum position is a registry parameter, not a code constant
-    assert manifest["min_position_dollars"] == pytest.approx(5000.0)
-    assert manifest["min_position_pct_of_nav"] == pytest.approx(0.005, abs=1e-9)
-    # names below the threshold are dropped, not held at a badly rounded weight
+    # the chosen construction: min 20 shares, no dollar floor, iterated to a
+    # fixed point on the final weights (E11-F12)
+    assert manifest["min_position_dollars"] == pytest.approx(0.0)
+    assert manifest["min_position_pct_of_nav"] == pytest.approx(0.0)
+    # names whose final position is below 20 shares are dropped
     assert manifest["n_kept"] + manifest["n_dropped"] == manifest["n_names"]
     assert manifest["n_kept"] < manifest["n_names"]
     assert manifest["n_dropped"] > 0
@@ -181,11 +217,11 @@ def test_build_proposal_stores_the_minimum_position_and_breadth() -> None:
     assert manifest["quantization"]["short_targets_rounding_to_zero"] == 0
     # the construction is recorded in the artifact so the page can label it
     # from the stored fields rather than asserting a label beside it
-    assert manifest["construction"] == "min_position"
-    assert manifest["construction_floor_dollars"] == pytest.approx(5000.0)
-    assert manifest["construction_floor_shares"] is None
+    assert manifest["construction"] == "share_only"
+    assert manifest["construction_floor_dollars"] is None
+    assert manifest["construction_floor_shares"] == ev.SHARE_FLOOR
     assert manifest["construction_top_n"] is None
-    assert manifest["floor_iterated"] is False
+    assert manifest["floor_iterated"] is True
     assert isinstance(manifest["code_commit"], str) and manifest["code_commit"]
     assert 0.0 < manifest["kept_gross_before_renorm"] < manifest["kept_gross"]
 

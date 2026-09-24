@@ -26,15 +26,19 @@ import pandas as pd
 
 from efb import alpha as alpha_mod
 from efb import eval_risk, size
-from live import alpaca, sizing
 from live.evening_job import (
     DATA_ROOT,
     PAPER_NAV,
+    SHARE_FLOOR,
     SIGNAL,
     _close_prices,
     _decomposition,
     _scale_to_target,
     _stored_ic,
+    below_floor,
+    enforce_floor_on_final_weights,
+    finalize_kept_set,
+    floor_shortfalls,
     load_spy_universe,
 )
 
@@ -44,7 +48,7 @@ WEIGHTS_PATH = ROOT / "live" / "construction_weights.parquet"
 
 MIN_POSITION_ROWS = (1500.0, 2000.0, 3000.0, 5000.0)
 TOP_N_ROWS = (150, 200)
-MIN_SHARES_ROW = 20  # the two-part floor's share leg
+MIN_SHARES_ROW = SHARE_FLOOR  # the two-part floor's share leg
 
 
 def _raw_pieces(
@@ -277,6 +281,9 @@ def _compute_row(
     signal_z: np.ndarray,
     label: str,
     flagged_for_veto: bool,
+    finalize: dict[str, Any] | None = None,
+    dollar_floor: float = 0.0,
+    share_floor: int = 0,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
     """Size, renormalize, quantize and measure one kept set.
 
@@ -284,36 +291,28 @@ def _compute_row(
     weight, z and alpha) so the dashboard can render any construction's
     names, weights and trade reasons.
     """
-    idx = np.where(keep)[0]
-    alpha_sub = alpha_vec[idx]
-    design_sub = design[idx]
-    specific_sub = specific[idx]
-    names_sub = [names[i] for i in idx]
+    if finalize is None:
+        finalize = finalize_kept_set(
+            keep, names, alpha_vec, design, factor_covariance, specific, close, nav
+        )
+    idx = np.asarray(finalize["idx"], dtype=int)
+    names_sub = cast(list[str], finalize["names_sub"])
+    w_sub = np.asarray(finalize["w_sub"], dtype=float)
+    decomp = cast(dict[str, Any], finalize["decomp"])
+    quant = cast(dict[str, Any], finalize["quant"])
+    dist = cast(dict[str, Any], quant["distribution"])
+    prices = np.asarray(finalize["prices"], dtype=float)
+    shares = np.asarray(finalize["shares"], dtype=int)
+    q_notional = np.asarray(finalize["q_notional"], dtype=float)
+    gross_q = float(finalize["gross_q"])
 
     gross_before = float(np.abs(full_weights[idx]).sum())
-
-    w_sub = sizing.procedure_6_3_robust(
-        alpha_sub, design_sub, factor_covariance, specific_sub
-    )
-    w_sub = sizing.renormalize(w_sub, gross=1.0)
-
-    decomp = _decomposition(w_sub, design_sub, factor_covariance, specific_sub)
-    quant = cast(
-        dict[str, Any],
-        alpaca.whole_share_quantization(
-            pd.DataFrame({"ticker": names_sub, "weight": w_sub}), close, nav
-        ),
-    )
-    dist = cast(dict[str, Any], quant["distribution"])
+    alpha_sub = alpha_vec[idx]
 
     # net dollar, three ways
     net_share_of_gross = float(w_sub.sum())  # gross is 1.0 after renormalization
     if abs(net_share_of_gross) < 1e-9:
         net_share_of_gross = 0.0
-    prices = np.array([close.get(t, 0.0) for t in names_sub])
-    shares = np.floor(np.abs(w_sub) * nav / np.maximum(prices, 1e-12)).astype(int)
-    q_notional = shares * prices * np.sign(w_sub)
-    gross_q = float(np.abs(q_notional).sum())
     net_share_post_quantization = (
         float(q_notional.sum()) / gross_q if gross_q > 0 else 0.0
     )
@@ -412,6 +411,10 @@ def _compute_row(
     n_selected = int(len(idx))
     n_eff_kept = decomp["n_eff"]
     p90_error = float(dist["rounding_error_pct_of_target_quantiles"]["0.9"])
+    n_below = int(below_floor(shares, prices, dollar_floor, share_floor).sum())
+    worst_shares, worst_dollars = floor_shortfalls(
+        shares, prices, dollar_floor, share_floor
+    )
 
     per_name: list[dict[str, object]] = []
     for position, ticker in enumerate(names_sub):
@@ -467,7 +470,103 @@ def _compute_row(
         "breadth_governing": float(math.sqrt(n_eff_full / max(n_eff_kept, 1e-12))),
         "n_eff_kept": n_eff_kept,
         "n_eff_full": n_eff_full,
+        "n_below_floor_final": n_below,
+        "worst_floor_shortfall_shares": worst_shares,
+        "worst_floor_shortfall_dollars": worst_dollars,
     }, per_name
+
+
+def _enforce_row(
+    names: list[str],
+    alpha_vec: np.ndarray,
+    design: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific: np.ndarray,
+    full_weights: np.ndarray,
+    close: dict[str, float],
+    beta_stages: dict[str, Any],
+    nav: float,
+    n_eff_full: float,
+    sides: np.ndarray,
+    signal_z: np.ndarray,
+    label: str,
+    flagged_for_veto: bool,
+    pre: dict[str, object],
+    post: dict[str, object],
+    dollar_floor: float,
+    share_floor: int,
+) -> tuple[dict[str, object], list[dict[str, object]]]:
+    """Enforce the floor on the final weights from the full book.
+
+    The floor construction is defined solely by the floor, so the enforced
+    book starts from the full book and iterates drop -> re-size -> re-hedge
+    -> renormalize -> quantize -> check until no kept name is below its
+    floor. The pre and post rows carry the one-pass and the full-weight
+    fixed point (the buggy "as it stands" vector), whose below-floor count
+    is recorded against the enforced row.
+    """
+    full_keep = np.ones(len(names), dtype=bool)
+    enforced_keep, enforced_finalize, passes, converged = (
+        enforce_floor_on_final_weights(
+            full_keep,
+            names,
+            alpha_vec,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            nav,
+            dollar_floor,
+            share_floor,
+        )
+    )
+    row, row_names = _compute_row(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        full_weights,
+        close,
+        beta_stages,
+        nav,
+        n_eff_full,
+        enforced_keep,
+        sides,
+        signal_z,
+        label,
+        flagged_for_veto,
+        finalize=enforced_finalize,
+        dollar_floor=dollar_floor,
+        share_floor=share_floor,
+    )
+    row["n_kept_pre_iteration"] = pre["n_kept"]
+    row["n_kept_post_iteration"] = post["n_kept"]
+    row["n_kept_post_enforcement"] = row["n_kept"]
+    row["quant_error_p90_pre_iteration"] = pre["quant_error_p90_pct_of_target"]
+    row["quant_error_p90_post_iteration"] = post["quant_error_p90_pct_of_target"]
+    row["quant_error_p90_post_enforcement"] = row["quant_error_p90_pct_of_target"]
+    row["n_below_floor_final_pre_enforcement"] = post["n_below_floor_final"]
+    row["worst_floor_shortfall_shares_pre_enforcement"] = post[
+        "worst_floor_shortfall_shares"
+    ]
+    row["worst_floor_shortfall_dollars_pre_enforcement"] = post[
+        "worst_floor_shortfall_dollars"
+    ]
+    row["floor_enforcement_passes"] = passes
+    row["floor_enforcement_converged"] = converged
+    return row, row_names
+
+
+def _no_floor_row(row: dict[str, object]) -> None:
+    """Stamp the no-floor rows with vacuous enforcement columns for a uniform schema."""
+    row["n_kept_post_enforcement"] = row["n_kept"]
+    row["quant_error_p90_post_enforcement"] = row["quant_error_p90_pct_of_target"]
+    row["n_below_floor_final_pre_enforcement"] = 0
+    row["worst_floor_shortfall_shares_pre_enforcement"] = 0.0
+    row["worst_floor_shortfall_dollars_pre_enforcement"] = 0.0
+    row["floor_enforcement_passes"] = 0
+    row["floor_enforcement_converged"] = True
 
 
 def build_table(
@@ -513,9 +612,10 @@ def build_table(
             signal_z,
             f"min_position_{int(threshold)}",
             False,
+            dollar_floor=threshold,
         )
         iterative_keep = _iterative_floor(full_weights, nav, threshold)
-        post, post_names = _compute_row(
+        post, _post_names = _compute_row(
             names,
             alpha_vec,
             design,
@@ -531,13 +631,30 @@ def build_table(
             signal_z,
             f"min_position_{int(threshold)}",
             False,
+            dollar_floor=threshold,
         )
-        post["n_kept_pre_iteration"] = pre["n_kept"]
-        post["n_kept_post_iteration"] = post["n_kept"]
-        post["quant_error_p90_pre_iteration"] = pre["quant_error_p90_pct_of_target"]
-        post["quant_error_p90_post_iteration"] = post["quant_error_p90_pct_of_target"]
-        rows.append(post)
-        per_name_rows.extend(post_names)
+        row, row_names = _enforce_row(
+            names,
+            alpha_vec,
+            design,
+            factor_covariance,
+            specific,
+            full_weights,
+            close,
+            beta_stages,
+            nav,
+            n_eff_full,
+            full_weights,
+            signal_z,
+            f"min_position_{int(threshold)}",
+            False,
+            pre,
+            post,
+            threshold,
+            0,
+        )
+        rows.append(row)
+        per_name_rows.extend(row_names)
 
     for n_names in TOP_N_ROWS:
         top_idx = np.argsort(np.abs(alpha_vec))[::-1][:n_names]
@@ -564,14 +681,16 @@ def build_table(
         row["n_kept_post_iteration"] = row["n_kept"]
         row["quant_error_p90_pre_iteration"] = row["quant_error_p90_pct_of_target"]
         row["quant_error_p90_post_iteration"] = row["quant_error_p90_pct_of_target"]
+        _no_floor_row(row)
         rows.append(row)
         per_name_rows.extend(row_names)
 
     prices_full = np.array([close.get(t, 0.0) for t in names])
 
-    # the two-part floor, one pass and at its fixed point. Pre and post mean
-    # the same thing here as on every dollar row: one-pass versus the
-    # fixed-point iteration of the combined dollar-and-share condition.
+    # the two-part floor, one pass and at its full-weight fixed point, then
+    # enforced on the final weights. Pre and post mean the same thing here as
+    # on every dollar row: one-pass versus the full-weight fixed point; the
+    # enforced row is the floor checked on the vector that actually trades.
     two_pass_keep = _one_pass_combined_floor(
         full_weights, nav, prices_full, 1500.0, MIN_SHARES_ROW
     )
@@ -594,8 +713,10 @@ def build_table(
         signal_z,
         "two_part_floor_1500_20shares",
         True,
+        dollar_floor=1500.0,
+        share_floor=MIN_SHARES_ROW,
     )
-    two_post, two_post_names = _compute_row(
+    two_post, _two_post_names = _compute_row(
         names,
         alpha_vec,
         design,
@@ -611,19 +732,34 @@ def build_table(
         signal_z,
         "two_part_floor_1500_20shares",
         True,
+        dollar_floor=1500.0,
+        share_floor=MIN_SHARES_ROW,
     )
-    two_post["n_kept_pre_iteration"] = two_pre["n_kept"]
-    two_post["n_kept_post_iteration"] = two_post["n_kept"]
-    two_post["quant_error_p90_pre_iteration"] = two_pre["quant_error_p90_pct_of_target"]
-    two_post["quant_error_p90_post_iteration"] = two_post[
-        "quant_error_p90_pct_of_target"
-    ]
-    rows.append(two_post)
-    per_name_rows.extend(two_post_names)
+    two_row, two_row_names = _enforce_row(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        full_weights,
+        close,
+        beta_stages,
+        nav,
+        n_eff_full,
+        full_weights,
+        signal_z,
+        "two_part_floor_1500_20shares",
+        True,
+        two_pre,
+        two_post,
+        1500.0,
+        MIN_SHARES_ROW,
+    )
+    rows.append(two_row)
+    per_name_rows.extend(two_row_names)
 
-    # the flagged share-only floor: min 20 shares, no dollar leg, at its fixed
-    # point. It tests whether the $1,500 leg does any work once the share leg
-    # bounds the per-name rounding error.
+    # the flagged share-only floor: min 20 shares, no dollar leg. One pass and
+    # its full-weight fixed point, then enforced on the final weights.
     share_only_pass = (
         np.abs(full_weights) * nav / np.maximum(prices_full, 1e-12)
     ) >= MIN_SHARES_ROW
@@ -646,8 +782,9 @@ def build_table(
         signal_z,
         "share_only_20shares",
         True,
+        share_floor=MIN_SHARES_ROW,
     )
-    share_post, share_post_names = _compute_row(
+    share_post, _share_post_names = _compute_row(
         names,
         alpha_vec,
         design,
@@ -663,17 +800,30 @@ def build_table(
         signal_z,
         "share_only_20shares",
         True,
+        share_floor=MIN_SHARES_ROW,
     )
-    share_post["n_kept_pre_iteration"] = share_pre["n_kept"]
-    share_post["n_kept_post_iteration"] = share_post["n_kept"]
-    share_post["quant_error_p90_pre_iteration"] = share_pre[
-        "quant_error_p90_pct_of_target"
-    ]
-    share_post["quant_error_p90_post_iteration"] = share_post[
-        "quant_error_p90_pct_of_target"
-    ]
-    rows.append(share_post)
-    per_name_rows.extend(share_post_names)
+    share_row, share_row_names = _enforce_row(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        full_weights,
+        close,
+        beta_stages,
+        nav,
+        n_eff_full,
+        full_weights,
+        signal_z,
+        "share_only_20shares",
+        True,
+        share_pre,
+        share_post,
+        0.0,
+        MIN_SHARES_ROW,
+    )
+    rows.append(share_row)
+    per_name_rows.extend(share_row_names)
 
     # the full 499-name book as the reference row: no floor, no drop, so it
     # shows whether the raw-beta residual is the signal's tilt or something
@@ -704,6 +854,7 @@ def build_table(
     full_row["quant_error_p90_post_iteration"] = full_row[
         "quant_error_p90_pct_of_target"
     ]
+    _no_floor_row(full_row)
     rows.append(full_row)
     per_name_rows.extend(full_names)
 

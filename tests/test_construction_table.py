@@ -155,3 +155,34 @@ def test_the_share_only_floor_is_flagged_and_holds_twenty_shares() -> None:
     assert int(row["n_kept_post_iteration"]) >= int(row["n_kept_pre_iteration"])
     # the median kept name holds at least 20 shares
     assert float(row["median_share_count"]) >= 20.0
+
+
+@pytest.mark.slow
+@pytest.mark.integration
+def test_the_floor_is_enforced_on_the_final_weights() -> None:
+    table = ct.build_table(store=False)
+    floor_rows = table.loc[
+        table["construction"].str.startswith("min_position")
+        | table["construction"].isin(
+            ["share_only_20shares", "two_part_floor_1500_20shares"]
+        )
+    ]
+    no_floor_rows = table.loc[
+        table["construction"].isin(["top_n_150", "top_n_200", "full_book_499"])
+    ]
+    # the enforced book is what the row reports, and no kept name is below the
+    # floor in the final, quantized weights
+    assert (floor_rows["n_kept"] == floor_rows["n_kept_post_enforcement"]).all()
+    assert (floor_rows["n_below_floor_final"] == 0).all()
+    assert bool(floor_rows["floor_enforcement_converged"].all()) is True
+    # enforcement only drops names, never admits them
+    assert (
+        floor_rows["n_kept_post_enforcement"] <= floor_rows["n_kept_post_iteration"]
+    ).all()
+    # the bug E11-F12 describes is real on the full-weight fixed point: at least
+    # one name ends below its floor in the vector that actually trades
+    assert int(floor_rows["n_below_floor_final_pre_enforcement"].min()) > 0
+    # no-floor rows carry the vacuous stamp with nothing below their (absent)
+    # floor and their kept count untouched
+    assert (no_floor_rows["n_kept_post_enforcement"] == no_floor_rows["n_kept"]).all()
+    assert (no_floor_rows["n_below_floor_final"] == 0).all()

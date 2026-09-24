@@ -5,7 +5,7 @@ The owner chose the share-only construction (minimum 20 whole shares per name,
 no dollar floor, iterated to a fixed point) at reserved decision 1. This task
 takes that choice to the gate in eight parts, in order, each committed on its
 own. `dry_run` stays `true` throughout; this task never flips it. This report
-covers parts 1 and 2.
+covers parts 1, 2 and 3.
 
 ## Part 1: E11-F8 ledger correction, then the diagnostic split
 
@@ -132,10 +132,76 @@ run the one-time schema over direct Postgres (the provisioning script, or the
 SQL itself); then confirm the deployed page reads Postgres. Neither service
 gets the service-role key or the management token.
 
+## Part 3: E11-F12, the floor enforced on final weights
+
+The floor is now checked on the vector that actually trades, not the full-book
+weights. `live/evening_job.py` gains `finalize_kept_set` (size, hedge,
+renormalize, quantize one kept set), `below_floor`, `floor_shortfalls` and
+`enforce_floor_on_final_weights` (drop, re-size, re-hedge, renormalize,
+quantize, check, repeat until no kept name is below its floor, with a 30-pass
+guard). `_compute_row` uses the same `finalize_kept_set`, and every floor row
+in the table is enforced from the full book. The live path enforces the
+share-only 20-share floor from the full book and records the construction in
+the manifest.
+
+**Measure first, as it stands.** On the full-weight fixed point, the bug
+E11-F12 names is real: kept names end below their floor in the final weights.
+
+| row | kept (full-weight fixed) | below floor in final weights | worst shortfall |
+| --- | --- | --- | --- |
+| min $1,500 | 252 | 31 | $1,500.00 |
+| min $2,000 | 208 | 19 | $1,737.89 |
+| min $3,000 | 156 | 21 | $3,000.00 |
+| min $5,000 | 99 | 19 | $5,000.00 |
+| two-part 1500+20sh | 172 | 26 | 18 shares / $1,370.02 |
+| share-only 20sh | 188 | 24 | 19 shares |
+
+**Enforced on final weights, every floor row.** Starting from the full book
+and iterating to the fixed point (3 passes on every floor row, all converged):
+
+| construction | enforced names | n_eff | naive breadth | governing breadth | total error | p90 | max weight | net | long/short | raw beta | post-hedge exposure | idio share |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| min $1,500 | 194 | 98.74 | 1.540 | 1.262 | 2.50% | 8.82% | 4.30% | 0 | 86/108 | 0.1086 | ~1e-15 | 1.0 |
+| min $2,000 | 145 | 81.68 | 1.781 | 1.388 | 1.92% | 5.93% | 4.74% | 0 | 61/84 | 0.1141 | ~6e-16 | 1.0 |
+| min $3,000 | 72 | 44.48 | 2.528 | 1.881 | 0.91% | 2.93% | 6.73% | 0 | 23/49 | 0.1101 | ~8e-16 | 1.0 |
+| min $5,000 | 23 | 14.10 | 4.472 | 3.340 | 0.48% | 1.68% | 14.52% | 0 | 9/14 | -0.0118 | ~2e-15 | 1.0 |
+| two-part 1500+20sh | 87 | 51.19 | 2.299 | 1.753 | 0.56% | 1.40% | 6.40% | 0 | 39/48 | 0.1388 | ~1e-15 | 1.0 |
+| share-only 20sh | 119 | 58.82 | 1.966 | 1.635 | 0.64% | 2.04% | 5.96% | 0 | 56/63 | 0.1337 | ~1e-15 | 1.0 |
+
+The enforced share-only book is 119 names, n_eff 58.82, total error 0.64% and
+p90 2.04%. Against the unenforced table numbers (188 names, n_eff 85.69, total
+error 1.25%, p90 3.44%) the enforced book is smaller and rounder: enforcement
+drops the names that could not hold 20 shares, so the rounding tail shrinks
+while n_eff falls from 85.69 to 58.82. The n_eff fall is reported plainly, not
+called close: it is a 31 percent fall.
+
+**The breadth bound, both ways.** PROJECT_CONTEXT requires any E11 number that
+meets an E8 transfer coefficient to state the bound both ways. The governing
+breadth is sqrt(n_eff_full / n_eff_kept): with n_eff_full 157.33 and the
+enforced n_eff 58.82, that is sqrt(157.33 / 58.82) = 1.635, so the enforced
+book's governing breadth is 1.635x. The naive bound is sqrt(460 / 119) = 1.966.
+
+**The re-decide trigger, pre-registered before the numbers existed.** Compare
+the enforced share-only book against the enforced min $2,000 book, never the
+unenforced row. (a) Share-only still has both lower total error (0.64% vs
+1.92%) and lower p90 (2.04% vs 5.93%) than enforced min $2,000. (b) No
+enforced row is strictly better-or-equal on both n_eff and total error than
+share-only: min $1,500 and min $2,000 have higher n_eff but higher error;
+min $3,000, min $5,000 and the two-part row have lower error but lower n_eff.
+Neither branch fires, so the task proceeds. (For the owner's reading: enforced
+min $5,000 has lower total error and lower p90 than share-only, at the cost of
+n_eff 14.10, which is why branch (b) is defined on n_eff and total error
+jointly.)
+
+The live path produces the same book as the table's enforced share-only row:
+`build_proposal(store=False)` returns construction `share_only`, share floor
+20, `floor_iterated` true, 119 names, n_eff_kept 58.82, governing breadth
+1.635.
+
 ## Verification
 
-Per STANDARDS 21, this step ran the subsets touching what changed plus lint;
-the full suite runs before the task is marked done.
+Per STANDARDS 21, per-step subsets plus lint ran after each part; the full
+suite ran after the Part 3 artifact rebuild.
 
 Part 1 subset (construction table and traceability):
 
@@ -149,6 +215,33 @@ Part 2 subset (store, render wiring, daily dry-run resolution):
 ```text
 $ .venv/bin/pytest tests/test_e11_store.py tests/test_e11_render.py tests/test_run_live_daily.py -q
 30 passed, 1 skipped in 0.91s
+```
+
+Part 3 subsets (the floor enforcement, the live path, the dashboard):
+
+```text
+$ .venv/bin/pytest tests/test_construction_table.py -q
+7 passed in 25.30s
+
+$ .venv/bin/pytest tests/test_e11_evening.py -q
+17 passed in 21.87s
+
+$ .venv/bin/pytest tests/test_dashboard_d10.py tests/test_e11_render.py -q
+25 passed, 1 skipped in 1.02s
+```
+
+Full suite (after the Part 3 artifact rebuild, per STANDARDS 21):
+
+```text
+$ make test
+717 passed, 1 skipped, 3 warnings in 449.62s (0:07:29)
+```
+
+The previous full-run count in LOG.md is 692; 717 clears it.
+
+```text
+$ make verify-evidence
+evidence OK
 ```
 
 Lint:
@@ -183,54 +276,78 @@ Success: no issues found in 15 source files
   specification in `efb/models/fundamental.py`.
 - `n_beta_zero_filled` = 1 (minimum-position subsets) and 2 (full book):
   `live/construction_table.parquet`, `n_beta_zero_filled` column.
+- Enforced share-only book: 119 names, n_eff 58.82, total error 0.006426,
+  p90 0.020385, governing breadth 1.635, max weight 0.059617, raw beta
+  0.133743: `live/construction_table.parquet`, `share_only_20shares` row,
+  `n_kept` / `n_eff_kept` / `total_gross_error_share_of_nav` /
+  `quant_error_p90_pct_of_target` / `breadth_governing` /
+  `max_weight_share_of_gross` / `realized_market_beta` columns.
+- Enforced min $2,000 book: 145 names, n_eff 81.68, total error 0.019150,
+  p90 0.059304: `live/construction_table.parquet`, `min_position_2000` row.
+- The below-floor counts on the unenforced full-weight fixed point (31, 19,
+  21, 19, 26, 24) and worst shortfalls: `live/construction_table.parquet`,
+  `n_below_floor_final_pre_enforcement` and
+  `worst_floor_shortfall_*_pre_enforcement` columns.
+- Live path matches the table: `build_proposal` returns `share_only`, share
+  floor 20, `floor_iterated` true, 119 names, n_eff_kept 58.82.
 
 ### git diff --stat from base_commit (1957256)
 
 ```text
- .env.example                    |  20 +++++--
- docs/hygiene_ledger.md          |  53 ++++++++++++++++++
- handoff/LOG.md                  |  70 +++++++++++++++++++++++
- handoff/PROJECT_CONTEXT.md      |  78 +++++++++++++++++---------
- handoff/TASK.md                 | 116 +++++++++++++++++++++++++++++++-------
- live/construction_table.parquet | Bin 29817 -> 29826 bytes
- live/construction_table.py      |   4 ++
- live/store.py                   | 120 ++++++++++++++++++++++++++++------------
- live/supabase_schema.sql        |  27 +++++----
- pyproject.toml                  |   4 +-
- render.yaml                     |  17 +++---
- requirements.txt                |   6 +-
- scripts/provision_supabase.py   |  13 +++--
- scripts/run_live_daily.py       |  12 +++-
- tests/test_e11_render.py        |  26 ++++++---
- 15 files changed, 440 insertions(+), 126 deletions(-)
+ .env.example                      |  20 +-
+ docs/hygiene_ledger.md            |  53 ++++
+ handoff/LOG.md                    |  70 +++++
+ handoff/PROJECT_CONTEXT.md        |  78 ++++--
+ handoff/REPORT.md                 | 528 ++++++++++++++++++++++----------------
+ handoff/TASK.md                   | 116 +++++++--
+ live/construction_table.parquet   | Bin 29817 -> 37356 bytes
+ live/construction_table.py        | 271 ++++++++++++++-----
+ live/construction_weights.parquet | Bin 39258 -> 33674 bytes
+ live/evening_job.py               | 202 ++++++++++++---
+ live/store.py                     | 120 ++++++---
+ live/supabase_schema.sql          |  27 +-
+ pyproject.toml                    |   4 +-
+ render.yaml                       |  17 +-
+ requirements.txt                  |   6 +-
+ scripts/provision_supabase.py     |  13 +-
+ scripts/run_live_daily.py         |  12 +-
+ tests/test_construction_table.py  |  31 +++
+ tests/test_e11_evening.py         |  54 +++-
+ tests/test_e11_render.py          |  26 +-
+ tests/test_e11_store.py           |  97 +++++++
+ 21 files changed, 1290 insertions(+), 455 deletions(-)
 ```
 
 `handoff/LOG.md`, `handoff/PROJECT_CONTEXT.md` and `handoff/TASK.md` are the
 owner's commit `921dee7` (the choice), included because they land between
-`1957256` and here. Parts 1 and 2 are the rest; `tests/test_e11_store.py` is
-new and untracked so it does not appear in the stat.
+`1957256` and here. The rest is parts 1 to 3.
 
 ### Yes or no, each with evidence
 
-1. **Any two rows or two estimators identical?** No. The two new ledger entries
-   carry different numbers (0.0555 correction vs 0.054393 shrinkage split), and
-   no construction-table row was rebuilt in this part.
-2. **Any exception caught and skipped, or any fallback taken, with counts?** No.
-   The store's local-parquet fallback is a configured path, not an exception
-   handler, and it is not triggered in the tests that set a schema.
-3. **Any criterion reworded or replaced by a different test?** No. The dry-run
-   rule is implemented exactly as written (only an explicit false starts the
-   clock).
-4. **Any criterion that passes by construction?** No. The schema-qualification
-   test reads the source, and the dry-run test drives the function, not a
-   re-derivation.
-5. **Any number that moved by a factor of 10 or more?** No. `n_beta_zero_filled`
-   moved 0 to 1 and 0 to 2 on the rows that were miscounted, stated here.
+1. **Any two rows or two estimators identical?** No. The enforced floor rows
+   differ on names, n_eff, total error, p90, max weight and raw beta; top-N
+   150 and top-N 200 still both read 0.135 raw beta to three decimals, stated
+   as in the prior report.
+2. **Any exception caught and skipped, or any fallback taken, with counts?**
+   No. The enforcement loop converged in 3 passes on every floor row
+   (`floor_enforcement_converged` true, `floor_enforcement_passes` 3); no pass
+   cap was hit and no pseudoinverse hedge fallback was taken (n_effective
+   equals n_kept on every row).
+3. **Any criterion reworded or replaced by a different test?** No. The floor is
+   enforced exactly as written: drop, re-size, re-hedge, renormalize, quantize,
+   check, repeat.
+4. **Any criterion that passes by construction?** No. The enforcement test
+   reads the stored table and asserts the below-floor count is zero on the
+   enforced rows, which is a real check, not a re-derivation.
+5. **Any number that moved by a factor of 10 or more?** No. `n_kept` on the
+   floor rows moved by a factor of 2 to 4 (e.g. share-only 188 to 119, min
+   $5,000 99 to 23), and total error and p90 moved down by factors under 5,
+   stated here.
 6. **Any stored number typed into a notebook?** No notebook was touched.
-7. **Any earlier verdict changed?** Yes, the two the task ordered: E11-F8's
-   ledger verdict moved from refuted to undetermined (correction entry), then
-   to refuted by the diagnostic split (0.054393 shrinkage increment, not near
-   zero). Both are recorded in the append-only ledger.
+7. **Any earlier verdict changed?** Yes, the two the task ordered in part 1:
+   E11-F8's ledger verdict moved from refuted to undetermined (correction
+   entry), then to refuted by the diagnostic split (0.054393 shrinkage
+   increment, not near zero). Part 3 changes no earlier verdict.
 
 ### Anything decided that the reviewer might disagree with
 
@@ -238,5 +355,11 @@ The `supabase` client dependency was removed from `requirements.txt` and
 `pyproject.toml` (nothing imports it after the move to `psycopg`), and
 `psycopg[binary]>=3.1` now lives in the `live` extra. The provisioning script's
 project URL variable was renamed to `EFB_SUPABASE_PROJECT_URL` so it cannot be
-read as the withdrawn PostgREST connection. The full test suite is deferred to
-the point before `done`, per STANDARDS 21.
+read as the withdrawn PostgREST connection. The enforced rows start from the
+full book, not from the old full-weight fixed point, because the floor is the
+only selection rule and the comparison must be like-for-like; the old
+full-weight fixed point is retained as the "as it stands" measurement.
+Enforcement is applied to the six floor rows, not to top-N and the full book,
+which carry no position floor and keep a vacuous stamp. The stored proposal is
+not regenerated in this part (part 6 does that), so the dashboard still shows
+the old book under its own "not recorded" label until part 6.
