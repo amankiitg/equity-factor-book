@@ -31,11 +31,11 @@ def test_position_cap_scales_with_nav() -> None:
 
 
 def test_a_ten_times_order_on_the_largest_target_trips_the_cap() -> None:
-    # The largest legitimate target in the 2026-09-21 proposal is 0.0326 of
-    # NAV; a fat-finger at ten times that must trip the cap while the
-    # legitimate target itself is admitted.
+    # The largest legitimate final position across the closes the loop has
+    # run is 6.50% of NAV (MRNA at the 2026-09-18 close); a fat-finger at ten
+    # times that must trip the cap while the legitimate target is admitted.
     nav = 1_000_000.0
-    largest = 0.0326
+    largest = 0.065
     assert guards.position_cap(largest * nav, nav) is False
     assert guards.position_cap(10 * largest * nav, nav) is True
 

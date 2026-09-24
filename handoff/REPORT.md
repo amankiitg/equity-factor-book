@@ -5,7 +5,7 @@ The owner chose the share-only construction (minimum 20 whole shares per name,
 no dollar floor, iterated to a fixed point) at reserved decision 1. This task
 takes that choice to the gate in eight parts, in order, each committed on its
 own. `dry_run` stays `true` throughout; this task never flips it. This report
-covers parts 1 to 4.
+covers parts 1 to 5.
 
 ## Part 1: E11-F8 ledger correction, then the diagnostic split
 
@@ -234,6 +234,29 @@ criterion number changed).
 floor; the residue (fold the floor back into E8's own construction stack)
 stands.
 
+## Part 5: Guard 1 re-derived against the chosen construction's final weights
+
+Guard 1 is re-derived from the chosen share-only book's final (quantized)
+weights, sized from the largest final position across every close the loop has
+run, not one close. For each close the enforced share-only book is recomputed
+and its largest whole-share position read in dollars:
+
+| close | kept | largest final position | % of NAV |
+| --- | --- | --- | --- |
+| 2026-09-03 | 124 | MU, $62,280 | 6.23% |
+| 2026-09-18 | 116 | MRNA, $65,005 | 6.50% |
+| 2026-09-21 | 119 | MU, $59,506 | 5.95% |
+
+The largest legitimate target across all of them is $65,005, 6.50% of NAV, so
+ten times the largest name is 65.0% of NAV. The cap stays at
+`MAX_POSITION_PCT_OF_NAV = 0.10` — $100,000 at the $1,000,000 NAV — which
+clears the 6.50% target with 1.54x headroom (0.065 to 0.10) and trips a
+ten-times order on the largest name (0.650 > 0.10). The value is NAV-relative,
+so it scales with the book. The boundary and the 10x trip are pinned by
+`tests/test_e11_guards.py`, whose largest-legitimate constant moved from 0.0326
+to 0.065. The arithmetic and the basis change are recorded in a new
+`docs/hygiene_ledger.md` entry.
+
 ## Verification
 
 Per STANDARDS 21, per-step subsets plus lint ran after each part; the full
@@ -275,6 +298,13 @@ $ .venv/bin/pytest tests/test_registry.py tests/test_e5_walkthrough_notebook.py 
 
 $ .venv/bin/pytest tests/test_evidence.py -q
 1 passed in 0.54s
+```
+
+Part 5 subset (the re-derived Guard 1):
+
+```text
+$ .venv/bin/pytest tests/test_e11_guards.py -q
+7 passed in 0.02s
 ```
 
 Full suite (latest, after the Part 4 `efb/registry.py` change):
@@ -344,45 +374,51 @@ Success: no issues found in 15 source files
   `data_hash` and `revisions` block (`n_changed` 0, three history entries).
 - Registry sha256 in the version manifest: `data/VERSION.json`,
   `artifacts.registry.json.sha256` = 142afe1f….
+- Guard 1 largest legitimate target: MRNA $65,005 (6.50% of NAV) at the
+  2026-09-18 close, with MU $62,280 (6.23%) at 09-03 and MU $59,506 (5.95%)
+  at 09-21: recomputed from the enforced share-only final weights at each
+  close. The cap stays 0.10 ($100,000), 1.54x headroom over 0.065.
 
 ### git diff --stat from base_commit (1957256)
 
 ```text
  data/models/registry.json             |   7 +-
- docs/hygiene_ledger.md                |  53 +++
+ docs/hygiene_ledger.md                |  69 ++++
  docs/open_items.md                    |  12 +
  efb/registry.py                       |  22 ++
  evidence/MANIFEST.json                |  20 +-
  evidence/data/VERSION.json.gz         | Bin 7972 -> 7984 bytes
  evidence/data/models/registry.json.gz | Bin 4389 -> 4383 bytes
  handoff/LOG.md                        |  70 ++++
- handoff/PROJECT_CONTEXT.md            |  78 +++--
- handoff/REPORT.md                     | 605 +++++++++++++++++++++-------------
- handoff/TASK.md                       | 116 +++++--
+ handoff/PROJECT_CONTEXT.md            |  78 ++--
+ handoff/REPORT.md                     | 667 ++++++++++++++++++++++------------
+ handoff/TASK.md                       | 116 ++++--
  live/construction_table.parquet       | Bin 29817 -> 37356 bytes
- live/construction_table.py            | 271 +++++++++++----
+ live/construction_table.py            | 271 +++++++++++---
  live/construction_weights.parquet     | Bin 39258 -> 33674 bytes
- live/evening_job.py                   | 204 ++++++++++--
- live/store.py                         | 120 +++++--
+ live/evening_job.py                   | 204 +++++++++--
+ live/guards.py                        |  18 +-
+ live/store.py                         | 120 ++++--
  live/supabase_schema.sql              |  27 +-
- notebooks/E5_walkthrough.ipynb        |  94 +++---
+ notebooks/E5_walkthrough.ipynb        |  94 ++---
  pyproject.toml                        |   4 +-
  render.yaml                           |  17 +-
  requirements.txt                      |   6 +-
  scripts/provision_supabase.py         |  13 +-
  scripts/run_live_daily.py             |  12 +-
- sprints/E5/RESULTS.json               | 238 ++++++++++++-
+ sprints/E5/RESULTS.json               | 238 +++++++++++-
  tests/test_construction_table.py      |  31 ++
- tests/test_e11_evening.py             |  54 +++-
+ tests/test_e11_evening.py             |  54 ++-
+ tests/test_e11_guards.py              |   8 +-
  tests/test_e11_render.py              |  26 +-
- tests/test_e11_store.py               |  97 ++++++
+ tests/test_e11_store.py               |  97 +++++
  tests/test_registry.py                |  30 ++
- 31 files changed, 1733 insertions(+), 518 deletions(-)
+ 33 files changed, 1824 insertions(+), 531 deletions(-)
 ```
 
 `handoff/LOG.md`, `handoff/PROJECT_CONTEXT.md` and `handoff/TASK.md` are the
 owner's commit `921dee7` (the choice), included because they land between
-`1957256` and here. The rest is parts 1 to 4.
+`1957256` and here. The rest is parts 1 to 5.
 
 ### Yes or no, each with evidence
 
@@ -413,7 +449,9 @@ owner's commit `921dee7` (the choice), included because they land between
    entry), then to refuted by the diagnostic split (0.054393 shrinkage
    increment, not near zero). Part 4 changes no criterion verdict: the E5
    data_hash moved (a4c40c67… -> 6dca1f8d…) with `n_changed` 0, and the
-   criteria are byte-identical.
+   criteria are byte-identical. Part 5 changes no verdict: Guard 1's cap
+   value stays 0.10; only its derivation basis moves to the share-only final
+   weights.
 
 ### Anything decided that the reviewer might disagree with
 

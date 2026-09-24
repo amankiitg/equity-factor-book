@@ -1707,3 +1707,19 @@ explanation is measured at 0.000031, essentially nil, so the whole of the
 0.054393 residual at the Vasicek stage is the shrinkage. The numbers are
 computed at min $1,500 from live/construction_table.parquet weights and the
 frozen XS-v1 specification in efb/models/fundamental.py.
+
+## 2026-09-24: Guard 1 is re-derived against the share-only final weights
+
+Decision. Guard 1's cap stays at 0.10 of NAV, now re-derived against the
+chosen share-only construction's final (quantized) weights, sized from the
+largest final position across every close the loop has run, not one close.
+The largest is MRNA at the 2026-09-18 close: $65,005, 6.50% of NAV; the other
+closes are MU $62,280 (6.23%, 09-03) and MU $59,506 (5.95%, 09-21). A cap of
+0.10 ($100,000 at the $1,000,000 NAV) clears that target with 1.54x headroom
+(0.065 to 0.10) and trips a ten-times order on the largest name (0.650 > 0.10).
+The boundary and the 10x trip are pinned by tests.
+
+Reason. The previous derivation was against the 499-name full book (largest
+0.0326), not the book that trades. The chosen construction drops 499 to 119
+names, so the largest position roughly doubles; the cap still clears it and
+still trips a 10x fat-finger, so the number does not move, only the basis.
