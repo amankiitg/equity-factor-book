@@ -1909,3 +1909,54 @@ and the registry's live block is described. Plan item 4 carries the status and
 "do not deploy yet". Two working lessons are added: a fixed-point spec must
 name admission, and a gate on historical dates is a replay. TASK.md is
 `e11-admit-and-live-gate` at 938da6c, in five parts.
+
+---
+
+## 2026-09-24 owner: F13 and F14 accepted, inputs in Postgres, staleness fails the run
+
+E11-F13, E11-F14 and all the smaller items are accepted. The owner agreed
+that owning F13 was right and that the source read was warranted.
+
+**E11-F15, decided: the model inputs live in Postgres, schema `efb`.** Each
+run reads the last stored date, appends the session and writes it back. It is
+the only option where Render's ephemeral disk is not a standing hazard.
+Rebuilding from raw repeats work, and a persistent disk costs money and pins
+the region. DeepSeek describes the current code and costs the migration, then
+builds. I read "cost before building" as an ordering, not an approval gate.
+The build proceeds unless a pre-registered stop fires: more than 80% of the
+shared free-tier cap within a year, any new grant or dashboard change, or any
+restated row. I added the size check, because the cap is shared with
+credit-trading-lab and a full-history copy could approach it. The suggested
+design is a git seed plus a Postgres appendix.
+
+**Staleness fails the run.** Owner, non-negotiable: stop before proposing, log
+why, no orders. Three things I made precise, which the owner can veto:
+- **Trading sessions, not calendar days.** Otherwise every Monday fails on
+  Friday's close.
+- **The allowed values**, pre-registered in TASK.md: 0 sessions behind the
+  target close for the seven daily inputs, by content date. For shares and
+  sectors, 0 sessions by last successful fetch, with content age reported but
+  not gated, because those sources change slowly and what must not age is the
+  check.
+- **A missing run counts as stale.** The dashboard reads the latest run
+  status, not the latest proposal. The owner's point is that the dashboard
+  must not look healthy while the book is stale, and a cron that simply never
+  ran is the quietest version of that.
+
+**E11-F14:** the gate reruns only on two consecutive closes, each fetched by
+the loop on its own evening through the production entry point. Catch-up
+sessions are allowed for bringing the data current, are labeled as catch-up,
+and do not count as gate closes. The 09-18 universe look-ahead is fixed in the
+same part. I recommended the Render cron in dry run as the vehicle for the
+gate, since it measures production itself, with local evening runs as the
+alternative.
+
+**Re-decide trigger:** re-run on the prefix numbers. The owner holds
+share-only until then. Part 1 ends with TASK.md set to `blocked` and the
+trigger's result at the top of the report. The proposal regeneration and
+Guard 1 wait for the owner's confirmation. The parts that do not depend on the
+book (Postgres, the staleness stop, deploy steps) continue meanwhile.
+
+PROJECT_CONTEXT is updated: three decisions are added, share-only is marked
+held, and plan item 4 is resequenced. TASK.md is rewritten as seven parts,
+with the owner's decisions at the top.

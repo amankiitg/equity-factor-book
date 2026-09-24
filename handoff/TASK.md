@@ -2,19 +2,19 @@ task_id: e11-admit-and-live-gate
 status: ready
 base_commit: 938da6c
 
-## Put admission back into the fixed point, then run the gate on live data
+## Admission back into the fixed point, inputs into Postgres, staleness as a hard stop
 
-Parts 1, 2, 4 and 8 of `e11-share-floor-to-gate` stand, and they are good
-work. The dry-run resolution, the schema-qualification test, the
-`_input_as_of` clamp and the cron import fix all catch real failures. Three
-results do not stand, because they rest on a book that is not the fixed point
-(E11-F13) or on data that is not live (E11-F14): the 119-name proposal,
-Guard 1's basis, and the sanity gate. **The owner does not deploy until this
-task is done.** `dry_run` stays `true`.
+**Owner decisions, 2026-09-24.** E11-F13, E11-F14 and every smaller item are
+accepted. On E11-F15 the owner chose: **the model inputs live in Postgres,
+schema `efb`, not on disk.** Each run reads the last stored date, appends the
+new session and writes it back, so a wiped container costs nothing.
+**Staleness fails the run instead of being reported by it.** The owner holds
+the share-only choice until the corrected E11-F13 numbers exist.
 
-Run the parts in order, committing each one alone.
+Parts 1, 2, 4 and 8 of `e11-share-floor-to-gate` stand. Run the parts below in
+order, committing each alone. `dry_run` stays `true`, and you never flip it.
 
-### Part 1. E11-F13: the enforcement loop only drops
+### Part 1. E11-F13: the enforcement loop only drops (owner accepted)
 
 `enforce_floor_on_final_weights` says so itself: "The kept set only shrinks."
 Starting from the full book, a drop-only loop lands on roughly the **one-pass**
@@ -54,51 +54,101 @@ Pre-registered, before the numbers exist:
 - Report share-only's n_eff against the 85.69 the owner chose on, as a plain
   number.
 
-Then regenerate both stored proposals and re-derive Guard 1 on the prefix
-books, over every close run. State the headroom again: 1.54x is thin for a
-book that rebalances daily. Report how much the largest final weight moves
-from close to close, and say whether 0.10 still clears that movement with
-margin.
+**Checkpoint: the owner holds the share-only choice until these numbers
+exist.** When Part 1 is committed, report the prefix table and where the
+trigger lands, and set `handoff/TASK.md` to `blocked` with that question at
+the top of the report. **Do not regenerate the proposals or re-derive Guard 1
+until the owner confirms**; that work is Part 5. Parts 2 to 4 do not depend on
+the book, so carry on with them while the owner reads the table.
 
-### Part 2. E11-F14: the gate replayed history instead of showing live data
+### Part 2. E11-F15: model inputs into Postgres. Describe and cost it first, then build.
 
-The gate ran on 2026-09-24 against closes 2026-09-18 and 2026-09-21.
-`prices.parquet` ends at 09-21, although 09-22 and 09-23 have closed. The gate
-passed on two historical dates. It did not show that the daily path advances,
-which is the whole point of A5.
+**Target, decided by the owner: Postgres, schema `efb`.** Do not reopen the
+choice between Postgres, a rebuild from raw and a persistent disk.
 
-1. **Extend the data to the latest close through the same entry point the cron
-   runs**, not a one-off script. Rows dated on or before 2026-09-03 stay
-   byte-identical: print the hashes (acceptance item 2).
-2. **Fix the universe look-ahead.** The 09-18 proposal records `universe` as
-   of **2026-09-21**, three days after its close. That is look-ahead under
-   STANDARDS rule 13. Clamp the universe the way `_input_as_of` now clamps
-   everything else, and add a shift-audit test in which a proposal's universe
-   file postdates its close and the proposal is refused.
-3. **Say what the sectors date means.** Sectors read 2026-09-11 on both
-   closes. A2 fetches the Wikipedia snapshot each session. Is 09-11 the date
-   the content last changed, or the last successful fetch? If it is the fetch
-   date, the fetch is not running. If it is the content date, store the fetch
-   date as well, because staleness is about when the data was last checked.
-4. **Rerun the gate on the two most recent real closes at run time**, after
-   Part 1, through the daily entry point. Report the two closes, turnover,
-   n_eff on each, and all nine as-of dates.
+**Before building, write down in REPORT.md:**
+1. What the code does now on a fresh container, with the line that does it:
+   where each of the nine inputs is read from and where an appended session is
+   written.
+2. The migration cost:
+   - rows and megabytes per input for the design you propose;
+   - the run's read and write time against the session pooler;
+   - the code touched.
+3. **Database size against the free tier.** The Supabase free tier caps the
+   database, and this project **shares that cap with credit-trading-lab**. A
+   full-history copy of prices and specific returns alone may approach it.
+   The natural design is **the git snapshot as the seed plus a Postgres
+   appendix**:
+   - Postgres holds only sessions after 2026-09-03, plus whatever trailing
+     window the rolling estimators need.
+   - The pre-2026-09-04 rows stay in git, byte-identical.
+   - A run reads seed plus appendix, and writes only the new session.
 
-### Part 3. E11-F15: where do the daily-extended inputs live on Render?
+   If you propose something else, say why. State the credit lab's current
+   database size, read-only, and the combined total after one year of
+   appends.
 
-Render's filesystem is ephemeral. The cron extends prices, descriptors,
-factor returns, specific returns and both covariance artifacts by appending a
-session. Where do those appended rows live between runs? If each run starts
-from the artifacts committed at deploy time, then either every run re-fetches
-and re-extends from that date, which is a growing job, or the loop prices
-from stale inputs, which is the static-days failure again, on the server.
+**Then build it**, unless one of these stops applies. Stop and report instead
+of building if:
+- the design would push the shared database past 80% of the free-tier cap
+  within a year of appends;
+- it needs any grant, role or dashboard change on the shared project beyond
+  the two roles the owner is already creating;
+- it would restate any pre-2026-09-04 row.
 
-**Do not build anything here.** Answer what the code does now, with the line
-that does it. Then list the options, each with its cost and failure mode: for
-example re-extend from the commit every run, persist the appended rows in
-schema `efb`, a paid persistent disk, or the cron committing back to git with
-a write token on Render. The owner decides. A deploy before this is answered
-could report as live while pricing stale data.
+**Requirements for the build:**
+- The seed-plus-appendix read equals the current local artifacts on every
+  date through the latest close. Test it and print the hashes.
+- An append is idempotent: running the same session twice leaves one row per
+  key. Test it.
+- The append and the proposal for a session are written in one transaction,
+  or the proposal records the appendix row it was priced from. A proposal
+  must never be priced from an appendix it cannot name.
+
+### Part 3. Staleness fails the run (owner, non-negotiable)
+
+If any input is older than it is allowed to be, **the job stops before
+proposing, logs why, and places no orders.** A book pricing Monday's close on
+Thursday must not trade. The E11-F15 hazard is precisely that the dashboard
+would look healthy while that happened.
+
+**Measure in trading sessions on the NYSE calendar, not calendar days.** A
+Friday close read on Monday is fresh. `max_input_staleness_days` stays as a
+reported field, but the gate uses sessions. The target close is the most
+recent completed session at run time.
+
+**The allowed values, pre-registered here** (the owner can change them before
+the first run):
+
+| input | measured by | allowed |
+| --- | --- | --- |
+| prices, descriptors, factor_returns, specific_returns, factor_cov, specific_var | the content date | 0 sessions behind the target close |
+| universe (SPY archive) | the content date | 0 sessions |
+| shares | the date of the last successful fetch; content age reported, not gated | 0 sessions |
+| sectors | the date of the last successful fetch; content age reported, not gated | 0 sessions |
+
+Shares and sectors change slowly, so their content ages. What must not age is
+the **check**. Store both dates for each of them, and store content dates for
+all nine inputs.
+
+Requirements:
+1. **The check runs before any sizing.** On failure, no proposal row and no
+   order is written. A `run_status` row in `efb` records the target close,
+   every input's dates, which inputs failed and by how many sessions, and
+   `status: stale_stopped`. The process exits nonzero, so Render marks the
+   cron run failed.
+2. **A missing run is stale too.** The dashboard reads the latest
+   `run_status`, not the latest proposal. It shows a prominent failure state
+   when that status is anything but a clean run for the most recent completed
+   session: stale-stopped, errored, or no run at all for that session. A page
+   that keeps showing an old book as the current one is the failure the owner
+   named.
+3. **Tests:**
+   - one stale input stops the run with no proposal and no orders;
+   - the check uses sessions, so a Monday run on Friday's close passes;
+   - a holiday is handled;
+   - the dashboard shows the failure state when the latest status is
+     stale-stopped and when it is missing.
 
 ### Part 4. The owner's deploy steps, corrected
 
@@ -118,7 +168,45 @@ could report as live while pricing stale data.
   through the Supabase SQL editor needs no account-wide token. Make that the
   primary path, and the token path the alternative.
 
-### Part 5. Three small corrections
+### Part 5. After the owner confirms the book: proposals and Guard 1
+
+Only after the owner confirms the Part 1 result:
+- Regenerate the stored proposals on the prefix book.
+- Re-derive Guard 1 over every close run.
+- State the headroom again. 1.54x is thin for a book that rebalances daily,
+  so report how much the largest final weight moves from close to close, and
+  say whether 0.10 still clears that movement with margin.
+
+### Part 6. E11-F14: the gate, on two closes the loop fetched itself
+
+**Owner, 2026-09-24:** the gate reruns only once the daily update is
+genuinely appending, on two closes **the loop itself fetched**, not replayed.
+
+1. **Fix the universe look-ahead first.** The 09-18 proposal records its
+   universe as of 2026-09-21. Clamp the universe the way `_input_as_of` clamps
+   everything else, and add a shift-audit test that refuses a proposal whose
+   universe file postdates its close.
+2. **Say what the sectors date means**: the content date, or a fetch that is
+   not running. Part 3 needs both dates regardless.
+3. **Catching up is allowed but does not count.** Bringing the data current
+   through the daily entry point, for 09-22 onward, is fine. Record those
+   sessions as `catch_up` in `run_status`. **They are not gate closes.**
+4. **The gate's two closes are two consecutive sessions, each fetched by a run
+   on that session's own evening** through the production entry point, with
+   the fetch timestamps stored as evidence. The cleanest way is the Render
+   cron in dry run, after Parts 2 to 4 and the owner's deploy. A local run of
+   the same entry point on two evenings also counts if the owner prefers. The
+   gate is evaluated from the `run_status` and proposal rows in `efb`.
+   Report:
+   - the two closes and their fetch times;
+   - turnover, with its definition;
+   - n_eff on each close;
+   - all nine as-of dates;
+   - confirmation that the staleness check passed on both runs.
+5. **Pre-2026-09-04 rows stay byte-identical** through all of it. Print the
+   hashes.
+
+### Part 7. Three small corrections
 
 - **E11-F8, the 0.000031 gap is too clean to leave unexplained.** TS-v1's raw
   beta is frozen at 2026-09-03. XS-v1's pre-shrinkage beta was recomputed at
@@ -140,10 +228,11 @@ could report as live while pricing stale data.
 ### Stop only if
 
 - The standing stop conditions below apply.
-- Part 1 finds prefix fewer than drop-only on any row, or the re-decide
-  trigger fires.
-- Part 2 would restate any pre-2026-09-04 row.
+- Part 1 finds the prefix result keeps fewer names than drop-only on any row,
+  or the re-decide trigger fires.
+- Part 2 hits one of its stops.
 - Part 4 would need you to create a role or a grant yourself.
+- Any step would restate a pre-2026-09-04 row.
 
 ---
 

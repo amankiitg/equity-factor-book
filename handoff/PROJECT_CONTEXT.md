@@ -172,7 +172,8 @@ Settled 2026-09-22. These are no longer open; build on them.
   the idio book stops being idio.
 - **The construction is share-only, a minimum of 20 whole shares per name**,
   with no dollar floor, iterated to a fixed point on the final traded
-  weights. Chosen 2026-09-24 from the fixed-point table: 188 names, n_eff
+  weights. **Held by the owner, 2026-09-24, pending the corrected E11-F13
+  numbers and the re-decide trigger on them.** Chosen 2026-09-24 from the fixed-point table: 188 names, n_eff
   85.69 against 157.33 for the full book, governing breadth 1.355, total
   error 1.25% of NAV, p90 per-name rounding 3.44%. These are table values
   from before the floor was enforced on final weights (E11-F12), and the
@@ -191,6 +192,22 @@ Settled 2026-09-22. These are no longer open; build on them.
   on the shared project**. Needing that change is a stop condition and stays
   one. The owner moves to Neon or Render Postgres rather than widen the
   shared project.
+- **The model inputs live in Postgres, schema `efb`, not on disk.** Decided
+  2026-09-24 on E11-F15. Each run reads the last stored date, appends the new
+  session and writes it back, so a wiped Render container costs nothing.
+  Rebuilding from raw on every run repeats work, and a persistent disk costs
+  money and pins the region. The intended design is the git snapshot as the
+  seed plus a Postgres appendix, which keeps pre-2026-09-04 rows byte-identical
+  in git and fits the free-tier database cap shared with credit-trading-lab.
+- **Staleness fails the run.** Owner, 2026-09-24, non-negotiable. If any input
+  is older than it is allowed to be, the job stops before proposing, logs why,
+  and places no orders. Staleness is counted in NYSE trading sessions against
+  the most recent completed session. The dashboard reads the latest run
+  status, and shows a stale, failed or missing run as a failure, never as the
+  last good book. A book pricing Monday's close on Thursday must not trade.
+- **The sanity gate runs on two closes the loop fetched on their own
+  evenings**, through the production entry point. Catch-up and replays do not
+  count.
 - **Whatever is chosen, the executed book's breadth is reduced and every E11
   number meeting an E8 transfer coefficient must say so.** The naive bound is
   `sqrt(460 / N_kept)`; the governing one is `sqrt(n_eff_full / n_eff_kept)`,
@@ -289,6 +306,15 @@ Sequenced 2026-09-23. Each numbered item is roughly one TASK.md or less.
    historical closes rather than showing live data (E11-F14). Before any
    deploy, the owner decides where the daily-extended inputs live on Render
    (E11-F15). The deploy steps are being corrected. **Do not deploy yet.**
+   **Resequenced 2026-09-24 after the owner's decisions:**
+   1. The prefix fixed point, then the owner re-confirms share-only.
+   2. The model inputs move into Postgres.
+   3. The staleness hard stop.
+   4. Corrected deploy steps.
+   5. Proposals and Guard 1 on the confirmed book.
+   6. The owner deploys in dry run, and the gate runs on two closes the loop
+      fetches on their own evenings.
+   7. The owner flips `dry_run`.
    **F11.1 to F11.3 stay open until 30 live days accumulate.**
 5. **E12, built during the 30-day window, not after it.** See the correction
    below: the engine does **not** exist yet, so this is a build, not a
