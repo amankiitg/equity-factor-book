@@ -42,6 +42,37 @@ def _latest_proposal() -> dict | None:
     return json.loads(row["manifest"]) if row.get("manifest") else dict(row)
 
 
+def _construction_label(manifest: dict) -> str:
+    """The proposal's construction, generated only from its stored fields.
+
+    Mirrors dashboard/tabs/d10_book.py: the page never asserts a label beside
+    the artifact. If the artifact lacks the fields, it says so instead of
+    filling the gap from the registry or the table.
+    """
+    kind = manifest.get("construction")
+    if kind is None:
+        return "construction parameters not recorded in this artifact"
+    floor_dollars = manifest.get("construction_floor_dollars")
+    floor_shares = manifest.get("construction_floor_shares")
+    top_n = manifest.get("construction_top_n")
+    iterated = bool(manifest.get("floor_iterated"))
+    if kind == "min_position":
+        label = f"min position ${floor_dollars:,.0f}"
+    elif kind == "two_part":
+        label = f"min ${floor_dollars:,.0f} and {int(floor_shares)} shares"
+    elif kind == "share_only":
+        label = f"min {int(floor_shares)} shares"
+    elif kind == "top_n":
+        label = f"top {int(top_n)} by absolute alpha"
+    else:
+        label = str(kind)
+    if iterated:
+        label += " (iterated to a fixed point)"
+    else:
+        label += " (one pass, not iterated)"
+    return label
+
+
 def _no_data(caption: str = "No live data yet.") -> None:
     st.caption(caption)
 
@@ -130,6 +161,7 @@ st.header("The book")
 if manifest is None:
     _no_data()
 else:
+    st.markdown(f"**Construction: {_construction_label(manifest)}.**")
     book = pd.DataFrame(
         [
             {

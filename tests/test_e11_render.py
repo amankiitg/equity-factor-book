@@ -94,6 +94,60 @@ def test_render_dashboard_reads_no_research_parquet() -> None:
     assert "data/" not in source
 
 
+def test_render_dashboard_labels_the_construction_from_the_artifact() -> None:
+    """The Render page's construction label is generated from the proposal's
+    stored fields, never asserted beside the artifact."""
+    from live import dashboard_app
+
+    assert (
+        dashboard_app._construction_label(
+            {
+                "construction": "share_only",
+                "construction_floor_dollars": None,
+                "construction_floor_shares": 20,
+                "construction_top_n": None,
+                "floor_iterated": True,
+            }
+        )
+        == "min 20 shares (iterated to a fixed point)"
+    )
+    assert (
+        dashboard_app._construction_label(
+            {"construction": "min_position", "construction_floor_dollars": 5000.0}
+        )
+        == "min position $5,000 (one pass, not iterated)"
+    )
+
+
+def test_render_dashboard_reports_missing_construction_fields() -> None:
+    from live import dashboard_app
+
+    assert dashboard_app._construction_label({}) == (
+        "construction parameters not recorded in this artifact"
+    )
+
+
+def test_the_regenerated_proposal_is_the_share_only_book() -> None:
+    """Part 6: the stored dry-run proposal is the chosen share-only book, and
+    both the D10 header and the Render page label it from its own fields."""
+    import json
+
+    from live import dashboard_app
+
+    manifest = json.loads(
+        (ROOT / "live" / "proposals" / "proposal_2026-09-21.json").read_text()
+    )
+    assert manifest["construction"] == "share_only"
+    assert manifest["construction_floor_shares"] == 20
+    assert manifest["construction_floor_dollars"] is None
+    assert manifest["floor_iterated"] is True
+    assert manifest["n_kept"] == 119
+    assert manifest["n_dropped"] == 380
+    assert dashboard_app._construction_label(manifest) == (
+        "min 20 shares (iterated to a fixed point)"
+    )
+
+
 def test_whole_share_quantization_counts_zero_rounds() -> None:
     rows = pd.DataFrame({"ticker": ["A", "B"], "weight": [0.000001, -0.000001]})
     prices = {"A": 100.0, "B": 100.0}

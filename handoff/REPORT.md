@@ -5,7 +5,7 @@ The owner chose the share-only construction (minimum 20 whole shares per name,
 no dollar floor, iterated to a fixed point) at reserved decision 1. This task
 takes that choice to the gate in eight parts, in order, each committed on its
 own. `dry_run` stays `true` throughout; this task never flips it. This report
-covers parts 1 to 5.
+covers parts 1 to 6.
 
 ## Part 1: E11-F8 ledger correction, then the diagnostic split
 
@@ -257,6 +257,29 @@ so it scales with the book. The boundary and the 10x trip are pinned by
 to 0.065. The arithmetic and the basis change are recorded in a new
 `docs/hygiene_ledger.md` entry.
 
+## Part 6: the dry-run proposal regenerated under the chosen construction
+
+The stored dry-run proposal is regenerated on the latest close under the
+chosen construction: `build_proposal(store=True)` now writes
+`live/proposals/proposal_2026-09-21.json` and its parquet as the share-only
+book — `construction: share_only`, share floor 20, no dollar floor,
+`floor_iterated: true`, 119 names kept, 380 dropped, n_eff_kept 58.82,
+governing breadth 1.635, max weight 0.0596. The D10 header now reads, from
+the artifact's own fields, "min 20 shares (iterated to a fixed point)" with
+119 kept and 380 dropped, and the code commit stored in the artifact is
+`c8eee08`.
+
+The Render page (`live/dashboard_app.py`) follows the same rule: it gains a
+`_construction_label(manifest)` that generates the label only from the
+artifact's stored `construction`, `construction_floor_dollars`,
+`construction_floor_shares`, `construction_top_n` and `floor_iterated`
+fields, and displays it in "The book". A missing `construction` field renders
+"construction parameters not recorded in this artifact" rather than being
+filled from the registry or the table. Three tests pin it: the share-only
+label, the min-position label, the missing-fields fallback, and an
+integration test asserts the regenerated stored proposal is exactly the
+share-only book.
+
 ## Verification
 
 Per STANDARDS 21, per-step subsets plus lint ran after each part; the full
@@ -307,14 +330,21 @@ $ .venv/bin/pytest tests/test_e11_guards.py -q
 7 passed in 0.02s
 ```
 
-Full suite (latest, after the Part 4 `efb/registry.py` change):
+Part 6 subset (the Render-page label and the regenerated proposal):
+
+```text
+$ .venv/bin/pytest tests/test_e11_render.py tests/test_dashboard_d10.py tests/test_e11_evening.py -q
+45 passed, 1 skipped in 23.17s
+```
+
+Full suite (latest, after the Part 6 proposal regeneration):
 
 ```text
 $ make test
-719 passed, 1 skipped, 3 warnings in 447.64s (0:07:27)
+722 passed, 1 skipped, 3 warnings in 465.58s (0:07:45)
 ```
 
-The previous full-run count in LOG.md is 692; 719 clears it.
+The previous full-run count in LOG.md is 692; 722 clears it.
 
 ```text
 $ make verify-evidence
@@ -378,47 +408,56 @@ Success: no issues found in 15 source files
   2026-09-18 close, with MU $62,280 (6.23%) at 09-03 and MU $59,506 (5.95%)
   at 09-21: recomputed from the enforced share-only final weights at each
   close. The cap stays 0.10 ($100,000), 1.54x headroom over 0.065.
+- Regenerated stored proposal: `live/proposals/proposal_2026-09-21.json`,
+  `construction: share_only`, share floor 20, `floor_iterated: true`,
+  `n_kept` 119, `n_dropped` 380, `n_eff_kept` 58.82, `max_kept_weight`
+  0.0596. The D10 and Render labels read "min 20 shares (iterated to a
+  fixed point)" from the artifact's own fields.
 
 ### git diff --stat from base_commit (1957256)
 
 ```text
- data/models/registry.json             |   7 +-
- docs/hygiene_ledger.md                |  69 ++++
- docs/open_items.md                    |  12 +
- efb/registry.py                       |  22 ++
- evidence/MANIFEST.json                |  20 +-
- evidence/data/VERSION.json.gz         | Bin 7972 -> 7984 bytes
- evidence/data/models/registry.json.gz | Bin 4389 -> 4383 bytes
- handoff/LOG.md                        |  70 ++++
- handoff/PROJECT_CONTEXT.md            |  78 ++--
- handoff/REPORT.md                     | 667 ++++++++++++++++++++++------------
- handoff/TASK.md                       | 116 ++++--
- live/construction_table.parquet       | Bin 29817 -> 37356 bytes
- live/construction_table.py            | 271 +++++++++++---
- live/construction_weights.parquet     | Bin 39258 -> 33674 bytes
- live/evening_job.py                   | 204 +++++++++--
- live/guards.py                        |  18 +-
- live/store.py                         | 120 ++++--
- live/supabase_schema.sql              |  27 +-
- notebooks/E5_walkthrough.ipynb        |  94 ++---
- pyproject.toml                        |   4 +-
- render.yaml                           |  17 +-
- requirements.txt                      |   6 +-
- scripts/provision_supabase.py         |  13 +-
- scripts/run_live_daily.py             |  12 +-
- sprints/E5/RESULTS.json               | 238 +++++++++++-
- tests/test_construction_table.py      |  31 ++
- tests/test_e11_evening.py             |  54 ++-
- tests/test_e11_guards.py              |   8 +-
- tests/test_e11_render.py              |  26 +-
- tests/test_e11_store.py               |  97 +++++
- tests/test_registry.py                |  30 ++
- 33 files changed, 1824 insertions(+), 531 deletions(-)
+ data/VERSION.json                          |   4 +-
+ data/models/registry.json                  |   7 +-
+ docs/hygiene_ledger.md                     |  69 +++
+ docs/open_items.md                         |  12 +
+ efb/registry.py                            |  22 +
+ evidence/MANIFEST.json                     |  20 +-
+ evidence/data/VERSION.json.gz              | Bin 7972 -> 7984 bytes
+ evidence/data/models/registry.json.gz      | Bin 4389 -> 4383 bytes
+ handoff/LOG.md                             |  70 +++
+ handoff/PROJECT_CONTEXT.md                 |  78 ++--
+ handoff/REPORT.md                          | 703 +++++++++++++++++++----------
+ handoff/TASK.md                            | 116 ++++-
+ live/construction_table.parquet            | Bin 29817 -> 37356 bytes
+ live/construction_table.py                 | 271 ++++++++---
+ live/construction_weights.parquet          | Bin 39258 -> 33674 bytes
+ live/dashboard_app.py                      |  32 ++
+ live/evening_job.py                        | 204 +++++++--
+ live/guards.py                             |  18 +-
+ live/proposals/proposal_2026-09-21.json    |  85 ++--
+ live/proposals/proposal_2026-09-21.parquet | Bin 4114 -> 7195 bytes
+ live/store.py                              | 120 +++--
+ live/supabase_schema.sql                   |  27 +-
+ notebooks/E5_walkthrough.ipynb             |  94 ++--
+ pyproject.toml                             |   4 +-
+ render.yaml                                |  17 +-
+ requirements.txt                           |   6 +-
+ scripts/provision_supabase.py              |  13 +-
+ scripts/run_live_daily.py                  |  12 +-
+ sprints/E5/RESULTS.json                    | 238 +++++++++-
+ tests/test_construction_table.py           |  31 ++
+ tests/test_e11_evening.py                  |  54 ++-
+ tests/test_e11_guards.py                   |   8 +-
+ tests/test_e11_render.py                   |  80 +++-
+ tests/test_e11_store.py                    |  97 ++++
+ tests/test_registry.py                     |  30 ++
+ 36 files changed, 1994 insertions(+), 568 deletions(-)
 ```
 
 `handoff/LOG.md`, `handoff/PROJECT_CONTEXT.md` and `handoff/TASK.md` are the
 owner's commit `921dee7` (the choice), included because they land between
-`1957256` and here. The rest is parts 1 to 5.
+`1957256` and here. The rest is parts 1 to 6.
 
 ### Yes or no, each with evidence
 
@@ -451,7 +490,8 @@ owner's commit `921dee7` (the choice), included because they land between
    data_hash moved (a4c40c67… -> 6dca1f8d…) with `n_changed` 0, and the
    criteria are byte-identical. Part 5 changes no verdict: Guard 1's cap
    value stays 0.10; only its derivation basis moves to the share-only final
-   weights.
+   weights. Part 6 changes no verdict: it regenerates the stored proposal
+   under the chosen construction, which is the deliverable, not a criterion.
 
 ### Anything decided that the reviewer might disagree with
 
@@ -465,8 +505,9 @@ only selection rule and the comparison must be like-for-like; the old
 full-weight fixed point is retained as the "as it stands" measurement.
 Enforcement is applied to the six floor rows, not to top-N and the full book,
 which carry no position floor and keep a vacuous stamp. The stored proposal is
-not regenerated in this part (part 6 does that), so the dashboard still shows
-the old book under its own "not recorded" label until part 6.
+regenerated in part 6 under the chosen construction, overwriting the old
+27-name min-position book with the 119-name share-only book; the D10 and
+Render pages both read the construction from the artifact's own fields.
 
 The E5 RESULTS.json revisions block was written through the project's own
 `evaluate.write_results` with the unchanged criteria, so the `changed` map now
