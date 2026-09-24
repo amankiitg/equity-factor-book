@@ -4,7 +4,7 @@
   "avg_trade_size": 8403.361344537816,
   "breadth_governing": 1.6354365260292032,
   "breadth_naive_bound": 1.9660992392265948,
-  "code_commit": "c8eee0840aa1908c1d3e2efe3b36c88d1612bbab",
+  "code_commit": "0a89e0bbb17e5d287535089d3298bf47a202cbd9",
   "construction": "share_only",
   "construction_floor_dollars": null,
   "construction_floor_shares": 20,

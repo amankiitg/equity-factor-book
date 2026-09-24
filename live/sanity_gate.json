@@ -4,9 +4,40 @@
     "2026-09-21"
   ],
   "definition": "0.5 * sum(abs(w_t - w_{t-1}))",
+  "input_as_of_after": {
+    "descriptors": "2026-09-21",
+    "factor_cov": "2026-09-21",
+    "factor_returns": "2026-09-21",
+    "prices": "2026-09-21",
+    "sectors": "2026-09-11",
+    "shares": "2026-09-17",
+    "specific_returns": "2026-09-21",
+    "specific_var": "2026-09-21",
+    "universe": "2026-09-21"
+  },
+  "input_as_of_before": {
+    "descriptors": "2026-09-18",
+    "factor_cov": "2026-09-18",
+    "factor_returns": "2026-09-18",
+    "prices": "2026-09-18",
+    "sectors": "2026-09-11",
+    "shares": "2026-09-17",
+    "specific_returns": "2026-09-18",
+    "specific_var": "2026-09-18",
+    "universe": "2026-09-21"
+  },
+  "max_input_staleness_days_after": 10,
+  "max_input_staleness_days_before": 7,
+  "n_eff_full_after": 157.32914162493645,
+  "n_eff_full_before": 146.32379844030498,
+  "n_eff_kept_after": 58.822270907567535,
+  "n_eff_kept_before": 59.353782593845175,
+  "n_kept_after": 119,
+  "n_kept_before": 116,
   "n_names_after": 499,
   "n_names_before": 499,
   "passed": true,
   "proposals_differ": true,
-  "weight_turnover": 0.12909727295192375
+  "stalled_inputs": [],
+  "weight_turnover": 0.13660268978401346
 }

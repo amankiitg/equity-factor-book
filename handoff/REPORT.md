@@ -5,7 +5,7 @@ The owner chose the share-only construction (minimum 20 whole shares per name,
 no dollar floor, iterated to a fixed point) at reserved decision 1. This task
 takes that choice to the gate in eight parts, in order, each committed on its
 own. `dry_run` stays `true` throughout; this task never flips it. This report
-covers parts 1 to 6.
+covers parts 1 to 7.
 
 ## Part 1: E11-F8 ledger correction, then the diagnostic split
 
@@ -280,6 +280,33 @@ label, the min-position label, the missing-fields fallback, and an
 integration test asserts the regenerated stored proposal is exactly the
 share-only book.
 
+## Part 7: the sanity gate on two consecutive real closes, dry run true
+
+The day-1 sanity gate (Part A step A5) ran on the two most recent real closes,
+2026-09-18 and 2026-09-21, with `dry_run` still true, and it passed. The stored
+result is `live/sanity_gate.json`:
+
+| close | kept | n_eff (full) | n_eff (kept) | max input staleness |
+| --- | --- | --- | --- | --- |
+| 2026-09-18 | 116 | 146.32 | 59.35 | 7 days |
+| 2026-09-21 | 119 | 157.33 | 58.82 | 10 days |
+
+The weight turnover is 0.1366, definition `0.5 * sum(abs(w_t - w_{t-1}))`, so
+the proposals differ and the gate passes. The staleness of all nine inputs is
+stored per close: prices, descriptors, factor_returns, specific_returns,
+factor_cov and specific_var advance 09-18 to 09-21; shares stay 09-17 and
+sectors stay 09-11 on both closes; universe is the 09-21 SPY archive on both.
+
+Two code changes make the gate honest. `live/evening_job.py`'s `_input_as_of`
+now dates every input at the latest value on or before the close (it had
+reported the global maximum, which would have labelled the 09-18 close's
+prices as 09-21). `live/sanity.py`'s `run_gate` now stores the n_eff on each
+close, the input as-of dates, the max staleness, and, when the proposals do
+not differ, a `stalled_inputs` list naming the inputs whose as-of date did not
+advance. Both proposals were rebuilt under the chosen construction; the 09-18
+proposal is regenerated as the share-only book, and the 09-21 proposal changes
+only its recorded `code_commit`.
+
 ## Verification
 
 Per STANDARDS 21, per-step subsets plus lint ran after each part; the full
@@ -337,14 +364,21 @@ $ .venv/bin/pytest tests/test_e11_render.py tests/test_dashboard_d10.py tests/te
 45 passed, 1 skipped in 23.17s
 ```
 
-Full suite (latest, after the Part 6 proposal regeneration):
+Part 7 subset (the sanity gate and the corrected input as-of dates):
+
+```text
+$ .venv/bin/pytest tests/test_e11_sanity.py tests/test_e11_evening.py tests/test_e11_render.py -q
+35 passed, 1 skipped in 22.66s
+```
+
+Full suite (latest, after the Part 7 proposal regeneration):
 
 ```text
 $ make test
-722 passed, 1 skipped, 3 warnings in 465.58s (0:07:45)
+723 passed, 1 skipped, 3 warnings in 453.80s (0:07:33)
 ```
 
-The previous full-run count in LOG.md is 692; 722 clears it.
+The previous full-run count in LOG.md is 692; 723 clears it.
 
 ```text
 $ make verify-evidence
@@ -413,6 +447,10 @@ Success: no issues found in 15 source files
   `n_kept` 119, `n_dropped` 380, `n_eff_kept` 58.82, `max_kept_weight`
   0.0596. The D10 and Render labels read "min 20 shares (iterated to a
   fixed point)" from the artifact's own fields.
+- Sanity gate: `live/sanity_gate.json`, closes 2026-09-18 and 2026-09-21,
+  turnover 0.1366 (definition `0.5 * sum(abs(w_t - w_{t-1}))`), n_eff_kept
+  59.35 -> 58.82, `passed: true`. The 09-18 proposal is regenerated as the
+  share-only book (116 names).
 
 ### git diff --stat from base_commit (1957256)
 
@@ -427,16 +465,20 @@ Success: no issues found in 15 source files
  evidence/data/models/registry.json.gz      | Bin 4389 -> 4383 bytes
  handoff/LOG.md                             |  70 +++
  handoff/PROJECT_CONTEXT.md                 |  78 ++--
- handoff/REPORT.md                          | 703 +++++++++++++++++++----------
+ handoff/REPORT.md                          | 748 ++++++++++++++++++++---------
  handoff/TASK.md                            | 116 ++++-
  live/construction_table.parquet            | Bin 29817 -> 37356 bytes
  live/construction_table.py                 | 271 ++++++++---
  live/construction_weights.parquet          | Bin 39258 -> 33674 bytes
- live/dashboard_app.py                      |  32 ++
- live/evening_job.py                        | 204 +++++++--
+ live/dashboard_app.py                      |  33 ++
+ live/evening_job.py                        | 243 ++++++++--
  live/guards.py                             |  18 +-
+ live/proposals/proposal_2026-09-18.json    |  94 +++-
+ live/proposals/proposal_2026-09-18.parquet | Bin 19968 -> 7111 bytes
  live/proposals/proposal_2026-09-21.json    |  85 ++--
  live/proposals/proposal_2026-09-21.parquet | Bin 4114 -> 7195 bytes
+ live/sanity.py                             |  33 +-
+ live/sanity_gate.json                      |  33 +-
  live/store.py                              | 120 +++--
  live/supabase_schema.sql                   |  27 +-
  notebooks/E5_walkthrough.ipynb             |  94 ++--
@@ -445,19 +487,20 @@ Success: no issues found in 15 source files
  requirements.txt                           |   6 +-
  scripts/provision_supabase.py              |  13 +-
  scripts/run_live_daily.py                  |  12 +-
- sprints/E5/RESULTS.json                    | 238 +++++++++-
+ sprints/E5/RESULTS.json                    | 238 ++++++++-
  tests/test_construction_table.py           |  31 ++
  tests/test_e11_evening.py                  |  54 ++-
  tests/test_e11_guards.py                   |   8 +-
  tests/test_e11_render.py                   |  80 +++-
+ tests/test_e11_sanity.py                   |  43 ++
  tests/test_e11_store.py                    |  97 ++++
  tests/test_registry.py                     |  30 ++
- 36 files changed, 1994 insertions(+), 568 deletions(-)
+ 41 files changed, 2251 insertions(+), 599 deletions(-)
 ```
 
 `handoff/LOG.md`, `handoff/PROJECT_CONTEXT.md` and `handoff/TASK.md` are the
 owner's commit `921dee7` (the choice), included because they land between
-`1957256` and here. The rest is parts 1 to 6.
+`1957256` and here. The rest is parts 1 to 7.
 
 ### Yes or no, each with evidence
 
@@ -492,6 +535,8 @@ owner's commit `921dee7` (the choice), included because they land between
    value stays 0.10; only its derivation basis moves to the share-only final
    weights. Part 6 changes no verdict: it regenerates the stored proposal
    under the chosen construction, which is the deliverable, not a criterion.
+   Part 7 changes no verdict: the sanity gate passed, and `_input_as_of` was
+   corrected to clamp each input to the close (a fix, not a re-scoring).
 
 ### Anything decided that the reviewer might disagree with
 

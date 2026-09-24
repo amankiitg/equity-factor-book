@@ -59,3 +59,46 @@ def test_run_gate_flags_differing_proposals(
     assert result["passed"] is True
     assert result["weight_turnover"] > 0
     assert result["closes"] == ["2026-09-18", "2026-09-21"]
+    assert result["stalled_inputs"] == []
+    assert result["definition"] == "0.5 * sum(abs(w_t - w_{t-1}))"
+
+
+def test_run_gate_names_the_input_that_is_not_advancing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _Wide:
+        index = pd.DatetimeIndex(["2026-09-18", "2026-09-21"])
+
+    monkeypatch.setattr(
+        sanity.evening_job.eval_risk, "load_clean_wide", lambda root: (_Wide(), {})
+    )
+
+    def fake_build(data_root, as_of=None, nav=100000.0, store=True):
+        stamp = str(pd.Timestamp(as_of).date())
+        proposal_dir = tmp_path / "proposals"
+        proposal_dir.mkdir(parents=True, exist_ok=True)
+        weights = {"AAA": 0.05, "BBB": -0.05}
+        pd.DataFrame(
+            {"ticker": list(weights), "weight": list(weights.values())}
+        ).to_parquet(proposal_dir / f"proposal_{stamp}.parquet", index=False)
+        # prices advance, descriptors and factors stay put: a stale input
+        return {
+            "as_of": stamp,
+            "n_names": 500,
+            "n_kept": 2,
+            "n_eff_full": 10.0,
+            "n_eff_kept": 2.0,
+            "input_as_of": {
+                "prices": stamp,
+                "descriptors": "2026-09-03",
+                "factor_returns": "2026-09-03",
+            },
+            "max_input_staleness_days": 1,
+        }
+
+    monkeypatch.setattr(sanity.evening_job, "build_proposal", fake_build)
+    monkeypatch.setattr(sanity.evening_job, "PROPOSAL_DIR", tmp_path / "proposals")
+    result = sanity.run_gate(path=tmp_path / "gate.json")
+    assert result["passed"] is False
+    assert result["proposals_differ"] is False
+    assert result["stalled_inputs"] == ["descriptors", "factor_returns"]

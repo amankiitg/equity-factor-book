@@ -335,38 +335,55 @@ def _shares_as_of(shares: pd.DataFrame, as_of: pd.Timestamp) -> pd.Timestamp:
     return pd.Timestamp(valid.max())
 
 
+def _latest_on_or_before(dates: pd.DatetimeIndex, as_of: pd.Timestamp) -> str:
+    """The latest date on or before the close, as an ISO date string.
+
+    A model input dated after the close it prices is look-ahead, so every
+    input's as-of is clamped to the close rather than reported at the global
+    maximum, which would claim data the proposal does not read.
+    """
+    valid = dates[dates <= as_of]
+    stamp = pd.Timestamp(valid.max()) if len(valid) else as_of
+    return str(stamp.date())
+
+
 def _input_as_of(root: Path, as_of: pd.Timestamp) -> dict[str, str]:
     """The as-of date of every model input the proposal reads, one field each.
 
-    The share count is dated at the latest count on or before the close,
-    never the day after it, because a count filed after the close is
+    Every input is dated at the latest value on or before the close, never
+    the day after it, because a value filed after the close it prices is
     look-ahead against the standing no-look-ahead rule.
     """
     prices_frame = pd.read_parquet(root / "raw" / "prices.parquet")
+    price_dates = pd.DatetimeIndex(prices_frame.index.get_level_values("date").unique())
     shares = pd.read_parquet(root / "raw" / "shares_history.parquet")
     shares_as_of = _shares_as_of(shares, as_of)
     sectors = pd.read_parquet(root / "processed" / "sectors.parquet")
+    sector_dates = pd.DatetimeIndex(pd.to_datetime(sectors["as_of"]).unique())
     descriptors = pd.read_parquet(root / "models" / "XS-v1" / "descriptors.parquet")
+    descriptor_dates = pd.DatetimeIndex(pd.to_datetime(descriptors["date"]).unique())
     factor_returns = pd.read_parquet(
         root / "models" / "XS-v1" / "factor_returns.parquet"
     )
+    factor_dates = pd.DatetimeIndex(pd.to_datetime(factor_returns["date"]).unique())
     specific_returns = pd.read_parquet(
         root / "models" / "XS-v1" / "specific_returns.parquet"
     )
-    specific_var = pd.read_parquet(root / "models" / "XS-v1" / "specific_var.parquet")
-    factor_last = str(pd.to_datetime(factor_returns["date"]).max().date())
-    price_last = str(
-        pd.Timestamp(prices_frame.index.get_level_values("date").max()).date()
+    specific_return_dates = pd.DatetimeIndex(
+        pd.to_datetime(specific_returns["date"]).unique()
     )
+    specific_var = pd.read_parquet(root / "models" / "XS-v1" / "specific_var.parquet")
+    specific_var_dates = pd.DatetimeIndex(pd.to_datetime(specific_var["date"]).unique())
+    factor_last = _latest_on_or_before(factor_dates, as_of)
     return {
-        "prices": price_last,
+        "prices": _latest_on_or_before(price_dates, as_of),
         "shares": str(shares_as_of.date()),
-        "sectors": str(pd.to_datetime(sectors["as_of"]).max().date()),
-        "descriptors": str(pd.to_datetime(descriptors["date"]).max().date()),
+        "sectors": _latest_on_or_before(sector_dates, as_of),
+        "descriptors": _latest_on_or_before(descriptor_dates, as_of),
         "factor_returns": factor_last,
-        "specific_returns": str(pd.to_datetime(specific_returns["date"]).max().date()),
+        "specific_returns": _latest_on_or_before(specific_return_dates, as_of),
         "factor_cov": factor_last,
-        "specific_var": str(pd.to_datetime(specific_var["date"]).max().date()),
+        "specific_var": _latest_on_or_before(specific_var_dates, as_of),
     }
 
 
