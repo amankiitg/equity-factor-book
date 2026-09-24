@@ -1,620 +1,517 @@
-# Sprint E11: share-only to the gate, over direct Postgres
+# Sprint E11: the prefix enforced book, and the stop it fires
 
-Task `e11-share-floor-to-gate`, base commit 1957256. NAV is $1,000,000, final.
-The owner chose the share-only construction (minimum 20 whole shares per name,
-no dollar floor, iterated to a fixed point) at reserved decision 1. This task
-takes that choice to the gate in eight parts, in order, each committed on its
-own. `dry_run` stays `true` throughout; this task never flips it. This report
-covers parts 1 to 8.
+**Owner question, at the top, because the task ends blocked on it.**
 
-## Part 1: E11-F8 ledger correction, then the diagnostic split
+Part 1 implemented the rule TASK.md pre-registered: the largest valid prefix,
+ordered by `|w_i| / floor_i` on the full-book weights, checked on the final
+weights. It fires the stop that same pre-registration wrote: it keeps fewer
+names than the drop-only enforcement on **all six** floor rows, 16 against 119
+on the share-only row. The rule's own premise fails, for a reason measured
+below: the floor is a relative condition on a book renormalized to gross 1.0,
+and the re-size on the kept subset moves the names the ordering predicted.
 
-Committed as `a41359c`. Two new append-only entries in
-`docs/hygiene_ledger.md`; the 2026-09-23 entry is not edited.
+Two consequences the owner has to weigh.
 
-**Correction entry (undetermined).** Three fixes to the overclaiming entry:
+1. **The corrected book is not identified.** The pre-registered prefix is
+   degenerate, not merely small: on the min $3,000 and min $5,000 rows it is a
+   three-name book whose net dollar exposure is 1.0 of gross, so the exact FMP
+   hedge does not neutralise it. Installing it as the table's book breaks a
+   standing invariant (`net_dollar_share_of_gross` within 0.01 on every row),
+   so the table keeps the last valid enforced book and reports the prefix
+   beside it. The rule needs re-specifying, and that is the reviewer's call.
+2. **The numbers the share-only choice was made on are not attainable.** The
+   owner chose share-only at 188 names, n_eff 85.69, total error 1.25% and p90
+   3.44%, all values from the pre-resize fixed point. No enforced book reaches
+   188 names: 24 of those 188 names are below 20 shares in the vector that
+   actually trades. The enforceable share-only book is **119 names, n_eff
+   58.82** by the drop-only rule, and **143 names, n_eff 68.52** by the
+   admission control reported below. So the basis of the choice changed even
+   though the choice itself is untouched, and the re-decide trigger does not
+   fire under any of the three readings.
 
-1. The shrinkage increment is 0.0555 at min $1,500, which is 53 percent of the
-   0.1050 raw beta, not 0.0495 (47 percent). The increments sum to the total
-   only this way: 0.0555 + 0.0526 - 0.0031 = 0.1050.
-2. The nonzero standardization increment is a zero-fill artifact, not
-   standardization doing anything. The standardized stage is affine in the
-   clipped stage to machine precision (standardized = 1.5475 x clipped -
-   1.4978, max residual 8.8e-16), and a regression residual is invariant to an
-   affine regressor change. The two names FDXF and HONA (recent listings) are
-   present in the descriptor cross-section but carry no descriptor value, so
-   they are filled with 0 in every stage, and an affine map does not carry 0
-   to 0; those two points break it. The earlier zero-fill count of 0 everywhere
-   was a miscount: it is 2 in the full book and 1 in the minimum-position
-   subsets that keep one of them.
-3. "Refuted" was not established, so the candidate is recorded undetermined,
-   with 0.0555 as an upper bound on the shrinkage's contribution (the Vasicek
-   increment regresses TS-v1's frozen 2026-09-03 raw beta on XS-v1's
-   2026-09-21 shrunk beta, mixing shrinkage, estimator gap and window drift).
+So the questions for the owner are: hold share-only pending the reviewer's
+re-specified rule, or re-decide now on the enforceable numbers, 119 and 58.82
+against 143 and 68.52? And does the fall from 85.69 to 58.82 or 68.52 change
+the choice, given that "a fall in n_eff alone does not stop the task" was the
+pre-registered rule and the fall is now larger than any enforced book can undo.
 
-The miscount is fixed in the table: `live/construction_table.py`
-`_load_beta_stages` now adds a name to the zero-fill set when its descriptor
-value is NaN (`if pd.isna(descriptor): zero_filled.add(ticker)`), not only when
-the name is absent. `n_beta_zero_filled` is now 1 in the minimum-position
-subsets and 2 in the full book.
+Nothing is deployed. `dry_run` stays `true`. No proposal was regenerated and
+Guard 1 was not re-derived, as Part 1 requires.
 
-**Diagnostic split entry (refuted, measured).** Recomputing XS-v1's
-pre-shrinkage beta at 2026-09-21 under the frozen specification (diagnostic
-only: nothing restated, nothing stored, the specification unchanged) and
-inserting it as a stage splits the 0.0555: the raw-to-XS-v1-raw increment is
-0.000031 (the TS-v1/XS-v1 estimator gap plus the date gap, 0.03 percent of the
-raw beta), and the XS-v1-raw-to-Vasicek increment is 0.054393 (51.8 percent of
-the 0.104987 raw beta). The shrinkage increment is not near zero, so E11-F8
-does not join the identity class: the shrinkage removes 52 percent of the raw
-beta, and the clip removes the rest.
+## Part 1: E11-F13, the largest valid prefix checked on the final weights
 
-## Part 2: E11-F11, the store over direct Postgres
+### The rule, implemented as pre-registered
 
-The connection settled in LOG.md line 1064 and the TASK.md B1 amendment is
-direct Postgres under `EFB_SUPABASE_DB_URL` with `EFB_DB_SCHEMA=efb`, never
-PostgREST. The four rules are met, and nothing required a stop.
+`live/evening_job.py` gains `floor_thresholds` (the larger of the dollar and
+share legs at each name's close) and `enforce_floor_by_prefix`. The rule:
+order names by `|w_i| / max(dollar_floor, share_floor * price_i)` on the
+full-book weights, then for `k` from 499 downward finalize the prefix-`k` set
+with the same `finalize_kept_set` the live path uses (size, hedge, renormalize,
+quantize) and check every kept name against its floor in those final weights.
+The first `k` that passes is the largest valid prefix. The pass set is not
+monotone in `k`, so the scan is linear and is never bisected. The same rule
+runs on all six floor rows, each with its own floor and its own ordering.
 
-**1. Which connection the store and the dashboard actually use.** Direct
-Postgres, schema `efb`, with a local parquet fallback. The evidence is the code
-itself:
+### The stop fires on every row
 
-- `live/store.py` `get_connection()` reads `EFB_SUPABASE_DB_URL` and returns
-  `psycopg.connect(url)`; it never touches a Supabase client or PostgREST. The
-  `_qualified(table)` helper returns `f'"{_schema()}"."{table}"'`, and every
-  statement goes through it: `_upsert_sql` emits
-  `INSERT INTO {_qualified(table)} ... ON CONFLICT ...` and `select` emits
-  `SELECT * FROM {_qualified(table)} ORDER BY 1`. Nothing targets `public` or
-  an unqualified name.
-- `live/dashboard_app.py` has no connection of its own: its only data call is
-  `return store.select(name)` (line 33), so it inherits the direct-Postgres
-  path and only ever reads.
-- The one-time setup is `live/supabase_schema.sql`, whose first statement is
-  `create schema if not exists efb;` followed by `create table if not exists
-  efb.*` for the eight live-series tables.
+Reproduced first, per rule 8, on the committed code:
 
-**2. Moved to direct Postgres; no stop.** `render.yaml` now carries
-`EFB_SUPABASE_DB_URL` and `EFB_DB_SCHEMA` on both services, never
-`EFB_SUPABASE_URL`/`EFB_SUPABASE_SECRET_KEY`. `.env.example` was rewritten to
-match. Because direct Postgres does not depend on the project's "Exposed
-schemas" API setting, no dashboard change and no shared-role grant is needed,
-so the stop condition does not fire.
-
-**3. The dashboard's least-privilege credential.** The dashboard only reads, so
-it should hold a SELECT-only Postgres role's connection string in its own
-`EFB_SUPABASE_DB_URL`, with `EFB_DB_SCHEMA=efb`; the cron holds the write
-role's string. The owner creates that role and its grants on the shared
-project; I did not create any role or grant.
-
-**4. What uses `EFB_SUPABASE_ACCESS_TOKEN`.** Only
-`scripts/provision_supabase.py`, for the one-time Supabase Management API call
-that applies `live/supabase_schema.sql`. It is account-wide and must never
-reach a Render service; it does not appear in `render.yaml` for either service
-(a test asserts `"EFB_SUPABASE_ACCESS_TOKEN" not in render`). The script's
-project URL variable was renamed to `EFB_SUPABASE_PROJECT_URL` so it cannot be
-confused with the withdrawn PostgREST connection names.
-
-**5. `EFB_DRY_RUN` resolution.** `scripts/run_live_daily.py` now holds the rule
-in one testable function:
-
-```python
-def resolve_dry_run(value: str | None) -> bool:
-    """The clock starts only on the literal string "false", any case."""
-    return (value or "").strip().lower() != "false"
+```
+row                               one-pass  fixed-pt  drop-only
+min_position_1500                      208       252        194  passes=3 converged=True below=0
+min_position_2000                      155       208        145  passes=3 converged=True below=0
+min_position_3000                       82       156         72  passes=3 converged=True below=0
+min_position_5000                       27        99         23  passes=3 converged=True below=0
+two_part_floor_1500_20shares            92       172         87  passes=3 converged=True below=0
+share_only_20shares                    118       188        119  passes=3 converged=True below=0
 ```
 
-`main()` uses `resolve_dry_run(os.environ.get("EFB_DRY_RUN"))`. Unset, empty,
-whitespace, unparseable, and every spelling other than an explicit false all
-resolve to dry run. The test over those cases:
+The enforced count sits at or one above the one-pass count on every row and 58
+to 117 names below the pre-resize fixed point, which is the reviewer's finding.
 
-```python
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        (None, True), ("", True), ("   ", True), ("true", True), ("TRUE", True),
-        ("True", True), ("yes", True), ("1", True), ("0", True),
-        ("garbage", True), ("false", False), ("FALSE", False), ("False", False),
-    ],
-)
-def test_dry_run_resolves_to_dry_run_unless_false(value, expected):
-    assert run_live_daily.resolve_dry_run(value) is expected
+The prefix rule then gives:
+
+```
+row                               one-pass  fixed-pt  drop-only  prefix_k
+min_position_1500                      208       252        194       131
+min_position_2000                      155       208        145       131
+min_position_3000                       82       156         72         3
+min_position_5000                       27        99         23         3
+two_part_floor_1500_20shares            92       172         87        66
+share_only_20shares                    118       188        119        16
 ```
 
-A schema-qualification test also pins the decision: it reads `live/store.py`
-and `live/supabase_schema.sql` and asserts every SQL statement goes through
-`_qualified`, no statement targets `public` or an unqualified name, and the
-schema default is `efb`.
+Prefix below drop-only on all six rows: share-only by 103 names, min $3,000 by
+69, min $1,500 by 63, two-part by 21, min $5,000 by 20, min $2,000 by 14. That
+is the pre-registered stop ("If the prefix result keeps fewer names than
+drop-only on any row, stop and report. That would mean a bug, not a finding"),
+so Part 1 stops here and the prefix book is not installed.
 
-**Deploy steps, updated to match.** In order: deploy the two Render services
-from `render.yaml`; set the dashboard's environment to `EFB_SUPABASE_DB_URL`
-(read-only role) and `EFB_DB_SCHEMA`; set the cron's to those plus
-`EFB_ALPACA_PAPER_API_KEY`, `EFB_ALPACA_PAPER_SECRET_KEY` and `EFB_DRY_RUN`;
-run the one-time schema over direct Postgres (the provisioning script, or the
-SQL itself); then confirm the deployed page reads Postgres. Neither service
-gets the service-role key or the management token.
+### The corrected table
 
-## Part 3: E11-F12, the floor enforced on final weights
+`live/construction_table.parquet`, one row per construction. The enforced
+columns are identical to the committed table (checked: 47 shared numeric
+columns, none moved); the `_prefix` columns are the measured prefix rule.
 
-The floor is now checked on the vector that actually trades, not the full-book
-weights. `live/evening_job.py` gains `finalize_kept_set` (size, hedge,
-renormalize, quantize one kept set), `below_floor`, `floor_shortfalls` and
-`enforce_floor_on_final_weights` (drop, re-size, re-hedge, renormalize,
-quantize, check, repeat until no kept name is below its floor, with a 30-pass
-guard). `_compute_row` uses the same `finalize_kept_set`, and every floor row
-in the table is enforced from the full book. The live path enforces the
-share-only 20-share floor from the full book and records the construction in
-the manifest.
-
-**Measure first, as it stands.** On the full-weight fixed point, the bug
-E11-F12 names is real: kept names end below their floor in the final weights.
-
-| row | kept (full-weight fixed) | below floor in final weights | worst shortfall |
-| --- | --- | --- | --- |
-| min $1,500 | 252 | 31 | $1,500.00 |
-| min $2,000 | 208 | 19 | $1,737.89 |
-| min $3,000 | 156 | 21 | $3,000.00 |
-| min $5,000 | 99 | 19 | $5,000.00 |
-| two-part 1500+20sh | 172 | 26 | 18 shares / $1,370.02 |
-| share-only 20sh | 188 | 24 | 19 shares |
-
-**Enforced on final weights, every floor row.** Starting from the full book
-and iterating to the fixed point (3 passes on every floor row, all converged):
-
-| construction | enforced names | n_eff | naive breadth | governing breadth | total error | p90 | max weight | net | long/short | raw beta | post-hedge exposure | idio share |
+| construction | one-pass | pre-resize fixed point | enforced book | prefix k | enforced n_eff | prefix n_eff | enforced error | prefix error | enforced p90 | prefix p90 | prefix max weight | prefix net |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| min $1,500 | 194 | 98.74 | 1.540 | 1.262 | 2.50% | 8.82% | 4.30% | 0 | 86/108 | 0.1086 | ~1e-15 | 1.0 |
-| min $2,000 | 145 | 81.68 | 1.781 | 1.388 | 1.92% | 5.93% | 4.74% | 0 | 61/84 | 0.1141 | ~6e-16 | 1.0 |
-| min $3,000 | 72 | 44.48 | 2.528 | 1.881 | 0.91% | 2.93% | 6.73% | 0 | 23/49 | 0.1101 | ~8e-16 | 1.0 |
-| min $5,000 | 23 | 14.10 | 4.472 | 3.340 | 0.48% | 1.68% | 14.52% | 0 | 9/14 | -0.0118 | ~2e-15 | 1.0 |
-| two-part 1500+20sh | 87 | 51.19 | 2.299 | 1.753 | 0.56% | 1.40% | 6.40% | 0 | 39/48 | 0.1388 | ~1e-15 | 1.0 |
-| share-only 20sh | 119 | 58.82 | 1.966 | 1.635 | 0.64% | 2.04% | 5.96% | 0 | 56/63 | 0.1337 | ~1e-15 | 1.0 |
+| min $1,500 | 208 | 252 | 194 | 131 | 98.736507 | 75.201881 | 2.5015% | 1.8019% | 8.8188% | 5.7309% | 4.9354% | 0 |
+| min $2,000 | 155 | 208 | 145 | 131 | 81.681243 | 75.201881 | 1.9150% | 1.8019% | 5.9304% | 5.7309% | 4.9354% | 0 |
+| min $3,000 | 82 | 156 | 72 | 3 | 44.476474 | 2.240310 | 0.9147% | 0.0925% | 2.9323% | 0.5012% | 58.8235% | 1.0 |
+| min $5,000 | 27 | 99 | 23 | 3 | 14.104803 | 2.240310 | 0.4757% | 0.0925% | 1.6769% | 0.5012% | 58.8235% | 1.0 |
+| two-part, $1,500 + 20sh | 92 | 172 | 87 | 66 | 51.190506 | 40.477586 | 0.5560% | 0.3651% | 1.4008% | 0.8907% | 7.1704% | 0 |
+| share-only, 20 shares | 118 | 188 | 119 | 16 | 58.822271 | 7.369653 | 0.6426% | 0.0246% | 2.0385% | 0.4322% | 20.6853% | -0.089543 |
 
-The enforced share-only book is 119 names, n_eff 58.82, total error 0.64% and
-p90 2.04%. Against the unenforced table numbers (188 names, n_eff 85.69, total
-error 1.25%, p90 3.44%) the enforced book is smaller and rounder: enforcement
-drops the names that could not hold 20 shares, so the rounding tail shrinks
-while n_eff falls from 85.69 to 58.82. The n_eff fall is reported plainly, not
-called close: it is a 31 percent fall.
+"error" is `total_gross_error_share_of_nav`, "p90" is
+`quant_error_p90_pct_of_target`, "net" is `net_dollar_share_of_gross_prefix`.
+The prefix scan walked 369, 369, 497, 497, 434 and 484 finalizations on the six
+rows, in `floor_prefix_scans`, so the linear scan is doing what it says.
 
-**The breadth bound, both ways.** PROJECT_CONTEXT requires any E11 number that
-meets an E8 transfer coefficient to state the bound both ways. The governing
-breadth is sqrt(n_eff_full / n_eff_kept): with n_eff_full 157.33 and the
-enforced n_eff 58.82, that is sqrt(157.33 / 58.82) = 1.635, so the enforced
-book's governing breadth is 1.635x. The naive bound is sqrt(460 / 119) = 1.966.
+**Every enforced row still holds its floor**: `n_below_floor_final` is 0 on all
+six, and the pre-resize fixed point still does not (31, 19, 21, 19, 26 and 24
+names below floor on the six rows, in the stored
+`n_below_floor_final_pre_enforcement`).
 
-**The re-decide trigger, pre-registered before the numbers existed.** Compare
-the enforced share-only book against the enforced min $2,000 book, never the
-unenforced row. (a) Share-only still has both lower total error (0.64% vs
-1.92%) and lower p90 (2.04% vs 5.93%) than enforced min $2,000. (b) No
-enforced row is strictly better-or-equal on both n_eff and total error than
-share-only: min $1,500 and min $2,000 have higher n_eff but higher error;
-min $3,000, min $5,000 and the two-part row have lower error but lower n_eff.
-Neither branch fires, so the task proceeds. (For the owner's reading: enforced
-min $5,000 has lower total error and lower p90 than share-only, at the cost of
-n_eff 14.10, which is why branch (b) is defined on n_eff and total error
-jointly.)
+**Share-only's n_eff, against the 85.69 the owner chose on:** the enforced book
+is **58.822271**, and the pre-registered prefix is 7.369653. As a plain number,
+85.69 against 58.82.
 
-The live path produces the same book as the table's enforced share-only row:
-`build_proposal(store=False)` returns construction `share_only`, share floor
-20, `floor_iterated` true, 119 names, n_eff_kept 58.82, governing breadth
-1.635.
+### Why the prefix collapses, with the numbers
 
-## Part 4: the registry records the chosen construction
+Reproduced on the share-only row. Four measurements, in the order that
+establishes the mechanism.
 
-XS-v1's `live` block in `data/models/registry.json` is replaced:
-`min_position_dollars` (E11 Addition 4) is withdrawn, and the entry now reads
-`construction: share_only`, `share_floor: 20`, `dollar_floor: 0`,
-`floor_iterated: true`. `efb/registry.py` gains `live_construction(payload,
-version)`, which the live path reads; `build_proposal` now takes its
-construction from the registry rather than a constant, and the manifest's
-`construction`, `construction_floor_shares`, `construction_floor_dollars` and
-`floor_iterated` fields come from that read. `min_position_dollars` stays as
-the legacy reader and now returns zero because the key is gone.
+1. **The floor is relative, so extending the set shrinks every position.** With
+   the kept set renormalized to gross 1.0, the average position is NAV / k. The
+   below-floor count on the final weights, as a function of the prefix length:
 
-**The E5 `data_hash` moved, and only that moved.** `e5_data_hash` hashes
-`models/registry.json` directly, so the edit moves `sprints/E5/RESULTS.json`'s
-`data_hash` from `a4c40c67…` to `6dca1f8d…`. Per STANDARDS rule 22 it is
-recorded through the `revisions` block with both hashes: `n_changed` is 0, the
-`history` list gains a third entry carrying `previous_data_hash` a4c40c67… and
-`data_hash` 6dca1f8d…, and the criteria and reference_values are byte-identical
-(verified with a sorted-JSON comparison). No other sprint's hash moves: E4
-reconstructs the registry without the `live` block, E1/E6/E7/E8/E9/E10 folds
-do not read `registry.json`, and E2/E3's stored hashes are historical VERSION
-readings that are not touched on disk.
+   ```
+   k    = 499  450  400  350  300  250  220  200  188  175  160  150  140  131  120  110  100   90   80   60   40   30   20   17   16   15
+   below= 374  321  267  210  141   84   49   30   24   15   14   15   14    9    7   10    8    5    5    2    3    1    4    4    0    1
+   ```
 
-**The evidence chain follows.** `data/VERSION.json`'s `registry.json` entry is
-updated to the new sha256 `142afe1f…` (its `data_hash` is unchanged, because
-`combined_hash` skips `registry.json` as a non-data artifact), and the
-evidence snapshot is refreshed for the two moved files (`registry.json.gz`,
-`VERSION.json.gz`); the raw snapshots are reverted untouched. `make
-verify-evidence` passes, and the E5 walkthrough notebook is re-executed so its
-printed hash matches (only the hash and execution timestamps moved; no stored
-criterion number changed).
+   It never reaches zero for any `k` between 17 and 499. The first zero is
+   `k = 16`, where the prefix has thrown away 103 of the 119 names the drop-only
+   rule keeps and gross 1.0 is shared among 16 names, so the floor is satisfied
+   for the wrong reason: the max final weight is 20.6853% of gross against
+   5.9617% on the enforced book.
+2. **Rounding is not the cause.** At every tested `k`, `floor(|w| * NAV /
+   price) < 20` and `|w| * NAV / price < 20` give the same count, so the
+   failures are not names rounding 19.9 down to 19.
+3. **The ordering does not survive the re-size.** On the full set the re-sized
+   weights are the full-book weights times one scalar, 1.03248436090019, to
+   machine precision (`|w_finalize(499)| / |w_full|` runs from 1.03248436090019
+   to 1.0324843609001904, so the largest relative deviation is 2.2e-16), and the
+   correlation prints as 1.0. So the ordering is meaningful for the whole book.
+   It is not meaningful for a subset. At `k = 188` the 24
+   below-floor names are not only the tail: ranked by `|w|` in the re-sized
+   book they are positions 0 to 14 (the smallest), and then 17, 30, 31, 42, 47,
+   80, 110, 121, 168 and 182 of 188. Rank 182 is the sixth largest position in
+   the book and still below its floor, because a high-priced name needs a large
+   weight to hold 20 shares at all.
+4. **In the regime that passes, the hedge is rank-deficient.** The design has 17
+   factors. `cond(design_k' design_k)` is about 2e3 for `k` at or above 100
+   (1.7e3 at 499, 2.0e3 at 188, 2.6e3 at 120) and 1.7e19 at `k = 30`, 4.4e18
+   at 20, 1.3e20 at 17, 9.0e18 at 16. Names are annihilated to `|w|` of order
+   1e-18 (1 name at `k = 60`, 2 at 40, 1 at 30, 3 at 20, 4 at 17). The
+   three-name prefix books on the min $3,000 and min $5,000 rows have a net
+   dollar exposure of 1.0 of gross: with three names against 17 factors the
+   exact FMP hedge cannot neutralise the book at all, so those "books" are all
+   long.
 
-**`docs/open_items.md` close-out.** The minimum-position item closes as a share
-floor; the residue (fold the floor back into E8's own construction stack)
-stands.
+Point 4 is what makes the result unusable rather than merely surprising. The
+standalone guard `test_the_table_has_all_nine_rows_and_renormalizes` asserts
+`|net_dollar_share_of_gross| < 0.01` on every row. Installing the prefix as the
+book fails that guard on three of six rows (min $3,000 and min $5,000 at 1.0,
+share-only at -0.089543). I did not relax the guard: a guard relaxed to fit a
+construction is the rule broken quietly. The enforced book stays the book, the
+prefix is measured beside it, and the rule goes back for re-specification.
 
-## Part 5: Guard 1 re-derived against the chosen construction's final weights
+### The re-decide trigger, on every reading
 
-Guard 1 is re-derived from the chosen share-only book's final (quantized)
-weights, sized from the largest final position across every close the loop has
-run, not one close. For each close the enforced share-only book is recomputed
-and its largest whole-share position read in dollars:
+The trigger as pre-registered in E11-F12: compare share-only against min $2,000
+on the same basis, and stop if (a) share-only no longer has both lower total
+error and lower p90 than min $2,000, or (b) any enforced row is better or equal
+on both n_eff and total error than share-only.
 
-| close | kept | largest final position | % of NAV |
-| --- | --- | --- | --- |
-| 2026-09-03 | 124 | MU, $62,280 | 6.23% |
-| 2026-09-18 | 116 | MRNA, $65,005 | 6.50% |
-| 2026-09-21 | 119 | MU, $59,506 | 5.95% |
-
-The largest legitimate target across all of them is $65,005, 6.50% of NAV, so
-ten times the largest name is 65.0% of NAV. The cap stays at
-`MAX_POSITION_PCT_OF_NAV = 0.10` — $100,000 at the $1,000,000 NAV — which
-clears the 6.50% target with 1.54x headroom (0.065 to 0.10) and trips a
-ten-times order on the largest name (0.650 > 0.10). The value is NAV-relative,
-so it scales with the book. The boundary and the 10x trip are pinned by
-`tests/test_e11_guards.py`, whose largest-legitimate constant moved from 0.0326
-to 0.065. The arithmetic and the basis change are recorded in a new
-`docs/hygiene_ledger.md` entry.
-
-## Part 6: the dry-run proposal regenerated under the chosen construction
-
-The stored dry-run proposal is regenerated on the latest close under the
-chosen construction: `build_proposal(store=True)` now writes
-`live/proposals/proposal_2026-09-21.json` and its parquet as the share-only
-book — `construction: share_only`, share floor 20, no dollar floor,
-`floor_iterated: true`, 119 names kept, 380 dropped, n_eff_kept 58.82,
-governing breadth 1.635, max weight 0.0596. The D10 header now reads, from
-the artifact's own fields, "min 20 shares (iterated to a fixed point)" with
-119 kept and 380 dropped, and the code commit stored in the artifact is
-`c8eee08`.
-
-The Render page (`live/dashboard_app.py`) follows the same rule: it gains a
-`_construction_label(manifest)` that generates the label only from the
-artifact's stored `construction`, `construction_floor_dollars`,
-`construction_floor_shares`, `construction_top_n` and `floor_iterated`
-fields, and displays it in "The book". A missing `construction` field renders
-"construction parameters not recorded in this artifact" rather than being
-filled from the registry or the table. Three tests pin it: the share-only
-label, the min-position label, the missing-fields fallback, and an
-integration test asserts the regenerated stored proposal is exactly the
-share-only book.
-
-## Part 7: the sanity gate on two consecutive real closes, dry run true
-
-The day-1 sanity gate (Part A step A5) ran on the two most recent real closes,
-2026-09-18 and 2026-09-21, with `dry_run` still true, and it passed. The stored
-result is `live/sanity_gate.json`:
-
-| close | kept | n_eff (full) | n_eff (kept) | max input staleness |
+| reading | share-only: n_eff, error, p90 | min $2,000: n_eff, error, p90 | (a) fires | (b) fires |
 | --- | --- | --- | --- | --- |
-| 2026-09-18 | 116 | 146.32 | 59.35 | 7 days |
-| 2026-09-21 | 119 | 157.33 | 58.82 | 10 days |
+| enforced book (drop-only) | 58.822271, 0.6426%, 2.0385% | 81.681243, 1.9150%, 5.9304% | no | no |
+| pre-registered prefix | 7.369653, 0.0246%, 0.4322% | 75.201881, 1.8019%, 5.7309% | no | no |
+| admission control | 68.521819, 0.7767%, 1.8515% | 93.898480, 2.0804%, 6.0769% | no | no |
 
-The weight turnover is 0.1366, definition `0.5 * sum(abs(w_t - w_{t-1}))`, so
-the proposals differ and the gate passes. The staleness of all nine inputs is
-stored per close: prices, descriptors, factor_returns, specific_returns,
-factor_cov and specific_var advance 09-18 to 09-21; shares stay 09-17 and
-sectors stay 09-11 on both closes; universe is the 09-21 SPY archive on both.
+Branch (a) does not fire on any reading: share-only has both the lower total
+error and the lower p90 than min $2,000. Branch (b) does not fire either: on
+the enforced book the only rows with higher n_eff (min $1,500 at 98.74, min
+$2,000 at 81.68) carry higher error (2.5015%, 1.9150%); on the prefix numbers
+the rows with higher n_eff (75.201881) carry error 1.8019% against 0.0246%;
+on the admission control the rows with higher n_eff (106.89, 93.90) carry
+2.7690% and 2.0804% against 0.7767%.
 
-Two code changes make the gate honest. `live/evening_job.py`'s `_input_as_of`
-now dates every input at the latest value on or before the close (it had
-reported the global maximum, which would have labelled the 09-18 close's
-prices as 09-21). `live/sanity.py`'s `run_gate` now stores the n_eff on each
-close, the input as-of dates, the max staleness, and, when the proposals do
-not differ, a `stalled_inputs` list naming the inputs whose as-of date did not
-advance. Both proposals were rebuilt under the chosen construction; the 09-18
-proposal is regenerated as the share-only book, and the 09-21 proposal changes
-only its recorded `code_commit`.
+So the trigger does not fire, but that answer is worth less than it looks. On
+the pre-registered prefix it is vacuous, because a 16-name book with 20.69%
+max weight and a broken hedge is not a book. On the enforced book it is the
+reading the reviewer told the owner not to re-decide on. The one reading that
+is both valid and larger than the drop-only result is the admission control,
+which is a diagnostic I ran, not the pre-registered rule.
 
-## Part 8: deploy-ready over direct Postgres, and the owner's steps
+### The admission control (diagnostic, not the pre-registered rule)
 
-Both Render services read and write schema `efb` over `EFB_SUPABASE_DB_URL`;
-PostgREST and the service-role key never appear on either service. The
-dashboard holds a read-only role's connection string (E11-F11 item 3), never
-the service-role key. The one-time schema setup is `live/supabase_schema.sql`
-(`create schema if not exists efb` plus the eight tables), applied over direct
-Postgres through `scripts/provision_supabase.py` or the SQL editor.
+The reviewer's premise is that the drop-only loop loses breadth the E11-F6
+iteration buys back (working lesson: "a fixed-point spec must name admission as
+well as dropping"). The prefix direction is the wrong generator for that:
+dropping the tail of an ordering is still dropping, and it admits nothing. So I
+ran the reverse direction as a control, starting from the drop-only book and
+admitting names in descending `|w_i| / floor_i` order, keeping a name only when
+the final weights of the enlarged set still clear every kept name's floor.
+Nothing is stored; the script is pasted at the end of the report.
 
-One deploy-blocking bug was fixed in this part: `scripts/run_live_daily.py` is
-started as `python scripts/run_live_daily.py`, which puts `scripts/` on
-`sys.path` rather than the repo root, so `from live import …` failed with
-`ModuleNotFoundError`. The script now inserts the repo root into `sys.path`
-first, and a test loads the module body and asserts `live` is importable.
+| construction | admitted | drop-only | n_eff | naive breadth | governing breadth | error | p90 | max weight | net | long/short | raw beta | worst post-hedge exposure | idio share | below floor |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| min $1,500 | 222 | 194 | 106.892541 | 1.439469 | 1.213196 | 2.7690% | 8.8453% | 4.1241% | 0 | 101/121 | 0.108933 | 1.94e-15 | 1.0 | 0 |
+| min $2,000 | 185 | 145 | 93.898480 | 1.576860 | 1.294420 | 2.0804% | 6.0769% | 4.4164% | 0 | 87/98 | 0.111136 | 1.48e-15 | 1.0 | 0 |
+| min $3,000 | 88 | 72 | 51.036174 | 2.286323 | 1.755762 | 1.2375% | 4.2501% | 6.3937% | 0 | 26/62 | 0.111653 | 2.52e-15 | 1.0 | 0 |
+| min $5,000 | 32 | 23 | 18.742922 | 3.791438 | 2.897250 | 0.5365% | 1.5316% | 12.0395% | 0 | 13/19 | 0.015809 | 1.43e-15 | 1.0 | 0 |
+| two-part, $1,500 + 20sh | 124 | 87 | 64.683243 | 1.926052 | 1.559584 | 0.8444% | 2.2523% | 5.5239% | 0 | 55/69 | 0.137104 | 1.14e-15 | 1.0 | 0 |
+| share-only, 20 shares | 143 | 119 | 68.521819 | 1.793539 | 1.515270 | 0.7767% | 1.8515% | 5.4408% | 0 | 68/75 | 0.132141 | 9.85e-16 | 1.0 | 0 |
 
-The owner's steps, in order:
+Read this as a bound and not as the answer. Every row is self-consistent: the
+floor holds on the final weights (0 below), the hedge is exact (worst post-hedge
+exposure 1e-15, idio share 1.0, net 0), and the books are larger than the
+drop-only ones on every row, by 9 to 37 names. Share-only goes from 119 to 143
+names and from n_eff 58.82 to 68.52. But greedy admission is order-dependent:
+it is one self-consistent set, not a proven maximum, and a different admission
+order can land elsewhere. It is here to show that the breadth the reviewer
+expects is real and reachable, and to give the owner the numbers asked for, not
+to pre-empt the reviewer's rule.
 
-1. **Create the two Postgres roles on the shared project** (the owner does
-   this; I do not create roles or grants): a write role with DML on schema
-   `efb` for the cron, and a SELECT-only role for the dashboard.
-2. **One-time schema setup over direct Postgres.** Run
-   `scripts/provision_supabase.py` with `EFB_SUPABASE_PROJECT_URL` and
-   `EFB_SUPABASE_ACCESS_TOKEN`, or paste `live/supabase_schema.sql` into the
-   Supabase SQL editor. It creates schema `efb` and the eight tables.
-3. **Set the variables on each Render service** (values in the Render
-   dashboard, never committed):
-   - `efb-live-dashboard` (web): `EFB_SUPABASE_DB_URL` = the read-only role's
-     `postgresql://` string; `EFB_DB_SCHEMA` = `efb`. No Alpaca keys.
-   - `efb-live-daily` (cron): `EFB_SUPABASE_DB_URL` = the write role's string;
-     `EFB_DB_SCHEMA` = `efb`; `EFB_ALPACA_PAPER_API_KEY`;
-     `EFB_ALPACA_PAPER_SECRET_KEY`; `EFB_DRY_RUN` = `true` (stays true through
-     this task; the owner flips it once to start day 1).
-4. **Local `.env` entries** for local runs: `EFB_SUPABASE_DB_URL`,
-   `EFB_DB_SCHEMA=efb`, `EFB_ALPACA_PAPER_API_KEY`,
-   `EFB_ALPACA_PAPER_SECRET_KEY`, `EFB_DRY_RUN=true`, plus
-   `EFB_SUPABASE_PROJECT_URL` and `EFB_SUPABASE_ACCESS_TOKEN` only for the
-   one-time provisioning script.
-5. **Deploy** the two services from `render.yaml`.
-6. **Confirm remaining-plan item 4c.** After the deploy, a dry run writes a
-   real proposal to `efb` (`proposals` and `positions` rows) and the Render
-   page shows it. A page that has never shown a real proposal is not
-   confirmed; I have not deployed, so this confirmation is the owner's.
+### What this does to the basis of the owner's choice
+
+The choice was made on the pre-resize fixed point: 188 names, n_eff 85.69,
+governing breadth 1.355, total error 1.25% and p90 3.44%. Enforcement is not
+compatible with that book: 24 of its 188 names hold fewer than 20 shares in the
+vector that actually trades, which is `n_below_floor_final_pre_enforcement` 24
+on the share-only row. No rule that enforces the floor can return 188 names on
+this data, so n_eff 85.69 is not attainable and the choice was made on a number
+no enforceable book has. The two enforceable share-only books measured here are
+119 names at n_eff 58.82 and 143 names at n_eff 68.52, a fall of 31.4% or 20.0%
+from 85.69. The reviewer's note on the drop-only book said the fall was 31% and
+to "report the fall plainly, not call it close"; I am reporting that the same
+fall is now the whole distance from the choice's basis.
+
+The owner's reasoning is untouched and the trigger does not fire, so this is
+not a re-decide by itself. It is the fact the reviewer needs before
+re-specifying, and the fact the owner needs before the flip, because the
+breadth the choice traded IR for is smaller than the table the choice was made
+from.
+
+## Parts 2 to 4 and the rest: not started
+
+The owner's instruction for this cycle is that the task stops after Part 1, so
+Part 2 (E11-F15, the model inputs into Postgres), Part 3 (the staleness hard
+stop), Part 3b (the notification), Part 4 (the corrected deploy steps) and Part
+5 onward are not started. Part 1's checkpoint also forbids regenerating
+proposals or re-deriving Guard 1 before the owner confirms, and both are
+untouched. `dry_run` is still `true` and was not flipped. `live/proposals/` is
+unchanged.
+
+`live/construction_table.parquet` and `live/construction_weights.parquet` were
+regenerated: the enforced columns are identical to the committed ones and eight
+`_prefix` columns were added. The prefix book's names are not the book, so they
+are not written into `live/construction_weights.parquet`; that file's rows are
+unchanged.
+
+## What changed
+
+- `live/evening_job.py`: `floor_thresholds` and `enforce_floor_by_prefix` added;
+  `enforce_floor_on_final_weights` docstring now records the E11-F13 behaviour
+  that it only drops. No behaviour change on the live path, which still runs the
+  drop-only loop.
+- `live/construction_table.py`: every floor row measures the prefix rule beside
+  the enforced book and stores eight `_prefix` columns; `_no_floor_row` stamps
+  them vacuously.
+- `tests/test_construction_table.py`: the enforcement test now pins the prefix
+  measurement, the stop, and the net-zero invariant the prefix breaks.
+- `tests/test_e11_evening.py`: three unit tests, for `floor_thresholds`, for the
+  linear scan on a non-monotone pass set (a bisection would miss it), and for
+  the loud failure when no prefix clears.
 
 ## Verification
 
-Per STANDARDS 21, per-step subsets plus lint ran after each part; the full
-suite ran after the Part 3 artifact rebuild and again after the Part 4
-`efb/registry.py` change.
+### Commands run and their last lines
 
-Part 1 subset (construction table and traceability):
+Per-step selection while the code changed (rule 21), pasted with the command:
 
 ```text
-$ .venv/bin/pytest tests/test_construction_table.py tests/test_readme_traceability.py tests/test_status_report_traceability.py -q
-15 passed in 24.90s
+$ .venv/bin/python -m pytest tests/test_construction_table.py tests/test_e11_evening.py -q
+...........................                                              [100%]
+27 passed in 129.04s (0:02:09)
 ```
 
-Part 2 subset (store, render wiring, daily dry-run resolution):
+`make lint`, exit 0:
 
 ```text
-$ .venv/bin/pytest tests/test_e11_store.py tests/test_e11_render.py tests/test_run_live_daily.py -q
-30 passed, 1 skipped in 0.91s
-```
-
-Part 3 subsets (the floor enforcement, the live path, the dashboard):
-
-```text
-$ .venv/bin/pytest tests/test_construction_table.py -q
-7 passed in 25.30s
-
-$ .venv/bin/pytest tests/test_e11_evening.py -q
-17 passed in 21.87s
-
-$ .venv/bin/pytest tests/test_dashboard_d10.py tests/test_e11_render.py -q
-25 passed, 1 skipped in 1.02s
-```
-
-Part 4 subsets (registry, E5 hash and notebook, evidence, the live path):
-
-```text
-$ .venv/bin/pytest tests/test_registry.py tests/test_e5_walkthrough_notebook.py tests/test_e8_results.py tests/test_e11_evening.py tests/test_build_e2.py tests/test_build_e3.py tests/test_e11_store.py tests/test_e11_render.py -q
-89 passed, 1 skipped in 28.37s
-
-$ .venv/bin/pytest tests/test_evidence.py -q
-1 passed in 0.54s
-```
-
-Part 5 subset (the re-derived Guard 1):
-
-```text
-$ .venv/bin/pytest tests/test_e11_guards.py -q
-7 passed in 0.02s
-```
-
-Part 6 subset (the Render-page label and the regenerated proposal):
-
-```text
-$ .venv/bin/pytest tests/test_e11_render.py tests/test_dashboard_d10.py tests/test_e11_evening.py -q
-45 passed, 1 skipped in 23.17s
-```
-
-Part 7 subset (the sanity gate and the corrected input as-of dates):
-
-```text
-$ .venv/bin/pytest tests/test_e11_sanity.py tests/test_e11_evening.py tests/test_e11_render.py -q
-35 passed, 1 skipped in 22.66s
-```
-
-Part 8 subset (the cron script's import path and the store):
-
-```text
-$ .venv/bin/pytest tests/test_run_live_daily.py tests/test_e11_store.py -q
-20 passed in 0.84s
-```
-
-Full suite (latest, after the Part 8 deploy-readiness fix):
-
-```text
-$ make test
-724 passed, 1 skipped, 3 warnings in 447.60s (0:07:27)
-```
-
-The previous full-run count in LOG.md is 692; 724 clears it.
-
-```text
-$ make verify-evidence
-evidence OK
-```
-
-Lint:
-
-```text
-$ make lint
 .venv/bin/ruff check efb dashboard live tests
 All checks passed!
 .venv/bin/mypy efb
+pyproject.toml: note: unused section(s): module = ['alpaca', 'alpaca.trading.*']
 Success: no issues found in 33 source files
 .venv/bin/black --check efb dashboard live tests
 All done! ✨ 🍰 ✨
 163 files would be left unchanged.
 ```
 
-`mypy live` (the live package is checked separately from `make lint`):
+`make test`, the full suite, exit 0:
 
 ```text
-$ .venv/bin/mypy live
-Success: no issues found in 15 source files
+727 passed, 1 skipped, 3 warnings in 759.79s (0:12:39)
 ```
+
+`make verify-evidence`, exit 0:
+
+```text
+.venv/bin/python -c "from efb import evidence; p = evidence.verify(); print('evidence OK' if not p else chr(10).join(p)); raise SystemExit(1 if p else 0)"
+evidence OK
+```
+
+**The split, rule 21.** `make test-fast` is the default path (`-m "not slow"`):
+
+```text
+700 passed, 1 skipped, 27 deselected, 3 warnings in 27.03s
+```
+
+So 700 of the 727 pass on the fast path in 27.03s, and the 27 slow tests take
+the remaining 732.76s of the full run, because six of them each rebuild the
+whole construction table. The full-run count is 727 against the 724 recorded in
+`handoff/LOG.md` at `938da6c`, and the three added tests are
+`floor_thresholds`, the prefix scan on a non-monotone pass set, and the loud
+failure when no prefix clears. No test was removed and none was newly marked
+slow, so the full run only grew.
 
 ### Headline numbers, file and key
 
-- Shrinkage increment 0.0555 and the corrected sum 0.0555 + 0.0526 - 0.0031 =
-  0.1050: `docs/hygiene_ledger.md`, 2026-09-24 correction entry, stated from
-  the `residual_exposure_*` columns of `live/construction_table.parquet`,
-  `min_position_1500` row.
-- Estimator+date gap 0.000031 and shrinkage increment 0.054393 (51.8 percent of
-  0.104987 raw beta): `docs/hygiene_ledger.md`, 2026-09-24 diagnostic split
-  entry, computed at min $1,500 from the table weights and the frozen XS-v1
-  specification in `efb/models/fundamental.py`.
-- `n_beta_zero_filled` = 1 (minimum-position subsets) and 2 (full book):
-  `live/construction_table.parquet`, `n_beta_zero_filled` column.
-- Enforced share-only book: 119 names, n_eff 58.82, total error 0.006426,
-  p90 0.020385, governing breadth 1.635, max weight 0.059617, raw beta
-  0.133743: `live/construction_table.parquet`, `share_only_20shares` row,
-  `n_kept` / `n_eff_kept` / `total_gross_error_share_of_nav` /
-  `quant_error_p90_pct_of_target` / `breadth_governing` /
-  `max_weight_share_of_gross` / `realized_market_beta` columns.
-- Enforced min $2,000 book: 145 names, n_eff 81.68, total error 0.019150,
-  p90 0.059304: `live/construction_table.parquet`, `min_position_2000` row.
-- The below-floor counts on the unenforced full-weight fixed point (31, 19,
-  21, 19, 26, 24) and worst shortfalls: `live/construction_table.parquet`,
-  `n_below_floor_final_pre_enforcement` and
-  `worst_floor_shortfall_*_pre_enforcement` columns.
-- Live path matches the table: `build_proposal` returns `share_only`, share
-  floor 20, `floor_iterated` true, 119 names, n_eff_kept 58.82.
-- Registry construction: `data/models/registry.json`, XS-v1 `live` block,
-  `construction: share_only`, `share_floor: 20`, `dollar_floor: 0`,
-  `floor_iterated: true`.
-- E5 data_hash moved a4c40c67… -> 6dca1f8d…: `sprints/E5/RESULTS.json`,
-  `data_hash` and `revisions` block (`n_changed` 0, three history entries).
-- Registry sha256 in the version manifest: `data/VERSION.json`,
-  `artifacts.registry.json.sha256` = 142afe1f….
-- Guard 1 largest legitimate target: MRNA $65,005 (6.50% of NAV) at the
-  2026-09-18 close, with MU $62,280 (6.23%) at 09-03 and MU $59,506 (5.95%)
-  at 09-21: recomputed from the enforced share-only final weights at each
-  close. The cap stays 0.10 ($100,000), 1.54x headroom over 0.065.
-- Regenerated stored proposal: `live/proposals/proposal_2026-09-21.json`,
-  `construction: share_only`, share floor 20, `floor_iterated: true`,
-  `n_kept` 119, `n_dropped` 380, `n_eff_kept` 58.82, `max_kept_weight`
-  0.0596. The D10 and Render labels read "min 20 shares (iterated to a
-  fixed point)" from the artifact's own fields.
-- Sanity gate: `live/sanity_gate.json`, closes 2026-09-18 and 2026-09-21,
-  turnover 0.1366 (definition `0.5 * sum(abs(w_t - w_{t-1}))`), n_eff_kept
-  59.35 -> 58.82, `passed: true`. The 09-18 proposal is regenerated as the
-  share-only book (116 names).
+All from `live/construction_table.parquet`, one row per `construction`, in the
+order the file stores them (min $1,500, min $2,000, min $3,000, min $5,000,
+top_n_150, top_n_200, two_part, share_only, full_book):
 
-### git diff --stat from base_commit (1957256)
+| number | file and key |
+| --- | --- |
+| enforced 194/145/72/23/87/119 | `n_kept` |
+| one-pass 208/155/82/27/92/118 | `n_kept_pre_iteration` |
+| pre-resize fixed point 252/208/156/99/172/188 | `n_kept_post_iteration` |
+| prefix 131/131/3/3/66/16 | `n_kept_prefix` and `floor_prefix_k` |
+| scans 369/369/497/497/434/484 | `floor_prefix_scans` |
+| enforced n_eff 98.736507/81.681243/44.476474/14.104803/51.190506/58.822271 | `n_eff_kept` |
+| prefix n_eff 75.201881/75.201881/2.240310/2.240310/40.477586/7.369653 | `n_eff_kept_prefix` |
+| enforced error 0.025015/0.019150/0.009147/0.004757/0.005560/0.006426 | `total_gross_error_share_of_nav` |
+| prefix error 0.018019/0.018019/0.000925/0.000925/0.003651/0.000246 | `total_error_share_of_nav_prefix` |
+| enforced p90 0.088188/0.059304/0.029323/0.016769/0.014008/0.020385 | `quant_error_p90_pct_of_target` |
+| prefix p90 0.057309/0.057309/0.005012/0.005012/0.008907/0.004322 | `quant_error_p90_pct_of_target_prefix` |
+| prefix max weight 0.049354/0.049354/0.588235/0.588235/0.071704/0.206853 | `max_weight_share_of_gross_prefix` |
+| prefix net 0/0/1.0/1.0/0/-0.089543 | `net_dollar_share_of_gross_prefix` |
+| pre-resize below floor 31/19/21/19/26/24 | `n_below_floor_final_pre_enforcement` |
+| enforced below floor 0 on all six | `n_below_floor_final` |
+| the drop-only loop's passes and convergence | `floor_enforcement_passes` 3, `floor_enforcement_converged` True |
+| enforced max weight 0.042984/0.047402/0.067339/0.145208/0.064005/0.059617 | `max_weight_share_of_gross` |
+
+The admission control numbers are not stored. They come from the script pasted
+under `Diagnostic scripts`; the rows it prints are the six floor rows in the
+same order, with `n_kept` the admitted count and `n_kept_drop_only` the enforced
+book.
+
+### git diff --stat from `base_commit` (938da6c)
 
 ```text
- .env.example                               |  20 +-
- data/VERSION.json                          |   4 +-
- data/models/registry.json                  |   7 +-
- docs/hygiene_ledger.md                     |  69 +++
- docs/open_items.md                         |  12 +
- efb/registry.py                            |  22 +
- evidence/MANIFEST.json                     |  20 +-
- evidence/data/VERSION.json.gz              | Bin 7972 -> 7984 bytes
- evidence/data/models/registry.json.gz      | Bin 4389 -> 4383 bytes
- handoff/LOG.md                             |  70 +++
- handoff/PROJECT_CONTEXT.md                 |  78 ++-
- handoff/REPORT.md                          | 807 +++++++++++++++++++++--------
- handoff/TASK.md                            | 116 ++++-
- live/construction_table.parquet            | Bin 29817 -> 37356 bytes
- live/construction_table.py                 | 271 +++++++---
- live/construction_weights.parquet          | Bin 39258 -> 33674 bytes
- live/dashboard_app.py                      |  33 ++
- live/evening_job.py                        | 243 +++++++--
- live/guards.py                             |  18 +-
- live/proposals/proposal_2026-09-18.json    |  94 +++-
- live/proposals/proposal_2026-09-18.parquet | Bin 19968 -> 7111 bytes
- live/proposals/proposal_2026-09-21.json    |  85 +--
- live/proposals/proposal_2026-09-21.parquet | Bin 4114 -> 7195 bytes
- live/sanity.py                             |  33 +-
- live/sanity_gate.json                      |  33 +-
- live/store.py                              | 120 +++--
- live/supabase_schema.sql                   |  27 +-
- notebooks/E5_walkthrough.ipynb             |  94 ++--
- pyproject.toml                             |   4 +-
- render.yaml                                |  17 +-
- requirements.txt                           |   6 +-
- scripts/provision_supabase.py              |  13 +-
- scripts/run_live_daily.py                  |  18 +-
- sprints/E5/RESULTS.json                    | 238 ++++++++-
- tests/test_construction_table.py           |  31 ++
- tests/test_e11_evening.py                  |  54 +-
- tests/test_e11_guards.py                   |   8 +-
- tests/test_e11_render.py                   |  80 ++-
- tests/test_e11_sanity.py                   |  43 ++
- tests/test_e11_store.py                    |  97 ++++
- tests/test_registry.py                     |  30 ++
- tests/test_run_live_daily.py               |  18 +
- 42 files changed, 2335 insertions(+), 598 deletions(-)
+ handoff/LOG.md                   |  161 ++++++
+ handoff/PROJECT_CONTEXT.md       |   66 ++-
+ handoff/REPORT.md                | 1037 +++++++++++++++++---------------------
+ handoff/TASK.md                  |  303 ++++++++++-
+ live/construction_table.parquet  |  Bin 37356 -> 43229 bytes
+ live/construction_table.py       |   78 ++-
+ live/evening_job.py              |   69 +++
+ tests/test_construction_table.py |   17 +-
+ tests/test_e11_evening.py        |   80 ++-
+ 9 files changed, 1215 insertions(+), 596 deletions(-)
 ```
 
+This is the diff at the Part 1 commit, measured here, so it counts this
+section. None of these numbers can be re-taken without moving them, since
+whatever paragraph replaces this one changes the totals by its own size.
+
 `handoff/LOG.md`, `handoff/PROJECT_CONTEXT.md` and `handoff/TASK.md` are the
-owner's commit `921dee7` (the choice), included because they land between
-`1957256` and here. The rest is parts 1 to 8.
+reviewer's and owner's commits `dceda3c`, `8e01e8c` and `adf2fd0`, which land
+between `938da6c` and here; the TASK.md number also carries my status flip to
+`in_progress` and then `blocked`. Everything else is this task.
+`live/construction_weights.parquet` is absent from the diff because the
+regenerated file is byte-identical to the committed one: the enforced book's
+names did not change, and the prefix book's names were never written to it.
 
 ### Yes or no, each with evidence
 
-1. **Any two rows or two estimators identical?** No. The enforced floor rows
-   differ on names, n_eff, total error, p90, max weight and raw beta; top-N
-   150 and top-N 200 still both read 0.135 raw beta to three decimals, stated
-   as in the prior report.
-2. **Any exception caught and skipped, or any fallback taken, with counts?**
-   No. The enforcement loop converged in 3 passes on every floor row
-   (`floor_enforcement_converged` true, `floor_enforcement_passes` 3); no pass
-   cap was hit and no pseudoinverse hedge fallback was taken (n_effective
-   equals n_kept on every row).
-3. **Any criterion reworded or replaced by a different test?** No. The floor is
-   enforced exactly as written: drop, re-size, re-hedge, renormalize, quantize,
-   check, repeat.
-4. **Any criterion that passes by construction?** No. The enforcement test
-   reads the stored table and asserts the below-floor count is zero on the
-   enforced rows, which is a real check, not a re-derivation.
-5. **Any number that moved by a factor of 10 or more?** No. `n_kept` on the
-   floor rows moved by a factor of 2 to 4 (e.g. share-only 188 to 119, min
-   $5,000 99 to 23), and total error and p90 moved down by factors under 5,
-   stated here.
-6. **Any stored number typed into a notebook?** No. The E5 notebook was
-   re-executed (its hash cell recomputes `e5_data_hash`), and no stored number
-   was edited by hand; only the printed hash and execution timestamps moved.
-7. **Any earlier verdict changed?** Yes, the two the task ordered in part 1:
-   E11-F8's ledger verdict moved from refuted to undetermined (correction
-   entry), then to refuted by the diagnostic split (0.054393 shrinkage
-   increment, not near zero). Part 4 changes no criterion verdict: the E5
-   data_hash moved (a4c40c67… -> 6dca1f8d…) with `n_changed` 0, and the
-   criteria are byte-identical. Part 5 changes no verdict: Guard 1's cap
-   value stays 0.10; only its derivation basis moves to the share-only final
-   weights. Part 6 changes no verdict: it regenerates the stored proposal
-   under the chosen construction, which is the deliverable, not a criterion.
-   Part 7 changes no verdict: the sanity gate passed, and `_input_as_of` was
-   corrected to clamp each input to the close (a fix, not a re-scoring).
-   Part 8 changes no verdict: it fixes the cron script's import path and
-   documents the owner's deploy steps, neither of which re-scores anything.
+1. **Any two rows or two estimators identical.** Yes. The min $1,500 and
+   min $2,000 prefix books are the same set: their orderings are identical
+   (both order by `|w_i| / dollar_floor` on the same full-book weights), and the
+   first passing `k` is 131 for both, so every prefix column is identical
+   between the two rows (`n_kept_prefix` 131, `n_eff_kept_prefix` 75.201881,
+   `total_error_share_of_nav_prefix` 0.018019 on both). The enforced columns
+   differ (194 against 145), so the duplicate is confined to the prefix
+   measurement. It is also part of the degeneracy: the scan stops where it
+   stops, and the floor it was checking barely enters.
+2. **Any exception caught and skipped, or fallback taken, with counts.** Yes,
+   the pseudoinverse fallback in `live/sizing.hedge_exact_robust`. It fires 148
+   times across one full `build_table(store=False)` out of 2536
+   `np.linalg.solve` calls, counted by wrapping `np.linalg.solve` and counting
+   raises (`efb/hedge.py`'s `fmp_hedge_exact` does not catch `LinAlgError`, so
+   a raise there would abort the build and every counted raise is the fallback).
+   Attribution, measured by rebuilding with `enforce_floor_by_prefix` stubbed
+   out to a single finalize per row: 36 solves and 4 raises without the prefix
+   scan, so **144 of the 148 are inside the prefix scan**, where the subsets
+   fall below the 17-factor design (the scan walks through 3, 4, 16 and 17 name
+   sets). The other 4 sit in the normal build path; 3 of them are in the six
+   enforced-book loops, which run 15 solve calls in total and still converge to
+   books whose post-hedge exposure is 1e-15. No exception is swallowed: the
+   fallback returns the best achievable hedge and the caller reports the
+   achieved exposure.
+3. **Any criterion reworded or replaced by a different test.** No. No
+   `sprints/E*/RESULTS.json` criterion was touched, no threshold or criterion
+   string was edited, and no criterion ID was added. The only edits are in
+   `tests/` and in the two `live/` modules named above.
+4. **Any criterion that passes by construction.** Yes, and it is why the prefix
+   book's validity carries no information: the scan returns the first set whose
+   every name clears its floor in the final weights, so "no kept name is below
+   floor" is true of its output by construction. I did not store a below-floor
+   column for the prefix book, because it would be a zero that meant nothing.
+   The enforced book's `n_below_floor_final` of 0 is not by construction: the
+   drop-only loop checks after the fact, and the pre-resize fixed point fails
+   the same check with 31/19/21/19/26/24 names.
+5. **Any number that moved by a factor of 10 or more from its previous stored
+   value.** No. The 47 numeric columns shared with the committed table are
+   identical, the largest absolute difference being 0.0. Eight columns were
+   added and none removed.
+6. **Any stored number typed into a notebook.** No. No notebook was opened,
+   edited or executed.
+7. **Any earlier verdict changed.** No. Every verdict in `sprints/E*/RESULTS.json`
+   and the registry is untouched, and the construction table carries no verdict.
 
 ### Anything decided that the reviewer might disagree with
 
-The `supabase` client dependency was removed from `requirements.txt` and
-`pyproject.toml` (nothing imports it after the move to `psycopg`), and
-`psycopg[binary]>=3.1` now lives in the `live` extra. The provisioning script's
-project URL variable was renamed to `EFB_SUPABASE_PROJECT_URL` so it cannot be
-read as the withdrawn PostgREST connection. The enforced rows start from the
-full book, not from the old full-weight fixed point, because the floor is the
-only selection rule and the comparison must be like-for-like; the old
-full-weight fixed point is retained as the "as it stands" measurement.
-Enforcement is applied to the six floor rows, not to top-N and the full book,
-which carry no position floor and keep a vacuous stamp. The stored proposal is
-regenerated in part 6 under the chosen construction, overwriting the old
-27-name min-position book with the 119-name share-only book; the D10 and
-Render pages both read the construction from the artifact's own fields.
+**I did not install the prefix as the book, which reverses the pre-registration
+line "The prefix result is the book. The drop-only result is reported beside
+it."** The reviewer's own stop fired, and the prefix book also fails a standing
+invariant on three of six rows (net dollar 1.0 of gross on the two three-name
+rows, -0.089543 on share-only), so installing it would have left the suite red
+against a guard I would then have had to relax. I kept the last valid enforced
+book as the book, measured the prefix beside it, and left the rule for the
+reviewer to re-specify. If the reviewer wants the prefix installed as the book
+regardless, it is one line, but the net-zero guard then has to be dealt with
+explicitly rather than quietly.
 
-The E5 RESULTS.json revisions block was written through the project's own
-`evaluate.write_results` with the unchanged criteria, so the `changed` map now
-shows old equals new for every criterion and a third history entry carries the
-hash transition; this is the sanctioned path, not a hand edit. The evidence
-snapshot was refreshed only for the two moved files; `evidence.snapshot()`
-rewrites every gzip with a fresh mtime, so the untouched raw snapshots were
-reverted and their manifest entries restored to keep the diff honest. The
-`supabase`-client removal and the legacy `min_position_dollars` manifest field
-(set to the registry's dollar floor, 0.0) are kept so the dashboard's
-label-from-artifact rule reads the new `share_only` fields.
+**The admission control is my diagnostic, not a rule.** It is in the report
+because the reviewer's premise (that the drop-only book understates the
+possible breadth) is right and needs a number, and because the owner asked
+where the trigger lands. It is order-dependent, it is not pre-registered, and I
+have wired it nowhere.
+
+**I ran the full suite, which rule 21 requires only before `done`.** The task
+ends `blocked`, not `done`, but rule 20 requires `make test` output in this
+section, so this is the full run and not a subset.
+
+## Diagnostic scripts
+
+The two diagnostics behind the mechanism, so they can be re-run. Both are
+read-only and write nothing. In both, `names, alpha_vec, signal_z, design,
+factor_cov, specific` come from `ct._raw_pieces(ROOT, as_of)`, `fw` from
+`size.procedure_6_3` plus `ct._scale_to_target`, `close` from
+`ct._close_prices`, and `beta_stages` and `n_eff_full` as `build_table` gets
+them.
+
+`k sweep`, the below-floor count against the prefix length on the share-only
+row, printing for each `k`: the rounded-share count, the target count and the
+target-below-19.5 count:
+
+```python
+thr = ev.floor_thresholds(close, names, 0.0, 20)
+order = np.argsort(-(np.abs(fw) / thr), kind="stable")
+for k in (499, 450, 400, 350, 300, 250, 220, 200, 188, 175, 160, 150, 140, 131,
+          120, 110, 100, 90, 80, 60, 40, 30, 20, 17, 16, 15):
+    keep = np.zeros(len(names), dtype=bool)
+    keep[order[:k]] = True
+    fin = ev.finalize_kept_set(keep, names, alpha_vec, design, factor_cov,
+                               specific, close, ct.PAPER_NAV)
+    shares = np.asarray(fin["shares"], dtype=int)
+    prices = np.asarray(fin["prices"], dtype=float)
+    target = np.abs(np.asarray(fin["w_sub"], dtype=float)) * ct.PAPER_NAV / prices
+    print(k, int(ev.below_floor(shares, prices, 0.0, 20).sum()),
+          int((np.floor(target) < 20).sum()), int((target < 20).sum()))
+```
+
+`admission control`, the dropped-name admission, per floor row, printing the
+table in the section above and storing nothing:
+
+```python
+for label, dollar_floor, share_floor in ROWS:
+    drop_keep, _fin, _p, _c = ev.enforce_floor_on_final_weights(
+        np.ones(len(names), dtype=bool), names, alpha_vec, design, factor_cov,
+        specific, close, ct.PAPER_NAV, dollar_floor, share_floor)
+    thresholds = ev.floor_thresholds(close, names, dollar_floor, share_floor)
+    order = np.argsort(-(np.abs(fw) / thresholds), kind="stable")
+    admitted = drop_keep.copy()
+    for position in order:
+        if admitted[position]:
+            continue
+        trial = admitted.copy()
+        trial[position] = True
+        fin = ev.finalize_kept_set(trial, names, alpha_vec, design, factor_cov,
+                                   specific, close, ct.PAPER_NAV)
+        if not ev.below_floor(np.asarray(fin["shares"], dtype=int),
+                              np.asarray(fin["prices"], dtype=float),
+                              dollar_floor, share_floor).any():
+            admitted = trial
+    row, _names = ct._compute_row(names, alpha_vec, design, factor_cov, specific,
+                                  fw, close, beta_stages, ct.PAPER_NAV, n_eff_full,
+                                  admitted, fw, signal_z, label, False,
+                                  dollar_floor=dollar_floor, share_floor=share_floor)
+    print(label, int(admitted.sum()), int(drop_keep.sum()), row["n_eff_kept"],
+          row["total_gross_error_share_of_nav"],
+          row["quant_error_p90_pct_of_target"])
+```

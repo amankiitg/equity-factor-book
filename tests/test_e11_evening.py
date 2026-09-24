@@ -195,11 +195,87 @@ def test_floor_shortfalls_reports_the_worst_of_each_leg() -> None:
     assert short_dollars == pytest.approx(1500.0)
 
 
+def test_floor_thresholds_take_the_larger_of_the_two_legs() -> None:
+    close = {"A": 100.0, "B": 10.0}
+    thresholds = ev.floor_thresholds(close, ["A", "B"], 1500.0, 20)
+    # A needs 20 shares at $100 = $2,000, which binds over the $1,500 leg;
+    # B needs 20 shares at $10 = $200, so the dollar leg binds
+    assert thresholds.tolist() == [2000.0, 1500.0]
+
+
+def test_the_prefix_scan_takes_the_largest_passing_prefix(monkeypatch) -> None:
+    """The pass set is not monotone in k, so the scan is linear, not a bisection.
+
+    Only a three-name book clears the floor here. A bisection would probe k=2
+    first, find it failing, and search downward, never reaching k=3.
+    """
+    names = ["A", "B", "C", "D"]
+    full = np.array([4.0, 3.0, 2.0, 1.0])
+    close = {ticker: 10.0 for ticker in names}
+    calls: list[int] = []
+
+    def fake_finalize(keep, *args, **kwargs):
+        idx = np.where(keep)[0]
+        calls.append(len(idx))
+        shares = np.full(len(idx), 20 if len(idx) == 3 else 19, dtype=int)
+        return {
+            "idx": idx,
+            "names_sub": [names[i] for i in idx],
+            "shares": shares,
+            "prices": np.full(len(idx), 10.0),
+        }
+
+    monkeypatch.setattr(ev, "finalize_kept_set", fake_finalize)
+    keep, _finalize, k = ev.enforce_floor_by_prefix(
+        names,
+        np.ones(4),
+        np.zeros((4, 1)),
+        np.eye(1),
+        np.ones(4),
+        close,
+        1000.0,
+        full,
+        0.0,
+        20,
+    )
+    assert k == 3
+    assert keep.tolist() == [True, True, True, False]
+    # descending from the full book, so exactly two probes: the full book, then 3
+    assert calls == [4, 3]
+
+
+def test_the_prefix_scan_fails_loudly_when_no_prefix_clears(monkeypatch) -> None:
+    names = ["A", "B"]
+    monkeypatch.setattr(
+        ev,
+        "finalize_kept_set",
+        lambda keep, *args, **kwargs: {
+            "idx": np.where(keep)[0],
+            "names_sub": [t for t, k in zip(names, keep, strict=True) if k],
+            "shares": np.zeros(int(np.sum(keep)), dtype=int),
+            "prices": np.full(int(np.sum(keep)), 10.0),
+        },
+    )
+    with pytest.raises(ValueError, match="no prefix"):
+        ev.enforce_floor_by_prefix(
+            names,
+            np.ones(2),
+            np.zeros((2, 1)),
+            np.eye(1),
+            np.ones(2),
+            {t: 10.0 for t in names},
+            1000.0,
+            np.array([2.0, 1.0]),
+            0.0,
+            20,
+        )
+
+
 @pytest.mark.slow
 def test_build_proposal_stores_the_share_only_floor_and_breadth() -> None:
     manifest = ev.build_proposal(store=False)
-    # the chosen construction: min 20 shares, no dollar floor, iterated to a
-    # fixed point on the final weights (E11-F12)
+    # the chosen construction: min 20 shares, no dollar floor, enforced on the
+    # final weights (E11-F12)
     assert manifest["min_position_dollars"] == pytest.approx(0.0)
     assert manifest["min_position_pct_of_nav"] == pytest.approx(0.0)
     # names whose final position is below 20 shares are dropped

@@ -1,5 +1,5 @@
 task_id: e11-admit-and-live-gate
-status: in_progress
+status: blocked
 base_commit: 938da6c
 
 ## Admission back into the fixed point, inputs into Postgres, staleness as a hard stop

@@ -7,6 +7,12 @@ Procedure 6.3 on the kept subset, renormalizes to gross 1.0, then quantizes to
 whole shares. The dollar floor is applied iteratively to a fixed point, so a
 name admitted after the kept set is scaled up is reported.
 
+Every floor row also carries the largest valid prefix, the rule E11-F13
+pre-registered as the book: ordered by |w_i| / floor_i on the full-book weights
+and checked on the final weights. It is measured beside the enforced book, not
+installed as one, because on this data it keeps far fewer names than the
+drop-only loop on every floor row, which is the stop that rule pre-registered.
+
 Every row reports net dollar three ways, the realized market beta, the
 per-name share-count distribution and what drives the p90 rounding-error tail,
 plus post-hedge exposure and idio share, the maximum post-renormalization
@@ -36,6 +42,7 @@ from live.evening_job import (
     _scale_to_target,
     _stored_ic,
     below_floor,
+    enforce_floor_by_prefix,
     enforce_floor_on_final_weights,
     finalize_kept_set,
     floor_shortfalls,
@@ -496,14 +503,18 @@ def _enforce_row(
     dollar_floor: float,
     share_floor: int,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
-    """Enforce the floor on the final weights from the full book.
+    """Enforce the floor on the final weights, and measure the prefix beside it.
 
     The floor construction is defined solely by the floor, so the enforced
-    book starts from the full book and iterates drop -> re-size -> re-hedge
-    -> renormalize -> quantize -> check until no kept name is below its
-    floor. The pre and post rows carry the one-pass and the full-weight
-    fixed point (the buggy "as it stands" vector), whose below-floor count
-    is recorded against the enforced row.
+    book starts from the full book and iterates drop -> re-size -> re-hedge ->
+    renormalize -> quantize -> check until no kept name is below its floor.
+    That is the last valid enforced book. E11-F13 pre-registered the largest
+    valid prefix as the book instead; it is measured here on the same final
+    weights and reported beside the enforced book, because on this data it
+    keeps far fewer names than the drop-only loop on every floor row (16
+    against 119 on share-only), which is the stop that rule pre-registered.
+    The pre and post rows carry the one-pass and the full-weight fixed point,
+    whose below-floor count is recorded against the enforced row.
     """
     full_keep = np.ones(len(names), dtype=bool)
     enforced_keep, enforced_finalize, passes, converged = (
@@ -555,6 +566,51 @@ def _enforce_row(
     ]
     row["floor_enforcement_passes"] = passes
     row["floor_enforcement_converged"] = converged
+
+    prefix_keep, prefix_finalize, prefix_k = enforce_floor_by_prefix(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        nav,
+        full_weights,
+        dollar_floor,
+        share_floor,
+    )
+    prefix_row, _prefix_names = _compute_row(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        full_weights,
+        close,
+        beta_stages,
+        nav,
+        n_eff_full,
+        prefix_keep,
+        sides,
+        signal_z,
+        label,
+        flagged_for_veto,
+        finalize=prefix_finalize,
+        dollar_floor=dollar_floor,
+        share_floor=share_floor,
+    )
+    row["n_kept_prefix"] = prefix_row["n_kept"]
+    row["floor_prefix_k"] = prefix_k
+    row["floor_prefix_scans"] = len(names) - prefix_k + 1
+    row["n_eff_kept_prefix"] = prefix_row["n_eff_kept"]
+    row["total_error_share_of_nav_prefix"] = prefix_row[
+        "total_gross_error_share_of_nav"
+    ]
+    row["quant_error_p90_pct_of_target_prefix"] = prefix_row[
+        "quant_error_p90_pct_of_target"
+    ]
+    row["max_weight_share_of_gross_prefix"] = prefix_row["max_weight_share_of_gross"]
+    row["net_dollar_share_of_gross_prefix"] = prefix_row["net_dollar_share_of_gross"]
     return row, row_names
 
 
@@ -562,11 +618,17 @@ def _no_floor_row(row: dict[str, object]) -> None:
     """Stamp the no-floor rows with vacuous enforcement columns for a uniform schema."""
     row["n_kept_post_enforcement"] = row["n_kept"]
     row["quant_error_p90_post_enforcement"] = row["quant_error_p90_pct_of_target"]
+    row["n_kept_prefix"] = row["n_kept"]
+    row["floor_prefix_k"] = row["n_kept"]
+    row["floor_prefix_scans"] = 0
+    row["n_eff_kept_prefix"] = row["n_eff_kept"]
+    row["total_error_share_of_nav_prefix"] = row["total_gross_error_share_of_nav"]
+    row["quant_error_p90_pct_of_target_prefix"] = row["quant_error_p90_pct_of_target"]
+    row["max_weight_share_of_gross_prefix"] = row["max_weight_share_of_gross"]
+    row["net_dollar_share_of_gross_prefix"] = row["net_dollar_share_of_gross"]
     row["n_below_floor_final_pre_enforcement"] = 0
     row["worst_floor_shortfall_shares_pre_enforcement"] = 0.0
     row["worst_floor_shortfall_dollars_pre_enforcement"] = 0.0
-    row["floor_enforcement_passes"] = 0
-    row["floor_enforcement_converged"] = True
 
 
 def build_table(

@@ -175,10 +175,18 @@ def test_the_floor_is_enforced_on_the_final_weights() -> None:
     assert (floor_rows["n_kept"] == floor_rows["n_kept_post_enforcement"]).all()
     assert (floor_rows["n_below_floor_final"] == 0).all()
     assert bool(floor_rows["floor_enforcement_converged"].all()) is True
-    # enforcement only drops names, never admits them
-    assert (
-        floor_rows["n_kept_post_enforcement"] <= floor_rows["n_kept_post_iteration"]
-    ).all()
+    # the pre-registered prefix rule is measured beside the book on every floor
+    # row, and the stop E11-F13 registered fires: it keeps fewer names than the
+    # drop-only enforcement on every row (16 against 119 on share-only)
+    assert (floor_rows["n_kept_prefix"] == floor_rows["floor_prefix_k"]).all()
+    assert (floor_rows["floor_prefix_scans"] > 0).all()
+    assert (floor_rows["n_kept_prefix"] < floor_rows["n_kept"]).all()
+    # why it cannot be installed as the book: the smallest prefix books are so
+    # concentrated that the exact FMP hedge cannot neutralise them, so they stop
+    # being dollar-neutral (net 1.0 of gross on the three-name rows), which the
+    # enforced book holds at zero
+    assert float(floor_rows["net_dollar_share_of_gross_prefix"].abs().max()) > 0.05
+    assert float(floor_rows["net_dollar_share_of_gross"].abs().max()) < 0.01
     # the bug E11-F12 describes is real on the full-weight fixed point: at least
     # one name ends below its floor in the vector that actually trades
     assert int(floor_rows["n_below_floor_final_pre_enforcement"].min()) > 0
@@ -186,3 +194,4 @@ def test_the_floor_is_enforced_on_the_final_weights() -> None:
     # floor and their kept count untouched
     assert (no_floor_rows["n_kept_post_enforcement"] == no_floor_rows["n_kept"]).all()
     assert (no_floor_rows["n_below_floor_final"] == 0).all()
+    assert (no_floor_rows["floor_prefix_scans"] == 0).all()

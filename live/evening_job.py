@@ -283,6 +283,13 @@ def enforce_floor_on_final_weights(
     kept name is below its floor. The kept set only shrinks, so the loop
     terminates; the pass cap guards a degenerate run and returns converged
     False rather than silently picking a pass.
+
+    E11-F13: because it only drops, it lands at or below the one-pass count
+    and gives up the breadth the E11-F6 iteration buys back (119 against 188
+    on the share-only book). It is still the last valid enforced book; the
+    corrected rule is being re-specified, and its candidate,
+    `enforce_floor_by_prefix`, is measured beside this one rather than
+    installed.
     """
     keep = keep.copy()
     finalize: dict[str, Any] = {}
@@ -300,6 +307,68 @@ def enforce_floor_on_final_weights(
         if not keep.any():
             return keep, finalize, passes, False
     return keep, finalize, max_passes, False
+
+
+def floor_thresholds(
+    close: dict[str, float],
+    names: list[str],
+    dollar_floor: float,
+    share_floor: int,
+) -> np.ndarray:
+    """Per-name notional threshold a name must clear to be kept.
+
+    Name i is kept when |w_i| * nav is at least max(dollar_floor, share_floor *
+    price_i) times the kept gross, so the threshold is the larger of the two
+    legs at that name's own close, on the same prices the sizing and the
+    quantization use.
+    """
+    prices = np.array([close.get(ticker, 0.0) for ticker in names], dtype=float)
+    return np.maximum(dollar_floor, share_floor * prices)
+
+
+def enforce_floor_by_prefix(
+    names: list[str],
+    alpha_vec: np.ndarray,
+    design: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific: np.ndarray,
+    close: dict[str, float],
+    nav: float,
+    full_weights: np.ndarray,
+    dollar_floor: float,
+    share_floor: int,
+) -> tuple[np.ndarray, dict[str, Any], int]:
+    """The largest valid prefix, checked on the final weights (E11-F13).
+
+    Order names by |w_i| / max(dollar_floor, share_floor * price_i) on the
+    full-book weights, the ordering the E11-F9 prefix method uses, so the kept
+    set is a prefix of that order. For k from the full book down, finalize the
+    prefix-k set (size, hedge, renormalize, quantize) and check every kept name
+    against its floor in those final weights. The first k that passes is the
+    largest valid prefix.
+
+    The pass set is not monotone in k, so the scan is linear and is never
+    bisected. On this book it keeps far fewer names than the drop-only loop on
+    every floor row, which is the stop E11-F13 pre-registered, so its result is
+    a measurement beside the book rather than the book itself.
+    """
+    thresholds = floor_thresholds(close, names, dollar_floor, share_floor)
+    order = np.argsort(-(np.abs(full_weights) / thresholds), kind="stable")
+    n_names = len(names)
+    for k in range(n_names, 0, -1):
+        keep = np.zeros(n_names, dtype=bool)
+        keep[order[:k]] = True
+        finalize = finalize_kept_set(
+            keep, names, alpha_vec, design, factor_covariance, specific, close, nav
+        )
+        shares = np.asarray(finalize["shares"], dtype=int)
+        prices = np.asarray(finalize["prices"], dtype=float)
+        if not below_floor(shares, prices, dollar_floor, share_floor).any():
+            return keep, finalize, k
+    raise ValueError(
+        "no prefix of the book clears the floor in its final weights; the "
+        "floor cannot be satisfied on this book"
+    )
 
 
 def _expected_establishment_cost(
