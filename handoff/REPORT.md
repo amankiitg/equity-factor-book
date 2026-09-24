@@ -5,7 +5,7 @@ The owner chose the share-only construction (minimum 20 whole shares per name,
 no dollar floor, iterated to a fixed point) at reserved decision 1. This task
 takes that choice to the gate in eight parts, in order, each committed on its
 own. `dry_run` stays `true` throughout; this task never flips it. This report
-covers parts 1 to 7.
+covers parts 1 to 8.
 
 ## Part 1: E11-F8 ledger correction, then the diagnostic split
 
@@ -307,6 +307,49 @@ advance. Both proposals were rebuilt under the chosen construction; the 09-18
 proposal is regenerated as the share-only book, and the 09-21 proposal changes
 only its recorded `code_commit`.
 
+## Part 8: deploy-ready over direct Postgres, and the owner's steps
+
+Both Render services read and write schema `efb` over `EFB_SUPABASE_DB_URL`;
+PostgREST and the service-role key never appear on either service. The
+dashboard holds a read-only role's connection string (E11-F11 item 3), never
+the service-role key. The one-time schema setup is `live/supabase_schema.sql`
+(`create schema if not exists efb` plus the eight tables), applied over direct
+Postgres through `scripts/provision_supabase.py` or the SQL editor.
+
+One deploy-blocking bug was fixed in this part: `scripts/run_live_daily.py` is
+started as `python scripts/run_live_daily.py`, which puts `scripts/` on
+`sys.path` rather than the repo root, so `from live import …` failed with
+`ModuleNotFoundError`. The script now inserts the repo root into `sys.path`
+first, and a test loads the module body and asserts `live` is importable.
+
+The owner's steps, in order:
+
+1. **Create the two Postgres roles on the shared project** (the owner does
+   this; I do not create roles or grants): a write role with DML on schema
+   `efb` for the cron, and a SELECT-only role for the dashboard.
+2. **One-time schema setup over direct Postgres.** Run
+   `scripts/provision_supabase.py` with `EFB_SUPABASE_PROJECT_URL` and
+   `EFB_SUPABASE_ACCESS_TOKEN`, or paste `live/supabase_schema.sql` into the
+   Supabase SQL editor. It creates schema `efb` and the eight tables.
+3. **Set the variables on each Render service** (values in the Render
+   dashboard, never committed):
+   - `efb-live-dashboard` (web): `EFB_SUPABASE_DB_URL` = the read-only role's
+     `postgresql://` string; `EFB_DB_SCHEMA` = `efb`. No Alpaca keys.
+   - `efb-live-daily` (cron): `EFB_SUPABASE_DB_URL` = the write role's string;
+     `EFB_DB_SCHEMA` = `efb`; `EFB_ALPACA_PAPER_API_KEY`;
+     `EFB_ALPACA_PAPER_SECRET_KEY`; `EFB_DRY_RUN` = `true` (stays true through
+     this task; the owner flips it once to start day 1).
+4. **Local `.env` entries** for local runs: `EFB_SUPABASE_DB_URL`,
+   `EFB_DB_SCHEMA=efb`, `EFB_ALPACA_PAPER_API_KEY`,
+   `EFB_ALPACA_PAPER_SECRET_KEY`, `EFB_DRY_RUN=true`, plus
+   `EFB_SUPABASE_PROJECT_URL` and `EFB_SUPABASE_ACCESS_TOKEN` only for the
+   one-time provisioning script.
+5. **Deploy** the two services from `render.yaml`.
+6. **Confirm remaining-plan item 4c.** After the deploy, a dry run writes a
+   real proposal to `efb` (`proposals` and `positions` rows) and the Render
+   page shows it. A page that has never shown a real proposal is not
+   confirmed; I have not deployed, so this confirmation is the owner's.
+
 ## Verification
 
 Per STANDARDS 21, per-step subsets plus lint ran after each part; the full
@@ -371,14 +414,21 @@ $ .venv/bin/pytest tests/test_e11_sanity.py tests/test_e11_evening.py tests/test
 35 passed, 1 skipped in 22.66s
 ```
 
-Full suite (latest, after the Part 7 proposal regeneration):
+Part 8 subset (the cron script's import path and the store):
+
+```text
+$ .venv/bin/pytest tests/test_run_live_daily.py tests/test_e11_store.py -q
+20 passed in 0.84s
+```
+
+Full suite (latest, after the Part 8 deploy-readiness fix):
 
 ```text
 $ make test
-723 passed, 1 skipped, 3 warnings in 453.80s (0:07:33)
+724 passed, 1 skipped, 3 warnings in 447.60s (0:07:27)
 ```
 
-The previous full-run count in LOG.md is 692; 723 clears it.
+The previous full-run count in LOG.md is 692; 724 clears it.
 
 ```text
 $ make verify-evidence
@@ -455,6 +505,7 @@ Success: no issues found in 15 source files
 ### git diff --stat from base_commit (1957256)
 
 ```text
+ .env.example                               |  20 +-
  data/VERSION.json                          |   4 +-
  data/models/registry.json                  |   7 +-
  docs/hygiene_ledger.md                     |  69 +++
@@ -464,18 +515,18 @@ Success: no issues found in 15 source files
  evidence/data/VERSION.json.gz              | Bin 7972 -> 7984 bytes
  evidence/data/models/registry.json.gz      | Bin 4389 -> 4383 bytes
  handoff/LOG.md                             |  70 +++
- handoff/PROJECT_CONTEXT.md                 |  78 ++--
- handoff/REPORT.md                          | 748 ++++++++++++++++++++---------
+ handoff/PROJECT_CONTEXT.md                 |  78 ++-
+ handoff/REPORT.md                          | 807 +++++++++++++++++++++--------
  handoff/TASK.md                            | 116 ++++-
  live/construction_table.parquet            | Bin 29817 -> 37356 bytes
- live/construction_table.py                 | 271 ++++++++---
+ live/construction_table.py                 | 271 +++++++---
  live/construction_weights.parquet          | Bin 39258 -> 33674 bytes
  live/dashboard_app.py                      |  33 ++
- live/evening_job.py                        | 243 ++++++++--
+ live/evening_job.py                        | 243 +++++++--
  live/guards.py                             |  18 +-
  live/proposals/proposal_2026-09-18.json    |  94 +++-
  live/proposals/proposal_2026-09-18.parquet | Bin 19968 -> 7111 bytes
- live/proposals/proposal_2026-09-21.json    |  85 ++--
+ live/proposals/proposal_2026-09-21.json    |  85 +--
  live/proposals/proposal_2026-09-21.parquet | Bin 4114 -> 7195 bytes
  live/sanity.py                             |  33 +-
  live/sanity_gate.json                      |  33 +-
@@ -486,21 +537,22 @@ Success: no issues found in 15 source files
  render.yaml                                |  17 +-
  requirements.txt                           |   6 +-
  scripts/provision_supabase.py              |  13 +-
- scripts/run_live_daily.py                  |  12 +-
+ scripts/run_live_daily.py                  |  18 +-
  sprints/E5/RESULTS.json                    | 238 ++++++++-
  tests/test_construction_table.py           |  31 ++
- tests/test_e11_evening.py                  |  54 ++-
+ tests/test_e11_evening.py                  |  54 +-
  tests/test_e11_guards.py                   |   8 +-
- tests/test_e11_render.py                   |  80 +++-
+ tests/test_e11_render.py                   |  80 ++-
  tests/test_e11_sanity.py                   |  43 ++
  tests/test_e11_store.py                    |  97 ++++
  tests/test_registry.py                     |  30 ++
- 41 files changed, 2251 insertions(+), 599 deletions(-)
+ tests/test_run_live_daily.py               |  18 +
+ 42 files changed, 2335 insertions(+), 598 deletions(-)
 ```
 
 `handoff/LOG.md`, `handoff/PROJECT_CONTEXT.md` and `handoff/TASK.md` are the
 owner's commit `921dee7` (the choice), included because they land between
-`1957256` and here. The rest is parts 1 to 7.
+`1957256` and here. The rest is parts 1 to 8.
 
 ### Yes or no, each with evidence
 
@@ -537,6 +589,8 @@ owner's commit `921dee7` (the choice), included because they land between
    under the chosen construction, which is the deliverable, not a criterion.
    Part 7 changes no verdict: the sanity gate passed, and `_input_as_of` was
    corrected to clamp each input to the close (a fix, not a re-scoring).
+   Part 8 changes no verdict: it fixes the cron script's import path and
+   documents the owner's deploy steps, neither of which re-scores anything.
 
 ### Anything decided that the reviewer might disagree with
 

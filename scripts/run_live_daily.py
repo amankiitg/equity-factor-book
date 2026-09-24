@@ -18,12 +18,18 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
+# Render runs this file as `python scripts/run_live_daily.py`, which puts
+# scripts/ on sys.path, not the repository root; make the live package
+# importable from any working directory.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 PROPOSAL_DIR = ROOT / "live" / "proposals"
 
 logging.basicConfig(
