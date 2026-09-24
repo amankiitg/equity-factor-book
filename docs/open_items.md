@@ -377,3 +377,15 @@ threshold are dropped rather than held at a badly rounded weight. The
 residue left open is small: a later sprint revisiting construction should
 fold the rule back into E8's own construction stack rather than leaving it
 only in the live path.
+
+## 2026-09-24: the minimum-position item closes as a share floor
+
+The owner chose share-only at E11's reserved decision 1, so the
+minimum-position open item closes with it. The dollar floor
+(`live.min_position_dollars`, E11 Addition 4) is withdrawn and replaced in
+data/models/registry.json XS-v1 `live` by `construction: share_only`,
+`share_floor: 20`, `dollar_floor: 0`, `floor_iterated: true`; the floor is
+enforced on the final weights to a fixed point (E11-F12). The residue
+stands: a later sprint revisiting construction should fold the share floor
+back into E8's own construction stack rather than leaving it only in the
+live path.

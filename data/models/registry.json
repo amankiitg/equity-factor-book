@@ -376,8 +376,11 @@
       "deliverable": "docs/research/E3_factor_model_note.md",
       "results": "sprints/E3/RESULTS.json",
       "live": {
-        "min_position_dollars": 5000,
-        "min_position_dollars_note": "names whose target notional is below this dollar size are dropped, not held at a badly rounded weight; about $5,000 at the $1m design NAV, roughly 25 shares of a $200 stock. Applied against the actual NAV so it works at any NAV. E11 Addition 4."
+        "construction": "share_only",
+        "share_floor": 20,
+        "dollar_floor": 0,
+        "floor_iterated": true,
+        "construction_note": "E11 owner decision 2026-09-24: minimum 20 whole shares per name, no dollar floor, enforced on the final weights to a fixed point. Replaces min_position_dollars (E11 Addition 4), which is withdrawn."
       }
     },
     "PCA-v1": {

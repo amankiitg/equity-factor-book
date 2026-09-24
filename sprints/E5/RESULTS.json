@@ -1,7 +1,7 @@
 {
   "sprint": "E5",
-  "evaluated_at": "2026-09-21T00:55:38+00:00",
-  "data_hash": "a4c40c676234f73a015f9e4f27a4c96ebb96f7e03030d433d82f14c657716f55",
+  "evaluated_at": "2026-09-24T13:31:37+00:00",
+  "data_hash": "6dca1f8d6d0faa351f1c47a093fd25463a7ad13fc86c96ab145dd427c86ba712",
   "criteria": {
     "F5.1": {
       "criterion": "At least one model version achieves mean bias between 0.9 and 1.1 across all portfolio families.",
@@ -103,8 +103,8 @@
     }
   },
   "revisions": {
-    "previous_data_hash": "210769d6ec92a325ec2f5553875ea4de0de29bf52051a527f69ab674c098b293",
-    "data_hash": "a4c40c676234f73a015f9e4f27a4c96ebb96f7e03030d433d82f14c657716f55",
+    "previous_data_hash": "a4c40c676234f73a015f9e4f27a4c96ebb96f7e03030d433d82f14c657716f55",
+    "data_hash": "6dca1f8d6d0faa351f1c47a093fd25463a7ad13fc86c96ab145dd427c86ba712",
     "n_changed": 0,
     "changed_tickers_or_criteria": [],
     "cross_sprint_criteria": [],
@@ -113,6 +113,8 @@
         "changed": false,
         "old": {
           "verdict": "fail",
+          "criterion": "At least one model version achieves mean bias between 0.9 and 1.1 across all portfolio families.",
+          "threshold": "0.9 <= mean bias <= 1.1 for every family for at least one version",
           "stored_numbers": {
             "family_bias": {
               "XS-v1": 1.0469839503253322,
@@ -130,6 +132,8 @@
         },
         "new": {
           "verdict": "fail",
+          "criterion": "At least one model version achieves mean bias between 0.9 and 1.1 across all portfolio families.",
+          "threshold": "0.9 <= mean bias <= 1.1 for every family for at least one version",
           "stored_numbers": {
             "family_bias": {
               "XS-v1": 1.0469839503253322,
@@ -150,6 +154,8 @@
         "changed": false,
         "old": {
           "verdict": "fail",
+          "criterion": "Factor-based models beat the sample covariance on bias for long/short portfolios.",
+          "threshold": "every factor version's long/short mean bias closer to 1 than the sample covariance's",
           "stored_numbers": {
             "long_short_abs_bias_minus_1": {
               "ts_v1": 0.06632785175621136,
@@ -163,6 +169,8 @@
         },
         "new": {
           "verdict": "fail",
+          "criterion": "Factor-based models beat the sample covariance on bias for long/short portfolios.",
+          "threshold": "every factor version's long/short mean bias closer to 1 than the sample covariance's",
           "stored_numbers": {
             "long_short_abs_bias_minus_1": {
               "ts_v1": 0.06632785175621136,
@@ -179,6 +187,8 @@
         "changed": false,
         "old": {
           "verdict": "pass",
+          "criterion": "Bias is worst in 2020 Q1 for every model. This is expected and is reported, not hidden.",
+          "threshold": "every version's 2020 Q1 bias is its worst episode, and it is reported",
           "stored_numbers": {
             "bias_2020_q1": {
               "pca_v1": 3.2235857142567585,
@@ -200,6 +210,8 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "Bias is worst in 2020 Q1 for every model. This is expected and is reported, not hidden.",
+          "threshold": "every version's 2020 Q1 bias is its worst episode, and it is reported",
           "stored_numbers": {
             "bias_2020_q1": {
               "pca_v1": 3.2235857142567585,
@@ -224,6 +236,8 @@
         "changed": false,
         "old": {
           "verdict": "pass",
+          "criterion": "Regime table produced for every model version; the champion's stress-regime bias and its recovery time in trading days are stored alongside its average bias.",
+          "threshold": "stored for every version, champion's numbers present",
           "stored_numbers": {
             "n_versions_in_regime_table": 6,
             "champion": "XS-v1",
@@ -233,6 +247,8 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "Regime table produced for every model version; the champion's stress-regime bias and its recovery time in trading days are stored alongside its average bias.",
+          "threshold": "stored for every version, champion's numbers present",
           "stored_numbers": {
             "n_versions_in_regime_table": 6,
             "champion": "XS-v1",
@@ -245,6 +261,8 @@
         "changed": false,
         "old": {
           "verdict": "pass",
+          "criterion": "New in E5: XS-v2's bias against XS-v1's on the same families, stored both ways.",
+          "threshold": "stored, whatever it shows",
           "stored_numbers": {
             "bias_xs_v2": {
               "factor_tilted": 0.9425535200403738,
@@ -268,6 +286,8 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "New in E5: XS-v2's bias against XS-v1's on the same families, stored both ways.",
+          "threshold": "stored, whatever it shows",
           "stored_numbers": {
             "bias_xs_v2": {
               "factor_tilted": 0.9425535200403738,
@@ -570,6 +590,216 @@
             },
             "new": {
               "verdict": "pass",
+              "stored_numbers": {
+                "bias_xs_v2": {
+                  "factor_tilted": 0.9425535200403738,
+                  "long_only": 1.1047683895087224,
+                  "long_short": 1.0256379496780152,
+                  "sector_concentrated": 1.0809239365176175
+                },
+                "bias_xs_v1": {
+                  "factor_tilted": 0.9726392879532143,
+                  "long_only": 1.1050225721518874,
+                  "long_short": 1.0185681153497992,
+                  "sector_concentrated": 1.0917058258464278
+                },
+                "ratio_xs_v2_over_xs_v1": {
+                  "factor_tilted": 0.9690679080256445,
+                  "long_only": 0.9997699751574576,
+                  "long_short": 1.0069409538956442,
+                  "sector_concentrated": 0.9901238144255108
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "previous_data_hash": "a4c40c676234f73a015f9e4f27a4c96ebb96f7e03030d433d82f14c657716f55",
+        "data_hash": "6dca1f8d6d0faa351f1c47a093fd25463a7ad13fc86c96ab145dd427c86ba712",
+        "n_changed": 0,
+        "changed_tickers_or_criteria": [],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F5.1": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "criterion": "At least one model version achieves mean bias between 0.9 and 1.1 across all portfolio families.",
+              "threshold": "0.9 <= mean bias <= 1.1 for every family for at least one version",
+              "stored_numbers": {
+                "family_bias": {
+                  "XS-v1": 1.0469839503253322,
+                  "PCA-v1": 1.1388412938997308,
+                  "PCA-v1c": 1.1391854728617519,
+                  "XS-v2": 1.0384709489361823
+                },
+                "inside_all_families": {
+                  "XS-v1": false,
+                  "PCA-v1": false,
+                  "PCA-v1c": false,
+                  "XS-v2": false
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "At least one model version achieves mean bias between 0.9 and 1.1 across all portfolio families.",
+              "threshold": "0.9 <= mean bias <= 1.1 for every family for at least one version",
+              "stored_numbers": {
+                "family_bias": {
+                  "XS-v1": 1.0469839503253322,
+                  "PCA-v1": 1.1388412938997308,
+                  "PCA-v1c": 1.1391854728617519,
+                  "XS-v2": 1.0384709489361823
+                },
+                "inside_all_families": {
+                  "XS-v1": false,
+                  "PCA-v1": false,
+                  "PCA-v1c": false,
+                  "XS-v2": false
+                }
+              }
+            }
+          },
+          "F5.2": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Factor-based models beat the sample covariance on bias for long/short portfolios.",
+              "threshold": "every factor version's long/short mean bias closer to 1 than the sample covariance's",
+              "stored_numbers": {
+                "long_short_abs_bias_minus_1": {
+                  "ts_v1": 0.06632785175621136,
+                  "xs_v1": 0.018568115349799186,
+                  "xs_v2": 0.02563794967801525,
+                  "pca_v1": 0.07288545487816167,
+                  "pca_v1c": 0.07545776635627166
+                },
+                "sample_long_short_abs_bias_minus_1": 0.07522700661959725
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Factor-based models beat the sample covariance on bias for long/short portfolios.",
+              "threshold": "every factor version's long/short mean bias closer to 1 than the sample covariance's",
+              "stored_numbers": {
+                "long_short_abs_bias_minus_1": {
+                  "ts_v1": 0.06632785175621136,
+                  "xs_v1": 0.018568115349799186,
+                  "xs_v2": 0.02563794967801525,
+                  "pca_v1": 0.07288545487816167,
+                  "pca_v1c": 0.07545776635627166
+                },
+                "sample_long_short_abs_bias_minus_1": 0.07522700661959725
+              }
+            }
+          },
+          "F5.3": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Bias is worst in 2020 Q1 for every model. This is expected and is reported, not hidden.",
+              "threshold": "every version's 2020 Q1 bias is its worst episode, and it is reported",
+              "stored_numbers": {
+                "bias_2020_q1": {
+                  "pca_v1": 3.2235857142567585,
+                  "pca_v1c": 3.2320487695936655,
+                  "sample": 3.205007104643809,
+                  "ts_v1": 3.498892154914531,
+                  "xs_v1": 2.8470668684488754,
+                  "xs_v2": 2.830534414326818
+                },
+                "bias_2022": {
+                  "pca_v1": 1.1992676970117708,
+                  "pca_v1c": 1.201279826475275,
+                  "sample": 1.1892311574499652,
+                  "ts_v1": 1.3552221759980636,
+                  "xs_v1": 1.139278188172363,
+                  "xs_v2": 1.1291929280554092
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Bias is worst in 2020 Q1 for every model. This is expected and is reported, not hidden.",
+              "threshold": "every version's 2020 Q1 bias is its worst episode, and it is reported",
+              "stored_numbers": {
+                "bias_2020_q1": {
+                  "pca_v1": 3.2235857142567585,
+                  "pca_v1c": 3.2320487695936655,
+                  "sample": 3.205007104643809,
+                  "ts_v1": 3.498892154914531,
+                  "xs_v1": 2.8470668684488754,
+                  "xs_v2": 2.830534414326818
+                },
+                "bias_2022": {
+                  "pca_v1": 1.1992676970117708,
+                  "pca_v1c": 1.201279826475275,
+                  "sample": 1.1892311574499652,
+                  "ts_v1": 1.3552221759980636,
+                  "xs_v1": 1.139278188172363,
+                  "xs_v2": 1.1291929280554092
+                }
+              }
+            }
+          },
+          "F5.4": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Regime table produced for every model version; the champion's stress-regime bias and its recovery time in trading days are stored alongside its average bias.",
+              "threshold": "stored for every version, champion's numbers present",
+              "stored_numbers": {
+                "n_versions_in_regime_table": 6,
+                "champion": "XS-v1",
+                "champion_stress_bias_vix_high": 1.3238537403338062,
+                "champion_recovery_trading_days_2020_q1": 13.0
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Regime table produced for every model version; the champion's stress-regime bias and its recovery time in trading days are stored alongside its average bias.",
+              "threshold": "stored for every version, champion's numbers present",
+              "stored_numbers": {
+                "n_versions_in_regime_table": 6,
+                "champion": "XS-v1",
+                "champion_stress_bias_vix_high": 1.3238537403338062,
+                "champion_recovery_trading_days_2020_q1": 13.0
+              }
+            }
+          },
+          "F5.5": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "New in E5: XS-v2's bias against XS-v1's on the same families, stored both ways.",
+              "threshold": "stored, whatever it shows",
+              "stored_numbers": {
+                "bias_xs_v2": {
+                  "factor_tilted": 0.9425535200403738,
+                  "long_only": 1.1047683895087224,
+                  "long_short": 1.0256379496780152,
+                  "sector_concentrated": 1.0809239365176175
+                },
+                "bias_xs_v1": {
+                  "factor_tilted": 0.9726392879532143,
+                  "long_only": 1.1050225721518874,
+                  "long_short": 1.0185681153497992,
+                  "sector_concentrated": 1.0917058258464278
+                },
+                "ratio_xs_v2_over_xs_v1": {
+                  "factor_tilted": 0.9690679080256445,
+                  "long_only": 0.9997699751574576,
+                  "long_short": 1.0069409538956442,
+                  "sector_concentrated": 0.9901238144255108
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "New in E5: XS-v2's bias against XS-v1's on the same families, stored both ways.",
+              "threshold": "stored, whatever it shows",
               "stored_numbers": {
                 "bias_xs_v2": {
                   "factor_tilted": 0.9425535200403738,

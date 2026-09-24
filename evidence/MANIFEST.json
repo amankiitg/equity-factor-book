@@ -1,8 +1,8 @@
 {
  "note": "Tracked, compressed snapshots of the artifacts a stored criterion was scored on. Written by efb.evidence and verified by make verify-evidence against both this manifest and data/VERSION.json.",
  "n_artifacts": 14,
- "total_bytes": 129928437,
- "total_snapshot_bytes": 109755320,
+ "total_bytes": 129928468,
+ "total_snapshot_bytes": 109755326,
  "skipped": [
   {
    "path": "data/raw/e4_raw_descriptors.parquet",
@@ -121,20 +121,20 @@
   },
   {
    "path": "data/models/registry.json",
-   "sha256": "84f80ecdf0d39bdf93f5a6ab4ddafd3a790f4a2f46f540fe70d5f5200241248f",
-   "bytes": 14723,
+   "sha256": "142afe1f5c1ae130adf8192dd5e0db645c6c5f3943e592e9091624d62fe1e1e2",
+   "bytes": 14754,
    "snapshot": "evidence/data/models/registry.json.gz",
-   "snapshot_sha256": "393603c8753ff1a54db0cae6401d1c53f4120e51eebfa42cb86c5083fe2b532b",
-   "snapshot_bytes": 4389,
-   "version_json_sha256": "84f80ecdf0d39bdf93f5a6ab4ddafd3a790f4a2f46f540fe70d5f5200241248f"
+   "snapshot_sha256": "d465f9078458b3bc8b12e664870368a278c34421dd8b607a96f8fbc71ae5e5ab",
+   "snapshot_bytes": 4383,
+   "version_json_sha256": "142afe1f5c1ae130adf8192dd5e0db645c6c5f3943e592e9091624d62fe1e1e2"
   },
   {
    "path": "data/VERSION.json",
-   "sha256": "a9bb6ba7c83daac05fdde894f13ec44a2fbabcd62749cb9b10047c338c33de91",
+   "sha256": "44da8873a4fe33e322f8c1a42f9d85a58759824df3e31eb1e52ff1792ceb6560",
    "bytes": 21808,
    "snapshot": "evidence/data/VERSION.json.gz",
-   "snapshot_sha256": "8587b1a66534a41635196abb7ab665e95c003e8eb011e2739744d5a341c308d8",
-   "snapshot_bytes": 7972,
+   "snapshot_sha256": "6d3cb758a914a7d8fc7c0e5a6a2e30fc5c326eec95e84302e14568ecfbc112ed",
+   "snapshot_bytes": 7984,
    "version_json_sha256": ""
   }
  ]

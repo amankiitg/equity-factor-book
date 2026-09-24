@@ -216,9 +216,31 @@ def min_position_dollars(payload: dict[str, Any], version: str) -> float:
     model version so a later sprint can see what the book was run under, and
     it is applied against the actual NAV so it works at any NAV. Zero means
     no minimum: no name is dropped on size.
+
+    Superseded by `live_construction` for the live path: the owner's
+    2026-09-24 choice replaces the dollar floor with a share floor, so the
+    registry no longer carries this key and this reader returns zero.
     """
     live = payload.get("models", {}).get(version, {}).get("live", {})
     return float(live.get("min_position_dollars", 0.0))
+
+
+def live_construction(payload: dict[str, Any], version: str) -> dict[str, Any]:
+    """The chosen live construction, from the registry.
+
+    E11 owner decision 2026-09-24: share-only, a minimum of 20 whole shares
+    per name, no dollar floor, enforced on the final weights to a fixed point.
+    The construction is stored with the model version so a later sprint can
+    see what the book was run under, and the live path reads it from here
+    rather than hardcoding it.
+    """
+    live = payload.get("models", {}).get(version, {}).get("live", {})
+    return {
+        "construction": str(live.get("construction", "")),
+        "share_floor": int(live.get("share_floor", 0) or 0),
+        "dollar_floor": float(live.get("dollar_floor", 0.0) or 0.0),
+        "floor_iterated": bool(live.get("floor_iterated", False)),
+    }
 
 
 def per_family_alternative(data_root: Path | None = None) -> dict[str, str]:

@@ -5,7 +5,7 @@ The owner chose the share-only construction (minimum 20 whole shares per name,
 no dollar floor, iterated to a fixed point) at reserved decision 1. This task
 takes that choice to the gate in eight parts, in order, each committed on its
 own. `dry_run` stays `true` throughout; this task never flips it. This report
-covers parts 1, 2 and 3.
+covers parts 1 to 4.
 
 ## Part 1: E11-F8 ledger correction, then the diagnostic split
 
@@ -198,10 +198,47 @@ The live path produces the same book as the table's enforced share-only row:
 20, `floor_iterated` true, 119 names, n_eff_kept 58.82, governing breadth
 1.635.
 
+## Part 4: the registry records the chosen construction
+
+XS-v1's `live` block in `data/models/registry.json` is replaced:
+`min_position_dollars` (E11 Addition 4) is withdrawn, and the entry now reads
+`construction: share_only`, `share_floor: 20`, `dollar_floor: 0`,
+`floor_iterated: true`. `efb/registry.py` gains `live_construction(payload,
+version)`, which the live path reads; `build_proposal` now takes its
+construction from the registry rather than a constant, and the manifest's
+`construction`, `construction_floor_shares`, `construction_floor_dollars` and
+`floor_iterated` fields come from that read. `min_position_dollars` stays as
+the legacy reader and now returns zero because the key is gone.
+
+**The E5 `data_hash` moved, and only that moved.** `e5_data_hash` hashes
+`models/registry.json` directly, so the edit moves `sprints/E5/RESULTS.json`'s
+`data_hash` from `a4c40c67…` to `6dca1f8d…`. Per STANDARDS rule 22 it is
+recorded through the `revisions` block with both hashes: `n_changed` is 0, the
+`history` list gains a third entry carrying `previous_data_hash` a4c40c67… and
+`data_hash` 6dca1f8d…, and the criteria and reference_values are byte-identical
+(verified with a sorted-JSON comparison). No other sprint's hash moves: E4
+reconstructs the registry without the `live` block, E1/E6/E7/E8/E9/E10 folds
+do not read `registry.json`, and E2/E3's stored hashes are historical VERSION
+readings that are not touched on disk.
+
+**The evidence chain follows.** `data/VERSION.json`'s `registry.json` entry is
+updated to the new sha256 `142afe1f…` (its `data_hash` is unchanged, because
+`combined_hash` skips `registry.json` as a non-data artifact), and the
+evidence snapshot is refreshed for the two moved files (`registry.json.gz`,
+`VERSION.json.gz`); the raw snapshots are reverted untouched. `make
+verify-evidence` passes, and the E5 walkthrough notebook is re-executed so its
+printed hash matches (only the hash and execution timestamps moved; no stored
+criterion number changed).
+
+**`docs/open_items.md` close-out.** The minimum-position item closes as a share
+floor; the residue (fold the floor back into E8's own construction stack)
+stands.
+
 ## Verification
 
 Per STANDARDS 21, per-step subsets plus lint ran after each part; the full
-suite ran after the Part 3 artifact rebuild.
+suite ran after the Part 3 artifact rebuild and again after the Part 4
+`efb/registry.py` change.
 
 Part 1 subset (construction table and traceability):
 
@@ -230,14 +267,24 @@ $ .venv/bin/pytest tests/test_dashboard_d10.py tests/test_e11_render.py -q
 25 passed, 1 skipped in 1.02s
 ```
 
-Full suite (after the Part 3 artifact rebuild, per STANDARDS 21):
+Part 4 subsets (registry, E5 hash and notebook, evidence, the live path):
+
+```text
+$ .venv/bin/pytest tests/test_registry.py tests/test_e5_walkthrough_notebook.py tests/test_e8_results.py tests/test_e11_evening.py tests/test_build_e2.py tests/test_build_e3.py tests/test_e11_store.py tests/test_e11_render.py -q
+89 passed, 1 skipped in 28.37s
+
+$ .venv/bin/pytest tests/test_evidence.py -q
+1 passed in 0.54s
+```
+
+Full suite (latest, after the Part 4 `efb/registry.py` change):
 
 ```text
 $ make test
-717 passed, 1 skipped, 3 warnings in 449.62s (0:07:29)
+719 passed, 1 skipped, 3 warnings in 447.64s (0:07:27)
 ```
 
-The previous full-run count in LOG.md is 692; 717 clears it.
+The previous full-run count in LOG.md is 692; 719 clears it.
 
 ```text
 $ make verify-evidence
@@ -290,37 +337,52 @@ Success: no issues found in 15 source files
   `worst_floor_shortfall_*_pre_enforcement` columns.
 - Live path matches the table: `build_proposal` returns `share_only`, share
   floor 20, `floor_iterated` true, 119 names, n_eff_kept 58.82.
+- Registry construction: `data/models/registry.json`, XS-v1 `live` block,
+  `construction: share_only`, `share_floor: 20`, `dollar_floor: 0`,
+  `floor_iterated: true`.
+- E5 data_hash moved a4c40c67… -> 6dca1f8d…: `sprints/E5/RESULTS.json`,
+  `data_hash` and `revisions` block (`n_changed` 0, three history entries).
+- Registry sha256 in the version manifest: `data/VERSION.json`,
+  `artifacts.registry.json.sha256` = 142afe1f….
 
 ### git diff --stat from base_commit (1957256)
 
 ```text
- .env.example                      |  20 +-
- docs/hygiene_ledger.md            |  53 ++++
- handoff/LOG.md                    |  70 +++++
- handoff/PROJECT_CONTEXT.md        |  78 ++++--
- handoff/REPORT.md                 | 528 ++++++++++++++++++++++----------------
- handoff/TASK.md                   | 116 +++++++--
- live/construction_table.parquet   | Bin 29817 -> 37356 bytes
- live/construction_table.py        | 271 ++++++++++++++-----
- live/construction_weights.parquet | Bin 39258 -> 33674 bytes
- live/evening_job.py               | 202 ++++++++++++---
- live/store.py                     | 120 ++++++---
- live/supabase_schema.sql          |  27 +-
- pyproject.toml                    |   4 +-
- render.yaml                       |  17 +-
- requirements.txt                  |   6 +-
- scripts/provision_supabase.py     |  13 +-
- scripts/run_live_daily.py         |  12 +-
- tests/test_construction_table.py  |  31 +++
- tests/test_e11_evening.py         |  54 +++-
- tests/test_e11_render.py          |  26 +-
- tests/test_e11_store.py           |  97 +++++++
- 21 files changed, 1290 insertions(+), 455 deletions(-)
+ data/models/registry.json             |   7 +-
+ docs/hygiene_ledger.md                |  53 +++
+ docs/open_items.md                    |  12 +
+ efb/registry.py                       |  22 ++
+ evidence/MANIFEST.json                |  20 +-
+ evidence/data/VERSION.json.gz         | Bin 7972 -> 7984 bytes
+ evidence/data/models/registry.json.gz | Bin 4389 -> 4383 bytes
+ handoff/LOG.md                        |  70 ++++
+ handoff/PROJECT_CONTEXT.md            |  78 +++--
+ handoff/REPORT.md                     | 605 +++++++++++++++++++++-------------
+ handoff/TASK.md                       | 116 +++++--
+ live/construction_table.parquet       | Bin 29817 -> 37356 bytes
+ live/construction_table.py            | 271 +++++++++++----
+ live/construction_weights.parquet     | Bin 39258 -> 33674 bytes
+ live/evening_job.py                   | 204 ++++++++++--
+ live/store.py                         | 120 +++++--
+ live/supabase_schema.sql              |  27 +-
+ notebooks/E5_walkthrough.ipynb        |  94 +++---
+ pyproject.toml                        |   4 +-
+ render.yaml                           |  17 +-
+ requirements.txt                      |   6 +-
+ scripts/provision_supabase.py         |  13 +-
+ scripts/run_live_daily.py             |  12 +-
+ sprints/E5/RESULTS.json               | 238 ++++++++++++-
+ tests/test_construction_table.py      |  31 ++
+ tests/test_e11_evening.py             |  54 +++-
+ tests/test_e11_render.py              |  26 +-
+ tests/test_e11_store.py               |  97 ++++++
+ tests/test_registry.py                |  30 ++
+ 31 files changed, 1733 insertions(+), 518 deletions(-)
 ```
 
 `handoff/LOG.md`, `handoff/PROJECT_CONTEXT.md` and `handoff/TASK.md` are the
 owner's commit `921dee7` (the choice), included because they land between
-`1957256` and here. The rest is parts 1 to 3.
+`1957256` and here. The rest is parts 1 to 4.
 
 ### Yes or no, each with evidence
 
@@ -343,11 +405,15 @@ owner's commit `921dee7` (the choice), included because they land between
    floor rows moved by a factor of 2 to 4 (e.g. share-only 188 to 119, min
    $5,000 99 to 23), and total error and p90 moved down by factors under 5,
    stated here.
-6. **Any stored number typed into a notebook?** No notebook was touched.
+6. **Any stored number typed into a notebook?** No. The E5 notebook was
+   re-executed (its hash cell recomputes `e5_data_hash`), and no stored number
+   was edited by hand; only the printed hash and execution timestamps moved.
 7. **Any earlier verdict changed?** Yes, the two the task ordered in part 1:
    E11-F8's ledger verdict moved from refuted to undetermined (correction
    entry), then to refuted by the diagnostic split (0.054393 shrinkage
-   increment, not near zero). Part 3 changes no earlier verdict.
+   increment, not near zero). Part 4 changes no criterion verdict: the E5
+   data_hash moved (a4c40c67… -> 6dca1f8d…) with `n_changed` 0, and the
+   criteria are byte-identical.
 
 ### Anything decided that the reviewer might disagree with
 
@@ -363,3 +429,14 @@ Enforcement is applied to the six floor rows, not to top-N and the full book,
 which carry no position floor and keep a vacuous stamp. The stored proposal is
 not regenerated in this part (part 6 does that), so the dashboard still shows
 the old book under its own "not recorded" label until part 6.
+
+The E5 RESULTS.json revisions block was written through the project's own
+`evaluate.write_results` with the unchanged criteria, so the `changed` map now
+shows old equals new for every criterion and a third history entry carries the
+hash transition; this is the sanctioned path, not a hand edit. The evidence
+snapshot was refreshed only for the two moved files; `evidence.snapshot()`
+rewrites every gzip with a fresh mtime, so the untouched raw snapshots were
+reverted and their manifest entries restored to keep the diff honest. The
+`supabase`-client removal and the legacy `min_position_dollars` manifest field
+(set to the registry's dollar floor, 0.0) are kept so the dashboard's
+label-from-artifact rule reads the new `share_only` fields.

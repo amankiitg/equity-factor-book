@@ -87,3 +87,33 @@ def test_min_position_dollars_reads_the_registry_and_defaults_to_zero() -> None:
     }
     assert registry.min_position_dollars(payload, "XS-v1") == 5000.0
     assert registry.min_position_dollars(payload, "XS-v2") == 0.0
+
+
+def test_live_construction_reads_the_share_only_choice() -> None:
+    payload = {
+        "models": {
+            "XS-v1": {
+                "live": {
+                    "construction": "share_only",
+                    "share_floor": 20,
+                    "dollar_floor": 0,
+                    "floor_iterated": True,
+                }
+            }
+        }
+    }
+    assert registry.live_construction(payload, "XS-v1") == {
+        "construction": "share_only",
+        "share_floor": 20,
+        "dollar_floor": 0.0,
+        "floor_iterated": True,
+    }
+
+
+def test_live_construction_defaults_to_an_empty_construction() -> None:
+    assert registry.live_construction({"models": {"XS-v2": {}}}, "XS-v1") == {
+        "construction": "",
+        "share_floor": 0,
+        "dollar_floor": 0.0,
+        "floor_iterated": False,
+    }

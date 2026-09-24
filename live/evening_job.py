@@ -26,7 +26,7 @@ import pandas as pd
 
 from efb import alpha as alpha_mod
 from efb import costs as costs_mod
-from efb import eval_risk, size
+from efb import eval_risk, registry, size
 from efb.build import hash_file
 from live import alpaca, sizing
 
@@ -491,13 +491,15 @@ def build_proposal(
     )
     full_decomposition = _decomposition(weights, design, factor_covariance, specific)
 
-    # Share-only construction: a minimum of 20 whole shares per name, no
-    # dollar floor, enforced on the final weights (E11-F12). Names whose
-    # final position would be below 20 shares are dropped, the kept subset is
-    # re-sized and re-hedged from scratch, and the loop repeats until no kept
-    # name is below the floor, so the floor holds on the vector that actually
-    # trades, not the pre-drop full-book weights. Part 4 records this
-    # construction in the registry.
+    # The chosen construction, read from the registry rather than hardcoded:
+    # share-only, a minimum of 20 whole shares per name, no dollar floor,
+    # enforced on the final weights (E11-F12). Names whose final position
+    # would be below the floor are dropped, the kept subset is re-sized and
+    # re-hedged from scratch, and the loop repeats until no kept name is below
+    # the floor, so the floor holds on the vector that actually trades, not
+    # the pre-drop full-book weights.
+    reg = registry.load(root / "models" / "registry.json")
+    construction = registry.live_construction(reg, MODEL_VERSION)
     close = _close_prices(as_of_ts, root)
     full_keep = np.ones(len(names), dtype=bool)
     enforced_keep, finalize, _floor_passes, _floor_converged = (
@@ -510,8 +512,8 @@ def build_proposal(
             specific,
             close,
             nav,
-            dollar_floor=0.0,
-            share_floor=SHARE_FLOOR,
+            dollar_floor=construction["dollar_floor"],
+            share_floor=construction["share_floor"],
         )
     )
     n_dropped = len(names) - int(enforced_keep.sum())
@@ -559,13 +561,17 @@ def build_proposal(
         "n_kept": n_selected,
         "n_effective": kept_decomposition["n_nonzero"],
         "n_dropped": n_dropped,
-        "min_position_dollars": 0.0,
-        "min_position_pct_of_nav": 0.0,
-        "construction": "share_only",
-        "construction_floor_dollars": None,
-        "construction_floor_shares": SHARE_FLOOR,
+        "min_position_dollars": construction["dollar_floor"],
+        "min_position_pct_of_nav": construction["dollar_floor"] / nav if nav else 0.0,
+        "construction": construction["construction"],
+        "construction_floor_dollars": (
+            construction["dollar_floor"] if construction["dollar_floor"] > 0 else None
+        ),
+        "construction_floor_shares": (
+            construction["share_floor"] if construction["share_floor"] > 0 else None
+        ),
         "construction_top_n": None,
-        "floor_iterated": True,
+        "floor_iterated": construction["floor_iterated"],
         "code_commit": _git_commit(),
         "kept_gross_before_renorm": kept_gross_before_renorm,
         "n_eff_full": full_decomposition["n_eff"],
