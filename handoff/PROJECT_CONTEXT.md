@@ -28,12 +28,14 @@ that returns a negative answer has done its job.
 
 ## State
 
-Ten sprints built. E11 is a dry-run loop waiting on the construction choice,
-and E12's engine has not been started. HEAD 190496d. As reported at that
+Ten sprints built. E11 is a dry-run loop. Its construction is chosen
+(share-only, 20 shares, 2026-09-24) and it is heading to the sanity gate. E12's
+engine has not been started. HEAD 190496d. As reported at that
 commit: `make test` 695 passed, 1 skipped (full path 474.60s; fast path 669 in
 25.98s), `make lint` clean, `make verify-evidence` clean. Five model versions
 in `data/models/registry.json`. XS-v1 is champion and carries the live
-`min_position_dollars`, currently 5000. TS-v1 is diagnostic only and
+`min_position_dollars`, currently 5000, which moves to the share floor in plan
+item 4c. TS-v1 is diagnostic only and
 ineligible. Dashboard tabs D0 to D10 exist; D11 does not. `data/VERSION.json`
 hashes 147 artifacts at `c3e0db6f`. `live/` holds the construction table and
 its per-name weights.
@@ -167,6 +169,27 @@ Settled 2026-09-22. These are no longer open; build on them.
   under-invested and misses the vol target; and **N must clear XS-v1's roughly 18
   factors by a healthy multiple**, or the exact FMP hedge is rank-deficient and
   the idio book stops being idio.
+- **The construction is share-only, a minimum of 20 whole shares per name**,
+  with no dollar floor, iterated to a fixed point on the final traded
+  weights. Chosen 2026-09-24 from the fixed-point table: 188 names, n_eff
+  85.69 against 157.33 for the full book, governing breadth 1.355, total
+  error 1.25% of NAV, p90 per-name rounding 3.44%. These are table values
+  from before the floor was enforced on final weights (E11-F12), and the
+  enforced values supersede them. The owner's reasoning: the roughly 14% IR
+  cost against min $1,500 is notional in a documented null book, while the
+  error reduction is real. The gap between the priced book and the held book
+  becomes attribution bias at E12, so trading imaginary IR for measurement
+  fidelity is the right trade in a project whose purpose is measurement.
+  Share-only rather than two-part, because the $1,500 leg cost 2.6 n_eff for
+  0.19 points of error, and one floor is simpler to state than two. 188 names
+  against about 18 factors leaves comfortable rank margin, which is what
+  failed the small-N rows. **Changing it is reserved.**
+- **The live store is direct Postgres, schema `efb`, and nothing else.**
+  Settled again 2026-09-24 with E11-F11: never PostgREST, the service-role
+  key never on a web service, and **no change to the Exposed schemas setting
+  on the shared project**. Needing that change is a stop condition and stays
+  one. The owner moves to Neon or Render Postgres rather than widen the
+  shared project.
 - **Whatever is chosen, the executed book's breadth is reduced and every E11
   number meeting an E8 transfer coefficient must say so.** The naive bound is
   `sqrt(460 / N_kept)`; the governing one is `sqrt(n_eff_full / n_eff_kept)`,
@@ -234,30 +257,31 @@ Sequenced 2026-09-23. Each numbered item is roughly one TASK.md or less.
 1. ~~E10 review fixes.~~ Done 2026-09-22, two rounds, 27 findings.
 2. ~~The ongoing constituent source.~~ Done 2026-09-22. SPY archived and
    protected; IVV a recorded failing source; sector on live Wikipedia.
-3. **The construction choice, gated on two things in parallel.** The table
-   re-run with the six restored breadth and hedge columns, **and** the Render
-   dashboard deployed showing a real book so the owner can look at names,
-   weights, exposures, hedge and trade reasons before choosing rather than
-   after. Resequenced 2026-09-23: the dashboard now comes **before** the choice,
-   not after the gate. `dry_run` stays true throughout.
-   **The owner's decision rule, stated before the numbers: if the two-part
-   floor's n_eff is close to min $1,500's, it wins outright.**
-   Status at 190496d: **the owner's choice is unblocked.** Every row is at its
-   fixed point. The two-part floor's n_eff is 83.07 and share-only 20 shares'
-   is 85.69, against min $1,500's 115.46. **The decision surface is the local
-   D10** (`make dashboard`). Render builds a different page,
-   `live/dashboard_app.py`, which reads Supabase and has no selector, so the
-   Render deploy moves to item 4c and no longer gates the choice.
-4. **E11 to completion**, in this order and no other:
-   a. The live path implements the **chosen** construction, with the floor
-      enforced on the final traded weights (after re-sizing, re-hedging,
-      renormalizing and quantizing) and iterated to a fixed point (E11-F12).
-      Guard 1 is then re-derived against those weights.
-   b. The sanity gate rerun on two real closes with `dry_run` still true.
-   c. The Render app and D10 already deployed at item 3; confirm it reads from
-      Supabase rather than local state. A page that has never displayed a real
-      proposal is not confirmed working.
-   d. The owner flips `dry_run` once. **That act starts day 1.**
+3. ~~The construction choice.~~ **Done 2026-09-24: share-only, minimum 20
+   shares.** See "Decisions the owner has made". The owner's earlier rule (if
+   the two-part floor's n_eff is close to min $1,500's, it wins outright) was
+   read against the fixed-point table, and the owner chose share-only over
+   two-part.
+4. **E11 to completion**, in this order and no other (task
+   `e11-share-floor-to-gate`):
+   a. The E11-F8 ledger correction, and the store moved to direct Postgres
+      (E11-F11).
+   b. The live path implements share-only 20 shares with the floor enforced
+      on the final traded weights, iterated to a fixed point (E11-F12). The
+      table is enforced the same way on every row. **Re-decide trigger,
+      pre-registered:** if, against enforced min $2,000, share-only loses its
+      lower total error or lower p90, or if any enforced row dominates it, the
+      choice goes back to the owner.
+   c. The registry records the construction; the E5 `data_hash` bump goes
+      through `revisions`.
+   d. Guard 1 re-derived against the chosen construction's final weights.
+   e. The proposal is regenerated under the chosen construction, labeled from
+      its own fields on D10 and on the Render page.
+   f. The sanity gate on two real closes with `dry_run` still true.
+   g. Deploy-ready over direct Postgres. The owner deploys, and a real dry-run
+      proposal is shown on the Render page from `efb`. A page that has never
+      displayed a real proposal is not confirmed working.
+   h. The owner flips `dry_run` once. **That act starts day 1.**
    **F11.1 to F11.3 stay open until 30 live days accumulate.**
 5. **E12, built during the 30-day window, not after it.** See the correction
    below: the engine does **not** exist yet, so this is a build, not a

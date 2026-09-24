@@ -1761,3 +1761,73 @@ Plan item 3 is unblocked, with the local D10 as the decision surface and the
 Render deploy moved to 4c. Item 4a now enforces the floor on final weights
 before Guard 1. TASK.md is `e11-store-path-and-ledger-fix` at 190496d and runs
 alongside the owner's choice.
+
+---
+
+## 2026-09-24 owner decision: share-only, minimum 20 shares
+
+**Reserved decision 1, made by the owner.** E11 trades the share-only
+construction: a minimum of 20 whole shares per name, no dollar floor. At the
+fixed-point table that is 188 names, n_eff 85.69, governing breadth 1.355,
+total error 1.25% and p90 3.44%.
+
+The owner's reasoning, recorded as given. The roughly 14% IR cost against min
+$1,500 is notional, because this is a documented null book, while the error
+reduction is real. The gap between the priced book and the held book is what
+becomes attribution bias at E12, so trading imaginary IR for measurement
+fidelity is the right trade in a project whose purpose is measurement.
+Share-only rather than two-part, because the $1,500 leg costs 2.6 n_eff for
+0.19 points of error, and one floor is simpler to state than two. 188 names
+against 18 factors leaves comfortable rank margin, which is what killed the
+small-N rows.
+
+**E11-F11 accepted in full.** The current deploy steps are withdrawn. The
+store is direct Postgres, never PostgREST, and the service-role key never goes
+on a web service. There is no change to the Exposed schemas setting on the
+shared project; needing one is a stop condition and stays one.
+
+**E11-F12: enforce, then check.** The 20-share floor is enforced on the final
+post-renormalization weights as step 4b, ahead of Guard 1, and the resulting
+n_eff is reported. The owner will re-decide if the result reorders the table
+against min $2,000. I wrote that as a mechanical trigger, pre-registered in
+TASK.md before the numbers exist, and the owner can veto the wording:
+- **Like-for-like:** the enforcement is applied to every table row, so
+  share-only is compared against enforced min $2,000, not the unenforced row.
+  This is the owner's own E11-F9 principle.
+- **Stop and send the choice back** if share-only loses its lower total error
+  or its lower p90 against enforced min $2,000, or if any enforced row
+  dominates it on both n_eff and total error.
+- **A fall in n_eff alone does not stop the task.** It is reported plainly,
+  and the owner may re-decide on it. If the owner wants an n_eff threshold as
+  well, it has to be stated before the enforced numbers exist.
+
+**E11-F8: the owner accepted the correction.** The candidate is recorded as
+undetermined, and the 53% figure and the nonzero standardization increment are
+fixed, through a new ledger entry.
+
+**Sequence to the gate**, as TASK.md `e11-share-floor-to-gate`, each part
+committed alone:
+1. The ledger correction.
+2. Direct Postgres.
+3. The floor enforced, with the trigger.
+4. The registry records the construction. This edit moves E5's `data_hash`,
+   as the last registry edit did; it goes through `revisions` under rule 22,
+   and the task warns about it explicitly.
+5. Guard 1, sized from the largest final weight across every close run, not
+   one close.
+6. The proposal regenerated under the chosen construction, so D10's header
+   shows the book that will trade, labeled from its own fields. The label fix
+   itself already landed at 190496d.
+7. The sanity gate on two real closes.
+8. Deploy-ready over direct Postgres, with the owner's steps.
+
+The owner then deploys and confirms a real proposal on the Render page, and
+flips `dry_run`.
+
+For the meantime, the owner is using the local dashboard. The header still
+shows the stale 27-name book, correctly labeled as such, until part 6. The
+chosen book is the `share_only_20shares` row in the selector.
+
+PROJECT_CONTEXT is updated: the decision and the connection rules are added
+to "Decisions the owner has made", plan item 3 is marked done, item 4 is
+resequenced as above, and the State section is refreshed.

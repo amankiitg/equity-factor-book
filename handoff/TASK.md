@@ -1,16 +1,74 @@
-task_id: e11-store-path-and-ledger-fix
+task_id: e11-share-floor-to-gate
 status: ready
-base_commit: 190496d
+base_commit: 1957256
 
-## The owner can pick now. Three things run alongside the choice.
+## The owner chose share-only, minimum 20 shares. Take it to the gate.
 
-The E11-F9 cycle was good work. The two-part row is at its fixed point, the
-beta is split in raw-beta units, D10 derives its label from the artifact and
-names the stale book honestly, the status report is corrected, and the
-Verification section is complete. **The choice no longer waits on you.** None
-of the three items below changes the ranking of the candidate books, so they
-run in parallel with the owner's decision. **Do not choose. Do not re-derive
-Guard 1. Do not change the live path's construction until the owner picks.**
+**Owner decision, 2026-09-24, reserved decision 1.** E11 trades the
+share-only construction: a minimum of 20 whole shares per name, no dollar
+floor, iterated to a fixed point. At the table it is 188 names, n_eff 85.69,
+governing breadth 1.355, total error 1.25%, p90 3.44%. The owner's reasoning
+is recorded in PROJECT_CONTEXT.md. Changing the construction again is the
+owner's decision, never yours.
+
+Run the parts **in this order**. Commit each part on its own. If budget runs
+short, stop after a completed part, commit it, and report what is left. Do
+not start a part you cannot finish. `dry_run` stays `true` throughout, and you
+never flip it.
+
+1. **E11-F8 ledger correction.** As written below. The owner accepted it in
+   full: record the candidate as **undetermined**, fix the 53% figure, and
+   explain the nonzero standardization increment. Then run the diagnostic
+   split.
+2. **E11-F11, the store over direct Postgres.** As written below. The owner
+   accepted it in full, with four rules: **direct Postgres, never PostgREST;
+   the service-role key never on a web service; no change to the Exposed
+   schemas setting on the shared project; and if anything needs that change,
+   stop.** The earlier deploy steps are withdrawn and are not to be followed.
+3. **E11-F12, the floor enforced on final weights**, then the n_eff check.
+   See the rewritten E11-F12 section below. This part carries the one stop
+   condition that sends the choice back to the owner.
+4. **The registry records the chosen construction.** Replace XS-v1's
+   `live.min_position_dollars` with the share-only parameters: share floor
+   20, no dollar floor, iterated on final weights. **Warning, from the last
+   registry edit:** `e5_data_hash` hashes `models/registry.json` directly,
+   so this moves `sprints/E5/RESULTS.json`'s `data_hash`. Record it through
+   the `revisions` block with both hashes, per STANDARDS rule 22. Anything
+   else that moves is a stop. Update `docs/open_items.md`: the minimum-position
+   item closes as a share floor. The residue, folding it into E8's
+   construction stack, stands.
+5. **Guard 1, re-derived against the chosen construction's final weights.**
+   Show the arithmetic. The guard must clear the largest legitimate target
+   with stated headroom, and trip a 10x order on the largest name. Size it
+   from the largest final weight across **every close you have run**, not one
+   close, because the book rebalances daily. State the value in dollars and as
+   a percentage of NAV, and keep a test that fires it.
+6. **Regenerate the dry-run proposal under the chosen construction** on the
+   latest close. The D10 header then shows the book that will trade, labeled
+   from its own recorded fields. The Render page (`live/dashboard_app.py`)
+   follows the same labeling rule: the construction is read from the artifact
+   and never asserted.
+7. **The sanity gate on two consecutive real closes, `dry_run` true.** This is
+   Part A step A5 below, unchanged. The proposals must differ. Print and store
+   the weight turnover with its definition, the n_eff on each close, and the
+   staleness of all nine inputs. If it fails, stop, and name the input that is
+   not advancing.
+8. **Deploy-ready over direct Postgres, and the owner's steps.** Both Render
+   services read and write schema `efb` over `EFB_SUPABASE_DB_URL`. The
+   dashboard holds a read-only credential or, failing that, whatever the owner
+   approves under E11-F11 item 3, never the service-role key. List the owner's
+   steps exactly: the variables on each service, the local `.env` entries, the
+   one-time schema setup over direct Postgres, and the deploy. After the owner
+   deploys, a dry run writes a real proposal to `efb` and the Render page shows
+   it. That is remaining-plan item 4c, and a page that has never shown a real
+   proposal is not confirmed.
+
+**The label fix already landed** at 190496d. What the owner listed as "the
+label fix landed" is satisfied by part 6: once the proposal is regenerated, the
+header shows the chosen book under its own recorded label.
+
+**The clock does not start in this task.** When parts 1 to 8 are done, the
+owner flips `dry_run` once, and that act is day 1.
 
 ### E11-F8, the ledger follow-up overclaims: append a correction
 
@@ -103,15 +161,31 @@ in ten below 20 shares." So the fixed point is computed on weights from before
 the subset is re-sized and re-hedged, and the book that trades is a different
 vector. The same is presumably true of the dollar rows.
 
-For this task, **measure only**. On every row, report the count of kept names
-that end below their floor in the **final** weights (after re-sizing,
-re-hedging, renormalizing and quantizing), with the worst shortfall. Do not
-change the table.
+**Rewritten 2026-09-24 after the owner's choice. Enforce, do not only
+measure.**
 
-After the owner picks, the live path implements the chosen construction with
-the floor enforced on the final weights, iterated to a fixed point: drop,
-re-size, re-hedge, check. Guard 1 is then derived from those weights. That is
-the next task, not this one.
+1. **Measure first**, on every row as it stands: the count of kept names that
+   end below their floor in the **final** weights (after re-sizing,
+   re-hedging, renormalizing and quantizing), with the worst shortfall.
+2. **Enforce on the final weights, iterated to a fixed point**: drop,
+   re-size, re-hedge, renormalize, quantize, check, repeat until no kept name
+   is below its floor. Do it in the live path for share-only 20 shares, and
+   in the table for **every row**, so the comparison stays like-for-like.
+   Guard against oscillation: if the loop does not converge in a stated
+   number of passes, stop and report rather than picking a pass.
+3. **Report share-only's enforced numbers beside its table numbers**: names,
+   n_eff, naive and governing breadth, total error, p90, max weight, net,
+   long/short counts, raw beta, post-hedge max exposure and idio share. State
+   the breadth bound both ways, as PROJECT_CONTEXT requires for any E11
+   number that meets an E8 transfer coefficient.
+4. **The re-decide trigger, pre-registered here before the numbers exist.**
+   Compare enforced share-only against **enforced** min $2,000, never against
+   the unenforced row. **Stop and report to the owner, without implementing
+   further parts, if either** (a) share-only no longer has both lower total
+   error and lower p90 than min $2,000, or (b) any enforced row is strictly
+   better or equal on both n_eff and total error than share-only. Otherwise
+   proceed. A fall in n_eff alone does not stop the task, but its size is
+   reported plainly. The owner reads it and may re-decide on it.
 
 ### Also
 
