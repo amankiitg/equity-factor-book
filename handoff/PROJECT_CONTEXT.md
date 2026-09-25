@@ -31,9 +31,10 @@ that returns a negative answer has done its job.
 Ten sprints built. E11 is a dry-run loop. Its construction is chosen
 (share-only, 20 shares, 2026-09-24). The store is on direct Postgres, and the
 book, Guard 1 and the sanity gate are being redone (task
-`e11-admit-and-live-gate`). E12's engine has not been started. HEAD 2a9e0b6.
-As reported at that commit: `make test` 727 passed, 1 skipped (fast path 700
-in 27s), `make lint` clean, `make verify-evidence` clean. Five model versions
+`e11-admit-and-live-gate`). E12's engine has not been started. HEAD dd41d9b.
+As reported at that commit: `make test` 732 passed, 1 skipped, `make lint`
+clean, `make verify-evidence` clean. The book is installed in the table and
+the live path by the drop-then-admit rule. Five model versions
 in `data/models/registry.json`. XS-v1 is champion, and its `live` block records
 the construction: `share_only`, `share_floor` 20, `dollar_floor` 0,
 `floor_iterated` true. TS-v1 is diagnostic only and
@@ -176,8 +177,10 @@ Settled 2026-09-22. These are no longer open; build on them.
   143 names, n_eff 68.52, total error 0.78% and p90 1.85%, the admission
   control with the floor enforced on the traded weights. That is about 20% of
   IR below min $1,500, with 3.6x lower total error, and it dominates two-part
-  outright. The final rule (Part 1R) can only add names, and the re-decide
-  trigger stays armed on its numbers. **The 188-name book first chosen was
+  outright. **The installed book under the final rule (Part 1R, dd41d9b):
+  150 names, n_eff 70.59, total error 0.689%, p90 1.887%, max weight 5.35%**,
+  a local maximum under single-name moves. The re-decide trigger did not fire.
+  The 51-name rank margin gates this book, not the comparison rows. **The 188-name book first chosen was
   never reachable**: 24 of its names hold under 20 shares once sized. The
   figures below are that first basis, kept for the record. Chosen 2026-09-24 from the fixed-point table: 188 names, n_eff
   85.69 against 157.33 for the full book, governing breadth 1.355, total

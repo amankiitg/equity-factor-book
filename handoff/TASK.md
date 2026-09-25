@@ -1,8 +1,50 @@
 task_id: e11-admit-and-live-gate
-status: blocked
-base_commit: 2a9e0b6
+status: ready
+base_commit: dd41d9b
 
-## Part 1R: the rule re-specified as drop, then admit, to a local maximum
+## Part 1R is accepted. The rank margin gates the book, not the table. Run Parts 2 to 5.
+
+**The reviewer's answer to the blocking question.** The ambiguity was in the
+reviewer's spec, which said "every floor row" and also "the rank margin the
+owner named when choosing". **The 51-name margin gates the book that trades.**
+It does not gate the comparison rows.
+- The min $5,000 row stays in the table, with its violation recorded in
+  `floor_book_checks`, as it is now. Do not drop the row and do not drop the
+  check. The project's standing practice since the first construction table:
+  a row that cannot meet a condition is reported with what it achieves, never
+  removed.
+- The other four checks (net, hedge exposure, idio share, below floor) hold on
+  all six rows, the min $5,000 row included. They stay armed on every row,
+  because a failure there would mean the construction machinery is wrong, not
+  only that a row is small.
+- The live path already raises on any check failure for the book itself. That
+  is the right guard, and it is how a day whose book falls under 51 names
+  fails the run. That failure goes through Part 3b's notification, as
+  `error`, with the check message as the one-line reason.
+
+Stopping to ask was correct under the literal wording, and so was installing
+the share-only book, which passes all five checks, meanwhile.
+
+**The confirmed book:** share-only, 150 names, n_eff 70.59, total error 0.689%,
+p90 1.887%, max weight 5.35% of gross. That is a local maximum under
+single-name moves, reached in 1 cycle and 4 admission passes. It is 7 names
+above the 143 the owner confirmed on, as the owner expected. The re-decide
+trigger does not fire. Ordering robustness on the share-only row is -5.66% in
+n_eff, under the 10% flag.
+
+**Now run Parts 2, 3, 3b, 4 and 5 below, in order, committing each alone.**
+Stop only on the standing stops and each part's own stops. Part 5
+re-derives Guard 1 on the 150-name book's final weights over every close run,
+and states the close-to-close movement of the largest weight.
+
+Minor: Verification item 1 answered "no" and then described identical columns.
+They sit in the superseded prefix measurement, but the honest form is "yes,
+confined to the superseded prefix columns, because ...". The previous report
+got this right.
+
+---
+
+## Part 1R (done at dd41d9b): the rule re-specified as drop, then admit, to a local maximum
 
 The Part 1 report was excellent. The stop fired as pre-registered, the
 mechanism is measured, the degenerate prefix was not installed, the net-zero

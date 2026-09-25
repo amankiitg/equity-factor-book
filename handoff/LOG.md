@@ -2096,3 +2096,46 @@ stays armed on Part 1R's numbers.
 to. Do not block after Part 1R. Run straight through Parts 2 to 5, and stop
 only if the re-decide trigger fires or a Part 1R check fails, along with the
 standing stops.
+
+---
+
+## 2026-09-25 review: e11-admit-and-live-gate Part 1R at dd41d9b
+
+**Part 1R is accepted.** The drop-then-admit rule is implemented as specified
+and converges in 1 cycle on every row. The installed share-only book is **150
+names, n_eff 70.59, total error 0.689%, p90 1.887%, max weight 5.35%**. It
+passes all five checks, and net, hedge exposure, idio share and below-floor
+hold on every row.
+- The owner's reading of 143 as a floor held: the book is 7 names larger, and
+  n_eff rose from 68.52 to 70.59.
+- The re-decide trigger does not fire.
+- Ordering robustness on share-only is -5.66% in n_eff, under the 10% flag.
+  Two-part is -12.6%, which is a fact about that comparison row.
+- The fallback record is corrected and attributed: three pseudoinverse
+  fallbacks, all on the min $3,000 and min $5,000 rows, none on the book.
+- Determinism holds, down to a byte-identical parquet, and the rule costs
+  0.09s a night.
+- The verification section was complete at the commit: 732 against 727, raw
+  diffstat, no criteria files touched, no em dashes. I had first looked
+  mid-run, while the full suite was still going and two placeholders were
+  unfilled.
+
+**The block was my spec's ambiguity, the third on this item.** I wrote
+"checks that must hold on every floor row", and among them "at least 51 names,
+the rank margin the owner named when choosing". Min $5,000 cannot reach 51
+names at $1m (its local maximum is 35), so the literal reading stops the task
+forever on a comparison row. **Resolved: the rank margin gates the book that
+trades, not the table.** The min $5,000 row stays, with its violation
+recorded; standing practice is that a row is reported with what it achieves
+and never removed. The other four checks stay armed on every row, since a
+failure there would mean the machinery is wrong. The live path already raises
+on a check failure for the book, and Part 3b's notification carries that as
+`error`. DeepSeek was right to ask under the literal wording, and right to
+install the passing book meanwhile.
+
+One minor item: Verification item 1 said "no" and then described identical
+superseded prefix columns. It should be "yes, confined to ...".
+
+TASK.md is set to `ready` at dd41d9b: Parts 2, 3, 3b, 4 and 5 run now, and
+Part 5 re-derives Guard 1 on the 150-name book. PROJECT_CONTEXT's State and
+the decision entry now carry the installed book.
