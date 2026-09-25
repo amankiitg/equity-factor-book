@@ -420,3 +420,80 @@ def test_the_dashboard_reads_no_research_artifact(
     page = _dashboard(tmp_path, monkeypatch, _rows("ok", expected))
     assert not page.exception
     assert not page.error
+
+
+def test_a_gate_close_is_an_evening_of_that_close() -> None:
+    """The owner's rule in full: one session, and fetched on its own evening."""
+    row = {
+        "target_close": "2026-09-25",
+        "status": "ok",
+        "catch_up": False,
+        "catch_up_sessions": ["2026-09-25"],
+    }
+    on_time = staleness.gate_close({**row, "started_at": "2026-09-25T22:30:00+00:00"})
+    assert on_time["counts"] is True
+    assert "2026-09-25" in on_time["reason"] and "close" in on_time["reason"]
+    # The grace is inside the window.
+    assert (
+        staleness.gate_close({**row, "started_at": "2026-09-26T01:00:00+00:00"})[
+            "counts"
+        ]
+        is True
+    )
+    # A run delayed into the next morning appended exactly one session and is
+    # still not the evening of this close.
+    late = staleness.gate_close({**row, "started_at": "2026-09-28T13:00:00+00:00"})
+    assert late["counts"] is False
+    assert "own evening" in late["reason"]
+    # Nor is a run before the close.
+    early = staleness.gate_close({**row, "started_at": "2026-09-25T19:00:00+00:00"})
+    assert early["counts"] is False and "before the" in early["reason"]
+    # A catch-up is never a gate close, and neither is a failed run.
+    assert (
+        staleness.gate_close(
+            {
+                **row,
+                "catch_up": True,
+                "catch_up_sessions": ["2026-09-24", "2026-09-25"],
+                "started_at": "2026-09-25T22:30:00+00:00",
+            }
+        )["counts"]
+        is False
+    )
+    assert (
+        staleness.gate_close(
+            {
+                **row,
+                "status": "stale_stopped",
+                "started_at": "2026-09-25T22:30:00+00:00",
+            }
+        )["counts"]
+        is False
+    )
+    # And a run that records no start time cannot show its own evening.
+    no_start = staleness.gate_close(row)
+    assert no_start["counts"] is False and "no start time" in no_start["reason"]
+
+
+def test_the_gate_window_is_the_closes_own_evening_not_the_next_runs_deadline() -> None:
+    """Two different questions, two different instants, one source of the slot."""
+    window = staleness.gate_window_end("2026-09-25")
+    expectation = pd.Timestamp(staleness.expected_next_by("2026-09-25"))
+    assert window == pd.Timestamp("2026-09-26T01:30:00+00:00")
+    assert expectation == pd.Timestamp("2026-09-29T01:30:00+00:00")
+    assert window < expectation
+    # Friday's window ends on Saturday morning UTC, which is Friday evening in
+    # New York: still the close's own evening.
+    assert staleness.gate_window_end("2026-09-18") == pd.Timestamp(
+        "2026-09-19T01:30:00+00:00"
+    )
+
+
+def test_the_run_records_when_it_started() -> None:
+    result = {"target_close": "2026-09-25", "job": "evening", "status": "ok"}
+    row = staleness.run_status_row(
+        result, run_date="2026-09-25", started_at="2026-09-25T22:30:41+00:00"
+    )
+    assert row["started_at"] == "2026-09-25T22:30:41+00:00"
+    assert row["gate_close"] is None if "gate_close" in row else True
+    assert staleness.run_status_row(result, run_date="2026-09-25")["started_at"] is None

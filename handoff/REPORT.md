@@ -581,7 +581,72 @@ From the task's `base_commit` (4048b97), which carries items 1, 2, 3, 4 and 4a:
 
 ```text
 $ git diff --stat 4048b97
-PLACEHOLDER_DIFF_TREE
+README.md                               |  34 +-
+ dashboard/tabs/d10_book.py              |  11 +-
+ docs/hygiene_ledger.md                  |  50 ++
+ handoff/LOG.md                          | 206 +++++++
+ handoff/PROJECT_CONTEXT.md              |  75 ++-
+ handoff/REPORT.md                       | 914 ++++++++++++++++++++++++--------
+ handoff/TASK.md                         | 419 ++++++++++++++-
+ live/breadth.py                         |  65 +++
+ live/construction_table.py              |   4 +-
+ live/corporate_actions.py               | 670 +++++++++++++++++++++++
+ live/dashboard_app.py                   |  18 +-
+ live/evening_job.py                     |  63 ++-
+ live/extend.py                          |  17 +
+ live/notify.py                          |  47 +-
+ live/proposals/proposal_2026-09-18.json |  13 +-
+ live/proposals/proposal_2026-09-21.json |   7 +-
+ live/reconcile.py                       |   4 +-
+ live/sanity.py                          |   6 +-
+ live/staleness.py                       |  17 +-
+ live/store.py                           | 147 ++++-
+ live/supabase_schema.sql                |  25 +-
+ scripts/run_live_daily.py               | 132 ++++-
+ scripts/verify_store_roundtrip.py       | 318 +++++++++++
+ tests/conftest.py                       |  14 +
+ tests/test_dashboard_d10.py             |   3 +-
+ tests/test_e11_breadth.py               |  92 ++++
+ tests/test_e11_corporate_actions.py     | 527 ++++++++++++++++++
+ tests/test_e11_evening.py               |  41 +-
+ tests/test_e11_notify.py                | 101 +++-
+ tests/test_e11_reconcile.py             |   2 +-
+ tests/test_e11_sanity.py                |   2 +-
+ tests/test_e11_store.py                 | 139 +++++
+ 32 files changed, 3850 insertions(+), 333 deletions(-)
+README.md                               |  34 +-
+ dashboard/tabs/d10_book.py              |  11 +-
+ docs/hygiene_ledger.md                  |  50 ++
+ handoff/LOG.md                          | 206 +++++++
+ handoff/PROJECT_CONTEXT.md              |  75 ++-
+ handoff/REPORT.md                       | 914 ++++++++++++++++++++++++--------
+ handoff/TASK.md                         | 419 ++++++++++++++-
+ live/breadth.py                         |  65 +++
+ live/construction_table.py              |   4 +-
+ live/corporate_actions.py               | 670 +++++++++++++++++++++++
+ live/dashboard_app.py                   |  18 +-
+ live/evening_job.py                     |  63 ++-
+ live/extend.py                          |  17 +
+ live/notify.py                          |  47 +-
+ live/proposals/proposal_2026-09-18.json |  13 +-
+ live/proposals/proposal_2026-09-21.json |   7 +-
+ live/reconcile.py                       |   4 +-
+ live/sanity.py                          |   6 +-
+ live/staleness.py                       |  17 +-
+ live/store.py                           | 147 ++++-
+ live/supabase_schema.sql                |  25 +-
+ scripts/run_live_daily.py               | 132 ++++-
+ scripts/verify_store_roundtrip.py       | 318 +++++++++++
+ tests/conftest.py                       |  14 +
+ tests/test_dashboard_d10.py             |   3 +-
+ tests/test_e11_breadth.py               |  92 ++++
+ tests/test_e11_corporate_actions.py     | 527 ++++++++++++++++++
+ tests/test_e11_evening.py               |  41 +-
+ tests/test_e11_notify.py                | 101 +++-
+ tests/test_e11_reconcile.py             |   2 +-
+ tests/test_e11_sanity.py                |   2 +-
+ tests/test_e11_store.py                 | 139 +++++
+ 32 files changed, 3850 insertions(+), 333 deletions(-)
 ```
 
 ### Yes or no, each with evidence
@@ -847,7 +912,64 @@ From the task's `base_commit` (4048b97), which carries items 1, 2 and 3 as well:
 
 ```text
 $ git diff --stat 4048b97
- ...
+README.md                               |  22 ++
+ dashboard/tabs/d10_book.py              |  11 +-
+ docs/hygiene_ledger.md                  |  50 +++
+ handoff/LOG.md                          | 206 ++++++++++
+ handoff/PROJECT_CONTEXT.md              |  75 +++-
+ handoff/REPORT.md                       | 675 +++++++++++++++++++++-----------
+ handoff/TASK.md                         | 419 +++++++++++++++++++-
+ live/breadth.py                         |  65 +++
+ live/construction_table.py              |   4 +-
+ live/corporate_actions.py               | 670 +++++++++++++++++++++++++++++++
+ live/dashboard_app.py                   |  18 +-
+ live/evening_job.py                     |  63 ++-
+ live/extend.py                          |  17 +
+ live/notify.py                          |  32 +-
+ live/proposals/proposal_2026-09-18.json |  13 +-
+ live/proposals/proposal_2026-09-21.json |   7 +-
+ live/reconcile.py                       |   4 +-
+ live/sanity.py                          |   6 +-
+ live/staleness.py                       |  13 +
+ live/supabase_schema.sql                |  25 +-
+ scripts/run_live_daily.py               |  80 +++-
+ tests/test_dashboard_d10.py             |   3 +-
+ tests/test_e11_breadth.py               |  92 +++++
+ tests/test_e11_corporate_actions.py     | 527 +++++++++++++++++++++++++
+ tests/test_e11_evening.py               |  41 +-
+ tests/test_e11_notify.py                |  92 +++++
+ tests/test_e11_reconcile.py             |   2 +-
+ tests/test_e11_sanity.py                |   2 +-
+ 28 files changed, 2937 insertions(+), 297 deletions(-)
+README.md                               |  22 ++
+ dashboard/tabs/d10_book.py              |  11 +-
+ docs/hygiene_ledger.md                  |  50 +++
+ handoff/LOG.md                          | 206 ++++++++++
+ handoff/PROJECT_CONTEXT.md              |  75 +++-
+ handoff/REPORT.md                       | 675 +++++++++++++++++++++-----------
+ handoff/TASK.md                         | 419 +++++++++++++++++++-
+ live/breadth.py                         |  65 +++
+ live/construction_table.py              |   4 +-
+ live/corporate_actions.py               | 670 +++++++++++++++++++++++++++++++
+ live/dashboard_app.py                   |  18 +-
+ live/evening_job.py                     |  63 ++-
+ live/extend.py                          |  17 +
+ live/notify.py                          |  32 +-
+ live/proposals/proposal_2026-09-18.json |  13 +-
+ live/proposals/proposal_2026-09-21.json |   7 +-
+ live/reconcile.py                       |   4 +-
+ live/sanity.py                          |   6 +-
+ live/staleness.py                       |  13 +
+ live/supabase_schema.sql                |  25 +-
+ scripts/run_live_daily.py               |  80 +++-
+ tests/test_dashboard_d10.py             |   3 +-
+ tests/test_e11_breadth.py               |  92 +++++
+ tests/test_e11_corporate_actions.py     | 527 +++++++++++++++++++++++++
+ tests/test_e11_evening.py               |  41 +-
+ tests/test_e11_notify.py                |  92 +++++
+ tests/test_e11_reconcile.py             |   2 +-
+ tests/test_e11_sanity.py                |   2 +-
+ 28 files changed, 2937 insertions(+), 297 deletions(-)
  28 files changed, 2673 insertions(+), 300 deletions(-)
 ```
 
@@ -1114,7 +1236,56 @@ carries items 1 and 2 as well:
 
 ```text
 $ git diff --stat 4048b97
- ...
+dashboard/tabs/d10_book.py              |  11 +-
+ handoff/LOG.md                          | 206 ++++++++++++++++
+ handoff/PROJECT_CONTEXT.md              |  75 ++++--
+ handoff/REPORT.md                       | 414 ++++++++++++++-----------------
+ handoff/TASK.md                         | 419 +++++++++++++++++++++++++++++++-
+ live/breadth.py                         |  65 +++++
+ live/construction_table.py              |   4 +-
+ live/dashboard_app.py                   |  18 +-
+ live/evening_job.py                     |  63 +++--
+ live/extend.py                          |  17 ++
+ live/notify.py                          |   6 +
+ live/proposals/proposal_2026-09-18.json |  13 +-
+ live/proposals/proposal_2026-09-21.json |   7 +-
+ live/reconcile.py                       |   4 +-
+ live/sanity.py                          |   6 +-
+ live/staleness.py                       |   7 +
+ live/supabase_schema.sql                |   7 +-
+ scripts/run_live_daily.py               |  40 ++-
+ tests/test_dashboard_d10.py             |   3 +-
+ tests/test_e11_breadth.py               |  92 +++++++
+ tests/test_e11_evening.py               |  41 +++-
+ tests/test_e11_notify.py                |  92 +++++++
+ tests/test_e11_reconcile.py             |   2 +-
+ tests/test_e11_sanity.py                |   2 +-
+ 24 files changed, 1316 insertions(+), 298 deletions(-)
+dashboard/tabs/d10_book.py              |  11 +-
+ handoff/LOG.md                          | 206 ++++++++++++++++
+ handoff/PROJECT_CONTEXT.md              |  75 ++++--
+ handoff/REPORT.md                       | 414 ++++++++++++++-----------------
+ handoff/TASK.md                         | 419 +++++++++++++++++++++++++++++++-
+ live/breadth.py                         |  65 +++++
+ live/construction_table.py              |   4 +-
+ live/dashboard_app.py                   |  18 +-
+ live/evening_job.py                     |  63 +++--
+ live/extend.py                          |  17 ++
+ live/notify.py                          |   6 +
+ live/proposals/proposal_2026-09-18.json |  13 +-
+ live/proposals/proposal_2026-09-21.json |   7 +-
+ live/reconcile.py                       |   4 +-
+ live/sanity.py                          |   6 +-
+ live/staleness.py                       |   7 +
+ live/supabase_schema.sql                |   7 +-
+ scripts/run_live_daily.py               |  40 ++-
+ tests/test_dashboard_d10.py             |   3 +-
+ tests/test_e11_breadth.py               |  92 +++++++
+ tests/test_e11_evening.py               |  41 +++-
+ tests/test_e11_notify.py                |  92 +++++++
+ tests/test_e11_reconcile.py             |   2 +-
+ tests/test_e11_sanity.py                |   2 +-
+ 24 files changed, 1316 insertions(+), 298 deletions(-)
  24 files changed, 1316 insertions(+), 298 deletions(-)
 ```
 

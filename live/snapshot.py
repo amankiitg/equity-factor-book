@@ -58,12 +58,6 @@ LATEST_KEY = "latest.json"
 ROOT_PROPOSALS = Path(__file__).resolve().parents[1] / "live" / "proposals"
 DATED_TEMPLATE = "snapshots/{close}.json"
 
-# The cron's own slot, from render.yaml's schedule ("30 22 * * 1-5"), and the
-# grace before a missing snapshot counts as a failure on the page. Both are stated
-# here so the browser's expectation and the cron's behaviour come from one place.
-RUN_SLOT_UTC = (22, 30)
-GRACE_HOURS = 3
-
 R2_ENVS = (
     "EFB_R2_ACCOUNT_ID",
     "EFB_R2_BUCKET",
@@ -108,29 +102,14 @@ def check_snapshot(dry_run: bool, mode: str | None = None) -> str:
     return resolved
 
 
-def expected_next_by(target_close: Any, *, grace_hours: int = GRACE_HOURS) -> str:
+def expected_next_by(target_close: Any) -> str:
     """The UTC instant by which the next run's snapshot should exist.
 
-    The next NYSE session after `target_close`, at the cron's own slot, plus the
-    grace. A Friday close points at Monday, and a holiday is skipped, because the
-    calendar answers rather than an assumed weekday.
+    One source for the browser's expectation and for the gate's late window:
+    `live.staleness.expected_next_by`, which reads the cron's own slot from
+    render.yaml's schedule and the grace that sits beside it.
     """
-    stamp = pd.Timestamp(target_close)
-    if stamp.tzinfo is not None:  # pragma: no cover - the callers pass a date
-        stamp = stamp.tz_convert("UTC").tz_localize(None)
-    stamp = stamp.normalize()
-    upcoming = staleness.sessions(
-        stamp + pd.Timedelta(days=1), stamp + pd.Timedelta(days=500)
-    )
-    if not upcoming:  # pragma: no cover - the calendar always has a next session
-        raise ValueError(f"no NYSE session in the year after {stamp.date()}")
-    hour, minute = RUN_SLOT_UTC
-    due = (
-        pd.Timestamp(upcoming[0])
-        + pd.Timedelta(hours=hour, minutes=minute)
-        + pd.Timedelta(hours=grace_hours)
-    )
-    return due.tz_localize("UTC").isoformat().replace("+00:00", "Z")
+    return staleness.expected_next_by(target_close)
 
 
 def _iso(value: Any) -> str | None:

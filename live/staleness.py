@@ -113,6 +113,171 @@ def sessions(start: pd.Timestamp | str, end: pd.Timestamp | str) -> list[pd.Time
     return [pd.Timestamp(day).tz_localize(None).normalize() for day in days]
 
 
+# The cron's own slot, from render.yaml's schedule ("30 22 * * 1-5"), and the
+# grace before a missing snapshot counts as a failure on the page. One source: the
+# gate's late window, the snapshot's expectation and the browser's countdown all
+# read these.
+RUN_SLOT_UTC = (22, 30)
+GRACE_HOURS = 3
+
+
+def session_close(session: Any) -> pd.Timestamp:
+    """The UTC instant a session closed, from the calendar's own schedule.
+
+    The 16:00 New York close is 20:00 or 21:00 UTC depending on the date, so the
+    calendar answers rather than an assumed offset.
+    """
+    stamp = _naive(session)
+    schedule = calendar().schedule(
+        start_date=stamp.date(), end_date=stamp.date(), tz="UTC"
+    )
+    if schedule.empty:  # pragma: no cover - a session the calendar just listed
+        raise ValueError(f"{stamp.date()} is not an NYSE session")
+    return pd.Timestamp(schedule["market_close"].iloc[0])
+
+
+def expected_next_by(
+    target_close: Any,
+    *,
+    grace_hours: int = GRACE_HOURS,
+    run_slot: tuple[int, int] = RUN_SLOT_UTC,
+) -> str:
+    """The UTC instant by which the next run's snapshot should exist.
+
+    The next NYSE session after `target_close`, at the cron's own slot, plus the
+    grace. A Friday close points at Monday and a holiday is skipped, because the
+    calendar answers rather than an assumed weekday.
+    """
+    stamp = _naive(target_close)
+    if stamp is None:
+        raise ValueError("no close to count from")
+    upcoming = sessions(stamp + pd.Timedelta(days=1), stamp + pd.Timedelta(days=500))
+    if not upcoming:  # pragma: no cover - the calendar always has a next session
+        raise ValueError(f"no NYSE session in the year after {stamp.date()}")
+    hour, minute = run_slot
+    due = (
+        pd.Timestamp(upcoming[0])
+        + pd.Timedelta(hours=hour, minutes=minute)
+        + pd.Timedelta(hours=grace_hours)
+    )
+    return due.tz_localize("UTC").isoformat().replace("+00:00", "Z")
+
+
+def gate_window_end(
+    target_close: Any,
+    *,
+    grace_hours: int = GRACE_HOURS,
+    run_slot: tuple[int, int] = RUN_SLOT_UTC,
+) -> pd.Timestamp:
+    """The end of the close's own evening, UTC.
+
+    The cron's slot on the close's own date plus the grace, which is stricter than
+    `expected_next_by`: that one is when the *next* session's snapshot is due, and
+    it is a different question. A run delayed into the next morning appends exactly
+    one session, and it is still not an evening of this close, so the gate window
+    ends with this close's own evening rather than with the next run's deadline.
+    """
+    stamp = _naive(target_close)
+    if stamp is None:
+        raise ValueError("no close to count the evening of")
+    hour, minute = run_slot
+    end = (
+        stamp
+        + pd.Timedelta(hours=hour, minutes=minute)
+        + pd.Timedelta(hours=grace_hours)
+    )
+    return end.tz_localize("UTC")
+
+
+def gate_close(row: dict[str, Any] | None, now: Any = None) -> dict[str, Any]:
+    """Whether a stored run counts as one of the gate's two closes.
+
+    The owner's rule, in full: a gate close is a run that **appended exactly one
+    session, its target close, and started on that session's own evening**, after
+    the close and before the next run was due. The first half alone is not enough,
+    which is the condition this adds: a run delayed to the next morning appends
+    exactly one session and is still not an evening of that close.
+
+    Returns the verdict with the reason, so the report can quote it rather than
+    assert it.
+    """
+    if not row:
+        return {"counts": False, "reason": "no run is recorded"}
+    recorded = _iso(row.get("target_close"))
+    if not recorded:
+        return {"counts": False, "reason": "the run records no target close"}
+    sessions_appended = _row_sessions(row)
+    if len(sessions_appended) > 1:
+        return {
+            "counts": False,
+            "reason": (
+                f"the run appended {len(sessions_appended)} sessions "
+                f"({', '.join(sessions_appended)}), so it is a catch-up"
+            ),
+        }
+    if bool(row.get("catch_up")):
+        return {"counts": False, "reason": "the run is recorded as a catch-up"}
+    started = row.get("started_at")
+    if not started:
+        return {
+            "counts": False,
+            "reason": (
+                "the run records no start time, so its own evening cannot be shown"
+            ),
+        }
+    began = pd.Timestamp(started)
+    if began.tzinfo is None:
+        began = began.tz_localize("UTC")
+    else:
+        began = began.tz_convert("UTC")
+    opened = session_close(recorded)
+    deadline = gate_window_end(recorded)
+    if began < opened:
+        return {
+            "counts": False,
+            "reason": (
+                f"the run started at {began.isoformat()} before the {recorded} close "
+                f"at {opened.isoformat()}"
+            ),
+        }
+    if began > deadline:
+        return {
+            "counts": False,
+            "reason": (
+                f"the run started at {began.isoformat()}, after the "
+                f"{deadline.isoformat()} end of the {recorded} evening, so the "
+                f"fetch was not made on that session's own evening"
+            ),
+        }
+    status = str(row.get("status") or "")
+    if status != "ok":
+        return {
+            "counts": False,
+            "reason": f"the {recorded} run records status {status!r}, not ok",
+        }
+    return {
+        "counts": True,
+        "reason": (
+            f"the {recorded} session, started at {began.isoformat()} after its "
+            f"{opened.isoformat()} close and before {deadline.isoformat()}"
+        ),
+    }
+
+
+def _row_sessions(row: dict[str, Any]) -> list[str]:
+    """The sessions a stored row recorded as appended."""
+    raw = row.get("catch_up_sessions")
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:  # pragma: no cover - a corrupted row
+            return []
+        raw = parsed
+    if not raw:
+        return []
+    return [str(item) for item in raw]
+
+
 def _naive(stamp: Any) -> pd.Timestamp | None:
     """A naive, normalized date, whatever tz-aware or NaT input arrives."""
     if stamp is None:
@@ -394,6 +559,8 @@ def run_status_row(
     splits: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
     snapshot: str | None = None,
+    started_at: str | None = None,
+    cross_checks_capped: str | None = None,
 ) -> dict[str, Any]:
     """The `run_status` row for one run: the target close and every date.
 
@@ -431,6 +598,12 @@ def run_status_row(
         # What the Cloudflare page has: "snapshot: on (latest.json, ...)" or
         # "snapshot: off (dry run)". The dashboard shows it beside the run.
         "snapshot": snapshot,
+        # The instant the run began, so its own evening can be shown rather than
+        # assumed: a run delayed to the next morning still appends one session.
+        "started_at": started_at,
+        # Whether the corporate-actions cross-check hit its request cap, and how
+        # many names went unchecked because of it. Never an error; never silent.
+        "cross_checks_capped": cross_checks_capped,
     }
 
 

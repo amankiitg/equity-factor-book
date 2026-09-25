@@ -265,6 +265,8 @@ def finish_run(
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
+    started_at: str | None = None,
+    cross_checks_capped: str | None = None,
     manifest: dict[str, Any] | None = None,
     book: pd.DataFrame | None = None,
     reconciliation: dict[str, Any] | None = None,
@@ -299,6 +301,8 @@ def finish_run(
         catch_up_sessions=catch_up_sessions,
         splits=splits,
         flags=flags,
+        started_at=started_at,
+        cross_checks_capped=cross_checks_capped,
     )
     if manifest is None:
         # A stopped run still has a book to show: the last one proposed. The page
@@ -345,6 +349,7 @@ def finish_run(
         flags=flags,
         store=store_name,
         snapshot=snapshot_detail,
+        cross_checks_capped=cross_checks_capped,
         poster=poster,
     )
     delivered = notified["status"] == notify.STATUS_SENT
@@ -407,6 +412,10 @@ def main() -> int:
     catch_up_sessions: list[str] = []
     splits: list[str] = []
     flags: list[dict[str, Any]] = []
+    capped: str = ""
+    # The instant the run began, recorded so the gate can tell an evening of the
+    # close from a run that was delayed into the next morning.
+    started_at = datetime.now(UTC).isoformat(timespec="seconds")
     # Filled on the success path; a stopped or failed run writes the snapshot
     # without them, and it falls back to the last proposal on disk.
     snapshot_inputs: dict[str, Any] = {}
@@ -448,6 +457,9 @@ def main() -> int:
                 ),
             )
             logger.info("corporate actions applied: %s", "; ".join(splits))
+        capped = corporate_actions.cap_note(outcome.unchecked)
+        if capped:
+            logger.warning("%s", capped)
         flags = outcome.flags
         if flags:
             logger.warning("large moves in the appended session: %s", flags)
@@ -528,6 +540,8 @@ def main() -> int:
         catch_up_sessions=catch_up_sessions,
         splits=splits,
         flags=flags,
+        started_at=started_at,
+        cross_checks_capped=capped,
         **snapshot_inputs,
     )
 

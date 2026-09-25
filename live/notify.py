@@ -139,6 +139,7 @@ def compose(
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
     snapshot: str | None = None,
+    cross_checks_capped: str | None = None,
 ) -> str:
     """The fields, in order, ready for a preview.
 
@@ -186,6 +187,10 @@ def compose(
     # A split is named here because it moves a held position without a decision
     # being made, and an unexplained large move is named because it is the one
     # thing in the appended session a person has to look at.
+    if cross_checks_capped:
+        # A name left unchecked is a name whose split could pass as an
+        # unexplained move, so the owner is told the moment the cap is hit.
+        lines.append(f"{cross_checks_capped[:1].upper()}{cross_checks_capped[1:]}.")
     if snapshot:
         # Whether the page has this run is as much a part of "did it run" as the
         # status is, so a deliberate `off` says so rather than going unmentioned.
@@ -376,6 +381,7 @@ def notify_run(
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
     snapshot: str | None = None,
+    cross_checks_capped: str | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -408,6 +414,7 @@ def notify_run(
         flags=flags,
         store=store,
         snapshot=snapshot,
+        cross_checks_capped=cross_checks_capped,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message

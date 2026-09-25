@@ -525,3 +525,61 @@ def test_run_status_carries_the_splits_and_the_flags():
     assert row["splits"] == '["split: APH 2:1 applied"]'
     assert row["flags"] == '[{"return": -0.55, "ticker": "ZZZ"}]'
     assert staleness.run_status_row(result, run_date="2026-09-04")["splits"] == "[]"
+
+
+def test_the_cross_check_cap_is_recorded_when_it_is_hit():
+    """The cap bounds requests; hitting it must never be invisible."""
+    prices = prices_frame(
+        [
+            ("2026-09-03", "AAA", 100.0, 100.0, 0.0),
+            ("2026-09-04", "AAA", 45.0, 45.0, 0.0),
+            ("2026-09-03", "BBB", 100.0, 100.0, 0.0),
+            ("2026-09-04", "BBB", 44.0, 44.0, 0.0),
+            ("2026-09-03", "CCC", 100.0, 100.0, 0.0),
+            ("2026-09-04", "CCC", 43.0, 43.0, 0.0),
+        ]
+    )
+    frame = returns_frame(
+        [
+            ("2026-09-03", "AAA", 0.0),
+            ("2026-09-04", "AAA", -0.55),
+            ("2026-09-04", "BBB", -0.56),
+            ("2026-09-04", "CCC", -0.57),
+        ]
+    )
+    outcome = ca.apply_to_append(
+        frame,
+        prices,
+        since=pd.Timestamp("2026-09-03"),
+        split_fetcher=fake_splits({}),
+        close_fetcher=lambda ticker, session: 100.0,
+        max_cross_checks=2,
+    )
+    assert sorted(outcome.cross_checked) == ["AAA", "BBB"]
+    assert outcome.unchecked == ["CCC"]
+    assert ca.cap_note(outcome.unchecked) == "cross-check capped: 1 unchecked (CCC)"
+    assert ca.cap_note([]) == ""
+    # The name left unchecked is still flagged, so it is reported either way.
+    assert [flag["ticker"] for flag in outcome.flags][:1] == ["CCC"]
+    # And the run records it, and the email says it.
+    from live import notify, staleness
+
+    result = {"target_close": "2026-09-04", "job": "evening", "status": "ok"}
+    row = staleness.run_status_row(
+        result,
+        run_date="2026-09-04",
+        cross_checks_capped=ca.cap_note(outcome.unchecked),
+    )
+    assert row["cross_checks_capped"] == "cross-check capped: 1 unchecked (CCC)"
+    assert (
+        staleness.run_status_row(result, run_date="2026-09-04")["cross_checks_capped"]
+        is None
+    )
+    message = notify.compose(
+        status="ok",
+        target_close="2026-09-04",
+        orders=3,
+        gross=1000.0,
+        cross_checks_capped=ca.cap_note(outcome.unchecked),
+    )
+    assert "Cross-check capped: 1 unchecked (CCC)." in message.splitlines()

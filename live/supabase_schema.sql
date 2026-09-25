@@ -224,6 +224,12 @@ create table if not exists efb.run_status (
   -- What the Cloudflare page has of this run: "snapshot: on (latest.json,
   -- snapshots/<close>.json)" or "snapshot: off (dry run)".
   snapshot text,
+  -- When the run began, UTC. A gate close is a run that started on its target
+  -- close's own evening, so the instant has to be recorded rather than assumed.
+  started_at timestamptz,
+  -- "cross-check capped: N unchecked (...)" when the corporate-actions
+  -- cross-check hit its request cap. Null when it did not.
+  cross_checks_capped text,
   primary key (target_close, job)
 );
 

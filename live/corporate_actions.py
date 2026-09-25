@@ -263,6 +263,9 @@ class Outcome:
     flags: list[dict[str, Any]]
     cross_checked: list[str]
     sessions: list[pd.Timestamp]
+    # The names the request cap stopped the cross-check from reaching. Never an
+    # error, and never invisible: the run records them and the message says so.
+    unchecked: list[str]
 
 
 def appended_sessions(
@@ -382,6 +385,20 @@ def _default_refetch(ticker: str, session: pd.Timestamp) -> float:
     return float(history["Close"].iloc[0])
 
 
+def cap_note(unchecked: list[str]) -> str:
+    """The line that says the cap was hit, or an empty string.
+
+    It is never an error: the names are still flagged, and a move above 40% is
+    still reported. What it must never be is invisible.
+    """
+    if not unchecked:
+        return ""
+    return (
+        f"cross-check capped: {len(unchecked)} unchecked "
+        f"({', '.join(unchecked[:5])})"
+    )
+
+
 def _check_one(
     ticker: str,
     session: pd.Timestamp,
@@ -459,7 +476,7 @@ def apply_to_append(
     """
     sessions = appended_sessions(returns_frame, since)
     if not sessions:
-        return Outcome(returns_frame, [], {}, [], [], [])
+        return Outcome(returns_frame, [], {}, [], [], [], [])
     splits: list[Split] = []
     ratios: dict[str, float] = {}
     cross_checked: list[str] = []
@@ -504,7 +521,13 @@ def apply_to_append(
     flags = flag_large_moves(
         tail, explained={split.ticker: describe([split]) for split in splits}
     )
-    return Outcome(frame, splits, ratios, flags, cross_checked, sessions)
+    watched_last = [
+        str(ticker)
+        for ticker, value in tail.items()
+        if not pd.isna(value) and abs(float(value)) > CROSS_CHECK_MOVE
+    ]
+    unchecked = [ticker for ticker in watched_last if ticker not in cross_checked]
+    return Outcome(frame, splits, ratios, flags, cross_checked, sessions, unchecked)
 
 
 def apply_to_artifact(
