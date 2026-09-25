@@ -172,8 +172,14 @@ Settled 2026-09-22. These are no longer open; build on them.
   the idio book stops being idio.
 - **The construction is share-only, a minimum of 20 whole shares per name**,
   with no dollar floor, iterated to a fixed point on the final traded
-  weights. **Held by the owner, 2026-09-24, pending the corrected E11-F13
-  numbers and the re-decide trigger on them.** Chosen 2026-09-24 from the fixed-point table: 188 names, n_eff
+  weights. **Confirmed by the owner, 2026-09-24, on like-for-like numbers**:
+  143 names, n_eff 68.52, total error 0.78% and p90 1.85%, the admission
+  control with the floor enforced on the traded weights. That is about 20% of
+  IR below min $1,500, with 3.6x lower total error, and it dominates two-part
+  outright. The final rule (Part 1R) can only add names, and the re-decide
+  trigger stays armed on its numbers. **The 188-name book first chosen was
+  never reachable**: 24 of its names hold under 20 shares once sized. The
+  figures below are that first basis, kept for the record. Chosen 2026-09-24 from the fixed-point table: 188 names, n_eff
   85.69 against 157.33 for the full book, governing breadth 1.355, total
   error 1.25% of NAV, p90 per-name rounding 3.44%. These are table values
   from before the floor was enforced on final weights (E11-F12), and the

@@ -2062,3 +2062,37 @@ Smaller items:
 PROJECT_CONTEXT is updated: State at 2a9e0b6, and a working lesson on naming
 the searched family in a fixed-point spec. TASK.md gains Part 1R at the top.
 The old Part 1 is marked superseded, and its stop is retired.
+
+---
+
+## 2026-09-24 owner decision: share-only confirmed on real numbers
+
+**Share-only, minimum 20 shares, is confirmed by the owner** on the
+like-for-like numbers, with the floor enforced on the weights that trade: 143
+names, n_eff 68.52, governing breadth 1.515, total error 0.78% and p90 1.85%.
+These are DeepSeek's admission-control numbers from REPORT.md at 2a9e0b6.
+
+The owner's reasoning, as given: it holds regardless of the gap's size,
+because the IR is notional and the error is real, and share-only now
+dominates two-part outright. Against min $1,500 the IR cost is about 20%,
+where it was 14% at the first choice, for 3.6x lower total error and 4.8x
+lower p90.
+
+**For the record, at the owner's request: the 188-name book first chosen was
+never reachable.** At n_eff 85.69 it was measured on weights from before the
+kept subset is re-sized and re-hedged. Once sized, 24 of its 188 names hold
+fewer than 20 shares (`n_below_floor_final_pre_enforcement`, 24, on the
+share-only row). No rule that enforces the floor can return that book. The
+first choice of 2026-09-24 was made on a number no tradeable book has. This
+confirmation replaces it and is the decision on record, made on numbers a
+tradeable book attains.
+
+**On the floor:** Part 1R starts from the same 143-name set and only adds
+names, so 143 is a floor on the name count. n_eff and error are not
+guaranteed to move one way when names are added, so the re-decide trigger
+stays armed on Part 1R's numbers.
+
+**Instruction to DeepSeek:** this is the confirmation TASK.md Part 1R refers
+to. Do not block after Part 1R. Run straight through Parts 2 to 5, and stop
+only if the re-decide trigger fires or a Part 1R check fails, along with the
+standing stops.
