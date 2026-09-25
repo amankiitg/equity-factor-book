@@ -218,13 +218,24 @@ def test_render_yaml_commits_key_names_not_values() -> None:
     assert "-----BEGIN" not in render
 
 
-def test_render_yaml_gives_the_notification_keys_to_the_cron_only() -> None:
-    """The sending credentials belong to the service that sends, and nowhere else."""
+def test_render_yaml_runs_one_service_and_it_holds_the_credentials() -> None:
+    """One cron. No web service, so no read role and one fewer box to fall over."""
     render = (ROOT / "render.yaml").read_text()
-    web_service, cron = render.split("- type: cron")
-    for name in ("EFB_RESEND_API_KEY", "EFB_NOTIFY_EMAIL_FROM", "EFB_NOTIFY_EMAIL_TO"):
+    assert "- type: web" not in render
+    assert "efb-live-dashboard" not in render
+    assert render.count("- type: cron") == 1
+    _, cron = render.split("- type: cron")
+    for name in (
+        "EFB_RESEND_API_KEY",
+        "EFB_NOTIFY_EMAIL_FROM",
+        "EFB_NOTIFY_EMAIL_TO",
+        "EFB_SNAPSHOT",
+        "EFB_R2_ACCOUNT_ID",
+        "EFB_R2_BUCKET",
+        "EFB_R2_ACCESS_KEY_ID",
+        "EFB_R2_SECRET_ACCESS_KEY",
+    ):
         assert name in cron, f"{name} missing from the cron service"
-        assert name not in web_service, f"{name} must not reach the web service"
     # names only: no key material, no address, no endpoint prose
     assert "re_" not in render
     assert "@" not in render

@@ -1,38 +1,26 @@
 # Render deployment blueprint -- EFB live book (Sprint E11, Part B).
 #
-# Two services:
-#   1. efb-live-dashboard: always-on Streamlit web service. Supabase only.
-#   2. efb-live-daily:     the daily cron that extends the data and model,
-#                          proposes the book, runs the morning execution and
-#                          reconciles. Supabase plus Alpaca paper keys.
+# One service: the daily cron. The live book monitor runs on Cloudflare (a Worker
+# or Pages project reading the snapshot through an R2 binding behind Access), so
+# there is no Render web service and no read role: one fewer credential and one
+# fewer box to fall over. `live/dashboard_app.py` stays runnable locally as a
+# research view until the Cloudflare page is proven.
+#
+# The cron: extends the data and model, proposes the book, runs the morning
+# execution, reconciles, and writes one JSON snapshot per run to R2.
 #
 # UTC cron schedule:
 #   "30 22 * * 1-5" = 18:30 EDT / 17:30 EST, after the 16:00 ET close.
 #
 # Secret isolation:
-#   Dashboard gets EFB_SUPABASE_DB_URL (a READ-ONLY Postgres role's
-#   connection string) and EFB_DB_SCHEMA. NO Alpaca keys.
 #   Cron gets EFB_SUPABASE_DB_URL (the write role's connection string),
-#   EFB_DB_SCHEMA, EFB_ALPACA_PAPER_*, EFB_DRY_RUN and the notification
-#   webhook (its own credential, cron only: the dashboard never sends).
+#   EFB_DB_SCHEMA, EFB_ALPACA_PAPER_*, EFB_DRY_RUN, EFB_STORE is deliberately
+#   absent, the notification credentials and the R2 credentials. The R2 token is
+#   scoped to the one bucket with object read and write.
 #   Env var VALUES are set manually in the Render dashboard (sync: false).
 #   This file commits the KEY names only; no credentials appear here.
 
 services:
-  - type: web
-    name: efb-live-dashboard
-    runtime: python
-    buildCommand: pip install -r requirements.txt && pip install -e .
-    startCommand: streamlit run live/dashboard_app.py --server.port $PORT --server.address 0.0.0.0
-    envVars:
-      - key: EFB_SUPABASE_DB_URL
-        sync: false
-      - key: EFB_DB_SCHEMA
-        sync: false
-      # EFB_ALPACA_* are intentionally absent from this service: the
-      # dashboard never calls Alpaca directly. EFB_SUPABASE_DB_URL holds a
-      # read-only role's connection string, never the service-role key.
-
   - type: cron
     name: efb-live-daily
     runtime: python
@@ -59,4 +47,17 @@ services:
       - key: EFB_NOTIFY_EMAIL_FROM
         sync: false
       - key: EFB_NOTIFY_EMAIL_TO
+        sync: false
+      # The report's surface: one JSON object per run, uploaded to R2. The switch
+      # is required, so neither default is assumed: `off` is allowed only while
+      # EFB_DRY_RUN is true, and with dry_run false it is an error.
+      - key: EFB_SNAPSHOT
+        sync: false
+      - key: EFB_R2_ACCOUNT_ID
+        sync: false
+      - key: EFB_R2_BUCKET
+        sync: false
+      - key: EFB_R2_ACCESS_KEY_ID
+        sync: false
+      - key: EFB_R2_SECRET_ACCESS_KEY
         sync: false

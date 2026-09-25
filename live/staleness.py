@@ -393,6 +393,7 @@ def run_status_row(
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
+    snapshot: str | None = None,
 ) -> dict[str, Any]:
     """The `run_status` row for one run: the target close and every date.
 
@@ -427,6 +428,9 @@ def run_status_row(
         # not explain: the dashboard shows them beside the run it delivered.
         "splits": store.json_text(splits or []),
         "flags": store.json_text(flags or [], sort_keys=True),
+        # What the Cloudflare page has: "snapshot: on (latest.json, ...)" or
+        # "snapshot: off (dry run)". The dashboard shows it beside the run.
+        "snapshot": snapshot,
     }
 
 

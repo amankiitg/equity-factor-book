@@ -1031,3 +1031,35 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def construction_label(proposal: dict[str, Any]) -> str:
+    """The construction, generated only from the artifact's own fields.
+
+    Three readers share this: the Streamlit page, the d10 tab and the snapshot the
+    Cloudflare page shows. None of them may assert a label beside an artifact, so
+    an artifact that does not record its construction gets told so rather than
+    filled in from the registry or the table.
+    """
+    kind = proposal.get("construction")
+    if kind is None:
+        return "construction parameters not recorded in this artifact"
+    floor_dollars = proposal.get("construction_floor_dollars", 0)
+    floor_shares = proposal.get("construction_floor_shares", 0)
+    top_n = proposal.get("construction_top_n", 0)
+    iterated = bool(proposal.get("floor_iterated"))
+    if kind == "min_position":
+        label = f"min position ${floor_dollars:,.0f}"
+    elif kind == "two_part":
+        label = f"min ${floor_dollars:,.0f} and {int(floor_shares)} shares"
+    elif kind == "share_only":
+        label = f"min {int(floor_shares)} shares"
+    elif kind == "top_n":
+        label = f"top {int(top_n)} by absolute alpha"
+    else:
+        label = str(kind)
+    if iterated:
+        label += " (iterated to a fixed point)"
+    else:
+        label += " (one pass, not iterated)"
+    return label

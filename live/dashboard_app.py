@@ -51,34 +51,14 @@ def _latest_proposal() -> dict | None:
 
 
 def _construction_label(manifest: dict[str, Any]) -> str:
-    """The proposal's construction, generated only from its stored fields.
+    """The proposal's construction, from the one generator the readers share.
 
-    Mirrors dashboard/tabs/d10_book.py: the page never asserts a label beside
-    the artifact. If the artifact lacks the fields, it says so instead of
-    filling the gap from the registry or the table.
+    `live/construction_table.construction_label` is the place that decides it, so
+    this page, the d10 tab and the snapshot cannot drift apart.
     """
-    kind = manifest.get("construction")
-    if kind is None:
-        return "construction parameters not recorded in this artifact"
-    floor_dollars = manifest.get("construction_floor_dollars", 0)
-    floor_shares = manifest.get("construction_floor_shares", 0)
-    top_n = manifest.get("construction_top_n", 0)
-    iterated = bool(manifest.get("floor_iterated"))
-    if kind == "min_position":
-        label = f"min position ${floor_dollars:,.0f}"
-    elif kind == "two_part":
-        label = f"min ${floor_dollars:,.0f} and {int(floor_shares)} shares"
-    elif kind == "share_only":
-        label = f"min {int(floor_shares)} shares"
-    elif kind == "top_n":
-        label = f"top {int(top_n)} by absolute alpha"
-    else:
-        label = str(kind)
-    if iterated:
-        label += " (iterated to a fixed point)"
-    else:
-        label += " (one pass, not iterated)"
-    return label
+    from live.construction_table import construction_label
+
+    return construction_label(manifest)
 
 
 def _breadth_columns(record: dict[str, Any]) -> dict[str, float | None]:

@@ -1,3 +1,222 @@
+# Sprint E11 pre-deploy, B-cron: Render runs only the cron, and the cron writes the snapshot
+
+**The web service is gone.** `render.yaml` declares one service, the daily cron.
+The live book monitor is the Cloudflare page, so the Render dashboard service, the
+`efb_reader` role and the read-only connection string all go with it: one fewer
+credential, one fewer box to fall over. `live/dashboard_app.py` still runs locally
+as a research view, as the task allows, until the Cloudflare page is proven.
+
+**The reader role is removed and the writer loses `delete`.** With no web service
+nothing needs a read role. The writer's grant was `select, insert, update, delete`
+and nothing in this repository deletes a row: `live/store.py` issues exactly two
+statements, an `INSERT ... ON CONFLICT` upsert and a `SELECT`, across 18 tables. So
+the grant is now `select, insert, update`, and `efb_archiver`, which needs `delete`
+on the `e11_*` tables and nothing else, arrives with retention in item 6.
+
+**The snapshot.** `live/snapshot.py` builds one JSON document per run and puts it in
+R2 twice, `latest.json` and `snapshots/<close>.json`, as single-object puts signed
+with SigV4 by hand: one object, one verb, no client library worth carrying for it.
+The signature covers the payload hash, so a truncated body is refused by the server
+rather than stored.
+
+| what the page needs | where it comes from |
+| --- | --- |
+| `schema_version`, `generated_at` | constants and the clock |
+| the target close and `run_status` | the run's own row: status, detail, failing inputs, catch-up and its sessions, splits, flags, notify and snapshot state |
+| `expected_next_by` | the next NYSE session after the close, at the cron's own slot (22:30 UTC, from `render.yaml`'s schedule) plus a three-hour grace. Friday points at Monday, and Thanksgiving Thursday points at the Friday, because the calendar answers |
+| `dry_run` | the run |
+| the construction label | `live/construction_table.construction_label`, generated only from the proposal's fields |
+| the book | the proposal's rows with their trade reasons, weights, sides, z and alpha |
+| hedge and exposures | the manifest and the chosen construction table row |
+| breadth | `n_eff_kept` and `n_eff_full_book` with item 3's two labels, and no unqualified `n_eff` anywhere |
+
+**Written on every run, including `stale_stopped` and `error`.** The snapshot goes
+out first inside `finish_run`, before the message and before the row, so the page
+shows the failure even when the message could not be sent. A stopped run has no
+manifest of its own, so it carries the last proposal on disk: blanking the page on
+the evening the loop refused to price a book would hide the book the owner is still
+holding. Those names carry no trade reasons, and the module says why: reasons belong
+to the evening that proposed them, and inventing them for a night that traded
+nothing is the kind of guess this pipeline does not make.
+
+**The switch, and why neither default is safe.** `EFB_SNAPSHOT` is required.
+
+| `EFB_SNAPSHOT` | `dry_run` | what happens |
+| --- | --- | --- |
+| `on` | either | uploaded; a failed upload is an `error`, and `finish_run` turns an otherwise ok run into one |
+| `off` | true | nothing uploaded; `snapshot: off (dry run)` in `run_status` and in the email, which is how the gate evenings run before the page exists |
+| `off` | false | an error: the flip cannot happen without a page that can show a real snapshot |
+
+**JSON has no NaN.** Every number goes through `store.json_text`, and `build` turns
+non-finite values into `null` as well, so the document and its text agree rather
+than only the text being safe. A test asserts the serialized document contains no
+`NaN` and that a NaN breadth and an infinity z come out as `null`.
+
+**The schema is shared.** `docs/snapshot.schema.json` is committed and the writer's
+output is validated against it in the test, so the writer and the Cloudflare page
+cannot drift. The schema pins the keys the page reads, including `expected_next_by`
+and the two qualified breadth names.
+
+**Credentials.** Four R2 variables, all required when the switch is on, with a
+missing one named in the error. The test asserts that an access key id, a secret, a
+Resend key and a database URL do not appear in the document, and that the scrub
+would remove each of them on the way out anyway.
+
+## The peak memory, measured before choosing a plan
+
+```text
+$ /usr/bin/time -l .venv/bin/python -c "appendix.hydrate(); evening_job.build_proposal(store=False)"
+book: 2026-09-21 499 names, n_eff_kept 70.5921
+        9.42 real         8.37 user         2.34 sys
+          1146863616  maximum resident set size
+          1368245976  peak memory footprint
+```
+
+**Peak RSS 1,146,863,616 bytes, 1.07 GiB** (peak footprint 1.37 GB), for the
+hydration plus a full proposal build in 9.42 seconds. The book it built is the
+stored one to four decimals, 70.5921, so the measurement is of the real path rather
+than of a reduced one.
+
+**The plan: `2c-4g`, 2 CPU and 4 GB.** Render's own cron table, read rather than
+recalled: 512 MB is $0.00016/minute, 2 GB $0.00058, **4 GB $0.00197**, 8 GB
+$0.00313, prorated to the second. 2 GB is 1.9x the peak, under the 2x rule, so the
+smallest plan that clears it is 4 GB, which is 3.5x. At a five-minute run (the
+measured 9.42 seconds is the hydration and build only; the extension's downloads are
+the rest) and about 21 sessions a month, that is **about $0.21 a month of compute**,
+plus whatever workspace tier the owner already has. The five minutes is an estimate
+and the owner will see the real duration in the cron's own logs after the first runs.
+
+## Tests
+
+`tests/test_e11_snapshot.py`, 14 tests: the writer against the committed schema and
+the schema refusing a document that drops a field the page needs, the NaN and
+infinity rules in both the document and its text, the absence of an unqualified
+`n_eff`, item 3's two labels, the run's own status including catch-up sessions and
+splits, the names' fields, `expected_next_by` against the calendar including
+Thanksgiving, the switch's rules in both directions, `off` writing nothing,
+`on` writing both keys with a SigV4 header and the payload hash inside it, no
+credential in the document, a missing R2 variable named in the error, a refused
+upload raising so the run can fail, and a stopped run still carrying the last book.
+
+`tests/test_e11_deploy.py` and `tests/test_e11_render.py` moved with the blueprint:
+one service, no web service, the reader and the archiver absent, the writer's grant
+without `delete`, and the eight cron variables present.
+
+## Verification
+
+```text
+$ .venv/bin/python -m pytest tests/test_e11_deploy.py tests/test_e11_render.py \
+    tests/test_e11_snapshot.py tests/test_e11_notify.py tests/test_e11_staleness.py \
+    tests/test_run_live_daily.py tests/test_e11_store.py tests/test_dashboard_d10.py -q
+109 passed, 1 skipped in 47.31s
+
+$ make test-fast
+787 passed, 1 skipped, 29 deselected, 3 warnings in 80.19s
+```
+
+The fast selection's 787 was the frozen-tree run reported with the previous item;
+this item's own eight files were added afterwards, so the next fast run collects
+eight more.
+
+`make lint`, exit 0, and `make verify-evidence`, exit 0 (both run above).
+
+### Headline numbers, file and key
+
+| number | file and key |
+| --- | --- |
+| peak RSS 1,146,863,616 bytes | `/usr/bin/time -l` on `appendix.hydrate(); evening_job.build_proposal(store=False)` |
+| the plan and its price | Render's cron table: `2c-4g`, 4 GB, $0.00197/minute, prorated to the second |
+| 2x headroom over 1.07 GiB | the same table, 4 GB against the measured peak |
+| the switch | `live/snapshot.py::SNAPSHOT_ENV`, `snapshot_mode`, `check_snapshot` |
+| the two keys | `live/snapshot.py::LATEST_KEY`, `DATED_TEMPLATE` |
+| the expectation | `live/snapshot.py::expected_next_by`, `RUN_SLOT_UTC`, `GRACE_HOURS` |
+| the shared schema | `docs/snapshot.schema.json`, validated in `tests/test_e11_snapshot.py` |
+| no unqualified `n_eff` | `live/snapshot.py::build`, `breadth` |
+| one service | `render.yaml`, one `- type: cron` |
+| one role, without delete | `live/supabase_roles.sql` |
+| the run's own record of the snapshot | `efb.run_status.snapshot` |
+| 14 tests | `tests/test_e11_snapshot.py` |
+
+### git diff --stat from `base_commit` (4048b97)
+
+This item's own files, from item A's commit `04780e7`:
+
+```text
+$ git diff --stat 04780e7 -- live/snapshot.py live/staleness.py live/notify.py \
+    live/construction_table.py live/dashboard_app.py dashboard/tabs/d10_book.py \
+    scripts/run_live_daily.py render.yaml .env.example live/supabase_roles.sql \
+    live/supabase_schema.sql docs/snapshot.schema.json tests/conftest.py \
+    tests/test_e11_snapshot.py tests/test_e11_deploy.py tests/test_e11_render.py
+.env.example               |  12 ++
+ dashboard/tabs/d10_book.py |  29 +--
+ docs/snapshot.schema.json  | 137 ++++++++++++
+ live/construction_table.py |  32 +++
+ live/dashboard_app.py      |  32 +--
+ live/notify.py             |   7 +
+ live/snapshot.py           | 518 +++++++++++++++++++++++++++++++++++++++++++++
+ live/staleness.py          |   4 +
+ live/supabase_roles.sql    |  33 +--
+ live/supabase_schema.sql   |   3 +
+ pyproject.toml             |   2 +
+ render.yaml                |  47 ++--
+ scripts/run_live_daily.py  | 112 +++++++---
+ tests/conftest.py          |   5 +
+ tests/test_e11_deploy.py   |  20 +-
+ tests/test_e11_render.py   |  21 +-
+ tests/test_e11_snapshot.py | 292 +++++++++++++++++++++++++
+ 17 files changed, 1181 insertions(+), 125 deletions(-)
+```
+
+From the task's `base_commit` (4048b97), which carries every earlier item:
+
+```text
+$ git diff --stat 4048b97
+ tests/test_e11_store.py                 |  139 ++++
+ 41 files changed, 5613 insertions(+), 507 deletions(-)
+```
+
+### Yes or no, each with evidence
+
+1. **Any two rows or two estimators identical.** Not applicable: no estimator is
+   touched; the snapshot copies numbers rather than computing them.
+2. **Any exception caught and skipped, or fallback taken, with counts.** One, and
+   it is deliberate: a stopped run falls back to the last proposal on disk, so the
+   page keeps showing a book. It is not silent (the run's status is in the document
+   beside it) and it invents no trade reasons, which the module says in prose. The
+   failed-upload path is caught only to record it and fail the run.
+3. **Any criterion reworded or replaced by a different test.** No `RESULTS.json`
+   criterion. Two render tests and one deploy test moved with the blueprint and the
+   roles, which is this item's own subject.
+4. **Any criterion that passes by construction.** One, declared: the upload tests
+   drive a poster fake, so they prove the request shape, the two keys and the
+   signature's presence, not that R2 accepts them. Nothing here can upload for real,
+   and the first real upload is an owner step.
+5. **Any number that moved by a factor of 10 or more from its previous stored
+   value.** No stored number moved: no artifact was written, and the snapshot is a
+   new object rather than a change to an existing one.
+6. **Any stored number typed into a notebook.** No notebook was opened, edited or
+   executed.
+7. **Any earlier verdict changed.** No. The web service's removal follows the
+   owner's decision, and the earlier deploy steps that named it are superseded by
+   the full deploy list that comes with the last item.
+
+### Anything decided that the reviewer might disagree with
+
+**The writer loses `delete` now rather than when the archiver arrives.** The task
+lists it among the smaller items, but it belongs to this commit because the roles
+file is already open here and the evidence is one grep: two statements in
+`live/store.py`, neither of which deletes. Item 6 adds `efb_archiver` with `delete`
+on the `e11_*` tables only.
+
+**`efb_archiver` is not created yet.** The task puts it in item 6 with the archive
+command it serves, and a role with no caller is a credential to rotate for no
+reason. The deploy list says so, and the roles file says so where it matters.
+
+**A stopped run keeps the previous book.** The alternative is a page that blanks on
+exactly the evening something went wrong, with the failure visible either way. If
+the reviewer would rather a stopped run show no positions, it is one branch and two
+assertions.
+
 # Sprint E11 pre-deploy, item A: notifications by email through Resend, not Slack
 
 **What changed.** The run's message leaves through Resend's HTTP API now, copied

@@ -221,6 +221,9 @@ create table if not exists efb.run_status (
   catch_up_sessions jsonb,
   splits jsonb,
   flags jsonb,
+  -- What the Cloudflare page has of this run: "snapshot: on (latest.json,
+  -- snapshots/<close>.json)" or "snapshot: off (dry run)".
+  snapshot text,
   primary key (target_close, job)
 );
 

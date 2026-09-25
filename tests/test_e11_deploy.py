@@ -31,17 +31,23 @@ DDL = re.compile(
 
 def test_the_roles_file_grants_only_on_efb() -> None:
     assert "create role efb_writer login" in ROLES
-    assert "create role efb_reader login" in ROLES
-    assert ROLES.count("grant usage on schema efb") == 2
-    assert ROLES.count("alter default privileges in schema efb") == 2
+    # One role: the read role went with the Render web service, and the archive
+    # role arrives with retention.
+    assert "create role efb_reader login" not in ROLES
+    assert "create role efb_archiver login" not in ROLES
+    # One role, so one of each statement rather than two.
+    assert ROLES.count("grant usage on schema efb") == 1
+    assert ROLES.count("alter default privileges in schema efb") == 1
     assert "schema public" not in ROLES
     assert "on database" not in ROLES
     assert "superuser" not in ROLES
     assert "bypassrls" not in ROLES
-    # the write role gets DML, the read role only SELECT
-    assert "grant select, insert, update, delete on all tables in schema efb" in ROLES
-    assert "grant select on all tables in schema efb" in ROLES
-    assert "alter default privileges in schema efb" in ROLES
+    # DML for the writer, and no delete: no code path deletes a row, so the grant
+    # would have no caller to trace it to.
+    assert "grant select, insert, update on all tables in schema efb" in ROLES
+    assert "insert, update, delete" not in ROLES
+    assert "delete" not in ROLES.split("--")[-1]
+    assert "grant select on all tables in schema efb" not in ROLES
 
 
 def test_the_roles_file_carries_placeholders_not_passwords() -> None:

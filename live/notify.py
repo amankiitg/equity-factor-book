@@ -138,6 +138,7 @@ def compose(
     splits: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
+    snapshot: str | None = None,
 ) -> str:
     """The fields, in order, ready for a preview.
 
@@ -185,6 +186,10 @@ def compose(
     # A split is named here because it moves a held position without a decision
     # being made, and an unexplained large move is named because it is the one
     # thing in the appended session a person has to look at.
+    if snapshot:
+        # Whether the page has this run is as much a part of "did it run" as the
+        # status is, so a deliberate `off` says so rather than going unmentioned.
+        lines.append(f"Snapshot: {snapshot}.")
     if splits:
         lines.append(f"Corporate actions: {', '.join(splits)}.")
     if flags:
@@ -370,6 +375,7 @@ def notify_run(
     splits: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
+    snapshot: str | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -401,6 +407,7 @@ def notify_run(
         splits=splits,
         flags=flags,
         store=store,
+        snapshot=snapshot,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message

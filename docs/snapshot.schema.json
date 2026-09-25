@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/efb/equity-factor-book/docs/snapshot.schema.json",
+  "title": "EFB live book snapshot",
+  "description": "One object per run, written by scripts/run_live_daily.py to Cloudflare R2 as latest.json and snapshots/<close>.json, and read by the Cloudflare page through an R2 binding. The writer is tested against this schema, so the writer and the page cannot drift. JSON has no NaN: every number is a number or null, and null means the run did not have it.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "target_close",
+    "expected_next_by",
+    "dry_run",
+    "store",
+    "run_status",
+    "construction",
+    "breadth",
+    "book",
+    "hedge",
+    "exposures",
+    "reconciliation"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC, when the snapshot was built."
+    },
+    "target_close": {
+      "type": ["string", "null"],
+      "description": "The session the book is priced from."
+    },
+    "expected_next_by": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "The UTC instant by which the next run's snapshot should already exist: the next NYSE session at the cron's own slot plus the stated grace. Past it, the page is in a failure state."
+    },
+    "dry_run": {"type": "boolean"},
+    "store": {
+      "type": ["string", "null"],
+      "description": "Where the run's writes went, or why they could not go anywhere."
+    },
+    "run_status": {
+      "type": "object",
+      "required": ["status", "detail", "failing_inputs", "catch_up", "catch_up_sessions", "splits", "flags", "snapshot"],
+      "properties": {
+        "status": {
+          "type": ["string", "null"],
+          "enum": ["ok", "stale_stopped", "error", null],
+          "description": "Every value except ok is a failure state on the page."
+        },
+        "detail": {"type": "string"},
+        "failing_inputs": {"type": "array"},
+        "worst_input": {"type": ["string", "null"]},
+        "worst_sessions_behind": {"type": ["integer", "null"]},
+        "catch_up": {"type": "boolean"},
+        "catch_up_sessions": {"type": "array", "items": {"type": "string"}},
+        "splits": {"type": "array", "items": {"type": "string"}},
+        "flags": {"type": "array"},
+        "notify_status": {"type": ["string", "null"]},
+        "snapshot": {"type": ["string", "null"]}
+      }
+    },
+    "construction": {
+      "type": "string",
+      "description": "Generated from the proposal's own fields, never asserted beside it."
+    },
+    "breadth": {
+      "type": "object",
+      "required": ["n_eff_kept", "n_eff_full_book", "kept_label", "full_book_label"],
+      "description": "There is no unqualified n_eff anywhere in this document: n_eff_kept is the book that trades and n_eff_full_book is the 499-name book before the floor, each with its label.",
+      "properties": {
+        "n_eff_kept": {"type": ["number", "null"]},
+        "n_eff_full_book": {"type": ["number", "null"]},
+        "kept_label": {"type": "string"},
+        "full_book_label": {"type": "string"}
+      }
+    },
+    "book": {
+      "type": "object",
+      "required": ["n_names", "names"],
+      "properties": {
+        "n_names": {"type": "integer"},
+        "n_kept": {"type": ["integer", "number", "null"]},
+        "n_long": {"type": ["integer", "number", "null"]},
+        "n_short": {"type": ["integer", "number", "null"]},
+        "gross": {"type": ["number", "null"]},
+        "net": {"type": ["number", "null"]},
+        "max_kept_weight": {"type": ["number", "null"]},
+        "achieved_annual_vol": {"type": ["number", "null"]},
+        "expected_cost_bps": {"type": ["number", "null"]},
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ticker", "weight", "side"],
+            "properties": {
+              "ticker": {"type": "string"},
+              "weight": {"type": ["number", "null"]},
+              "side": {"type": "string", "enum": ["long", "short", ""]},
+              "reason": {"type": ["string", "null"]},
+              "z": {"type": ["number", "null"]},
+              "alpha": {"type": ["number", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "hedge": {
+      "type": "object",
+      "properties": {
+        "idio_share_after_fmp": {"type": ["number", "null"]},
+        "max_abs_exposure_after_fmp": {"type": ["number", "null"]},
+        "post_hedge_idio_share": {"type": ["number", "null"]},
+        "post_hedge_max_abs_exposure": {"type": ["number", "null"]}
+      }
+    },
+    "exposures": {
+      "type": "object",
+      "properties": {
+        "realized_market_beta": {"type": ["number", "null"]},
+        "realized_market_beta_shrunk": {"type": ["number", "null"]},
+        "residual_exposure_shrunk": {"type": ["number", "null"]},
+        "residual_exposure_winsor": {"type": ["number", "null"]}
+      }
+    },
+    "reconciliation": {
+      "type": "object",
+      "properties": {
+        "intended_notional": {"type": ["number", "null"]},
+        "filled_notional": {"type": ["number", "null"]},
+        "realized_annual_vol": {"type": ["number", "null"]},
+        "expected_cost_bps": {"type": ["number", "null"]}
+      }
+    }
+  }
+}

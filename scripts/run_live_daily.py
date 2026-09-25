@@ -65,6 +65,7 @@ def already_ran(job: str, run_date: str) -> bool:
         return False
     rows = frame.loc[(frame["run_date"] == run_date) & (frame["job"] == job)]
     return bool(len(rows))
+    return rows
 
 
 def record_run(job: str, run_date: str, status: str, detail: str = "") -> None:
@@ -90,8 +91,12 @@ def record_run(job: str, run_date: str, status: str, detail: str = "") -> None:
     store.upsert("cron_runs", rows)
 
 
-def store_proposal(as_of: str) -> None:
-    """Write the proposal manifest, positions and trade reasons to the store."""
+def store_proposal(as_of: str) -> pd.DataFrame:
+    """Write the proposal manifest, positions and trade reasons to the store.
+
+    Returns the rows it wrote, reasons attached, because the snapshot carries the
+    same book the store does and re-deriving it would let the two disagree.
+    """
     from live import store, trade_reasons
 
     manifest = json.loads((PROPOSAL_DIR / f"proposal_{as_of}.json").read_text())
@@ -260,19 +265,70 @@ def finish_run(
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
+    manifest: dict[str, Any] | None = None,
+    book: pd.DataFrame | None = None,
+    reconciliation: dict[str, Any] | None = None,
     poster: Any = None,
+    snapshot_poster: Any = None,
 ) -> int:
-    """Notify the owner, record the run, and return the process exit code.
+    """Snapshot the run, notify the owner, record it, and return the exit code.
 
-    The message goes out here, after the proposal and the orders and never
-    before, so a failed send can neither block nor roll back the run. A run
-    whose message was not delivered is recorded as such, on the row and in the
-    cron detail, and exits nonzero, because a run the owner was not told about
-    is a run that did not do its job either way.
+    Order matters three ways. The snapshot is written first, so the page shows the
+    run even when the run failed and even when the message could not go out. The
+    message goes second, after the proposal and the orders and never before, so a
+    failed send can neither block nor roll back the run. The row goes third,
+    carrying what the message said and what the snapshot is. A run whose message
+    was not delivered, or whose snapshot could not be uploaded, exits nonzero:
+    the owner was not told, or the page cannot show it, and either way the run did
+    not do its job.
     """
-    from live import notify, staleness
+    from live import notify, staleness, store
+    from live import snapshot as snapshot_module
     from live.store import store_label
 
+    store_name = store_label()
+    row = staleness.run_status_row(
+        result,
+        run_date=run_date,
+        status=status,
+        dry_run=dry_run,
+        detail=detail,
+        n_orders=orders,
+        gross_notional=gross,
+        catch_up=len(catch_up_sessions or []) > 1,
+        catch_up_sessions=catch_up_sessions,
+        splits=splits,
+        flags=flags,
+    )
+    if manifest is None:
+        # A stopped run still has a book to show: the last one proposed. The page
+        # must not blank on the evening the loop refused to price another.
+        manifest, book = snapshot_module.previous_proposal()
+    if reconciliation is None:
+        reconciliation = result.get("reconciliation") or {}
+    snapshot_detail, snapshot_failed = "", False
+    try:
+        written = snapshot_module.write_snapshot(
+            run={**row, "store": store_name},
+            manifest=manifest,
+            book=book,
+            reconciliation=reconciliation,
+            construction=snapshot_module.chosen_row(manifest),
+            dry_run=dry_run,
+            poster=snapshot_poster,
+        )
+        snapshot_detail = str(written["detail"])
+        row["snapshot"] = snapshot_detail
+    except Exception as exc:  # noqa: BLE001 - recorded, and it fails the run
+        snapshot_failed = True
+        snapshot_detail = notify.scrub(f"snapshot failed: {type(exc).__name__}: {exc}")
+        row["snapshot"] = snapshot_detail
+        logger.error("%s", snapshot_detail)
+        if status == "ok":
+            # With the switch on, a snapshot that cannot be uploaded is a failure
+            # of the run, exactly as a message that cannot be sent is.
+            status, detail = "error", snapshot_detail
+            row["status"], row["detail"] = status, detail
     notified = notify.notify_run(
         status=status,
         target_close=result.get("target_close"),
@@ -287,27 +343,16 @@ def finish_run(
         catch_up_sessions=catch_up_sessions,
         splits=splits,
         flags=flags,
-        store=store_label(),
+        store=store_name,
+        snapshot=snapshot_detail,
         poster=poster,
     )
     delivered = notified["status"] == notify.STATUS_SENT
     store_failed = False
+    row["notify_status"] = notified["status"]
+    row["notify_failed"] = not delivered
     try:
-        staleness.write_run_status(
-            result,
-            run_date=run_date,
-            status=status,
-            dry_run=dry_run,
-            detail=detail,
-            notify_status=notified["status"],
-            notify_failed=not delivered,
-            n_orders=orders,
-            gross_notional=gross,
-            catch_up=len(catch_up_sessions or []) > 1,
-            catch_up_sessions=catch_up_sessions,
-            splits=splits,
-            flags=flags,
-        )
+        store.upsert(staleness.TABLE, [row])
     except Exception as exc:  # noqa: BLE001 - the message already went out
         # The store is what failed, so there is nowhere to record it: the
         # message the owner already has is the report, and the exit code
@@ -333,7 +378,7 @@ def finish_run(
             notify.scrub(f"{type(exc).__name__}: {exc}"),
         )
     logger.info("run recorded as %s, notification %s", status, notified["status"])
-    if not delivered or store_failed:
+    if not delivered or store_failed or snapshot_failed:
         return 1
     return 0 if status == "ok" else 1
 
@@ -362,6 +407,9 @@ def main() -> int:
     catch_up_sessions: list[str] = []
     splits: list[str] = []
     flags: list[dict[str, Any]] = []
+    # Filled on the success path; a stopped or failed run writes the snapshot
+    # without them, and it falls back to the last proposal on disk.
+    snapshot_inputs: dict[str, Any] = {}
     try:
         # The model inputs are the git seed plus the Postgres appendix, so a
         # fresh container starts from seed plus every session the loop has
@@ -442,7 +490,7 @@ def main() -> int:
         # Evening: propose tomorrow's book from the latest close.
         manifest = evening_job.build_proposal(appendix=appendix_identity)
         as_of = str(manifest["as_of"])
-        store_proposal(as_of)
+        book = store_proposal(as_of)
 
         # Morning: gate, guard, submit (dry run by default), reconcile.
         morning = morning_job.run_morning(as_of, dry_run=dry_run)
@@ -450,6 +498,11 @@ def main() -> int:
 
         row = reconcile.daily_record(as_of, dry_run=dry_run)
         store_reconciliation(as_of, row)
+        snapshot_inputs = {
+            "manifest": manifest,
+            "book": book,
+            "reconciliation": row,
+        }
     except Exception as exc:  # noqa: BLE001 - recorded, never silent
         # The reason is scrubbed before it goes anywhere: a connection string,
         # a key or the webhook URL must not reach the message or the store.
@@ -473,6 +526,9 @@ def main() -> int:
         orders=int(morning.get("orders") or 0),
         gross=float(morning.get("intended_notional") or 0.0),
         catch_up_sessions=catch_up_sessions,
+        splits=splits,
+        flags=flags,
+        **snapshot_inputs,
     )
 
 

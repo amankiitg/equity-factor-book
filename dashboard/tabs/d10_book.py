@@ -209,27 +209,14 @@ def _render_frame(title: str, builder) -> None:
 
 
 def _construction_label_from_fields(proposal: dict) -> str:
-    """The label text, generated only from the proposal's stored fields."""
-    kind = proposal.get("construction")
-    floor_dollars = proposal.get("construction_floor_dollars")
-    floor_shares = proposal.get("construction_floor_shares")
-    top_n = proposal.get("construction_top_n")
-    iterated = bool(proposal.get("floor_iterated"))
-    if kind == "min_position":
-        label = f"min position ${floor_dollars:,.0f}"
-    elif kind == "two_part":
-        label = f"min ${floor_dollars:,.0f} and {int(floor_shares)} shares"
-    elif kind == "share_only":
-        label = f"min {int(floor_shares)} shares"
-    elif kind == "top_n":
-        label = f"top {int(top_n)} by absolute alpha"
-    else:
-        label = str(kind)
-    if iterated:
-        label += " (iterated to a fixed point)"
-    else:
-        label += " (one pass, not iterated)"
-    return label
+    """The label text, from the one generator the readers share.
+
+    `live/construction_table.construction_label` decides it, so this tab, the
+    Streamlit page and the snapshot cannot drift apart.
+    """
+    from live.construction_table import construction_label
+
+    return construction_label(proposal)
 
 
 def construction_label() -> dict:
