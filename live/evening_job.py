@@ -789,13 +789,16 @@ def build_proposal(
     as_of: pd.Timestamp | None = None,
     nav: float = PAPER_NAV,
     store: bool = True,
+    appendix: dict[str, Any] | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
     Returns the proposal manifest: the universe source and seam, the as-of
     date of every model input and the max staleness, the decomposition
     after the hedge, the achieved vol against the E10 target, the four-way
-    E9 cost split, and the hashes of every frozen input.
+    E9 cost split, and the hashes of every frozen input. `appendix` is the
+    per-input state of the Postgres appendix the run was priced from, so a
+    proposal always names the appendix rows behind it (E11-F15).
     """
     if nav is None or not math.isfinite(nav) or nav <= 0:
         raise ValueError(
@@ -918,6 +921,7 @@ def build_proposal(
     manifest: dict[str, object] = {
         "signal": SIGNAL,
         "as_of": str(as_of_ts.date()),
+        "appendix": appendix or {},
         "universe_source": str(spy_path.relative_to(root)),
         "universe_as_of": universe_as_of,
         "n_names": len(names),

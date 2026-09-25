@@ -1,12 +1,13 @@
-"""The daily live cron: extend, propose, execute, reconcile.
+"""The daily live cron: hydrate, extend, propose, execute, reconcile.
 
-One Render cron runs this after the US close. It extends every model
-input by one session, builds the evening proposal, runs the morning
-execution (dry run unless EFB live keys are present), and stores the
-day's forecast beside its outcome. The live series goes to Supabase
-through live.store, which falls back to local files when Supabase is not
-configured. Every run is recorded in cron_runs, so a re-fire is a no-op
-rather than a duplicate.
+One Render cron runs this after the US close. It hydrates every model input
+from the git seed plus the Postgres appendix (live.appendix), extends each by
+one session, writes the new sessions back to the appendix, builds the evening
+proposal, runs the morning execution (dry run unless EFB live keys are
+present), and stores the day's forecast beside its outcome. The live series
+goes to Supabase through live.store, which falls back to local files when
+Supabase is not configured. Every run is recorded in cron_runs, so a re-fire is
+a no-op rather than a duplicate.
 
 Nothing executes real money. The morning path is dry run by default and
 the live path needs EFB_ALPACA_PAPER_API_KEY and
@@ -224,7 +225,13 @@ def main() -> int:
         return 0
 
     dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
+    from live import appendix as appendix_mod
+
     try:
+        # The model inputs are the git seed plus the Postgres appendix, so a
+        # fresh container starts from seed plus every session the loop has
+        # appended, not from the deploy date.
+        appendix_mod.hydrate()
         # Extend the data and model layers by one session, then rehash.
         extend.extend_archives()
         extend.extend_prices()
@@ -232,12 +239,16 @@ def main() -> int:
         extend.extend_returns()
         extend.extend_model()
         extend.refresh_version()
+        # Write the sessions the run created back to the appendix, then name
+        # the appendix state the proposal is priced from.
+        appendix_mod.persist_new_sessions()
+        appendix_identity = appendix_mod.appendix_manifest()
         from efb import evidence
 
         evidence.snapshot()
 
         # Evening: propose tomorrow's book from the latest close.
-        manifest = evening_job.build_proposal()
+        manifest = evening_job.build_proposal(appendix=appendix_identity)
         as_of = str(manifest["as_of"])
         store_proposal(as_of)
 

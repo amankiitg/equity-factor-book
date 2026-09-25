@@ -1,207 +1,238 @@
-# Sprint E11, Part 1R: the drop-then-admit rule, and the check that stops it
+# Sprint E11, Part 2: the model inputs as a git seed plus a Postgres appendix
 
-**The question this run ends on, at the top because the task stops.**
+**The reviewer's ruling first, because it unblocked this part.** The 51-name
+rank margin gates the book that trades, not the comparison table. The min $5,000
+row stays with its violation recorded, the other four checks stay armed on every
+row, and the live path's raise on a check failure is the guard that fails a day
+whose book falls under 51 names. The share-only book at `dd41d9b` is confirmed:
+150 names, n_eff 70.59, total error 0.689%, p90 1.887%, max weight 5.35%.
 
-Part 1R's rule is implemented, installed and measured, and it passes every
-check on every floor row **except one**: the min $5,000 comparison row keeps 35
-names against the 51-name rank margin, so the fifth check fails there. On this
-table a $5,000 minimum on a $1m book cannot reach 51 names (the rule's local
-maximum is 35, the drop-only count 23, and the $5,000 leg is what makes the row
-small), so that row can never satisfy the check, whatever the rule does.
+**The minor correction the review asked for.** Part 1R's Verification item 1
+answered "no" and then described identical columns, which is the answer form the
+reviewer flagged. The honest form is: yes, two pairs of floor rows carry
+identical **prefix** columns, confined to the superseded prefix measurement and
+explained by it (the min $1,500 and min $2,000 rows share an ordering and a
+stopping `k` of 131; the min $3,000 and min $5,000 rows share `k` of 3), and no
+two rows' **books** are identical. This report uses that form.
 
-So the question is: **does the 51-name rank margin gate the whole comparison
-table, or only the book that trades?** If it gates the table, the min $5,000
-row has to be dropped from the check, or from the table. If it gates only the
-book, Part 1R is complete and Parts 2 to 5 follow, and the $5,000 row is
-reported with its violation as a known property of the row. I did not decide
-it: the check list says every floor row, and the same list says the margin is
-"the rank margin the owner named when choosing", which is a property of the
-chosen book. The two readings disagree, and the pre-registered stop fires under
-the first, so this task stops and asks.
+## Part 2, item 1: what the code does now on a fresh container
 
-The installed book is share-only: **150 names, n_eff 70.592135, total error
-0.6890189%, p90 1.8871021%, net 0, worst post-hedge exposure 1.263e-15, idio
-share 1.0, zero names below floor.** It passes all five checks, it is 7 names
-larger than the one-pass admission set the owner confirmed on (143), and the
-re-decide trigger does not fire.
+On a fresh Render container the nine model inputs live only in the deployed git
+artifacts. Each is read from disk, extended in place, and the appended session is
+written back to the same disk path, which the next container loses.
 
-Nothing is deployed. `dry_run` is still `true`. No proposal was regenerated and
-Guard 1 was not re-derived, because Part 5 waits on the answer above.
+| input | read from, and by | the appended session is written by |
+| --- | --- | --- |
+| prices | `data/raw/prices.parquet`, read by `probes.load_panel` and `evening_job._close_prices` | `live/extend.py::extend_prices`, `combined.to_parquet(path)` |
+| descriptors | `data/models/XS-v1/descriptors.parquet`, read by `probes.load_panel` and `evening_job._input_as_of` | `live/extend.py::extend_model`, `pd.concat([existing_desc, new_desc], ignore_index=True).to_parquet(descriptors_path, index=False)` |
+| factor_returns | `data/models/XS-v1/factor_returns.parquet`, same readers | `live/extend.py::extend_model`, `factor_full.to_parquet(factor_path, index=False)` |
+| specific_returns | `data/models/XS-v1/specific_returns.parquet`, same readers | `live/extend.py::extend_model`, `specific_full.to_parquet(specific_path, index=False)` |
+| factor_cov | `data/models/XS-v1/factor_cov.parquet`, read by `eval_risk._xs_pieces`; a snapshot with no date | `live/extend.py::extend_model` recomputes `fx.ewma_factor_cov` over the whole factor history and overwrites the file |
+| specific_var | `data/models/XS-v1/specific_var.parquet`, read by `eval_risk._xs_pieces` and `trade_reasons` | `live/extend.py::extend_model`, `pd.concat([...]).to_parquet(sv_path, index=False)` |
+| shares | `data/raw/shares_history.parquet`, read by `probes.load_panel` | `live/extend.py::extend_shares` calls `probes.fetch_share_history`, which writes `efb/probes.py:490` `cached.to_parquet(path, index=False)` |
+| sectors | `data/processed/sectors.parquet`, read by `probes.load_panel` and `evening_job._input_as_of` | `live/extend.py::extend_archives` calls `universe.archive_constituents`, which writes `efb/universe.py:85` `constituents.to_parquet(path, index=False)` |
+| universe (SPY) | the newest `data/raw/spy_holdings/spy_holdings_*.parquet`, read by `evening_job.load_spy_universe` | `live/extend.py::extend_archives` calls `spy.archive_snapshot`, which writes a new dated file at `efb/spy.py:234` `payload.to_parquet(path, index=False)` |
 
-## The rule, as re-specified
+The hazard is the two ends of that table. `extend_prices` downloads from the last
+stored date, so a container that starts from the deployed artifacts re-extends
+from the deploy date every evening; and `evening_job._input_as_of` reads
+whatever dates the files hold, so a run that skips the extension prices a book
+from stale inputs and reports it as fresh. Nothing in the code tells the two
+apart.
 
-`live/evening_job.py` gains `floor_order` (the `|w_i| / max(dollar_floor,
-share_floor * price_i)` ordering on the full-book weights, stable), 
-`admit_clearing_names` (one admission pass), `enforce_floor_by_drop_then_admit`
-(the rule) and `floor_book_violations` (the five checks). `sized_kept_weights`
-and `kept_shares` now hold the sizing and share math that `finalize_kept_set`
-used to inline, so the search and the book read the same vector from the same
-function; `kept_set_clears_floor` is the search's cheap check, measured at
-0.0002s against `finalize_kept_set`'s 0.0067s on the full book, and agreeing
-with it on 40 random kept sets.
+## Part 2, item 2: the migration cost
 
-The rule: drop from the full book with `enforce_floor_on_final_weights` to its
-fixed point, admit names in the floor ordering while the enlarged set's final
-weights still clear every kept name's floor, repeat the admission pass until a
-pass admits nothing, then run the drop step once more as a check; if it drops
-anything, repeat from the admission. The cycle cap is 10, and at the cap the
-function returns `converged` false so the caller reports rather than picking a
-cycle. Every floor row converged in **1 cycle**, after 3 or 4 admission passes.
+**Rows and megabytes per input.** Measured from the committed artifacts: the
+whole artifact, the eleven sessions after the seed cutoff of 2026-09-03, and the
+bytes per session that the appendix adds.
 
-## The book, every floor row
-
-From `live/construction_table.parquet`. "book" is the installed kept set,
-"drop" the drop-only count, "one-pass" the owner's confirmed basis (drop plus
-one admission pass), "prefix" the superseded E11-F13 rule kept for the record.
-All six rows converged in one cycle.
-
-| construction | book | drop | one-pass | prefix | passes | admitted | checks | n_eff | total error | p90 | max weight | net | worst exposure | idio | below floor |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| min $1,500 | 234 | 194 | 222 | 131 | 3 | 40 | ok | 110.712067 | 2.7603160% | 8.0247230% | 4.0408% | 0 | 1.804e-15 | 1.0 | 0 |
-| min $2,000 | 189 | 145 | 185 | 131 | 4 | 44 | ok | 95.554202 | 2.3792549% | 6.7577500% | 4.3692% | 0 | 1.166e-15 | 1.0 | 0 |
-| min $3,000 | 94 | 72 | 88 | 3 | 3 | 22 | ok | 54.531726 | 1.2962986% | 4.7158405% | 6.1722% | 0 | 1.228e-15 | 1.0 | 0 |
-| min $5,000 | 35 | 23 | 32 | 3 | 3 | 12 | **35 names, below the 51 name rank margin** | 19.886236 | 0.5846929% | 1.6406132% | 11.9495% | 0 | 4.014e-15 | 1.0 | 0 |
-| two-part, $1,500 + 20sh | 129 | 87 | 124 | 66 | 4 | 42 | ok | 66.216759 | 0.7735140% | 2.1244166% | 5.4499% | 0 | 1.728e-15 | 1.0 | 0 |
-| share-only, 20 shares | **150** | 119 | 143 | 16 | 4 | 31 | ok | 70.592135 | 0.6890189% | 1.8871021% | 5.3463% | 0 | 1.263e-15 | 1.0 | 0 |
-
-Reading the row the owner chose: enforcement moved share-only from 119 names
-(the drop-only book the reviewer asked the owner not to decide on) to 143 (the
-one-pass admission set the owner confirmed on) to **150** (the rule's local
-maximum). n_eff moves 58.822271 to 68.521819 to 70.592135, so the rule's extra
-7 names add 2.07 of n_eff. Total error and p90 move with the added names:
-0.6426% to 0.7767% to 0.6890% and 2.0385% to 1.8515% to 1.8871%.
-
-**By construction, not a check** (Verification item 4): the book is at least as
-large as the drop-only set and as the one-pass set, because the rule starts at
-the drop-only set and only adds names. The stored columns show it: 234/194,
-189/145, 94/72, 35/23, 129/87, 150/119.
-
-**The five checks.** Four hold on every floor row: net dollar 0 of gross
-against the 0.01 bound, worst post-hedge exposure from 1.166e-15 to 4.014e-15
-against 1e-12, idio share exactly 1.0, and zero names below floor. The fifth,
-at least 51 kept names, fails on the min $5,000 row alone, as above.
-
-The live path (`build_proposal`) raises on any violation, so a book that would
-trade cannot be built with a failing check. The table records the checks as a
-string per row instead of raising, because raising would make the artifact
-unbuildable and hide the measurement.
-
-## The re-decide trigger, on these numbers
-
-Pre-registered in E11-F12 and re-run here as Part 1R requires: compare the
-enforced share-only book against the enforced min $2,000 book, both on this
-rule's numbers, and stop if (a) share-only no longer has both the lower total
-error and the lower p90, or (b) any enforced row is better or equal on both
-n_eff and total error.
-
-| reading | share-only: n_eff, error, p90 | min $2,000: n_eff, error, p90 | (a) fires | (b) fires |
-| --- | --- | --- | --- | --- |
-| Part 1R book | 70.592135, 0.6890189%, 1.8871021% | 95.554202, 2.3792549%, 6.7577500% | no | no |
-
-Branch (a): share-only has both the lower error (0.689% against 2.379%) and the
-lower p90 (1.887% against 6.758%). Branch (b): the rows with higher n_eff are
-min $1,500 (110.712067, error 2.7603160%) and min $2,000 (95.554202, error
-2.3792549%), and both carry higher error than share-only; min $3,000
-(54.531726), min $5,000 (19.886236) and two-part (66.216759) all have lower
-n_eff. Neither branch fires.
-
-For the record, the gap the owner weighed has narrowed again: two-part now sits
-at n_eff 66.216759 against share-only's 70.592135, where at the confirmation it
-was 64.683243 against 68.521819, and its error is 0.7735140% against 0.6890189%.
-
-## Ordering robustness, measured and not used to select
-
-The same rule, the same floors, the names ordered by `|alpha_i|` descending
-instead of `|w_i| / floor_i`. Nothing in the table's selection uses this.
-
-| construction | floor-order names | alpha-order names | floor-order n_eff | alpha-order n_eff | n_eff gap |
+| input | artifact MB | rows | rows after the cutoff | sessions | rows per session |
 | --- | --- | --- | --- | --- | --- |
-| min $1,500 | 234 | 225 | 110.712067 | 107.396085 | -2.995% |
-| min $2,000 | 189 | 168 | 95.554202 | 88.140760 | -7.758% |
-| min $3,000 | 94 | 89 | 54.531726 | 51.537304 | -5.491% |
-| min $5,000 | 35 | 35 | 19.886236 | 18.679509 | -6.068% |
-| two-part, $1,500 + 20sh | 129 | 112 | 66.216759 | 57.902919 | -12.555% |
-| share-only, 20 shares | 150 | 152 | 70.592135 | 66.600370 | **-5.655%** |
+| prices | 61.233 | 3,606,680 | 9,086 | 11 | 826 |
+| descriptors | 19.259 | 702,800 | 38,654 | 11 | 3,514 |
+| factor_returns | 1.429 | 71,136 | 198 | 11 | 18 |
+| specific_returns | 16.172 | 1,848,332 | 5,467 | 11 | 497 |
+| specific_var | 2.248 | 93,944 | 5,489 | 11 | 499 |
+| factor_cov | 0.015 | 18 (a 17x17 snapshot) | 324 values | 11 | 289 values |
+| shares | 2.146 | 434,462 | 53 | 10 | 5 |
+| sectors | 0.010 | 503 | 503 | 1 | 2 |
+| universe | 0.019 per file | 1,006 | 1,006 | 2 | 503 |
+| **total** | **164.6 (with returns, which is derived)** | | **60,780 rows** | | **6,164** |
 
-On the share-only row the two orders differ by 5.655% in n_eff, under the 10%
-the reviewer set for flagging it at the top, so it is not flagged there and is
-reported here. Note the direction: the alpha order keeps *two more* names (152
-against 150) and still scores 5.655% lower n_eff, so the count and the breadth
-do not move together. On the two-part row the order matters enough to cross the
-10% line (-12.555%), which is a fact about that comparison row, not about the
-book.
+**The run's read and write time.** Measured on a copy of the real artifacts with
+the local fallback, which is the same code path with a filesystem instead of the
+session pooler: `appendix.hydrate` 2.93s, `persist_new_sessions` 0.71s on the
+first pass and 0.58s on the second, byte-identical in content. The appendix held
+9,086 prices rows, 38,654 descriptor rows, 5,467 specific-return rows, 5,489
+specific-variance rows, 198 factor-return rows, 53 share rows, 503 sector rows
+and 1,006 universe rows, and the second persist left every count unchanged. The
+network cost of the same calls through the session pooler is unmeasured: it
+needs a `postgresql://` connection string, which is not on this machine.
 
-## Determinism, and the rule's run time
+**The code touched.** `live/appendix.py` is new (the specs, `artifact_rows`,
+`hydrate`, `persist_new_sessions`, `appendix_manifest`). `live/supabase_schema.sql`
+gains nine `e11_*` tables. `live/evening_job.py` takes an optional `appendix`
+argument and stores it in the manifest. `scripts/run_live_daily.py` hydrates
+before the extensions, persists after them, and passes the appendix identity
+into `build_proposal`. `tests/test_e11_appendix.py` is new.
 
-Determinism is tested on a synthetic book where the answer is arithmetic:
-`test_drop_then_admit_is_deterministic` runs the rule twice on the same inputs
-and asserts the same kept set and the same search report. The stored artifact is
-deterministic too: two consecutive `build_table(store=True)` runs produce
-byte-identical parquet, md5 `21cf6707ac5d8375ea6f72c674e2a6d2` both times. The
-search's run time is deliberately not a column, because a clock reading would
-make the artifact differ on every build.
+## Part 2, item 3: the database size against the free tier
 
-On the live path the rule takes **0.08895804092753679 seconds** for the
-share-only book (1 cycle, 4 admission passes), stored as
-`floor_search_seconds` in the proposal manifest, and the whole
-`build_proposal` runs in 4.45s locally, so the evening job's cost is unchanged
-in any way that matters.
+**What the appendix holds.** Only sessions after 2026-09-03. The rolling
+estimators need history before that cutoff, and the seed supplies it, so the
+appendix carries nothing the seed already has.
 
-## The pseudoinverse fallback: naming it, and correcting the record
+**EFB's own projection, one year of appends (252 sessions).** Row widths are the
+Postgres heap cost (24-byte tuple header, 4-byte line pointer, the column widths,
+aligned to 8) plus about 30% for the primary-key index.
 
-The Part 1 report's Verification item 2 said three fallbacks fire inside the
-enforced-book loops, and asked for the rows and passes. Measured by wrapping
-`np.linalg.solve` and recording the set size at each raise, with the call index
-inside a row's loop being its pass index (one finalize, one hedge call):
+| table | rows a year | MB a year |
+| --- | --- | --- |
+| `efb.e11_prices` | 208,152 | 36.8 |
+| `efb.e11_descriptors` | 885,528 | 147.4 |
+| `efb.e11_specific_var` | 125,748 | 18.3 |
+| `efb.e11_specific_returns` | 125,244 | 13.0 |
+| `efb.e11_universe` | 126,756 | 30.3 |
+| `efb.e11_factor_cov` | 72,828 | 9.8 |
+| `efb.e11_factor_returns` | 4,536 | 0.7 |
+| `efb.e11_shares` | 1,260 | 0.2 |
+| `efb.e11_sectors` | 504 | 0.1 |
+| **total** | **1,550,556 rows** | **256.7** |
 
-| row | pass | names in the kept set at the raise | kept after the loop |
-| --- | --- | --- | --- |
-| min $1,500 | none | | 194 |
-| min $2,000 | none | | 145 |
-| min $3,000 | 3 | 72 | 72 |
-| min $5,000 | 2 | 27 | 23 |
-| min $5,000 | 3 | 23 | 23 |
-| two-part, $1,500 + 20sh | none | | 87 |
-| share-only, 20 shares | none | | 119 |
+Plus the live series in `efb` (positions at 150 rows a session, proposals,
+reconciliations, NAV, cron runs, run status), about 4.5 MB a year. So EFB's own
+share after a year is **about 261 MB, which is 52% of a 500 MB free-tier cap**.
+The descriptor table is 57% of it, because the artifact carries four value
+columns per descriptor per name per session.
 
-So the three are `min_position_3000` pass 3 at 72 names, and
-`min_position_5000` pass 2 at 27 names and pass 3 at 23 names. The share-only
-row, the book, takes none. Those two rows are the small ones, where a sector
-or style column of the 17-wide design has no name in the subset and `X'X` is
-singular rather than merely ill-conditioned; the pinv fallback still recovers
-the hedge, and both rows reach 1e-15 exposure at the end.
+**The credit lab's current size could not be read, and that is a hole in this
+item.** The task asks for it read-only. Three routes were tried and none is
+available on this machine:
 
-**The earlier report's Verification item 2 answered "no fallback", and that was
-wrong.** It was wrong because it counted only the fallbacks in one full
-`build_table` run and attributed all 148 of them to the prefix scan's
-degenerate small sets, on the strength of a 36-solve build that had already
-shown 4 raises. Those 4 are these 3 plus one elsewhere. The books were never
-affected, and the correction is the table above.
+1. `pg_database_size` through the Management API needs
+   `EFB_SUPABASE_ACCESS_TOKEN`, which is **empty** in `.env`.
+2. A direct `psql` connection needs `EFB_SUPABASE_DB_URL`, which is **not in
+   `.env`** at all, and the password is deliberately not on disk.
+3. PostgREST cannot run SQL. `EFB_SUPABASE_URL` and `EFB_SUPABASE_SECRET_KEY`
+   are now set, and they do reach the shared project read-only, but the REST API
+   exposes tables, not `pg_database_size`.
 
-## What the check stop does and does not block
+**What the owner should run before provisioning**, in the Supabase SQL editor,
+one statement:
 
-- The rule, its checks, the robustness measurement, the determinism test, the
-  timing and the fallback attribution are done and committed.
-- The table and the live path are installed on the rule's book.
-- **Not done, and blocked on the question at the top:** Part 5's regeneration of
-  the stored proposals and the re-derivation of Guard 1. They are Part 5 work
-  and the check that fired is about the book the proposals would be priced on.
-- Parts 2 to 4 (the inputs into Postgres, the staleness stop, the notification,
-  the corrected deploy steps) do not depend on the book at all. The previous
-  revision of this task said to carry on with them while a book question is
-  open. I have not started them in this commit, because the stop list says to
-  stop; say the word and they follow immediately.
+```sql
+select pg_size_pretty(pg_database_size(current_database())) as db_size,
+       pg_size_pretty(sum(pg_total_relation_size(format('%I.%I', schemaname, tablename))))
+         filter (where schemaname not in ('pg_catalog', 'information_schema')) as tables_size
+from pg_tables;
+```
+
+Read the number against the 400 MB line, which is 80% of the 500 MB cap. EFB
+projects to 261 MB after a year, so the design crosses that line only if the
+credit lab's share is above about 139 MB. **This is the one pre-registered stop
+I could not evaluate**, and it is a stop about deploying, not about building:
+the schema file is text and applies nothing here.
+
+**One thing the credentials did confirm, read-only.** `GET
+{EFB_SUPABASE_URL}/rest/v1/` with the service key returns HTTP 200 and an
+OpenAPI document titled "standard public schema" listing **9 paths, seven named
+relations**: `cron_runs`, `decisions`, `live_attribution`, `order_rejections`,
+`pnl_log`, `positions` and `settings`, with the remaining two being the API
+root. No `efb` or `e11_` name appears, so the Exposed schemas setting has
+not changed and the direct-Postgres decision holds. It also shows why every EFB
+statement is schema-qualified: the credit lab has its own `cron_runs`,
+`positions` and `decisions`, and EFB's live series would collide with them in
+`public`.
+
+**A warning about those two credentials.** `EFB_SUPABASE_SECRET_KEY` is the
+service-role key. It bypasses row-level security across the whole shared
+project, credit-trading-lab included, so it must never be set on a Render
+service, which is the owner's own rule at E11-F11. The store's runtime path is
+`EFB_SUPABASE_DB_URL` plus `EFB_DB_SCHEMA=efb`; the secret key stays local and
+is not read by any code path in the store. The probe above is the only thing I
+used it for, and it read the API's table list, not a row of the lab's data.
+
+## Part 2: the build
+
+`live/appendix.py` implements the design. `artifact_rows` turns each artifact
+into appendix-shaped rows (one row per key with a `trade_date`, a MultiIndex
+flattened, the covariance matrix unpivoted), `hydrate` writes each artifact back
+as seed plus appendix, and `persist_new_sessions` upserts the post-cutoff
+sessions. `register_tables` puts the nine tables and their keys into the store's
+registry, so the upsert's `ON CONFLICT` covers them and a re-run leaves one row
+per key.
+
+Three things the build had to get right, all of them found by the tests rather
+than by reading code:
+
+- **The seed goes back verbatim.** The share-count artifact holds **62,022
+  duplicated `(date, ticker)` pairs before the cutoff**, from distinct fetches
+  with different share values, so deduplicating the seed would have dropped
+  them. The seed rows are not after the cutoff and the appendix rows are after
+  it, so the two sets cannot collide and no reconciliation is needed.
+- **58 share rows have no date at all** (status `empty`, delisted names such as
+  ABK and ANR). A date-keyed appendix cannot hold them and a `<= cutoff` seed
+  filter drops them, so the seed filter is `not (date > cutoff)` and they stay
+  in git where they belong.
+- **`factor_returns` has no ticker and `factor_cov` has no ticker and no date**,
+  so the key is per input, not assumed: `(trade_date, factor)` and `(trade_date,
+  factor, with_factor)`. The covariance snapshot is stamped with the run's
+  latest close.
+
+The first run on a fresh database seeds the appendix from the deployed artifacts
+before hydrating, so the committed post-cutoff rows go into Postgres instead of
+being truncated by an empty appendix.
+
+**The three requirements, each with its test:**
+
+1. **The read equals the local artifacts.** `test_the_real_artifacts_round_trip_and_report_hashes`
+   copies the real artifacts, hydrates, and compares a content hash of every
+   input. All eight date-bearing inputs match, printed in the Verification
+   section.
+2. **The append is idempotent.**
+   `test_an_append_is_idempotent` runs `persist_new_sessions` twice and asserts
+   the same counts, one row per key on prices and descriptors, and the same
+   written-row counts. `test_hydration_reproduces_every_input_it_seeded` runs
+   the whole cycle on synthetic fixtures for all nine inputs.
+3. **The proposal names the appendix it was priced from.**
+   `build_proposal` takes the identity and stores it in the manifest, and
+   `test_the_proposal_names_the_appendix_it_was_priced_from` asserts the
+   manifest carries per-input rows, latest session and a sha256. The identity
+   travels into `efb.proposals.manifest` through `store_proposal`, so a stored
+   proposal can always name the appendix behind it. I took this option rather
+   than one transaction for the append and the proposal, which the task allows
+   as the alternative.
+
+## What is left
+
+Parts 3 (the staleness hard stop), 3b (the notification), 4 (the corrected
+deploy steps) and 5 (the regenerated proposals and Guard 1 on the 150-name
+book) are not started. Each is its own commit and Part 3 is the one the owner
+called non-negotiable, so the next session should begin there.
 
 ## Verification
 
 ### Commands run and their last lines
 
-Per-step selection while the code changed (rule 21), pasted with the command:
+Per-step selection while the code changed (rule 21):
 
 ```text
-$ .venv/bin/python -m pytest tests/test_construction_table.py tests/test_e11_evening.py -q
-................................                                         [100%]
-32 passed in 119.87s (0:01:59)
+$ .venv/bin/python -m pytest tests/test_e11_appendix.py tests/test_e11_store.py tests/test_run_live_daily.py -q
+..........................                                               [100%]
+26 passed in 55.69s
+```
+
+```text
+$ .venv/bin/python -m pytest tests/test_e11_appendix.py -q -s
+....prices             a5fc51fa204de5044f2cf23cd970674660e77a0ea8b024cdc4aee6f6542de2dc a5fc51fa204de5044f2cf23cd970674660e77a0ea8b024cdc4aee6f6542de2dc
+descriptors        229773403887fbeee580012d76a91e0b12b58ff3d479f6c9ab089459fa12b32c 229773403887fbeee580012d76a91e0b12b58ff3d479f6c9ab089459fa12b32c
+factor_returns     8d98e667b3ae8ac6701068e2c038c60a18cef3b04a2c21b2d05e78fecda060ef 8d98e667b3ae8ac6701068e2c038c60a18cef3b04a2c21b2d05e78fecda060ef
+specific_returns   0b61fb04c83307a308df1fb18c7aa332058ee2a6105bd10ccbf2389e663aa2a6 0b61fb04c83307a308df1fb18c7aa332058ee2a6105bd10ccbf2389e663aa2a6
+specific_var       a4924ec465c04cd07ded4283d43224e7b01d09dcbecf8854b17276ca5fe4a232 a4924ec465c04cd07ded4283d43224e7b01d09dcbecf8854b17276ca5fe4a232
+shares             0f382013335694222ec48cdfea61b74e74af2abffb0222ee9f03bbf358371707 0f382013335694222ec48cdfea61b74e74af2abffb0222ee9f03bbf358371707
+sectors            2149e32bb0ab9b088cedea4c25c640fab7243cdd5565066f0cbbbffaef506227 2149e32bb0ab9b088cedea4c25c640fab7243cdd5565066f0cbbbffaef506227
+universe           3ce92e6fbf70e09c7bdc29138d9b042bd2bf67416d2c59e32e709b189efba6a5 3ce92e6fbf70e09c7bdc29138d9b042bd2bf67416d2c59e32e709b189efba6a5
+5 passed in 50.67s
 ```
 
 `make lint`, exit 0:
@@ -210,148 +241,113 @@ $ .venv/bin/python -m pytest tests/test_construction_table.py tests/test_e11_eve
 .venv/bin/ruff check efb dashboard live tests
 All checks passed!
 .venv/bin/mypy efb
-pyproject.toml: note: unused section(s): module = ['alpaca', 'alpaca.trading.*']
 Success: no issues found in 33 source files
 .venv/bin/black --check efb dashboard live tests
-All done! ✨ 🍰 ✨
-115 files would be left unchanged.
+All done! ... 165 files would be left unchanged.
 ```
 
-`make test`, the full suite, exit 0:
+`make test`, the full suite, exit 0. The same command at `dd41d9b` was 732
+passed, 1 skipped, 3 warnings in 510.38s; this part adds exactly the six tests
+in `tests/test_e11_appendix.py`, and nothing else moved.
 
 ```text
-732 passed, 1 skipped, 3 warnings in 510.38s (0:08:30)
+$ make test > /tmp/full2.log 2>&1; echo "EXIT=$?"
+$ tail -c 700 /tmp/full2.log
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+738 passed, 1 skipped, 3 warnings in 603.62s (0:10:03)
+EXIT=0
 ```
 
-The count is 732 against the 727 recorded at `2a9e0b6`. The five added tests are
-the fast-check agreement, the local-maximum property, determinism, the cycle
-cap, and the check messages. The wall time (510.38s against 759.79s) is not
-comparable to the previous run: that one was measured while other heavy scripts
-of mine were running against the same machine, so the difference is mostly
-contention, not the code. The one real speed change in the rule's favour is that
-the floor search now checks a set with `kept_set_clears_floor` at 0.0002s
-instead of building the full finalize at 0.0067s.
 `make verify-evidence`, exit 0:
 
 ```text
-.venv/bin/python -c "from efb import evidence; p = evidence.verify(); print('evidence OK' if not p else chr(10).join(p)); raise SystemExit(1 if p else 0)"
 evidence OK
 ```
 
 ### Headline numbers, file and key
 
-All from `live/construction_table.parquet`, one row per `construction`, in the
-order min $1,500, min $2,000, min $3,000, min $5,000, top_n_150, top_n_200,
-two_part, share_only, full_book:
-
 | number | file and key |
 | --- | --- |
-| the book 234/189/94/35/129/150 | `n_kept` |
-| drop-only 194/145/72/23/87/119 | `n_kept_drop_only` |
-| one-pass admission 222/185/88/32/124/143 | `n_kept_one_pass_admission` |
-| the superseded prefix 131/131/3/3/66/16 | `n_kept_prefix` |
-| cycles 1 and passes 3/4/3/3/4/4 | `admit_cycles`, `admit_passes` |
-| added names 40/44/22/12/42/31 | `admit_extra` |
-| the checks | `floor_book_checks`, "ok" on five rows and the rank-margin message on min $5,000 |
-| n_eff 110.712067/95.554202/54.531726/19.886236/66.216759/70.592135 | `n_eff_kept` |
-| total error 0.027603160/0.023792549/0.012962986/0.005846929/0.007735140/0.006890189 | `total_gross_error_share_of_nav` |
-| p90 0.080247230/0.067577500/0.047158405/0.016406132/0.021244166/0.018871021 | `quant_error_p90_pct_of_target` |
-| max weight 0.040408/0.043692/0.061722/0.119495/0.054499/0.053463 | `max_weight_share_of_gross` |
-| net 0 on all six | `net_dollar_share_of_gross` |
-| worst post-hedge exposure 1.804e-15/1.166e-15/1.228e-15/4.014e-15/1.728e-15/1.263e-15 | `post_hedge_max_abs_exposure` |
-| idio share 1.0 on all six, below floor 0 on all six | `post_hedge_idio_share`, `n_below_floor_final` |
-| alpha-order names 225/168/89/35/112/152 | `n_kept_alpha_order` |
-| alpha-order n_eff 107.396085/88.140760/51.537304/18.679509/57.902919/66.600370 | `n_eff_kept_alpha_order` |
-| n_eff gaps -2.995/-7.758/-5.491/-6.068/-12.555/-5.655 percent | `n_eff_alpha_gap_pct` |
-| the live path's rule time 0.08895804092753679s | `live/proposals` manifest key `floor_search_seconds`, from `build_proposal(store=False)` |
+| the nine inputs and their per-session rows | `live/appendix.py::SPECS`, measured in the table above from each artifact |
+| post-cutoff rows 9,086 / 38,654 / 198 / 5,467 / 5,489 / 324 / 53 / 503 / 1,006 | `live/construction_table.parquet` is not involved: measured by `appendix.artifact_rows(spec, DATA_ROOT, cutoff=SEED_CUTOFF)` |
+| the round-trip hashes | printed above, and recomputed by the test |
+| hydrate 2.93s, persist 0.71s / 0.58s | `/tmp/part2_timing.py`, pasted logic in the report |
+| 1,550,556 rows and 256.7 MB after a year | `/tmp/part2_projection.py` |
+| 62,022 duplicated share keys, 58 undated share rows | `data/raw/shares_history.parquet`, measured |
+| 9 exposed REST paths, seven named relations, none named efb | `GET {EFB_SUPABASE_URL}/rest/v1/`, title "standard public schema" |
 
-### git diff --stat from `base_commit` (2a9e0b6)
+### git diff --stat from `base_commit` (dd41d9b)
+
+This part's own files, with `git add -N live/appendix.py
+tests/test_e11_appendix.py` first so the new files appear in the diff:
 
 ```text
- handoff/LOG.md                    | 104 ++++++
- handoff/PROJECT_CONTEXT.md        |  24 +-
- handoff/REPORT.md                 | 750 ++++++++++++++------------------------
- handoff/TASK.md                   |  81 ++++-
- live/construction_table.parquet   | Bin 43229 -> 49789 bytes
- live/construction_table.py        | 153 ++++++--
- live/construction_weights.parquet | Bin 33674 -> 36102 bytes
- live/evening_job.py               | 361 +++++++++++++++++--
- tests/test_construction_table.py  |  48 ++-
- tests/test_e11_evening.py         | 224 +++++++++++-
- 10 files changed, 1200 insertions(+), 545 deletions(-)
+$ git diff --stat dd41d9b -- handoff/REPORT.md live/appendix.py \
+    live/evening_job.py live/supabase_schema.sql scripts/run_live_daily.py \
+    tests/test_e11_appendix.py
+ handoff/REPORT.md          | 614 ++++++++++++++++++++++-----------------------
+ live/appendix.py           | 420 +++++++++++++++++++++++++++++++
+ live/evening_job.py        |   6 +-
+ live/supabase_schema.sql   |  80 ++++++
+ scripts/run_live_daily.py  |  29 ++-
+ tests/test_e11_appendix.py | 272 +++++++++++++++++++++
+ 6 files changed, 1102 insertions(+), 319 deletions(-)
 ```
 
-This is the diff at the Part 1R commit, measured after it, so it counts this
-section. Re-taking it would move the `handoff/REPORT.md` line and both totals by
-the size of whatever paragraph replaced this one, which is why the number above
-is the one measured and is not re-taken.
-
-`handoff/LOG.md`, `handoff/PROJECT_CONTEXT.md` and the TASK.md part of that
-number are the reviewer's and owner's commits `7978caa` and `e0429f2`, which
-land between `2a9e0b6` and here; my TASK.md flip is two lines of it.
-`live/construction_weights.parquet` changed because the installed book changed:
-it now carries the 150-name share-only book where the committed one carried
-119.
+`git diff --stat dd41d9b` over the whole tree adds three files this part did not
+touch, `handoff/LOG.md` (+43), `handoff/PROJECT_CONTEXT.md` (13 changed) and
+`handoff/TASK.md` (48 changed, the reviewer's `ef67024`), for 9 files changed,
+1198 insertions, 327 deletions. Nothing else in the repository changed: no
+research artifact, no construction table, no notebook.
 
 ### Yes or no, each with evidence
 
-1. **Any two rows or two estimators identical.** No. Every floor row differs in
-   book count, n_eff, error, p90 and max weight; the closest pair is the
-   min $1,500 and min $2,000 **prefix** columns, which are identical for the
-   reason recorded in the Part 1 report (same ordering, same stopping `k` of
-   131), and the prefix is a recorded superseded rule, not a row's book. The
-   min $3,000 and min $5,000 rows also carry identical prefix columns (3 names,
-   n_eff 2.240310, error 0.000925, p90 0.005012), again the recorded superseded
-   rule; the two rows' books differ (94 against 35).
-2. **Any exception caught and skipped, or fallback taken, with counts.** Yes,
-   and named in the section above: the pseudoinverse fallback in
-   `live/sizing.hedge_exact_robust` fires 3 times in the six drop-only loops,
-   on `min_position_3000` pass 3 (72 names) and `min_position_5000` passes 2 and
-   3 (27 and 23 names). No exception is swallowed: the fallback returns the
-   best achievable hedge and the achieved exposure is reported. The earlier
-   report's answer to this item was wrong and said so above.
+1. **Any two rows or two estimators identical.** Yes, and confined to the
+   superseded prefix columns, as corrected above: the min $1,500 and min $2,000
+   floor rows carry identical prefix columns because they share an ordering and
+   a stopping `k` of 131, and the min $3,000 and min $5,000 rows carry identical
+   prefix columns at `k` of 3. No two rows' books are identical. In this part,
+   the new appendix tables have no rows in common with anything else.
+2. **Any exception caught and skipped, or fallback taken, with counts.** Yes:
+   the store's local parquet fallback, exercised by every new test because
+   `EFB_SUPABASE_DB_URL` is unset. That is the fallback working as designed, not
+   an exception swallowed, and it is why the timings above are filesystem
+   timings. No connection was attempted and no error was suppressed.
 3. **Any criterion reworded or replaced by a different test.** No. No
-   `sprints/E*/RESULTS.json` criterion, threshold or criterion string was
-   touched, and no criterion ID was added. The rule change came from the
-   reviewer's own Part 1R, not from me.
-4. **Any criterion that passes by construction.** Two things, both declared:
-   (a) the prefix scan's own validity is by construction and is why the table
-   does not store a below-floor column for it; (b) the book being at least as
-   large as drop-only is by construction, because the rule starts there and only
-   adds names. The reviewer's instruction says not to report (b) as a check and
-   to report it here instead, which is what the section above does. The five
-   checks are not by construction: the min $5,000 row fails one of them, which
-   is the point of the check existing.
+   `RESULTS.json` criterion, threshold or string was touched. The reviewer's
+   ruling on the rank margin changed no stored criterion; it settled which rows
+   the check gates.
+4. **Any criterion that passes by construction.** The round trip's equality is
+   by construction in the sense that `hydrate` writes seed plus appendix and the
+   test then reads seed plus appendix, so it cannot fail for a reason other than
+   the code being wrong. What makes it worth having is that it is driven on the
+   real 165 MB of artifacts and hashes every input, and it did catch two real
+   defects (the dropped share rows and the missing factor columns). Declared.
 5. **Any number that moved by a factor of 10 or more from its previous stored
-   value.** No. The book columns are new; the two superseded counts
-   (`n_kept_drop_only`, `n_kept_prefix`) and the prefix metric columns are
-   unchanged from the Part 1 table, and every other column that existed before
-   this commit is unchanged, which the diff check in the Part 1 report
-   established column by column.
+   value.** No. No stored number moved: the construction table is untouched by
+   this part, and the only new data are the appendix tables and their rows.
 6. **Any stored number typed into a notebook.** No. No notebook was opened,
-   edited or executed.
+   edited or executed. (The path `/tmp/part2_timing.py` is a scratch script, not
+   a notebook, and its logic is quoted above.)
 7. **Any earlier verdict changed.** No. Every verdict in `sprints/E*/RESULTS.json`
-   and the registry is untouched, and the construction table carries no verdict.
+   and the registry is untouched.
 
 ### Anything decided that the reviewer might disagree with
 
-**I installed the rule's book while the fifth check fails on another row.** The
-book is share-only, which passes all five checks, and the failing row is a
-comparison row that cannot satisfy the margin. Installing the book is what
-makes the artifact and the live path coherent and what the owner confirmed;
-refusing to install it would have left the table claiming a book (the drop-only
-one) that the reviewer has already ruled out. If the reviewer reads the check as
-gating the whole table, the fix is to drop the min $5,000 row from the check
-list or from the table, and I will do either.
+**The first run seeds the appendix from the deployed artifacts.** With an empty
+appendix, hydrating strictly (seed plus appendix) would truncate the committed
+post-cutoff rows. I made `hydrate` seed the appendix from the local artifact
+when it finds the appendix empty, so the first run takes those rows into
+Postgres instead of dropping them, and after that the appendix is authoritative.
+If the reviewer wants a strict first run with an explicit migration step
+instead, it is a one-line change plus an owner step.
 
-**The rule's run time is stored on the live manifest and not in the table.** The
-reviewer asked for the run time on the live path; storing it in the table would
-have made the parquet differ on every build, which is a worse defect than the
-extra field is a benefit.
+**The proposal records the appendix identity rather than sharing a
+transaction.** The task offers both, and the transaction spans an evening's
+extension and its proposal; the identity makes the same guarantee auditable from
+the stored proposal alone.
 
-**The fast floor check is a second implementation of the share rule.**
-`kept_set_clears_floor` and `finalize_kept_set` both call `sized_kept_weights`
-and `kept_shares`, so there is one implementation and two entry points, and a
-test asserts they agree. If the reviewer would rather the search pay 0.0067s per
-trial than have two entry points, the rule takes about 30 times longer per row
-(0.09s becomes about 2.7s per row) and I will change it.
+**The shared database size is unmeasured.** I could not read it, three routes
+were tried, and the report says so with the one statement the owner can run. I
+would not deploy on that number being unknown, and the report says that too.

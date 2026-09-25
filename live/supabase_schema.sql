@@ -109,3 +109,83 @@ create table if not exists efb.cron_runs (
   finished_at timestamptz,
   primary key (run_date, job)
 );
+
+-- E11-F15: the model-input appendix. The git artifacts are the seed through
+-- 2026-09-03; these tables hold the sessions after that cutoff, one row per
+-- key, so a re-run of a session upserts instead of duplicating. A run hydrates
+-- the artifacts as seed plus appendix, extends by the new session and writes
+-- only that session back. Nothing here is research history: the pre-2026-09-04
+-- rows stay in git, byte-identical.
+
+create table if not exists efb.e11_prices (
+  trade_date date not null,
+  ticker text not null,
+  open double precision, high double precision, low double precision,
+  close double precision, adj_close double precision, volume double precision,
+  dividend double precision, split_factor double precision,
+  primary key (trade_date, ticker)
+);
+
+create table if not exists efb.e11_descriptors (
+  trade_date date not null,
+  ticker text not null,
+  descriptor text not null,
+  value_raw double precision, value_winsor double precision,
+  value_z double precision, value_z_orth double precision,
+  n_obs double precision, look_ahead boolean,
+  primary key (trade_date, ticker, descriptor)
+);
+
+create table if not exists efb.e11_factor_returns (
+  trade_date date not null,
+  factor text not null,
+  f double precision, f_pre_identification double precision,
+  estimation text, is_sector boolean, is_reference_sector boolean,
+  n_names double precision,
+  primary key (trade_date, factor)
+);
+
+create table if not exists efb.e11_specific_returns (
+  trade_date date not null,
+  ticker text not null,
+  specific_return double precision,
+  primary key (trade_date, ticker)
+);
+
+create table if not exists efb.e11_specific_var (
+  trade_date date not null,
+  ticker text not null,
+  specific_var_raw double precision, specific_var double precision,
+  bucket text, bucket_mean double precision, n_obs double precision,
+  primary key (trade_date, ticker)
+);
+
+create table if not exists efb.e11_factor_cov (
+  trade_date date not null,
+  factor text not null,
+  with_factor text not null,
+  covariance double precision,
+  primary key (trade_date, factor, with_factor)
+);
+
+create table if not exists efb.e11_shares (
+  trade_date date not null,
+  ticker text not null,
+  shares double precision, source text, fetched_at text, status text,
+  primary key (trade_date, ticker)
+);
+
+create table if not exists efb.e11_sectors (
+  trade_date date not null,
+  ticker text not null,
+  gics_sector text, gics_sub_industry text, source text,
+  primary key (trade_date, ticker)
+);
+
+create table if not exists efb.e11_universe (
+  trade_date date not null,
+  ticker text not null,
+  name text, identifier text, sedol text, weight double precision,
+  sector text, shares_held double precision, local_currency text,
+  primary key (trade_date, ticker)
+);
