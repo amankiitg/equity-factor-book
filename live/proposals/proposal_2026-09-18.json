@@ -5,7 +5,7 @@
   "avg_trade_size": 6451.612903225807,
   "breadth_governing": 1.4514330998604308,
   "breadth_naive_bound": 1.722713538428218,
-  "code_commit": "ae1c686f4c8ad8bff29090e61b86435ca571cb3c",
+  "code_commit": "8196e4345a9c74a094931fbb7341aae88ddb10d5",
   "construction": "share_only",
   "construction_floor_dollars": null,
   "construction_floor_shares": 20,
@@ -33,7 +33,7 @@
   "floor_search_converged": true,
   "floor_search_cycles": 1,
   "floor_search_passes": 3,
-  "floor_search_seconds": 0.08706854202318937,
+  "floor_search_seconds": 0.08624733402393758,
   "gross": 0.7369127890832414,
   "gross_cap_bound": false,
   "ic": 0.01210198660523347,
@@ -47,7 +47,7 @@
     "shares": "2026-09-17",
     "specific_returns": "2026-09-18",
     "specific_var": "2026-09-18",
-    "universe": "2026-09-21"
+    "universe": "2026-09-18"
   },
   "input_hashes": {
     "alpha/summary.parquet": "527fe1cdf5a3021c4b9694f28699f04a97ce22df7bb615c51a175d4644c29bdf",
@@ -125,6 +125,6 @@
   },
   "signal": "idio_momentum",
   "target_annual_vol": 0.1,
-  "universe_as_of": "2026-09-21",
-  "universe_source": "raw/spy_holdings/spy_holdings_2026-09-21.parquet"
+  "universe_as_of": "2026-09-18",
+  "universe_source": "raw/spy_holdings/spy_holdings_2026-09-18.parquet"
 }

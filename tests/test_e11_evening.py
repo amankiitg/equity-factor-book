@@ -592,3 +592,39 @@ def test_usable_prices_passes_every_kept_name_through() -> None:
     """The negative control: the guard changes nothing when prices are fine."""
     prices = ev.usable_prices(["A", "B"], {"A": 10.0, "B": 20.0})
     assert list(prices) == [10.0, 20.0]
+
+
+def test_load_spy_universe_clamps_to_the_close(tmp_path: Path) -> None:
+    """The universe is the newest archive on or before the close being priced.
+
+    The 2026-09-18 proposal used to record its universe as of 2026-09-21, a
+    snapshot filed one session after the close it priced.
+    """
+    _write_spy_archive(tmp_path, "2026-09-18", ["AAA", "BBB"])
+    _write_spy_archive(tmp_path, "2026-09-21", ["AAA", "CCC"])
+    frame, path = ev.load_spy_universe(tmp_path, as_of=pd.Timestamp("2026-09-18"))
+    assert path.name == "spy_holdings_2026-09-18.parquet"
+    assert sorted(frame["ticker"]) == ["AAA", "BBB"]
+    # the same close a day later still sees only what existed by then
+    frame, path = ev.load_spy_universe(tmp_path, as_of=pd.Timestamp("2026-09-19"))
+    assert path.name == "spy_holdings_2026-09-18.parquet"
+    # and the newest archive is still the answer when no close is given
+    frame, path = ev.load_spy_universe(tmp_path)
+    assert path.name == "spy_holdings_2026-09-21.parquet"
+
+
+def test_a_universe_that_postdates_the_close_is_refused(tmp_path: Path) -> None:
+    """The shift audit: no archive on or before the close is a refusal, never a
+    later snapshot used anyway."""
+    _write_spy_archive(tmp_path, "2026-09-21", ["AAA", "BBB"])
+    with pytest.raises(ValueError, match="postdates the close being priced"):
+        ev.load_spy_universe(tmp_path, as_of=pd.Timestamp("2026-09-18"))
+
+
+def test_an_archive_name_without_a_date_is_refused(tmp_path: Path) -> None:
+    archive = tmp_path / "raw" / "spy_holdings"
+    archive.mkdir(parents=True, exist_ok=True)
+    _write_spy_archive(tmp_path, "2026-09-18", ["AAA"])
+    (archive / "spy_holdings_backup.parquet").write_bytes(b"not a parquet")
+    with pytest.raises(ValueError, match="does not carry a date"):
+        ev.load_spy_universe(tmp_path, as_of=pd.Timestamp("2026-09-18"))

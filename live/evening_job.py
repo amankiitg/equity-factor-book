@@ -77,24 +77,54 @@ def _git_commit() -> str:
         return "unknown"
 
 
-def load_spy_universe(data_root: Path = DATA_ROOT) -> tuple[pd.DataFrame, Path]:
+def _archive_date(path: Path) -> pd.Timestamp:
+    """The date in an archive's file name, `spy_holdings_<yyyy-mm-dd>.parquet`.
+
+    The name is the snapshot date by construction: `spy.archive_snapshot` stamps
+    the file with the `as_of` it just fetched. A name that will not parse is a
+    failed read, not a file to skip quietly.
+    """
+    stamp = pd.to_datetime(path.stem.rsplit("_", 1)[-1], errors="coerce")
+    if pd.isna(stamp):
+        raise ValueError(f"SPY archive {path.name} does not carry a date")
+    return pd.Timestamp(stamp).normalize()
+
+
+def load_spy_universe(
+    data_root: Path = DATA_ROOT, as_of: pd.Timestamp | None = None
+) -> tuple[pd.DataFrame, Path]:
     """The live universe from the SPY archive, asserted rather than assumed.
 
-    The latest dated SPY holdings file is the universe. The seam is
-    enforced: a file dated before the live-universe seam fails loudly
-    instead of silently falling back to the frozen history.
+    The universe is the **newest archive dated on or before the close being
+    priced**, so the book cannot read a holdings snapshot filed after the close
+    it claims to price. With no close given the newest archive is used, which is
+    the live path's own answer (`as_of` defaults to the latest data date).
+
+    Two refusals, both loud. A file dated before the live-universe seam fails
+    instead of silently falling back to the frozen history, and a close with no
+    archive on or before it is refused rather than served a later one: a look-ahead
+    universe is a wrong book, not a parse to be patched.
     """
     root = Path(data_root)
     archive_dir = root / "raw" / "spy_holdings"
     files = sorted(archive_dir.glob("spy_holdings_*.parquet"))
     if not files:
         raise FileNotFoundError(f"no SPY archive files under {archive_dir}")
+    if as_of is not None:
+        close = pd.Timestamp(as_of).normalize()
+        allowed = [file for file in files if _archive_date(file) <= close]
+        if not allowed:
+            raise ValueError(
+                f"no SPY archive dated on or before {close.date()}: the newest is "
+                f"{files[-1].name} and it postdates the close being priced"
+            )
+        files = allowed
     path = files[-1]
     frame = pd.read_parquet(path)
-    as_of = pd.to_datetime(frame["as_of"].iloc[0]).date()
-    if as_of < SPY_UNIVERSE_MIN_AS_OF:
+    as_of_date = pd.to_datetime(frame["as_of"].iloc[0]).date()
+    if as_of_date < SPY_UNIVERSE_MIN_AS_OF:
         raise ValueError(
-            f"SPY archive {path.name} is dated {as_of}, before the live "
+            f"SPY archive {path.name} is dated {as_of_date}, before the live "
             f"universe seam {SPY_UNIVERSE_MIN_AS_OF}"
         )
     return frame, path
@@ -833,12 +863,13 @@ def build_proposal(
             "nav is a failed run"
         )
     root = Path(data_root)
-    universe, spy_path = load_spy_universe(root)
-    universe_as_of = str(pd.to_datetime(universe["as_of"].iloc[0]).date())
-    spy_tickers = sorted(universe["ticker"].astype(str).str.upper().str.strip())
-
+    # The close comes first, because the universe is clamped to it: a holdings
+    # snapshot filed after the close must not inform the book priced on it.
     wide, _counts = eval_risk.load_clean_wide(root)
     as_of_ts = pd.Timestamp(as_of) if as_of is not None else wide.index.max()
+    universe, spy_path = load_spy_universe(root, as_of=as_of_ts)
+    universe_as_of = str(pd.to_datetime(universe["as_of"].iloc[0]).date())
+    spy_tickers = sorted(universe["ticker"].astype(str).str.upper().str.strip())
     wide_names = [str(column) for column in wide.columns]
     names = [ticker for ticker in spy_tickers if ticker in wide_names]
     excluded = [ticker for ticker in spy_tickers if ticker not in wide_names]
