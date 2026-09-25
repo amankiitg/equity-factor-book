@@ -12,11 +12,39 @@ with the role SQL as text and a rolled-back typing probe, and the book that
 trades matching the confirmed book to the last digit. The APH price guard
 was an unasked-for catch.
 
+**The first deploy must prove the round trip on the real project before any
+gate evening counts (owner, 2026-09-25).** Part 2's round-trip hashes ran
+against the store's local **parquet** fallback, not against any Postgres. Part
+2's own Verification item 2 says every new test used the fallback, and Part 3
+says no Postgres server or docker was available. So no SQL path has been
+exercised at all. After the first deploy, and before either gate evening
+counts:
+- run a verification that reads seed plus appendix **from the real `efb`
+  schema** and compares every input's hash with the local artifacts at the
+  same commit and session;
+- check type fidelity explicitly: NaN in float columns and in `jsonb` (JSON
+  has no NaN), dates, timestamps with time zones, and float precision;
+- store the result in `run_status` (or a sibling table) with the hashes;
+- have the report say plainly where each earlier test ran.
+
+A gate evening counts only after this passes, and Part 6 is amended to say so.
+Build the verification command now, as part of item 4b's commit.
+
 **But the task was set `done` with Parts 6 and 7 open.** Part 6 is the gate,
 which needs the owner's deploy, but its items 1 and 3 are code that must land
 **before** the deploy. Part 7 was not done. Four more items came out of the
-review. **The owner does not deploy until items 1 to 4 below are committed.**
+review. **The owner does not deploy until items 1, 2, 3, 4 and 4b below are
+committed.**
 Items 5 and 6 may follow the deploy.
+
+**Owner, 2026-09-25:** items 1 to 4 are accepted. Item 4 is widened into a
+corporate-actions rule, and item 4b is added by the reviewer.
+- The size query returned **about 2 MB** for the whole shared project, far
+  under the 400 MB stop.
+- `EFB_SUPABASE_URL` and `EFB_SUPABASE_SECRET_KEY` are removed from `.env`.
+- The public-schema function limit is accepted, and the deploy notes state it.
+- Retention: keep in Postgres the window the longest model lookback needs,
+  and archive older days to git.
 
 Run them in order and commit each alone. `dry_run` stays `true`.
 
@@ -55,23 +83,94 @@ than it says, on the page the owner will watch for two evenings.
 - Regenerate the two stored proposals.
 - Add a test that the page's breadth figure equals `n_eff_kept`.
 
-### 4. APH's split, in the appended data
+### 4. Corporate actions: measure APH's damage, then a split rule for the append (owner, widened)
 
-APH has no close from 2026-08-28 to 09-03 and then halves, 158.78 to 82.78,
-on 2026-09-04, **the first appended session**.
-- Print APH's `adj_close` either side of the gap, its return on 09-04 in the
-  returns panel, its specific return that day, and its `specific_var` before
-  and after.
-- If the 09-04 return is about -48%, the appendix carries a split as a return.
-  That feeds the 09-04 factor fit (APH is a large cap under cap weights),
-  `specific_var` and every book since. Say what it moved, and fix it in the
-  appendix. It is post-seed, so no seed row is restated.
-- Either way, report how many names have an absolute daily return above 40%
-  in any appended session, each with its explanation.
+**The owner's point: this is a design problem, not only a measurement.**
+- E1's outlier flag is 50%, so a -48% split return is not caught.
+- yfinance's adjusted close back-adjusts history on a split, while the
+  pipeline is append-only.
+- Those two are incompatible. Every future split either produces a fake return
+  on the new day or requires restating stored rows, which the project forbids.
 
-Four missing closes in a row for an index member also make the price vendor a
-failing source for those days (STANDARDS rule 14). Record it in the hygiene
-ledger.
+**4a. Measure APH.** Print APH's `adj_close` either side of the gap, the
+return on 2026-09-04 in the returns panel, the specific return that day, and
+`specific_var` before and after. Then report how many names have an absolute
+daily return above 40% in any appended session, each with its explanation.
+
+- **If the appendix carries the split as a return**, repair it now, before the
+  deploy and before any gate evening. Re-derive the appended sessions from
+  2026-09-04 onward under the rule in 4b. Record it in the hygiene ledger as a
+  correction, with before-and-after hashes of each appended artifact and the
+  old and new APH return beside each other.
+- **Pre-2026-09-04 rows stay byte-identical.** Print the hashes.
+- Nothing has traded and no gate evening has run, so this is the cheapest
+  moment it will ever be.
+- Record the vendor as a failing source for APH's four missing closes
+  (STANDARDS rule 14).
+
+**4b. The corporate-actions rule, in the append path.**
+
+1. **Detect.**
+   - **Primary:** the vendor's split record for the ticker (yfinance's
+     `splits`).
+   - **Cross-check:** refetch the last stored session's adjusted close and
+     compare it with the stored value. A ratio that differs from 1 is a
+     back-adjustment, and it must match the split factor.
+   - **Disagreement:** a mismatch between the two, or a back-adjustment with no
+     split record, **stops the run** as an `error` naming the ticker. It is
+     never guessed at.
+2. **Compute the new day's return with the factor**, never from the
+   back-adjusted history:
+   `r_t = close_t * factor / close_{t-1} - 1`, where the factor is the new
+   shares per old share (2 for a 2:1 split). No stored row is touched.
+3. **Record the event.** Add an appendix table,
+   `efb.e11_corporate_actions`, holding ticker, effective date, factor, source
+   and the cross-check ratio. Every run stores it in `run_status`, and the
+   notification names it: "split: APH 2:1 applied".
+4. **Consumers that read price levels across the seam**, such as momentum or a
+   market cap built from price times shares, apply the cumulative factor at
+   read time and never rewrite rows. List every consumer of price levels in
+   the report, and say which read returns and which read levels.
+5. **Shares across a split.** The share-count fetch may lag the split. For as
+   long as price and shares sit on different bases, the market cap (and so the
+   size descriptor and the WLS weights) is off by the factor. Apply the factor
+   to shares until the fetched count reflects the split, and say how that is
+   detected.
+6. **Held positions across a split, for the live phase.** Alpaca adjusts the
+   position; the stored book does not. Reconciliation and the next day's
+   trades must apply the factor to prior shares, or the loop will think it
+   holds half the position and buy the other half. Test it.
+7. **Unexplained large moves are flagged, not blocked.** An appended return
+   above 40% in absolute value with no corporate action behind it goes into
+   `run_status` and the notification. A real crash is a real return, so the
+   owner reads it rather than the run refusing it.
+
+**Tests:**
+- a synthetic 2:1 split, and a 3:2 split, give the right return with no
+  stored row changed (hash before and after);
+- a back-adjustment with no split record stops the run;
+- a lagging share count is corrected;
+- a held position across a split reconciles without a phantom trade;
+- the APH case reproduced from the real rows.
+
+### 4b. The store never falls back silently in production (E11-F17, found in review)
+
+`live/store.py` falls back to parquet under `live/state/` whenever
+`EFB_SUPABASE_DB_URL` is unset. On Render, a missing or mistyped variable would
+write the evening's rows to a disk the next container never sees. The run
+could still notify `ok`, the appendix would re-seed from git every night, and
+the dashboard would read its own empty fallback. That is the healthy-looking
+failure the owner named.
+
+- **The local fallback only on explicit request**: `EFB_STORE=local`, which
+  the test suite and local dry runs set.
+- Otherwise, a missing `EFB_SUPABASE_DB_URL` is an `error` that stops the run
+  and notifies. Under Render (the `RENDER` variable is set) the local mode is
+  refused even if requested.
+- **The first notification line names the store**, for example
+  "store: postgres/efb", so a wrong store is visible in the preview.
+- Tests: an unset URL without `EFB_STORE=local` stops the run; `RENDER` plus
+  `EFB_STORE=local` stops the run; the suite still runs locally.
 
 ### 5. Part 7, still open
 
@@ -85,26 +184,42 @@ ledger.
   is frozen, it is a staleness defect that Part 3's gate cannot see, because the
   descriptors' date advances while one column inside does not.
 
-### 6. E11-F16: the appendix grows without end, and the loop has none
+### 6. E11-F16: retention. Postgres keeps the longest lookback, older days go to git (owner, 2026-09-25)
 
-Part 2 projects about 261 MB a year for EFB alone, and the book runs
-indefinitely. So EFB alone crosses the 400 MB stop line early in its second
-year and the 500 MB cap soon after, whatever credit-trading-lab uses. The
-one-year stop was met in the letter and missed in intent; that is the
-reviewer's spec again, because nothing may assume an end date.
-- **Design retention**, with a three-year projection. Keep in Postgres only
-  what the runtime needs: each estimator's trailing window, plus the series
-  E12 needs (factor returns, specific returns of held names, positions).
-- **Descriptors are 57% of the size.** Say whether the runtime needs all four
-  value columns and any history beyond the current session.
-- **The universe stores the whole SPY file every day.** Say whether diffs
-  suffice.
-- **Build it** if it keeps EFB under 150 MB at three years and restates no seed
-  row.
-- **Add the `efb` schema's size to `run_status`**, and put it in the
-  notification when it passes 300 MB.
+**The owner's design.** Postgres keeps only the rolling window the longest
+model lookback needs. Older days are archived to git.
 
-This may follow the deploy, but must land within a month of it.
+1. **Measure the window.** List every estimator's lookback: the covariance
+   EWMA's effective window at its cutoff, the momentum windows, the beta
+   window, the specific-variance window and anything else. The Postgres
+   window is the longest of them plus a stated margin. Say what E12 needs
+   beyond that; the archive covers it.
+2. **Archive to separate dated files, never into the seed artifacts.** The
+   seed files (`prices.parquet`, `descriptors.parquet` and the rest) are
+   artifacts E1 to E10 were scored on. Appending archived days to them would
+   move their hashes every month. Write
+   `data/live_archive/<input>/<yyyy-mm>.parquet` instead. The read path becomes
+   seed, then archive files, then the Postgres window. Test that the read is
+   identical before and after an archive.
+3. **The archive is a local, deliberate command**, for example
+   `make archive-appendix`, run by the owner or DeepSeek, not by the cron.
+   - It reads the rows older than the window from Postgres.
+   - It writes and commits the archive files.
+   - It verifies the read by hash.
+   - **Only then** does it delete those rows from Postgres.
+   - It records the archive in the hygiene ledger with the date range and
+     hashes.
+   - Nothing on Render ever holds a git write credential.
+4. **The deletion needs its own role.** Add `efb_archiver`, with `delete` on
+   the `e11_*` appendix tables only, used only by the local archive command
+   and never set on Render. The cron's writer does not get `delete`. Give the
+   SQL as text.
+5. **Project three years** with the window in place. Put the `efb` schema's
+   size in `run_status`, and put it in the notification when it passes 300 MB.
+
+This lands within a month of the deploy. A reminder: the archive command is a
+monthly owner action, so say what happens if it is missed. The table grows,
+and the size line in the notification is the alarm.
 
 ### Smaller, in the same commits where they fit
 

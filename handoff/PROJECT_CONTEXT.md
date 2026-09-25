@@ -229,6 +229,21 @@ Settled 2026-09-22. These are no longer open; build on them.
 - **Staleness, confirmed:** trading sessions, zero behind the latest close.
   Shares and sectors are judged on fetch age, because the risk with slow
   inputs is the fetch quietly stopping.
+- **The append handles corporate actions without restating rows.** Owner,
+  2026-09-25. yfinance back-adjusts history on a split while the pipeline is
+  append-only, and E1's 50% outlier flag misses a 2:1 split. So splits are
+  detected at append time and the new day's return is computed with the split
+  factor. Price-level readers apply the cumulative factor at read time, and no
+  stored row is touched.
+- **Retention: Postgres holds the longest model lookback, and older days are
+  archived to git** in separate dated files, never into the seed artifacts
+  E1 to E10 were scored on. The archive is a local, deliberate command with
+  its own delete-only role, never run on Render. It lands within a month of
+  the deploy.
+- **The public-schema function limit is accepted** (2026-09-25). New roles can
+  execute functions in the shared project's `public` schema through
+  PostgreSQL's default PUBLIC grant. Revoking it would change the shared
+  project. The deploy notes state it.
 - **Whatever is chosen, the executed book's breadth is reduced and every E11
   number meeting an E8 transfer coefficient must say so.** The naive bound is
   `sqrt(460 / N_kept)`; the governing one is `sqrt(n_eff_full / n_eff_kept)`,
@@ -328,10 +343,12 @@ Sequenced 2026-09-23. Each numbered item is roughly one TASK.md or less.
    deploy, the owner decides where the daily-extended inputs live on Render
    (E11-F15). **Status at 4048b97:** the appendix, the staleness stop, the
    notification and the deploy steps are built. **Do not deploy** until
-   `e11-pre-deploy` items 1 to 4 land: the universe look-ahead, catch-up
-   labelling, the dashboard's `n_eff`, and the APH split check. Before
-   provisioning, the owner runs the one read-only size query from Part 2 and
-   reads it against 400 MB.
+   `e11-pre-deploy` items 1 to 4b land: the universe look-ahead, catch-up
+   labelling, the dashboard's `n_eff`, the corporate-actions rule and the APH
+   repair, and no silent store fallback. The shared project measured about
+   2 MB on 2026-09-25, against the 400 MB stop. **After the first deploy, the
+   round trip is verified against the real `efb` schema before any gate evening
+   counts**, because every earlier round-trip test ran on the parquet fallback.
    **Resequenced 2026-09-24 after the owner's decisions:**
    1. The prefix fixed point, then the owner re-confirms share-only.
    2. The model inputs move into Postgres.

@@ -2213,3 +2213,65 @@ recorded, not explained.
 
 TASK.md is `e11-pre-deploy` at 4048b97, in six items: 1 to 4 before the
 deploy, 5 and 6 after. PROJECT_CONTEXT's State and plan status are updated.
+
+---
+
+## 2026-09-25 owner: pre-deploy items accepted, corporate actions, retention, size
+
+**All four pre-deploy items are accepted. Item 4 is widened by the owner into a
+corporate-actions rule.** E1's outlier flag is 50%, so a -48% split return is
+not caught, and yfinance back-adjusts history on a split while the pipeline is
+append-only. Those are incompatible: every future split would either fake a
+return or restate stored rows. So item 4 now measures APH's damage and adds a
+rule to the append. Splits are detected from the vendor's split record,
+cross-checked against the back-adjustment ratio, and a disagreement stops the
+run. The new day's return is computed with the factor, and nothing stored is
+touched. The rule is tested with synthetic 2:1 and 3:2 splits. I added three
+consequences the owner's framing implies:
+- price-level readers, such as momentum and market cap, apply the cumulative
+  factor at read time;
+- a lagging share count is corrected, because otherwise the size descriptor
+  and the WLS weights are off by the factor;
+- held positions across a split reconcile without a phantom trade, which
+  matters from day 1 of the live book.
+
+If APH did damage the appended sessions, they are re-derived from 09-04 as a
+recorded correction, before the deploy. Nothing has traded and no gate evening
+has run.
+
+**Size:** the shared project is **about 2 MB** in total (auth 1152 kB, public
+456 kB, storage 272 kB, realtime 56 kB, vault 24 kB), against the 400 MB stop.
+There is no `efb` schema yet.
+
+**Owner actions recorded:** `EFB_SUPABASE_URL` and `EFB_SUPABASE_SECRET_KEY`
+are removed from `.env`. The public-schema function limit is accepted and is
+stated in the deploy notes.
+
+**Retention:** Postgres keeps the window the longest model lookback needs, and
+older days go to git, within a month of the deploy. I added that the archive
+goes to separate dated files, never into the seed artifacts: those are what
+E1 to E10 were scored on, and appending to them would move their hashes
+monthly. The archive is a local command with its own delete-only role, never
+on Render.
+
+**The owner's question: where did Part 2's round-trip tests run?** Against the
+store's local **parquet** fallback, not any Postgres, test or otherwise. Part
+2's Verification item 2 says every new test used the fallback, and Part 3
+says no Postgres server or docker was available on the machine. So no SQL
+path has been exercised. The report did say so, but its headline
+("the read equals the local artifacts") reads stronger than that.
+**Required, per the owner:** after the first deploy, a verification reads
+seed plus appendix from the real `efb` schema and compares hashes with the
+local artifacts. It includes type fidelity, since JSON has no NaN, plus dates,
+time zones and float precision. No gate evening counts until it passes.
+
+**E11-F17, found while answering that:** `live/store.py` falls back to local
+parquet whenever `EFB_SUPABASE_DB_URL` is unset, silently. On Render, a missing
+or mistyped variable would write to a disk the next container never sees,
+could still notify `ok`, and would re-seed from git every night. That is the
+healthy-looking failure again. It is now item 4b, pre-deploy:
+- the fallback runs only on an explicit `EFB_STORE=local`;
+- it is refused under Render;
+- the notification names the store.
+
+TASK.md and PROJECT_CONTEXT are updated to match.
