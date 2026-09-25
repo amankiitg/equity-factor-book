@@ -2,6 +2,95 @@ task_id: e11-pre-deploy
 status: in_progress
 base_commit: 4048b97
 
+## Reviewer notes on B-cron, notes a, b, d and the raw-artifact rewrite (2026-09-25, mid-task; the task continues)
+
+**B-cron is accepted in design.** These are accepted: the web service, the
+`efb_reader` role and `delete` all go, with one grep as the evidence. The switch
+table, the shared schema and NaN as `null` in the document and its text are
+accepted. The 4 GB plan is accepted too: 3.5x over the measured peak. Keep
+`efb_archiver` for item 6. **Note a's stricter window is agreed:**
+`expected_next_by` for a Friday close is Monday evening, so my wording would
+have let a Saturday run count as that close's gate evening. **The rewrite
+incident was handled well.** The artifacts were restored from their snapshots,
+the defect was named and left for its own commit, and the mistake was stated
+plainly. Corrections follow. Items f and g block the deploy, and the rest go
+into the remaining work.
+
+f. **The raw-artifact rewrite is a pre-deploy item. Do it next, after c and
+   e.** The gate evenings run the append path this defect lives in, and the
+   full-job memory measurement (item k) cannot run locally until it is fixed.
+   Acceptance:
+   - a test hashes every file under `data/raw/` before and after
+     `evening_job.build_proposal(store=False)` and asserts that none changed;
+   - a test asserts that archiving a SPY file never writes fewer columns than
+     the file it replaces;
+   - the report names every write the read path made, with where it came from.
+g. **A stopped run's "last proposal on disk" is the deploy image on Render.**
+   The cron's disk is ephemeral, so on a stale evening the page would show the
+   last proposal committed to git, 09-21, as the book the owner holds. Read the
+   last proposal from the store instead, or from the previous `latest.json` in
+   R2, and say which. The snapshot also carries that proposal's own close as
+   `book_as_of`, so the page can never show an old book without its date. Add
+   a test where the store's last proposal is newer than anything on disk.
+   Keeping the previous book on a stopped run is otherwise agreed.
+h. **Notes a and b have no section in `REPORT.md`.** The commit message is the
+   only record of them, and rule 20 applies to the report. Append a section
+   with a Verification block: the subset selection command and its pasted
+   output (the message says 133 passed, 1 skipped), `make lint`, the window
+   instants for the 09-25 close, and the yes/no list.
+i. **Note d needs redoing.** Three problems:
+   - every filled block is pasted twice;
+   - item 4's block ends with a stale `28 files changed, 2673 insertions(+),
+     300 deletions(-)`, which contradicts the `2937 / 297` above it;
+   - the command shown, `git diff --stat 4048b97`, does not produce those
+     outputs today. B-cron's own section shows it gives 41 files.
+
+   Show the command that was actually run, which names the item's commit as
+   the end point (`git diff --stat 4048b97 <item commit>`), once per block. B-cron's own
+   base-commit stat is elided to one line: the same defect, one section later.
+   Paste it in full.
+j. **B-cron's Verification has three gaps:**
+   - it says `make lint` and `make verify-evidence` passed "run above", but
+     neither is pasted in that section;
+   - its yes/no item 5 says "no artifact was written", which is false: the
+     memory measurement in this item rewrote four raw artifacts;
+   - the verify-evidence claim has to be placed in time against the
+     measurement.
+
+   Correct item 5 in a new line. Do not edit the old one; append the
+   correction beside it. Paste the two outputs, and say whether
+   verify-evidence ran before or after the measurement.
+k. **The memory measurement is of hydration plus build, not the full evening
+   job.** The task asked for the full job. 3.5x covers a lot, so the plan
+   stands. Once f lands, measure the full dry-run job locally (fetch, append,
+   cross-check, build, snapshot off) under `/usr/bin/time -l` and paste it. The
+   deploy list gains one step: after the first Render dry run, the owner reads
+   peak memory from Render's metrics before the first gate evening counts.
+l. **SigV4 is hand-rolled and has no known-answer test.** The upload tests
+   check that the header exists and carries the payload hash, not that the
+   signature is right. Add a test against a fixed vector: AWS's published
+   SigV4 example, or one computed once offline with `botocore` and committed
+   as literals. Otherwise the first real R2 put is the first check of the
+   signing code.
+m. **The snapshot is written before the email, but it lists notify state.**
+   Say what the snapshot's notify field holds at write time. Test that a
+   failed upload with `on` still sends the email, and that the email names the
+   upload failure.
+n. **The incident report has two loose ends:**
+   - the ledger says four artifacts were restored, but the pasted output shows
+     three, and `spy_holdings_2026-09-21.parquet` is missing. Paste its restore
+     line, or a `make verify-evidence` output that lists it;
+   - `git add -A` does not stage gitignored files, so name the tracked file
+     that nearly rode along (for example `data/VERSION.json`), or correct the
+     sentence.
+
+**Done from the smaller items:** the writer's `delete` was dropped in B-cron.
+**Still open, in this order:** c, e, then f and the other notes above, item
+5, the remaining smaller items, the owner's full deploy list (with k's Render
+memory step), and item 6 within a month of the deploy. B-web runs in parallel.
+
+---
+
 ## Reviewer notes on items 1 to 4b and A (2026-09-25, mid-task; the task continues)
 
 Items 1, 2, 3, 4 (with 4a), 4b and A are **accepted**. Each part's report was

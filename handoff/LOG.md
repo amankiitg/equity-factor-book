@@ -2412,3 +2412,45 @@ report appended each part this time instead of overwriting it.
 
 Nothing is needed from the owner at this point. PROJECT_CONTEXT's State is
 updated, and TASK.md gains the notes above its remaining items.
+
+---
+
+## 2026-09-25 review: e11-pre-deploy B-cron, notes a, b, d and the raw-artifact rewrite, at 404ddf3 (mid-task)
+
+**B-cron is accepted in design.** The web service, the `efb_reader` role and the
+writer's `delete` are gone, with one grep of `live/store.py` as the evidence. The
+snapshot is uploaded on every run, and the switch semantics match the task. The
+schema is committed and the writer is validated against it. NaN becomes `null`
+in the document as well as its text. Peak RSS was 1.07 GiB for hydration plus
+build, so `2c-4g` gives 3.5x headroom at about $0.21 a month. `efb_archiver` is
+deferred to item 6, which is agreed.
+
+**Note a's design is accepted, with the stricter window.** `expected_next_by`
+for a Friday close falls on Monday evening, so the reviewer's wording would have
+counted a Saturday run. The close's own evening is the right window. Note b is
+accepted in design.
+
+**The rewrite incident.** A local memory measurement rewrote four raw artifacts
+and narrowed the SPY archive by three columns. `make verify-evidence` caught it,
+and the files were restored from `evidence/`. The report states the mistake
+plainly. The defect is now pre-deploy item f: the gate evenings run that path,
+and the full-job memory measurement waits on it.
+
+**Corrections (TASK.md f to n):**
+- (g) On Render, a stopped run's "last proposal on disk" is the deploy image.
+  Read it from the store or R2, and carry `book_as_of`.
+- (h) Notes a and b have no report section and no pasted verification.
+- (i) Note d's fill has three problems: every block is doubled, one summary line
+  is stale, and the command shown cannot produce the output shown. B-cron's own
+  base stat is elided again.
+- (j) B-cron's yes/no item 5 ("no artifact was written") is false. Lint and
+  verify-evidence are claimed but not pasted.
+- (k) The measurement is partial. Measure the full job after f, and read
+  Render's metrics after the first dry run.
+- (l) The hand-rolled SigV4 has no known-answer test.
+- (m) The snapshot is written before the email, but it carries notify state.
+- (n) The ledger says four artifacts were restored and the paste shows three.
+  The `git add -A` sentence does not hold for gitignored files.
+
+No stored-criteria file moved. Nothing is needed from the owner yet. The Render
+memory check joins the deploy list.

@@ -31,13 +31,18 @@ that returns a negative answer has done its job.
 Ten sprints built. E11 is a dry-run loop. Its construction is chosen
 (share-only, 20 shares, 2026-09-24). The store is on direct Postgres, and the
 book, Guard 1 and the sanity gate are being redone (task
-`e11-admit-and-live-gate`). E12's engine has not been started. HEAD 0a764e8, `e11-pre-deploy` in progress. Items 1 to 4b and A are
+`e11-admit-and-live-gate`). E12's engine has not been started. HEAD 404ddf3, `e11-pre-deploy` in progress. Items 1 to 4b and A are
 accepted: the universe clamp, catch-up labelling, qualified breadth names,
 the corporate-actions rule, no silent store fallback, and email through
-Resend. Last clean full suite: 786 passed at item 3; 817 are collected now.
-Still to come before the cron deploys: B-cron (the snapshot writer, the
-memory measurement, no web service), item 5, and the owner's deploy list. No
-SQL path has yet run against a real database. Five model versions
+Resend. B-cron is accepted in design: the cron is the only Render service,
+the R2 snapshot is written on every run, and the plan is `2c-4g` at 1.07 GiB
+measured peak. Notes a (the gate close is the close's own evening) and b are
+built but not yet reported. Last clean full suite: 786 passed at item 3.
+Still to come before the cron deploys: the mypy fix, a clean full suite, and
+the fix for the evening job rewriting `data/raw/` and narrowing the SPY
+archive (open; the artifacts were restored from `evidence/`). Then the
+stopped-run book source, B-cron's report corrections, item 5 and the owner's
+deploy list. No SQL path and no R2 put has yet run against the real service. Five model versions
 in `data/models/registry.json`. XS-v1 is champion, and its `live` block records
 the construction: `share_only`, `share_floor` 20, `dollar_floor` 0,
 `floor_iterated` true. TS-v1 is diagnostic only and
