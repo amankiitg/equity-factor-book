@@ -47,6 +47,25 @@ pre-split, so any number there would be a two-week return wearing a one-session
 label. **The ratio is 0.499226, not 0.5**: the vendor's adjusted close carries
 dividends as well as splits, and APH is one quarterly dividend away from the factor.
 
+**The other numbers item 4a asks for.** APH's `specific_return` panel has **no row
+for the ticker after the gap**: its last row is 2026-08-27 at -0.034983, and
+nothing on 2026-09-04 or any session through 2026-09-09, because the factor
+regression behind it needs the return history the four missing closes removed. So
+the split did not enter the specific-return panel as a value; it entered it as an
+absence. `specific_var` is unchanged either side of the gap and carries no
+information about the split: 0.000600 on 2026-08-31, 09-03 and 09-04 with
+`specific_var_raw` 0.0006 and bucket "Information Technology|NA" (the
+no-bucket-yet fallback, whose `bucket_mean` equals it exactly), then 0.000600 on
+09-08 with the bucket resolved to "Information Technology|3". The split moved
+neither the raw variance nor the shrunk one.
+
+Across every appended session to 2026-09-21, the number of names with an absolute
+daily return above 40% is **zero**, so there is nothing to explain and no repair to
+make. The conditional branch item 4a reserves for a repaired appendix is therefore
+not taken: the appendix carried a hole, not a fake return, and a hole is left as a
+hole. Pre-2026-09-04 rows are byte-identical, verified by the artifact hash in the
+pasted block above.
+
 **Where it did and did not fire.** It fires on the split the vendor reports, on the
 session that split takes effect on. It did not fire anywhere in the appended
 returns, because the only affected session had no close to correct. It fired on the
