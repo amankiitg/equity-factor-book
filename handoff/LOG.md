@@ -2454,3 +2454,15 @@ and the full-job memory measurement waits on it.
 
 No stored-criteria file moved. Nothing is needed from the owner yet. The Render
 memory check joins the deploy list.
+
+**Addendum, same review: two notes changed.**
+- **(f) is structural.** The evening job must have no write path into
+  `data/raw/` at all. History lives in git and new days in Postgres, so any
+  write there violates the design. The SPY archive is the one input that
+  cannot be re-fetched. The before/after hash test stays as the check, but the
+  change itself is removing the write. A test that traps writers makes sure no
+  path back remains.
+- **(l) moves to `boto3`.** The hand-rolled SigV4 is replaced with `boto3`
+  pointed at the R2 endpoint, since R2 is S3-compatible. A maintained library
+  is better than a hand-rolled signer plus a test vector. The tests stub the
+  client, and the scrub covers boto3's error text.

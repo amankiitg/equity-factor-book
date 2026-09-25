@@ -19,12 +19,22 @@ into the remaining work.
 f. **The raw-artifact rewrite is a pre-deploy item. Do it next, after c and
    e.** The gate evenings run the append path this defect lives in, and the
    full-job memory measurement (item k) cannot run locally until it is fixed.
-   Acceptance:
-   - a test hashes every file under `data/raw/` before and after
-     `evening_job.build_proposal(store=False)` and asserts that none changed;
-   - a test asserts that archiving a SPY file never writes fewer columns than
-     the file it replaces;
-   - the report names every write the read path made, with where it came from.
+   **The fix is structural: remove the write, do not guard it.** The evening
+   job has no write path into `data/raw/` at all. The design is history in
+   git and new days in Postgres, so any write under `data/raw/` from the
+   evening job violates the design. The SPY archive is the one input that
+   cannot be re-fetched, so it is the one that matters most. Acceptance:
+   - the report names every place the evening job wrote under `data/raw/`,
+     with file and function, and shows each one removed. New days go to the
+     Postgres appendix, never to a file under `data/raw/`;
+   - the check is a test that hashes every file under `data/raw/` before and
+     after the full dry-run evening job and asserts that none changed. It
+     covers `evening_job.build_proposal(store=False)` too;
+   - a test asserts that no code path reachable from the cron opens a path
+     under `data/raw/` for writing. Monkeypatch the parquet and file writers
+     to raise on any such path, and run the job;
+   - the SPY files already archived under `data/raw/spy_holdings/` stay as
+     they are, byte-for-byte against `evidence/`.
 g. **A stopped run's "last proposal on disk" is the deploy image on Render.**
    The cron's disk is ephemeral, so on a stale evening the page would show the
    last proposal committed to git, 09-21, as the book the owner holds. Read the
@@ -66,12 +76,21 @@ k. **The memory measurement is of hydration plus build, not the full evening
    cross-check, build, snapshot off) under `/usr/bin/time -l` and paste it. The
    deploy list gains one step: after the first Render dry run, the owner reads
    peak memory from Render's metrics before the first gate evening counts.
-l. **SigV4 is hand-rolled and has no known-answer test.** The upload tests
-   check that the header exists and carries the payload hash, not that the
-   signature is right. Add a test against a fixed vector: AWS's published
-   SigV4 example, or one computed once offline with `botocore` and committed
-   as literals. Otherwise the first real R2 put is the first check of the
-   signing code.
+l. **Replace the hand-rolled SigV4 with `boto3` pointed at the R2
+   endpoint.** R2 is S3-compatible, and a maintained library is better than a
+   hand-written signer plus a test vector. Delete the signing code. Use one
+   `put_object` per key, still single-object puts, with
+   `endpoint_url=https://<EFB_R2_ACCOUNT_ID>.r2.cloudflarestorage.com` and
+   `region_name="auto"`. Send `ContentType` and a `ChecksumSHA256` or
+   `ContentMD5`, so a truncated body is still refused. The four R2 variables
+   and the scrub are unchanged. Also:
+   - add `boto3` to what the cron installs, pinned, and say what it adds to
+     the image and to peak memory (item k covers the measurement);
+   - the tests use `botocore.stub.Stubber` or a fake client, and assert the
+     endpoint, the bucket, both keys, the body and the checksum;
+   - a refused put still raises and fails the run;
+   - a boto3 error message must not carry a credential through the scrub.
+     Test it.
 m. **The snapshot is written before the email, but it lists notify state.**
    Say what the snapshot's notify field holds at write time. Test that a
    failed upload with `on` still sends the email, and that the email names the
