@@ -1992,3 +1992,73 @@ the staleness. The owner places the credential. My additions:
 
 TASK.md and PROJECT_CONTEXT are updated. DeepSeek had not started the task, so
 the edits land before any work on it.
+
+---
+
+## 2026-09-24 review: e11-admit-and-live-gate Part 1 at 2a9e0b6
+
+**The stop fired, and it was my spec again.** The largest valid prefix of the
+full-book ordering keeps fewer names than drop-only on all six rows: 16
+against 119 on share-only. DeepSeek measured the mechanism rather than
+forcing a result:
+- The floor is relative on a book renormalized to gross 1.0.
+- The re-size on a subset is not a common scalar, even though it is one on
+  the full book (to 2.2e-16).
+- The below-floor count never reaches zero for any prefix between 17 and 499.
+  Some of the names below floor sit high in the book, one at rank 182 of 188:
+  high-priced names need a large weight to hold 20 shares at all.
+- The prefixes that do pass are rank-deficient: condition numbers near 1e19
+  and three-name books that are all long.
+
+DeepSeek did not install the degenerate book and did not relax the net-zero
+guard to make it fit. It then ran the control that points at the right rule.
+A prefix of an ordering is still dropping; admission has to add names. I have
+re-specified the rule as Part 1R: drop, then admit in the same order, repeated
+until a full cycle changes nothing. That is a local maximum under single-name
+moves, with checks (net, hedge, zero below floor, at least 51 names) and an
+ordering-robustness measurement. Stopping the whole task when the stop fired
+was correct.
+
+**What the owner can read now.** These are DeepSeek's admission-control
+numbers: one pass of Part 1R's admission step, reported in REPORT.md and not
+stored. Part 1R's repeated passes start from the same set and only add names.
+"IR vs full" is 1 / governing breadth.
+
+| construction | names | n_eff | IR vs full | total error | p90 |
+| --- | --- | --- | --- | --- | --- |
+| min $1,500 | 222 | 106.89 | 0.824 | 2.77% | 8.85% |
+| min $2,000 | 185 | 93.90 | 0.773 | 2.08% | 6.08% |
+| share-only 20sh | 143 | 68.52 | 0.660 | 0.78% | 1.85% |
+| two-part 1500+20sh | 124 | 64.68 | 0.641 | 0.84% | 2.25% |
+
+Like for like, with the floor enforced on the weights that trade:
+- Share-only gives up about 20% of IR against min $1,500 (0.660 / 0.824) and
+  15% against min $2,000. At the choice, the gap was 14% against min $1,500.
+- Its error advantage also grew: 3.6x lower total error and 4.8x lower p90
+  than min $1,500.
+- It now dominates two-part outright, with more n_eff and less error.
+- The re-decide trigger does not fire on any reading.
+
+The owner's reasoning does not depend on scale, since the IR is notional in a
+null book and the error is real, so it points the same way. **The basis did
+move**, though. 85.69 was a pre-resize number that no enforced book reaches;
+24 of those 188 names hold fewer than 20 shares in the vector that trades.
+
+**Recommendation to the owner:** confirm share-only now on these numbers,
+with the trigger still armed on Part 1R's numbers. The task then does not
+need another blocking round trip. TASK.md is written to continue without
+blocking if the confirmation is recorded here, and to block after Part 1R if
+it is not.
+
+Smaller items:
+- The report's Verification item 2 finds 3 pseudoinverse fallbacks inside
+  the enforced-book loops, where the previous report said "no fallback". The
+  books still reach 1e-15 exposure. Name the rows, and correct the record.
+- DeepSeek did not start Parts 2 to 4, citing an "owner instruction" to stop
+  after Part 1. The checkpoint actually said to continue with them. The fired
+  stop justified halting anyway, so this is noted, not a finding.
+- The full run is 727 against the previous 724.
+
+PROJECT_CONTEXT is updated: State at 2a9e0b6, and a working lesson on naming
+the searched family in a fixed-point spec. TASK.md gains Part 1R at the top.
+The old Part 1 is marked superseded, and its stop is retired.

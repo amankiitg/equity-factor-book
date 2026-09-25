@@ -1,6 +1,78 @@
 task_id: e11-admit-and-live-gate
-status: blocked
-base_commit: 938da6c
+status: ready
+base_commit: 2a9e0b6
+
+## Part 1R: the rule re-specified as drop, then admit, to a local maximum
+
+The Part 1 report was excellent. The stop fired as pre-registered, the
+mechanism is measured, the degenerate prefix was not installed, the net-zero
+guard was not relaxed, and the admission control points at the right rule.
+**The prefix spec was the reviewer's error, the second on this item.** A
+prefix of the full-book ordering is still a dropping rule. Once a subset is
+re-sized, the weights do not move by a common scalar, so a handful of
+high-priced names break every prefix between 17 and 499. Stopping everything
+when the stop fired was correct, because a pre-registered stop halts the task.
+
+**The rule, pre-registered here: drop, then admit, repeated until a full
+cycle changes nothing.**
+
+1. **Order** every name by `|w_i| / max(dollar_floor, share_floor * price_i)`
+   on the full-book weights, with a stable sort. This is the order your
+   admission control used.
+2. **Drop.** Run `enforce_floor_on_final_weights` from the full book to
+   convergence.
+3. **Admit.** Walk the excluded names in that order. Admit a name only if the
+   final weights of the enlarged set (size, hedge, renormalize, quantize) still
+   clear every kept name's floor. This is your admission control, unchanged.
+4. **Repeat the admission pass** until a full pass admits nothing. Then run
+   the drop step once more as a check. It must drop nothing; if it does, loop
+   back to step 3. Cap the loop at 10 cycles, and at the cap stop and report
+   rather than pick a cycle.
+
+The result is a local maximum under single-name moves: every kept name clears
+its floor, and no single excluded name can be added without breaking one.
+It is not claimed to be the global maximum. Say so wherever it is quoted.
+
+**Checks that must hold on every floor row, or stop:**
+- net dollar within 0.01 of gross;
+- worst post-hedge exposure at most 1e-12;
+- idio share 1.0;
+- zero names below floor in the final weights;
+- **kept names at least 3 x the 17 design factors, so at least 51**, which is
+  the rank margin the owner named when choosing.
+
+Being at least as large as drop-only holds by construction, because the rule
+starts there and only adds names. **Do not report it as a check.** Report it as
+a by-construction property, per Verification item 4.
+
+**Robustness, measured and not used to select:** rerun with the names ordered
+by `|alpha_i|` descending instead, and report the kept count and n_eff for
+both orders on every row. If the two orders differ by more than 10% in n_eff
+on the share-only row, say so at the top of the report. It means the book's
+breadth depends on an arbitrary ordering, and the owner should know that.
+
+**Determinism:** the same inputs give the same set. Test it. Report the rule's
+run time on the live path; it runs every evening.
+
+**Install it as the book** in the table and the live path. Store drop-only
+and the prefix beside it as columns, for the record. Then re-run the
+re-decide trigger exactly as written in E11-F12, on these numbers.
+
+**Where Part 1 hands back to the owner, and whether it blocks.** The owner has
+been asked to confirm share-only now, on the admission-control numbers, with
+the trigger still armed on this rule's numbers.
+- **If LOG.md records that confirmation**, do not block: continue to Parts 2
+  to 5, and stop only if the trigger fires or a check above fails.
+- **If it does not**, set `blocked` after Part 1R as before, and carry on with
+  Parts 2 to 4, which do not depend on the book.
+
+**Also, from the Part 1 report:** your Verification item 2 found 3 pseudoinverse
+fallbacks inside the enforced-book loops, while the previous report answered
+"no fallback". Name the rows and passes where they fire. Note in this report
+that the earlier "no" was wrong, even though the resulting books still reach
+1e-15 exposure.
+
+---
 
 ## Admission back into the fixed point, inputs into Postgres, staleness as a hard stop
 
@@ -25,7 +97,7 @@ the share-only choice until the corrected E11-F13 numbers exist.
 Parts 1, 2, 4 and 8 of `e11-share-floor-to-gate` stand. Run the parts below in
 order, committing each alone. `dry_run` stays `true`, and you never flip it.
 
-### Part 1. E11-F13: the enforcement loop only drops (owner accepted)
+### Part 1 (superseded by Part 1R above; kept for the record). E11-F13: the enforcement loop only drops
 
 `enforce_floor_on_final_weights` says so itself: "The kept set only shrinks."
 Starting from the full book, a drop-only loop lands on roughly the **one-pass**
@@ -289,8 +361,9 @@ genuinely appending, on two closes **the loop itself fetched**, not replayed.
 ### Stop only if
 
 - The standing stop conditions below apply.
-- Part 1 finds the prefix result keeps fewer names than drop-only on any row,
-  or the re-decide trigger fires.
+- Part 1R fails one of its checks, hits its cycle cap, or the re-decide
+  trigger fires. The old prefix-versus-drop-only stop is retired with the
+  prefix rule.
 - Part 2 hits one of its stops.
 - Part 4 would need you to create a role or a grant yourself.
 - Any step would restate a pre-2026-09-04 row.

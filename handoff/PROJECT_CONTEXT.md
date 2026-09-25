@@ -31,9 +31,9 @@ that returns a negative answer has done its job.
 Ten sprints built. E11 is a dry-run loop. Its construction is chosen
 (share-only, 20 shares, 2026-09-24). The store is on direct Postgres, and the
 book, Guard 1 and the sanity gate are being redone (task
-`e11-admit-and-live-gate`). E12's engine has not been started. HEAD 938da6c.
-As reported at that commit: `make test` 724 passed, 1 skipped, `make lint`
-clean, `make verify-evidence` clean. Five model versions
+`e11-admit-and-live-gate`). E12's engine has not been started. HEAD 2a9e0b6.
+As reported at that commit: `make test` 727 passed, 1 skipped (fast path 700
+in 27s), `make lint` clean, `make verify-evidence` clean. Five model versions
 in `data/models/registry.json`. XS-v1 is champion, and its `live` block records
 the construction: `share_only`, `share_floor` 20, `dollar_floor` 0,
 `floor_iterated` true. TS-v1 is diagnostic only and
@@ -385,6 +385,14 @@ finishing pass, and should be scoped that way.
 - **No em dashes anywhere**, including files under `handoff/`.
 - **A review ends with a commit of the handoff files** (STANDARDS rule 23).
   Several uncommitted cycles left a fresh session reading a stale task.
+- **A fixed-point spec must name the family it searches, not only the loop.**
+  Two reviewer specs failed on E11-F13. "Drop, check, repeat" never admits a
+  name. "The largest valid prefix" of the full-book ordering is still a
+  dropping rule, and re-sizing a subset reorders the weights, so a few
+  high-priced names broke every prefix between 17 and 499. The rule that works
+  is drop, then admit, to a local maximum under single-name moves. A
+  pre-registered stop caught the second error at no cost, which is what stops
+  are for.
 - **A fixed-point spec must name admission as well as dropping.** E11-F6
   showed that iteration buys breadth by admitting names back. The E11-F12 spec
   said only "drop, re-size, check, repeat", and it got a drop-only loop that
