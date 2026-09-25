@@ -1,5 +1,5 @@
 task_id: e11-admit-and-live-gate
-status: ready
+status: in_progress
 base_commit: dd41d9b
 
 ## Part 1R is accepted. The rank margin gates the book, not the table. Run Parts 2 to 5.
