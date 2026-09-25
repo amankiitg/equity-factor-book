@@ -1,0 +1,334 @@
+"""Sprint E11, Part 3b: every run notifies the owner.
+
+The message is tested for the three fields in order, for the dry-run line that
+must never read as "0 orders", and for the scrub that keeps a connection string
+out of it. The run-level tests drive the cron script and assert the record the
+owner and the dashboard actually see.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+import pytest
+
+from live import appendix, evening_job, extend, morning_job, notify, staleness, store
+from scripts import run_live_daily
+
+ROOT = Path(__file__).resolve().parents[1]
+SESSION = "2026-09-22"
+FAKE_DB_URL = (
+    "postgresql://postgres.omnsjnosbaiqkrmnknqw:supersecretpassword@"
+    "aws-0-us-east-1.pooler.supabase.com:6543/postgres"
+)
+FAKE_WEBHOOK = (
+    "https://hooks.slack.com/services/T00000000/B00000000/abcdefghijklmnopqrst"
+)
+
+
+def test_the_message_leads_with_the_status_and_the_target_close() -> None:
+    message = notify.compose(
+        status="ok",
+        target_close=SESSION,
+        dry_run=True,
+        orders=152,
+        gross=2_014_000.0,
+        worst_input="prices",
+        worst_sessions_behind=0,
+    )
+    first, second, third = message.splitlines()
+    assert first == f"EFB live book {SESSION}: ok, the run completed"
+    assert second == (
+        "Orders: dry run: 152 orders proposed, $2,014,000 gross, none sent"
+    )
+    assert third == "Staleness: worst input prices, 0 sessions behind."
+    # the field the rule names explicitly: never "0 orders"
+    assert "0 orders" not in message
+
+
+def test_a_live_run_says_orders_were_sent() -> None:
+    message = notify.compose(
+        status="ok",
+        target_close=SESSION,
+        dry_run=False,
+        orders=12,
+        gross=250_000.0,
+        worst_input="shares",
+        worst_sessions_behind=1,
+    )
+    assert "Orders: 12 orders sent, $250,000 gross" in message
+    assert "dry run" not in message
+
+
+def test_a_stale_stop_names_every_failing_input() -> None:
+    failures = [
+        {
+            "input": "prices",
+            "sessions_behind": 3,
+            "content": "2026-09-21",
+            "gated_by": "content",
+        },
+        {
+            "input": "shares",
+            "sessions_behind": 2,
+            "content": "2026-09-22",
+            "gated_by": "fetch",
+        },
+        {
+            "input": "sectors",
+            "sessions_behind": None,
+            "content": None,
+            "gated_by": "fetch",
+        },
+    ]
+    message = notify.compose(
+        status="stale_stopped",
+        target_close=SESSION,
+        dry_run=True,
+        worst_input="sectors",
+        worst_sessions_behind=None,
+        failures=failures,
+        detail="sectors has no date at all; prices is 3 sessions behind",
+    )
+    assert message.splitlines()[0] == (
+        f"EFB live book {SESSION}: stale_stopped, the run refused to price a book"
+    )
+    assert "Orders: none. The run stopped on staleness before sizing" in message
+    assert "Staleness: worst input sectors, no date at all." in message
+    assert (
+        "Failing inputs: prices 3 sessions behind; shares 2 sessions behind; "
+        "sectors no date at all." in message
+    )
+    assert "0 orders" not in message
+
+
+def test_an_error_message_names_the_type_and_scrubs_the_reason() -> None:
+    message = notify.compose(
+        status="error",
+        target_close=SESSION,
+        dry_run=True,
+        detail=f"OperationalError: could not connect to {FAKE_DB_URL}",
+        error_type="OperationalError",
+    )
+    assert message.splitlines()[0] == f"EFB live book {SESSION}: error, the run failed"
+    assert "Orders: none. The run failed before sizing" in message
+    assert "Staleness: no input failed the check." in message
+    assert "Error: OperationalError:" in message
+    assert "[redacted]" in message
+    assert "supersecretpassword" not in message
+    assert "pooler.supabase.com" not in message
+    assert "postgresql://" not in message
+
+
+def test_scrub_removes_urls_tokens_and_key_values() -> None:
+    text = (
+        f"post to {FAKE_WEBHOOK} with token "
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abcdefghijklmnop and "
+        "password=hunter2 api_key: 9f8e7d6c5b4a39281706f5e4d3c2b1a0 and "
+        f"db={FAKE_DB_URL}"
+    )
+    cleaned = notify.scrub(text)
+    assert "hooks.slack.com" not in cleaned
+    assert "eyJ" not in cleaned
+    assert "hunter2" not in cleaned
+    assert "9f8e7d6c5b4a39281706f5e4d3c2b1a0" not in cleaned
+    assert "supersecretpassword" not in cleaned
+    assert cleaned.count("[redacted]") >= 5
+
+
+def test_send_without_a_channel_is_skipped_not_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(notify.CHANNEL_ENV, raising=False)
+    result = notify.send("hello")
+    assert result["status"] == notify.STATUS_SKIPPED
+    assert notify.CHANNEL_ENV in result["detail"]
+
+
+def test_a_send_failure_is_recorded_without_the_webhook_url() -> None:
+    def _refuse(url: str, payload: dict[str, Any]) -> None:
+        raise RuntimeError(f"HTTP 404 for {url}")
+
+    result = notify.send("hello", webhook=FAKE_WEBHOOK, poster=_refuse)
+    assert result["status"] == notify.STATUS_FAILED
+    assert "hooks.slack.com" not in result["detail"]
+    assert "[redacted]" in result["detail"]
+    assert "RuntimeError" in result["detail"]
+
+
+def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace every step that would fetch, size or hash."""
+    from efb import evidence
+
+    for name in ("hydrate", "persist_new_sessions", "appendix_manifest"):
+        monkeypatch.setattr(appendix, name, lambda *args, **kwargs: {})
+    for name in (
+        "extend_archives",
+        "extend_prices",
+        "extend_shares",
+        "extend_returns",
+        "extend_model",
+        "refresh_version",
+    ):
+        monkeypatch.setattr(extend, name, lambda *a, **k: {})
+    monkeypatch.setattr(evidence, "snapshot", lambda *a, **k: None)
+    monkeypatch.setattr(run_live_daily, "already_ran", lambda job, day: False)
+    monkeypatch.setattr(run_live_daily, "store_proposal", lambda as_of: None)
+    monkeypatch.setattr(run_live_daily, "store_orders", lambda as_of, dry: None)
+    monkeypatch.setattr(run_live_daily, "store_reconciliation", lambda as_of, row: None)
+
+
+def _patch_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The gate's own tests live elsewhere; here it is pinned to a clean pass."""
+    gate = {
+        "job": "live_daily",
+        "checked_at": "2026-09-22T22:30:00+00:00",
+        "target_close": SESSION,
+        "allowed_sessions_behind": 0,
+        "inputs": {"prices": {"content": SESSION, "sessions_behind": 0}},
+        "failures": [],
+        "worst_input": "prices",
+        "worst_sessions_behind": 0,
+        "max_input_staleness_days": 0,
+        "status": "ok",
+    }
+    monkeypatch.setattr(staleness, "check", lambda *a, **k: gate)
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+
+
+def _patch_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        evening_job,
+        "build_proposal",
+        lambda *a, **k: {"as_of": SESSION, "n_kept": 150},
+    )
+    monkeypatch.setattr(
+        morning_job,
+        "run_morning",
+        lambda *a, **k: {
+            "orders": 152,
+            "intended_notional": 2_014_000.0,
+            "dry_run": True,
+        },
+    )
+    from live import reconcile
+
+    monkeypatch.setattr(reconcile, "daily_record", lambda *a, **k: {"dry_run": True})
+
+
+def test_a_clean_run_sends_the_message_and_stores_what_it_said(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[str] = []
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setenv(notify.CHANNEL_ENV, FAKE_WEBHOOK)
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload: sent.append(payload["text"])
+    )
+
+    assert run_live_daily.main() == 0
+
+    assert len(sent) == 1
+    assert f"EFB live book {SESSION}: ok" in sent[0]
+    assert "dry run: 152 orders proposed, $2,014,000 gross, none sent" in sent[0]
+    row = store.select("run_status").iloc[0]
+    assert row["status"] == "ok"
+    assert row["notify_status"] == notify.STATUS_SENT
+    assert row["notify_failed"] == False or not row["notify_failed"]  # noqa: E712
+    assert row["n_orders"] == 152
+    assert row["gross_notional"] == 2_014_000.0
+    assert store.select("cron_runs").iloc[0]["status"] == "ok"
+
+
+def test_a_failed_send_is_recorded_and_the_run_exits_nonzero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setenv(notify.CHANNEL_ENV, FAKE_WEBHOOK)
+
+    def _refuse(url: str, payload: dict[str, Any]) -> None:
+        raise RuntimeError(f"HTTP 500 for {url}")
+
+    monkeypatch.setattr(notify, "post", _refuse)
+
+    assert run_live_daily.main() == 1
+
+    # the run itself is recorded as ok: the book was built and no order moved
+    row = store.select("run_status").iloc[0]
+    assert row["status"] == "ok"
+    assert bool(row["notify_failed"])
+    assert row["notify_status"] == notify.STATUS_FAILED
+    assert "152" not in str(row["detail"])
+    # the failure is visible in the cron record, and never the URL
+    cron = store.select("cron_runs").iloc[0]
+    assert cron["status"] == "ok"
+    assert "notification failed" in cron["detail"]
+    assert "hooks.slack.com" not in cron["detail"]
+    # the dashboard shows the notification failure rather than a clean run
+    state = staleness.run_state(
+        {str(key): value for key, value in row.items()},
+        now=pd.Timestamp("2026-09-22T22:30:00Z"),
+    )
+    assert not state["clean"]
+    assert state["state"] == "notify_failed"
+
+
+def test_a_run_with_no_channel_is_loud_about_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.delenv(notify.CHANNEL_ENV, raising=False)
+
+    assert run_live_daily.main() == 1
+
+    row = store.select("run_status").iloc[0]
+    assert row["notify_status"] == notify.STATUS_SKIPPED
+    state = staleness.run_state(
+        {str(key): value for key, value in row.items()},
+        now=pd.Timestamp("2026-09-22T22:30:00Z"),
+    )
+    assert state["state"] == "notify_not_configured"
+    assert "no notification channel is set" in state["message"]
+    assert notify.CHANNEL_ENV in state["message"]
+
+
+def test_an_unexpected_error_notifies_with_a_scrubbed_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[str] = []
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    monkeypatch.setenv(notify.CHANNEL_ENV, FAKE_WEBHOOK)
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload: sent.append(payload["text"])
+    )
+
+    def _explode(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise ConnectionError(f"could not reach {FAKE_DB_URL}")
+
+    monkeypatch.setattr(evening_job, "build_proposal", _explode)
+
+    assert run_live_daily.main() == 1
+
+    assert len(sent) == 1
+    assert sent[0].splitlines()[0] == (
+        f"EFB live book {SESSION}: error, the run failed"
+    )
+    assert "Error: ConnectionError:" in sent[0]
+    assert "supersecretpassword" not in sent[0]
+    assert "postgresql://" not in sent[0]
+    row = store.select("run_status").iloc[0]
+    assert row["status"] == "error"
+    assert "supersecretpassword" not in str(row["detail"])
+    assert "[redacted]" in str(row["detail"])
+    # nothing wrote a proposal or an order on the way down
+    assert store.select("proposals").empty
+    assert store.select("orders").empty

@@ -188,6 +188,7 @@ def test_env_example_names_the_keys_without_values() -> None:
         "EFB_SUPABASE_PROJECT_URL",
         "EFB_SUPABASE_ACCESS_TOKEN",
         "EFB_DRY_RUN",
+        "EFB_NOTIFY_SLACK_WEBHOOK_URL",
     ):
         match = [line for line in lines if line.startswith(name)]
         assert match, f"{name} missing from .env.example"
@@ -210,3 +211,15 @@ def test_render_yaml_commits_key_names_not_values() -> None:
     assert "sync: false" in render
     assert "AKIA" not in render
     assert "-----BEGIN" not in render
+
+
+def test_render_yaml_gives_the_webhook_to_the_cron_only() -> None:
+    """The webhook URL is a credential, so only the service that sends holds it."""
+    render = (ROOT / "render.yaml").read_text()
+    assert "EFB_NOTIFY_SLACK_WEBHOOK_URL" in render
+    web_service, cron = render.split("- type: cron")
+    assert "EFB_NOTIFY_SLACK_WEBHOOK_URL" not in web_service
+    assert "EFB_NOTIFY_SLACK_WEBHOOK_URL" in cron
+    # names only: no hook path, no token
+    assert "hooks.slack.com" not in render
+    assert "https://hooks" not in render

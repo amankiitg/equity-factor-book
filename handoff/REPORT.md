@@ -1,374 +1,267 @@
-# Sprint E11, Part 3: staleness fails the run, counted in NYSE sessions
+# Sprint E11, Part 3b: every run notifies the owner
 
-**What this part does.** A run whose latest close is older than the target close
-now stops before any sizing. `live/staleness.py` reads the nine model inputs'
-dates off the artifacts, counts the NYSE sessions between each and the most
-recent completed session, writes a `run_status` row in `efb` with every date and
-every failure, and `scripts/run_live_daily.py` returns nonzero without writing a
-proposal row or an order. The dashboard reads the latest `run_status`, not the
-latest proposal, and shows a failure state for a stale stop, an error, a run for
-an older close, or no run at all.
+**What this part does.** `live/notify.py` composes one message per run and
+delivers it to a Slack incoming webhook, `scripts/run_live_daily.py` sends it
+after the proposal and the orders, and the run's `run_status` row records
+whether the message went out. A run whose message was not delivered exits
+nonzero, so Render marks it failed, and the dashboard shows the notification
+state as a failure of its own. Silence now means something: one message per
+session means the absence of the evening message is the alarm.
 
-The rule is the one pre-registered in `handoff/TASK.md` Part 3, unaltered. What
-follows is where each date comes from, what the gate does on a real close, and
-the decisions the spec left open.
+## The message, and the three fields
 
-## The nine inputs, the date the gate reads, and where it comes from
-
-| input | gated on | allowed | the date, and its source |
-| --- | --- | --- | --- |
-| prices | content date | 0 sessions | latest index date in `data/raw/prices.parquet` |
-| descriptors | content date | 0 sessions | latest `date` in `data/models/XS-v1/descriptors.parquet` |
-| factor_returns | content date | 0 sessions | latest `date` in `data/models/XS-v1/factor_returns.parquet` |
-| specific_returns | content date | 0 sessions | latest `date` in `data/models/XS-v1/specific_returns.parquet` |
-| specific_var | content date | 0 sessions | latest `date` in `data/models/XS-v1/specific_var.parquet` |
-| factor_cov | content date | 0 sessions | latest index date in `data/processed/returns.parquet` |
-| universe | content date | 0 sessions | the date in the newest `data/raw/spy_holdings/spy_holdings_<date>.parquet` |
-| shares | **fetch date**, content reported | 0 sessions | newest `fetched_at` on a `status == ok` row in `data/raw/shares_history.parquet`; content is the newest `date` on those rows |
-| sectors | **fetch date**, content reported | 0 sessions | the date in the newest `data/raw/wikipedia_constituents/wikipedia_constituents_<date>.parquet`; content is `as_of` in `data/processed/sectors.parquet` |
-
-`max_input_staleness_days` is stored on every row as well, computed the old way
-(max calendar days from the target close to each content date), because the task
-keeps it as a reported field. The gate itself never reads it.
-
-## The order in the cron, and what a stop writes
-
-`scripts/run_live_daily.py::main`, in order: hydrate the appendix, extend the
-seven inputs by one session, persist the new sessions, snapshot the evidence,
-**run the gate**, then propose, execute, reconcile.
-
-The gate sits after the extension because the extension is what makes the inputs
-fresh, and before any sizing because that is what the owner's rule protects. On
-a stop:
-
-- no `proposals` row and no `orders` row is written, and `build_proposal` and
-  `run_morning` are never called (asserted by a test that makes both raise);
-- one `run_status` row, keyed by target close and job, carries the target close,
-  all nine inputs with their content dates and sessions behind, the two fetch
-  dates, the failing inputs with how far behind each is, the worst input, and
-  `status: stale_stopped`;
-- `cron_runs` records `stale_stopped` with the one-line reason, and the process
-  exits 1, so Render marks the cron run failed;
-- an exception anywhere in the run (including before the gate) writes a
-  `run_status` row with `status: error` and the exception's one-line reason, so
-  the dashboard shows an error rather than keeping the last clean book.
-
-## The gate on the real artifacts, run today
-
-Pasted from `.venv/bin/python -c "from live import staleness; ..."`, the real
-`data/` tree, the real clock (2026-09-25 05:32 UTC, before Friday's open, so the
-target close is Thursday 2026-09-24):
+Composed from the stored 2026-09-21 proposal and its execution log, so the
+numbers are real rather than typed:
 
 ```text
-target_close now: 2026-09-24 00:00:00
-status: stale_stopped target: 2026-09-24 max days: 13
-worst: prices 3
-failures: prices is 3 sessions behind; descriptors is 3 sessions behind;
-factor_returns is 3 sessions behind; specific_returns is 3 sessions behind;
-factor_cov is 3 sessions behind; specific_var is 3 sessions behind; universe is
-3 sessions behind; shares is 2 sessions behind; sectors is 2 sessions behind
-
-  prices            gated_by=content content=2026-09-21 behind=3
-  descriptors       gated_by=content content=2026-09-21 behind=3
-  factor_returns    gated_by=content content=2026-09-21 behind=3
-  specific_returns  gated_by=content content=2026-09-21 behind=3
-  factor_cov        gated_by=content content=2026-09-21 behind=3
-  specific_var      gated_by=content content=2026-09-21 behind=3
-  universe          gated_by=content content=2026-09-21 behind=3
-  shares            gated_by=fetch   content=2026-09-22 behind=2 fetch=2026-09-22 fbehind=2
-  sectors           gated_by=fetch   content=2026-09-11 behind=9 fetch=2026-09-22 fbehind=2
+EFB live book 2026-09-22: ok, the run completed
+Orders: dry run: 27 orders proposed, $273,359 gross, none sent
+Staleness: worst input prices, 0 sessions behind.
 ```
 
-That is the intended answer, not a defect: the committed artifacts stop on the
-2026-09-21 close and the last share fetch and archive are from 2026-09-22, so a
-run on the 2026-09-24 close is stale and must not trade. The same command also
-shows the two inputs whose content is meant to age: the sectors snapshot is
-2026-09-11, nine sessions back, and it is reported in the row without gating
-anything, because the daily constituents archive that feeds it is two sessions
-back and that is what the gate reads.
-
-The session arithmetic, from the same module:
+The same composer on the real gate result from Part 3, which stops a run today:
 
 ```text
-sessions behind 2026-09-04 -> 2026-09-08 (Labor Day 2026-09-07 closed): 1
-sessions behind 2026-09-18 -> 2026-09-21 (Friday close, read Monday):   1
+EFB live book 2026-09-24: stale_stopped, the run refused to price a book
+Orders: none. The run stopped on staleness before sizing, so no book was priced
+and no order was built.
+Staleness: worst input prices, 3 sessions behind.
+Failing inputs: prices 3 sessions behind; descriptors 3 sessions behind;
+factor_returns 3 sessions behind; specific_returns 3 sessions behind;
+factor_cov 3 sessions behind; specific_var 3 sessions behind; universe
+3 sessions behind; shares 2 sessions behind; sectors 2 sessions behind.
 ```
 
-Four calendar days and three calendar days respectively, one session each. The
-first zero for a calendar-day rule would have been a wrong gate on both.
-
-The same result written to a store and read back, which is what the dashboard
-does with it (17 columns, and the sentence the owner would see):
-
-```text
-stored row columns: ['checked_at', 'detail', 'dry_run', 'failures',
-'gross_notional', 'inputs', 'job', 'max_input_staleness_days', 'n_inputs',
-'n_orders', 'notify_failed', 'notify_status', 'run_date', 'status',
-'target_close', 'worst_input', 'worst_sessions_behind']
-status: stale_stopped target: 2026-09-24 worst: prices 3
-n_inputs: 9 max days: 13
-clean: False | label: STALE STOP: the run refused to price a book
-message: The run for the 2026-09-24 close refused to price a book: prices is 3
-sessions behind; descriptors is 3 sessions behind; ... sectors is 2 sessions
-behind. No book exists for 2026-09-24, so anything shown below it is older and
-not current.
-inputs keys: ['descriptors', 'factor_cov', 'factor_returns', 'prices', 'sectors',
-'shares', 'specific_returns', 'specific_var', 'universe']
-```
-
-## The dashboard
-
-`live/dashboard_app.py` now leads with the run state, read from the latest
-`run_status` row and judged against the session that should have completed:
-
-| state | when | what the page shows |
+| field | what it says | when the run stopped |
 | --- | --- | --- |
-| `clean` | the latest row's target close is the most recent completed session and its status is `ok` | a green "Run status: clean" line |
-| `stale_stopped` | same target close, status `stale_stopped` | a red banner naming every failing input and its distance, and saying any book below is older and not current |
-| `error` | same target close, status `error` | a red banner with the one-line reason |
-| `notify_failed` | clean run, notification could not be sent | a red banner (Part 3b writes that column) |
-| `no_run` / `no_run_for_session` | no row at all, or only rows for an older close | a red banner naming the session that has no run |
+| 1. Did it run? | `EFB live book <target close>: ok, the run completed` | `stale_stopped, the run refused to price a book` or `error, the run failed` |
+| 2. Did the proposal produce orders? | `Orders: dry run: N orders proposed, $X gross, none sent` | `Orders: none.` plus why: stopped before sizing, or failed before sizing |
+| 3. Staleness | `Staleness: worst input <name>, N sessions behind.` | the same, followed by `Failing inputs:` with every failing input |
 
-The book section keeps its caption honest: when the state is not clean it says
-the book below is the last one stored, for which close, and that it is history
-rather than today's book. A test renders the real page with `input_dates` and
-`check` replaced by functions that raise, so "the page reads no research
-artifact" is proved at test time rather than by reading the source.
+The first line is the status and the target close, which is what a preview
+shows. The second line never reads as "0 orders": it names the count it did
+propose, says none were sent, and only claims there are no orders when the run
+stopped before building any. That distinction is asserted in a test, and it is
+why the dry-run wording is generated rather than shortened.
 
-## Decisions the spec left open, and why
+The live (non-dry-run) form is `Orders: N orders sent, $X gross`, and the
+guards' rejections are already in the morning summary for the same line when
+the clock starts; `dry_run` stays `true` and the owner flips it.
 
-**The sectors fetch date is the constituents archive, not the sectors file.**
-`data/processed/sectors.parquet` is written only by `efb/build.py` from the
-Wikipedia constituents snapshot; the daily loop reads it and never rebuilds it,
-so its `as_of` is 2026-09-11 and will keep ageing. The fetch that the loop
-actually performs every evening is `universe.archive_constituents`, called from
-`extend.extend_archives`, which writes one dated file per fetch and is the
-sector source by its own docstring. Gating on that date measures the check, which
-is what the task asks ("what must not age is the check"), and the sectors content
-date is reported beside it. Gating on the content date instead would stop every
-run forever, which cannot be the intent of an allowed value of 0 sessions. If the
-reviewer wants the sector snapshot itself refreshed nightly, that is new work and
-a different part.
+## When the message should arrive
 
-**The factor covariance date is the returns session.** The artifact is a matrix
-with no date of its own; `extend_model` rolls it forward and
-`appendix._factor_cov_with_session` stamps it with the latest returns session, so
-that session is the date its content carries. A failed returns extension
-therefore fails both inputs, which is correct: the matrix would then describe an
-older covariance than the one the model is fitted on.
+The cron fires at `30 22 * * 1-5` UTC, which is 18:30 EDT / 17:30 EST, after
+the 16:00 ET close. The measured parts of the run are the hydration (2.93s on
+the full dataset, Part 2) and the persist (0.71s), and the extension in between
+is network-bound. **The message should arrive by 22:45 UTC (18:45 EDT) on every
+weekday the cron fires, and if it has not arrived by then the owner should treat
+the evening as missing.** That estimate is not measured end to end, because the
+extension needs the live vendors and no full run has happened; the report says
+so rather than quoting a number it cannot show.
 
-**A missing date is stale, not fresh.** An input with no date at all (the file is
-missing, or the date column is empty) reports `sessions_behind: None` and stops
-the run, and it outranks any count when the worst input is named, because "how
-far behind" is unbounded rather than small. The 58 share rows whose fetch came
-back empty carry no date and are excluded from the fetch date for that reason:
-the date comes from `status == ok` rows only.
+**A run that never starts cannot send anything**, which is precisely why the
+message cannot be the only alarm. See the heartbeat offer below.
 
-**The gate runs after the extension, not before it.** The task says "before any
-sizing"; sizing means the construction and the morning execution. Running it
-before the extension would measure the state of the container rather than the
-state of the data the book is priced from.
+## The channel, and the credential
 
-**The target close is the last session whose close has passed.** The cron fires
-at 22:30 UTC, after the 20:00 UTC close, so on a session day the target is that
-day; a run before the open prices yesterday's close. Both directions are pinned
-by tests, and the boundary is the close timestamp from the NYSE calendar, not a
-fixed hour.
+**Slack first, over `urllib` from the standard library**, so the cron needs no
+new package to send: one POST of `{"text": <message>}` with a ten second
+timeout, and anything but a 2xx is a failed send. **Email sits behind the same
+interface and is not built.** A channel is a function from a message to a side
+effect, so adding SMTP later is one function plus one set of owner credentials
+(host, port, user, password, recipient) and nothing else changes. I did not
+build it because it needs a provider choice and a credential the owner has not
+placed, and inventing one would put a secret in a place the owner did not choose.
 
-## Tests, 13 in `tests/test_e11_staleness.py`
+**The webhook URL is a credential, and it is handled as one:**
 
-The gate itself is measured on synthetic artifacts under a temporary root; the
-run-level tests drive `scripts/run_live_daily.main()` with every fetching step
-replaced and the sizing steps made to raise, so the promise is asserted on the
-store.
+- `EFB_NOTIFY_SLACK_WEBHOOK_URL`, empty in `.env.example` with the comment that
+  it belongs to the cron;
+- set in `render.yaml` on the **cron service only**, `sync: false`, so the value
+  lives in the Render dashboard and never in the repository. The dashboard
+  service never holds one, because it never sends;
+- read from the environment at send time and never printed, logged or stored.
+  The `run_status` row carries `notify_status` and `notify_failed` and a
+  **scrubbed** detail; a test asserts the URL reaches neither the row nor the
+  cron detail;
+- **the credential check is extended**: `tests/test_e11_render.py` now lists the
+  key in the env-example check, and a new test asserts the key appears on the
+  cron and not on the web service, and that no hook path (`hooks.slack.com`,
+  `https://hooks`) appears in `render.yaml` at all.
 
-1. a Monday run before the open on Friday's close passes, and the same artifacts
-   read after Monday's close are one session stale (the negative control);
-2. Labor Day is not a session, a run on the holiday evening passes on Friday's
-   close, and the same artifacts after Tuesday's close are one behind, not four;
-3. the target close is the last session that has closed, before the open and at
-   the cron's slot;
-4. the stored row carries a content date for all nine inputs, both dates for
-   shares and sectors, the reported calendar-day number, and no failure while
-   the sectors content age of 11 calendar days sits in the row;
-5. an old *fetch* fails while the content date is fresh, which is the check the
-   task says must not age;
-6. an input with no date is stale, is named as the worst, and does not lose to a
-   count;
-7. a stale input stops the run: exit 1, no `proposals` row, no `orders` row,
-   `build_proposal` and `run_morning` never called, the row naming prices and
-   one session, and the stored row rendering the same sentence the owner sees;
-8. the negative control for 7: a fresh gate reaches sizing, and the later
-   failure replaces the clean row with an `error` row;
-9 to 13. the dashboard: a stale stop shows the red banner with the failing input;
-   a missing run shows the no-run banner; a row for an older close shows the
-   no-run-for-session banner naming the session; a clean row shows no failure at
-   all; and the page renders with `input_dates` and `check` wired to raise.
+## The scrub
+
+Four rules, applied to everything that leaves the process: any `scheme://...`
+URL, `eyJ...` JWTs, long base64 or hex blobs, and `password=`, `secret`,
+`token`, `api_key` or `access_key` followed by a value. The reason is not
+hypothetical: a failed send raises with the webhook URL inside its message, and
+that message is what gets recorded.
+
+```text
+$ notify.scrub("post to https://hooks.slack.com/services/T1/B2/abcdefghijklmnopqrstuvwx "
+               "with password=hunter2 and db=postgresql://u:pw@host:5432/db")
+post to [redacted] with [redacted] and db=[redacted]
+```
+
+A test drives the error path with an exception whose text contains a fake
+Supabase connection string, and asserts the password, the host and the scheme
+are gone from both the message and the stored `detail`, while the exception type
+survives:
+
+```text
+EFB live book 2026-09-22: error, the run failed
+Orders: none. The run failed before sizing, so no book was priced.
+Staleness: no input failed the check.
+Error: OperationalError: could not connect to [redacted]
+```
+
+## The record, the order of operations, and the exit code
+
+- The message goes out **after** the proposal and the orders, never before, so a
+  failed send cannot block or roll back a run that priced a book and moved no
+  money.
+- `notify_status` is `sent`, `failed` or `skipped` (no channel configured), and
+  `notify_failed` is true whenever the status is not `sent`. The exit code is
+  nonzero in exactly those cases, and for a stale stop or an error regardless.
+- A failed send appends its scrubbed reason to the `cron_runs` detail. A
+  *skipped* send is logged as a warning and recorded on the row, but does not
+  add noise to the cron's own line.
+- **The dashboard states the notification failure too.** `run_state` gained
+  `notify_failed` and `notify_not_configured` states, so a run that could not
+  tell the owner is not shown as a clean run: the banner says the run completed,
+  that the owner was not told, and, for the unconfigured case, names
+  `EFB_NOTIFY_SLACK_WEBHOOK_URL` as the thing to set.
+- **The whole job is wrapped.** An exception anywhere, including before the
+  gate, sends `error` with the exception type and a scrubbed one-line reason,
+  writes the `error` row, and exits nonzero. The reason is scrubbed once, at the
+  point it is captured, so the same clean text goes to the message, the row and
+  the log.
+
+## The heartbeat, offered and not built
+
+**Option: healthchecks.io, the free "dead man's switch" service.** The cron
+pings one URL after it notifies, and the service alerts the owner if a ping does
+not arrive by the time it expects.
+
+- What it needs from the owner: a free account, one check with a period of one
+  day and a grace period of about an hour (the cron fires once each weekday, so
+  the check must not alert on weekends: either a weekly schedule or a
+  documented Friday silence), and the alert channel the owner prefers, which can
+  be the same Slack webhook. One more Render variable, a ping URL, on the cron.
+- What it costs: nothing at this volume. The free tier is built for exactly one
+  check per day and alerts by email or webhook.
+- Why not built: the task asks for the offer, and building it would mean adding
+  a variable the owner has not placed and a network call whose absence is
+  indistinguishable from a Render outage. The point of an outside check is that
+  it does not share Render's failure modes, so it belongs outside this process.
 
 ## What could not be verified
 
-**The Postgres path, and one concrete risk in it.** No `EFB_SUPABASE_DB_URL`
-exists in `.env` or anywhere on this machine, no Postgres server is installed,
-and docker is not available, so every new test exercises the store's local
-parquet fallback. `run_status` is therefore proved in shape and in content, not
-over a socket. That is the same standing gap as the rest of the live series, and
-Part 4's connection-string test is where it gets closed.
+**No real message was delivered.** There is no Slack webhook on this machine and
+none should be committed, so the send path is exercised with the real composer
+and the real `send` against stand-in posters: one that records the payload, one
+that raises with the URL inside the message, and no poster at all. The HTTP path
+itself (`notify.post`) is eleven lines of `urllib.request` and its behaviour
+against the live webhook is unproved until the owner's test notification, which
+is a deploy step in Part 4 and is the confirmation the task asks for.
 
-While checking what the write path sends, one thing did surface.
-`psycopg.types.string.StrDumper.oid` is 25, so psycopg 3.3.6 sends a Python
-`str` as `text`, and `store.upsert` passes dates, `jsonb` payloads and timestamps
-as strings. If Postgres refuses the assignment, the first write fails with
-`column "target_close" is of type date but expression is of type text` rather
-than silently, and the fix is a cast per column in `store._upsert_sql`. I could
-not settle it without a server. It is not specific to this part: `proposals`
-(`trade_date`, `input_as_of jsonb`, `manifest jsonb`) and `cron_runs`
-(`run_date`, `started_at`) already carry the same shape, so the first live write
-of any table answers it, and Part 4's steps will make the owner's connection test
-do exactly that.
+**The Postgres write path, again.** `run_status.notify_status` and
+`notify_failed` are written through the same store as every other live table, and
+that path is still unreachable from here (no `EFB_SUPABASE_DB_URL`, no local
+server, no docker). The psycopg text-typing question from Part 3's report stands
+and applies to `notify_failed boolean` as much as to anything else.
 
-Nothing else is unverified. The NYSE calendar is a new live dependency
-(`pandas_market_calendars>=4.4`, added to `requirements.txt` and to the `live`
-extra in `pyproject.toml`), installed here as 5.4.0, and its holiday and session
-arithmetic is pinned by tests 1 and 2.
+## Tests, 11 in `tests/test_e11_notify.py`
 
-## What is left
-
-- Part 3b: the notification on every run, Slack first, the webhook in
-  `EFB_NOTIFY_SLACK_WEBHOOK_URL` on the cron only, the scrub of the error
-  reason, `notify_failed` recorded, and the one external heartbeat option
-  offered rather than built. The `run_status` table already carries
-  `notify_status`, `notify_failed`, `n_orders` and `gross_notional` for it, so
-  3b needs no schema change.
-- Part 4: the deploy steps, corrected, with the role SQL as text, the session
-  pooler username format, the answer on runtime DDL, and the owner's test
-  notification.
-- Part 5: only after the owner confirms the book.
+1. the three fields in order, for a clean dry run, and `"0 orders"` absent;
+2. a live run says orders were sent and does not say "dry run";
+3. a stale stop names every failing input, including one with no date at all;
+4. an error message names the exception type and scrubs the reason;
+5. `scrub` removes the webhook, a JWT, a long key and `password=`/`api_key:`;
+6. no channel configured is `skipped`, not a crash;
+7. a refused send records `failed` with the URL redacted;
+8. a clean run through `main()` sends once, stores `sent`, `n_orders` 152 and
+   `gross_notional` 2,014,000 from the morning summary, and exits 0;
+9. a refused send through `main()` exits 1, records `notify_failed`, keeps the
+   cron status as the run's own, and the dashboard shows `notify_failed`;
+10. no channel through `main()` exits 1 and the dashboard shows
+    `notify_not_configured` with the variable named;
+11. an unexpected exception through `main()` sends one `error` message with the
+    connection string scrubbed, stores the scrubbed reason, and leaves no
+    proposal and no order row.
 
 ## Verification
 
-`make lint`, exit 0:
+Per step, the selection is every test touching what changed, and the full suite
+is not required at this step: no `efb/` module changed, no artifact was rebuilt,
+the clock is not touched, and this is not the state that sets the task `done`.
 
 ```text
+$ make lint
 .venv/bin/ruff check efb dashboard live tests
 All checks passed!
 .venv/bin/mypy efb
 Success: no issues found in 33 source files
 .venv/bin/black --check efb dashboard live tests
-All done! ... 167 files would be left unchanged.
-```
+All done! ... 169 files would be left unchanged.
 
-`make test`, the full suite, exit 0. The same command at `dee01c8` (Part 2) was
-738 passed, 1 skipped, 3 warnings; this part adds 13 tests, all in
-`tests/test_e11_staleness.py`, and nothing else moved.
+$ .venv/bin/python -m pytest tests/test_e11_notify.py tests/test_e11_staleness.py \
+    tests/test_e11_render.py tests/test_run_live_daily.py tests/test_e11_store.py \
+    tests/test_e11_execution.py tests/test_e11_guards.py -q --tb=short
+75 passed, 1 skipped in 2.85s
 
-```text
-$ make test > /tmp/full3.log 2>&1; echo "EXIT=$?"
-$ tail -c 300 /tmp/full3.log
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-751 passed, 1 skipped, 3 warnings in 584.10s (0:09:44)
-EXIT=0
-```
-
-### The per-step runs, and the fast/slow split
-
-Per step, the selection and its output, pasted so the subset is auditable
-(rule 21):
-
-```text
-$ .venv/bin/python -m pytest tests/test_e11_staleness.py tests/test_e11_render.py -q --tb=short
-..............s.............                                             [100%]
-27 passed, 1 skipped in 2.30s
-```
-
-That selection is every test touching what changed: the new file, and
-`tests/test_e11_render.py`, which reads `live/dashboard_app.py` as text and
-imports it. `tests/test_run_live_daily.py` also covers the cron script and was
-run in the same batch while the part was built (26 passed over the three files);
-its tests are unchanged and pass in the full run.
-
-The split, rule 21:
-
-```text
-$ .venv/bin/python -m pytest tests/ -q -m slow --collect-only
-29/752 tests collected (723 deselected) in 2.09s
-
-$ make test-fast
-722 passed, 1 skipped, 29 deselected, 3 warnings in 25.56s
-make test-fast  25.26s user 2.70s system 106% cpu 26.297 total
-```
-
-752 tests collected: 29 on the slow path, 723 on the fast one, and one of them
-skipped. The fast path is 25.6s, the full path 584.1s. Every test this part adds
-is on the fast path: the file of 13 runs in 2.37s and no single test is near the
-two-second marker, so none is marked slow.
-
-`make verify-evidence`, exit 0:
-
-```text
+$ make verify-evidence
 evidence OK
 ```
+
+The full suite at Part 3's commit was 751 passed, 1 skipped (below, pasted).
+Part 5 ends with the run that carries this part, Part 4 and Part 5 together, and
+that is the one the `done` state rests on.
 
 ### Headline numbers, file and key
 
 | number | file and key |
 | --- | --- |
-| nine inputs, their gating date and its source | `live/staleness.py::INPUTS`, `GATED_ON_FETCH`, `input_dates` |
-| 0 sessions allowed, `ALLOWED_SESSIONS_BEHIND` | `live/staleness.py::check`, `allowed_sessions_behind: 0` in every stored row |
-| target close 2026-09-24, max 13 calendar days, worst prices at 3 sessions | the pasted run above, `check()` on the real `data/` |
-| Labor Day 2026-09-07 closed; 09-04 to 09-08 is 1 session | `live/staleness.py::sessions`, `sessions_behind` |
-| 13 tests | `tests/test_e11_staleness.py`, `pytest -q` |
-| 751 collected: 722 fast / 29 slow, 25.6s / 584.1s | `make test-fast` and `make test`, both pasted above |
-| the run stops with no proposal and no order | `tests/test_e11_staleness.py::test_a_stale_input_stops_the_run_with_no_proposal_and_no_orders`, asserting on `store.select("proposals")` and `store.select("orders")` |
-| `run_status` DDL, 17 columns, key (target_close, job) | `live/supabase_schema.sql`, tail |
-| the store's `run_status` key | `live/store.py::TABLE_KEYS` |
-| `StrDumper.oid` 25 | psycopg 3.3.6, read directly |
+| the three fields, in order | `live/notify.py::compose`, `STATUS_LABELS` |
+| the dry-run wording | `live/notify.py::compose`, the `status == "ok"` branch |
+| four scrub rules | `live/notify.py::_SCRUBS` |
+| `sent` / `failed` / `skipped` | `live/notify.py::send` |
+| the cron only holds the webhook | `render.yaml`, the second service's `envVars`; asserted by `tests/test_e11_render.py::test_render_yaml_gives_the_webhook_to_the_cron_only` |
+| the empty key in the example | `.env.example`, last line |
+| `notify_status`, `notify_failed`, `n_orders`, `gross_notional` columns | `live/supabase_schema.sql`, `efb.run_status` |
+| exit nonzero when the message was not delivered | `scripts/run_live_daily.py::finish_run`, the last three lines |
+| the two dashboard states | `live/staleness.py::LABELS`, `notify_failed` and `notify_not_configured` |
+| 11 tests | `tests/test_e11_notify.py` |
+| the full run at Part 3 | `751 passed, 1 skipped, 3 warnings in 584.10s`, Part 3's report |
 
 ### git diff --stat from `base_commit` (dd41d9b)
 
-This part's own files, from Part 2's commit `dee01c8` (Part 2 is committed, so
-the part boundary is that commit rather than the revision's base), with
-`git add -N live/staleness.py tests/test_e11_staleness.py` first so the new files
+This part's own files, from Part 3's commit `51d1bce`, with
+`git add -N live/notify.py tests/test_e11_notify.py` first so the new files
 appear:
 
 ```text
-$ git diff --stat dee01c8 -- handoff/REPORT.md live/staleness.py \
-    live/dashboard_app.py live/store.py live/supabase_schema.sql \
-    scripts/run_live_daily.py tests/test_e11_staleness.py requirements.txt \
-    pyproject.toml
- handoff/REPORT.md           | 677 +++++++++++++++++++++++---------------------
- live/dashboard_app.py       |  35 +++
- live/staleness.py           | 542 +++++++++++++++++++++++++++++++++++++
- live/store.py               |   4 +
- live/supabase_schema.sql    |  29 ++
- pyproject.toml              |   1 +
- requirements.txt            |   2 +
- scripts/run_live_daily.py   |  48 +++-
- tests/test_e11_staleness.py | 422 +++++++++++++++++++++++++++++
- 9 files changed, 1451 insertions(+), 309 deletions(-)
+$ git diff --stat 51d1bce -- handoff/REPORT.md live/notify.py live/staleness.py \
+    scripts/run_live_daily.py tests/test_e11_notify.py tests/test_e11_render.py \
+    render.yaml .env.example
+ .env.example              |   6 +
+ handoff/REPORT.md         | 636 +++++++++++++++++++---------------------------
+ live/notify.py            | 237 +++++++++++++++++
+ live/staleness.py         |  16 +-
+ render.yaml               |   7 +-
+ scripts/run_live_daily.py | 116 +++++++--
+ tests/test_e11_notify.py  | 334 ++++++++++++++++++++++++
+ tests/test_e11_render.py  |  13 +
+ 8 files changed, 971 insertions(+), 394 deletions(-)
 ```
 
-From the revision's `base_commit` (dd41d9b), which also carries Part 2 and the
-reviewer's `ef67024`:
+From the revision's `base_commit` (dd41d9b), which also carries Parts 2 and 3 and
+the reviewer's `ef67024`:
 
 ```text
 $ git diff --stat dd41d9b
- handoff/LOG.md              |  43 +++
- handoff/PROJECT_CONTEXT.md  |  13 +-
- handoff/REPORT.md           | 697 +++++++++++++++++++++++---------------------
- handoff/TASK.md             |  48 +++-
- live/appendix.py            | 420 ++++++++++++++++++++++++++++++++
- live/dashboard_app.py       |  35 +++
- live/evening_job.py         |   6 +-
- live/staleness.py           | 542 +++++++++++++++++++++++++++++++++++++
- live/store.py               |   4 +
- live/supabase_schema.sql    | 109 ++++++++
- pyproject.toml              |   1 +
- requirements.txt            |   2 +
- scripts/run_live_daily.py   |  63 ++++-
- tests/test_e11_appendix.py  | 272 +++++++++++++++++++++
- tests/test_e11_staleness.py | 422 +++++++++++++++++++++++++++++
- 15 files changed, 2345 insertions(+), 332 deletions(-)
+ ...
+ 20 files changed, 2936 insertions(+), 346 deletions(-)
 ```
 
 Nothing else in the repository changed: no research artifact, no construction
@@ -376,55 +269,54 @@ table, no proposal, no notebook.
 
 ### Yes or no, each with evidence
 
-1. **Any two rows or two estimators identical.** No. Each `run_status` row is one
-   target close, and the tests write one row per case. No proposal, position or
-   order row exists in the tree at all after this part: the stop path writes
-   none, and no test writes one.
-2. **Any exception caught and skipped, or fallback taken, with counts.** Yes, two,
-   both by design and neither silent. (a) The store's local parquet fallback,
-   exercised by every new test because `EFB_SUPABASE_DB_URL` is unset; the
-   Postgres path is unreachable here and the section above says so. (b) The cron's
-   own `except Exception`, which records `cron_runs status=failed`, writes the
-   `run_status` error row, logs the traceback and returns 1; the write of the
-   error row is itself guarded so that a store failure cannot mask the original
-   failure. No other exception is caught anywhere in the new code; the network,
-   the calendar and the artifacts are allowed to raise.
-3. **Any criterion reworded or replaced by a different test.** No. No
-   `RESULTS.json` criterion, threshold or string was touched, and no existing
-   test was edited: the diff shows one new test file and one new module.
-4. **Any criterion that passes by construction.** Two, declared. (a) The
-   dashboard tests assert on the element the page renders, so if the banner and
-   the test drifted apart the test would still catch it, but they do share the
-   `run_state` function, so the message wording is not independently checked.
-   (b) Test 8 (a fresh gate reaches sizing) proves the gate passed by observing
-   that sizing was entered, which is the point; it does not prove what the
-   proposal would have contained, because the sizing call is replaced.
+1. **Any two rows or two estimators identical.** No. One `run_status` row per
+   target close; the new tests write one row each in their own temporary store.
+2. **Any exception caught and skipped, or fallback taken, with counts.** Yes,
+   three, none of them silent. (a) `send` catches everything around the POST and
+   turns it into `failed` with a scrubbed reason, because a failed send must not
+   mask the run: it is recorded on the row, in the cron detail and in the exit
+   code, and the test that raises inside the poster asserts all three. (b) The
+   cron's own `except Exception`, which now sends `error` rather than only
+   recording it. (c) The store's local parquet fallback, exercised by every new
+   test because `EFB_SUPABASE_DB_URL` is unset. No other exception is caught.
+3. **Any criterion reworded or replaced by a different test.** No stored
+   criterion was touched. Two existing tests were **edited deliberately**, both
+   in `tests/test_e11_render.py`'s credential check, to add the webhook key to
+   the env-example list and to assert the cron-only placement. Neither weakens
+   what was asserted before; the file's other assertions are unchanged.
+4. **Any criterion that passes by construction.** Two, declared. (a) Test 8's
+   `n_orders` and `gross_notional` come from a patched morning summary, so the
+   test proves the message and the row carry what the morning returned, not that
+   `run_morning` returns those numbers. (b) The dashboard states are asserted
+   through `run_state`, the same function the page calls, so wording and test
+   cannot drift independently; the element the page renders is asserted in
+   Part 3's dashboard tests.
 5. **Any number that moved by a factor of 10 or more from its previous stored
-   value.** No. No stored number moved. The construction table, the proposals,
-   the registry and every `RESULTS.json` are untouched; the gate is new and
-   reports new numbers.
-6. **Any stored number typed into a notebook.** No notebook was opened, edited or
-   executed. The one scratch script used is `/tmp/...` and its output is pasted
-   above.
-7. **Any earlier verdict changed.** No. The rank-margin ruling stands as recorded
-   at `ce8c897`, and this part touches no check on any floor row.
+   value.** No. No stored number moved. The notification adds columns and
+   message text; no artifact, proposal or registry entry was rewritten.
+6. **Any stored number typed into a notebook.** No notebook was opened, edited
+   or executed.
+7. **Any earlier verdict changed.** No. Part 3's stop behaviour is unchanged:
+   the gate, the row and the exit code are the same, and the message is added
+   around them.
 
 ### Anything decided that the reviewer might disagree with
 
-**The sectors gate reads the constituents archive, not the sector snapshot.** The
-reasoning and the alternative are above. If the reviewer reads "the date of the
-last successful fetch" as the sector file's own date, the honest consequence is
-that a run today stops on sectors at nine sessions behind and keeps stopping
-until the build refreshes the snapshot, so the live loop could not run at all.
-I took the reading that keeps the owner's rule meaningful, and I am flagging it
-rather than burying it.
+**A run that cannot deliver its message exits nonzero, even when the book was
+built.** The task says a failed send is recorded and exits nonzero; I applied
+that to the case where no channel is configured too, because a cron that looks
+green while nothing is sent is the failure the whole part exists to prevent. The
+alternative reading is to exit 0 when the channel is simply unset, treating it
+as a deployment gap rather than a run failure. I chose the strict one, and the
+dashboard's `notify_not_configured` state names the variable so the owner cannot
+miss what to fix.
 
-**The dashboard shows the no-run state between the close and the cron.** A run
-that fires at 22:30 UTC after a 20:00 UTC close leaves roughly two and a half
-hours in which the most recent completed session has no `run_status` row, so the
-page shows the missing-run banner in that window. The task says a missing run is
-stale and the failure state must be prominent, so I implemented that literally
-rather than adding a grace period that would blunt the alarm; the banner names
-both dates so the owner can see the cron is merely not due yet. If the reviewer
-prefers a grace window to the close plus a few hours, it is a small change to
-`run_state`.
+**The skipped case does not append to the cron detail.** A failed send does,
+because that is news about this run; an unconfigured channel would repeat the
+same line every evening, and the row and the dashboard banner carry it. If the
+reviewer wants the cron line to say it every time, it is a two-line change.
+
+**The email channel is offered, not built.** The task allows this ("if it costs
+little"), and what it costs is a provider choice and a credential the owner has
+not placed. The interface is a function, so it is cheap the day the owner wants
+it.

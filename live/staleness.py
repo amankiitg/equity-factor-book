@@ -453,6 +453,7 @@ LABELS: dict[str, str] = {
     "stale_stopped": "STALE STOP: the run refused to price a book",
     "error": "the run errored",
     "notify_failed": "the notification failed",
+    "notify_not_configured": "no notification channel is configured",
 }
 
 
@@ -504,6 +505,7 @@ def _evaluate(
             ),
         }
     status = str(row.get("status") or "unknown")
+    notify_status = str(row.get("notify_status") or "")
     notify_failed = bool(row.get("notify_failed"))
     if status != "ok" or notify_failed:
         reason = str(row.get("detail") or "").strip()
@@ -519,6 +521,12 @@ def _evaluate(
                 f"The run for the {expected} close failed: "
                 f"{reason or 'no reason recorded'}."
             )
+        elif notify_status == "skipped":
+            message = (
+                f"The run for the {expected} close completed, but no notification "
+                f"channel is set, so the owner was not told. Set "
+                f"EFB_NOTIFY_SLACK_WEBHOOK_URL on the cron service."
+            )
         elif notify_failed:
             message = (
                 f"The run for the {expected} close completed, but its "
@@ -526,8 +534,14 @@ def _evaluate(
             )
         else:
             message = f"The run for the {expected} close recorded status {status}."
+        if status != "ok":
+            state = status
+        elif notify_status == "skipped":
+            state = "notify_not_configured"
+        else:
+            state = "notify_failed"
         return {
-            "state": status if status != "ok" else "notify_failed",
+            "state": state,
             "clean": False,
             "target_close": expected,
             "recorded_target_close": recorded,

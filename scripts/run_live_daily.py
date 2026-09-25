@@ -15,6 +15,11 @@ inputs fresh, and before any sizing. A stale input stops the run there: no
 proposal row, no order, a `run_status` row naming the input and its distance in
 NYSE sessions, and a nonzero exit so Render marks the cron run failed.
 
+Every run then notifies the owner, clean ones included (live.notify, Part 3b),
+so the absence of the evening message is the alarm. The message goes out after
+the proposal and the orders, never before, so a failed send cannot block or
+roll back a run; a run whose message was not delivered exits nonzero.
+
 Nothing executes real money. The morning path is dry run by default and
 the live path needs EFB_ALPACA_PAPER_API_KEY and
 EFB_ALPACA_PAPER_SECRET_KEY, which are never committed.
@@ -28,6 +33,7 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -222,8 +228,69 @@ def resolve_dry_run(value: str | None) -> bool:
     return (value or "").strip().lower() != "false"
 
 
+def finish_run(
+    *,
+    run_date: str,
+    result: dict[str, Any],
+    status: str,
+    dry_run: bool,
+    detail: str = "",
+    orders: int | None = None,
+    gross: float | None = None,
+    error_type: str | None = None,
+    poster: Any = None,
+) -> int:
+    """Notify the owner, record the run, and return the process exit code.
+
+    The message goes out here, after the proposal and the orders and never
+    before, so a failed send can neither block nor roll back the run. A run
+    whose message was not delivered is recorded as such, on the row and in the
+    cron detail, and exits nonzero, because a run the owner was not told about
+    is a run that did not do its job either way.
+    """
+    from live import notify, staleness
+
+    notified = notify.notify_run(
+        status=status,
+        target_close=result.get("target_close"),
+        dry_run=dry_run,
+        orders=orders,
+        gross=gross,
+        worst_input=result.get("worst_input"),
+        worst_sessions_behind=result.get("worst_sessions_behind"),
+        failures=result.get("failures") or [],
+        detail=detail,
+        error_type=error_type,
+        poster=poster,
+    )
+    delivered = notified["status"] == notify.STATUS_SENT
+    staleness.write_run_status(
+        result,
+        run_date=run_date,
+        status=status,
+        dry_run=dry_run,
+        detail=detail,
+        notify_status=notified["status"],
+        notify_failed=not delivered,
+        n_orders=orders,
+        gross_notional=gross,
+    )
+    cron_detail = detail
+    if notified["status"] == notify.STATUS_FAILED:
+        cron_detail = f"{detail} | notification failed: {notified['detail']}"
+        logger.error("notification failed: %s", notified["detail"])
+    elif notified["status"] == notify.STATUS_SKIPPED:
+        # On the row and on the dashboard; not noise in the cron's own line.
+        logger.warning("no notification channel: %s", notified["detail"])
+    record_run("live_daily", run_date, status, cron_detail.strip(" |"))
+    logger.info("run recorded as %s, notification %s", status, notified["status"])
+    if not delivered:
+        return 1
+    return 0 if status == "ok" else 1
+
+
 def main() -> int:
-    from live import evening_job, extend, morning_job, reconcile, staleness
+    from live import evening_job, extend, morning_job, notify, reconcile, staleness
 
     run_date = datetime.now(UTC).date().isoformat()
     if already_ran("live_daily", run_date):
@@ -233,6 +300,7 @@ def main() -> int:
     dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
     from live import appendix as appendix_mod
 
+    gate: dict[str, Any] | None = None
     try:
         # The model inputs are the git seed plus the Postgres appendix, so a
         # fresh container starts from seed plus every session the loop has
@@ -258,14 +326,18 @@ def main() -> int:
         # evidence goes in the store as well as on the exit code, because the
         # dashboard reads run_status and never the latest proposal.
         gate = staleness.check()
-        staleness.write_run_status(gate, run_date=run_date, dry_run=dry_run)
         if gate["status"] != "ok":
             stopped = staleness.describe_failures(gate["failures"])
-            record_run("live_daily", run_date, "stale_stopped", stopped)
             logger.error(
                 "stale stop for the %s close: %s", gate["target_close"], stopped
             )
-            return 1
+            return finish_run(
+                run_date=run_date,
+                result=gate,
+                status="stale_stopped",
+                dry_run=dry_run,
+                detail=stopped,
+            )
 
         # Evening: propose tomorrow's book from the latest close.
         manifest = evening_job.build_proposal(appendix=appendix_identity)
@@ -273,29 +345,33 @@ def main() -> int:
         store_proposal(as_of)
 
         # Morning: gate, guard, submit (dry run by default), reconcile.
-        morning_job.run_morning(as_of, dry_run=dry_run)
+        morning = morning_job.run_morning(as_of, dry_run=dry_run)
         store_orders(as_of, dry_run)
 
         row = reconcile.daily_record(as_of, dry_run=dry_run)
         store_reconciliation(as_of, row)
     except Exception as exc:  # noqa: BLE001 - recorded, never silent
-        detail = str(exc)[:200]
-        record_run("live_daily", run_date, "failed", detail)
-        try:
-            # An errored run must still leave a status row: the dashboard shows
-            # the failure instead of the last clean book, and a run that dies
-            # before the gate has no check result of its own.
-            staleness.write_run_status(
-                staleness.error_result(detail), run_date=run_date, dry_run=dry_run
-            )
-        except Exception:  # noqa: BLE001 - the record cannot mask the failure
-            logger.exception("could not write the run status")
+        # The reason is scrubbed before it goes anywhere: a connection string,
+        # a key or the webhook URL must not reach the message or the store.
+        detail = notify.scrub(f"{type(exc).__name__}: {exc}")[:200]
         logger.exception("live daily failed")
-        return 1
+        return finish_run(
+            run_date=run_date,
+            result=gate if gate is not None else staleness.error_result(detail),
+            status="error",
+            dry_run=dry_run,
+            detail=detail,
+            error_type=type(exc).__name__,
+        )
 
-    record_run("live_daily", run_date, "ok")
-    logger.info("live daily completed for %s", run_date)
-    return 0
+    return finish_run(
+        run_date=run_date,
+        result=gate,
+        status="ok",
+        dry_run=dry_run,
+        orders=int(morning.get("orders") or 0),
+        gross=float(morning.get("intended_notional") or 0.0),
+    )
 
 
 if __name__ == "__main__":

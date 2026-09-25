@@ -13,7 +13,8 @@
 #   Dashboard gets EFB_SUPABASE_DB_URL (a READ-ONLY Postgres role's
 #   connection string) and EFB_DB_SCHEMA. NO Alpaca keys.
 #   Cron gets EFB_SUPABASE_DB_URL (the write role's connection string),
-#   EFB_DB_SCHEMA, EFB_ALPACA_PAPER_* and EFB_DRY_RUN.
+#   EFB_DB_SCHEMA, EFB_ALPACA_PAPER_*, EFB_DRY_RUN and the notification
+#   webhook (its own credential, cron only: the dashboard never sends).
 #   Env var VALUES are set manually in the Render dashboard (sync: false).
 #   This file commits the KEY names only; no credentials appear here.
 
@@ -48,4 +49,8 @@ services:
       - key: EFB_ALPACA_PAPER_SECRET_KEY
         sync: false
       - key: EFB_DRY_RUN
+        sync: false
+      # The notification webhook is a credential and belongs to the cron
+      # alone: the dashboard never sends a message, so it never holds one.
+      - key: EFB_NOTIFY_SLACK_WEBHOOK_URL
         sync: false
