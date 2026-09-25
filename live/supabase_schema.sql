@@ -189,3 +189,32 @@ create table if not exists efb.e11_universe (
   sector text, shares_held double precision, local_currency text,
   primary key (trade_date, ticker)
 );
+
+-- Part 3: one row per run, keyed by the target close it was priced for, not
+-- by the day the job fired. The dashboard reads the latest row and judges it
+-- against the session that should have closed, so a run that stopped on
+-- staleness, errored, or never happened shows as a failure instead of leaving
+-- an old book looking current. Every input's content date, and the fetch date
+-- for the two gated on it, is in `inputs`; the failing inputs and their
+-- distance in sessions are in `failures`.
+
+create table if not exists efb.run_status (
+  run_date date not null,
+  job text not null,
+  target_close date not null,
+  status text not null,
+  checked_at text,
+  max_input_staleness_days int,
+  worst_input text,
+  worst_sessions_behind int,
+  n_inputs int,
+  inputs jsonb,
+  failures jsonb,
+  detail text,
+  notify_status text,
+  notify_failed boolean default false,
+  n_orders int,
+  gross_notional double precision,
+  dry_run boolean,
+  primary key (target_close, job)
+);

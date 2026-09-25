@@ -5,6 +5,13 @@ to local files when Supabase is not configured) plus two tiny files: the
 clock and the cost reconciliation. It never reads a research parquet, so
 no file over 5 MB is touched. It leads with the answer: this is a null
 book, run to prove the machinery, not the signal.
+
+It judges the latest run from `run_status` alone. `live.staleness` is
+imported for that state, and only its `run_state` and `latest_row` are
+called: `check` and `input_dates` read the model inputs and run on the
+cron, never here. A run that stopped on staleness writes no proposal, so
+the newest proposal is the last good one and the page must not present it
+as current.
 """
 
 from __future__ import annotations
@@ -78,6 +85,13 @@ def _no_data(caption: str = "No live data yet.") -> None:
     st.caption(caption)
 
 
+def _run_state(frame: pd.DataFrame) -> dict:
+    """The latest run's state, judged against the session that should have closed."""
+    from live import staleness
+
+    return staleness.run_state(staleness.latest_row(frame))
+
+
 clock = load_clock()
 proposals = load_table("proposals")
 positions = load_table("positions")
@@ -85,7 +99,21 @@ orders = load_table("orders")
 reconciliation = load_table("reconciliation")
 nav = load_table("nav")
 cron_runs = load_table("cron_runs")
+run_status = load_table("run_status")
 manifest = _latest_proposal()
+
+# 0. Is the book on this page current?
+#
+# The latest run_status decides, never the latest proposal: a run that stopped
+# on staleness writes no proposal, so the newest proposal would be the last
+# good one and the page would present it as current. A missing run is stale
+# too, so no row at all for the most recent completed session is a failure
+# state, not an empty page.
+state = _run_state(run_status)
+if state["clean"]:
+    st.success(f"Run status: {state['label']}. {state['message']}")
+else:
+    st.error(f"**Run status: {state['label']}.** {state['message']}")
 
 # 1. Status
 st.header("Status")
@@ -159,6 +187,13 @@ else:
 
 # 4. The book
 st.header("The book")
+if not state["clean"]:
+    st.caption(
+        f"The book below is the last one stored, for the "
+        f"{state['recorded_target_close'] or 'unknown'} close, and the most "
+        f"recent completed session is {state['target_close']}. Treat it as "
+        f"history, not as today's book."
+    )
 if manifest is None:
     _no_data()
 else:

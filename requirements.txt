@@ -3,3 +3,5 @@
 # extras that connect to Alpaca paper and Postgres directly.
 alpaca-py>=0.20
 psycopg[binary]>=3.1
+# the NYSE session calendar the staleness gate and the dashboard both read
+pandas_market_calendars>=4.4

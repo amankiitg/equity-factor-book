@@ -39,6 +39,7 @@ TABLES = (
     "nav",
     "decisions",
     "cron_runs",
+    "run_status",
 )
 
 # The natural key of each live-series table, used by the upsert's
@@ -53,6 +54,9 @@ TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "nav": ("trade_date",),
     "decisions": ("trade_date",),
     "cron_runs": ("run_date", "job"),
+    # keyed by the target close rather than the day the job ran, so a re-fire
+    # for the same session replaces its row and a missing session stays missing
+    "run_status": ("target_close", "job"),
 }
 
 

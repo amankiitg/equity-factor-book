@@ -1,13 +1,19 @@
-"""The daily live cron: hydrate, extend, propose, execute, reconcile.
+"""The daily live cron: hydrate, extend, gate, propose, execute, reconcile.
 
 One Render cron runs this after the US close. It hydrates every model input
 from the git seed plus the Postgres appendix (live.appendix), extends each by
-one session, writes the new sessions back to the appendix, builds the evening
-proposal, runs the morning execution (dry run unless EFB live keys are
-present), and stores the day's forecast beside its outcome. The live series
-goes to Supabase through live.store, which falls back to local files when
-Supabase is not configured. Every run is recorded in cron_runs, so a re-fire is
-a no-op rather than a duplicate.
+one session, checks that no input is stale (live.staleness), writes the new
+sessions back to the appendix, builds the evening proposal, runs the morning
+execution (dry run unless EFB live keys are present), and stores the day's
+forecast beside its outcome. The live series goes to Supabase through
+live.store, which falls back to local files when Supabase is not configured.
+Every run is recorded in cron_runs and in run_status, so a re-fire is a no-op
+rather than a duplicate.
+
+The gate sits after the extension, because the extension is what makes the
+inputs fresh, and before any sizing. A stale input stops the run there: no
+proposal row, no order, a `run_status` row naming the input and its distance in
+NYSE sessions, and a nonzero exit so Render marks the cron run failed.
 
 Nothing executes real money. The morning path is dry run by default and
 the live path needs EFB_ALPACA_PAPER_API_KEY and
@@ -217,7 +223,7 @@ def resolve_dry_run(value: str | None) -> bool:
 
 
 def main() -> int:
-    from live import evening_job, extend, morning_job, reconcile
+    from live import evening_job, extend, morning_job, reconcile, staleness
 
     run_date = datetime.now(UTC).date().isoformat()
     if already_ran("live_daily", run_date):
@@ -247,6 +253,20 @@ def main() -> int:
 
         evidence.snapshot()
 
+        # The gate, before any sizing: a book priced on an input older than the
+        # close it claims to price must not be built and must not trade. The
+        # evidence goes in the store as well as on the exit code, because the
+        # dashboard reads run_status and never the latest proposal.
+        gate = staleness.check()
+        staleness.write_run_status(gate, run_date=run_date, dry_run=dry_run)
+        if gate["status"] != "ok":
+            stopped = staleness.describe_failures(gate["failures"])
+            record_run("live_daily", run_date, "stale_stopped", stopped)
+            logger.error(
+                "stale stop for the %s close: %s", gate["target_close"], stopped
+            )
+            return 1
+
         # Evening: propose tomorrow's book from the latest close.
         manifest = evening_job.build_proposal(appendix=appendix_identity)
         as_of = str(manifest["as_of"])
@@ -259,7 +279,17 @@ def main() -> int:
         row = reconcile.daily_record(as_of, dry_run=dry_run)
         store_reconciliation(as_of, row)
     except Exception as exc:  # noqa: BLE001 - recorded, never silent
-        record_run("live_daily", run_date, "failed", str(exc)[:200])
+        detail = str(exc)[:200]
+        record_run("live_daily", run_date, "failed", detail)
+        try:
+            # An errored run must still leave a status row: the dashboard shows
+            # the failure instead of the last clean book, and a run that dies
+            # before the gate has no check result of its own.
+            staleness.write_run_status(
+                staleness.error_result(detail), run_date=run_date, dry_run=dry_run
+            )
+        except Exception:  # noqa: BLE001 - the record cannot mask the failure
+            logger.exception("could not write the run status")
         logger.exception("live daily failed")
         return 1
 
