@@ -109,10 +109,14 @@ def compose(
     failures: list[dict[str, Any]] | None = None,
     detail: str = "",
     error_type: str | None = None,
+    catch_up_sessions: list[str] | None = None,
 ) -> str:
     """The three fields, in order, ready for a preview."""
     close = target_close or "unknown close"
     label = STATUS_LABELS.get(status, status)
+    caught_up = len(catch_up_sessions or [])
+    if caught_up > 1:
+        label = f"{label} (catch-up of {caught_up} sessions)"
     lines = [f"EFB live book {close}: {label}"]
 
     if status == "ok":
@@ -216,6 +220,7 @@ def notify_run(
     failures: list[dict[str, Any]] | None = None,
     detail: str = "",
     error_type: str | None = None,
+    catch_up_sessions: list[str] | None = None,
     webhook: str | None = None,
     poster: Callable[[str, dict[str, Any]], Any] | None = None,
 ) -> dict[str, Any]:
@@ -231,6 +236,7 @@ def notify_run(
         failures=failures,
         detail=detail,
         error_type=error_type,
+        catch_up_sessions=catch_up_sessions,
     )
     result = send(message, webhook=webhook, poster=poster)
     result["text"] = message

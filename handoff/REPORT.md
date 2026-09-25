@@ -1,91 +1,77 @@
-# Sprint E11 pre-deploy, item 1: the universe is clamped to the close it prices
+# Sprint E11 pre-deploy, item 2: catch-up sessions are labelled
 
-**What was wrong.** `live/evening_job.py::load_spy_universe` took the newest SPY
-archive file on disk, whatever date it carried. `build_proposal` loaded the
-universe **before** it worked out which close it was pricing, so a build for an
-older close read a holdings snapshot filed after it. The stored 09-18 proposal
-recorded it:
+**What this adds.** The first Render run will find the panel at one close and
+extend it through several, and a run that appends more than one session is not an
+ordinary evening. `run_status` now records `catch_up` and the sessions it caught
+up, the notification's first line says so, and the definition of a gate close is
+written down where the code can enforce it.
 
-```text
-2026-09-18 {'as_of': '2026-09-18', 'universe_source':
-  'raw/spy_holdings/spy_holdings_2026-09-21.parquet', 'universe_as_of': '2026-09-21', ...}
-```
+## The measurement, not the assumption
 
-Three sessions of look-ahead in the artifact's own fields.
-
-**The fix, in the same shape `_input_as_of` already uses for everything else.**
-
-- `load_spy_universe(data_root, as_of=None)` returns the newest archive dated
-  **on or before** the close, and keeps the newest when no close is given, which
-  is the live path's own answer. The archive's date is the one in its file name,
-  which `spy.archive_snapshot` stamps from the `as_of` it fetched, so the name
-  is the snapshot date by construction.
-- `build_proposal` now computes `as_of_ts` first (`wide.index.max()` when no
-  close is given, else the close asked for) and passes it to the loader. The
-  comment says why: a holdings snapshot filed after the close must not inform
-  the book priced on it.
-- **Two refusals, both loud**, because a look-ahead universe is a wrong book and
-  not a parse to patch. A close with no archive on or before it is refused:
-
-  ```text
-  ValueError: no SPY archive dated on or before 2026-09-03: the newest is
-  spy_holdings_2026-09-21.parquet and it postdates the close being priced
-  ```
-
-  and an archive whose name carries no date is refused rather than skipped
-  quietly (`SPY archive spy_holdings_backup.parquet does not carry a date`). The
-  existing live-universe-seam check is untouched.
-
-`live/construction_table.py` still calls the loader with no close, which is
-correct for it: the table is a comparison of constructions on the latest data,
-not a book priced for a session, and it should keep reading the newest archive.
-
-## The shift audit, three tests in `tests/test_e11_evening.py`
-
-1. `test_load_spy_universe_clamps_to_the_close`: with 09-18 and 09-21 archives on
-   disk, a close of 2026-09-18 and a close of 2026-09-19 both return the 09-18
-   file, and no close returns 09-21.
-2. `test_a_universe_that_postdates_the_close_is_refused`: only the 09-21 archive
-   exists and the close is 2026-09-18, so the loader raises
-   `postdates the close being priced`.
-3. `test_an_archive_name_without_a_date_is_refused`.
-
-## The regenerated 09-18 proposal: the book did not change
+`live/extend.py::last_price_session` reads the price panel's latest session
+without extending anything. `scripts/run_live_daily.py::main` reads it **before**
+the extension and again inside `_catch_up_sessions` after it, and the sessions
+appended are the NYSE sessions after the old last one and up to the new one, from
+`live.staleness.sessions`, the same calendar the gate uses:
 
 ```text
-universe now: raw/spy_holdings/spy_holdings_2026-09-18.parquet 2026-09-18
-before: 155 names n_eff 69.4578 max 0.062615 (MRNA) n_excluded None
-after:  155 names n_eff 69.4578 max 0.062615 (MRNA) n_excluded 4 n_dropped 344
-names in both: 155 | only before: [] | only after: []
-largest weight change: 0.0 at ADM
-total absolute weight change (turnover): 0.0
+$ run_live_daily._catch_up_sessions(pd.Timestamp("2026-09-15"))
+['2026-09-16', '2026-09-17', '2026-09-18', '2026-09-21']
 ```
 
-**Zero, and the artifact says so itself: the regenerated
-`proposal_2026-09-18.parquet` is byte-identical and does not appear in this
-commit's diff at all.** Only the manifest changed, ten lines of it, all of them
-the universe fields. The reason is measurable rather than lucky: the two archives
-carry the **same 503 tickers** (`identical ticker sets: True`, `only 09-18: []`,
-`only 09-21: []`), so the universe the book was priced on is the same set either
-way. What changed is the truthfulness of the artifact: it now names the archive
-that existed at its close. The weights, breadth and largest position are
-unchanged, which is why this item needed no re-derivation of Guard 1 and no
-change to the confirmed book.
+Four sessions across a weekend and a Monday, which is the shape the first deploy
+will have.
 
-**One consequence worth carrying into item 4a.** The 2026-09-03 close is now
-refused for a *second*, independent reason: there is no SPY archive dated on or
-before it, so the build stops at the universe before it ever reaches the APH
-price gap Part 5 found. Both refusals are correct, and the 09-03 close stays
-un-repriced for the deploy's purposes.
+- `catch_up` is true when **more than one** session was appended. One session is
+  an ordinary evening and is not a catch-up.
+- A panel that did not advance, or an empty panel before the run, yields no
+  sessions rather than a guess, and `catch_up` stays false.
+- The appended dates go into `run_status.catch_up_sessions` as a JSON list, and
+  `catch_up` and `catch_up_sessions` are new columns on `efb.run_status`.
+
+**The gate definition, now written down:** *a gate close is a run whose target
+close is the only session it appended.* The first deploy is a catch-up run by
+construction, so it can never be one of the two gate closes, and the run records
+the sessions that make that checkable instead of leaving it to memory.
+
+## The message
+
+The first line carries it, immediately after the status, so it is readable in a
+preview:
+
+```text
+EFB live book 2026-09-21: ok, the run completed (catch-up of 4 sessions)
+```
+
+and a one-session run reads exactly as before, with no catch-up text at all. The
+status labels themselves are untouched; the suffix is added only when more than
+one session was appended.
+
+## Tests, four added
+
+1. `test_a_catch_up_run_says_so_in_the_first_line` in
+   `tests/test_e11_notify.py`: four sessions produce the suffix, one session
+   produces nothing.
+2. `test_the_appended_sessions_are_measured_from_the_calendar`: the four dates
+   above, from the real NYSE calendar.
+3. `test_a_one_session_run_is_not_a_catch_up`: the whole cron run through
+   `main()` with a panel that advances by one session, asserting
+   `catch_up is False`, `catch_up_sessions == '["2026-09-21"]'` and no catch-up
+   text in the message.
+4. `test_a_multi_session_run_is_recorded_as_a_catch_up`: the same run with four
+   sessions, asserting `catch_up is True`, the four dates in the row, and
+   `(catch-up of 4 sessions)` in the message.
 
 ## Verification
 
-Per step, the selection is every test touching what changed: the loader, its
-caller and the universe tests.
+Per step, the selection is every test touching what changed: the runner, the
+notification, the run-status row and the evening job.
 
 ```text
-$ .venv/bin/python -m pytest tests/test_e11_evening.py -q --tb=short
-31 passed in 21.93s
+$ .venv/bin/python -m pytest tests/test_e11_notify.py tests/test_e11_staleness.py \
+    tests/test_run_live_daily.py tests/test_e11_store.py tests/test_e11_evening.py \
+    -q --tb=short
+79 passed in 25.52s
 
 $ make lint
 .venv/bin/ruff check efb dashboard live tests
@@ -96,81 +82,80 @@ Success: no issues found in 33 source files
 All done! ... 170 files would be left unchanged.
 ```
 
-The full suite is not required at this step: no `efb/` module changed, and
-although the 09-18 proposal artifact was rebuilt, its weights are byte-identical
-apart from the universe fields, so no stored number moved. The `make test` run
-for this task lands with item 4b (the store), which changes `live/store.py` for
-every consumer; the report says so there.
+The full suite lands with item 4b (the store), which changes `live/store.py` for
+every consumer of the store; this item's change is additive on the same files
+that subset already covers.
 
 ### Headline numbers, file and key
 
 | number | file and key |
 | --- | --- |
-| the universe is the newest archive on or before the close | `live/evening_job.py::load_spy_universe`, `as_of` argument |
-| the close is computed before the universe is loaded | `live/evening_job.py::build_proposal`, `as_of_ts` above the loader call |
-| the 09-18 proposal now names the 09-18 archive | `live/proposals/proposal_2026-09-18.json`, `universe_source` / `universe_as_of` |
-| 155 names, n_eff 69.4578, max MRNA 0.062615, turnover 0.0 | the before/after block above, read from `proposal_2026-09-18.parquet` |
-| the two archives hold the same 503 tickers | `data/raw/spy_holdings/spy_holdings_2026-09-18.parquet` and `..._2026-09-21.parquet`, measured |
-| 3 new tests | `tests/test_e11_evening.py`, the three `load_spy_universe` tests |
+| `catch_up` is more than one appended session | `scripts/run_live_daily.py::finish_run`, `catch_up=len(catch_up_sessions or []) > 1` |
+| the sessions are measured from the panel | `live/extend.py::last_price_session`, `scripts/run_live_daily.py::_catch_up_sessions` |
+| four sessions from 2026-09-15 to 2026-09-21 | pasted above, `live.staleness.sessions` |
+| the first line carries the suffix | `live/notify.py::compose`, the `caught_up > 1` branch |
+| two new columns | `live/supabase_schema.sql`, `efb.run_status`, `catch_up` and `catch_up_sessions` |
+| 4 tests | `tests/test_e11_notify.py` |
 
 ### git diff --stat from `base_commit` (4048b97)
 
-This item's own files, from the in-progress commit `8196e43`:
+This item's own files, from item 1's commit `f15de10`:
 
 ```text
-$ git diff --stat 8196e43 -- handoff/REPORT.md live/evening_job.py \
-    live/proposals/proposal_2026-09-18.json \
-    live/proposals/proposal_2026-09-18.parquet tests/test_e11_evening.py
- handoff/REPORT.md                       | 375 ++++++++++----------------------
- live/evening_job.py                     |  53 ++++-
- live/proposals/proposal_2026-09-18.json |  10 +-
- tests/test_e11_evening.py               |  36 ++++
- 4 files changed, 208 insertions(+), 266 deletions(-)
+$ git diff --stat f15de10 -- handoff/REPORT.md live/extend.py live/notify.py \
+    live/staleness.py live/supabase_schema.sql scripts/run_live_daily.py \
+    tests/test_e11_notify.py
+ handoff/REPORT.md         | 238 +++++++++++++++++++---------------------------
+ live/extend.py            |  17 ++++
+ live/notify.py            |   6 ++
+ live/staleness.py         |   7 ++
+ live/supabase_schema.sql  |   2 +
+ scripts/run_live_daily.py |  37 ++++++++
+ tests/test_e11_notify.py  |  92 +++++++++++++++++++
+ 7 files changed, 268 insertions(+), 122 deletions(-)
 ```
 
-The parquet is named in the command and absent from the output: the book did not
-move. From the task's `base_commit` (4048b97), which carries only TASK.md's status
-change before this:
+From the task's `base_commit` (4048b97), which carries item 1 as well:
 
 ```text
 $ git diff --stat 4048b97
  ...
- 7 files changed, 888 insertions(+), 286 deletions(-)
+ 13 files changed, 1033 insertions(+), 285 deletions(-)
 ```
 
 ### Yes or no, each with evidence
 
-1. **Any two rows or two estimators identical.** No. The 09-18 and 09-21 books
-   still differ (155 names against 150, n_eff 69.46 against 70.59, largest MRNA
-   against MU). Within the 09-18 close, the before and after books are
-   identical, which is the finding above rather than a defect.
+1. **Any two rows or two estimators identical.** No. Each test writes one
+   `run_status` row for its own target close in its own temporary store, and the
+   catch-up and single-session runs differ in `catch_up`, in
+   `catch_up_sessions` and in the message they send.
 2. **Any exception caught and skipped, or fallback taken, with counts.** No new
-   catch. The item removes a silent fallback rather than adding one: the universe
-   was quietly served a later file, and now a missing archive on or before the
-   close raises. No exception is swallowed.
+   catch. `_catch_up_sessions` reads two values and returns an empty list when
+   either is missing or the panel did not advance; that is a defined answer, not
+   a swallowed error, and it is asserted by the one-session test.
 3. **Any criterion reworded or replaced by a different test.** No stored
-   criterion was touched and no existing test was edited: the three tests are
-   added to `tests/test_e11_evening.py` and the three earlier loader tests still
-   pass unchanged.
-4. **Any criterion that passes by construction.** One, declared: the clamp is
-   tested on synthetic archives under `tmp_path`, so it proves the selection
-   logic, not that the real `data/raw/spy_holdings/` directory holds the right
-   files. The real directory's effect is shown separately, by the regenerated
-   artifact's `universe_source` and by the 09-03 refusal, and both are pasted
-   above.
+   criterion and no existing test was edited; the four tests are added to
+   `tests/test_e11_notify.py`.
+4. **Any criterion that passes by construction.** One, declared: the multi-session
+   test drives `last_price_session` with a two-value iterator, so it proves the
+   run records what the panel reports, not that the real extension appends what
+   the panel reports. The real extension's own counts are covered by
+   `tests/test_e11_extend.py`, unchanged here.
 5. **Any number that moved by a factor of 10 or more from its previous stored
-   value.** No. The regenerated proposal's universe fields changed and nothing
-   numeric did: n_kept 155, n_eff 69.4578, max weight 0.062615, turnover 0.0.
-6. **Any stored number typed into a notebook.** No notebook was opened, edited
-   or executed.
-7. **Any earlier verdict changed.** No. Part 5's book, Guard 1 and the 09-03
-   refusal all stand; this item adds a second refusal reason to the same close
-   and leaves the two re-priceable closes' books untouched.
+   value.** No. No stored number moved. The first deploy's catch-up count is not
+   knowable before that run and is not asserted anywhere.
+6. **Any stored number typed into a notebook.** No notebook was opened, edited or
+   executed.
+7. **Any earlier verdict changed.** No. The gate's staleness rule, the
+   notification's three fields and the confirmed book all stand; this item adds a
+   label and a stored fact about runs that append more than one session.
 
 ### Anything decided that the reviewer might disagree with
 
-**The construction table keeps reading the newest archive.** It is a comparison
-artifact over the latest data rather than a proposal for a session, so clamping
-it would change what it measures without protecting anything. If the reviewer
-wants the table clamped too, it is the same one-argument change at
-`live/construction_table.py:67`, and it would re-run the whole table.
+**"More than one session" is the catch-up test, and it is stored as a boolean plus
+the dates.** The task defines a gate close as a run whose target close is the only
+session it appended, so the boolean is exactly that condition's negation. Storing
+the dates as well means a reader can check the boolean rather than trust it, and
+the notification names the count rather than the dates so the first line stays
+short. If the reviewer wants the dates in the message too, they are already in the
+row and it is one string join.

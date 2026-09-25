@@ -216,5 +216,7 @@ create table if not exists efb.run_status (
   n_orders int,
   gross_notional double precision,
   dry_run boolean,
+  catch_up boolean default false,
+  catch_up_sessions jsonb,
   primary key (target_close, job)
 );

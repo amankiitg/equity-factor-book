@@ -228,6 +228,24 @@ def resolve_dry_run(value: str | None) -> bool:
     return (value or "").strip().lower() != "false"
 
 
+def _catch_up_sessions(before: pd.Timestamp | None) -> list[str]:
+    """The sessions this run appended, as ISO dates.
+
+    A normal evening appends one session and the first run on a fresh container
+    appends several. Reading the panel before and after the extension makes that
+    a measurement rather than an assumption, and the run has to be able to say
+    which sessions it caught up: a gate close is a run whose target close is the
+    only session it appended, so a catch-up run can never be one.
+    """
+    from live import extend, staleness
+
+    after = extend.last_price_session()
+    if before is None or after is None or after <= before:
+        return []
+    start = before + pd.Timedelta(days=1)
+    return [day.date().isoformat() for day in staleness.sessions(start, after)]
+
+
 def finish_run(
     *,
     run_date: str,
@@ -238,6 +256,7 @@ def finish_run(
     orders: int | None = None,
     gross: float | None = None,
     error_type: str | None = None,
+    catch_up_sessions: list[str] | None = None,
     poster: Any = None,
 ) -> int:
     """Notify the owner, record the run, and return the process exit code.
@@ -261,6 +280,7 @@ def finish_run(
         failures=result.get("failures") or [],
         detail=detail,
         error_type=error_type,
+        catch_up_sessions=catch_up_sessions,
         poster=poster,
     )
     delivered = notified["status"] == notify.STATUS_SENT
@@ -274,6 +294,8 @@ def finish_run(
         notify_failed=not delivered,
         n_orders=orders,
         gross_notional=gross,
+        catch_up=len(catch_up_sessions or []) > 1,
+        catch_up_sessions=catch_up_sessions,
     )
     cron_detail = detail
     if notified["status"] == notify.STATUS_FAILED:
@@ -301,11 +323,16 @@ def main() -> int:
     from live import appendix as appendix_mod
 
     gate: dict[str, Any] | None = None
+    catch_up_sessions: list[str] = []
     try:
         # The model inputs are the git seed plus the Postgres appendix, so a
         # fresh container starts from seed plus every session the loop has
         # appended, not from the deploy date.
         appendix_mod.hydrate()
+        # The sessions this run appends are measured, not assumed: the first run
+        # on a fresh container finds the panel sessions behind and catches them
+        # up in one go, and a catch-up run may not be one of the gate's closes.
+        before_last = extend.last_price_session()
         # Extend the data and model layers by one session, then rehash.
         extend.extend_archives()
         extend.extend_prices()
@@ -313,6 +340,13 @@ def main() -> int:
         extend.extend_returns()
         extend.extend_model()
         extend.refresh_version()
+        catch_up_sessions = _catch_up_sessions(before_last)
+        if len(catch_up_sessions) > 1:
+            logger.info(
+                "catch-up run: appended %s sessions (%s)",
+                len(catch_up_sessions),
+                ", ".join(catch_up_sessions),
+            )
         # Write the sessions the run created back to the appendix, then name
         # the appendix state the proposal is priced from.
         appendix_mod.persist_new_sessions()
@@ -337,6 +371,7 @@ def main() -> int:
                 status="stale_stopped",
                 dry_run=dry_run,
                 detail=stopped,
+                catch_up_sessions=catch_up_sessions,
             )
 
         # Evening: propose tomorrow's book from the latest close.
@@ -362,6 +397,7 @@ def main() -> int:
             dry_run=dry_run,
             detail=detail,
             error_type=type(exc).__name__,
+            catch_up_sessions=catch_up_sessions,
         )
 
     return finish_run(
@@ -371,6 +407,7 @@ def main() -> int:
         dry_run=dry_run,
         orders=int(morning.get("orders") or 0),
         gross=float(morning.get("intended_notional") or 0.0),
+        catch_up_sessions=catch_up_sessions,
     )
 
 

@@ -21,6 +21,23 @@ DATA_ROOT = ROOT / "data"
 FROZEN_AS_OF = pd.Timestamp("2026-09-03")
 
 
+def last_price_session(data_root: Path = DATA_ROOT) -> pd.Timestamp | None:
+    """The latest session in the price panel, read without extending anything.
+
+    The daily run reads it before and after the extension, so the sessions the
+    run appended are a measurement rather than an assumption: a first run on a
+    fresh container catches up several sessions at once, and the run has to be
+    able to say which ones.
+    """
+    path = Path(data_root) / "raw" / "prices.parquet"
+    if not path.exists():
+        return None
+    dates = pd.DatetimeIndex(
+        pd.read_parquet(path, columns=["close"]).index.get_level_values("date")
+    )
+    return pd.Timestamp(dates.max()) if len(dates) else None
+
+
 def _frozen_tickers(data_root: Path) -> list[str]:
     """The frozen model universe: sector-mapped names plus the panel names."""
     sectors = pd.read_parquet(data_root / "processed" / "sectors.parquet")

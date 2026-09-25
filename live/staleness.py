@@ -389,6 +389,8 @@ def run_status_row(
     notify_failed: bool = False,
     n_orders: int | None = None,
     gross_notional: float | None = None,
+    catch_up: bool = False,
+    catch_up_sessions: list[str] | None = None,
 ) -> dict[str, Any]:
     """The `run_status` row for one run: the target close and every date.
 
@@ -414,6 +416,11 @@ def run_status_row(
         "n_orders": n_orders,
         "gross_notional": gross_notional,
         "dry_run": dry_run,
+        # A catch-up run appended several sessions at once, which the first
+        # deploy will do and which no gate close may be: a gate close is a run
+        # whose target close is the only session it appended.
+        "catch_up": bool(catch_up),
+        "catch_up_sessions": json.dumps(catch_up_sessions or []),
     }
 
 

@@ -332,3 +332,95 @@ def test_an_unexpected_error_notifies_with_a_scrubbed_reason(
     # nothing wrote a proposal or an order on the way down
     assert store.select("proposals").empty
     assert store.select("orders").empty
+
+
+def test_a_catch_up_run_says_so_in_the_first_line() -> None:
+    """The first deploy appends several sessions at once; the preview must say so,
+    because a catch-up run is never one of the gate's two closes."""
+    sessions = ["2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21"]
+    message = notify.compose(
+        status="ok",
+        target_close="2026-09-21",
+        dry_run=True,
+        orders=150,
+        gross=2_000_000.0,
+        worst_input="prices",
+        worst_sessions_behind=0,
+        catch_up_sessions=sessions,
+    )
+    assert message.splitlines()[0] == (
+        "EFB live book 2026-09-21: ok, the run completed " "(catch-up of 4 sessions)"
+    )
+    # one session is a normal evening, not a catch-up
+    single = notify.compose(
+        status="ok",
+        target_close="2026-09-21",
+        dry_run=True,
+        orders=150,
+        gross=2_000_000.0,
+        worst_input="prices",
+        worst_sessions_behind=0,
+        catch_up_sessions=["2026-09-21"],
+    )
+    assert "catch-up" not in single
+
+
+def test_the_appended_sessions_are_measured_from_the_calendar() -> None:
+    """Four sessions across a weekend and a Monday, from the price panel."""
+    sessions = run_live_daily._catch_up_sessions(pd.Timestamp("2026-09-15"))
+    assert sessions == ["2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21"]
+
+
+def test_a_one_session_run_is_not_a_catch_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A gate close is a run whose target close is the only session it appended."""
+    panel = iter([pd.Timestamp("2026-09-18"), pd.Timestamp("2026-09-21")])
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setenv(notify.CHANNEL_ENV, FAKE_WEBHOOK)
+    monkeypatch.setattr(
+        extend,
+        "last_price_session",
+        lambda *a, **k: next(panel, pd.Timestamp("2026-09-21")),
+    )
+    sent: list[str] = []
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload: sent.append(payload["text"])
+    )
+
+    assert run_live_daily.main() == 0
+
+    row = store.select("run_status").iloc[0]
+    assert bool(row["catch_up"]) is False
+    assert row["catch_up_sessions"] == '["2026-09-21"]'
+    assert "catch-up" not in sent[0]
+
+
+def test_a_multi_session_run_is_recorded_as_a_catch_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    panel = iter([pd.Timestamp("2026-09-15"), pd.Timestamp("2026-09-21")])
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setenv(notify.CHANNEL_ENV, FAKE_WEBHOOK)
+    monkeypatch.setattr(
+        extend,
+        "last_price_session",
+        lambda *a, **k: next(panel, pd.Timestamp("2026-09-21")),
+    )
+    sent: list[str] = []
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload: sent.append(payload["text"])
+    )
+
+    assert run_live_daily.main() == 0
+
+    row = store.select("run_status").iloc[0]
+    assert bool(row["catch_up"]) is True
+    assert row["catch_up_sessions"] == (
+        '["2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21"]'
+    )
+    assert "(catch-up of 4 sessions)" in sent[0]
