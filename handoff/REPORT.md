@@ -87,14 +87,21 @@ Success: no issues found in 33 source files
 All done! ... 174 files would be left unchanged.
 ```
 
-**The full suite run started for item 4b is void, and I am not reporting its
-numbers as evidence.** It reported three failures at the 44 percent mark, and they
-are mine: I edited `live/notify.py` while it was running, including a moment when
-its module docstring was unclosed, so every test that imported the module after
-that point failed for reasons that have nothing to do with item 4b. A clean full
-run is started on the frozen tree once this commit lands, with no edits in flight,
-and its result is reported in the next item's Verification. If it fails, that is a
-blocker and it is fixed before anything else moves.
+The clean run on the tree carrying items 4b and A, with standard 21's fast and
+slow split stated:
+
+```text
+$ make test-fast
+787 passed, 1 skipped, 29 deselected, 3 warnings in 80.19s (0:01:20)
+```
+
+**The earlier full-suite run is void, and I am not reporting its numbers as
+evidence.** It reported three failures at the 44 percent mark, and they are mine: I
+edited `live/notify.py` while it was running, including a moment when its module
+docstring was unclosed, so every test that imported the module after that point
+failed for reasons that have nothing to do with the item under test. The run above
+was started on the frozen tree, with nothing edited while it ran, and it is the
+result this item stands on.
 
 ### Headline numbers, file and key
 
@@ -246,7 +253,7 @@ credit-trading-lab.
 
 ## Tests
 
-`tests/test_e11_store.py`, six new tests: the local fallback needs an explicit
+`tests/test_e11_store.py`, eight new tests: the local fallback needs an explicit
 request (and both a read and a write refuse without one), local mode is refused
 where `RENDER` is set and the label says `ERROR`, a URL and a local request
 together are refused while either alone is fine, an unknown mode is refused, the
@@ -262,10 +269,23 @@ and the first test now asserts the store line leads, because that is the change.
 
 This item changes the write path for every consumer, so the per-step selection is
 wide, and standard 21's full-suite triggers do not apply to it: no `efb/` module
-changed and no stored artifact was rebuilt. The full suite is running as this is
-written and its result is reported in the next item's Verification; if it fails,
-that is a blocker and it is fixed before anything else moves. The previous full
-run, at item 3, was 786 passed, 1 skipped, 3 warnings in 599.86s, exit 0.
+changed and no stored artifact was rebuilt. The clean run on this tree, with the
+fast selection and the slow split reported:
+
+```text
+$ make test-fast
+787 passed, 1 skipped, 29 deselected, 3 warnings in 80.19s (0:01:20)
+```
+
+787 passed against item 3's 786, so the count grew rather than shrank, and the 29
+deselected are the tests marked slow. The collected total is 817 against item 3's
+787, which is this item's 8 tests, item 4's 20 and item A's 2.
+
+**The first full-suite run of this item is void and its numbers are not evidence.**
+It reported three failures, and they are mine: I edited `live/notify.py` while it was
+running, including a moment when its module docstring was unclosed, so every test
+that imported the module after that point failed for reasons that have nothing to do
+with this item. The clean run above was started on the frozen tree afterwards.
 
 Per step, the selection is every test touching the store, the notification, the
 staleness row and the runner:
@@ -316,7 +336,7 @@ EXIT=2
 | the guarded record | `scripts/run_live_daily.py::finish_run`, `store_failed` |
 | the suite is pinned to local | `tests/conftest.py` |
 | the verification command | `scripts/verify_store_roundtrip.py`, `job = store_roundtrip` in `efb.run_status` |
-| 6 new tests | `tests/test_e11_store.py` |
+| 8 new tests | `tests/test_e11_store.py` |
 
 ### git diff --stat from `base_commit` (4048b97)
 
