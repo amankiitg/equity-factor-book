@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import math
 import subprocess
+import time
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -176,6 +177,38 @@ def _scale_to_target(
 SHARE_FLOOR = 20  # the owner's chosen share-only floor, in whole shares
 
 
+def sized_kept_weights(
+    keep: np.ndarray,
+    names: list[str],
+    alpha_vec: np.ndarray,
+    design: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific: np.ndarray,
+    close: dict[str, float],
+    nav: float,
+) -> tuple[np.ndarray, list[str], np.ndarray, np.ndarray, np.ndarray]:
+    """Procedure 6.3 on the kept subset, hedged and renormalized to gross 1.0.
+
+    One implementation for the whole module: `finalize_kept_set` builds its
+    report from this, and the floor search reads the same vector so a set that
+    the search accepts is the set that trades.
+    """
+    del nav  # the renorm is to gross 1.0; the share counts take the NAV
+    idx = np.where(keep)[0]
+    names_sub = [names[i] for i in idx]
+    w_sub = sizing.procedure_6_3_robust(
+        alpha_vec[idx], design[idx], factor_covariance, specific[idx]
+    )
+    w_sub = sizing.renormalize(w_sub, gross=1.0)
+    prices = np.array([close.get(t, 0.0) for t in names_sub], dtype=float)
+    return idx, names_sub, w_sub, prices, design[idx], specific[idx]
+
+
+def kept_shares(w_sub: np.ndarray, prices: np.ndarray, nav: float) -> np.ndarray:
+    """The whole-share count of each kept name at the close."""
+    return np.floor(np.abs(w_sub) * nav / np.maximum(prices, 1e-12)).astype(int)
+
+
 def finalize_kept_set(
     keep: np.ndarray,
     names: list[str],
@@ -193,21 +226,14 @@ def finalize_kept_set(
     shares at the close. Nothing downstream re-weights it, so the floor must
     be checked against this vector, not the full-book weights.
     """
-    idx = np.where(keep)[0]
-    alpha_sub = alpha_vec[idx]
-    design_sub = design[idx]
-    specific_sub = specific[idx]
-    names_sub = [names[i] for i in idx]
-    w_sub = sizing.procedure_6_3_robust(
-        alpha_sub, design_sub, factor_covariance, specific_sub
+    idx, names_sub, w_sub, prices, design_sub, specific_sub = sized_kept_weights(
+        keep, names, alpha_vec, design, factor_covariance, specific, close, nav
     )
-    w_sub = sizing.renormalize(w_sub, gross=1.0)
     decomp = _decomposition(w_sub, design_sub, factor_covariance, specific_sub)
     quant = alpaca.whole_share_quantization(
         pd.DataFrame({"ticker": names_sub, "weight": w_sub}), close, nav
     )
-    prices = np.array([close.get(t, 0.0) for t in names_sub], dtype=float)
-    shares = np.floor(np.abs(w_sub) * nav / np.maximum(prices, 1e-12)).astype(int)
+    shares = kept_shares(w_sub, prices, nav)
     q_notional = shares * prices * np.sign(w_sub)
     gross_q = float(np.abs(q_notional).sum())
     return {
@@ -221,6 +247,31 @@ def finalize_kept_set(
         "q_notional": q_notional,
         "gross_q": gross_q,
     }
+
+
+def kept_set_clears_floor(
+    keep: np.ndarray,
+    names: list[str],
+    alpha_vec: np.ndarray,
+    design: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific: np.ndarray,
+    close: dict[str, float],
+    nav: float,
+    dollar_floor: float,
+    share_floor: int,
+) -> bool:
+    """Whether every kept name clears its floor in the final weights.
+
+    The floor search runs this hundreds of times per row, so it takes the
+    sizing and share math without the report payload `finalize_kept_set`
+    builds. The vector it checks is the same one, from the same function.
+    """
+    _idx, _names_sub, w_sub, prices, _design_sub, _specific_sub = sized_kept_weights(
+        keep, names, alpha_vec, design, factor_covariance, specific, close, nav
+    )
+    shares = kept_shares(w_sub, prices, nav)
+    return not below_floor(shares, prices, dollar_floor, share_floor).any()
 
 
 def below_floor(
@@ -348,9 +399,10 @@ def enforce_floor_by_prefix(
     largest valid prefix.
 
     The pass set is not monotone in k, so the scan is linear and is never
-    bisected. On this book it keeps far fewer names than the drop-only loop on
-    every floor row, which is the stop E11-F13 pre-registered, so its result is
-    a measurement beside the book rather than the book itself.
+    bisected. E11-F13R replaced this rule with drop-then-admit, because a
+    prefix of an ordering is still a dropping rule and this one keeps far fewer
+    names than the drop-only loop on every floor row. It is kept so the table
+    can report its result beside the book.
     """
     thresholds = floor_thresholds(close, names, dollar_floor, share_floor)
     order = np.argsort(-(np.abs(full_weights) / thresholds), kind="stable")
@@ -369,6 +421,227 @@ def enforce_floor_by_prefix(
         "no prefix of the book clears the floor in its final weights; the "
         "floor cannot be satisfied on this book"
     )
+
+
+def floor_order(
+    close: dict[str, float],
+    names: list[str],
+    full_weights: np.ndarray,
+    dollar_floor: float,
+    share_floor: int,
+) -> np.ndarray:
+    """The kept-set ordering the floor rule searches: |w_i| / floor_i, stable.
+
+    Both the drop-then-admit rule and the prefix scan use this order, so a
+    caller that wants to reuse it computes it once.
+    """
+    thresholds = floor_thresholds(close, names, dollar_floor, share_floor)
+    return np.argsort(-(np.abs(full_weights) / thresholds), kind="stable")
+
+
+def admit_clearing_names(
+    keep: np.ndarray,
+    names: list[str],
+    alpha_vec: np.ndarray,
+    design: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific: np.ndarray,
+    close: dict[str, float],
+    nav: float,
+    order: np.ndarray,
+    dollar_floor: float,
+    share_floor: int,
+) -> tuple[np.ndarray, int]:
+    """One admission pass: walk the excluded names in order and admit them.
+
+    A name is admitted only when the final weights of the enlarged set still
+    clear every kept name's floor, so the pass only ever adds names. Walking
+    the whole order is the point: an earlier name can be blocked by a name
+    admitted later, and the pass does not revisit it, which is why the rule
+    repeats until a pass admits nothing.
+    """
+    admitted = 0
+    for position in order:
+        if keep[position]:
+            continue
+        trial = keep.copy()
+        trial[position] = True
+        if kept_set_clears_floor(
+            trial,
+            names,
+            alpha_vec,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            nav,
+            dollar_floor,
+            share_floor,
+        ):
+            keep = trial
+            admitted += 1
+    return keep, admitted
+
+
+def enforce_floor_by_drop_then_admit(
+    names: list[str],
+    alpha_vec: np.ndarray,
+    design: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific: np.ndarray,
+    close: dict[str, float],
+    nav: float,
+    full_weights: np.ndarray,
+    dollar_floor: float,
+    share_floor: int,
+    order: np.ndarray | None = None,
+    max_cycles: int = 10,
+) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
+    """Drop, then admit, repeated until a full cycle changes nothing (E11-F13R).
+
+    The rule the reviewer re-specified after E11-F13: start from the drop-only
+    fixed point, admit names in the |w_i| / floor_i order while the enlarged
+    set's final weights still clear every kept name's floor, repeat the
+    admission pass until a pass admits nothing, then run the drop step once
+    more as a check. If the check drops anything the cycle repeats.
+
+    The result is a local maximum under single-name moves: every kept name
+    clears its floor in the final weights, and no single excluded name can be
+    added without breaking one. It is not claimed to be the global maximum.
+
+    Returns the kept set, its final finalize, and a report of the search:
+    the drop-only count, the count after the first admission pass, the cycles
+    and passes run, how many names were admitted, and whether it converged
+    inside the cycle cap. At the cap the caller must stop and report rather
+    than pick a cycle, which is what `converged` false means.
+    """
+    if order is None:
+        order = floor_order(close, names, full_weights, dollar_floor, share_floor)
+    all_names = np.ones(len(names), dtype=bool)
+    drop_keep, drop_finalize, _drop_passes, _drop_converged = (
+        enforce_floor_on_final_weights(
+            all_names,
+            names,
+            alpha_vec,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            nav,
+            dollar_floor,
+            share_floor,
+        )
+    )
+    keep = drop_keep.copy()
+    finalize = drop_finalize
+    one_pass: np.ndarray | None = None
+    passes = 0
+    admitted_total = 0
+    cycles = 0
+    converged = False
+    while cycles < max_cycles:
+        cycles += 1
+        while True:
+            keep, admitted = admit_clearing_names(
+                keep,
+                names,
+                alpha_vec,
+                design,
+                factor_covariance,
+                specific,
+                close,
+                nav,
+                order,
+                dollar_floor,
+                share_floor,
+            )
+            passes += 1
+            admitted_total += admitted
+            if one_pass is None:
+                one_pass = keep.copy()
+            if admitted == 0:
+                break
+        checked, finalize, _passes, _converged = enforce_floor_on_final_weights(
+            keep,
+            names,
+            alpha_vec,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            nav,
+            dollar_floor,
+            share_floor,
+        )
+        if int(checked.sum()) == int(keep.sum()):
+            converged = True
+            break
+        keep = checked
+    if one_pass is None:
+        one_pass = keep.copy()
+    info = {
+        "n_drop_only": int(drop_keep.sum()),
+        "n_one_pass_admission": int(one_pass.sum()),
+        "cycles": cycles,
+        "admit_passes": passes,
+        "admitted": admitted_total,
+        "converged": converged,
+    }
+    return keep, finalize, info
+
+
+RANK_MARGIN_FACTORS = 17  # the XS-v1 design width
+MIN_FLOOR_BOOK_NAMES = 3 * RANK_MARGIN_FACTORS  # the owner's rank margin: 51
+
+
+def floor_book_violations(
+    keep: np.ndarray,
+    names: list[str],
+    alpha_vec: np.ndarray,
+    design: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific: np.ndarray,
+    close: dict[str, float],
+    nav: float,
+    dollar_floor: float,
+    share_floor: int,
+    min_names: int = MIN_FLOOR_BOOK_NAMES,
+) -> list[str]:
+    """Every check an enforced floor book must pass, as a list of violations.
+
+    Empty means the book passes. The checks are the ones E11-F13R registered:
+    dollar neutrality, an exact hedge, a full idio share, no name below its
+    floor in the final weights, and at least three times the design width in
+    kept names so the exact FMP hedge keeps its rank margin.
+    """
+    violations: list[str] = []
+    finalize = finalize_kept_set(
+        keep, names, alpha_vec, design, factor_covariance, specific, close, nav
+    )
+    idx = np.asarray(finalize["idx"], dtype=int)
+    w_sub = np.asarray(finalize["w_sub"], dtype=float)
+    shares = np.asarray(finalize["shares"], dtype=int)
+    prices = np.asarray(finalize["prices"], dtype=float)
+    decomp = _decomposition(w_sub, design[idx], factor_covariance, specific[idx])
+    gross = float(np.abs(w_sub).sum())
+    net_share = abs(float(w_sub.sum())) / gross if gross > 0 else 0.0
+    if net_share > 0.01:
+        violations.append(f"net dollar is {net_share:.6f} of gross, above 0.01")
+    if float(decomp["max_abs_exposure"]) > 1e-12:
+        violations.append(
+            f"worst post-hedge exposure is {decomp['max_abs_exposure']:.3e}, "
+            f"above 1e-12"
+        )
+    if abs(float(decomp["idio_share"]) - 1.0) > 1e-9:
+        violations.append(f"idio share is {decomp['idio_share']:.6f}, not 1.0")
+    below = int(below_floor(shares, prices, dollar_floor, share_floor).sum())
+    if below:
+        violations.append(f"{below} kept names are below their floor")
+    if int(keep.sum()) < min_names:
+        violations.append(
+            f"{int(keep.sum())} kept names, below the {min_names} name rank margin"
+        )
+    return violations
 
 
 def _expected_establishment_cost(
@@ -579,29 +852,45 @@ def build_proposal(
 
     # The chosen construction, read from the registry rather than hardcoded:
     # share-only, a minimum of 20 whole shares per name, no dollar floor,
-    # enforced on the final weights (E11-F12). Names whose final position
-    # would be below the floor are dropped, the kept subset is re-sized and
-    # re-hedged from scratch, and the loop repeats until no kept name is below
-    # the floor, so the floor holds on the vector that actually trades, not
-    # the pre-drop full-book weights.
+    # enforced on the final weights (E11-F13R). The kept set is the drop-only
+    # fixed point, then names are admitted in the |w_i| / floor_i order while
+    # the enlarged set's final weights still clear every kept name's floor,
+    # repeated until a full cycle changes nothing. So the floor holds on the
+    # vector that actually trades, not the pre-drop full-book weights.
     reg = registry.load(root / "models" / "registry.json")
     construction = registry.live_construction(reg, MODEL_VERSION)
     close = _close_prices(as_of_ts, root)
-    full_keep = np.ones(len(names), dtype=bool)
-    enforced_keep, finalize, _floor_passes, _floor_converged = (
-        enforce_floor_on_final_weights(
-            full_keep,
-            names,
-            alpha_vec,
-            design,
-            factor_covariance,
-            specific,
-            close,
-            nav,
-            dollar_floor=construction["dollar_floor"],
-            share_floor=construction["share_floor"],
-        )
+    started = time.perf_counter()
+    enforced_keep, finalize, search = enforce_floor_by_drop_then_admit(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        nav,
+        weights,
+        dollar_floor=construction["dollar_floor"],
+        share_floor=construction["share_floor"],
     )
+    floor_search_seconds = time.perf_counter() - started
+    violations = floor_book_violations(
+        enforced_keep,
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        nav,
+        dollar_floor=construction["dollar_floor"],
+        share_floor=construction["share_floor"],
+    )
+    if violations:
+        raise ValueError(
+            "the enforced floor book fails its checks and must not trade: "
+            + "; ".join(violations)
+        )
     n_dropped = len(names) - int(enforced_keep.sum())
     n_selected = int(enforced_keep.sum())
     kept_gross_before_renorm = float(np.abs(weights[enforced_keep]).sum())
@@ -658,6 +947,14 @@ def build_proposal(
         ),
         "construction_top_n": None,
         "floor_iterated": construction["floor_iterated"],
+        "floor_rule": "drop_then_admit",
+        "n_kept_drop_only": search["n_drop_only"],
+        "n_kept_one_pass_admission": search["n_one_pass_admission"],
+        "floor_search_cycles": search["cycles"],
+        "floor_search_passes": search["admit_passes"],
+        "floor_search_admitted": search["admitted"],
+        "floor_search_converged": search["converged"],
+        "floor_search_seconds": floor_search_seconds,
         "code_commit": _git_commit(),
         "kept_gross_before_renorm": kept_gross_before_renorm,
         "n_eff_full": full_decomposition["n_eff"],

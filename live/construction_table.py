@@ -42,9 +42,11 @@ from live.evening_job import (
     _scale_to_target,
     _stored_ic,
     below_floor,
+    enforce_floor_by_drop_then_admit,
     enforce_floor_by_prefix,
-    enforce_floor_on_final_weights,
     finalize_kept_set,
+    floor_book_violations,
+    floor_order,
     floor_shortfalls,
     load_spy_universe,
 )
@@ -483,6 +485,31 @@ def _compute_row(
     }, per_name
 
 
+def _stamp_admit_columns(
+    row: dict[str, object],
+    search: dict[str, Any],
+    violations: list[str],
+) -> None:
+    """Record the search behind an installed floor book, and its check result.
+
+    The check result is a string rather than a gate, because one row of the
+    table cannot satisfy the name-count margin (`min_position_5000` keeps 35
+    names against the 51 the owner's rank margin needs) and stopping the
+    build would hide the measurement. The build reports it; the live path
+    raises on it.
+
+    The search's run time is not stored here, because a clock reading would
+    make the artifact differ on every build; the proposal manifest carries it.
+    """
+    row["n_kept_drop_only"] = search["n_drop_only"]
+    row["n_kept_one_pass_admission"] = search["n_one_pass_admission"]
+    row["admit_cycles"] = search["cycles"]
+    row["admit_passes"] = search["admit_passes"]
+    row["admit_extra"] = search["admitted"]
+    row["admit_converged"] = search["converged"]
+    row["floor_book_checks"] = "ok" if not violations else "; ".join(violations)
+
+
 def _enforce_row(
     names: list[str],
     alpha_vec: np.ndarray,
@@ -503,33 +530,48 @@ def _enforce_row(
     dollar_floor: float,
     share_floor: int,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
-    """Enforce the floor on the final weights, and measure the prefix beside it.
+    """Install the floor book: drop, then admit, to a local maximum (E11-F13R).
 
-    The floor construction is defined solely by the floor, so the enforced
-    book starts from the full book and iterates drop -> re-size -> re-hedge ->
-    renormalize -> quantize -> check until no kept name is below its floor.
-    That is the last valid enforced book. E11-F13 pre-registered the largest
-    valid prefix as the book instead; it is measured here on the same final
-    weights and reported beside the enforced book, because on this data it
-    keeps far fewer names than the drop-only loop on every floor row (16
-    against 119 on share-only), which is the stop that rule pre-registered.
-    The pre and post rows carry the one-pass and the full-weight fixed point,
-    whose below-floor count is recorded against the enforced row.
+    The book is the drop-only fixed point, then the names admitted in the
+    |w_i| / floor_i order while the enlarged set's final weights still clear
+    every kept name's floor, repeated until a full cycle changes nothing. Its
+    checks are recorded per row; every kept name clears its floor in the final
+    weights by construction of the rule, and the other four checks are
+    measured.
+
+    Two superseded rules are recorded beside the book: the drop-only count,
+    and the largest valid prefix E11-F13 pre-registered, which keeps far fewer
+    names than the drop-only loop on every floor row and is the stop that rule
+    fired. The pre and post rows carry the one-pass and the full-weight fixed
+    point, whose below-floor count is recorded against the book.
     """
-    full_keep = np.ones(len(names), dtype=bool)
-    enforced_keep, enforced_finalize, passes, converged = (
-        enforce_floor_on_final_weights(
-            full_keep,
-            names,
-            alpha_vec,
-            design,
-            factor_covariance,
-            specific,
-            close,
-            nav,
-            dollar_floor,
-            share_floor,
-        )
+    floor_rule_order = floor_order(
+        close, names, full_weights, dollar_floor, share_floor
+    )
+    enforced_keep, enforced_finalize, search = enforce_floor_by_drop_then_admit(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        nav,
+        full_weights,
+        dollar_floor,
+        share_floor,
+        order=floor_rule_order,
+    )
+    violations = floor_book_violations(
+        enforced_keep,
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        nav,
+        dollar_floor,
+        share_floor,
     )
     row, row_names = _compute_row(
         names,
@@ -564,8 +606,9 @@ def _enforce_row(
     row["worst_floor_shortfall_dollars_pre_enforcement"] = post[
         "worst_floor_shortfall_dollars"
     ]
-    row["floor_enforcement_passes"] = passes
-    row["floor_enforcement_converged"] = converged
+    row["floor_enforcement_passes"] = search["admit_passes"]
+    row["floor_enforcement_converged"] = search["converged"]
+    _stamp_admit_columns(row, search, violations)
 
     prefix_keep, prefix_finalize, prefix_k = enforce_floor_by_prefix(
         names,
@@ -611,6 +654,48 @@ def _enforce_row(
     ]
     row["max_weight_share_of_gross_prefix"] = prefix_row["max_weight_share_of_gross"]
     row["net_dollar_share_of_gross_prefix"] = prefix_row["net_dollar_share_of_gross"]
+
+    # robustness, measured and not used to select: the same rule with the names
+    # ordered by |alpha| descending instead of |w_i| / floor_i
+    alpha_keep, _alpha_finalize, _alpha_search = enforce_floor_by_drop_then_admit(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        nav,
+        full_weights,
+        dollar_floor,
+        share_floor,
+        order=np.argsort(-np.abs(alpha_vec), kind="stable"),
+    )
+    alpha_row, _alpha_names = _compute_row(
+        names,
+        alpha_vec,
+        design,
+        factor_covariance,
+        specific,
+        full_weights,
+        close,
+        beta_stages,
+        nav,
+        n_eff_full,
+        alpha_keep,
+        sides,
+        signal_z,
+        label,
+        flagged_for_veto,
+        dollar_floor=dollar_floor,
+        share_floor=share_floor,
+    )
+    row["n_kept_alpha_order"] = int(alpha_keep.sum())
+    row["n_eff_kept_alpha_order"] = alpha_row["n_eff_kept"]
+    row["n_eff_alpha_gap_pct"] = (
+        (float(alpha_row["n_eff_kept"]) - float(row["n_eff_kept"]))
+        / float(row["n_eff_kept"])
+        * 100.0
+    )
     return row, row_names
 
 
@@ -629,6 +714,16 @@ def _no_floor_row(row: dict[str, object]) -> None:
     row["n_below_floor_final_pre_enforcement"] = 0
     row["worst_floor_shortfall_shares_pre_enforcement"] = 0.0
     row["worst_floor_shortfall_dollars_pre_enforcement"] = 0.0
+    row["n_kept_drop_only"] = row["n_kept"]
+    row["n_kept_one_pass_admission"] = row["n_kept"]
+    row["admit_cycles"] = 0
+    row["admit_passes"] = 0
+    row["admit_extra"] = 0
+    row["admit_converged"] = True
+    row["floor_book_checks"] = "ok"
+    row["n_kept_alpha_order"] = row["n_kept"]
+    row["n_eff_kept_alpha_order"] = row["n_eff_kept"]
+    row["n_eff_alpha_gap_pct"] = 0.0
 
 
 def build_table(

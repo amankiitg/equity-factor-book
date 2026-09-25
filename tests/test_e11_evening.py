@@ -271,17 +271,239 @@ def test_the_prefix_scan_fails_loudly_when_no_prefix_clears(monkeypatch) -> None
         )
 
 
+def _synthetic_book() -> tuple[list[str], np.ndarray, dict[str, float]]:
+    """Six names, one degenerate factor, so every weight is predictable.
+
+    Prices are all $10 and NAV is $1,000, so a name holds floor(|w| * 100)
+    shares. The alpha vector is dollar-neutral (5 - 5 + 4 - 4 + 3 - 3), and
+    with no factor loading the hedge has nothing to do, so the kept weights
+    are alpha over its gross and the shares are 20 or more for A and B only on
+    the full book.
+    """
+    names = ["A", "B", "C", "D", "E", "F"]
+    alpha = np.array([5.0, -5.0, 4.0, -4.0, 3.0, -3.0])
+    close = {ticker: 10.0 for ticker in names}
+    return names, alpha, close
+
+
+def _synthetic_pieces(names: list[str]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    return np.zeros((len(names), 1)), np.eye(1), np.ones(len(names))
+
+
+def test_the_fast_floor_check_matches_the_finalized_vector() -> None:
+    names, alpha, close = _synthetic_book()
+    design, factor_covariance, specific = _synthetic_pieces(names)
+    for keep in (
+        np.array([True] * 6),
+        np.array([True, True, True, False, False, False]),
+        np.array([True, True, False, False, False, False]),
+    ):
+        finalize = ev.finalize_kept_set(
+            keep, names, alpha, design, factor_covariance, specific, close, 1000.0
+        )
+        full = not ev.below_floor(
+            np.asarray(finalize["shares"], dtype=int),
+            np.asarray(finalize["prices"], dtype=float),
+            0.0,
+            20,
+        ).any()
+        fast = ev.kept_set_clears_floor(
+            keep,
+            names,
+            alpha,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            1000.0,
+            0.0,
+            20,
+        )
+        assert fast == full
+
+
+def test_drop_then_admit_only_adds_and_is_a_local_maximum() -> None:
+    names, alpha, close = _synthetic_book()
+    design, factor_covariance, specific = _synthetic_pieces(names)
+    full_weights = alpha.copy()
+    keep, _finalize, info = ev.enforce_floor_by_drop_then_admit(
+        names,
+        alpha,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        1000.0,
+        full_weights,
+        0.0,
+        20,
+    )
+    # the rule starts at the drop-only set and only adds names: A and B clear
+    # 20 shares on the full book, then C and D are admitted, and E and F cannot
+    # be added without pushing C and D below theirs
+    assert info["n_drop_only"] == 2
+    assert info["n_one_pass_admission"] == 4
+    assert keep.tolist() == [True, True, True, True, False, False]
+    assert info["admitted"] == 2
+    assert info["cycles"] == 1
+    assert info["converged"] is True
+    # local maximum under single-name moves: adding either excluded name breaks
+    # a kept name's floor
+    for position in (4, 5):
+        trial = keep.copy()
+        trial[position] = True
+        assert not ev.kept_set_clears_floor(
+            trial,
+            names,
+            alpha,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            1000.0,
+            0.0,
+            20,
+        )
+    assert (
+        ev.floor_book_violations(
+            keep,
+            names,
+            alpha,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            1000.0,
+            0.0,
+            20,
+            min_names=4,
+        )
+        == []
+    )
+    # and the same book under the default rank margin reports that alone
+    assert ev.floor_book_violations(
+        keep,
+        names,
+        alpha,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        1000.0,
+        0.0,
+        20,
+    ) == [f"4 kept names, below the {ev.MIN_FLOOR_BOOK_NAMES} name rank margin"]
+
+
+def test_drop_then_admit_is_deterministic() -> None:
+    names, alpha, close = _synthetic_book()
+    design, factor_covariance, specific = _synthetic_pieces(names)
+    first = ev.enforce_floor_by_drop_then_admit(
+        names,
+        alpha,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        1000.0,
+        alpha.copy(),
+        0.0,
+        20,
+    )
+    second = ev.enforce_floor_by_drop_then_admit(
+        names,
+        alpha,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        1000.0,
+        alpha.copy(),
+        0.0,
+        20,
+    )
+    assert first[0].tolist() == second[0].tolist()
+    assert first[2] == second[2]
+
+
+def test_drop_then_admit_reports_a_cycle_cap_instead_of_a_cycle() -> None:
+    names, alpha, close = _synthetic_book()
+    design, factor_covariance, specific = _synthetic_pieces(names)
+    keep, _finalize, info = ev.enforce_floor_by_drop_then_admit(
+        names,
+        alpha,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        1000.0,
+        alpha.copy(),
+        0.0,
+        20,
+        max_cycles=0,
+    )
+    assert info["converged"] is False
+    assert info["cycles"] == 0
+    assert int(keep.sum()) == info["n_drop_only"]
+
+
+def test_floor_book_violations_names_what_is_wrong() -> None:
+    names, alpha, close = _synthetic_book()
+    design, factor_covariance, specific = _synthetic_pieces(names)
+    # a book with names below their floor, and nothing else wrong with it
+    thin = np.ones(len(names), dtype=bool)
+    messages = ev.floor_book_violations(
+        thin,
+        names,
+        alpha,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        1000.0,
+        0.0,
+        20,
+        min_names=6,
+    )
+    assert messages == ["4 kept names are below their floor"]
+    # a book that clears its floor but is too thin for the rank margin
+    small = np.array([True, True, True, True, False, False])
+    messages = ev.floor_book_violations(
+        small,
+        names,
+        alpha,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        1000.0,
+        0.0,
+        20,
+    )
+    assert messages == [
+        f"4 kept names, below the {ev.MIN_FLOOR_BOOK_NAMES} name rank margin"
+    ]
+
+
 @pytest.mark.slow
 def test_build_proposal_stores_the_share_only_floor_and_breadth() -> None:
     manifest = ev.build_proposal(store=False)
     # the chosen construction: min 20 shares, no dollar floor, enforced on the
-    # final weights (E11-F12)
+    # final weights by the drop-then-admit rule (E11-F13R)
     assert manifest["min_position_dollars"] == pytest.approx(0.0)
     assert manifest["min_position_pct_of_nav"] == pytest.approx(0.0)
     # names whose final position is below 20 shares are dropped
     assert manifest["n_kept"] + manifest["n_dropped"] == manifest["n_names"]
     assert manifest["n_kept"] < manifest["n_names"]
     assert manifest["n_dropped"] > 0
+    # the rule, its search and its run time are recorded so the page can label
+    # the book from its own fields
+    assert manifest["floor_rule"] == "drop_then_admit"
+    assert manifest["floor_search_converged"] is True
+    assert manifest["floor_search_cycles"] >= 1
+    assert manifest["n_kept"] >= manifest["n_kept_one_pass_admission"]
+    assert manifest["n_kept_one_pass_admission"] >= manifest["n_kept_drop_only"]
+    assert manifest["floor_search_seconds"] > 0.0
     # both breadth measures are recorded: the naive N-bound and the governing
     # n_eff-bound, which uses the E8 effective-breadth construction
     assert manifest["breadth_naive_bound"] >= 1.0

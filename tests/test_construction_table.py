@@ -159,7 +159,7 @@ def test_the_share_only_floor_is_flagged_and_holds_twenty_shares() -> None:
 
 @pytest.mark.slow
 @pytest.mark.integration
-def test_the_floor_is_enforced_on_the_final_weights() -> None:
+def test_the_book_is_the_drop_then_admit_local_maximum() -> None:
     table = ct.build_table(store=False)
     floor_rows = table.loc[
         table["construction"].str.startswith("min_position")
@@ -170,28 +170,38 @@ def test_the_floor_is_enforced_on_the_final_weights() -> None:
     no_floor_rows = table.loc[
         table["construction"].isin(["top_n_150", "top_n_200", "full_book_499"])
     ]
-    # the enforced book is what the row reports, and no kept name is below the
-    # floor in the final, quantized weights
-    assert (floor_rows["n_kept"] == floor_rows["n_kept_post_enforcement"]).all()
+    # the book is the rule's output, and no kept name is below its floor in the
+    # final, quantized weights
     assert (floor_rows["n_below_floor_final"] == 0).all()
-    assert bool(floor_rows["floor_enforcement_converged"].all()) is True
-    # the pre-registered prefix rule is measured beside the book on every floor
-    # row, and the stop E11-F13 registered fires: it keeps fewer names than the
-    # drop-only enforcement on every row (16 against 119 on share-only)
-    assert (floor_rows["n_kept_prefix"] == floor_rows["floor_prefix_k"]).all()
-    assert (floor_rows["floor_prefix_scans"] > 0).all()
+    assert bool(floor_rows["admit_converged"].all()) is True
+    assert (floor_rows["admit_cycles"] >= 1).all()
+    # by construction, not a check (Verification item 4): the rule starts at
+    # the drop-only set and only adds names
+    assert (floor_rows["n_kept"] >= floor_rows["n_kept_drop_only"]).all()
+    assert (floor_rows["n_kept"] >= floor_rows["n_kept_one_pass_admission"]).all()
+    # the superseded rules are stored beside the book, for the record: the
+    # drop-only count and the E11-F13 prefix, which keeps far fewer names
     assert (floor_rows["n_kept_prefix"] < floor_rows["n_kept"]).all()
-    # why it cannot be installed as the book: the smallest prefix books are so
-    # concentrated that the exact FMP hedge cannot neutralise them, so they stop
-    # being dollar-neutral (net 1.0 of gross on the three-name rows), which the
-    # enforced book holds at zero
-    assert float(floor_rows["net_dollar_share_of_gross_prefix"].abs().max()) > 0.05
-    assert float(floor_rows["net_dollar_share_of_gross"].abs().max()) < 0.01
-    # the bug E11-F12 describes is real on the full-weight fixed point: at least
-    # one name ends below its floor in the vector that actually trades
-    assert int(floor_rows["n_below_floor_final_pre_enforcement"].min()) > 0
+    assert (floor_rows["n_kept_drop_only"] < floor_rows["n_kept"]).all()
+    # the five checks, recorded per row. Four hold everywhere; the fifth, at
+    # least 51 kept names for the rank margin, fails on the $5,000 row alone,
+    # which is the stop Part 1R fired
+    bad = floor_rows.loc[floor_rows["floor_book_checks"] != "ok"]
+    assert list(bad["construction"]) == ["min_position_5000"]
+    assert "rank margin" in str(bad["floor_book_checks"].iloc[0])
+    # the search and its ordering robustness are reported
+    for column in (
+        "admit_passes",
+        "admit_extra",
+        "n_kept_alpha_order",
+        "n_eff_kept_alpha_order",
+        "n_eff_alpha_gap_pct",
+    ):
+        assert floor_rows[column].notna().all(), column
     # no-floor rows carry the vacuous stamp with nothing below their (absent)
     # floor and their kept count untouched
     assert (no_floor_rows["n_kept_post_enforcement"] == no_floor_rows["n_kept"]).all()
     assert (no_floor_rows["n_below_floor_final"] == 0).all()
     assert (no_floor_rows["floor_prefix_scans"] == 0).all()
+    assert (no_floor_rows["admit_cycles"] == 0).all()
+    assert (no_floor_rows["floor_book_checks"] == "ok").all()

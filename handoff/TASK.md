@@ -1,5 +1,5 @@
 task_id: e11-admit-and-live-gate
-status: in_progress
+status: blocked
 base_commit: 2a9e0b6
 
 ## Part 1R: the rule re-specified as drop, then admit, to a local maximum
