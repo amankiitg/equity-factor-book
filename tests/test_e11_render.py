@@ -181,7 +181,7 @@ def test_env_example_names_the_keys_without_values() -> None:
     text = (ROOT / ".env.example").read_text()
     lines = text.splitlines()
     # two keys carry safe non-secret defaults; every other key is empty
-    defaults = {"EFB_DB_SCHEMA": "efb", "EFB_DRY_RUN": "true"}
+    defaults = {"EFB_DB_SCHEMA": "efb", "EFB_DRY_RUN": "true", "EFB_STORE": "local"}
     for name in (
         "EFB_ALPACA_PAPER_API_KEY",
         "EFB_ALPACA_PAPER_SECRET_KEY",
@@ -190,7 +190,10 @@ def test_env_example_names_the_keys_without_values() -> None:
         "EFB_SUPABASE_PROJECT_URL",
         "EFB_SUPABASE_ACCESS_TOKEN",
         "EFB_DRY_RUN",
-        "EFB_NOTIFY_SLACK_WEBHOOK_URL",
+        "EFB_STORE",
+        "EFB_RESEND_API_KEY",
+        "EFB_NOTIFY_EMAIL_FROM",
+        "EFB_NOTIFY_EMAIL_TO",
     ):
         match = [line for line in lines if line.startswith(name)]
         assert match, f"{name} missing from .env.example"
@@ -215,13 +218,16 @@ def test_render_yaml_commits_key_names_not_values() -> None:
     assert "-----BEGIN" not in render
 
 
-def test_render_yaml_gives_the_webhook_to_the_cron_only() -> None:
-    """The webhook URL is a credential, so only the service that sends holds it."""
+def test_render_yaml_gives_the_notification_keys_to_the_cron_only() -> None:
+    """The sending credentials belong to the service that sends, and nowhere else."""
     render = (ROOT / "render.yaml").read_text()
-    assert "EFB_NOTIFY_SLACK_WEBHOOK_URL" in render
     web_service, cron = render.split("- type: cron")
-    assert "EFB_NOTIFY_SLACK_WEBHOOK_URL" not in web_service
-    assert "EFB_NOTIFY_SLACK_WEBHOOK_URL" in cron
-    # names only: no hook path, no token
-    assert "hooks.slack.com" not in render
-    assert "https://hooks" not in render
+    for name in ("EFB_RESEND_API_KEY", "EFB_NOTIFY_EMAIL_FROM", "EFB_NOTIFY_EMAIL_TO"):
+        assert name in cron, f"{name} missing from the cron service"
+        assert name not in web_service, f"{name} must not reach the web service"
+    # names only: no key material, no address, no endpoint prose
+    assert "re_" not in render
+    assert "@" not in render
+    # and the channel the code no longer has is gone from the blueprint
+    assert "SLACK" not in render
+    assert "EFB_NOTIFY_SLACK_WEBHOOK_URL" not in render

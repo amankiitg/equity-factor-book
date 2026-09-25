@@ -538,7 +538,7 @@ def _evaluate(
             message = (
                 f"The run for the {expected} close completed, but no notification "
                 f"channel is set, so the owner was not told. Set "
-                f"EFB_NOTIFY_SLACK_WEBHOOK_URL on the cron service."
+                f"EFB_RESEND_API_KEY and EFB_NOTIFY_EMAIL_TO on the cron service."
             )
         elif notify_failed:
             message = (

@@ -50,7 +50,13 @@ services:
         sync: false
       - key: EFB_DRY_RUN
         sync: false
-      # The notification webhook is a credential and belongs to the cron
-      # alone: the dashboard never sends a message, so it never holds one.
-      - key: EFB_NOTIFY_SLACK_WEBHOOK_URL
+      # The notification credentials belong to the cron alone: nothing else
+      # sends a message. The key is EFB's own Resend key with sending access
+      # only, and the two addresses are the owner's own. Values go in the Render
+      # dashboard, never here, and never in git.
+      - key: EFB_RESEND_API_KEY
+        sync: false
+      - key: EFB_NOTIFY_EMAIL_FROM
+        sync: false
+      - key: EFB_NOTIFY_EMAIL_TO
         sync: false

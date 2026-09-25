@@ -15,14 +15,22 @@ The message carries three fields, in this order, each readable from a preview:
 3. Staleness. The worst input and how many sessions it is behind, and on a
    stale stop every failing input.
 
-The webhook URL is a credential: it comes from `EFB_NOTIFY_SLACK_WEBHOOK_URL`,
-it is set on the cron service only, and it is never printed, logged or written
-to `efb`. Every string that leaves this module is scrubbed first, because a
-failed send raises with the URL in its text and that text is what gets stored.
+The channel is email through Resend's HTTP API, copied from
+credit-trading-lab's pattern (`execution/alerts.py` there): a bearer key in an
+Authorization header, one POST to `https://api.resend.com/emails` with from, to,
+subject and text, and a 15-second timeout. Not SMTP: Render blocks outbound SMTP
+ports, and HTTPS is never blocked. The key is `EFB_RESEND_API_KEY`, EFB's own key
+under the same Resend account with sending access only, so it cannot cross with
+the credit lab's; sender and recipient come from `EFB_NOTIFY_EMAIL_FROM` and
+`EFB_NOTIFY_EMAIL_TO`. None of the three is ever printed, logged or written to
+`efb`, and every string that leaves this module is scrubbed first, because a
+failed send raises with the key in its text and that text is what gets stored.
 
-Email is behind the same interface on purpose and is not built: a channel is a
-function from a message to a side effect, so adding SMTP later is one function
-and one set of owner credentials, and nothing else changes.
+The key is a credential like any other, so `re_...`, the shape Resend issues, is
+one of the patterns the scrub removes.
+
+The message's first line names the store the run wrote to, so the one failure
+that looks healthy from the outside is the first thing read.
 """
 
 from __future__ import annotations
@@ -38,8 +46,18 @@ from typing import Any
 # run's writes went, or says why they could not go anywhere.
 from live import store as live_store
 
-CHANNEL_ENV = "EFB_NOTIFY_SLACK_WEBHOOK_URL"
-TIMEOUT_SECONDS = 10.0
+# The Resend HTTP API, the owner's three variables, and the sender fallback that
+# needs no verified domain. `onboarding@resend.dev` is Resend's shared sender, and
+# it can only deliver to the address that owns the Resend account, which is enough
+# here because the recipient is the owner and says what a verified domain will
+# lift.
+RESEND_ENDPOINT = "https://api.resend.com/emails"
+API_KEY_ENV = "EFB_RESEND_API_KEY"
+FROM_ENV = "EFB_NOTIFY_EMAIL_FROM"
+TO_ENV = "EFB_NOTIFY_EMAIL_TO"
+DEFAULT_SENDER = "equity-factor-book <onboarding@resend.dev>"
+RESEND_KEY_SHAPE = r"\bre_[A-Za-z0-9_-]{8,}\b"
+TIMEOUT_SECONDS = 15.0
 STATUS_SENT = "sent"
 STATUS_FAILED = "failed"
 STATUS_SKIPPED = "skipped"
@@ -57,6 +75,9 @@ STATUS_LABELS: dict[str, str] = {
 # blobs; the last catches `password=...`, `api_key: ...` and their spellings.
 _SCRUBS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s\"',;)]+"), REDACTION),
+    # Resend's key shape, which is not long enough to be caught by the base64
+    # rules and is not spelled `api_key=` by anything that raises it.
+    (re.compile(RESEND_KEY_SHAPE), REDACTION),
     (re.compile(r"\beyJ[A-Za-z0-9._-]{10,}"), REDACTION),
     (re.compile(r"\b[A-Za-z0-9+/]{32,}={0,2}\b"), REDACTION),
     (re.compile(r"\b[0-9a-fA-F]{32,}\b"), REDACTION),
@@ -191,46 +212,140 @@ def _flag_list(flags: list[dict[str, Any]]) -> str:
     return "; ".join(parts)
 
 
-def slack_payload(message: str) -> dict[str, str]:
-    """The incoming-webhook body. One text field, so the preview shows it."""
-    return {"text": message}
+def subject_text(
+    *,
+    status: str,
+    target_close: str | None,
+    dry_run: bool = True,
+    orders: int | None = None,
+    worst_input: str | None = None,
+    worst_sessions_behind: int | None = None,
+    splits: list[str] | None = None,
+    flags: list[dict[str, Any]] | None = None,
+    error_type: str | None = None,
+    catch_up_sessions: list[str] | None = None,
+) -> str:
+    """The inbox line: the status, then what was proposed, then staleness.
+
+    Readable without opening the email, which is the whole point of it, so it
+    carries the three things the owner checks from a phone: `EFB ok 2026-09-25 |
+    150 proposed, none sent | stale 0`, `EFB STALE <close> | none proposed |
+    stale 3 (prices)`, `EFB ERROR <close> | none proposed | <ExceptionType>`. A
+    catch-up run says so beside the status, and a split or an unexplained move is
+    appended rather than left for the body.
+    """
+    close = target_close or "unknown close"
+    if status == "ok":
+        word = "ok"
+    elif status == "stale_stopped":
+        word = "STALE"
+    else:
+        word = "ERROR"
+    caught_up = len(catch_up_sessions or [])
+    if caught_up > 1:
+        word = f"{word} (catch-up {caught_up})"
+    if status == "ok":
+        middle = (
+            f"{int(orders or 0)} proposed, none sent"
+            if dry_run
+            else f"{int(orders or 0)} sent"
+        )
+    else:
+        middle = "none proposed"
+    if status == "error":
+        tail = error_type or "Exception"
+    elif worst_sessions_behind is None:
+        tail = "stale unknown"
+    elif int(worst_sessions_behind) == 0:
+        tail = "stale 0"
+    else:
+        tail = f"stale {int(worst_sessions_behind)} ({worst_input})"
+    parts = [f"EFB {word} {close}", middle, tail]
+    if splits:
+        parts.append(_split_short(splits))
+    unexplained = [flag for flag in flags or [] if flag.get("explained_by") is None]
+    if unexplained:
+        parts.append(f"flag {len(unexplained)}")
+    return " | ".join(parts)
 
 
-def post(webhook: str, payload: dict[str, Any], timeout: float = TIMEOUT_SECONDS):
+def _split_short(splits: list[str]) -> str:
+    """`split APH 2:1` from the body's own wording, so the two cannot drift."""
+    names = []
+    for item in splits:
+        short = str(item)
+        if short.startswith("split: "):
+            short = short[len("split: ") :]
+        if short.endswith(" applied"):
+            short = short[: -len(" applied")]
+        names.append(short)
+    return "split " + ", ".join(names)
+
+
+def email_payload(
+    *, subject: str, body: str, sender: str, recipient: str
+) -> dict[str, Any]:
+    """The Resend request body, in the shape credit-trading-lab's sender uses."""
+    return {"from": sender, "to": [recipient], "subject": subject, "text": body}
+
+
+def post(
+    endpoint: str,
+    payload: dict[str, Any],
+    headers: dict[str, str] | None = None,
+    timeout: float = TIMEOUT_SECONDS,
+):
     """POST the payload. Raises on anything but a 2xx answer."""
     request = urllib.request.Request(
-        webhook,
+        endpoint,
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **(headers or {})},
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         if not 200 <= int(response.status) < 300:  # pragma: no cover - urllib raises
-            raise RuntimeError(f"the webhook answered {int(response.status)}")
+            raise RuntimeError(f"the endpoint answered {int(response.status)}")
 
 
 def send(
+    subject: str,
     message: str,
     *,
-    webhook: str | None = None,
-    poster: Callable[[str, dict[str, Any]], Any] | None = None,
+    api_key: str | None = None,
+    to: str | None = None,
+    sender: str | None = None,
+    poster: Callable[..., Any] | None = None,
 ) -> dict[str, str]:
-    """Deliver one message, and never raise.
+    """Deliver one email, and never raise.
 
     Returns `sent`, `failed` or `skipped`. `skipped` means no channel is
-    configured: the run still happened, but nothing was delivered, so the
-    caller records and reports it rather than pretending the owner was told.
-    The webhook URL is never part of the result.
+    configured: the run still happened, but nothing was delivered, so the caller
+    records it and fails the run, because a run the owner was not told about did
+    not do its job. Neither the key nor the address is part of the result, and
+    the failure text is scrubbed before it is.
     """
-    url = (webhook if webhook is not None else os.environ.get(CHANNEL_ENV, "")).strip()
-    if not url:
+    key = (api_key if api_key is not None else os.environ.get(API_KEY_ENV, "")).strip()
+    recipient = (to if to is not None else os.environ.get(TO_ENV, "")).strip()
+    from_addr = (
+        sender if sender is not None else os.environ.get(FROM_ENV, "")
+    ).strip() or DEFAULT_SENDER
+    if not key or not recipient:
         return {
             "status": STATUS_SKIPPED,
-            "detail": f"{CHANNEL_ENV} is not set, so no message was sent",
+            "detail": (
+                f"{API_KEY_ENV} and {TO_ENV} are not both set, so no email was sent"
+            ),
         }
+    payload = email_payload(
+        subject=subject, body=message, sender=from_addr, recipient=recipient
+    )
     deliver = poster or post
     try:
-        deliver(url, slack_payload(message))
+        deliver(
+            RESEND_ENDPOINT,
+            payload,
+            {"Authorization": f"Bearer {key}"},
+        )
     except Exception as exc:  # noqa: BLE001 - a failed send is never fatal here
         return {
             "status": STATUS_FAILED,
@@ -255,10 +370,22 @@ def notify_run(
     splits: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
-    webhook: str | None = None,
-    poster: Callable[[str, dict[str, Any]], Any] | None = None,
+    api_key: str | None = None,
+    poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     """Compose and deliver one run's message, returning both parts."""
+    subject_line = subject_text(
+        status=status,
+        target_close=target_close,
+        dry_run=dry_run,
+        orders=orders,
+        worst_input=worst_input,
+        worst_sessions_behind=worst_sessions_behind,
+        splits=splits,
+        flags=flags,
+        error_type=error_type,
+        catch_up_sessions=catch_up_sessions,
+    )
     message = compose(
         status=status,
         target_close=target_close,
@@ -275,6 +402,7 @@ def notify_run(
         flags=flags,
         store=store,
     )
-    result = send(message, webhook=webhook, poster=poster)
+    result = send(subject_line, message, poster=poster)
     result["text"] = message
+    result["subject"] = subject_line
     return result

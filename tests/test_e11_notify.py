@@ -23,9 +23,8 @@ FAKE_DB_URL = (
     "postgresql://postgres.omnsjnosbaiqkrmnknqw:supersecretpassword@"
     "aws-0-us-east-1.pooler.supabase.com:6543/postgres"
 )
-FAKE_WEBHOOK = (
-    "https://hooks.slack.com/services/T00000000/B00000000/abcdefghijklmnopqrst"
-)
+FAKE_KEY = "re_" + "AbCdEf123456_ghIJKl7890"
+FAKE_TO = "owner@example.com"
 
 
 def test_the_message_leads_with_the_status_and_the_target_close() -> None:
@@ -125,13 +124,13 @@ def test_an_error_message_names_the_type_and_scrubs_the_reason() -> None:
 
 def test_scrub_removes_urls_tokens_and_key_values() -> None:
     text = (
-        f"post to {FAKE_WEBHOOK} with token "
+        f"post to {notify.RESEND_ENDPOINT} with key {FAKE_KEY} and token "
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abcdefghijklmnop and "
         "password=hunter2 api_key: 9f8e7d6c5b4a39281706f5e4d3c2b1a0 and "
         f"db={FAKE_DB_URL}"
     )
     cleaned = notify.scrub(text)
-    assert "hooks.slack.com" not in cleaned
+    assert FAKE_KEY not in cleaned
     assert "eyJ" not in cleaned
     assert "hunter2" not in cleaned
     assert "9f8e7d6c5b4a39281706f5e4d3c2b1a0" not in cleaned
@@ -142,19 +141,22 @@ def test_scrub_removes_urls_tokens_and_key_values() -> None:
 def test_send_without_a_channel_is_skipped_not_failed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv(notify.CHANNEL_ENV, raising=False)
-    result = notify.send("hello")
+    for name in (notify.API_KEY_ENV, notify.TO_ENV):
+        monkeypatch.delenv(name, raising=False)
+    result = notify.send("a subject", "hello")
     assert result["status"] == notify.STATUS_SKIPPED
-    assert notify.CHANNEL_ENV in result["detail"]
+    assert notify.API_KEY_ENV in result["detail"]
 
 
-def test_a_send_failure_is_recorded_without_the_webhook_url() -> None:
-    def _refuse(url: str, payload: dict[str, Any]) -> None:
-        raise RuntimeError(f"HTTP 404 for {url}")
+def test_a_send_failure_is_recorded_without_the_key() -> None:
+    def _refuse(url: str, payload: dict[str, Any], headers: Any = None) -> None:
+        raise RuntimeError(f"HTTP 404 for {url} with {headers}")
 
-    result = notify.send("hello", webhook=FAKE_WEBHOOK, poster=_refuse)
+    result = notify.send(
+        "subject", "hello", api_key=FAKE_KEY, to=FAKE_TO, poster=_refuse
+    )
     assert result["status"] == notify.STATUS_FAILED
-    assert "hooks.slack.com" not in result["detail"]
+    assert FAKE_KEY not in result["detail"]
     assert "[redacted]" in result["detail"]
     assert "RuntimeError" in result["detail"]
 
@@ -226,9 +228,10 @@ def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     _no_work(monkeypatch)
     _patch_gate(monkeypatch, tmp_path)
     _patch_success(monkeypatch)
-    monkeypatch.setenv(notify.CHANNEL_ENV, FAKE_WEBHOOK)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
     monkeypatch.setattr(
-        notify, "post", lambda url, payload: sent.append(payload["text"])
+        notify, "post", lambda url, payload, headers=None: sent.append(payload["text"])
     )
 
     assert run_live_daily.main() == 0
@@ -251,9 +254,10 @@ def test_a_failed_send_is_recorded_and_the_run_exits_nonzero(
     _no_work(monkeypatch)
     _patch_gate(monkeypatch, tmp_path)
     _patch_success(monkeypatch)
-    monkeypatch.setenv(notify.CHANNEL_ENV, FAKE_WEBHOOK)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
 
-    def _refuse(url: str, payload: dict[str, Any]) -> None:
+    def _refuse(url: str, payload: dict[str, Any], headers: Any = None) -> None:
         raise RuntimeError(f"HTTP 500 for {url}")
 
     monkeypatch.setattr(notify, "post", _refuse)
@@ -286,7 +290,8 @@ def test_a_run_with_no_channel_is_loud_about_it(
     _no_work(monkeypatch)
     _patch_gate(monkeypatch, tmp_path)
     _patch_success(monkeypatch)
-    monkeypatch.delenv(notify.CHANNEL_ENV, raising=False)
+    monkeypatch.delenv(notify.API_KEY_ENV, raising=False)
+    monkeypatch.delenv(notify.TO_ENV, raising=False)
 
     assert run_live_daily.main() == 1
 
@@ -298,7 +303,7 @@ def test_a_run_with_no_channel_is_loud_about_it(
     )
     assert state["state"] == "notify_not_configured"
     assert "no notification channel is set" in state["message"]
-    assert notify.CHANNEL_ENV in state["message"]
+    assert notify.API_KEY_ENV in state["message"]
 
 
 def test_an_unexpected_error_notifies_with_a_scrubbed_reason(
@@ -307,9 +312,10 @@ def test_an_unexpected_error_notifies_with_a_scrubbed_reason(
     sent: list[str] = []
     _no_work(monkeypatch)
     _patch_gate(monkeypatch, tmp_path)
-    monkeypatch.setenv(notify.CHANNEL_ENV, FAKE_WEBHOOK)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
     monkeypatch.setattr(
-        notify, "post", lambda url, payload: sent.append(payload["text"])
+        notify, "post", lambda url, payload, headers=None: sent.append(payload["text"])
     )
 
     def _explode(*args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -380,7 +386,8 @@ def test_a_one_session_run_is_not_a_catch_up(
     _no_work(monkeypatch)
     _patch_gate(monkeypatch, tmp_path)
     _patch_success(monkeypatch)
-    monkeypatch.setenv(notify.CHANNEL_ENV, FAKE_WEBHOOK)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
     monkeypatch.setattr(
         extend,
         "last_price_session",
@@ -388,7 +395,7 @@ def test_a_one_session_run_is_not_a_catch_up(
     )
     sent: list[str] = []
     monkeypatch.setattr(
-        notify, "post", lambda url, payload: sent.append(payload["text"])
+        notify, "post", lambda url, payload, headers=None: sent.append(payload["text"])
     )
 
     assert run_live_daily.main() == 0
@@ -406,7 +413,8 @@ def test_a_multi_session_run_is_recorded_as_a_catch_up(
     _no_work(monkeypatch)
     _patch_gate(monkeypatch, tmp_path)
     _patch_success(monkeypatch)
-    monkeypatch.setenv(notify.CHANNEL_ENV, FAKE_WEBHOOK)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
     monkeypatch.setattr(
         extend,
         "last_price_session",
@@ -414,7 +422,7 @@ def test_a_multi_session_run_is_recorded_as_a_catch_up(
     )
     sent: list[str] = []
     monkeypatch.setattr(
-        notify, "post", lambda url, payload: sent.append(payload["text"])
+        notify, "post", lambda url, payload, headers=None: sent.append(payload["text"])
     )
 
     assert run_live_daily.main() == 0
@@ -425,3 +433,78 @@ def test_a_multi_session_run_is_recorded_as_a_catch_up(
         '["2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21"]'
     )
     assert "(catch-up of 4 sessions)" in sent[0]
+
+
+def test_the_subject_reads_from_the_inbox_the_way_the_owner_asked() -> None:
+    """Five formats, one per thing the owner checks from a phone."""
+    ok = notify.subject_text(
+        status="ok", target_close="2026-09-25", orders=150, worst_sessions_behind=0
+    )
+    assert ok == "EFB ok 2026-09-25 | 150 proposed, none sent | stale 0"
+    live = notify.subject_text(
+        status="ok",
+        target_close="2026-09-25",
+        dry_run=False,
+        orders=150,
+        worst_sessions_behind=0,
+    )
+    assert live == "EFB ok 2026-09-25 | 150 sent | stale 0"
+    stale = notify.subject_text(
+        status="stale_stopped",
+        target_close="2026-09-25",
+        worst_input="prices",
+        worst_sessions_behind=3,
+    )
+    assert stale == "EFB STALE 2026-09-25 | none proposed | stale 3 (prices)"
+    error = notify.subject_text(
+        status="error", target_close="2026-09-25", error_type="ValueError"
+    )
+    assert error == "EFB ERROR 2026-09-25 | none proposed | ValueError"
+    catch_up = notify.subject_text(
+        status="ok",
+        target_close="2026-09-22",
+        orders=150,
+        worst_sessions_behind=0,
+        catch_up_sessions=["2026-09-15", "2026-09-16", "2026-09-17", "2026-09-21"],
+    )
+    assert catch_up == (
+        "EFB ok (catch-up 4) 2026-09-22 | 150 proposed, none sent | stale 0"
+    )
+    # a split and an unexplained move are appended, and an explained move is not
+    flagged = notify.subject_text(
+        status="ok",
+        target_close="2026-09-25",
+        orders=12,
+        worst_sessions_behind=0,
+        splits=["split: APH 2:1 applied"],
+        flags=[
+            {"ticker": "ZZZ", "return": -0.55, "explained_by": None},
+            {"ticker": "APH", "return": 0.04, "explained_by": "split: APH 2:1 applied"},
+        ],
+    )
+    assert flagged == (
+        "EFB ok 2026-09-25 | 12 proposed, none sent | stale 0 | split APH 2:1 | flag 1"
+    )
+    # the body still leads with the store, and the subject is carried beside it
+    sent: list[dict[str, Any]] = []
+    result = notify.send(
+        ok,
+        "body",
+        api_key=FAKE_KEY,
+        to=FAKE_TO,
+        poster=lambda url, payload, headers=None: sent.append(payload),
+    )
+    assert result["status"] == notify.STATUS_SENT
+    assert sent[0]["subject"] == ok
+    assert sent[0]["to"] == [FAKE_TO]
+    assert sent[0]["text"] == "body"
+
+
+def test_the_resend_key_shape_is_scrubbed() -> None:
+    """It is a credential, and nothing else in the scrub rules matches it."""
+    cleaned = notify.scrub(f"Resend refused: {FAKE_KEY}")
+    assert FAKE_KEY not in cleaned
+    assert "[redacted]" in cleaned
+    # The endpoint is not a secret, but the URL rule redacts every URL on the way
+    # out, which is the right side to err on.
+    assert notify.scrub(notify.RESEND_ENDPOINT) == "[redacted]"

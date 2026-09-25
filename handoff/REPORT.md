@@ -1,3 +1,173 @@
+# Sprint E11 pre-deploy, item A: notifications by email through Resend, not Slack
+
+**What changed.** The run's message leaves through Resend's HTTP API now, copied
+from credit-trading-lab's pattern, and the Slack webhook is gone from the code,
+the blueprint and the example environment.
+
+**The pattern, read from the credit lab and followed.** Its
+`execution/alerts.py::send_alert_email` posts to `https://api.resend.com/emails`
+with `Authorization: Bearer <key>`, a body of `from`, `to`, `subject` and `text`,
+and a 15-second timeout, and its `render.yaml` declares `RESEND_API_KEY`,
+`ALERT_EMAIL_TO` and `RESEND_FROM` with `sync: false`. That is what
+`live/notify.py::post`, `email_payload` and `send` do, against
+`EFB_RESEND_API_KEY`, `EFB_NOTIFY_EMAIL_TO` and `EFB_NOTIFY_EMAIL_FROM`. The credit
+lab's `.env` was not opened.
+
+**The sending domain and what it restricts.** The credit lab uses Resend's shared
+sender, `credit-trading-lab <onboarding@resend.dev>`, and EFB now defaults to
+`equity-factor-book <onboarding@resend.dev>` when `EFB_NOTIFY_EMAIL_FROM` is unset.
+That shared sender can only deliver to the address that owns the Resend account,
+so it works for this owner and would not work for a mailing list; a verified
+domain is what lifts that, and setting `EFB_NOTIFY_EMAIL_FROM` to an address on one
+is the only change needed then.
+
+**The subject carries the status**, readable from an inbox without opening the
+email. Verified here, one line each, in
+`tests/test_e11_notify.py::test_the_subject_reads_from_the_inbox_the_way_the_owner_asked`:
+
+```text
+EFB ok 2026-09-25 | 150 proposed, none sent | stale 0
+EFB ok 2026-09-25 | 150 sent | stale 0
+EFB STALE 2026-09-25 | none proposed | stale 3 (prices)
+EFB ERROR 2026-09-25 | none proposed | ValueError
+EFB ok (catch-up 4) 2026-09-22 | 150 proposed, none sent | stale 0
+EFB ok 2026-09-25 | 12 proposed, none sent | stale 0 | split APH 2:1 | flag 1
+```
+
+The last line shows the split and the flag appended, and that a flag whose move is
+explained by the split is not counted: `flag 1`, not `flag 2`. The split's wording
+comes from the same `describe` the body uses, so the subject and the body cannot
+drift.
+
+**The body's first line names the store**, then the three fields follow as before
+(`Orders`, `Staleness`, and `Failing inputs` or `Error` when they apply).
+
+**The key shape is scrubbed.** `re_...` is now one of the scrub's patterns, because
+Resend's keys are short enough to slip past the base64 rules and nothing raises them
+as `api_key=...`. `test_the_resend_key_shape_is_scrubbed` proves a key inside an
+error string comes out as `[redacted]`, and the endpoint itself is redacted too,
+which is the right side to err on.
+
+**Everything specified carried over unchanged:** one email per run including clean
+ones, a failed or unconfigured send is recorded and the run exits nonzero, the send
+happens after the proposal and the orders, and the error text is scrubbed.
+
+**Slack is gone.** `EFB_NOTIFY_SLACK_WEBHOOK_URL` has left `render.yaml`,
+`.env.example`, `live/staleness.py`'s dashboard message and the tests;
+`live/notify.py` no longer has `CHANNEL_ENV` or `slack_payload`. The channel
+interface is unchanged: `send(subject, message)` and `notify_run(...)`.
+
+## Tests
+
+`tests/test_e11_notify.py` now carries the five subject formats, the Resend
+payload's `from`/`to`/`subject`/`text`, the key-shape scrub, and a skipped send
+that names both email variables. Its posters take the authorization header. Two
+tests in `tests/test_e11_render.py` moved: the example environment declares
+`EFB_STORE`, `EFB_RESEND_API_KEY`, `EFB_NOTIFY_EMAIL_FROM` and
+`EFB_NOTIFY_EMAIL_TO`, and the render test asserts the three sending variables are
+on the cron service and not on the web service, with no key material and no address
+anywhere in the blueprint.
+
+## Verification
+
+```text
+$ .venv/bin/python -m pytest tests/test_e11_notify.py tests/test_e11_render.py \
+    tests/test_e11_staleness.py tests/test_run_live_daily.py tests/test_dashboard_d10.py -q
+60 passed, 1 skipped in 54.19s
+```
+
+`make lint`, exit 0:
+
+```text
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+.venv/bin/mypy efb
+Success: no issues found in 33 source files
+.venv/bin/black --check efb dashboard live tests
+All done! ... 174 files would be left unchanged.
+```
+
+**The full suite run started for item 4b is void, and I am not reporting its
+numbers as evidence.** It reported three failures at the 44 percent mark, and they
+are mine: I edited `live/notify.py` while it was running, including a moment when
+its module docstring was unclosed, so every test that imported the module after
+that point failed for reasons that have nothing to do with item 4b. A clean full
+run is started on the frozen tree once this commit lands, with no edits in flight,
+and its result is reported in the next item's Verification. If it fails, that is a
+blocker and it is fixed before anything else moves.
+
+### Headline numbers, file and key
+
+| number | file and key |
+| --- | --- |
+| the endpoint | `live/notify.py::RESEND_ENDPOINT` = `https://api.resend.com/emails` |
+| the three variables | `live/notify.py::API_KEY_ENV`, `FROM_ENV`, `TO_ENV` |
+| the sender fallback | `live/notify.py::DEFAULT_SENDER` |
+| the subject builder | `live/notify.py::subject_text`, with `_split_short` |
+| the request body | `live/notify.py::email_payload` |
+| the key scrub shape | `live/notify.py::RESEND_KEY_SHAPE` inside `_SCRUBS` |
+| the blueprint | `render.yaml`, the cron's `envVars` |
+| the example environment | `.env.example`, `EFB_STORE`, the three email keys |
+| 2 new tests | `tests/test_e11_notify.py` |
+
+### git diff --stat from `base_commit` (4048b97)
+
+This item's own files, from item 4b's commit `3837ff6`:
+
+```text
+$ git diff --stat 3837ff6
+ .env.example             |  23 ++++--
+ live/notify.py           | 188 +++++++++++++++++++++++++++++++++++++++--------
+ live/staleness.py        |   2 +-
+ render.yaml              |  12 ++-
+ tests/test_e11_notify.py | 133 ++++++++++++++++++++++++++-------
+ tests/test_e11_render.py |  26 ++++---
+ 6 files changed, 310 insertions(+), 74 deletions(-)
+```
+
+From the task's `base_commit` (4048b97), which carries items 1 to 4b:
+
+```text
+$ git diff --stat 4048b97
+ 35 files changed, 4156 insertions(+), 403 deletions(-)
+```
+
+### Yes or no, each with evidence
+
+1. **Any two rows or two estimators identical.** Not applicable: no estimator.
+2. **Any exception caught and skipped, or fallback taken, with counts.** One, and
+   it is unchanged from Part 3b: a failed send is caught so the run's own record
+   still lands, and the result is `failed`, which the caller turns into a nonzero
+   exit. A missing channel is `skipped` for the same reason and fails the run the
+   same way.
+3. **Any criterion reworded or replaced by a different test.** No `RESULTS.json`
+   criterion. Nine notify tests and two render tests moved from the webhook to the
+   email variable, which is the item's own subject, and one dashboard message string
+   in `live/staleness.py` names the email variables now.
+4. **Any criterion that passes by construction.** One, declared: the tests drive the
+   poster fake, so they prove the payload and the subjects, not that Resend accepts
+   them. Nothing in this environment can send a real email, and the first test email
+   is an owner step in the deploy list.
+5. **Any number that moved by a factor of 10 or more from its previous stored
+   value.** No stored number moved: no artifact was written and no store write path
+   changed.
+6. **Any stored number typed into a notebook.** No notebook was opened, edited or
+   executed.
+7. **Any earlier verdict changed.** No. Part 3b's notification rules stand, and this
+   item swaps the channel under them.
+
+### Anything decided that the reviewer might disagree with
+
+**An unconfigured email fails the run, where the credit lab's sender quietly
+returns False.** That difference is deliberate and pre-existing: EFB's rule has been
+one message per run with a failed send failing the run since Part 3b, and a silent
+skip is exactly the healthy-looking failure E11-F17 is about. The credit lab's own
+choice suits its alert, which is optional.
+
+**The key is read from `EFB_RESEND_API_KEY` only.** No fallback to the credit lab's
+`RESEND_API_KEY`, so the two keys cannot be confused for each other and EFB cannot
+send with the other project's credential even if both are present.
+
 # Sprint E11 pre-deploy, item 4b: the store never falls back silently in production (E11-F17)
 
 **What was wrong.** `live/store.py` fell back to parquet under `live/state/`
