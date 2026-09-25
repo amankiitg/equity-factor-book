@@ -1,200 +1,255 @@
-# Sprint E11, Part 3b: every run notifies the owner
+# Sprint E11, Part 4: the owner's deploy steps, corrected
 
-**What this part does.** `live/notify.py` composes one message per run and
-delivers it to a Slack incoming webhook, `scripts/run_live_daily.py` sends it
-after the proposal and the orders, and the run's `run_status` row records
-whether the message went out. A run whose message was not delivered exits
-nonzero, so Render marks it failed, and the dashboard shows the notification
-state as a failure of its own. Silence now means something: one message per
-session means the absence of the evening message is the alarm.
+**What this part corrects.** The earlier steps were wrong in order (they granted
+on schema `efb` before anything created it) and thin in three places (no SQL for
+the roles, no answer on runtime DDL, no notification variable). This report
+gives the owner a step list that runs in the right order, the SQL for both roles
+as text, the answer that the live runtime issues no DDL so a DML-only write role
+is enough, and the two additions Part 3b needs. The SQL editor is the primary
+provisioning path; the account-wide Management token is the alternative and
+needs an explicit `--apply`.
 
-## The message, and the three fields
+Nothing in this part was executed against the project. No role, no grant, no
+value, and no statement of mine touched Supabase, and the SQL below is text for
+the owner to run.
 
-Composed from the stored 2026-09-21 proposal and its execution log, so the
-numbers are real rather than typed:
+## The owner's steps, in order
 
-```text
-EFB live book 2026-09-22: ok, the run completed
-Orders: dry run: 27 orders proposed, $273,359 gross, none sent
-Staleness: worst input prices, 0 sessions behind.
+1. **Create the schema and the tables first.** Open
+   `https://supabase.com/dashboard/project/<ref>/sql/new`, paste
+   `live/supabase_schema.sql`, run it. That creates schema `efb` and its
+   **18 tables** (the 8 live-series tables, the 9 appendix tables and
+   `run_status`). No token, no API call. `scripts/provision_supabase.py` now
+   prints exactly this instruction and sends nothing unless asked.
+2. **Create the two roles and grant them, second.** Paste
+   `live/supabase_roles.sql` after replacing both password placeholders. The
+   step is second because a grant on a schema that does not exist yet fails,
+   which is the error the earlier order produced. Nothing outside schema `efb`
+   is touched.
+3. **Test both connection strings locally before pasting them into Render.**
+   The commands are below, and the write-role test is the one that settles the
+   psycopg typing question Part 3 and Part 3b both flagged.
+4. **Set the variables on each Render service** (values in the Render dashboard,
+   never committed):
+
+   | service | variables |
+   | --- | --- |
+   | `efb-live-dashboard` (web) | `EFB_SUPABASE_DB_URL` = **the read-only role's** string; `EFB_DB_SCHEMA` = `efb` |
+   | `efb-live-daily` (cron) | `EFB_SUPABASE_DB_URL` = **the write role's** string; `EFB_DB_SCHEMA` = `efb`; `EFB_ALPACA_PAPER_API_KEY`; `EFB_ALPACA_PAPER_SECRET_KEY`; `EFB_DRY_RUN` = `true`; `EFB_NOTIFY_SLACK_WEBHOOK_URL` |
+
+   The dashboard gets no Alpaca keys, no write role's string, and no webhook.
+   The cron gets no read-only string. Neither service ever gets
+   `EFB_SUPABASE_ACCESS_TOKEN` or `EFB_SUPABASE_SECRET_KEY`.
+5. **Deploy** both services from `render.yaml`.
+6. **Local `.env`** for local runs: `EFB_SUPABASE_DB_URL`,
+   `EFB_DB_SCHEMA=efb`, `EFB_ALPACA_PAPER_API_KEY`,
+   `EFB_ALPACA_PAPER_SECRET_KEY`, `EFB_DRY_RUN=true`,
+   `EFB_NOTIFY_SLACK_WEBHOOK_URL`, plus `EFB_SUPABASE_PROJECT_URL` for the
+   provisioning script. `EFB_SUPABASE_ACCESS_TOKEN` is only for the token path.
+7. **Place the webhook and confirm the test notification.** Put the Slack
+   incoming webhook URL on the cron service only. Then trigger one cron run
+   (Render's "Run now" on the cron job) and **confirm the message arrived**.
+   It should read `EFB live book <close>: ok, the run completed` with the orders
+   and staleness lines under it. Until that has been seen once, the notification
+   path is unproved on both sides.
+8. **Confirm remaining-plan item 4c.** After the deploy, a dry run writes a real
+   proposal to `efb` (`proposals` and `positions` rows) and the Render page shows
+   it under the construction label from its own fields. A page that has never
+   shown a real proposal is not confirmed, and I have not deployed.
+
+## The SQL for both roles, as text
+
+`live/supabase_roles.sql`, unexecuted:
+
+```sql
+create role efb_writer login password 'REPLACE_WITH_A_LONG_RANDOM_PASSWORD';
+create role efb_reader login password 'REPLACE_WITH_A_DIFFERENT_LONG_RANDOM_PASSWORD';
+
+-- The cron writes the live series, the appendix and the run status.
+grant usage on schema efb to efb_writer;
+grant select, insert, update, delete on all tables in schema efb to efb_writer;
+
+-- The dashboard only reads.
+grant usage on schema efb to efb_reader;
+grant select on all tables in schema efb to efb_reader;
+
+-- Future tables inherit those grants. Run this as the role that creates the
+-- tables, which is `postgres` in the SQL editor, because default privileges
+-- attach to the creating role and not to the schema.
+alter default privileges in schema efb
+  grant select, insert, update, delete on tables to efb_writer;
+alter default privileges in schema efb
+  grant select on tables to efb_reader;
 ```
 
-The same composer on the real gate result from Part 3, which stops a run today:
+Notes the owner should have:
 
-```text
-EFB live book 2026-09-24: stale_stopped, the run refused to price a book
-Orders: none. The run stopped on staleness before sizing, so no book was priced
-and no order was built.
-Staleness: worst input prices, 3 sessions behind.
-Failing inputs: prices 3 sessions behind; descriptors 3 sessions behind;
-factor_returns 3 sessions behind; specific_returns 3 sessions behind;
-factor_cov 3 sessions behind; specific_var 3 sessions behind; universe
-3 sessions behind; shares 2 sessions behind; sectors 2 sessions behind.
+- **No `serial` and no `identity` anywhere in the schema**, so no sequence
+  grant is needed; `grep -c "serial\|identity" live/supabase_schema.sql` is 0.
+- **`ALTER DEFAULT PRIVILEGES` attaches to the creating role.** The SQL editor
+  runs as `postgres`, so running this there covers the tables the editor
+  creates. If the owner later creates tables as another role, that role needs
+  its own default privileges statement.
+- **Nothing is granted on `public`, on the database, or on any other schema**,
+  so the credit lab's objects are untouched. A test asserts the file contains no
+  `schema public`, no `on database`, no `superuser` and no `bypassrls`.
+- To generate a password:
+  `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+
+## Does the store issue DDL at runtime? No.
+
+This is the reviewer's question from B1, and the answer is measured rather than
+asserted:
+
+- The only two statements `live/store.py` runs are
+  `live/store.py:128` `cursor.executemany(...)` with the `INSERT ... ON CONFLICT`
+  built by `_upsert_sql`, and `live/store.py:149`
+  `cursor.execute(f"SELECT * FROM {_qualified(table)} ORDER BY 1")`. Both are
+  DML.
+- `live/supabase_schema.sql` holds every DDL statement in the repository: one
+  `create schema if not exists efb` at **line 8** and 18
+  `create table if not exists`, and it is applied by the provisioning step, not
+  by a run.
+- A test scans every module in `live/` and `scripts/` for
+  `create table|create schema|create role|alter table|alter default|grant
+  <privilege>|revoke|drop table|drop schema|drop role` and asserts the list is
+  empty, and a second test asserts the store's own source holds no DDL.
+
+So the runtime never issues the `create schema if not exists efb` that B1
+described, and provisioning covers it: **the schema is owned by whoever runs the
+provisioning SQL (`postgres`), and the write role needs DML only.** If the
+reviewer intended the runtime to create the schema, that intent is not
+implemented and should not be: a DML-only role fails on it.
+
+## Testing each connection string before Render
+
+The step matters more than usual here, because two things are still unproved
+from this machine: the Postgres write path in general, and the parameter typing
+below.
+
+**The username format.** Supabase's pooler takes a custom role as
+`<role>.<project-ref>`, so the writer's string is
+`postgresql://efb_writer.omnsjnosbaiqkrmnknqw:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`,
+and the reader's is the same with `efb_reader`. A direct connection
+(`db.<ref>.supabase.co:5432`) uses the plain role name. **Use the session pooler
+on port 5432 for both services**: see the transaction pooler warning below.
+
+**The read role, which must read and must not write:**
+
+```bash
+source .env
+.venv/bin/python - <<'PY'
+import os, psycopg
+with psycopg.connect(os.environ["EFB_SUPABASE_DB_URL"]) as conn:
+    with conn.cursor() as cur:
+        cur.execute("select current_user, count(*) from efb.proposals")
+        print("read ok:", cur.fetchone())
+        try:
+            cur.execute("insert into efb.run_status "
+                        "(run_date, job, target_close, status) "
+                        "values ('2000-01-01', 'probe', '2000-01-01', 'probe')")
+            print("PROBLEM: the read role could write")
+        except psycopg.errors.InsufficientPrivilege:
+            print("write refused, as it should be")
+    conn.rollback()
+PY
 ```
 
-| field | what it says | when the run stopped |
-| --- | --- | --- |
-| 1. Did it run? | `EFB live book <target close>: ok, the run completed` | `stale_stopped, the run refused to price a book` or `error, the run failed` |
-| 2. Did the proposal produce orders? | `Orders: dry run: N orders proposed, $X gross, none sent` | `Orders: none.` plus why: stopped before sizing, or failed before sizing |
-| 3. Staleness | `Staleness: worst input <name>, N sessions behind.` | the same, followed by `Failing inputs:` with every failing input |
+**The write role, which must write, and which settles the typing question:**
 
-The first line is the status and the target close, which is what a preview
-shows. The second line never reads as "0 orders": it names the count it did
-propose, says none were sent, and only claims there are no orders when the run
-stopped before building any. That distinction is asserted in a test, and it is
-why the dry-run wording is generated rather than shortened.
-
-The live (non-dry-run) form is `Orders: N orders sent, $X gross`, and the
-guards' rejections are already in the morning summary for the same line when
-the clock starts; `dry_run` stays `true` and the owner flips it.
-
-## When the message should arrive
-
-The cron fires at `30 22 * * 1-5` UTC, which is 18:30 EDT / 17:30 EST, after
-the 16:00 ET close. The measured parts of the run are the hydration (2.93s on
-the full dataset, Part 2) and the persist (0.71s), and the extension in between
-is network-bound. **The message should arrive by 22:45 UTC (18:45 EDT) on every
-weekday the cron fires, and if it has not arrived by then the owner should treat
-the evening as missing.** That estimate is not measured end to end, because the
-extension needs the live vendors and no full run has happened; the report says
-so rather than quoting a number it cannot show.
-
-**A run that never starts cannot send anything**, which is precisely why the
-message cannot be the only alarm. See the heartbeat offer below.
-
-## The channel, and the credential
-
-**Slack first, over `urllib` from the standard library**, so the cron needs no
-new package to send: one POST of `{"text": <message>}` with a ten second
-timeout, and anything but a 2xx is a failed send. **Email sits behind the same
-interface and is not built.** A channel is a function from a message to a side
-effect, so adding SMTP later is one function plus one set of owner credentials
-(host, port, user, password, recipient) and nothing else changes. I did not
-build it because it needs a provider choice and a credential the owner has not
-placed, and inventing one would put a secret in a place the owner did not choose.
-
-**The webhook URL is a credential, and it is handled as one:**
-
-- `EFB_NOTIFY_SLACK_WEBHOOK_URL`, empty in `.env.example` with the comment that
-  it belongs to the cron;
-- set in `render.yaml` on the **cron service only**, `sync: false`, so the value
-  lives in the Render dashboard and never in the repository. The dashboard
-  service never holds one, because it never sends;
-- read from the environment at send time and never printed, logged or stored.
-  The `run_status` row carries `notify_status` and `notify_failed` and a
-  **scrubbed** detail; a test asserts the URL reaches neither the row nor the
-  cron detail;
-- **the credential check is extended**: `tests/test_e11_render.py` now lists the
-  key in the env-example check, and a new test asserts the key appears on the
-  cron and not on the web service, and that no hook path (`hooks.slack.com`,
-  `https://hooks`) appears in `render.yaml` at all.
-
-## The scrub
-
-Four rules, applied to everything that leaves the process: any `scheme://...`
-URL, `eyJ...` JWTs, long base64 or hex blobs, and `password=`, `secret`,
-`token`, `api_key` or `access_key` followed by a value. The reason is not
-hypothetical: a failed send raises with the webhook URL inside its message, and
-that message is what gets recorded.
-
-```text
-$ notify.scrub("post to https://hooks.slack.com/services/T1/B2/abcdefghijklmnopqrstuvwx "
-               "with password=hunter2 and db=postgresql://u:pw@host:5432/db")
-post to [redacted] with [redacted] and db=[redacted]
+```bash
+source .env
+.venv/bin/python - <<'PY'
+import os, psycopg
+with psycopg.connect(os.environ["EFB_SUPABASE_DB_URL"]) as conn:
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into efb.run_status (run_date, job, target_close, status, "
+            "inputs, notify_failed) values (%s, %s, %s, %s, %s, %s) "
+            "returning target_close",
+            ("2000-01-01", "probe", "2000-01-01", "probe", '{"probe": true}', False),
+        )
+        print("write ok:", cur.fetchone())
+    conn.rollback()
+    print("rolled back: nothing was left in the table")
+PY
 ```
 
-A test drives the error path with an exception whose text contains a fake
-Supabase connection string, and asserts the password, the host and the scheme
-are gone from both the message and the stored `detail`, while the exception type
-survives:
+That insert carries a `date`, a `jsonb` and a `boolean` as Python strings,
+booleans and dicts, which is exactly what `store.upsert` sends. If Postgres
+refuses the text-typed parameters that psycopg 3.3.6 produces
+(`StrDumper.oid` is 25, Part 3's report), it fails here with
+`column "target_close" is of type date but expression is of type text`, on the
+owner's machine, with the table empty and the transaction rolled back. If it
+succeeds, the whole live series is proved writable and the flag from Parts 3 and
+3b can be closed.
+
+**The transaction pooler is a trap here.** `psycopg.connect` defaults to
+`prepare_threshold=5`, so it starts using server-side prepared statements after
+five executions of the same statement, which the transaction pooler on port 6543
+does not support. And the setting **cannot be given in the connection string**:
 
 ```text
-EFB live book 2026-09-22: error, the run failed
-Orders: none. The run failed before sizing, so no book was priced.
-Staleness: no input failed the check.
-Error: OperationalError: could not connect to [redacted]
+$ .venv/bin/python -c "import psycopg; psycopg.conninfo.make_conninfo(
+    'postgresql://efb_writer.ref:pw@host:5432/postgres?prepare_threshold=-1')"
+psycopg.ProgrammingError: invalid URI query parameter: "prepare_threshold"
 ```
 
-## The record, the order of operations, and the exit code
+So if 6543 is ever wanted, `store.get_connection` has to pass
+`prepare_threshold=None` in code, and that is a change plus a test, not a
+variable. Until then the session pooler on 5432 is the answer, and it is what the
+step list says.
 
-- The message goes out **after** the proposal and the orders, never before, so a
-  failed send cannot block or roll back a run that priced a book and moved no
-  money.
-- `notify_status` is `sent`, `failed` or `skipped` (no channel configured), and
-  `notify_failed` is true whenever the status is not `sent`. The exit code is
-  nonzero in exactly those cases, and for a stale stop or an error regardless.
-- A failed send appends its scrubbed reason to the `cron_runs` detail. A
-  *skipped* send is logged as a warning and recorded on the row, but does not
-  add noise to the cron's own line.
-- **The dashboard states the notification failure too.** `run_state` gained
-  `notify_failed` and `notify_not_configured` states, so a run that could not
-  tell the owner is not shown as a clean run: the banner says the run completed,
-  that the owner was not told, and, for the unconfigured case, names
-  `EFB_NOTIFY_SLACK_WEBHOOK_URL` as the thing to set.
-- **The whole job is wrapped.** An exception anywhere, including before the
-  gate, sends `error` with the exception type and a scrubbed one-line reason,
-  writes the `error` row, and exits nonzero. The reason is scrubbed once, at the
-  point it is captured, so the same clean text goes to the message, the row and
-  the log.
+## The two additions Part 3b needed
 
-## The heartbeat, offered and not built
+**The notification variable** is already in `render.yaml` on the cron service
+only (`sync: false`), and in `.env.example` with an empty value; the credential
+check in `tests/test_e11_render.py` covers both files and asserts no hook path is
+committed. The owner's confirmation step is step 7 above.
 
-**Option: healthchecks.io, the free "dead man's switch" service.** The cron
-pings one URL after it notifies, and the service alerts the owner if a ping does
-not arrive by the time it expects.
-
-- What it needs from the owner: a free account, one check with a period of one
-  day and a grace period of about an hour (the cron fires once each weekday, so
-  the check must not alert on weekends: either a weekly schedule or a
-  documented Friday silence), and the alert channel the owner prefers, which can
-  be the same Slack webhook. One more Render variable, a ping URL, on the cron.
-- What it costs: nothing at this volume. The free tier is built for exactly one
-  check per day and alerts by email or webhook.
-- Why not built: the task asks for the offer, and building it would mean adding
-  a variable the owner has not placed and a network call whose absence is
-  indistinguishable from a Render outage. The point of an outside check is that
-  it does not share Render's failure modes, so it belongs outside this process.
+**The confirmation is part of the deploy**, not an afterthought: the task says
+the owner receives one test notification from the deployed cron before the gate
+evenings, and that until then the path is unproved. I cannot trigger it from
+here, and the message's own absence is the alarm, so the last thing the owner
+does is prove the alarm works.
 
 ## What could not be verified
 
-**No real message was delivered.** There is no Slack webhook on this machine and
-none should be committed, so the send path is exercised with the real composer
-and the real `send` against stand-in posters: one that records the payload, one
-that raises with the URL inside the message, and no poster at all. The HTTP path
-itself (`notify.post`) is eleven lines of `urllib.request` and its behaviour
-against the live webhook is unproved until the owner's test notification, which
-is a deploy step in Part 4 and is the confirmation the task asks for.
+- **No Postgres was reachable**, so the roles SQL was never executed, and
+  neither `create role` nor the grants have been syntax-checked by a server.
+  Step 3 is where the owner finds that out, with the negative control for the
+  read role and a rolled-back write for the writer.
+- **The pooler username format is from Supabase's documentation, not measured
+  here.** Step 3 fails loudly on the first connect if it is wrong.
+- **The typing question above stays open** until step 3 runs on a machine that
+  can reach the database. I would not deploy on that flag being unresolved and
+  the report says so; it is one command, and it is the first thing the write-role
+  test does.
+- The `--apply` path through the Management API is exercised in tests against a
+  stand-in `urlopen`, never against Supabase.
 
-**The Postgres write path, again.** `run_status.notify_status` and
-`notify_failed` are written through the same store as every other live table, and
-that path is still unreachable from here (no `EFB_SUPABASE_DB_URL`, no local
-server, no docker). The psycopg text-typing question from Part 3's report stands
-and applies to `notify_failed boolean` as much as to anything else.
+## Tests, 8 in `tests/test_e11_deploy.py`
 
-## Tests, 11 in `tests/test_e11_notify.py`
-
-1. the three fields in order, for a clean dry run, and `"0 orders"` absent;
-2. a live run says orders were sent and does not say "dry run";
-3. a stale stop names every failing input, including one with no date at all;
-4. an error message names the exception type and scrubs the reason;
-5. `scrub` removes the webhook, a JWT, a long key and `password=`/`api_key:`;
-6. no channel configured is `skipped`, not a crash;
-7. a refused send records `failed` with the URL redacted;
-8. a clean run through `main()` sends once, stores `sent`, `n_orders` 152 and
-   `gross_notional` 2,014,000 from the morning summary, and exits 0;
-9. a refused send through `main()` exits 1, records `notify_failed`, keeps the
-   cron status as the run's own, and the dashboard shows `notify_failed`;
-10. no channel through `main()` exits 1 and the dashboard shows
-    `notify_not_configured` with the variable named;
-11. an unexpected exception through `main()` sends one `error` message with the
-    connection string scrubbed, stores the scrubbed reason, and leaves no
-    proposal and no order row.
+1. the roles file grants on schema `efb` four times and nowhere else, with no
+   `public`, no database grant, no `superuser` and no `bypassrls`;
+2. the roles file carries placeholders, never a password;
+3. the roles step comes after the schema step: the schema file holds DDL, the
+   roles file holds none, and its header names the file to run first;
+4. no module in `live/` or `scripts/` contains DDL, so the runtime cannot need
+   more than DML;
+5. the store runs two statements, both DML, and its source holds no DDL;
+6. the provisioning script prints the SQL editor path with the schema file
+   before the roles file, and sends nothing without `--apply`, token or not;
+7. with `--apply` the Management API receives both files in one statement and
+   the token never appears in the output; without a token, `--apply` sends
+   nothing and returns 1.
 
 ## Verification
 
-Per step, the selection is every test touching what changed, and the full suite
-is not required at this step: no `efb/` module changed, no artifact was rebuilt,
-the clock is not touched, and this is not the state that sets the task `done`.
+Per step, the selection is every test touching what changed. The full suite is
+not required at this step: no `efb/` module changed, no artifact was rebuilt, the
+clock is not touched, and the state that sets the task `done` is Part 5's, whose
+run carries this part too.
 
 ```text
 $ make lint
@@ -203,65 +258,53 @@ All checks passed!
 .venv/bin/mypy efb
 Success: no issues found in 33 source files
 .venv/bin/black --check efb dashboard live tests
-All done! ... 169 files would be left unchanged.
+All done! ... 170 files would be left unchanged.
 
-$ .venv/bin/python -m pytest tests/test_e11_notify.py tests/test_e11_staleness.py \
-    tests/test_e11_render.py tests/test_run_live_daily.py tests/test_e11_store.py \
-    tests/test_e11_execution.py tests/test_e11_guards.py -q --tb=short
-75 passed, 1 skipped in 2.85s
+$ .venv/bin/python -m pytest tests/test_e11_deploy.py tests/test_e11_render.py \
+    tests/test_e11_notify.py -q --tb=short
+34 passed, 1 skipped in 1.51s
 
 $ make verify-evidence
 evidence OK
 ```
 
-The full suite at Part 3's commit was 751 passed, 1 skipped (below, pasted).
-Part 5 ends with the run that carries this part, Part 4 and Part 5 together, and
-that is the one the `done` state rests on.
-
 ### Headline numbers, file and key
 
 | number | file and key |
 | --- | --- |
-| the three fields, in order | `live/notify.py::compose`, `STATUS_LABELS` |
-| the dry-run wording | `live/notify.py::compose`, the `status == "ok"` branch |
-| four scrub rules | `live/notify.py::_SCRUBS` |
-| `sent` / `failed` / `skipped` | `live/notify.py::send` |
-| the cron only holds the webhook | `render.yaml`, the second service's `envVars`; asserted by `tests/test_e11_render.py::test_render_yaml_gives_the_webhook_to_the_cron_only` |
-| the empty key in the example | `.env.example`, last line |
-| `notify_status`, `notify_failed`, `n_orders`, `gross_notional` columns | `live/supabase_schema.sql`, `efb.run_status` |
-| exit nonzero when the message was not delivered | `scripts/run_live_daily.py::finish_run`, the last three lines |
-| the two dashboard states | `live/staleness.py::LABELS`, `notify_failed` and `notify_not_configured` |
-| 11 tests | `tests/test_e11_notify.py` |
-| the full run at Part 3 | `751 passed, 1 skipped, 3 warnings in 584.10s`, Part 3's report |
+| 18 tables, one `create schema if not exists efb` at line 8 | `live/supabase_schema.sql`, `grep -c "create table if not exists"` |
+| zero sequences | `live/supabase_schema.sql`, `grep -c "serial\|identity"` is 0 |
+| four grants on schema `efb`, none elsewhere | `live/supabase_roles.sql`; asserted by `tests/test_e11_deploy.py::test_the_roles_file_grants_only_on_efb` |
+| no DDL in any runtime module | `tests/test_e11_deploy.py::test_the_live_runtime_issues_no_ddl` |
+| the store's two statements, both DML | `live/store.py:128` and `live/store.py:149` |
+| `prepare_threshold` defaults to 5 and cannot ride in the URL | `psycopg.connect` signature and the pasted `ProgrammingError` |
+| the SQL editor path prints first and sends nothing | `scripts/provision_supabase.py::main`, asserted in test 6 |
+| the webhook on the cron only | `render.yaml`, second service |
+| 8 tests | `tests/test_e11_deploy.py` |
 
 ### git diff --stat from `base_commit` (dd41d9b)
 
-This part's own files, from Part 3's commit `51d1bce`, with
-`git add -N live/notify.py tests/test_e11_notify.py` first so the new files
-appear:
+This part's own files, from Part 3b's commit `9a46ea6`, with
+`git add -N live/supabase_roles.sql tests/test_e11_deploy.py` first so the new
+files appear:
 
 ```text
-$ git diff --stat 51d1bce -- handoff/REPORT.md live/notify.py live/staleness.py \
-    scripts/run_live_daily.py tests/test_e11_notify.py tests/test_e11_render.py \
-    render.yaml .env.example
- .env.example              |   6 +
- handoff/REPORT.md         | 636 +++++++++++++++++++---------------------------
- live/notify.py            | 237 +++++++++++++++++
- live/staleness.py         |  16 +-
- render.yaml               |   7 +-
- scripts/run_live_daily.py | 116 +++++++--
- tests/test_e11_notify.py  | 334 ++++++++++++++++++++++++
- tests/test_e11_render.py  |  13 +
- 8 files changed, 971 insertions(+), 394 deletions(-)
+$ git diff --stat 9a46ea6 -- handoff/REPORT.md live/supabase_roles.sql \
+    scripts/provision_supabase.py tests/test_e11_deploy.py
+ handoff/REPORT.md             | 566 ++++++++++++++++++++++--------------------
+ live/supabase_roles.sql       |  42 ++++
+ scripts/provision_supabase.py | 124 +++++----
+ tests/test_e11_deploy.py      | 166 +++++++++++++
+ 4 files changed, 595 insertions(+), 303 deletions(-)
 ```
 
-From the revision's `base_commit` (dd41d9b), which also carries Parts 2 and 3 and
-the reviewer's `ef67024`:
+From the revision's `base_commit` (dd41d9b), which also carries Parts 2, 3 and 3b
+and the reviewer's `ef67024`:
 
 ```text
 $ git diff --stat dd41d9b
  ...
- 20 files changed, 2936 insertions(+), 346 deletions(-)
+ 23 files changed, 3271 insertions(+), 389 deletions(-)
 ```
 
 Nothing else in the repository changed: no research artifact, no construction
@@ -269,54 +312,55 @@ table, no proposal, no notebook.
 
 ### Yes or no, each with evidence
 
-1. **Any two rows or two estimators identical.** No. One `run_status` row per
-   target close; the new tests write one row each in their own temporary store.
+1. **Any two rows or two estimators identical.** No. No row of any table was
+   written: the SQL in this part is text for the owner, and the tests write no
+   row.
 2. **Any exception caught and skipped, or fallback taken, with counts.** Yes,
-   three, none of them silent. (a) `send` catches everything around the POST and
-   turns it into `failed` with a scrubbed reason, because a failed send must not
-   mask the run: it is recorded on the row, in the cron detail and in the exit
-   code, and the test that raises inside the poster asserts all three. (b) The
-   cron's own `except Exception`, which now sends `error` rather than only
-   recording it. (c) The store's local parquet fallback, exercised by every new
-   test because `EFB_SUPABASE_DB_URL` is unset. No other exception is caught.
+   one, and it is the designed fallback: `scripts/provision_supabase.py::_apply`
+   catches a Management API failure, prints it, tells the owner to use the SQL
+   editor steps already printed above it, and returns 1. The token path is the
+   alternative, so falling back to the primary path is the correct behaviour
+   rather than a swallowed error. The test suite asserts that nothing is sent
+   without `--apply`, so this path cannot fire by accident.
 3. **Any criterion reworded or replaced by a different test.** No stored
-   criterion was touched. Two existing tests were **edited deliberately**, both
-   in `tests/test_e11_render.py`'s credential check, to add the webhook key to
-   the env-example list and to assert the cron-only placement. Neither weakens
-   what was asserted before; the file's other assertions are unchanged.
-4. **Any criterion that passes by construction.** Two, declared. (a) Test 8's
-   `n_orders` and `gross_notional` come from a patched morning summary, so the
-   test proves the message and the row carry what the morning returned, not that
-   `run_morning` returns those numbers. (b) The dashboard states are asserted
-   through `run_state`, the same function the page calls, so wording and test
-   cannot drift independently; the element the page renders is asserted in
-   Part 3's dashboard tests.
+   criterion was touched. No existing test was edited in this part; the new
+   file is additive.
+4. **Any criterion that passes by construction.** One, declared: test 5 asserts
+   the store's two `cursor.execute` calls are DML by reading the source and
+   matching text, which cannot prove at run time that no other statement
+   executes. Test 4's scan of the runtime modules is the other half of the same
+   claim, and both are text-level. What makes the pair worth having is that the
+   reviewer's question is exactly a text-level question about the repository,
+   and the answer is now falsifiable by a diff rather than by memory.
 5. **Any number that moved by a factor of 10 or more from its previous stored
-   value.** No. No stored number moved. The notification adds columns and
-   message text; no artifact, proposal or registry entry was rewritten.
+   value.** No. No stored number moved. The table count in the steps is new
+   (18, where the earlier list said eight), and it is a different quantity, not
+   a moved one.
 6. **Any stored number typed into a notebook.** No notebook was opened, edited
    or executed.
-7. **Any earlier verdict changed.** No. Part 3's stop behaviour is unchanged:
-   the gate, the row and the exit code are the same, and the message is added
-   around them.
+7. **Any earlier verdict changed.** No. The direct-Postgres decision, the
+   no-PostgREST rule, the read-only dashboard credential and the "no Exposed
+   schemas change" finding all stand. The step order's correction is a defect
+   fix in documentation, not a changed verdict.
 
 ### Anything decided that the reviewer might disagree with
 
-**A run that cannot deliver its message exits nonzero, even when the book was
-built.** The task says a failed send is recorded and exits nonzero; I applied
-that to the case where no channel is configured too, because a cron that looks
-green while nothing is sent is the failure the whole part exists to prevent. The
-alternative reading is to exit 0 when the channel is simply unset, treating it
-as a deployment gap rather than a run failure. I chose the strict one, and the
-dashboard's `notify_not_configured` state names the variable so the owner cannot
-miss what to fix.
+**The provisioning script no longer applies SQL unless asked.** It used to apply
+through the Management API whenever a token happened to be in the environment,
+and print the SQL when it was not. The reviewer asked for the SQL editor to be
+the primary path and the token the alternative, so the editor path prints first
+and always, and the API path needs `--apply`. The consequence is that an owner
+who has a token and expects the old behaviour gets a printed instruction instead
+of an application; that is the correction the review asked for, and the report
+says it plainly.
 
-**The skipped case does not append to the cron detail.** A failed send does,
-because that is news about this run; an unconfigured channel would repeat the
-same line every evening, and the row and the dashboard banner carry it. If the
-reviewer wants the cron line to say it every time, it is a two-line change.
+**The session pooler on 5432 is the recommendation, not 6543.** The transaction
+pooler would need a code change because psycopg's default prepared statements
+are unsupported there and the setting cannot be carried in the URL. I would
+rather tell the owner to use 5432 than ship a half-working 6543 path, and if the
+reviewer wants 6543 supported, it is one argument in `store.get_connection` plus
+a test.
 
-**The email channel is offered, not built.** The task allows this ("if it costs
-little"), and what it costs is a provider choice and a credential the owner has
-not placed. The interface is a function, so it is cheap the day the owner wants
-it.
+**I did not create the roles.** The reviewer's earlier rule stands: roles and
+grants on the shared project are the owner's to place, and this part only writes
+the SQL down.
