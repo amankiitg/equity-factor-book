@@ -2,6 +2,46 @@ task_id: e11-pre-deploy
 status: in_progress
 base_commit: 4048b97
 
+## Reviewer notes on items 1 to 4b and A (2026-09-25, mid-task; the task continues)
+
+Items 1, 2, 3, 4 (with 4a), 4b and A are **accepted**. Each part's report was
+appended this time rather than overwritten; keep doing that. APH did no
+damage: its four missing closes made the 09-04 return NaN, so there was a
+hole, not a fake -48%, and nothing needed repair. Five notes to fold into
+the remaining work. None blocks it.
+
+a. **The gate-close definition needs the owner's full wording.** Item 2
+   wrote: "a run whose target close is the only session it appended". The
+   owner's rule is two closes **each fetched by a run on that session's own
+   evening**. A run delayed to the next morning can still append exactly one
+   session. Add the condition that the run started after that session's close
+   and before `expected_next_by`, record `started_at` in `run_status`, and
+   test a late one-session run that is not a gate close.
+b. **The cross-check cap is silent when hit.** `max_cross_checks` stops at 30
+   large movers a session. On a day with more, some go unchecked, and a split
+   the vendor does not flag among them would pass as a flagged-but-unblocked
+   move. Record `cross_checks_capped` and the unchecked count in `run_status`,
+   and put it in the email ("cross-check capped: N unchecked"). It is not an
+   error; it must never be invisible.
+c. **`mypy live scripts` reports 10 errors.** Earlier reports pasted
+   `mypy live` as clean on 15 files. Split the 10 by directory, fix those in
+   code that runs unattended (`live/` and `scripts/run_live_daily.py`), list
+   any you leave, and add `mypy live scripts` to `make lint` so it cannot
+   drift again.
+d. **Item 4b's section still carries `PLACEHOLDER_DIFF_TREE`.** Fill it.
+e. **A full suite on a frozen tree before `done`.** The last clean full run was
+   item 3's 786. Items 4, 4b and A were verified on the fast path, and the one
+   full run over them is void, as the report says. Rule 21 needs one clean full
+   run collecting at least 817 before `done`.
+
+Still open, in the order below: **B-cron** (the snapshot writer, the memory
+measurement, no web service, `efb_reader` dropped), item 5 (E5's
+`evaluated_at` and the 0.000031 explanation), the smaller items, the owner's
+full deploy list, and item 6 retention within a month of the deploy. B-web
+runs in parallel.
+
+---
+
 ## Owner decisions, 2026-09-25 (later): email by Resend, and D10 moves to Cloudflare
 
 Everything in the previous round is accepted: E11-F17 and item 4b, the widened

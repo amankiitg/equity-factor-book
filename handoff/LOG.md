@@ -2345,3 +2345,70 @@ the same migration once EFB's is proven.
 TASK.md gains a top section with A, B-cron, B-web and the owner's full deploy
 list. PROJECT_CONTEXT's hosting and notification decisions are rewritten, and
 the plan sequence is updated.
+
+---
+
+## 2026-09-25 review: e11-pre-deploy items 1 to 4b and A, at 0a764e8 (mid-task)
+
+**Accepted: items 1, 2, 3, 4 (with 4a), 4b and A.** The task is still in
+progress. B-cron, item 5, the smaller items and the deploy list remain. The
+report appended each part this time instead of overwriting it.
+- **Item 1, the universe:** it is clamped to the close it prices, with two loud
+  refusals and a shift-audit test. The 09-18 book is byte-identical, because
+  both archives carry the same 503 tickers. What changed is that the artifact
+  now tells the truth about its source.
+- **Item 2, catch-up runs:** they are measured from the NYSE calendar,
+  recorded in `run_status` and named in the message.
+- **Item 3, breadth:**
+  - no unqualified `n_eff` is written anywhere;
+  - the book's 70.59 and the full book's 157.33 carry explicit names and
+    labels, from one shared reader;
+  - legacy artifacts map only to the full book's number.
+- **Item 4, APH did no damage.** Its four missing closes made the 09-04 return
+  NaN, a hole rather than a fake -48%, and the specific-return panel has no
+  APH row through 09-09. No appended session has a move above 40%, so nothing
+  was repaired. The split rule is built:
+  - detection from the vendor's own `split_factor` column, with a
+    refetched-adjusted-close cross-check (32 of 33 controls exactly 1.0, APH
+    0.499226);
+  - a 2% tolerance, justified by the dividend inside APH's ratio;
+  - the factor applied to the seam return;
+  - a lagging share count corrected;
+  - held positions carried across a split without a phantom trade;
+  - flags that report and do not block.
+
+  The vendor is recorded as a failing source for APH's missing closes.
+- **Item 4b, the store:**
+  - the store mode is explicit;
+  - a missing URL, a typo in the mode, or local mode on Render all refuse;
+  - the message's first line names the store.
+
+  DeepSeek also caught that `json.dumps` writes bare `NaN`, which `jsonb`
+  rejects, and fixed it with a negative control. The round-trip command is
+  built and refuses local mode. It has not run, since there is no database
+  here, and the report states plainly that every earlier Postgres claim ran on
+  the parquet fallback.
+- **Item A, email:**
+  - Resend is copied from credit-trading-lab's `execution/alerts.py`;
+  - EFB's own key has no fallback to the credit lab's;
+  - the subject formats match the owner's example;
+  - the key shape is scrubbed;
+  - the shared `onboarding@resend.dev` sender delivers only to the Resend
+    account owner, which is stated.
+
+**Notes for the remaining work, none blocking:**
+- (a) **The gate-close definition omits "on that session's own evening".** A
+  run delayed a day can still append exactly one session. Add a `started_at`
+  window check.
+- (b) **The 30-ticker cross-check cap is silent when hit.** Record it and
+  email it.
+- (c) **`mypy live scripts` shows 10 errors**, while earlier reports said
+  `mypy live` was clean. Fix those in unattended code, and add the check to
+  `make lint`.
+- (d) **A placeholder is left** in item 4b's section.
+- (e) **One clean full run on a frozen tree before `done`.** The last clean
+  full run was item 3's 786, and the full run over items 4, 4b and A is void,
+  since DeepSeek edited a module mid-run and said so.
+
+Nothing is needed from the owner at this point. PROJECT_CONTEXT's State is
+updated, and TASK.md gains the notes above its remaining items.

@@ -31,13 +31,13 @@ that returns a negative answer has done its job.
 Ten sprints built. E11 is a dry-run loop. Its construction is chosen
 (share-only, 20 shares, 2026-09-24). The store is on direct Postgres, and the
 book, Guard 1 and the sanity gate are being redone (task
-`e11-admit-and-live-gate`). E12's engine has not been started. HEAD 4048b97.
-As reported at that commit: `make test` 774 passed, 1 skipped, `make lint`
-clean, `make verify-evidence` clean. The book is installed by the
-drop-then-admit rule. Built but not yet exercised against a real database or
-Slack: the git seed plus Postgres appendix, the staleness stop, the
-notification, the corrected deploy steps and role SQL. Next is
-`e11-pre-deploy`: four items before the owner deploys, two after. Five model versions
+`e11-admit-and-live-gate`). E12's engine has not been started. HEAD 0a764e8, `e11-pre-deploy` in progress. Items 1 to 4b and A are
+accepted: the universe clamp, catch-up labelling, qualified breadth names,
+the corporate-actions rule, no silent store fallback, and email through
+Resend. Last clean full suite: 786 passed at item 3; 817 are collected now.
+Still to come before the cron deploys: B-cron (the snapshot writer, the
+memory measurement, no web service), item 5, and the owner's deploy list. No
+SQL path has yet run against a real database. Five model versions
 in `data/models/registry.json`. XS-v1 is champion, and its `live` block records
 the construction: `share_only`, `share_floor` 20, `dollar_floor` 0,
 `floor_iterated` true. TS-v1 is diagnostic only and
