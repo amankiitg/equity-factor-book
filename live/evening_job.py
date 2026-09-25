@@ -200,8 +200,35 @@ def sized_kept_weights(
         alpha_vec[idx], design[idx], factor_covariance, specific[idx]
     )
     w_sub = sizing.renormalize(w_sub, gross=1.0)
-    prices = np.array([close.get(t, 0.0) for t in names_sub], dtype=float)
+    prices = usable_prices(names_sub, close)
     return idx, names_sub, w_sub, prices, design[idx], specific[idx]
+
+
+def usable_prices(names_sub: list[str], close: dict[str, float]) -> np.ndarray:
+    """The kept names' close prices, refusing any the book cannot be sized on.
+
+    A NaN or non-positive close price cannot be turned into a whole-share
+    count. The arithmetic downstream would either raise deep inside the
+    rounding report or, worse, produce a share count no one asked for, because
+    `kept_shares` floors a division by the price and a NaN price makes that
+    division undefined. A kept name with no usable price is therefore a failed
+    run that names the name, not a book priced on a placeholder.
+    """
+    prices = np.array([close.get(name, 0.0) for name in names_sub], dtype=float)
+    unusable = [
+        name
+        for name, price in zip(names_sub, prices, strict=True)
+        if not math.isfinite(float(price)) or float(price) <= 0.0
+    ]
+    if unusable:
+        shown = ", ".join(sorted(unusable)[:5])
+        rest = "" if len(unusable) <= 5 else f" and {len(unusable) - 5} more"
+        raise ValueError(
+            f"no usable close price for {shown}{rest} at the proposal close: a "
+            "kept name with no price cannot be quantized to whole shares, so "
+            "the run stops instead of pricing it"
+        )
+    return prices
 
 
 def kept_shares(w_sub: np.ndarray, prices: np.ndarray, nav: float) -> np.ndarray:

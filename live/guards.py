@@ -17,15 +17,22 @@ from dataclasses import dataclass
 
 MAX_POSITION_PCT_OF_NAV: float = 0.10
 # Guard 1, re-derived against the chosen share-only construction's final
-# (quantized) weights, sized from the largest final position across every
-# close the loop has run, not one close, because the book rebalances daily:
-# 2026-09-03 MU $62,280 (6.23% of NAV), 2026-09-18 MRNA $65,005 (6.50%),
-# 2026-09-21 MU $59,506 (5.95%). The largest legitimate target is therefore
-# 6.50% of NAV, and ten times it is 65.0%. A cap of 0.10 ($100,000 at the
-# $1,000,000 NAV) clears that target with 1.54x headroom (0.065 -> 0.10) and
-# still trips a 10x order on the largest name (0.650 > 0.10). It is
-# NAV-relative, so it scales with the book; it is re-checked against the
-# live distribution before each run.
+# (quantized) weights, sized from the largest final position across every close
+# the loop can re-price, not one close, because the book rebalances daily:
+# 2026-09-18 MRNA $62,615 (6.2615% of NAV) and 2026-09-21 MU $53,463 (5.3463%).
+# The 2026-09-03 close cannot be re-priced: the panel has no close for APH that
+# day (NaN on 2026-08-28, 09-01, 09-02 and 09-03, and its price halves on
+# 09-04), and `usable_prices` now refuses to size a book on such a name. The
+# largest legitimate target is therefore 6.2615% of NAV, and ten times it is
+# 62.6%. A cap of 0.10 ($100,000 at the $1,000,000 NAV) clears that target with
+# 1.597x headroom (0.0626 -> 0.10) and still trips a 10x order on the largest
+# name (0.626 > 0.10). It is NAV-relative, so it scales with the book.
+#
+# Headroom against the book's own movement: the largest final weight moved
+# 0.915 pp ($9,152) from the 2026-09-18 close to the 2026-09-21 close, while the
+# cap clears the largest weight by 3.74 pp, so the cap is not inside the daily
+# movement. Re-checked against the live distribution before each run.
+#
 # The absolute throughput brake, re-derived for the $1,000,000 paper book.
 # One full flip of the gross-1 book is 2 x NAV = 2,000,000, so the brake
 # admits a full flip while still catching a fat-finger order at ten times

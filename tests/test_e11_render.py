@@ -128,8 +128,9 @@ def test_render_dashboard_reports_missing_construction_fields() -> None:
 
 
 def test_the_regenerated_proposal_is_the_share_only_book() -> None:
-    """Part 6: the stored dry-run proposal is the chosen share-only book, and
-    both the D10 header and the Render page label it from its own fields."""
+    """Part 6 regenerated it under share-only; Part 5 regenerated it again on
+    the 150-name drop-then-admit book. Both the D10 header and the Render page
+    label it from its own fields."""
     import json
 
     from live import dashboard_app
@@ -141,8 +142,9 @@ def test_the_regenerated_proposal_is_the_share_only_book() -> None:
     assert manifest["construction_floor_shares"] == 20
     assert manifest["construction_floor_dollars"] is None
     assert manifest["floor_iterated"] is True
-    assert manifest["n_kept"] == 119
-    assert manifest["n_dropped"] == 380
+    assert manifest["floor_rule"] == "drop_then_admit"
+    assert manifest["n_kept"] == 150
+    assert manifest["n_dropped"] == 349
     assert dashboard_app._construction_label(manifest) == (
         "min 20 shares (iterated to a fixed point)"
     )

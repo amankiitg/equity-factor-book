@@ -1,270 +1,200 @@
-# Sprint E11, Part 4: the owner's deploy steps, corrected
+# Sprint E11, Part 5: the proposals regenerated on the confirmed book, and Guard 1 re-derived
 
-**What this part corrects.** The earlier steps were wrong in order (they granted
-on schema `efb` before anything created it) and thin in three places (no SQL for
-the roles, no answer on runtime DDL, no notification variable). This report
-gives the owner a step list that runs in the right order, the SQL for both roles
-as text, the answer that the live runtime issues no DDL so a DML-only write role
-is enough, and the two additions Part 3b needs. The SQL editor is the primary
-provisioning path; the account-wide Management token is the alternative and
-needs an explicit `--apply`.
+**What this part does.** The owner's confirmed book is the 150-name drop-then-admit
+share-only book. This part regenerates the stored dry-run proposals on it,
+re-derives Guard 1 from the regenerated final weights, and states the headroom
+against the book's own close-to-close movement.
 
-Nothing in this part was executed against the project. No role, no grant, no
-value, and no statement of mine touched Supabase, and the SQL below is text for
-the owner to run.
+**It also found a defect and fixed it.** The 2026-09-03 close cannot be re-priced:
+the price panel has no close for APH that day, and the size path would have turned
+that into a share count nobody asked for. The run now refuses and names the name.
+The details are below; the two closes that do re-price cover Guard 1, and the one
+that does not is reported rather than patched silently.
 
-## The owner's steps, in order
+## The regenerated proposals
 
-1. **Create the schema and the tables first.** Open
-   `https://supabase.com/dashboard/project/<ref>/sql/new`, paste
-   `live/supabase_schema.sql`, run it. That creates schema `efb` and its
-   **18 tables** (the 8 live-series tables, the 9 appendix tables and
-   `run_status`). No token, no API call. `scripts/provision_supabase.py` now
-   prints exactly this instruction and sends nothing unless asked.
-2. **Create the two roles and grant them, second.** Paste
-   `live/supabase_roles.sql` after replacing both password placeholders. The
-   step is second because a grant on a schema that does not exist yet fails,
-   which is the error the earlier order produced. Nothing outside schema `efb`
-   is touched.
-3. **Test both connection strings locally before pasting them into Render.**
-   The commands are below, and the write-role test is the one that settles the
-   psycopg typing question Part 3 and Part 3b both flagged.
-4. **Set the variables on each Render service** (values in the Render dashboard,
-   never committed):
+Built with `live.evening_job.build_proposal(as_of=<close>, store=True)`, the same
+call a live run makes, then read back from the stored artifacts. That argument
+writes the dated artifacts under `live/proposals/`, which is what "the stored
+proposals" means here; the `efb.proposals` and `efb.positions` rows are written by
+`scripts/run_live_daily.py::store_proposal` on a real run, and the local fallback
+is gitignored, so no database row is part of this commit:
 
-   | service | variables |
-   | --- | --- |
-   | `efb-live-dashboard` (web) | `EFB_SUPABASE_DB_URL` = **the read-only role's** string; `EFB_DB_SCHEMA` = `efb` |
-   | `efb-live-daily` (cron) | `EFB_SUPABASE_DB_URL` = **the write role's** string; `EFB_DB_SCHEMA` = `efb`; `EFB_ALPACA_PAPER_API_KEY`; `EFB_ALPACA_PAPER_SECRET_KEY`; `EFB_DRY_RUN` = `true`; `EFB_NOTIFY_SLACK_WEBHOOK_URL` |
+| close | names kept | dropped | n_eff on the final weights | largest final weight | rounding error | code |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-09-18 | 155 | 344 | 69.4578 | MRNA 6.2615% ($62,615) | 0.7117% | `ae1c686` |
+| 2026-09-21 | 150 | 349 | 70.5921 | MU 5.3463% ($53,463) | 0.6890% | `ae1c686` |
 
-   The dashboard gets no Alpaca keys, no write role's string, and no webhook.
-   The cron gets no read-only string. Neither service ever gets
-   `EFB_SUPABASE_ACCESS_TOKEN` or `EFB_SUPABASE_SECRET_KEY`.
-5. **Deploy** both services from `render.yaml`.
-6. **Local `.env`** for local runs: `EFB_SUPABASE_DB_URL`,
-   `EFB_DB_SCHEMA=efb`, `EFB_ALPACA_PAPER_API_KEY`,
-   `EFB_ALPACA_PAPER_SECRET_KEY`, `EFB_DRY_RUN=true`,
-   `EFB_NOTIFY_SLACK_WEBHOOK_URL`, plus `EFB_SUPABASE_PROJECT_URL` for the
-   provisioning script. `EFB_SUPABASE_ACCESS_TOKEN` is only for the token path.
-7. **Place the webhook and confirm the test notification.** Put the Slack
-   incoming webhook URL on the cron service only. Then trigger one cron run
-   (Render's "Run now" on the cron job) and **confirm the message arrived**.
-   It should read `EFB live book <close>: ok, the run completed` with the orders
-   and staleness lines under it. Until that has been seen once, the notification
-   path is unproved on both sides.
-8. **Confirm remaining-plan item 4c.** After the deploy, a dry run writes a real
-   proposal to `efb` (`proposals` and `positions` rows) and the Render page shows
-   it under the construction label from its own fields. A page that has never
-   shown a real proposal is not confirmed, and I have not deployed.
+**The 2026-09-21 row is the owner's confirmed book, to the last digit.** The
+construction table's share-only row reads `n_kept=150 n_eff=70.592135
+err=0.006890189 maxw=0.053463`, and the owner confirmed 150 names, n_eff 70.59,
+total error 0.689%, max weight 5.35%. The regenerated artifact now carries the
+same numbers, so the book that trades is the book that was confirmed. Both
+proposals are `construction: share_only`, share floor 20, no dollar floor,
+`floor_iterated: true`, `floor_rule: drop_then_admit`.
 
-## The SQL for both roles, as text
+**One naming hazard worth the reviewer's decision.** The proposal manifest's
+`n_eff` field is not the final book's. At the 2026-09-21 close it stores 157.33,
+because it is `full_decomposition["n_eff"]` (`live/evening_job.py:141` computes
+it, `:965` assigns it): the effective breadth of the full 499-name book before the
+floor is enforced and before the renormalization to gross 1.0. The final book's
+number is in the same manifest, correctly labelled, as **`n_eff_kept` = 70.5921**
+(`:992`, beside `n_eff_full` at `:991` and a ratio at `:1007`). Both numbers are
+right about different objects, and the one that lacks a qualifier is the wrong
+one for a book: `scripts/run_live_daily.py::store_proposal` stores the unqualified
+`n_eff` into the `proposals` table, so the dashboard shows 157.33 beside a book
+whose breadth is 70.59. I did not change it: renaming a stored field or pointing
+the table at `n_eff_kept` changes what a stored artifact means and what the page
+reports, which is the reviewer's call, not a Part 5 side effect. Flagging it with
+both numbers and the lines.
 
-`live/supabase_roles.sql`, unexecuted:
+## The 2026-09-03 close cannot be re-priced, and the reason was a live defect
 
-```sql
-create role efb_writer login password 'REPLACE_WITH_A_LONG_RANDOM_PASSWORD';
-create role efb_reader login password 'REPLACE_WITH_A_DIFFERENT_LONG_RANDOM_PASSWORD';
+Regenerating that close first failed with `ValueError: cannot convert float NaN to
+integer` inside `live/alpaca.py:144`. The cause is in the data and in how the
+pricing path treated it:
 
--- The cron writes the live series, the appendix and the run status.
-grant usage on schema efb to efb_writer;
-grant select, insert, update, delete on all tables in schema efb to efb_writer;
+- **APH has no close price** on 2026-08-28, 09-01, 09-02 and 09-03 (NaN close,
+  NaN adj_close), and its close **halves** from 158.78 on 2026-08-27 to 82.78 on
+  2026-09-04, which is a 2:1 split. Four of APH's 4,204 rows are NaN. APH is in
+  the SPY archive and in the cleaned panel, so it is a legitimate universe name.
+- At that close the kept set contains APH. `_close_prices` returns it with a NaN.
+  `sized_kept_weights` built `prices = [close.get(name, 0.0)]`, and `kept_shares`
+  computes `floor(|w| * nav / max(price, 1e-12))`. With a NaN price that division
+  is undefined and `.astype(int)` produces an integer nobody asked for; with a
+  missing price the 0.0 default becomes a 1e-12 denominator and produces an
+  astronomically large share count. Neither raises.
 
--- The dashboard only reads.
-grant usage on schema efb to efb_reader;
-grant select on all tables in schema efb to efb_reader;
-
--- Future tables inherit those grants. Run this as the role that creates the
--- tables, which is `postgres` in the SQL editor, because default privileges
--- attach to the creating role and not to the schema.
-alter default privileges in schema efb
-  grant select, insert, update, delete on tables to efb_writer;
-alter default privileges in schema efb
-  grant select on tables to efb_reader;
-```
-
-Notes the owner should have:
-
-- **No `serial` and no `identity` anywhere in the schema**, so no sequence
-  grant is needed; `grep -c "serial\|identity" live/supabase_schema.sql` is 0.
-- **`ALTER DEFAULT PRIVILEGES` attaches to the creating role.** The SQL editor
-  runs as `postgres`, so running this there covers the tables the editor
-  creates. If the owner later creates tables as another role, that role needs
-  its own default privileges statement.
-- **Nothing is granted on `public`, on the database, or on any other schema**,
-  so the credit lab's objects are untouched. A test asserts the file contains no
-  `schema public`, no `on database`, no `superuser` and no `bypassrls`.
-- To generate a password:
-  `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
-
-## Does the store issue DDL at runtime? No.
-
-This is the reviewer's question from B1, and the answer is measured rather than
-asserted:
-
-- The only two statements `live/store.py` runs are
-  `live/store.py:128` `cursor.executemany(...)` with the `INSERT ... ON CONFLICT`
-  built by `_upsert_sql`, and `live/store.py:149`
-  `cursor.execute(f"SELECT * FROM {_qualified(table)} ORDER BY 1")`. Both are
-  DML.
-- `live/supabase_schema.sql` holds every DDL statement in the repository: one
-  `create schema if not exists efb` at **line 8** and 18
-  `create table if not exists`, and it is applied by the provisioning step, not
-  by a run.
-- A test scans every module in `live/` and `scripts/` for
-  `create table|create schema|create role|alter table|alter default|grant
-  <privilege>|revoke|drop table|drop schema|drop role` and asserts the list is
-  empty, and a second test asserts the store's own source holds no DDL.
-
-So the runtime never issues the `create schema if not exists efb` that B1
-described, and provisioning covers it: **the schema is owned by whoever runs the
-provisioning SQL (`postgres`), and the write role needs DML only.** If the
-reviewer intended the runtime to create the schema, that intent is not
-implemented and should not be: a DML-only role fails on it.
-
-## Testing each connection string before Render
-
-The step matters more than usual here, because two things are still unproved
-from this machine: the Postgres write path in general, and the parameter typing
-below.
-
-**The username format.** Supabase's pooler takes a custom role as
-`<role>.<project-ref>`, so the writer's string is
-`postgresql://efb_writer.omnsjnosbaiqkrmnknqw:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`,
-and the reader's is the same with `efb_reader`. A direct connection
-(`db.<ref>.supabase.co:5432`) uses the plain role name. **Use the session pooler
-on port 5432 for both services**: see the transaction pooler warning below.
-
-**The read role, which must read and must not write:**
-
-```bash
-source .env
-.venv/bin/python - <<'PY'
-import os, psycopg
-with psycopg.connect(os.environ["EFB_SUPABASE_DB_URL"]) as conn:
-    with conn.cursor() as cur:
-        cur.execute("select current_user, count(*) from efb.proposals")
-        print("read ok:", cur.fetchone())
-        try:
-            cur.execute("insert into efb.run_status "
-                        "(run_date, job, target_close, status) "
-                        "values ('2000-01-01', 'probe', '2000-01-01', 'probe')")
-            print("PROBLEM: the read role could write")
-        except psycopg.errors.InsufficientPrivilege:
-            print("write refused, as it should be")
-    conn.rollback()
-PY
-```
-
-**The write role, which must write, and which settles the typing question:**
-
-```bash
-source .env
-.venv/bin/python - <<'PY'
-import os, psycopg
-with psycopg.connect(os.environ["EFB_SUPABASE_DB_URL"]) as conn:
-    with conn.cursor() as cur:
-        cur.execute(
-            "insert into efb.run_status (run_date, job, target_close, status, "
-            "inputs, notify_failed) values (%s, %s, %s, %s, %s, %s) "
-            "returning target_close",
-            ("2000-01-01", "probe", "2000-01-01", "probe", '{"probe": true}', False),
-        )
-        print("write ok:", cur.fetchone())
-    conn.rollback()
-    print("rolled back: nothing was left in the table")
-PY
-```
-
-That insert carries a `date`, a `jsonb` and a `boolean` as Python strings,
-booleans and dicts, which is exactly what `store.upsert` sends. If Postgres
-refuses the text-typed parameters that psycopg 3.3.6 produces
-(`StrDumper.oid` is 25, Part 3's report), it fails here with
-`column "target_close" is of type date but expression is of type text`, on the
-owner's machine, with the table empty and the transaction rolled back. If it
-succeeds, the whole live series is proved writable and the flag from Parts 3 and
-3b can be closed.
-
-**The transaction pooler is a trap here.** `psycopg.connect` defaults to
-`prepare_threshold=5`, so it starts using server-side prepared statements after
-five executions of the same statement, which the transaction pooler on port 6543
-does not support. And the setting **cannot be given in the connection string**:
+**The fix, one guard where the price vector is built:**
 
 ```text
-$ .venv/bin/python -c "import psycopg; psycopg.conninfo.make_conninfo(
-    'postgresql://efb_writer.ref:pw@host:5432/postgres?prepare_threshold=-1')"
-psycopg.ProgrammingError: invalid URI query parameter: "prepare_threshold"
+$ .venv/bin/python -c "from live import evening_job; evening_job.build_proposal(as_of=pd.Timestamp('2026-09-03'), store=False)"
+ValueError: no usable close price for APH at the proposal close: a kept name with
+no price cannot be quantized to whole shares, so the run stops instead of pricing
+it
 ```
 
-So if 6543 is ever wanted, `store.get_connection` has to pass
-`prepare_threshold=None` in code, and that is a change plus a test, not a
-variable. Until then the session pooler on 5432 is the answer, and it is what the
-step list says.
+`live/evening_job.py::usable_prices` refuses a NaN, a non-positive or an absent
+price and names up to five offending tickers. It sits in `sized_kept_weights`,
+which is the single source of the price vector for both the floor search and the
+final book, so one guard covers every path. Three tests pin it: a NaN price, a
+missing key and a zero price all stop the run and name the names, and the happy
+path is unchanged.
 
-## The two additions Part 3b needed
+**What that means for a live run.** A close with such a name now stops the run
+loudly: no proposal row, no order, `run_status` at `error`, and Part 3b's
+notification carries the line above, so the owner reads the ticker. Both closes
+that re-price today are unaffected, so the live path as it stands prices the book
+it should. The 2026-09-03 close is seed data (it is not after `SEED_CUTOFF`), so
+the appendix will never repair it and the stored `proposal_2026-09-03` artifact
+still carries the superseded construction's book. Nothing was deleted or
+rewritten there.
 
-**The notification variable** is already in `render.yaml` on the cron service
-only (`sync: false`), and in `.env.example` with an empty value; the credential
-check in `tests/test_e11_render.py` covers both files and asserts no hook path is
-committed. The owner's confirmation step is step 7 above.
+## Guard 1, re-derived over the closes the loop can re-price
 
-**The confirmation is part of the deploy**, not an afterthought: the task says
-the owner receives one test notification from the deployed cron before the gate
-evenings, and that until then the path is unproved. I cannot trigger it from
-here, and the message's own absence is the alarm, so the last thing the owner
-does is prove the alarm works.
+`MAX_POSITION_PCT_OF_NAV` stays **0.10**, and the derivation behind it moved to
+the confirmed book:
+
+| quantity | value |
+| --- | --- |
+| largest final weight, 2026-09-18 | MRNA 0.062615 = 6.2615% of NAV = $62,615 |
+| largest final weight, 2026-09-21 | MU 0.053463 = 5.3463% of NAV = $53,463 |
+| the largest legitimate target | 6.2615% of NAV |
+| cap 0.10 clears it with | **1.5971x** headroom (0.0626 -> 0.10) |
+| a 10x order on the largest name | 0.6261 of NAV, which trips the cap |
+| close-to-close movement of the largest weight | 0.915 pp, $9,152 |
+| clearance above the largest weight | 3.74 pp, so the cap is not inside the movement |
+
+The movement, in per-name detail, because the largest name changed between the two
+closes: **MRNA** 6.2615% to 4.5447% (-1.717 pp, -$17,168), **MU** 4.8854% to
+5.3463% (+0.461 pp, +$4,609). The cap clears the largest weight by 3.74 pp while
+the largest weight itself moved 0.92 pp between closes, so 0.10 is not sitting
+inside the book's own daily variation. That is the answer to the reviewer's
+question, and it is 1.60x rather than the previous 1.54x because the confirmed
+book is broader than the 119-name book the old derivation used.
+
+Both the comment in `live/guards.py` and
+`tests/test_e11_guards.py::test_a_ten_times_order_on_the_largest_target_trips_the_cap`
+now carry this arithmetic, with the source file and the 09-03 exclusion named.
 
 ## What could not be verified
 
-- **No Postgres was reachable**, so the roles SQL was never executed, and
-  neither `create role` nor the grants have been syntax-checked by a server.
-  Step 3 is where the owner finds that out, with the negative control for the
-  read role and a rolled-back write for the writer.
-- **The pooler username format is from Supabase's documentation, not measured
-  here.** Step 3 fails loudly on the first connect if it is wrong.
-- **The typing question above stays open** until step 3 runs on a machine that
-  can reach the database. I would not deploy on that flag being unresolved and
-  the report says so; it is one command, and it is the first thing the write-role
-  test does.
-- The `--apply` path through the Management API is exercised in tests against a
-  stand-in `urlopen`, never against Supabase.
+- **The 2026-09-03 close.** It is one of the three closes the loop has run, and it
+  cannot be re-priced, so Guard 1's "every close" is two closes plus the reason the
+  third is missing. I did not substitute a neighbouring close or drop APH from the
+  universe to make the number look complete: dropping a name is a book-level rule
+  the owner would have to choose, and it would change every historical book.
+- **The failure is not repaired at the source.** The 211 names with a NaN close in
+  the panel (ABK, ABMD, ABS, ACAS, ACE and the rest, mostly delisted) are still
+  there, and the pipeline's flagging keeps the names in the cleaned panel while
+  dropping their NaN rows. Any future close where a *kept* name has no price stops
+  the run; that is now loud, but the data gap is not fixed, and fixing it belongs
+  to the research stack, not to a live part.
+- **The dashboard's `n_eff`.** Reported above with both numbers (`157.33` against
+  `n_eff_kept` 70.5921); not changed.
 
-## Tests, 8 in `tests/test_e11_deploy.py`
+## Tests
 
-1. the roles file grants on schema `efb` four times and nowhere else, with no
-   `public`, no database grant, no `superuser` and no `bypassrls`;
-2. the roles file carries placeholders, never a password;
-3. the roles step comes after the schema step: the schema file holds DDL, the
-   roles file holds none, and its header names the file to run first;
-4. no module in `live/` or `scripts/` contains DDL, so the runtime cannot need
-   more than DML;
-5. the store runs two statements, both DML, and its source holds no DDL;
-6. the provisioning script prints the SQL editor path with the schema file
-   before the roles file, and sends nothing without `--apply`, token or not;
-7. with `--apply` the Management API receives both files in one statement and
-   the token never appears in the output; without a token, `--apply` sends
-   nothing and returns 1.
+Three new tests in `tests/test_e11_evening.py` for the price guard (NaN, missing,
+zero, plus the passing control), and **two existing tests updated deliberately**:
+
+- `tests/test_e11_guards.py`'s cap test: the largest legitimate target moves from
+  0.065 to 0.062615 with the source named, and it now asserts the 1.5971x headroom
+  and that the cap clears the observed movement.
+- `tests/test_e11_render.py`'s regenerated-proposal test: it asserted the old
+  book's `n_kept == 119` and `n_dropped == 380`, and now asserts the confirmed
+  book's `150` and `349` plus `floor_rule == "drop_then_admit"`. The assertion's
+  form is unchanged; the artifact it reads was regenerated, which is this part's
+  mandate.
+
+The `tests/test_e11_staleness.py` and `tests/test_e11_notify.py` suites are
+untouched and green.
 
 ## Verification
 
-Per step, the selection is every test touching what changed. The full suite is
-not required at this step: no `efb/` module changed, no artifact was rebuilt, the
-clock is not touched, and the state that sets the task `done` is Part 5's, whose
-run carries this part too.
+Per step, the selection is every test touching what changed: the regenerated
+artifacts, the guard, the D10 header and the Render page.
 
 ```text
-$ make lint
+$ .venv/bin/python -m pytest tests/test_e11_guards.py tests/test_e11_evening.py \
+    tests/test_dashboard_d10.py tests/test_e11_render.py tests/test_dashboard_app.py \
+    -q --tb=short
+65 passed, 1 skipped in 27.75s
+```
+
+The full suite is required at this step because an artifact was rebuilt (standard
+21, point 3), and because this is the state the task is set `done` on.
+
+```text
+$ make test > /tmp/full4.log 2>&1; echo "EXIT=$?"
+$ tail -c 300 /tmp/full4.log
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+774 passed, 1 skipped, 3 warnings in 599.11s (0:09:59)
+EXIT=0
+$ .venv/bin/python -m pytest tests/ -q --collect-only | tail -1
+775 tests collected in 2.31s
+```
+
+The previous full run, at Part 3's commit, was `751 passed, 1 skipped` (752
+collected); this one collects 775, so the count grew by 23 and shrank by nothing.
+The 23 are Part 3b's 11 notification tests plus its 1 credential-check test,
+Part 4's 8 deploy tests, and this part's 3 price-guard tests.
+
+`make lint`, exit 0:
+
+```text
 .venv/bin/ruff check efb dashboard live tests
 All checks passed!
 .venv/bin/mypy efb
 Success: no issues found in 33 source files
 .venv/bin/black --check efb dashboard live tests
 All done! ... 170 files would be left unchanged.
+```
 
-$ .venv/bin/python -m pytest tests/test_e11_deploy.py tests/test_e11_render.py \
-    tests/test_e11_notify.py -q --tb=short
-34 passed, 1 skipped in 1.51s
+`make verify-evidence`, exit 0:
 
-$ make verify-evidence
+```text
 evidence OK
 ```
 
@@ -272,95 +202,100 @@ evidence OK
 
 | number | file and key |
 | --- | --- |
-| 18 tables, one `create schema if not exists efb` at line 8 | `live/supabase_schema.sql`, `grep -c "create table if not exists"` |
-| zero sequences | `live/supabase_schema.sql`, `grep -c "serial\|identity"` is 0 |
-| four grants on schema `efb`, none elsewhere | `live/supabase_roles.sql`; asserted by `tests/test_e11_deploy.py::test_the_roles_file_grants_only_on_efb` |
-| no DDL in any runtime module | `tests/test_e11_deploy.py::test_the_live_runtime_issues_no_ddl` |
-| the store's two statements, both DML | `live/store.py:128` and `live/store.py:149` |
-| `prepare_threshold` defaults to 5 and cannot ride in the URL | `psycopg.connect` signature and the pasted `ProgrammingError` |
-| the SQL editor path prints first and sends nothing | `scripts/provision_supabase.py::main`, asserted in test 6 |
-| the webhook on the cron only | `render.yaml`, second service |
-| 8 tests | `tests/test_e11_deploy.py` |
+| 150 names, n_eff 70.5921, max MU 5.3463%, error 0.6890% | `live/proposals/proposal_2026-09-21.parquet` and its manifest |
+| 155 names, n_eff 69.4578, max MRNA 6.2615%, error 0.7117% | `live/proposals/proposal_2026-09-18.parquet` and its manifest |
+| the same numbers on the floor row | `live/construction_table.parquet`, row `share_only_20shares` |
+| Guard 1 at 0.10, 1.5971x headroom, 10x trips at 0.6261 | `live/guards.py::MAX_POSITION_PCT_OF_NAV` and its comment |
+| the movement, 0.915 pp / $9,152 | the two stored books, tabulated above |
+| APH: NaN on 2026-08-28, 09-01, 09-02, 09-03, halving on 09-04 | `data/raw/prices.parquet`, measured |
+| the refusal message naming APH | `live/evening_job.py::usable_prices`, reproduced above |
+| 211 NaN closes at the 09-03 close, 206 at 09-18 and 09-21 | `data/raw/prices.parquet`, measured |
+| the manifest carries both: `n_eff` 157.33 (full) and `n_eff_kept` 70.5921 (final) | `live/proposals/proposal_2026-09-21.json`, values read directly; fields assigned at `live/evening_job.py:965` and `:992` |
 
 ### git diff --stat from `base_commit` (dd41d9b)
 
-This part's own files, from Part 3b's commit `9a46ea6`, with
-`git add -N live/supabase_roles.sql tests/test_e11_deploy.py` first so the new
-files appear:
+This part's own files, from Part 4's commit `ae1c686`:
 
 ```text
-$ git diff --stat 9a46ea6 -- handoff/REPORT.md live/supabase_roles.sql \
-    scripts/provision_supabase.py tests/test_e11_deploy.py
- handoff/REPORT.md             | 566 ++++++++++++++++++++++--------------------
- live/supabase_roles.sql       |  42 ++++
- scripts/provision_supabase.py | 124 +++++----
- tests/test_e11_deploy.py      | 166 +++++++++++++
- 4 files changed, 595 insertions(+), 303 deletions(-)
+$ git diff --stat ae1c686 -- handoff/REPORT.md live/evening_job.py live/guards.py \
+    live/proposals tests/test_e11_evening.py tests/test_e11_guards.py \
+    tests/test_e11_render.py
+ handoff/REPORT.md                          | 565 +++++++++++++----------------
+ live/evening_job.py                        |  29 +-
+ live/guards.py                             |  25 +-
+ live/proposals/proposal_2026-09-18.json    |  83 +++--
+ live/proposals/proposal_2026-09-18.parquet | Bin 7111 -> 8458 bytes
+ live/proposals/proposal_2026-09-21.json    |  87 ++---
+ live/proposals/proposal_2026-09-21.parquet | Bin 7195 -> 8283 bytes
+ tests/test_e11_evening.py                  |  51 +++
+ tests/test_e11_guards.py                   |  21 +-
+ tests/test_e11_render.py                   |  10 +-
+ 10 files changed, 462 insertions(+), 409 deletions(-)
 ```
 
-From the revision's `base_commit` (dd41d9b), which also carries Parts 2, 3 and 3b
-and the reviewer's `ef67024`:
+From the revision's `base_commit` (dd41d9b), which also carries Parts 2 to 4 and
+the reviewer's `ef67024`:
 
 ```text
 $ git diff --stat dd41d9b
  ...
- 23 files changed, 3271 insertions(+), 389 deletions(-)
+ 30 files changed, 3414 insertions(+), 479 deletions(-)
 ```
 
-Nothing else in the repository changed: no research artifact, no construction
-table, no proposal, no notebook.
+The two `.parquet` files are the regenerated books themselves, 8,458 and 8,283
+bytes against 7,111 and 7,195. Nothing else in the repository changed: no research
+artifact, no construction table, no notebook.
 
 ### Yes or no, each with evidence
 
-1. **Any two rows or two estimators identical.** No. No row of any table was
-   written: the SQL in this part is text for the owner, and the tests write no
-   row.
-2. **Any exception caught and skipped, or fallback taken, with counts.** Yes,
-   one, and it is the designed fallback: `scripts/provision_supabase.py::_apply`
-   catches a Management API failure, prints it, tells the owner to use the SQL
-   editor steps already printed above it, and returns 1. The token path is the
-   alternative, so falling back to the primary path is the correct behaviour
-   rather than a swallowed error. The test suite asserts that nothing is sent
-   without `--apply`, so this path cannot fire by accident.
-3. **Any criterion reworded or replaced by a different test.** No stored
-   criterion was touched. No existing test was edited in this part; the new
-   file is additive.
-4. **Any criterion that passes by construction.** One, declared: test 5 asserts
-   the store's two `cursor.execute` calls are DML by reading the source and
-   matching text, which cannot prove at run time that no other statement
-   executes. Test 4's scan of the runtime modules is the other half of the same
-   claim, and both are text-level. What makes the pair worth having is that the
-   reviewer's question is exactly a text-level question about the repository,
-   and the answer is now falsifiable by a diff rather than by memory.
+1. **Any two rows or two estimators identical.** No. The two regenerated books
+   differ (155 names against 150, n_eff 69.46 against 70.59, and the largest name
+   changes from MRNA to MU), which is the sanity gate's requirement that two
+   consecutive closes produce different proposals, now true of the confirmed book
+   as well.
+2. **Any exception caught and skipped, or fallback taken, with counts.** Yes, one
+   new one, and it is the opposite of a skip: `usable_prices` raises instead of
+   silently producing a share count. The exception is not caught anywhere in the
+   live path, so it stops the run, writes the `error` row and is notified (Part
+   3b). No other exception was added or suppressed.
+3. **Any criterion reworded or replaced by a different test.** No `RESULTS.json`
+   criterion, threshold or stored string was touched. **Two tests were edited
+   deliberately**, both listed above: the guard's cap test (the re-derivation this
+   part was asked for) and the Render page's regenerated-proposal counts (the
+   artifact's own change from 119 to 150 names). Both keep their assertions' form
+   and make them stricter, not weaker.
+4. **Any criterion that passes by construction.** One, declared: the reconciliation
+   between the regenerated proposal and the construction table's share-only row is
+   strong evidence that the artifact that trades is the confirmed book, but both
+   numbers come from the same `enforce_floor_by_drop_then_admit` code, so the test
+   proves the artifact carries that code's output, not that the rule is right. The
+   rule's own checks are Part 1R's five, which stand.
 5. **Any number that moved by a factor of 10 or more from its previous stored
-   value.** No. No stored number moved. The table count in the steps is new
-   (18, where the earlier list said eight), and it is a different quantity, not
-   a moved one.
-6. **Any stored number typed into a notebook.** No notebook was opened, edited
-   or executed.
-7. **Any earlier verdict changed.** No. The direct-Postgres decision, the
-   no-PostgREST rule, the read-only dashboard credential and the "no Exposed
-   schemas change" finding all stand. The step order's correction is a defect
-   fix in documentation, not a changed verdict.
+   value.** No. The stored proposal's `n_kept` moved 119 -> 150, n_eff on the final
+   weights 58.82 -> 70.59, and the largest weight 0.0596 -> 0.0535; the guard's
+   headroom moved 1.54x -> 1.60x. No factor of ten anywhere.
+6. **Any stored number typed into a notebook.** No notebook was opened, edited or
+   executed.
+7. **Any earlier verdict changed.** No. The 150-name book was already the owner's
+   confirmed choice; this part makes the stored artifacts match it. `dry_run` is
+   still `true` and I have not flipped it. The E11-F12 floor verdicts are
+   untouched.
 
 ### Anything decided that the reviewer might disagree with
 
-**The provisioning script no longer applies SQL unless asked.** It used to apply
-through the Management API whenever a token happened to be in the environment,
-and print the SQL when it was not. The reviewer asked for the SQL editor to be
-the primary path and the token the alternative, so the editor path prints first
-and always, and the API path needs `--apply`. The consequence is that an owner
-who has a token and expects the old behaviour gets a printed instruction instead
-of an application; that is the correction the review asked for, and the report
-says it plainly.
+**I refused the 2026-09-03 close rather than making it re-price.** The alternative
+was to drop APH (or names like it) from the universe for that close, which would
+have produced a book the owner never chose and would have changed the guard's
+"every close" answer by changing the population. I chose the refusal, wrote the
+name into the message, and left the stored 09-03 artifact as the superseded book
+it already was.
 
-**The session pooler on 5432 is the recommendation, not 6543.** The transaction
-pooler would need a code change because psycopg's default prepared statements
-are unsupported there and the setting cannot be carried in the URL. I would
-rather tell the owner to use 5432 than ship a half-working 6543 path, and if the
-reviewer wants 6543 supported, it is one argument in `store.get_connection` plus
-a test.
+**The price guard raises rather than substituting a price.** A stale or carried
+price would let the run continue and price a share count on data the panel does
+not have. The project's standing rule is that a failed run beats a wrong book, so
+the guard refuses and names the ticker.
 
-**I did not create the roles.** The reviewer's earlier rule stands: roles and
-grants on the shared project are the owner's to place, and this part only writes
-the SQL down.
+**I did not rename the manifest's `n_eff`.** The mismatch between it (157.33) and
+the final book's (70.59) is real and now documented with lines. Renaming it would
+change what a stored artifact means and would ripple into the dashboard, the
+`proposals` table and the D10 header, so it is a decision rather than a fix.

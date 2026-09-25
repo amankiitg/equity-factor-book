@@ -541,3 +541,54 @@ def test_build_proposal_stores_every_input_as_of_and_max_staleness() -> None:
         assert key in manifest["input_as_of"], key
         assert manifest["input_as_of"][key], key
     assert manifest["max_input_staleness_days"] >= 0
+
+
+def test_a_nan_close_price_stops_the_run_and_names_the_name() -> None:
+    """Part 5's defect: a NaN close cannot become a whole-share count.
+
+    `kept_shares` floors `|w| * nav / max(price, 1e-12)`, so a NaN price makes
+    that division undefined and the cast to int silently produces a share count
+    nobody asked for; the rounding report raises a bare `int(NaN)` instead. The
+    real panel has this: APH has no close on 2026-08-28, 09-01, 09-02 and
+    09-03, and its price halves on 09-04.
+    """
+    names, alpha, close = _synthetic_book()
+    design, factor_covariance, specific = _synthetic_pieces(names)
+    close["C"] = float("nan")
+    with pytest.raises(ValueError, match="no usable close price for C at the"):
+        ev.sized_kept_weights(
+            np.array([True] * 6),
+            names,
+            alpha,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            1000.0,
+        )
+
+
+def test_a_missing_close_price_stops_the_run_too() -> None:
+    """A name absent from the close map defaulted to 0.0, which is just as
+    unusable as a NaN and produced an astronomically large share count."""
+    names, alpha, close = _synthetic_book()
+    design, factor_covariance, specific = _synthetic_pieces(names)
+    del close["D"]
+    close["E"] = 0.0
+    with pytest.raises(ValueError, match="no usable close price for D, E at the"):
+        ev.sized_kept_weights(
+            np.array([True] * 6),
+            names,
+            alpha,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            1000.0,
+        )
+
+
+def test_usable_prices_passes_every_kept_name_through() -> None:
+    """The negative control: the guard changes nothing when prices are fine."""
+    prices = ev.usable_prices(["A", "B"], {"A": 10.0, "B": 20.0})
+    assert list(prices) == [10.0, 20.0]
