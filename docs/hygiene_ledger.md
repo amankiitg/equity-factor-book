@@ -1723,3 +1723,53 @@ Reason. The previous derivation was against the 499-name full book (largest
 0.0326), not the book that trades. The chosen construction drops 499 to 119
 names, so the largest position roughly doubles; the cap still clears it and
 still trips a 10x fat-finger, so the number does not move, only the basis.
+
+## 2026-09-25: yfinance is a recorded failing source for APH's four missing closes
+
+Decision. APH is carried with no close on 2026-08-28, 2026-09-01, 2026-09-02 and
+2026-09-03, and 2026-09-03 is the session the vendor's own split record is dated
+on. The gap is recorded here and the series is left exactly as delivered: the
+appendix carries a NaN return for those sessions, never an interpolated one, and a
+missing close never becomes a price.
+
+Reason. Per rule 14 a failing source is recorded rather than silently dropped. The
+vendor returned action rows for the four sessions and no price rows, and the split
+itself is visible in the artifact: the delivered close halves from 158.5500 on
+2026-08-31 to 82.779999 on 2026-09-04, with a split factor of 2.0 on the 2026-09-03
+row. Measured against the vendor today, the stored 158.5500 at 2026-08-31 refetches
+as 79.1522, a ratio of 0.499226, which is one APH quarterly dividend away from 0.5.
+
+## 2026-09-25: a split factor is applied at the append seam, never to history
+
+Decision. When the vendor's own `split_factor` column marks a split on a session a
+run is appending, that session's return is computed from the raw closes and the
+factor as `close_t * factor / close_{t-1} - 1`, and the event is recorded in
+`efb.e11_corporate_actions`, carried on the run's `run_status` row and named in the
+evening notification ("split: APH 2:1 applied"). No stored row is restated, and the
+factor is applied to that one session, never to the history behind it.
+
+Reason. The 2026-09-04 entry above, "never reapply split factors", holds for a
+history fetched in one go, where one vendor snapshot already carries the adjustment
+on every row and reapplying it manufactures a fake return. Appending creates a seam
+that entry does not cover: rows stored before a split keep the pre-split basis while
+the rows appended after it do not, so the raw return of a split session reads -50%
+and no stored row may be rewritten to repair it. The factor therefore applies only
+to the appended session whose denominator is stored on the old basis, which is also
+why the four missing closes stay missing rather than being back-filled: on
+2026-09-04 the numerator is the post-split close and the last close with a value is
+the pre-split one, so a number there would be a two-week return wearing a one-session
+label. The next session computes within one basis again and needs no factor.
+
+## 2026-09-25: an unexplained large move is reported, not blocked
+
+Decision. An appended return above 40% in absolute value with no corporate action
+behind it is recorded on the run's `run_status` row and named in the notification.
+The run is not stopped by it. A restated session that no split record explains does
+stop the run, and so does a vendor-flagged split with no record behind it.
+
+Reason. A 55% fall is a real return often enough that refusing to price a book on it
+would be wrong, and the cross-check already answers the question that matters: the
+vendor's refetched adjusted close for the stored session decides whether the move is
+a corporate action or not. Measured across the 33 tickers whose appended moves the
+rule cross-checked over the 2026-08-31 to 2026-09-21 window, 32 ratios came back at
+exactly 1.0 and only APH moved, at 0.499226.

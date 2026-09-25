@@ -391,6 +391,8 @@ def run_status_row(
     gross_notional: float | None = None,
     catch_up: bool = False,
     catch_up_sessions: list[str] | None = None,
+    splits: list[str] | None = None,
+    flags: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """The `run_status` row for one run: the target close and every date.
 
@@ -421,6 +423,10 @@ def run_status_row(
         # whose target close is the only session it appended.
         "catch_up": bool(catch_up),
         "catch_up_sessions": json.dumps(catch_up_sessions or []),
+        # The corporate actions this run applied and the large moves it could
+        # not explain: the dashboard shows them beside the run it delivered.
+        "splits": json.dumps(splits or []),
+        "flags": json.dumps(flags or [], sort_keys=True),
     }
 
 

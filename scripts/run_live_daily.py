@@ -258,6 +258,8 @@ def finish_run(
     gross: float | None = None,
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
+    splits: list[str] | None = None,
+    flags: list[dict[str, Any]] | None = None,
     poster: Any = None,
 ) -> int:
     """Notify the owner, record the run, and return the process exit code.
@@ -282,6 +284,8 @@ def finish_run(
         detail=detail,
         error_type=error_type,
         catch_up_sessions=catch_up_sessions,
+        splits=splits,
+        flags=flags,
         poster=poster,
     )
     delivered = notified["status"] == notify.STATUS_SENT
@@ -297,6 +301,8 @@ def finish_run(
         gross_notional=gross,
         catch_up=len(catch_up_sessions or []) > 1,
         catch_up_sessions=catch_up_sessions,
+        splits=splits,
+        flags=flags,
     )
     cron_detail = detail
     if notified["status"] == notify.STATUS_FAILED:
@@ -313,7 +319,16 @@ def finish_run(
 
 
 def main() -> int:
-    from live import evening_job, extend, morning_job, notify, reconcile, staleness
+    from live import (
+        corporate_actions,
+        evening_job,
+        extend,
+        morning_job,
+        notify,
+        reconcile,
+        staleness,
+        store,
+    )
 
     run_date = datetime.now(UTC).date().isoformat()
     if already_ran("live_daily", run_date):
@@ -325,6 +340,8 @@ def main() -> int:
 
     gate: dict[str, Any] | None = None
     catch_up_sessions: list[str] = []
+    splits: list[str] = []
+    flags: list[dict[str, Any]] = []
     try:
         # The model inputs are the git seed plus the Postgres appendix, so a
         # fresh container starts from seed plus every session the loop has
@@ -339,6 +356,27 @@ def main() -> int:
         extend.extend_prices()
         extend.extend_shares()
         extend.extend_returns()
+        # The corporate-actions rule, in the append path and before anything reads
+        # the returns. The vendor back-adjusts history on a split, this pipeline
+        # only appends, and a raw halving would slip under the 50% outlier flag.
+        # The appended session's return is computed from the raw closes and the
+        # factor, so no stored row is restated. A back-adjustment no record
+        # explains raises here, before the gate and before any sizing.
+        outcome = corporate_actions.apply_to_artifact(ROOT / "data", since=before_last)
+        if outcome.splits:
+            splits = [corporate_actions.describe([split]) for split in outcome.splits]
+            store.upsert(
+                corporate_actions.TABLE,
+                corporate_actions.rows(
+                    outcome.splits,
+                    outcome.sessions[-1] if outcome.sessions else before_last,
+                    outcome.ratios,
+                ),
+            )
+            logger.info("corporate actions applied: %s", "; ".join(splits))
+        flags = outcome.flags
+        if flags:
+            logger.warning("large moves in the appended session: %s", flags)
         extend.extend_model()
         extend.refresh_version()
         catch_up_sessions = _catch_up_sessions(before_last)

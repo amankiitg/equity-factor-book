@@ -1,3 +1,270 @@
+# Sprint E11 pre-deploy, item 4: the corporate-actions rule in the append path
+
+**What was wrong.** The vendor back-adjusts history on a split. This pipeline only
+appends and no stored row may be restated. So on the evening a split first appears,
+the appended session's raw close is on the new basis while the session it is
+compared against is stored on the old one, and the raw return reads -50%. E1's
+outlier flag is 50%, so that number sits right under the flag that is supposed to
+catch it: a 2:1 split would have entered the book as a -50% name and no test would
+have failed. Item 4 is the rule that stops it, and the measurement that says where
+it fires.
+
+**Item 4a, measured, not asserted.** The APH split on 2026-09-03 is the case in
+hand, and the first thing the measurement showed is that it did **not** produce a
+fake return: the delivered close halves (158.5500 on 2026-08-31 to 82.779999 on
+2026-09-04), and the panel's APH return on 2026-09-04 is **NaN, not -48%**,
+because APH has no close at all on 2026-08-28, 09-01, 09-02 and 09-03, and
+`returns.compute_returns` uses `pct_change(fill_method=None)`, so a NaN run makes
+the session NaN. The appendix therefore carried a hole, not a fake return. The rule
+is what stops the *next* split from being a fake return, and it also records this
+one, which nothing had.
+
+Run against the real artifacts, read only, with the extension's own boundary
+(`since` = 2026-08-31) and the vendor's own action rows:
+
+```text
+appended sessions: 2026-09-01 ... 2026-09-21
+  2026-09-03 flagged: ['APH']
+  ... every other session flagged: []
+splits: ['split: APH 2:1 applied']
+ratios: {'SBNY': 1.0, 'DELL': 1.0, 'FMC': 1.0, 'APH': 0.499226, 'CIEN': 1.0, ... 28 more at 1.0}
+cross-checked: 33 tickers
+flags: []
+rows to store: [{'trade_date': '2026-09-21', 'ticker': 'APH', 'effective_date':
+  '2026-09-03', 'factor': 2.0, 'source': 'yfinance.splits',
+  'cross_check_ratio': 0.4992257042886195}]
+artifact hash unchanged: True
+any row moved: False
+APH r on 2026-09-04 still: nan
+```
+
+Three things there are worth reading twice. **The negative control**: 32 of the 33
+cross-checked tickers came back at exactly 1.000000, so the one that did not is the
+only ticker the vendor's own action column flagged. **Nothing moved**: the artifact
+hash is unchanged, no row differs, and APH's return on 2026-09-04 is still NaN,
+because the numerator is the post-split close and the last close with a value is
+pre-split, so any number there would be a two-week return wearing a one-session
+label. **The ratio is 0.499226, not 0.5**: the vendor's adjusted close carries
+dividends as well as splits, and APH is one quarterly dividend away from the factor.
+
+**Where it did and did not fire.** It fires on the split the vendor reports, on the
+session that split takes effect on. It did not fire anywhere in the appended
+returns, because the only affected session had no close to correct. It fired on the
+cross-check for APH and for the 32 large-move tickers around it, all of which
+agreed with their stored values. It did not fire on any flag: no appended return
+above 40% was left unexplained.
+
+**The failing source, recorded.** APH has no close on four sessions, one of them the
+session the vendor's own split record is dated on, and that is now a ledger entry
+rather than a silent gap (`docs/hygiene_ledger.md`, "yfinance is a recorded failing
+source for APH's four missing closes"). Two more entries land with it: the append
+seam rule, and the decision that an unexplained large move is reported rather than
+blocked. The ledger is append-only, so the 2026-09-04 entry that says "never reapply
+split factors" is untouched; the new entry says why that one holds for a history
+fetched in one go and what changes at the seam.
+
+**Item 4b, the rule.** `live/corporate_actions.py`:
+
+| piece | what it does |
+| --- | --- |
+| `split_factor_of` | one place decides what the vendor's column means: `0.0` and `NaN` are no split, `1.0` is no split, a negative or non-finite value is no split, everything else is new shares per old share |
+| `split_flag_tickers` | the vendor's own `split_factor` column, already stored on the price row, names the tickers that split. The primary detection costs no request |
+| `cross_check_ratio`, `resolve_split` | the refetched adjusted close of the last stored session against the stored one. A ratio away from 1 that no record explains, or a record that disagrees with the vendor's own factor, raises naming the ticker and stops the run |
+| `adjusted_return` | `close_t * factor / close_{t-1} - 1`, from raw closes, never from the back-adjusted history |
+| `apply_to_append`, `apply_to_artifact` | two passes per appended session: the flagged tickers, then every ticker whose appended move exceeds 10%, capped at 30 requests. The artifact is written back only when a split was actually applied |
+| `shares_basis_factor`, `held_notional_across_split`, `held_shares_across_split`, `trade_across_split` | a lagging share count is corrected by date, never by guessing a plausible number; a held position keeps its notional so an unchanged target trades nothing |
+| `flag_large_moves`, `rows`, `describe` | the >40% flags, the stored row, and `split: APH 2:1 applied` |
+
+`CROSS_CHECK_TOLERANCE = 0.02` is a measured number, not a taste: the vendor's
+adjusted close carries dividends, so APH's factor-matched ratio is 0.499226; two
+real split factors are never within 2% of each other (3:2 against 2:1 is 25%
+apart), so the band separates a dividend from a factor.
+
+Wired into the run: `scripts/run_live_daily.py` applies it straight after
+`extend.extend_returns()` and before anything reads the returns, writes the event
+to `efb.e11_corporate_actions`, carries it on the run's `run_status` row
+(`splits`, `flags`) and names it in the evening message (`Corporate actions: split:
+APH 2:1 applied.`, and `Large moves: ...` when a move is unexplained).
+`live/notify.py`, `live/staleness.py` and `live/supabase_schema.sql` carry those
+fields.
+
+**Every consumer of a price level, and which side of the seam it is on.**
+
+| consumer | reads | needs a factor |
+| --- | --- | --- |
+| `efb/build.py` returns, `efb/hygiene.py`, `efb/identity.py`, `efb/evaluate.py`, `efb/hedge.py` | two prices inside one basis | no: returns are computed within a basis |
+| `efb/costs.py::_corwin_schultz`, `abdi_ranaldo` | a session's own high, low and close | no: the window is per session and the ratios are within one basis |
+| `efb/build.py::market_cap` (`close * shares`), `data/processed/market_cap.parquet` | a level times a count | the two factors cancel, but only when both come from the same date's snapshot, which is how `build.py` reads them |
+| `live/morning_job.py::_close_prices`, `live/sizing.py` whole-share quantization | the close of the session being traded | no: same session as the order |
+| `live/alpaca.py::submit_market_orders` | the price at execution, revalidated | no: same session |
+| `live/evening_job.py::usable_prices`, `live/construction_table.py`, the pages | levels at the proposal close | no: same session |
+| `live/staleness.py` | dates, not levels | no |
+
+The one place where both bases meet is market cap, and it is why the rule keeps the
+factor on the appended session: a stale close against a restated count would move
+the size factor by a factor of two.
+
+## Tests
+
+`tests/test_e11_corporate_actions.py`, 20 tests: a synthetic 2:1 and a synthetic
+3:2 giving the right return with the caller's frame and the stored artifact both
+unchanged (hash before and after), a back-adjustment with no split record stopping
+the run, a vendor-flagged split with no record stopping it, a disagreed factor
+stopping it, a ratio of 1 and a dividend-sized drift of 0.985 needing no split, the
+ratio agreeing with a factor either way round, a lagging share count corrected and a
+current one left alone, a held position reconciling with no phantom trade, the
+cumulative factor for a level read across two splits, the record and the message,
+the flag list, the APH case from the real rows and the real ratio, the artifact
+writer with and without a split, and the notification and `run_status` carrying
+both.
+
+## Verification
+
+Per step, the selection is every test touching what changed: the new rule, the
+runner, the notification, the staleness row and the store.
+
+```text
+$ .venv/bin/python -m pytest tests/test_e11_corporate_actions.py tests/test_run_live_daily.py \
+    tests/test_e11_notify.py tests/test_e11_staleness.py tests/test_e11_store.py \
+    tests/test_e11_extend.py tests/test_e11_deploy.py tests/test_e11_render.py \
+    tests/test_e11_sanity.py -q
+99 passed, 1 skipped in 51.70s
+```
+
+No artifact was rebuilt in this item and no `efb/` module changed, so the full suite
+is not required before this commit; it runs before the task's `done`, per standard
+21. The count does not shrink: this item adds 20 tests to the 787 collected at item
+3, so the next full run collects 807.
+
+`make lint`, exit 0:
+
+```text
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+.venv/bin/mypy efb
+Success: no issues found in 33 source files
+.venv/bin/black --check efb dashboard live tests
+All done! ... 174 files would be left unchanged.
+```
+
+`make verify-evidence`, exit 0:
+
+```text
+evidence OK
+```
+
+Two mypy notes, declared. `mypy live scripts` reports 10 errors, and it reported
+10 errors on the parent commit as well, checked by stashing this item's changes:
+none of them is this item's. `make lint`'s target is `mypy efb`, which is clean.
+
+### Headline numbers, file and key
+
+| number | file and key |
+| --- | --- |
+| the vendor's split factor | `data/raw/prices.parquet`, row (2026-09-03, APH), column `split_factor` = 2.0 |
+| the delivered halving | the same artifact, `close` = 158.550003 at 2026-08-31 and 82.779999 at 2026-09-04 |
+| the panel did not carry it as a return | `data/processed/returns.parquet`, (2026-09-04, APH), column `r` = NaN (still NaN after the rule) |
+| the cross-check ratio | 0.499226, stored 158.5500 against a refetched 79.1522, recorded in `efb.e11_corporate_actions.cross_check_ratio` |
+| the tolerance and why | `live/corporate_actions.py::CROSS_CHECK_TOLERANCE` = 0.02 |
+| the appended session's return under the rule | 82.779999 * 2 / 158.550003 - 1 = 0.044213 |
+| the store table and its key | `live/corporate_actions.py::TABLE` = `e11_corporate_actions`, `TABLE_KEY` = `("trade_date", "ticker")` |
+| the run's own record | `efb.run_status.splits`, `efb.run_status.flags` |
+| the message | `live/notify.py::compose`, `Corporate actions:` and `Large moves:` |
+| the ledger entries | `docs/hygiene_ledger.md`, three entries dated 2026-09-25 |
+| the prose rule | `README.md`, `## Corporate actions` |
+| 20 tests | `tests/test_e11_corporate_actions.py` |
+
+### git diff --stat from `base_commit` (4048b97)
+
+This item's own files, from item 3's commit `f539c30`:
+
+```text
+$ git diff --stat f539c30 -- live/corporate_actions.py live/notify.py live/staleness.py \
+    scripts/run_live_daily.py live/supabase_schema.sql docs/hygiene_ledger.md README.md \
+    tests/test_e11_corporate_actions.py
+ README.md                           |  22 ++
+ docs/hygiene_ledger.md              |  50 +++
+ live/corporate_actions.py           | 670 ++++++++++++++++++++++++++++++++++++
+ live/notify.py                      |  26 +-
+ live/staleness.py                   |   6 +
+ live/supabase_schema.sql            |  18 +
+ scripts/run_live_daily.py           |  40 ++-
+ tests/test_e11_corporate_actions.py | 527 ++++++++++++++++++++++++++++
+ 8 files changed, 1357 insertions(+), 2 deletions(-)
+```
+
+From the task's `base_commit` (4048b97), which carries items 1, 2 and 3 as well:
+
+```text
+$ git diff --stat 4048b97
+ ...
+ 28 files changed, 2673 insertions(+), 300 deletions(-)
+```
+
+No stored artifact and no research number is in either list.
+
+### Yes or no, each with evidence
+
+1. **Any two rows or two estimators identical.** No. The 32 control tickers are
+   identical to each other by design (all exactly 1.0), which is what makes APH's
+   0.499226 evidence rather than noise; the ratios are 33 distinct tickers read
+   from 33 stored adjusted closes.
+2. **Any exception caught and skipped, or fallback taken, with counts.** One, and it
+   is deliberate: `apply_to_append` skips a ticker with no stored previous session,
+   because there is no return to correct and no cross-check to make. It skips
+   nothing else. A `KeyError` reading a cell is `None`, and the two paths that could
+   guess (no record for a back-adjustment, a record disagreeing with the vendor's
+   own factor) raise instead. Requests are capped at 30 per session by
+   `max_cross_checks`, which is a bound on cost, not a silent drop: the cap is
+   applied to the large-move population only, after the vendor-flagged tickers have
+   all been checked.
+3. **Any criterion reworded or replaced by a different test.** No `RESULTS.json`
+   criterion, threshold or stored string was touched, and no notebook was opened.
+   Three ledger entries were added; none was edited.
+4. **Any criterion that passes by construction.** One, declared. The test that the
+   APH line reproduces 0.044213 uses the closes I read out of the artifact, so it
+   pins the arithmetic and the wiring, not the vendor's data. The artifact is what
+   supplies the closes in production, and the ratio 0.499226 in that test is a
+   measured number typed from the run pasted above.
+5. **Any number that moved by a factor of 10 or more from its previous stored
+   value.** No stored number moved at all: no artifact was written in this item, the
+   returns artifact's hash is unchanged, and the split row is an addition to a new
+   table.
+6. **Any stored number typed into a notebook.** No notebook was opened, edited or
+   executed.
+7. **Any earlier verdict changed.** No. The 2026-09-04 hygiene decision stands as
+   written; the new entry explains the case it does not cover rather than
+   superseding it. Part 5's price handling, Guard 1's derivation and the owner's
+   confirmed numbers all stand.
+
+### Anything decided that the reviewer might disagree with
+
+**A large move is reported, not blocked.** A 55% fall is a real return often enough
+that refusing to price a book on it would be wrong, and the cross-check already
+answers the question that matters. What does stop the run is a *restated* session
+that no split record explains, because that is a corporate action this pipeline
+cannot account for. If the reviewer wants an unexplained large move to stop the run
+as well, it is one branch in `apply_to_append` and one test.
+
+**The rule leaves APH's hole a hole.** The corrected return for 2026-09-04 is
+reachable (+4.4213%), and applying it would mean writing the return of a period
+whose denominator predates four missing sessions. The panel's convention everywhere
+else is a one-session return, so the number is recorded in the rule's own tests and
+in this report and not written into the panel. If the reviewer wants the appendix to
+carry it, the honest form is a two-week return on the session it becomes available,
+which is a different field.
+
+**The tolerance is 2%, on a measured reason.** A tighter band rejects APH's own
+split because of a dividend, and a looser one could let a fine split through as a
+dividend. The number is in the module with the measurement beside it.
+
+**`0.0` in the vendor's column means no split, not a factor of zero.** I found this
+by testing the rule against a synthetic frame, where the fixture used 0.0 for a
+clean session and the rule stopped the run naming a split factor of 0. The real
+artifact uses the same convention, so a rule reading `!= 1.0` as "a split" would
+have stopped every run. If the vendor ever means something else by 0.0, the module's
+`split_factor_of` is the one place to change.
+
 # Sprint E11 pre-deploy, item 3: the book's breadth, and the full book's, with no unqualified `n_eff`
 
 **What was wrong.** The proposal manifest carried one `n_eff`, and it was the

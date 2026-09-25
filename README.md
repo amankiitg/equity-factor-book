@@ -53,6 +53,28 @@ reconciles); the blueprint is `render.yaml` and the deployed URL is assigned by
 Render at deploy time. The live series lives in Supabase; research artifacts
 stay in git and the evidence snapshot.
 
+## Corporate actions
+
+The pipeline only appends, so a split never rewrites a stored row. What the
+append path uses is the vendor's own split factor, which sits on the price row of
+the session it takes effect on: the appended session's return is
+`close * factor / previous close - 1`, computed from raw closes rather than from a
+back-adjusted history, and the event is recorded on the run and named in the
+evening message ("split: APH 2:1 applied"). Because a raw halving is a 50% move
+and the E1 outlier flag is 50%, the move would otherwise sit right under the flag
+that is supposed to catch it. Every appended session whose move is large is also
+cross-checked against a refetch of the last stored session's adjusted close, and a
+restated session that no split record explains stops the run before anything is
+priced.
+
+Three consequences, and they are the whole reason for the rule. Consumers of
+returns compare two prices inside one basis, so they need no factor. Consumers of
+price levels cross the seam and do: market cap is a close times a share count, and
+at a split those move opposite ways, so the two factors cancel only when both come
+from the same date's snapshot. And a held position keeps its notional, because the
+broker doubles the shares and halves the price, so an unchanged target trades
+nothing.
+
 ## Workflow
 
 Sprints run sequentially. Do not open Sprint N+1 until Sprint N's exit criteria

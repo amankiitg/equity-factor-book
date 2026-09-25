@@ -219,5 +219,23 @@ create table if not exists efb.run_status (
   dry_run boolean,
   catch_up boolean default false,
   catch_up_sessions jsonb,
+  splits jsonb,
+  flags jsonb,
   primary key (target_close, job)
+);
+
+-- Item 4b: the corporate-actions rule. One row per split applied to a session,
+-- written by the run that appended it. The rule computes that session's return
+-- from raw closes and the factor (`close_t * factor / close_{t-1} - 1`) instead
+-- of from the vendor's back-adjusted history, so no stored price row is ever
+-- restated, and the cross-check ratio is kept beside the factor so a later
+-- reader can see the two agreed.
+create table if not exists efb.e11_corporate_actions (
+  trade_date date not null,
+  ticker text not null,
+  effective_date date not null,
+  factor double precision not null,
+  source text,
+  cross_check_ratio double precision,
+  primary key (trade_date, ticker)
 );

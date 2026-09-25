@@ -110,8 +110,10 @@ def compose(
     detail: str = "",
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
+    splits: list[str] | None = None,
+    flags: list[dict[str, Any]] | None = None,
 ) -> str:
-    """The three fields, in order, ready for a preview."""
+    """The fields, in order, ready for a preview."""
     close = target_close or "unknown close"
     label = STATUS_LABELS.get(status, status)
     caught_up = len(catch_up_sessions or [])
@@ -148,6 +150,13 @@ def compose(
         )
     if status == "stale_stopped" and failures:
         lines.append(f"Failing inputs: {_failure_list(failures)}.")
+    # A split is named here because it moves a held position without a decision
+    # being made, and an unexplained large move is named because it is the one
+    # thing in the appended session a person has to look at.
+    if splits:
+        lines.append(f"Corporate actions: {', '.join(splits)}.")
+    if flags:
+        lines.append(f"Large moves: {_flag_list(flags)}.")
     if status == "error":
         reason = scrub(detail).strip() or "no reason recorded"
         prefix = error_type or "Exception"
@@ -158,6 +167,17 @@ def compose(
             lines.append(f"Error: {prefix}: {reason}")
 
     return "\n".join(lines)
+
+
+def _flag_list(flags: list[dict[str, Any]]) -> str:
+    parts = []
+    for flag in flags:
+        move = flag.get("return")
+        shown = (
+            f"{float(move) * 100:+.1f}%" if isinstance(move, (int, float)) else "n/a"
+        )
+        parts.append(f"{flag.get('ticker')} {shown} ({flag.get('flag')})")
+    return "; ".join(parts)
 
 
 def slack_payload(message: str) -> dict[str, str]:
@@ -221,6 +241,8 @@ def notify_run(
     detail: str = "",
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
+    splits: list[str] | None = None,
+    flags: list[dict[str, Any]] | None = None,
     webhook: str | None = None,
     poster: Callable[[str, dict[str, Any]], Any] | None = None,
 ) -> dict[str, Any]:
@@ -237,6 +259,8 @@ def notify_run(
         detail=detail,
         error_type=error_type,
         catch_up_sessions=catch_up_sessions,
+        splits=splits,
+        flags=flags,
     )
     result = send(message, webhook=webhook, poster=poster)
     result["text"] = message
