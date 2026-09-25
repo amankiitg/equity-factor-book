@@ -21,6 +21,7 @@ test-fast: ## Run only the fast subset, skipping tests marked slow
 lint: ## Static checks: ruff, mypy, black
 	$(RUFF) check efb dashboard live tests
 	$(MYPY) efb
+	$(MYPY) live scripts
 	$(BLACK) --check efb dashboard live tests
 
 format: ## Auto-format with black and ruff

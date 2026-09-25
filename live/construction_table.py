@@ -692,11 +692,20 @@ def _enforce_row(
     row["n_kept_alpha_order"] = int(alpha_keep.sum())
     row["n_eff_kept_alpha_order"] = alpha_row["n_eff_kept"]
     row["n_eff_alpha_gap_pct"] = (
-        (float(alpha_row["n_eff_kept"]) - float(row["n_eff_kept"]))
-        / float(row["n_eff_kept"])
+        (_cell_float(alpha_row["n_eff_kept"]) - _cell_float(row["n_eff_kept"]))
+        / _cell_float(row["n_eff_kept"])
         * 100.0
     )
     return row, row_names
+
+
+def _cell_float(value: object) -> float:
+    """A row cell as a float.
+
+    A table row is a `dict[str, object]` by construction, so every cell arrives
+    as `object` even when the value is a float the row itself put there.
+    """
+    return float(cast("float | int | str", value))
 
 
 def _no_floor_row(row: dict[str, object]) -> None:

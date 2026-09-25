@@ -171,7 +171,10 @@ def type_probes() -> tuple[list[dict[str, Any]], list[str]]:
     with psycopg.connect(url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(statement, payload)
-            got_nan, got_json, got_date, got_ts, got_tiny = cursor.fetchone()
+            fetched = cursor.fetchone()
+            if fetched is None:  # pragma: no cover - a SELECT always returns a row
+                raise RuntimeError("the type probe returned no row")
+            got_nan, got_json, got_date, got_ts, got_tiny = fetched
     for name, expected, actual in (
         ("nan floats", "nan", got_nan),
         ("jsonb has null not NaN", {"nan": None, "inf": None, "ok": 1.5}, got_json),

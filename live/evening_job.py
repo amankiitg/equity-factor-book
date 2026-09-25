@@ -216,7 +216,7 @@ def sized_kept_weights(
     specific: np.ndarray,
     close: dict[str, float],
     nav: float,
-) -> tuple[np.ndarray, list[str], np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, list[str], np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Procedure 6.3 on the kept subset, hedged and renormalized to gross 1.0.
 
     One implementation for the whole module: `finalize_kept_set` builds its

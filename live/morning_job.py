@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -154,7 +155,7 @@ def run_morning(
     auto_approve: bool = True,
     dry_run: bool = DRY_RUN_DEFAULT,
     data_root: Path = DATA_ROOT,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """The whole morning flow: gate, propose, guard, submit, reconcile.
 
     Returns the summary with the decision, the guard outcomes and the

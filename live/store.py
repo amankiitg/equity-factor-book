@@ -59,7 +59,10 @@ class StoreNotConfigured(RuntimeError):
     """
 
 
-TABLES = (
+# Annotated as variable-length: `live/corporate_actions.py` and `live/appendix.py`
+# each add their own tables at import, and without this the inferred type would be
+# the exact length of this literal and the additions would be a type error.
+TABLES: tuple[str, ...] = (
     "proposals",
     "orders",
     "fills",

@@ -100,7 +100,7 @@ def calendar():
     Imported inside the function so the module loads even where the live
     extras are not installed; the gate itself needs them.
     """
-    import pandas_market_calendars as mcal  # noqa: PLC0415 - live extra
+    import pandas_market_calendars as mcal  # type: ignore[import-untyped]  # noqa: PLC0415 - live extra
 
     return mcal.get_calendar(CALENDAR_NAME)
 
@@ -128,6 +128,8 @@ def session_close(session: Any) -> pd.Timestamp:
     calendar answers rather than an assumed offset.
     """
     stamp = _naive(session)
+    if stamp is None:  # pragma: no cover - a caller without a session
+        raise ValueError("no session to find the close of")
     schedule = calendar().schedule(
         start_date=stamp.date(), end_date=stamp.date(), tz="UTC"
     )
