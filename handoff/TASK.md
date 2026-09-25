@@ -1,5 +1,5 @@
 task_id: e11-pre-deploy
-status: ready
+status: in_progress
 base_commit: 4048b97
 
 ## Owner decisions, 2026-09-25 (later): email by Resend, and D10 moves to Cloudflare
