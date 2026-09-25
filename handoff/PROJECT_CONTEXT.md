@@ -31,10 +31,13 @@ that returns a negative answer has done its job.
 Ten sprints built. E11 is a dry-run loop. Its construction is chosen
 (share-only, 20 shares, 2026-09-24). The store is on direct Postgres, and the
 book, Guard 1 and the sanity gate are being redone (task
-`e11-admit-and-live-gate`). E12's engine has not been started. HEAD dd41d9b.
-As reported at that commit: `make test` 732 passed, 1 skipped, `make lint`
-clean, `make verify-evidence` clean. The book is installed in the table and
-the live path by the drop-then-admit rule. Five model versions
+`e11-admit-and-live-gate`). E12's engine has not been started. HEAD 4048b97.
+As reported at that commit: `make test` 774 passed, 1 skipped, `make lint`
+clean, `make verify-evidence` clean. The book is installed by the
+drop-then-admit rule. Built but not yet exercised against a real database or
+Slack: the git seed plus Postgres appendix, the staleness stop, the
+notification, the corrected deploy steps and role SQL. Next is
+`e11-pre-deploy`: four items before the owner deploys, two after. Five model versions
 in `data/models/registry.json`. XS-v1 is champion, and its `live` block records
 the construction: `share_only`, `share_floor` 20, `dollar_floor` 0,
 `floor_iterated` true. TS-v1 is diagnostic only and
@@ -323,7 +326,12 @@ Sequenced 2026-09-23. Each numbered item is roughly one TASK.md or less.
    enforcement loop only dropped names (E11-F13) and the gate replayed
    historical closes rather than showing live data (E11-F14). Before any
    deploy, the owner decides where the daily-extended inputs live on Render
-   (E11-F15). The deploy steps are being corrected. **Do not deploy yet.**
+   (E11-F15). **Status at 4048b97:** the appendix, the staleness stop, the
+   notification and the deploy steps are built. **Do not deploy** until
+   `e11-pre-deploy` items 1 to 4 land: the universe look-ahead, catch-up
+   labelling, the dashboard's `n_eff`, and the APH split check. Before
+   provisioning, the owner runs the one read-only size query from Part 2 and
+   reads it against 400 MB.
    **Resequenced 2026-09-24 after the owner's decisions:**
    1. The prefix fixed point, then the owner re-confirms share-only.
    2. The model inputs move into Postgres.

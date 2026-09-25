@@ -1,8 +1,130 @@
-task_id: e11-admit-and-live-gate
-status: done
-base_commit: dd41d9b
+task_id: e11-pre-deploy
+status: ready
+base_commit: 4048b97
 
-## Part 1R is accepted. The rank margin gates the book, not the table. Run Parts 2 to 5.
+## Six items before the owner deploys, then the gate
+
+Parts 2 to 5 of `e11-admit-and-live-gate` are accepted, and they are strong
+work: the git seed plus Postgres appendix with round-trip hashes, staleness
+counted in NYSE sessions with a tested dashboard failure state, the
+notification with its scrub and exit codes, deploy steps in the right order
+with the role SQL as text and a rolled-back typing probe, and the book that
+trades matching the confirmed book to the last digit. The APH price guard
+was an unasked-for catch.
+
+**But the task was set `done` with Parts 6 and 7 open.** Part 6 is the gate,
+which needs the owner's deploy, but its items 1 and 3 are code that must land
+**before** the deploy. Part 7 was not done. Four more items came out of the
+review. **The owner does not deploy until items 1 to 4 below are committed.**
+Items 5 and 6 may follow the deploy.
+
+Run them in order and commit each alone. `dry_run` stays `true`.
+
+### 1. The universe look-ahead (Part 6 item 1, still open)
+
+The 09-18 proposal records its universe as of 2026-09-21. Clamp the universe
+to the latest SPY archive on or before the close, the way `_input_as_of`
+clamps everything else. Add the shift-audit test: a proposal whose universe
+file postdates its close is refused. Regenerate the 09-18 proposal and report
+whether its book changed.
+
+### 2. Catch-up sessions are labelled (Part 6 item 3, still open)
+
+The first Render run will find the data at 2026-09-21 and extend it through
+the latest close, several sessions at once. Those sessions are **catch-up**.
+- `run_status` records `catch_up: true` and the sessions it caught up.
+- The notification's first line says so, for example "ok (catch-up of 4
+  sessions)".
+- A catch-up run is never one of the gate's two closes.
+- Test it.
+
+A gate close is a run whose target close is the only session it appended.
+
+### 3. The dashboard's `n_eff` names the wrong book (the reviewer decides: fix it)
+
+The manifest's unqualified `n_eff` is the full 499-name book's 157.33.
+`store_proposal` writes it to `proposals`, so the dashboard would show 157.33
+beside a 150-name book whose breadth is 70.59. That is a number meaning more
+than it says, on the page the owner will watch for two evenings.
+- Stop writing an unqualified `n_eff`.
+- Write `n_eff_kept` and `n_eff_full_book`, and label them on both pages as
+  "the book's effective breadth" and "the full 499-name book's, before the
+  floor".
+- Readers of older artifacts map a legacy `n_eff` to `n_eff_full_book`, with a
+  note, and never to the book's.
+- Regenerate the two stored proposals.
+- Add a test that the page's breadth figure equals `n_eff_kept`.
+
+### 4. APH's split, in the appended data
+
+APH has no close from 2026-08-28 to 09-03 and then halves, 158.78 to 82.78,
+on 2026-09-04, **the first appended session**.
+- Print APH's `adj_close` either side of the gap, its return on 09-04 in the
+  returns panel, its specific return that day, and its `specific_var` before
+  and after.
+- If the 09-04 return is about -48%, the appendix carries a split as a return.
+  That feeds the 09-04 factor fit (APH is a large cap under cap weights),
+  `specific_var` and every book since. Say what it moved, and fix it in the
+  appendix. It is post-seed, so no seed row is restated.
+- Either way, report how many names have an absolute daily return above 40%
+  in any appended session, each with its explanation.
+
+Four missing closes in a row for an index member also make the price vendor a
+failing source for those days (STANDARDS rule 14). Record it in the hygiene
+ledger.
+
+### 5. Part 7, still open
+
+- **E5's `evaluated_at` is still re-stamped**: 2026-09-24T13:31:37 against the
+  stored 2026-09-21T00:55:38. Restore it, or record the move in `revisions`
+  with both values.
+- **The 0.000031 gap is recorded but not explained.** The ledger calls it
+  "essentially nil", which is the observation, not the answer. Say whether
+  XS-v1's beta at 09-21 includes returns after 09-03, meaning the beta inside a
+  descriptor dated 09-21 is advancing, or whether it reads a frozen beta. If it
+  is frozen, it is a staleness defect that Part 3's gate cannot see, because the
+  descriptors' date advances while one column inside does not.
+
+### 6. E11-F16: the appendix grows without end, and the loop has none
+
+Part 2 projects about 261 MB a year for EFB alone, and the book runs
+indefinitely. So EFB alone crosses the 400 MB stop line early in its second
+year and the 500 MB cap soon after, whatever credit-trading-lab uses. The
+one-year stop was met in the letter and missed in intent; that is the
+reviewer's spec again, because nothing may assume an end date.
+- **Design retention**, with a three-year projection. Keep in Postgres only
+  what the runtime needs: each estimator's trailing window, plus the series
+  E12 needs (factor returns, specific returns of held names, positions).
+- **Descriptors are 57% of the size.** Say whether the runtime needs all four
+  value columns and any history beyond the current session.
+- **The universe stores the whole SPY file every day.** Say whether diffs
+  suffice.
+- **Build it** if it keeps EFB under 150 MB at three years and restates no seed
+  row.
+- **Add the `efb` schema's size to `run_status`**, and put it in the
+  notification when it passes 300 MB.
+
+This may follow the deploy, but must land within a month of it.
+
+### Smaller, in the same commits where they fit
+
+- **The first run is inferred from an empty appendix.** Make it explicit: a
+  one-row marker in `efb` written when the appendix is seeded. An empty
+  appendix after the marker exists is an `error`, not a re-seed.
+- **The write role holds `delete`.** Drop it unless a code path deletes, and
+  say which.
+- **One residual for the deploy notes.** PostgreSQL grants EXECUTE on functions
+  to PUBLIC by default, so the two roles can call functions in the credit lab's
+  `public` schema even with no table grants. Revoking that is a change on the
+  shared project and is not for us to make. State it in the deploy steps as a
+  known limit of the isolation, so the owner decides with it in view.
+- **Guard 1's movement** is better read per name than as the change in the
+  maximum. MRNA moved 1.72 points against the 3.74-point clearance. It still
+  clears by 2x; state it that way.
+
+---
+
+## Previous: Part 1R accepted, Parts 2 to 5 run (e11-admit-and-live-gate)
 
 **The reviewer's answer to the blocking question.** The ambiguity was in the
 reviewer's spec, which said "every floor row" and also "the rank margin the

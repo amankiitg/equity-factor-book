@@ -2139,3 +2139,77 @@ superseded prefix columns. It should be "yes, confined to ...".
 TASK.md is set to `ready` at dd41d9b: Parts 2, 3, 3b, 4 and 5 run now, and
 Part 5 re-derives Guard 1 on the 150-name book. PROJECT_CONTEXT's State and
 the decision entry now carry the installed book.
+
+---
+
+## 2026-09-25 review: e11-admit-and-live-gate Parts 2 to 5 at 4048b97
+
+**Parts 2 to 5 are accepted, and it is strong work.** The final REPORT.md
+covers Part 5 only. Each part's report was overwritten by the next, so I read
+Parts 2, 3, 3b and 4 from their commits.
+- **Part 2:** the git seed plus Postgres appendix round-trips every input by
+  hash, the append is idempotent, and each proposal names the appendix it was
+  priced from.
+- **Part 3:** staleness is counted in NYSE sessions, tested across Labor Day
+  and Monday runs. It stops before sizing, with no proposal and no order, and
+  the dashboard shows stale, error and no-run states as failures.
+- **Part 3b:**
+  - a notification goes out on every run, and a dry run never reads as
+    "0 orders";
+  - the scrub is proven on a fake connection string;
+  - the webhook sits on the cron only;
+  - a failed or unconfigured send fails the run;
+  - healthchecks.io is offered for the heartbeat, not built.
+- **Part 4:** the deploy steps now run in order. The role SQL is given as text
+  only, a test proves the runtime issues no DDL, and a rolled-back typed write
+  settles the psycopg text-typing risk before anything reaches Render. The
+  transaction-pooler trap is documented.
+- **Part 5:** the 09-21 proposal matches the confirmed book to the last digit,
+  with 150 names and n_eff 70.5921. Guard 1 holds at 0.10 with 1.60x headroom.
+  DeepSeek also caught, unasked, a live defect: a NaN price (APH) silently
+  became a share count, and the run now refuses and names the ticker.
+
+**The task was set `done` with Parts 6 and 7 open.** Part 6 needs the owner's
+deploy, but its universe look-ahead fix and catch-up labelling are code that
+must land before the deploy, and neither exists (grep). Part 7 was not
+touched: E5's `evaluated_at` is still re-stamped, and the 0.000031 gap is
+recorded, not explained.
+
+**Found in review:**
+- **The dashboard's `n_eff` names the wrong book.** DeepSeek flagged it and left
+  the decision to me. The unqualified manifest field is the full book's
+  157.33, and it reaches the `proposals` table, so the page would show 157.33
+  beside a 150-name book whose breadth is 70.59. **Fix it**, with explicit
+  fields.
+- **APH's split sits on the first appended session.** There is no close from
+  08-28 to 09-03, then the close halves on 09-04. If the appendix carries that
+  as a -48% return, it moved the 09-04 fit, `specific_var` and every book
+  since. It needs measuring before deploy. It also makes the vendor a failing
+  source for those days (rule 14).
+- **E11-F16: the appendix grows without end**, at about 261 MB a year for EFB
+  alone. The loop is indefinite, so EFB alone passes the 400 MB line early in
+  its second year. The one-year size stop was my spec, met in the letter and
+  missed in intent. A retention design is required within a month of the
+  deploy, not before it.
+- **Smaller items:**
+  - the first run is inferred from an empty appendix; make it an explicit
+    marker;
+  - the write role holds `delete` it may not need;
+  - PUBLIC's default EXECUTE on functions means the roles can call the credit
+    lab's `public` functions, which should be stated as a known limit of the
+    isolation;
+  - Guard 1's movement is better read per name: MRNA moved 1.72 points against
+    the 3.74-point clearance.
+
+**For the owner, now, independent of DeepSeek:**
+- **Run Part 2's read-only size query** in the Supabase SQL editor and read it
+  against 400 MB. That is the one pre-registered stop DeepSeek could not
+  evaluate.
+- **Consider removing `EFB_SUPABASE_URL` and `EFB_SUPABASE_SECRET_KEY` from
+  the local `.env`.** No EFB code path reads them now. One of them is the
+  service-role key for the whole shared project, and DeepSeek used it only for
+  a read-only probe of the table list. A key that nothing needs is exposure
+  without purpose.
+
+TASK.md is `e11-pre-deploy` at 4048b97, in six items: 1 to 4 before the
+deploy, 5 and 6 after. PROJECT_CONTEXT's State and plan status are updated.
