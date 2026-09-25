@@ -10,14 +10,26 @@ statement is schema-qualified (`"efb"."table"`); nothing targets `public` or
 an unqualified name. The schema name comes from `EFB_DB_SCHEMA`, default
 `efb`.
 
-When `EFB_SUPABASE_DB_URL` is not set, the store falls back to parquet files
-under `live/state/`, so local dry runs and the test suite keep working
-without a database. Every writer is an upsert on the natural key, so a re-run
-updates one row instead of duplicating it.
+The store never falls back silently. The local parquet fallback under
+`live/state/` exists for the test suite and for local dry runs, and it has to be
+asked for by name with `EFB_STORE=local`. Without that request a missing
+`EFB_SUPABASE_DB_URL` is an error: on Render the fallback would write the
+evening's rows to a disk the next container never sees, the run would still
+notify `ok`, the appendix would re-seed from git every night and the dashboard
+would read its own empty fallback, which is the healthy-looking failure this
+rule exists to prevent. `EFB_STORE=local` is refused outright where `RENDER` is
+set, and the first line of the run's notification names the store, so the
+wrong store is visible in the message before anything else is read.
+
+Every writer is an upsert on the natural key, so a re-run updates one row
+instead of duplicating it.
 """
 
 from __future__ import annotations
 
+import datetime as dt
+import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -30,6 +42,23 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCAL_DIR = ROOT / "live" / "state" / "supabase"
 
 DEFAULT_SCHEMA = "efb"
+
+# The explicit request for the local fallback, and the variable Render sets.
+LOCAL_MODE_ENV = "EFB_STORE"
+LOCAL_MODE_VALUE = "local"
+POSTGRES_MODE_VALUE = "postgres"
+RENDER_ENV = "RENDER"
+URL_ENV = "EFB_SUPABASE_DB_URL"
+
+
+class StoreNotConfigured(RuntimeError):
+    """The store cannot be used as configured, so the run has to stop.
+
+    Raised rather than defaulted: a store that quietly writes somewhere else is
+    worse than a store that refuses, because the run still reports success.
+    """
+
+
 TABLES = (
     "proposals",
     "orders",
@@ -75,25 +104,119 @@ def _qualified(table: str) -> str:
     return f'"{_schema()}"."{table}"'
 
 
+def store_mode() -> str:
+    """`postgres` or `local`, decided once and never guessed.
+
+    Local is only ever returned for an explicit `EFB_STORE=local` on a machine
+    where `RENDER` is not set. Everything else that cannot reach Postgres is an
+    error naming what to set, including the contradictory pair of a connection
+    string and a request for local, which would otherwise write to whichever the
+    code happened to check first.
+    """
+    url = os.environ.get(URL_ENV, "").strip()
+    requested = os.environ.get(LOCAL_MODE_ENV, "").strip().lower()
+    if requested and requested not in (LOCAL_MODE_VALUE, POSTGRES_MODE_VALUE):
+        raise StoreNotConfigured(
+            f"{LOCAL_MODE_ENV}={requested!r} is not a store mode: set it to "
+            f"{LOCAL_MODE_VALUE!r} or leave it unset"
+        )
+    if url and requested == LOCAL_MODE_VALUE:
+        raise StoreNotConfigured(
+            f"both {URL_ENV} and {LOCAL_MODE_ENV}=local are set, so a write would "
+            f"go to whichever is checked first; set one of them"
+        )
+    if requested == LOCAL_MODE_VALUE:
+        if os.environ.get(RENDER_ENV, "").strip():
+            raise StoreNotConfigured(
+                f"{LOCAL_MODE_ENV}=local is refused where {RENDER_ENV} is set: a "
+                f"local write on Render lands on a disk the next container never "
+                f"sees, and the run would still report ok"
+            )
+        return LOCAL_MODE_VALUE
+    if not url:
+        raise StoreNotConfigured(
+            f"{URL_ENV} is not set, so the live series has nowhere to go; set it, "
+            f"or set {LOCAL_MODE_ENV}=local for a local run"
+        )
+    return POSTGRES_MODE_VALUE
+
+
+def store_label() -> str:
+    """How the store is named in a message, and never by raising.
+
+    When the configuration is unusable the label says so, because that is the
+    news the owner needs in the first line of the notification.
+    """
+    try:
+        mode = store_mode()
+    except StoreNotConfigured as exc:
+        return f"ERROR {exc}"
+    if mode == LOCAL_MODE_VALUE:
+        try:
+            where = LOCAL_DIR.relative_to(ROOT)
+        except ValueError:  # pragma: no cover - a relocated fallback
+            where = LOCAL_DIR
+        return f"local parquet ({where})"
+    return f"postgres/{_schema()}"
+
+
+def json_safe(value: Any) -> Any:
+    """A JSON-safe copy of a value: NaN and infinity become null.
+
+    `json.dumps` writes bare `NaN`, which is not valid JSON and which Postgres
+    `jsonb` refuses, so a single NaN anywhere in a run's inputs would fail the
+    whole `run_status` row. This is recursive, so a NaN nested in a list or a
+    dict is caught too.
+    """
+    if isinstance(value, dict):
+        return {str(key): json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(item) for item in value]
+    if isinstance(value, float):
+        return None if not math.isfinite(value) else value
+    if isinstance(value, (str, bytes)) or value is None:
+        return value
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):  # pragma: no cover - arrays and the like
+        return value
+    if isinstance(value, (pd.Timestamp, dt.datetime, dt.date)):
+        # Dates and timestamps go over as ISO strings, which is what jsonb holds
+        # anyway and what the round-trip check reads back.
+        return value.isoformat()
+    if isinstance(value, (int, float, bool)):
+        return value
+    return str(value)
+
+
+def json_text(value: Any, *, sort_keys: bool = False) -> str:
+    """The jsonb-safe JSON string for a value: no NaN, no infinity."""
+    return json.dumps(json_safe(value), sort_keys=sort_keys)
+
+
 def get_connection():
-    """A direct Postgres connection, or None when not configured.
+    """A direct Postgres connection. Raises when the store is not configured.
 
     psycopg is imported lazily so the local fallback and the test suite run
     without a driver installed. The connection string is
-    `EFB_SUPABASE_DB_URL`, a `postgresql://` URL to the direct (5432) or
-    transaction-pooled (6543) endpoint.
+    `EFB_SUPABASE_DB_URL`, a `postgresql://` URL to the session pooler (5432) or
+    the direct endpoint, never the transaction pooler: psycopg's prepared
+    statements and its `prepare_threshold` do not survive a transaction pooler.
     """
-    url = os.environ.get("EFB_SUPABASE_DB_URL", "")
-    if not url:
+    if store_mode() == LOCAL_MODE_VALUE:
         return None
     import psycopg  # type: ignore
 
-    return psycopg.connect(url)
+    return psycopg.connect(os.environ[URL_ENV].strip())
 
 
 def is_supabase() -> bool:
-    """Whether the live series is persisted in Postgres rather than locally."""
-    return bool(os.environ.get("EFB_SUPABASE_DB_URL", ""))
+    """Whether the live series goes to Postgres. False when it cannot be used."""
+    try:
+        return store_mode() == POSTGRES_MODE_VALUE
+    except StoreNotConfigured:
+        return False
 
 
 def _upsert_sql(table: str, columns: list[str]) -> str:

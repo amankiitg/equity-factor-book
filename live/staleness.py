@@ -410,8 +410,8 @@ def run_status_row(
         "worst_input": result.get("worst_input"),
         "worst_sessions_behind": result.get("worst_sessions_behind"),
         "n_inputs": len(result.get("inputs") or {}),
-        "inputs": json.dumps(result.get("inputs") or {}, sort_keys=True),
-        "failures": json.dumps(result.get("failures") or [], sort_keys=True),
+        "inputs": store.json_text(result.get("inputs") or {}, sort_keys=True),
+        "failures": store.json_text(result.get("failures") or [], sort_keys=True),
         "detail": detail or str(result.get("detail") or ""),
         "notify_status": notify_status,
         "notify_failed": notify_failed,
@@ -422,11 +422,11 @@ def run_status_row(
         # deploy will do and which no gate close may be: a gate close is a run
         # whose target close is the only session it appended.
         "catch_up": bool(catch_up),
-        "catch_up_sessions": json.dumps(catch_up_sessions or []),
+        "catch_up_sessions": store.json_text(catch_up_sessions or []),
         # The corporate actions this run applied and the large moves it could
         # not explain: the dashboard shows them beside the run it delivered.
-        "splits": json.dumps(splits or []),
-        "flags": json.dumps(flags or [], sort_keys=True),
+        "splits": store.json_text(splits or []),
+        "flags": store.json_text(flags or [], sort_keys=True),
     }
 
 

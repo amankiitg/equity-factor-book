@@ -1,3 +1,225 @@
+# Sprint E11 pre-deploy, item 4b: the store never falls back silently in production (E11-F17)
+
+**What was wrong.** `live/store.py` fell back to parquet under `live/state/`
+whenever `EFB_SUPABASE_DB_URL` was unset, and it did so without saying anything.
+On Render a missing or mistyped variable would therefore have written the
+evening's rows to a disk the next container never sees: the run would still
+notify `ok`, the appendix would re-seed from git every night, and the dashboard
+would read its own empty fallback. Every part of that is healthy from the
+outside, which is why the owner named it.
+
+**The rule now.**
+
+| situation | what happens |
+| --- | --- |
+| `EFB_STORE=local`, no `RENDER` | the local parquet fallback, deliberately |
+| no `EFB_STORE` and no `EFB_SUPABASE_DB_URL` | `StoreNotConfigured`, naming what to set. Reads and writes both refuse, so the run cannot half-work |
+| `EFB_STORE=local` with `RENDER` set | refused, with the reason (a local write on Render lands on a disk the next container never sees) |
+| both a URL and `EFB_STORE=local` | refused as a contradiction, because the write would otherwise go to whichever was checked first |
+| `EFB_STORE` set to anything else | refused as an unknown mode, so a typo cannot silently mean local |
+| a URL alone | Postgres/`efb` |
+
+`store.store_mode()` is the one decision, `store.get_connection()` calls it, and
+`upsert` and `select` go through it, so no caller can reach the fallback by
+accident. `scripts/run_live_daily.py` decides the mode before it reads or writes
+anything, at the top of the run, so a misconfiguration is an `error` run with a
+notification rather than a book priced into the void. Because a store failure
+means there is nowhere to record the failure, `finish_run` now guards its two
+store writes, logs what happened, and returns nonzero anyway: the message the
+owner already has is the report.
+
+**The first line of the message names the store.** `live/notify.py` leads with
+`store: postgres/efb`, or `store: local parquet (live/state/supabase)`, or
+`store: ERROR <reason>` when the configuration is unusable, which puts the one
+healthy-looking failure in front of the owner before the status is even read.
+
+**A defect found while building the verification, and fixed.** `json.dumps`
+writes a bare `NaN`, which is not valid JSON and which Postgres `jsonb` refuses
+outright. Every `run_status` json column went through `json.dumps`, so one NaN
+anywhere in a run's inputs would have failed the whole row, on the one table the
+dashboard reads. Today no NaN reaches those columns (`flag_large_moves` drops
+them, the hashes and sessions are strings), so this was an unexercised risk
+rather than a live failure. `store.json_text` and `store.json_safe` now convert
+NaN and infinity to `null`, recursively, and every json column in
+`live/staleness.py` goes through them. The verification below carries the
+negative control, so the fix is proven to be doing something.
+
+**The round-trip verification command, `scripts/verify_store_roundtrip.py`.** The
+task requires the command now, in this commit, and it is built: it reads every
+appendix input back from the real `efb` schema and compares it with the local
+artifact at the same commit over the sessions both hold, checking the values
+column by column and recording a hash for each input plus the sessions the
+appendix holds beyond the artifact. It then checks type fidelity explicitly, in
+one `SELECT` that writes nothing: a NaN float, a JSON `null` where a NaN used to
+be, a date, a timestamp with a time zone and a 1e-17 float. It records the whole
+result in `efb.run_status` under `job = store_roundtrip` with the hashes. It
+refuses to run in local mode, because reading the real schema is the entire
+point, and its refusals are tested.
+
+**It has not run.** There is no Postgres server in this environment, no docker
+and no `EFB_SUPABASE_DB_URL`, which is the same wall the earlier parts hit. What
+is built and verified here is the command, its refusals, its comparison basis and
+the sanitizer it depends on. The owner runs it after the first deploy, before
+either gate evening counts.
+
+**Where every earlier Postgres claim actually ran.** Part 2's round-trip hashes,
+Part 3's gate and run-status rows, Part 4's typing proof and every store test in
+Part 5 ran against the local parquet fallback under `live/state/`, as those
+reports said at the time. Part 4's typing probe was never executed against a
+server either; it was printed as text for the owner to run. So no SQL path had
+been exercised at all before this item, and none has been exercised by this item
+either: what is new is that the failure is now impossible to reach quietly, and
+that the command which proves the path exists. `tests/conftest.py` pins the suite
+to `EFB_STORE=local` and removes any connection string from the environment,
+because a test run must never write a row to the project shared with
+credit-trading-lab.
+
+## Tests
+
+`tests/test_e11_store.py`, six new tests: the local fallback needs an explicit
+request (and both a read and a write refuse without one), local mode is refused
+where `RENDER` is set and the label says `ERROR`, a URL and a local request
+together are refused while either alone is fine, an unknown mode is refused, the
+label names the store or the error, and `json_text` has no NaN while values,
+dates and strings that look like numbers survive. The round-trip command's two
+refusals and its comparison basis are tested as well, including that a real value
+difference is caught rather than normalised away.
+
+`tests/test_e11_notify.py`'s five first-line assertions moved from `[0]` to `[1]`
+and the first test now asserts the store line leads, because that is the change.
+
+## Verification
+
+This item changes the write path for every consumer, so the per-step selection is
+wide, and standard 21's full-suite triggers do not apply to it: no `efb/` module
+changed and no stored artifact was rebuilt. The full suite is running as this is
+written and its result is reported in the next item's Verification; if it fails,
+that is a blocker and it is fixed before anything else moves. The previous full
+run, at item 3, was 786 passed, 1 skipped, 3 warnings in 599.86s, exit 0.
+
+Per step, the selection is every test touching the store, the notification, the
+staleness row and the runner:
+
+```text
+$ .venv/bin/python -m pytest tests/test_e11_store.py tests/test_e11_notify.py \
+    tests/test_e11_render.py tests/test_run_live_daily.py -q
+56 passed, 1 skipped in 51.21s
+```
+
+`make lint`, exit 0:
+
+```text
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+.venv/bin/mypy efb
+Success: no issues found in 33 source files
+.venv/bin/black --check efb dashboard live tests
+All done! ... 174 files would be left unchanged.
+```
+
+`make verify-evidence`, exit 0:
+
+```text
+evidence OK
+```
+
+The verification command's refusal, run here, exit 2:
+
+```text
+$ .venv/bin/python scripts/verify_store_roundtrip.py; echo "EXIT=$?"
+ERROR EFB_SUPABASE_DB_URL is not set, so the live series has nowhere to go; set it,
+or set EFB_STORE=local for a local run
+This command reads the real `efb` schema by design, so it refuses to run against
+the local fallback.
+EXIT=2
+```
+
+### Headline numbers, file and key
+
+| number | file and key |
+| --- | --- |
+| the one mode decision | `live/store.py::store_mode`, with `LOCAL_MODE_ENV`, `LOCAL_MODE_VALUE`, `RENDER_ENV`, `URL_ENV` |
+| the error type | `live/store.py::StoreNotConfigured` |
+| the store's name in a message | `live/store.py::store_label`; used by `live/notify.py::compose`, first line |
+| the jsonb sanitizer | `live/store.py::json_safe`, `json_text`; five columns in `live/staleness.py::run_status_row` |
+| the mode checked before any read or write | `scripts/run_live_daily.py`, top of `main`'s try |
+| the guarded record | `scripts/run_live_daily.py::finish_run`, `store_failed` |
+| the suite is pinned to local | `tests/conftest.py` |
+| the verification command | `scripts/verify_store_roundtrip.py`, `job = store_roundtrip` in `efb.run_status` |
+| 6 new tests | `tests/test_e11_store.py` |
+
+### git diff --stat from `base_commit` (4048b97)
+
+This item's own files, from item 4a's commit `9bd1caf`:
+
+```text
+$ git diff --stat 9bd1caf -- live/store.py live/notify.py live/staleness.py \
+    scripts/run_live_daily.py scripts/verify_store_roundtrip.py tests/conftest.py \
+    tests/test_e11_store.py tests/test_e11_notify.py
+ 8 files changed, 675 insertions(+), 41 deletions(-)
+live/notify.py                    |  17 +-
+ live/staleness.py                 |  10 +-
+ live/store.py                     | 147 ++++++++++++++++--
+ scripts/run_live_daily.py         |  60 +++++--
+ scripts/verify_store_roundtrip.py | 318 ++++++++++++++++++++++++++++++++++++++
+ tests/conftest.py                 |  14 ++
+ tests/test_e11_notify.py          |  11 +-
+ tests/test_e11_store.py           | 139 +++++++++++++++++
+ 8 files changed, 675 insertions(+), 41 deletions(-)
+```
+
+From the task's `base_commit` (4048b97), which carries items 1, 2, 3, 4 and 4a:
+
+```text
+$ git diff --stat 4048b97
+PLACEHOLDER_DIFF_TREE
+```
+
+### Yes or no, each with evidence
+
+1. **Any two rows or two estimators identical.** Not applicable: no estimator is
+   touched, and the only numbers are the probe's.
+2. **Any exception caught and skipped, or fallback taken, with counts.** One, and
+   it is the item's subject in reverse: `finish_run` catches a store failure so
+   that the notification, which has already gone out, is not lost to a traceback.
+   It does not swallow it: the failure is logged, the exit code is 1 whatever the
+   run's status was, and the message's first line already said `store: ERROR`.
+   Nothing else is caught. The fallback is no longer taken at all without a
+   request.
+3. **Any criterion reworded or replaced by a different test.** No `RESULTS.json`
+   criterion. Five notify assertions moved from the first line to the second
+   because the first line changed, which is the item's own subject, and
+   `tests/test_e11_render.py`'s `is_supabase()` expectation still holds because
+   that function answers `False` rather than raising when the store is unusable.
+4. **Any criterion that passes by construction.** One, declared: the round-trip
+   command's tests cover its refusals and its comparison basis, not a real round
+   trip, because there is no server here. That is the gap the command exists to
+   close, and it is stated rather than implied.
+5. **Any number that moved by a factor of 10 or more from its previous stored
+   value.** No stored number moved: no artifact was written, and the store writes
+   nothing in this item.
+6. **Any stored number typed into a notebook.** No notebook was opened, edited or
+   executed.
+7. **Any earlier verdict changed.** No. Every earlier part's evidence stands, and
+   this item says plainly where each of them ran, which is the same statement
+   those reports made.
+
+### Anything decided that the reviewer might disagree with
+
+**A URL plus `EFB_STORE=local` is an error rather than a preference.** The
+alternative is to let one win; either choice writes somewhere the operator may
+not have meant, and this file's whole subject is a write that went somewhere
+unintended. If the reviewer would rather the explicit flag win, it is one branch.
+
+**`is_supabase()` answers `False` instead of raising when the store is unusable.**
+It is a question about the configuration, not an operation, and the parts that
+print or decide remain readable while the run's own first action,
+`store.store_mode()`, is the thing that stops it.
+
+**The verification writes one `run_status` row.** The task asks for the result to
+be stored with the hashes, so the command writes that row and nothing else; the
+type probe is a `SELECT`, so the shared project receives no probe writes at all.
+
 # Sprint E11 pre-deploy, item 4: the corporate-actions rule in the append path
 
 **What was wrong.** The vendor back-adjusts history on a split. This pipeline only

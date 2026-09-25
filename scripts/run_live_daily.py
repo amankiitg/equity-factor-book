@@ -271,6 +271,7 @@ def finish_run(
     is a run that did not do its job either way.
     """
     from live import notify, staleness
+    from live.store import store_label
 
     notified = notify.notify_run(
         status=status,
@@ -286,24 +287,36 @@ def finish_run(
         catch_up_sessions=catch_up_sessions,
         splits=splits,
         flags=flags,
+        store=store_label(),
         poster=poster,
     )
     delivered = notified["status"] == notify.STATUS_SENT
-    staleness.write_run_status(
-        result,
-        run_date=run_date,
-        status=status,
-        dry_run=dry_run,
-        detail=detail,
-        notify_status=notified["status"],
-        notify_failed=not delivered,
-        n_orders=orders,
-        gross_notional=gross,
-        catch_up=len(catch_up_sessions or []) > 1,
-        catch_up_sessions=catch_up_sessions,
-        splits=splits,
-        flags=flags,
-    )
+    store_failed = False
+    try:
+        staleness.write_run_status(
+            result,
+            run_date=run_date,
+            status=status,
+            dry_run=dry_run,
+            detail=detail,
+            notify_status=notified["status"],
+            notify_failed=not delivered,
+            n_orders=orders,
+            gross_notional=gross,
+            catch_up=len(catch_up_sessions or []) > 1,
+            catch_up_sessions=catch_up_sessions,
+            splits=splits,
+            flags=flags,
+        )
+    except Exception as exc:  # noqa: BLE001 - the message already went out
+        # The store is what failed, so there is nowhere to record it: the
+        # message the owner already has is the report, and the exit code
+        # below is nonzero.
+        store_failed = True
+        logger.error(
+            "could not record the run status: %s",
+            notify.scrub(f"{type(exc).__name__}: {exc}"),
+        )
     cron_detail = detail
     if notified["status"] == notify.STATUS_FAILED:
         cron_detail = f"{detail} | notification failed: {notified['detail']}"
@@ -311,9 +324,16 @@ def finish_run(
     elif notified["status"] == notify.STATUS_SKIPPED:
         # On the row and on the dashboard; not noise in the cron's own line.
         logger.warning("no notification channel: %s", notified["detail"])
-    record_run("live_daily", run_date, status, cron_detail.strip(" |"))
+    try:
+        record_run("live_daily", run_date, status, cron_detail.strip(" |"))
+    except Exception as exc:  # noqa: BLE001 - the message already went out
+        store_failed = True
+        logger.error(
+            "could not record the cron run: %s",
+            notify.scrub(f"{type(exc).__name__}: {exc}"),
+        )
     logger.info("run recorded as %s, notification %s", status, notified["status"])
-    if not delivered:
+    if not delivered or store_failed:
         return 1
     return 0 if status == "ok" else 1
 
@@ -346,6 +366,12 @@ def main() -> int:
         # The model inputs are the git seed plus the Postgres appendix, so a
         # fresh container starts from seed plus every session the loop has
         # appended, not from the deploy date.
+        # The store, before anything is read or written. A missing connection
+        # string on Render would otherwise send the evening to a disk the next
+        # container never sees while the run still reported ok, so the mode is
+        # decided here and a misconfiguration stops the run as an error.
+        logger.info("store: %s", store.store_label())
+        store.store_mode()
         appendix_mod.hydrate()
         # The sessions this run appends are measured, not assumed: the first run
         # on a fresh container finds the panel sessions behind and catches them

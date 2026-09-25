@@ -34,6 +34,10 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
+# The store's own label, so the first line of every message names where the
+# run's writes went, or says why they could not go anywhere.
+from live import store as live_store
+
 CHANNEL_ENV = "EFB_NOTIFY_SLACK_WEBHOOK_URL"
 TIMEOUT_SECONDS = 10.0
 STATUS_SENT = "sent"
@@ -112,14 +116,21 @@ def compose(
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
+    store: str | None = None,
 ) -> str:
-    """The fields, in order, ready for a preview."""
+    """The fields, in order, ready for a preview.
+
+    The first line names the store every write went to, or says why it could not
+    be used. A wrong store is the one failure that looks healthy from the
+    outside, so it is the first thing the owner reads.
+    """
     close = target_close or "unknown close"
     label = STATUS_LABELS.get(status, status)
     caught_up = len(catch_up_sessions or [])
     if caught_up > 1:
         label = f"{label} (catch-up of {caught_up} sessions)"
-    lines = [f"EFB live book {close}: {label}"]
+    store_line = store if store is not None else live_store.store_label()
+    lines = [f"store: {store_line}", f"EFB live book {close}: {label}"]
 
     if status == "ok":
         if dry_run:
@@ -243,6 +254,7 @@ def notify_run(
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
+    store: str | None = None,
     webhook: str | None = None,
     poster: Callable[[str, dict[str, Any]], Any] | None = None,
 ) -> dict[str, Any]:
@@ -261,6 +273,7 @@ def notify_run(
         catch_up_sessions=catch_up_sessions,
         splits=splits,
         flags=flags,
+        store=store,
     )
     result = send(message, webhook=webhook, poster=poster)
     result["text"] = message

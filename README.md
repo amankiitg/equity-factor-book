@@ -47,11 +47,13 @@ Procedure 6.3 plus the exact FMP hedge, paper only. Its factor-neutral IC is
 -0.0031 (t -0.51) at horizon 21, null rather than negative, against a raw IC of
 0.0121 (t 5.04) at horizon 1, read from data/alpha/summary.parquet. The loop
 runs indefinitely (run_condition open_ended, day 1 2026-09-22) with a
-30-trading-day reporting window. Render runs two services, `efb-live-dashboard`
-(web) and `efb-live-daily` (the daily cron that extends, proposes, executes and
-reconciles); the blueprint is `render.yaml` and the deployed URL is assigned by
-Render at deploy time. The live series lives in Supabase; research artifacts
-stay in git and the evidence snapshot.
+30-trading-day reporting window. Render runs the daily cron, `efb-live-daily`, which extends,
+proposes, executes and reconciles; the blueprint is `render.yaml`. The live series
+lives in Supabase; research artifacts stay in git and the evidence snapshot. The
+store never falls back on its own: a local run (the research dashboard, a dry run,
+the test suite) sets `EFB_STORE=local` to use the parquet files under
+`live/state/`, and the cron does not, so a missing connection string there is an
+error rather than a quiet write to a disk the next container never sees.
 
 ## Corporate actions
 

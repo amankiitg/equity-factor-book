@@ -38,7 +38,8 @@ def test_the_message_leads_with_the_status_and_the_target_close() -> None:
         worst_input="prices",
         worst_sessions_behind=0,
     )
-    first, second, third = message.splitlines()
+    store_line, first, second, third = message.splitlines()
+    assert store_line.startswith("store: ")
     assert first == f"EFB live book {SESSION}: ok, the run completed"
     assert second == (
         "Orders: dry run: 152 orders proposed, $2,014,000 gross, none sent"
@@ -92,7 +93,7 @@ def test_a_stale_stop_names_every_failing_input() -> None:
         failures=failures,
         detail="sectors has no date at all; prices is 3 sessions behind",
     )
-    assert message.splitlines()[0] == (
+    assert message.splitlines()[1] == (
         f"EFB live book {SESSION}: stale_stopped, the run refused to price a book"
     )
     assert "Orders: none. The run stopped on staleness before sizing" in message
@@ -112,7 +113,7 @@ def test_an_error_message_names_the_type_and_scrubs_the_reason() -> None:
         detail=f"OperationalError: could not connect to {FAKE_DB_URL}",
         error_type="OperationalError",
     )
-    assert message.splitlines()[0] == f"EFB live book {SESSION}: error, the run failed"
+    assert message.splitlines()[1] == f"EFB live book {SESSION}: error, the run failed"
     assert "Orders: none. The run failed before sizing" in message
     assert "Staleness: no input failed the check." in message
     assert "Error: OperationalError:" in message
@@ -319,7 +320,7 @@ def test_an_unexpected_error_notifies_with_a_scrubbed_reason(
     assert run_live_daily.main() == 1
 
     assert len(sent) == 1
-    assert sent[0].splitlines()[0] == (
+    assert sent[0].splitlines()[1] == (
         f"EFB live book {SESSION}: error, the run failed"
     )
     assert "Error: ConnectionError:" in sent[0]
@@ -348,7 +349,7 @@ def test_a_catch_up_run_says_so_in_the_first_line() -> None:
         worst_sessions_behind=0,
         catch_up_sessions=sessions,
     )
-    assert message.splitlines()[0] == (
+    assert message.splitlines()[1] == (
         "EFB live book 2026-09-21: ok, the run completed " "(catch-up of 4 sessions)"
     )
     # one session is a normal evening, not a catch-up
