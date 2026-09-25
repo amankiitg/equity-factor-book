@@ -2275,3 +2275,73 @@ healthy-looking failure again. It is now item 4b, pre-deploy:
 - the notification names the store.
 
 TASK.md and PROJECT_CONTEXT are updated to match.
+
+---
+
+## 2026-09-25 owner: email through Resend, Render runs only the cron, D10 moves to Cloudflare
+
+**Accepted:** E11-F17 and item 4b, the widened split rule with its three
+additions, the 40% flag-not-block rule, and retention with dated archive files
+and a local-only archive command.
+
+**A. Notifications go by email through Resend**, copying credit-trading-lab's
+wiring, with EFB's own sending-only key in `EFB_RESEND_API_KEY`, placed by the
+owner. The status sits in the subject, readable from the inbox. Everything
+specified for the Slack version carries over. The heartbeat stays the owner's
+to add. My additions:
+- the Resend key shape added to the scrub;
+- the sender and recipient as Render variables, not committed;
+- subject forms for stale, error, catch-up and split;
+- the store named on the body's first line;
+- the first test email confirmed in the inbox and not in spam, with a filter
+  set, since the owner judges a missing email easier to overlook than a
+  missing Slack message.
+
+**B. Render runs only the cron.** The live book monitor becomes a React app on
+Cloudflare. The owner's reason: the credit lab's Render Python dashboard hits
+memory errors at $7 a month, while nutri-track on Cloudflare works. The
+browser never queries Postgres. The cron writes one JSON snapshot to R2 with a
+bucket-scoped token, and the page reads it behind Cloudflare Access. The
+snapshot carries its own status and time, and the page fails when it is late.
+D0 to D9 stay local.
+
+**What I checked, and what I added:**
+- **nutri-track deploys with `wrangler deploy`,** a Worker serving static
+  assets, not strictly Pages. DeepSeek follows the actual mechanism and says
+  which it is.
+- **nutri-track's browser talks to Supabase directly,** with a publishable key
+  (`src/integrations/supabase/client.ts`). "Copy the pattern" is therefore
+  scoped to build, deploy and tooling, and a test fails the build if a
+  Supabase client or database URL appears in EFB's app.
+- **The browser reads the snapshot through an R2 binding on the
+  Access-protected hostname,** and the bucket stays private. A public
+  `r2.dev` URL or a custom domain on the bucket would bypass Access and
+  publish positions. Access must also cover preview hostnames. Both are
+  checked with an unauthenticated fetch.
+- **The snapshot carries `expected_next_by`,** computed by the cron from the
+  NYSE calendar, so the page can tell "late" from "weekend" without a
+  calendar of its own.
+- **`EFB_SNAPSHOT` on/off is required.** `off` is allowed only while `dry_run`
+  is true, so the gate evenings can run before Cloudflare exists, and the flip
+  cannot happen without a working page.
+- **With no web service, the `efb_reader` role is dropped**: one fewer
+  credential.
+- **The cron's peak memory is measured before choosing a Render plan,** given
+  the reason for the move. The cron hydrates about 165 MB of parquet into
+  pandas, and a plan that falls over on the first gate evening would waste the
+  evening.
+- **The snapshot schema is shared** between the Python writer and the React
+  page, and tested.
+- **Item 3's n_eff labelling** applies to the snapshot schema and the page.
+
+**Sequencing, the owner's.** The cron deploys to Render in dry run once items
+1 to 4b, A and B-cron land. Email monitors the two gate evenings. The React
+page is built in parallel and does not block the gate. The flip waits for the
+Cloudflare page showing a real proposal from a real snapshot.
+
+**Recorded for later:** the credit-trading-lab dashboard is a candidate for
+the same migration once EFB's is proven.
+
+TASK.md gains a top section with A, B-cron, B-web and the owner's full deploy
+list. PROJECT_CONTEXT's hosting and notification decisions are rewritten, and
+the plan sequence is updated.

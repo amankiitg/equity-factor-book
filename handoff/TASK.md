@@ -2,6 +2,180 @@ task_id: e11-pre-deploy
 status: ready
 base_commit: 4048b97
 
+## Owner decisions, 2026-09-25 (later): email by Resend, and D10 moves to Cloudflare
+
+Everything in the previous round is accepted: E11-F17 and item 4b, the widened
+split rule with the reviewer's three additions, the 40% flag-not-block rule,
+and the retention design with dated archive files and a local-only archive
+command. Two changes are folded in below: **A** (email through Resend) and
+**B** (Render runs only the cron, and the live book monitor becomes a React
+app on Cloudflare).
+
+**The order of work:**
+1. **Before the cron deploys to Render, in dry run:** items 1, 2, 3, 4, 4b,
+   A, and B-cron.
+2. **The two gate evenings.** Email is the owner's monitor for both.
+3. **In parallel, not blocking the gate:** B-web, the React page.
+4. **The flip.** The owner flips `dry_run` only after the Cloudflare page is up
+   and showing a real proposal from a real snapshot.
+
+### A. Notifications by email through Resend, not Slack
+
+**Read how credit-trading-lab sends through Resend and copy that pattern.**
+Start at
+`/Users/amankesarwani/PycharmProjects/credit-trading-lab/render.yaml` and
+`tests/test_alerts.py`, and follow them to the module. Do not open its `.env`.
+
+- **The key:** `EFB_RESEND_API_KEY`. It is EFB's own key under the same Resend
+  account, with sending access only, so it cannot cross with the credit lab's.
+  The owner places it in `.env` and on Render. It is never printed, logged or
+  committed. **Add the Resend key shape (`re_...`) to the scrub patterns**, and
+  test it.
+- **The addresses:** sender and recipient go in `EFB_NOTIFY_EMAIL_FROM` and
+  `EFB_NOTIFY_EMAIL_TO`, as Render variables (`sync: false`), never in
+  `render.yaml`. Use whatever sending domain credit-trading-lab uses, and say
+  which. If it is `resend.dev`, say what that restricts.
+- **The subject carries the status**, readable from the inbox without opening
+  the email. The owner's example:
+  `EFB ok 2026-09-25 | 150 proposed, none sent | stale 0`.
+  - A stale stop reads `EFB STALE <close> | none proposed | stale 3 (prices)`.
+  - An error reads `EFB ERROR <close> | none proposed | <ExceptionType>`.
+  - A catch-up run adds `(catch-up N)` after the status.
+  - A split or an unexplained move above 40% appends `| split APH 2:1` or
+    `| flag 1`.
+- **The body's first line names the store**, for example "store:
+  postgres/efb". The three fields follow as before.
+- **Everything already specified carries over unchanged:**
+  - one email on every run, clean ones included;
+  - secrets scrubbed from error text;
+  - a failed or unconfigured send fails the run;
+  - the send happens after the proposal and the orders.
+- **Remove Slack:** `EFB_NOTIFY_SLACK_WEBHOOK_URL` leaves `render.yaml` and
+  `.env.example`. Keep the channel interface, and update the credential tests.
+- **The first test email must land in the inbox, not spam.** The owner
+  confirms it in the deploy steps, and sets a filter or label so the evening
+  email is hard to overlook.
+- **The heartbeat for a job that never starts is the owner's to add.** Keep
+  the healthchecks.io note in the deploy steps as the owner's option.
+
+### B-cron. Render runs only the cron, and the cron writes the snapshot
+
+1. **Drop the Render web service** from `render.yaml`, the deploy steps and
+   the tests. With no web service, **the `efb_reader` role is not needed**.
+   Remove it from `live/supabase_roles.sql`: one fewer credential. Keep
+   `live/dashboard_app.py` runnable locally until the Cloudflare page is
+   proven, then propose deleting it in a later commit.
+2. **The evening cron writes one JSON snapshot** with everything D10 shows,
+   and uploads it to Cloudflare R2. It writes `latest.json` plus a dated
+   `snapshots/<close>.json`.
+   - Single-object puts only.
+   - The credentials, cron only: `EFB_R2_ACCOUNT_ID`, `EFB_R2_BUCKET`,
+     `EFB_R2_ACCESS_KEY_ID` and `EFB_R2_SECRET_ACCESS_KEY`, from an R2 API token
+     scoped to that one bucket with object read and write.
+   - Add both key shapes to the scrub.
+3. **The snapshot is written on every run**, including `stale_stopped` and
+   `error`, so the page shows the failure. It is never skipped. It carries:
+   - `schema_version`, `generated_at` (UTC), the target close and
+     `run_status`, with the failing inputs, catch-up, splits, flags and store;
+   - **`expected_next_by`**: the UTC time by which the next run's snapshot
+     should exist. The cron computes it from the NYSE calendar (the next
+     session's close plus the run slot plus a stated grace), so the browser
+     needs no calendar;
+   - `dry_run`;
+   - the construction label **generated from the artifact's fields**;
+   - the book: names, weights, trade reasons, hedge, exposures;
+   - **breadth under item 3's explicit names** (`n_eff_kept` as the book's
+     breadth, `n_eff_full_book` labelled as the 499-name book before the
+     floor), and no unqualified `n_eff` anywhere in the schema.
+4. **JSON has no NaN**, so serialize it as `null`, explicitly, with a test.
+   Test also that no credential pattern appears in any snapshot.
+5. **The snapshot switch.** `EFB_SNAPSHOT` is `on` or `off`, and it is
+   required.
+   - `off` is allowed only while `dry_run` is true. The run then records
+     `snapshot: off` in `run_status` and in the email body. This lets the gate
+     evenings run before the Cloudflare side exists.
+   - With `on`, a failed upload fails the run, the same as a failed send.
+   - With `dry_run` false, `off` is an `error`. The flip cannot happen without
+     a working page.
+6. **Measure the cron's peak memory before choosing a Render plan.** The owner's
+   reason for leaving a Render web service was memory errors. This cron
+   hydrates about 165 MB of parquet into pandas, which can take several times
+   that in RAM.
+   - Run the full evening job locally under `/usr/bin/time -l` (macOS) and
+     report peak RSS.
+   - Choose the instance with at least 2x headroom, and state the plan and its
+     monthly cost.
+   - If the peak is too high for a reasonable plan, stop and report with where
+     the memory goes. Do not deploy into a box that will fall over on the
+     first gate evening.
+
+### B-web. The React live book monitor on Cloudflare (parallel, does not block the gate)
+
+**Mirror nutri-track's build and deploy, not its data access.**
+`/Users/amankesarwani/PycharmProjects/nutritrack-your-daily-food-guide` is
+Vite plus React, deployed with `npm run deploy`, which is
+`vite build && wrangler deploy`: a Cloudflare Worker serving static assets.
+The owner said Pages. Follow nutri-track's actual mechanism, which supports
+all of the below, and state which it is. If the owner cares about Pages
+versus Workers, the owner says so. **nutri-track's browser talks to Supabase
+directly** (`src/integrations/supabase/client.ts`, with a publishable key).
+**EFB's must not.**
+- No `@supabase/supabase-js`, no `VITE_SUPABASE_*` and no database URL in the
+  app.
+- A test fails the build if any appears.
+
+1. **The browser never reaches R2 directly.** The Worker, or a Pages Function,
+   reads the snapshot through an **R2 binding** and serves it on the same
+   Access-protected hostname, for example `/api/snapshot`.
+   - **The bucket stays private:** no `r2.dev` public URL and no custom domain
+     on the bucket. A public bucket URL would bypass Access and publish
+     positions.
+   - An owner step confirms that public access is off.
+   - A check fetches the snapshot path without an Access session and gets a
+     redirect or 403.
+2. **Cloudflare Access protects every hostname**: production, and preview
+   deployments (preview URLs are separate hostnames). The check in 1 runs
+   against both.
+3. **Snapshot age leads the page.**
+   - The page shows `generated_at` and the age prominently, and turns to a
+     failure state when the current time is past `expected_next_by`.
+   - It shows every non-`ok` `run_status` as a failure, as the Streamlit page
+     does now.
+   - `dry_run` is shown unmissably.
+   - Tests cover a fresh `ok`, an expired snapshot, `stale_stopped`, `error`,
+     and a missing snapshot.
+4. **Item 3 applies here.** The page shows `n_eff_kept` as the book's breadth,
+   with the full book's labelled beside it. A test checks it.
+5. **The snapshot schema is shared.** Commit a JSON Schema, or TypeScript
+   types generated from it, and test the Python writer's output against it,
+   so the writer and the page cannot drift.
+6. **Local D10** in the Streamlit research dashboard can stay as a research
+   view. D0 to D9 stay local and unchanged. Only the live book monitor moves.
+
+### The owner's full deploy list (replace Part 4's steps)
+
+Write it as one ordered list: every object the owner creates, where, and
+where each credential goes. Include:
+- **Supabase:** the schema SQL, then the `efb_writer` role only (no reader
+  now; `efb_archiver` comes with retention), and the test of the writer
+  string.
+- **Render:** the cron service or services, and each environment variable with
+  its source.
+- **Resend:** the key, its sending-only scope, and the test email.
+- **R2:** the bucket, public access off, and the scoped token.
+- **Cloudflare:** the Worker or Pages project and its R2 binding, and the
+  Access application with its policy (who may sign in, how) covering the
+  production and preview hostnames.
+- **Local `.env`:** which of the above it holds.
+- **The heartbeat:** marked as the owner's option.
+- **The public-schema function limit**, as accepted.
+
+**Which steps the gate needs:** Supabase, Render, Resend, and the round-trip
+verification. **Which the flip needs:** R2, Cloudflare and Access, then a real
+snapshot on the page.
+
+---
+
 ## Six items before the owner deploys, then the gate
 
 Parts 2 to 5 of `e11-admit-and-live-gate` are accepted, and they are strong

@@ -149,12 +149,21 @@ Settled 2026-09-22. These are no longer open; build on them.
   reporting window, not the life of the run: F11.x are evaluated on days 1 to
   30 and the loop keeps going, so E12 gets a growing panel. Nothing in the loop
   may assume an end date.
-- **It is hosted on Render**, following the credit-trading-lab pattern: a daily
-  cron plus a light dashboard web service. Render's filesystem is ephemeral, so
-  live state (proposals, orders, fills, reconciliation, NAV, P&L) goes to
-  Supabase; research artifacts stay in git and the evidence snapshot. The full
-  D0 to D9 research dashboard stays **local**; the Render app carries only the
-  live book.
+- **Hosting, revised 2026-09-25.** Render runs **only the cron jobs**; there is
+  no EFB web service on Render. The live book monitor (D10) is a **React app on
+  Cloudflare**, built and deployed the way nutri-track is (Vite, React,
+  `wrangler deploy`), but **not** with nutri-track's browser-to-Supabase data
+  access. **The browser never queries Postgres.** The evening cron writes one
+  JSON snapshot to a private R2 bucket, using a token scoped to that bucket,
+  and the app reads it server-side through an R2 binding on the same
+  hostname. **Cloudflare Access** protects every hostname. The snapshot
+  carries its run status and `expected_next_by`, and the page fails loudly when
+  the snapshot is late. Live state (proposals, orders, fills, reconciliation,
+  NAV, P&L) stays in Supabase schema `efb`. D0 to D9 stay local Streamlit. The
+  reason is the owner's: the credit lab's Render Python dashboard keeps
+  hitting memory errors at $7 a month, while nutri-track on Cloudflare works
+  well. **Later, not now:** the credit-trading-lab dashboard is a candidate
+  for the same migration once EFB's is proven.
 - **Alpaca is paper only, on an account provably disjoint from
   credit-trading-lab's**, because E12 attributes from holdings and commingled
   fills would make neither book's numbers its own. "Live" in this project means
@@ -221,11 +230,13 @@ Settled 2026-09-22. These are no longer open; build on them.
   evenings**, through the **Render cron in dry run**, confirmed 2026-09-24.
   Catch-up and replays do not count. The owner watches the production path
   run itself for two evenings, and the flip then changes one variable.
-- **Every run notifies the owner** by Slack webhook or email: whether it ran,
-  whether the proposal produced orders, and the staleness. The notice goes out
-  on clean runs too, so a missing evening message is itself the alarm. The
-  owner places the webhook or credential. An external heartbeat check for a
-  missed run is offered, and the choice is the owner's.
+- **Every run notifies the owner by email through Resend** (revised
+  2026-09-25 from Slack), copying credit-trading-lab's pattern with EFB's own
+  sending-only key, `EFB_RESEND_API_KEY`. The status sits in the subject, for
+  example `EFB ok 2026-09-25 | 150 proposed, none sent | stale 0`. The email
+  goes out on clean runs too, secrets are scrubbed, and a failed or
+  unconfigured send fails the run. The heartbeat for a job that never starts
+  is the owner's to add.
 - **Staleness, confirmed:** trading sessions, zero behind the latest close.
   Shares and sectors are judged on fetch age, because the risk with slow
   inputs is the fetch quietly stopping.
@@ -349,6 +360,13 @@ Sequenced 2026-09-23. Each numbered item is roughly one TASK.md or less.
    2 MB on 2026-09-25, against the 400 MB stop. **After the first deploy, the
    round trip is verified against the real `efb` schema before any gate evening
    counts**, because every earlier round-trip test ran on the parquet fallback.
+   **Resequenced 2026-09-25:** the cron deploys to Render in dry run once
+   `e11-pre-deploy` items 1 to 4b, A (Resend) and B-cron (the snapshot writer,
+   the memory measurement, no web service) land. Email is the owner's monitor
+   for the two gate evenings. The React page on Cloudflare is built in
+   parallel and does not block the gate. **The owner flips `dry_run` only after
+   the Cloudflare page shows a real proposal from a real snapshot.** The
+   earlier sequence follows, for the record:
    **Resequenced 2026-09-24 after the owner's decisions:**
    1. The prefix fixed point, then the owner re-confirms share-only.
    2. The model inputs move into Postgres.
