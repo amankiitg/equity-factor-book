@@ -15,6 +15,7 @@ import pandas as pd
 import streamlit as st
 
 from dashboard import version as version_module
+from live import breadth as breadth_module
 
 ROOT = version_module.ROOT
 DATA = ROOT / "data"
@@ -136,7 +137,10 @@ def book_panel() -> pd.DataFrame:
                     "idio share after FMP (unitless)": proposal["idio_share_after_fmp"],
                     "gross (fraction of NAV)": proposal["gross"],
                     "net (fraction of NAV)": proposal["net"],
-                    "effective breadth (n_eff)": proposal["n_eff"],
+                    breadth_module.BOOK_LABEL: breadth_module.book_breadth(proposal),
+                    breadth_module.FULL_BOOK_LABEL: (
+                        breadth_module.full_book_breadth(proposal)
+                    ),
                     "target annual vol (%)": proposal["target_annual_vol"] * 100,
                     "achieved annual vol (%)": proposal["achieved_annual_vol"] * 100,
                     "gross cap bound": proposal["gross_cap_bound"],
@@ -357,7 +361,10 @@ def construction_selector() -> None:
             },
             {"metric": "breadth naive", "value": f"{row['breadth_naive']:.3f}"},
             {"metric": "breadth governing", "value": f"{row['breadth_governing']:.3f}"},
-            {"metric": "n_eff kept", "value": f"{row['n_eff_kept']:.2f}"},
+            {
+                "metric": breadth_module.BOOK_LABEL,
+                "value": f"{row['n_eff_kept']:.2f}",
+            },
         ]
     )
     st.dataframe(summary, use_container_width=True, hide_index=True)

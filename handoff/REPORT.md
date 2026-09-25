@@ -1,161 +1,251 @@
-# Sprint E11 pre-deploy, item 2: catch-up sessions are labelled
+# Sprint E11 pre-deploy, item 3: the book's breadth, and the full book's, with no unqualified `n_eff`
 
-**What this adds.** The first Render run will find the panel at one close and
-extend it through several, and a run that appends more than one session is not an
-ordinary evening. `run_status` now records `catch_up` and the sessions it caught
-up, the notification's first line says so, and the definition of a gate close is
-written down where the code can enforce it.
+**What was wrong.** The proposal manifest carried one `n_eff`, and it was the
+**full 499-name book's** number before the floor: 157.33 at the 2026-09-21 close,
+beside a book whose own breadth is 70.59. `scripts/run_live_daily.py::store_proposal`
+copied it into `efb.proposals`, and both pages rendered it as "effective breadth
+(n_eff)". On the page the owner watches for two evenings, that number meant more
+than it said.
 
-## The measurement, not the assumption
+**The stored names are now qualified, and nothing writes the unqualified one.**
 
-`live/extend.py::last_price_session` reads the price panel's latest session
-without extending anything. `scripts/run_live_daily.py::main` reads it **before**
-the extension and again inside `_catch_up_sessions` after it, and the sessions
-appended are the NYSE sessions after the old last one and up to the new one, from
-`live.staleness.sessions`, the same calendar the gate uses:
+| name | what it is |
+| --- | --- |
+| `n_eff_kept` | the book that trades: after the floor, after the renormalization to gross 1.0 |
+| `n_eff_full_book` | the full universe book before the floor, reported beside it |
 
-```text
-$ run_live_daily._catch_up_sessions(pd.Timestamp("2026-09-15"))
-['2026-09-16', '2026-09-17', '2026-09-18', '2026-09-21']
-```
+- `live/evening_job.py`: the manifest's unqualified `n_eff` key is gone, and
+  `_decomposition`'s internal key is renamed `effective_breadth` so the
+  ambiguity cannot come back through a helper. The governing-breadth ratio reads
+  the renamed key.
+- `scripts/run_live_daily.py::store_proposal` writes both qualified names, and
+  `efb.proposals` gains those two columns in place of `n_eff`.
+  `live/reconcile.py`'s row column becomes `n_eff_kept`, because that record is
+  the book's own.
+- `live/sanity.py` stores `n_eff_kept_before/after` and
+  `n_eff_full_book_before/after`.
+- A grep for the unqualified name across `live/`, `scripts/`, `dashboard/`,
+  `efb/` and `tests/` leaves only `live/breadth.py`'s deliberate legacy reader
+  (and E8's own sizing-study field, which is a different object in the research
+  stack and is untouched).
 
-Four sessions across a weekend and a Monday, which is the shape the first deploy
-will have.
+## The labels, in one place
 
-- `catch_up` is true when **more than one** session was appended. One session is
-  an ordinary evening and is not a catch-up.
-- A panel that did not advance, or an empty panel before the run, yields no
-  sessions rather than a guess, and `catch_up` stays false.
-- The appended dates go into `run_status.catch_up_sessions` as a JSON list, and
-  `catch_up` and `catch_up_sessions` are new columns on `efb.run_status`.
-
-**The gate definition, now written down:** *a gate close is a run whose target
-close is the only session it appended.* The first deploy is a catch-up run by
-construction, so it can never be one of the two gate closes, and the run records
-the sessions that make that checkable instead of leaving it to memory.
-
-## The message
-
-The first line carries it, immediately after the status, so it is readable in a
-preview:
+`live/breadth.py` owns the two labels and the reader both pages use:
 
 ```text
-EFB live book 2026-09-21: ok, the run completed (catch-up of 4 sessions)
+BOOK_LABEL      = "the book's effective breadth"
+FULL_BOOK_LABEL = "the full 499-name book's, before the floor"
 ```
 
-and a one-session run reads exactly as before, with no catch-up text at all. The
-status labels themselves are untouched; the suffix is added only when more than
-one session was appended.
+- The Render page builds them with `live/dashboard_app.py::_breadth_columns`.
+- The research page uses them in D10's book panel, and its construction summary
+  metric is relabelled from "n_eff kept" to the book's label.
+- `live/construction_table.py` reads the renamed decomposition key, so the E11-F12
+  table still builds; its own stored column names (`n_eff_kept`, `n_eff_full`) are
+  left alone, because both are already qualified by which book they describe and
+  renaming a stored column would mean rebuilding the comparison artifact and
+  moving numbers the reviewer has been reading since Part 1R.
 
-## Tests, four added
+**The legacy mapping**, for artifacts stored before this item:
+`breadth.full_book_breadth` reads an old `n_eff` as the full book's, and
+`breadth.book_breadth` returns `None` for such an artifact rather than showing the
+full book's as the book's. `breadth.LEGACY_NOTE` is available for a page to say
+so in words, and `breadth.legacy_artifact(record)` is true exactly when the
+artifact has the old name and not the new one.
 
-1. `test_a_catch_up_run_says_so_in_the_first_line` in
-   `tests/test_e11_notify.py`: four sessions produce the suffix, one session
-   produces nothing.
-2. `test_the_appended_sessions_are_measured_from_the_calendar`: the four dates
-   above, from the real NYSE calendar.
-3. `test_a_one_session_run_is_not_a_catch_up`: the whole cron run through
-   `main()` with a panel that advances by one session, asserting
-   `catch_up is False`, `catch_up_sessions == '["2026-09-21"]'` and no catch-up
-   text in the message.
-4. `test_a_multi_session_run_is_recorded_as_a_catch_up`: the same run with four
-   sessions, asserting `catch_up is True`, the four dates in the row, and
-   `(catch-up of 4 sessions)` in the message.
+## The regenerated proposals
+
+```text
+2026-09-18: book breadth (n_eff_kept) 69.4578 | full book (n_eff_full_book) 146.3238
+            recomputed from the stored weights 69.4578
+            keys present: ['n_eff_full_book', 'n_eff_kept', 'n_effective']
+            unqualified n_eff present: False
+2026-09-21: book breadth (n_eff_kept) 70.5921 | full book (n_eff_full_book) 157.3291
+            recomputed from the stored weights 70.5921
+            unqualified n_eff present: False
+```
+
+Both book figures equal the breadth recomputed from the stored weights, which is
+the whole point: the number a page shows under "the book's effective breadth" is
+the traded book's. The 09-21 book value is the owner-confirmed 70.59.
+
+The two `proposal_*.parquet` files are **unchanged** (they carry weights, not
+breadths) and do not appear in this commit; only the manifests moved.
+
+## Tests
+
+Five new in `tests/test_e11_breadth.py`:
+
+1. the two names return the two books, and neither label contains `n_eff`;
+2. a legacy artifact maps to the full book only, `book_breadth` is `None` for it,
+   the note is `LEGACY_NOTE`, and an empty record invents nothing;
+3. the stored proposals carry both names, no unqualified one, and
+   `n_eff_kept` equals the breadth recomputed from the stored weights, at both
+   closes;
+4. the Render page's two columns are the two labels, and its book figure equals
+   the traded book's recomputed breadth while its full-book figure is more than
+   one name away from it;
+5. the research page's D10 book panel shows the same twice over.
+
+**Four existing test files were edited deliberately**, all of them fixtures whose
+stub manifests carried the old key: `tests/test_e11_evening.py` (the internal
+decomposition key and the two manifest keys),
+`tests/test_e11_sanity.py`, `tests/test_e11_reconcile.py` and
+`tests/test_dashboard_d10.py`. No assertion was weakened; each was retargeted at
+the renamed field, and the d10 stub gained the full-book number so both labels can
+be checked.
 
 ## Verification
 
-Per step, the selection is every test touching what changed: the runner, the
-notification, the run-status row and the evening job.
+Per step, the selection is every test touching what changed: the breadth names,
+both pages, the runner, the sanity gate and the construction table.
 
 ```text
-$ .venv/bin/python -m pytest tests/test_e11_notify.py tests/test_e11_staleness.py \
-    tests/test_run_live_daily.py tests/test_e11_store.py tests/test_e11_evening.py \
-    -q --tb=short
-79 passed in 25.52s
+$ .venv/bin/python -m pytest tests/test_e11_breadth.py tests/test_e11_evening.py \
+    tests/test_e11_sanity.py tests/test_e11_reconcile.py tests/test_dashboard_d10.py \
+    tests/test_e11_render.py tests/test_e11_notify.py tests/test_e11_staleness.py \
+    tests/test_run_live_daily.py -q --tb=short
+103 passed, 1 skipped in 25.11s
 
-$ make lint
+$ .venv/bin/python -m pytest tests/test_construction_table.py tests/test_e11_breadth.py -q
+12 passed in 103.98s (0:01:43)
+```
+
+The full suite is required here because two stored artifacts were regenerated
+(standard 21, point 3).
+
+```text
+$ make test > /tmp/full5.log 2>&1; echo "EXIT=$?"
+$ tail -c 300 /tmp/full5.log
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+786 passed, 1 skipped, 3 warnings in 599.86s (0:09:59)
+EXIT=0
+```
+
+The previous full run, at Part 5's commit, was 774 passed, 1 skipped (775
+collected). This one collects 787: item 1's 3 universe tests, item 2's 4 catch-up
+tests and this item's 5 breadth tests, with nothing lost.
+
+`make lint`, exit 0:
+
+```text
 .venv/bin/ruff check efb dashboard live tests
 All checks passed!
 .venv/bin/mypy efb
 Success: no issues found in 33 source files
 .venv/bin/black --check efb dashboard live tests
-All done! ... 170 files would be left unchanged.
+All done! ... 172 files would be left unchanged.
 ```
 
-The full suite lands with item 4b (the store), which changes `live/store.py` for
-every consumer of the store; this item's change is additive on the same files
-that subset already covers.
+`make verify-evidence`, exit 0:
+
+```text
+evidence OK
+```
 
 ### Headline numbers, file and key
 
 | number | file and key |
 | --- | --- |
-| `catch_up` is more than one appended session | `scripts/run_live_daily.py::finish_run`, `catch_up=len(catch_up_sessions or []) > 1` |
-| the sessions are measured from the panel | `live/extend.py::last_price_session`, `scripts/run_live_daily.py::_catch_up_sessions` |
-| four sessions from 2026-09-15 to 2026-09-21 | pasted above, `live.staleness.sessions` |
-| the first line carries the suffix | `live/notify.py::compose`, the `caught_up > 1` branch |
-| two new columns | `live/supabase_schema.sql`, `efb.run_status`, `catch_up` and `catch_up_sessions` |
-| 4 tests | `tests/test_e11_notify.py` |
+| the two stored names | `live/proposals/proposal_2026-09-21.json`, `n_eff_kept` and `n_eff_full_book` |
+| 70.5921 and 157.3291 at 09-21, 69.4578 and 146.3238 at 09-18 | the same files, read directly |
+| the book's number equals the recomputed breadth | the pasted block above, from `proposal_*.parquet` |
+| no unqualified `n_eff` is written | `live/evening_job.py` (manifest), `scripts/run_live_daily.py:133` (row), `live/reconcile.py:82` |
+| the legacy mapping | `live/breadth.py::full_book_breadth`, `book_breadth`, `legacy_artifact` |
+| the two labels | `live/breadth.py::BOOK_LABEL`, `FULL_BOOK_LABEL`; used by `live/dashboard_app.py::_breadth_columns` and `dashboard/tabs/d10_book.py` |
+| two columns in place of one | `live/supabase_schema.sql`, `efb.proposals`; `efb.reconciliation` carries `n_eff_kept` |
+| 5 tests | `tests/test_e11_breadth.py` |
 
 ### git diff --stat from `base_commit` (4048b97)
 
-This item's own files, from item 1's commit `f15de10`:
+This item's own files, from item 2's commit `6c1bbc2`, with
+`git add -N live/breadth.py tests/test_e11_breadth.py` first so the new files
+appear:
 
 ```text
-$ git diff --stat f15de10 -- handoff/REPORT.md live/extend.py live/notify.py \
-    live/staleness.py live/supabase_schema.sql scripts/run_live_daily.py \
-    tests/test_e11_notify.py
- handoff/REPORT.md         | 238 +++++++++++++++++++---------------------------
- live/extend.py            |  17 ++++
- live/notify.py            |   6 ++
- live/staleness.py         |   7 ++
- live/supabase_schema.sql  |   2 +
- scripts/run_live_daily.py |  37 ++++++++
- tests/test_e11_notify.py  |  92 +++++++++++++++++++
- 7 files changed, 268 insertions(+), 122 deletions(-)
+$ git diff --stat 6c1bbc2 -- handoff/REPORT.md live/breadth.py live/evening_job.py \
+    live/reconcile.py live/sanity.py live/construction_table.py \
+    live/dashboard_app.py dashboard/tabs/d10_book.py live/supabase_schema.sql \
+    scripts/run_live_daily.py live/proposals tests/test_e11_breadth.py \
+    tests/test_e11_evening.py tests/test_e11_sanity.py tests/test_e11_reconcile.py \
+    tests/test_dashboard_d10.py
+ dashboard/tabs/d10_book.py              |  11 +-
+ handoff/REPORT.md                       | 308 ++++++++++++++++++------------
+ live/breadth.py                         |  65 ++++++++
+ live/construction_table.py              |   4 +-
+ live/dashboard_app.py                   |  18 ++-
+ live/evening_job.py                     |  10 +-
+ live/proposals/proposal_2026-09-18.json |   7 +-
+ live/proposals/proposal_2026-09-21.json |   7 +-
+ live/reconcile.py                       |   4 +-
+ live/sanity.py                          |   6 +-
+ live/supabase_schema.sql                |   5 +-
+ scripts/run_live_daily.py               |   3 +-
+ tests/test_dashboard_d10.py             |   3 +-
+ tests/test_e11_breadth.py               |  92 +++++++++++
+ tests/test_e11_evening.py               |   5 +-
+ tests/test_e11_reconcile.py             |   2 +-
+ tests/test_e11_sanity.py                |   2 +-
+ 17 files changed, 411 insertions(+), 141 deletions(-)
 ```
 
-From the task's `base_commit` (4048b97), which carries item 1 as well:
+The two proposal parquets are absent from that list: the books did not move, only
+their manifests' field names. From the task's `base_commit` (4048b97), which
+carries items 1 and 2 as well:
 
 ```text
 $ git diff --stat 4048b97
  ...
- 13 files changed, 1033 insertions(+), 285 deletions(-)
+ 24 files changed, 1316 insertions(+), 298 deletions(-)
 ```
 
 ### Yes or no, each with evidence
 
-1. **Any two rows or two estimators identical.** No. Each test writes one
-   `run_status` row for its own target close in its own temporary store, and the
-   catch-up and single-session runs differ in `catch_up`, in
-   `catch_up_sessions` and in the message they send.
-2. **Any exception caught and skipped, or fallback taken, with counts.** No new
-   catch. `_catch_up_sessions` reads two values and returns an empty list when
-   either is missing or the panel did not advance; that is a defined answer, not
-   a swallowed error, and it is asserted by the one-session test.
-3. **Any criterion reworded or replaced by a different test.** No stored
-   criterion and no existing test was edited; the four tests are added to
-   `tests/test_e11_notify.py`.
-4. **Any criterion that passes by construction.** One, declared: the multi-session
-   test drives `last_price_session` with a two-value iterator, so it proves the
-   run records what the panel reports, not that the real extension appends what
-   the panel reports. The real extension's own counts are covered by
-   `tests/test_e11_extend.py`, unchanged here.
+1. **Any two rows or two estimators identical.** No. The two books differ in both
+   numbers at both closes (70.5921 against 157.3291, 69.4578 against 146.3238),
+   and test 4 asserts the page's two figures are more than one name apart.
+2. **Any exception caught and skipped, or fallback taken, with counts.** Yes, one,
+   and it is the item's own subject: the legacy read. `full_book_breadth` falls
+   back to the old `n_eff` for an artifact that predates the split, and it can
+   only ever produce the full book's number; `book_breadth` refuses the fallback
+   and returns `None`. Test 2 asserts both, and the note is exposed rather than
+   swallowed.
+3. **Any criterion reworded or replaced by a different test.** No `RESULTS.json`
+   criterion, threshold or stored string was touched. Four existing test files'
+   fixture dictionaries were renamed as listed above, and the d10 stub gained a
+   field; no stored score moved. The construction table's own column names are
+   deliberately unchanged, and the artifact is byte-identical in this commit.
+4. **Any criterion that passes by construction.** One, declared: the regenerated
+   manifests' `n_eff_kept` comes from the same `kept_decomposition` whose weights
+   are written to the parquet, so the test comparing the manifest's number with
+   the recomputed breadth proves the two agree, not that the breadth formula is
+   the right one. The formula is E8's, unchanged by this item, and its own
+   criterion stands.
 5. **Any number that moved by a factor of 10 or more from its previous stored
-   value.** No. No stored number moved. The first deploy's catch-up count is not
-   knowable before that run and is not asserted anywhere.
+   value.** No. `n_eff_kept` equals the number the manifest already carried under
+   `n_eff_kept`, and `n_eff_full_book` equals the old `n_eff`: 157.33 and 70.59
+   are the same numbers, now named for what they are. The 09-18 numbers moved
+   only by the universe fields item 1 changed, and those weights did not move.
 6. **Any stored number typed into a notebook.** No notebook was opened, edited or
    executed.
-7. **Any earlier verdict changed.** No. The gate's staleness rule, the
-   notification's three fields and the confirmed book all stand; this item adds a
-   label and a stored fact about runs that append more than one session.
+7. **Any earlier verdict changed.** No. Part 5's books, Guard 1's derivation and
+   the owner's confirmed numbers all stand; this item renames fields so the page
+   cannot mislead about the book the owner confirmed.
 
 ### Anything decided that the reviewer might disagree with
 
-**"More than one session" is the catch-up test, and it is stored as a boolean plus
-the dates.** The task defines a gate close as a run whose target close is the only
-session it appended, so the boolean is exactly that condition's negation. Storing
-the dates as well means a reader can check the boolean rather than trust it, and
-the notification names the count rather than the dates so the first line stays
-short. If the reviewer wants the dates in the message too, they are already in the
-row and it is one string join.
+**The construction table's columns keep their names.** `n_eff_kept` and
+`n_eff_full` inside `live/construction_table.parquet` are both qualified by which
+book they describe, so the reviewer's complaint (an unqualified `n_eff` read as
+the book's) does not apply to them, and renaming a stored column would rebuild the
+comparison artifact and touch numbers the reviewer has read since Part 1R. If the
+reviewer wants `n_eff_full_book` there too, it is a table rebuild plus two test
+edits.
+
+**The research dashboard now imports `live.breadth`.** The alternative was a
+second copy of the labels in `dashboard/tabs/d10_book.py`, which is how
+`_construction_label` ended up duplicated. One shared, tested reader is the
+reason the two pages cannot disagree, and `live/breadth.py` imports nothing but
+`__future__` and typing.

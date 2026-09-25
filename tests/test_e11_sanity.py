@@ -86,7 +86,7 @@ def test_run_gate_names_the_input_that_is_not_advancing(
             "as_of": stamp,
             "n_names": 500,
             "n_kept": 2,
-            "n_eff_full": 10.0,
+            "n_eff_full_book": 10.0,
             "n_eff_kept": 2.0,
             "input_as_of": {
                 "prices": stamp,

@@ -75,7 +75,7 @@ def test_decomposition_reports_exposure_gross_and_net() -> None:
     assert result["gross"] == pytest.approx(1.0)
     assert result["net"] == pytest.approx(0.0)
     assert result["max_abs_exposure"] == pytest.approx(0.0)
-    assert result["n_eff"] == pytest.approx(4.0)
+    assert result["effective_breadth"] == pytest.approx(4.0)
     assert result["idio_share"] == pytest.approx(1.0)
 
 
@@ -508,8 +508,7 @@ def test_build_proposal_stores_the_share_only_floor_and_breadth() -> None:
     # n_eff-bound, which uses the E8 effective-breadth construction
     assert manifest["breadth_naive_bound"] >= 1.0
     assert manifest["breadth_governing"] >= 1.0
-    assert manifest["n_eff_full"] == manifest["n_eff"]
-    assert manifest["n_eff_kept"] <= manifest["n_eff_full"]
+    assert manifest["n_eff_kept"] <= manifest["n_eff_full_book"]
     # the new quantization distribution is on the kept book only
     assert manifest["quantization"]["long_targets_rounding_to_zero"] == 0
     assert manifest["quantization"]["short_targets_rounding_to_zero"] == 0

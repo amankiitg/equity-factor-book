@@ -168,7 +168,7 @@ def _decomposition(
         "max_abs_exposure": float(np.abs(design.T @ weights).max()),
         "gross": float(np.abs(weights).sum()),
         "net": float(weights.sum()),
-        "n_eff": (
+        "effective_breadth": (
             float(np.abs(weights).sum() ** 2 / (weights**2).sum())
             if (weights**2).sum() > 0
             else 0.0
@@ -993,7 +993,7 @@ def build_proposal(
         "max_abs_exposure_after_fmp": full_decomposition["max_abs_exposure"],
         "gross": full_decomposition["gross"],
         "net": full_decomposition["net"],
-        "n_eff": full_decomposition["n_eff"],
+        "n_eff_kept": kept_decomposition["effective_breadth"],
         "n_nonzero": full_decomposition["n_nonzero"],
         "n_kept": n_selected,
         "n_effective": kept_decomposition["n_nonzero"],
@@ -1019,8 +1019,7 @@ def build_proposal(
         "floor_search_seconds": floor_search_seconds,
         "code_commit": _git_commit(),
         "kept_gross_before_renorm": kept_gross_before_renorm,
-        "n_eff_full": full_decomposition["n_eff"],
-        "n_eff_kept": kept_decomposition["n_eff"],
+        "n_eff_full_book": full_decomposition["effective_breadth"],
         "kept_gross": kept_decomposition["gross"],
         "kept_net": kept_decomposition["net"],
         "kept_idio_share": kept_decomposition["idio_share"],
@@ -1035,7 +1034,8 @@ def build_proposal(
         ),
         "breadth_naive_bound": math.sqrt(460.0 / max(n_selected, 1)),
         "breadth_governing": math.sqrt(
-            full_decomposition["n_eff"] / max(kept_decomposition["n_eff"], 1e-12)
+            full_decomposition["effective_breadth"]
+            / max(kept_decomposition["effective_breadth"], 1e-12)
         ),
         "quantization": quantization,
         "target_annual_vol": TARGET_ANNUAL_VOL,

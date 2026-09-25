@@ -24,7 +24,7 @@ def _write_manifest(proposal_dir: Path, as_of: str) -> None:
         "max_abs_exposure_after_fmp": 2.5e-15,
         "gross": 1.0,
         "net": 0.0,
-        "n_eff": 158.9,
+        "n_eff_kept": 158.9,
         "expected_establishment_cost_bps": 75.3,
     }
     (proposal_dir / f"proposal_{as_of}.json").write_text(json.dumps(manifest))

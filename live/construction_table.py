@@ -418,7 +418,7 @@ def _compute_row(
         )
 
     n_selected = int(len(idx))
-    n_eff_kept = decomp["n_eff"]
+    n_eff_kept = decomp["effective_breadth"]
     p90_error = float(dist["rounding_error_pct_of_target_quantiles"]["0.9"])
     n_below = int(below_floor(shares, prices, dollar_floor, share_floor).sum())
     worst_shares, worst_dollars = floor_shortfalls(
@@ -747,7 +747,7 @@ def build_table(
         full_weights, design, factor_covariance, specific
     )
     full_decomp = _decomposition(full_weights, design, factor_covariance, specific)
-    n_eff_full = full_decomp["n_eff"]
+    n_eff_full = full_decomp["effective_breadth"]
 
     rows: list[dict[str, object]] = []
     per_name_rows: list[dict[str, object]] = []

@@ -42,7 +42,7 @@ def run_gate(
 ) -> dict:
     """Run the loop on the two most recent closes and store the turnover.
 
-    The gate also stores the n_eff on each close and the as-of date of every
+    The gate also stores both breadths on each close and the as-of date of every
     model input, so a failure names the input that is not advancing rather
     than only reporting that the proposals matched.
     """
@@ -67,8 +67,8 @@ def run_gate(
         "n_names_after": after["n_names"],
         "n_kept_before": before.get("n_kept"),
         "n_kept_after": after.get("n_kept"),
-        "n_eff_full_before": before.get("n_eff_full"),
-        "n_eff_full_after": after.get("n_eff_full"),
+        "n_eff_full_book_before": before.get("n_eff_full_book"),
+        "n_eff_full_book_after": after.get("n_eff_full_book"),
         "n_eff_kept_before": before.get("n_eff_kept"),
         "n_eff_kept_after": after.get("n_eff_kept"),
         "weight_turnover": turnover,

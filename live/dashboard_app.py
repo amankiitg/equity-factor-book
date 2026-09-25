@@ -81,6 +81,22 @@ def _construction_label(manifest: dict[str, Any]) -> str:
     return label
 
 
+def _breadth_columns(record: dict[str, Any]) -> dict[str, float | None]:
+    """The book's breadth and the full book's, each under its own label.
+
+    One column each, because a single unqualified `n_eff` was read as the
+    breadth of the book that trades while it was the full 499-name book's
+    number. An artifact older than the split shows its `n_eff` as the full
+    book's, never as the book's.
+    """
+    from live import breadth
+
+    return {
+        breadth.BOOK_LABEL: breadth.book_breadth(record),
+        breadth.FULL_BOOK_LABEL: breadth.full_book_breadth(record),
+    }
+
+
 def _no_data(caption: str = "No live data yet.") -> None:
     st.caption(caption)
 
@@ -206,7 +222,7 @@ else:
                 "n excluded from the frozen model": manifest["n_excluded"],
                 "gross (fraction of NAV)": manifest["gross"],
                 "net (fraction of NAV)": manifest["net"],
-                "effective breadth (n_eff)": manifest["n_eff"],
+                **_breadth_columns(manifest),
                 "idio share after FMP": manifest["idio_share_after_fmp"],
                 "target annual vol": manifest["target_annual_vol"],
                 "achieved annual vol": manifest["achieved_annual_vol"],
