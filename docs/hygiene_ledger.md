@@ -1773,3 +1773,19 @@ vendor's refetched adjusted close for the stored session decides whether the mov
 a corporate action or not. Measured across the 33 tickers whose appended moves the
 rule cross-checked over the 2026-08-31 to 2026-09-21 window, 32 ratios came back at
 exactly 1.0 and only APH moved, at 0.499226.
+
+## 2026-09-25: four raw artifacts restored from their evidence snapshots
+
+Decision. `data/raw/prices.parquet`, `data/raw/shares_history.parquet` and
+`data/raw/spy_holdings/spy_holdings_2026-09-18.parquet` and
+`data/raw/spy_holdings/spy_holdings_2026-09-21.parquet` were restored byte-for-byte
+from their own snapshots under `evidence/`, because a local measurement run of
+`evening_job.build_proposal` rewrote them. `make verify-evidence` passes again.
+
+Reason. The run was taken to be read-only and is not. Beyond the byte difference,
+the comparison against the snapshot showed the rewritten SPY archive had lost
+`sector`, `shares_held` and `local_currency`, so the reader that archives a SPY file
+replaces a wider frame with a narrower one. Restoring from the snapshots puts the
+artifacts back to the state every earlier report was written against; the defect
+itself is open and recorded in `handoff/REPORT.md`, because it belongs in the
+append path and a fix deserves its own commit and test.

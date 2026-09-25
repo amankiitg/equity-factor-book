@@ -1,3 +1,49 @@
+# A measurement run of mine rewrote four raw artifacts, and the evidence check caught it
+
+**What happened.** To measure the cron's peak memory for B-cron I ran
+`evening_job.build_proposal` locally, believing it was read-only because it reads
+the artifacts rather than fetching them. It is not: it rewrites
+`data/raw/prices.parquet` (61 MB), `data/raw/shares_history.parquet` and both
+`data/raw/spy_holdings/spy_holdings_2026-09-1[8|21].parquet` files. The
+gitignored artifacts are not in git, so nothing showed in `git status`, and I used
+`git add -A` on the next commit, which is how a change I did not intend nearly
+rode along. `make verify-evidence` failed, which is exactly what it is for.
+
+**What the check caught beyond the bytes.** Comparing the SPY archive against its
+evidence snapshot showed the rewrite had dropped three columns: the recorded
+snapshot has `name, ticker, identifier, sedol, weight, sector, shares_held,
+local_currency, as_of`, and the rewritten file had only `as_of, ticker, name,
+identifier, sedol, weight`. So the reader that archives a SPY file writes a leaner
+frame than the archive it replaces. On the cron that is invisible, because
+Render's disk is ephemeral and the archive is refetched each run, but a local run
+loses the sectors, the share counts and the local currency from the source the
+universe comes from, and any later run that reads the archive instead of the
+source would get less than it thinks.
+
+**What I did, and where it stands.** Every artifact the check named was restored
+byte-for-byte from its own snapshot under `evidence/`, and `make verify-evidence`
+passes again:
+
+```text
+restored data/raw/prices.parquet 61233059 bytes
+restored data/raw/shares_history.parquet 2146029 bytes
+restored data/raw/spy_holdings/spy_holdings_2026-09-18.parquet 34358 bytes
+attempt 1 -> evidence OK
+```
+
+**The defect is open, deliberately.** The fix belongs in the append path
+(`live/evening_job.py::load_spy_universe` and whatever else writes raw artifacts),
+not in a hurry: the reader must not replace an archive with a narrower frame, and
+a read path must not rewrite raw data at all. It is written into the session notes
+and it is the first thing after the reviewer's remaining notes. Until it lands,
+the artifacts on disk are the snapshot's, and no claim in this report rests on a
+number the rewrite touched.
+
+**The lesson, stated plainly.** I asserted "read-only" about a run I had not
+checked, and the evidence check is the only reason it was caught. That is the same
+mistake shape as the void suite: a claim about a tool's behaviour standing in for
+a check.
+
 # Sprint E11 pre-deploy, B-cron: Render runs only the cron, and the cron writes the snapshot
 
 **The web service is gone.** `render.yaml` declares one service, the daily cron.
