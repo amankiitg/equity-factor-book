@@ -181,7 +181,12 @@ def test_env_example_names_the_keys_without_values() -> None:
     text = (ROOT / ".env.example").read_text()
     lines = text.splitlines()
     # two keys carry safe non-secret defaults; every other key is empty
-    defaults = {"EFB_DB_SCHEMA": "efb", "EFB_DRY_RUN": "true", "EFB_STORE": "local"}
+    defaults = {
+        "EFB_DB_SCHEMA": "efb",
+        "EFB_DRY_RUN": "true",
+        "EFB_STORE": "local",
+        "EFB_SEED_SOURCE": "local",
+    }
     for name in (
         "EFB_ALPACA_PAPER_API_KEY",
         "EFB_ALPACA_PAPER_SECRET_KEY",
@@ -192,6 +197,11 @@ def test_env_example_names_the_keys_without_values() -> None:
         "EFB_DRY_RUN",
         "EFB_STORE",
         "EFB_INIT_STORE",
+        "EFB_SEED_R2_ACCOUNT_ID",
+        "EFB_SEED_R2_BUCKET",
+        "EFB_SEED_R2_ACCESS_KEY_ID",
+        "EFB_SEED_R2_SECRET_ACCESS_KEY",
+        "EFB_SEED_SOURCE",
         "EFB_RESEND_API_KEY",
         "EFB_NOTIFY_EMAIL_FROM",
         "EFB_NOTIFY_EMAIL_TO",
@@ -212,6 +222,9 @@ def test_render_yaml_commits_key_names_not_values() -> None:
     assert "EFB_SUPABASE_DB_URL" in render
     assert "EFB_DB_SCHEMA" in render
     assert "EFB_INIT_STORE" in render
+    # the seed bucket: the cron reads it and has no write path into it
+    assert "EFB_SEED_R2_ACCESS_KEY_ID" in render
+    assert "EFB_SEED_R2_SECRET_ACCESS_KEY" in render
     # the account-wide access token must never reach a Render service
     assert "EFB_SUPABASE_ACCESS_TOKEN" not in render
     assert "EFB_SUPABASE_SECRET_KEY" not in render
@@ -229,6 +242,9 @@ def test_render_yaml_runs_one_service_and_it_holds_the_credentials() -> None:
     _, cron = render.split("- type: cron")
     for name in (
         "EFB_INIT_STORE",
+        "EFB_SEED_R2_ACCOUNT_ID",
+        "EFB_SEED_R2_ACCESS_KEY_ID",
+        "EFB_SEED_R2_SECRET_ACCESS_KEY",
         "EFB_RESEND_API_KEY",
         "EFB_NOTIFY_EMAIL_FROM",
         "EFB_NOTIFY_EMAIL_TO",

@@ -448,6 +448,10 @@ def main() -> int:
         # try, so the failure is a run with an email rather than a traceback.
         run_tree = runroot.prepare()
         runroot.adopt(run_tree)
+        # The proposal files move with the tree, so a local run does not add a
+        # proposal to the repository either.
+        global PROPOSAL_DIR
+        PROPOSAL_DIR = run_tree.parent / "proposals"
         logger.info("run tree: %s", run_tree)
         # First-run detection is explicit, never inferred from what the tables
         # happen to hold: an empty appendix refuses to run unless
@@ -508,9 +512,10 @@ def main() -> int:
         # the appendix state the proposal is priced from.
         appendix_mod.persist_new_sessions()
         appendix_identity = appendix_mod.appendix_manifest()
-        from efb import evidence
-
-        evidence.snapshot()
+        # No evidence snapshot here, deliberately. `efb.evidence.snapshot` rewrites
+        # the tracked, LFS-committed evidence tree, and it is a local sprint-close
+        # step: a cron calling it would replace the frozen record of what E1 to E10
+        # were scored on with the loop's own extended artifacts.
 
         # The gate, before any sizing: a book priced on an input older than the
         # close it claims to price must not be built and must not trade. The

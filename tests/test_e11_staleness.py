@@ -124,7 +124,6 @@ class _NoCorporateActions:
 
 def _patch_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace every step of the run that would fetch, size or hash."""
-    from efb import evidence
     from live import corporate_actions
 
     for name in ("hydrate", "persist_new_sessions", "appendix_manifest"):
@@ -159,7 +158,8 @@ def _patch_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
         "refresh_version",
     ):
         monkeypatch.setattr(extend, name, lambda *a, **k: {})
-    monkeypatch.setattr(evidence, "snapshot", lambda *a, **k: None)
+    # No evidence stub: the run no longer calls `efb.evidence.snapshot`, which is
+    # a local sprint-close step and not a cron one.
     # The corporate-actions rule has its own tests. It is stubbed here because it
     # reads and writes the price artifact: reached for real it would run against
     # whichever tree the run was pointed at, which is not what these tests are

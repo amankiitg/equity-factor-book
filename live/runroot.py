@@ -29,6 +29,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SEED_ROOT_ENV = "EFB_SEED_ROOT"
 RUN_ROOT_ENV = "EFB_RUN_ROOT"
+SEED_SOURCE_ENV = "EFB_SEED_SOURCE"
+LOCAL_SOURCE = "local"
+BUCKET_SOURCE = "r2"
 DEFAULT_SEED_ROOT = ROOT / "data"
 
 # Two files whose absence means the tree is not a tree: the price panel and the
@@ -69,28 +72,70 @@ def destination(dest: Path | None = None) -> tuple[Path, bool]:
 def prepare(*, seed: Path | None = None, dest: Path | None = None) -> Path:
     """Materialize the run's tree and return it.
 
-    The tree starts as a copy of the seed root. It is then the only place the run
-    reads or writes under `data/`, so a run that appends a session, refits a model
-    or rehashes `VERSION.json` leaves the repository's artifact tree untouched.
-    The copy is 876 MB on this checkout and takes 2.4 seconds; the two big caches
-    that only the E4 and E2 rebuild paths read are left behind.
+    The tree starts as the seed: downloaded and verified from the bucket, or a
+    copy of the local tree when `EFB_SEED_SOURCE=local` says so. It is then the
+    only place the run reads or writes under `data/`, so a run that appends a
+    session, refits a model or rehashes `VERSION.json` leaves the repository's
+    artifact tree untouched. The copy is 876 MB on this checkout and takes 2.4
+    seconds; the two big caches that only the E4 and E2 rebuild paths read are
+    left behind.
     """
-    source = Path(seed) if seed is not None else seed_root()
     target, _owned = destination(dest)
-    if not source.exists():
-        raise RunRootUnavailable(
-            f"the seed root {source} does not exist, so the run has no artifacts "
-            "to start from; set EFB_SEED_ROOT, or put the seed in the bucket"
-        )
-    copy_tree(source, target)
+    if seed_source() == LOCAL_SOURCE:
+        source = Path(seed) if seed is not None else seed_root()
+        if not source.exists():
+            raise RunRootUnavailable(
+                f"the seed root {source} does not exist, so the run has no "
+                "artifacts to start from; set EFB_SEED_ROOT, or use the bucket"
+            )
+        copy_tree(source, target)
+    else:
+        from live import seed as seed_module
+
+        seed_module.install(target)
     missing = [rel for rel in REQUIRED if not (target / rel).exists()]
     if missing:
         raise RunRootUnavailable(
-            f"{source} holds no {', '.join(missing)}, so a run cannot start from "
-            "it; on Render the seed comes from the seed bucket, never from the "
+            f"the run tree holds no {', '.join(missing)}, so a run cannot start "
+            "from it; on Render the seed comes from the bucket, never from the "
             "deploy image"
         )
     return target
+
+
+def seed_source() -> str:
+    """`local` or `r2`, decided rather than guessed.
+
+    The bucket is the deploy's source and the default when its variables are set.
+    A local tree is the developer's, and it is refused where `RENDER` is set,
+    because the deploy image holds no artifacts: a run that quietly copied an
+    empty tree there would fail later with a missing file instead of here with
+    the reason.
+    """
+    value = os.environ.get(SEED_SOURCE_ENV, "").strip().lower()
+    if value not in ("", LOCAL_SOURCE):
+        raise RunRootUnavailable(
+            f"{SEED_SOURCE_ENV}={value!r} is not a seed source: set it to "
+            f"{LOCAL_SOURCE!r}, or leave it unset to use the bucket"
+        )
+    if value == LOCAL_SOURCE:
+        if os.environ.get("RENDER", "").strip():
+            raise RunRootUnavailable(
+                f"{SEED_SOURCE_ENV}=local is refused where RENDER is set: the "
+                "deploy image holds no artifacts, so the seed has to come from "
+                "the bucket"
+            )
+        return LOCAL_SOURCE
+    from live import seed as seed_module
+
+    if seed_module.configured():
+        return BUCKET_SOURCE
+    raise RunRootUnavailable(
+        "no seed source: set "
+        f"{seed_module.SEED_ENVS[0]}, {seed_module.SEED_ENVS[2]} and "
+        f"{seed_module.SEED_ENVS[3]} for the bucket, or set "
+        f"{SEED_SOURCE_ENV}={LOCAL_SOURCE} on a machine that has the artifacts"
+    )
 
 
 def copy_tree(source: Path, target: Path) -> None:
@@ -110,11 +155,12 @@ def copy_tree(source: Path, target: Path) -> None:
 
 
 def adopt(root: Path) -> None:
-    """Point every live module's `DATA_ROOT` at the run's tree.
+    """Point every live module's tree at the run's own tree.
 
-    Called once, after `prepare`. The modules read their own global at call time
-    rather than through a default argument bound at import, which is why this is
-    enough and why no call site has to change.
+    Called once, after `prepare`. The modules read their own globals at call time
+    rather than through default arguments bound at import, which is why this is
+    enough and why no call site has to change. The proposal directory moves with
+    the tree, so a run does not add a proposal file to the repository either.
     """
     from live import (
         appendix,
@@ -136,3 +182,8 @@ def adopt(root: Path) -> None:
     reconcile.DATA_ROOT = root
     sanity.DATA_ROOT = root
     staleness.DATA_ROOT = root
+    proposals = Path(root).parent / "proposals"
+    evening_job.PROPOSAL_DIR = proposals
+    morning_job.PROPOSAL_DIR = proposals
+    reconcile.PROPOSAL_DIR = proposals
+    # sanity reads evening_job's, so it follows this one.

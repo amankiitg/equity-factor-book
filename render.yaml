@@ -68,6 +68,21 @@ services:
       # EFB_DRY_RUN is true, and with dry_run false it is an error.
       - key: EFB_SNAPSHOT
         sync: false
+      # The seed bucket, read-only here. The frozen history lives in `efb-seed`, a
+      # private bucket of its own, separate from the snapshot bucket: every parquet
+      # under data/ is gitignored, so the deploy image holds no artifacts at all,
+      # and a run downloads the seed and verifies every hash before it reads
+      # anything. The local .env holds a write token under these same names for
+      # scripts/push_seed.py, which refuses to run where RENDER is set, so the cron
+      # has no write path into history. The bucket name defaults to efb-seed.
+      - key: EFB_SEED_R2_ACCOUNT_ID
+        sync: false
+      - key: EFB_SEED_R2_BUCKET
+        sync: false
+      - key: EFB_SEED_R2_ACCESS_KEY_ID
+        sync: false
+      - key: EFB_SEED_R2_SECRET_ACCESS_KEY
+        sync: false
       - key: EFB_R2_ACCOUNT_ID
         sync: false
       - key: EFB_R2_BUCKET

@@ -190,8 +190,6 @@ class _NoCorporateActions:
 
 def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace every step that would fetch, size or hash."""
-    from efb import evidence
-
     for name in ("hydrate", "persist_new_sessions", "appendix_manifest"):
         monkeypatch.setattr(appendix, name, lambda *args, **kwargs: {})
     # The first-run guard decides whether the store may be used at all, and its
@@ -203,6 +201,13 @@ def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         runroot, "prepare", lambda *args, **kwargs: runroot.DEFAULT_SEED_ROOT
+    )
+    # The corporate-actions rule reads and writes the price artifact of whichever
+    # tree the run is pointed at, and it has its own tests.
+    from live import corporate_actions
+
+    monkeypatch.setattr(
+        corporate_actions, "apply_to_artifact", lambda *a, **k: _NoCorporateActions()
     )
     # `adopt` moves every live module's DATA_ROOT for the rest of the process, so
     # each one is pinned through monkeypatch here and put back after the test.
@@ -227,15 +232,6 @@ def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
         "refresh_version",
     ):
         monkeypatch.setattr(extend, name, lambda *a, **k: {})
-    monkeypatch.setattr(evidence, "snapshot", lambda *a, **k: None)
-    # The corporate-actions rule is stubbed for the same reason it is in the
-    # staleness harness: reached for real it reads and writes the price artifact
-    # of whichever tree the run is pointed at.
-    from live import corporate_actions
-
-    monkeypatch.setattr(
-        corporate_actions, "apply_to_artifact", lambda *a, **k: _NoCorporateActions()
-    )
     monkeypatch.setattr(run_live_daily, "already_ran", lambda job, day: False)
     monkeypatch.setattr(run_live_daily, "store_proposal", lambda *a, **k: None)
     monkeypatch.setattr(run_live_daily, "store_orders", lambda as_of, dry: None)
