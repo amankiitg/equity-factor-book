@@ -294,6 +294,71 @@ def test_the_roundtrip_records_the_session_it_compared(
     assert "1/1 inputs match" in written[0]["detail"]
 
 
+class _Cursor:
+    """A psycopg cursor that answers one SELECT with these rows."""
+
+    def __init__(self, columns: list[str], rows: list[tuple]) -> None:
+        self._columns = columns
+        self._rows = rows
+
+    def execute(self, statement: str) -> None:
+        self.statement = statement
+
+    @property
+    def description(self) -> list:
+        from types import SimpleNamespace
+
+        return [SimpleNamespace(name=name) for name in self._columns]
+
+    def fetchall(self) -> list[tuple]:
+        return self._rows
+
+    def __enter__(self) -> _Cursor:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+
+class _Connection:
+    def __init__(self, cursor: _Cursor) -> None:
+        self._cursor = cursor
+
+    def cursor(self) -> _Cursor:
+        return self._cursor
+
+
+def test_a_postgres_date_column_comes_back_as_pandas_datetimes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Postgres returns `datetime.date`, parquet returns Timestamps: one type now.
+
+    The second Render run died in `appendix._hydrate_one` on `sort_values`, comparing
+    a Timestamp with a datetime.date, because the merged column carried both. Local
+    mode could never show it: parquet returns Timestamps either way.
+    """
+    import datetime as dt
+
+    rows = [
+        (dt.date(2026, 9, 3), dt.datetime(2026, 9, 3, 22, 30), "live_daily", 5),
+        (dt.date(2026, 9, 4), None, "live_daily", 9),
+    ]
+    cursor = _Cursor(["run_date", "checked_at", "job", "init"], rows)
+    monkeypatch.setattr(store, "get_connection", lambda: _Connection(cursor))
+
+    frame = store.select("run_status")
+
+    assert pd.api.types.is_datetime64_any_dtype(frame["run_date"])
+    assert pd.api.types.is_datetime64_any_dtype(frame["checked_at"])
+    # a missing timestamp does not turn the column back into objects
+    assert frame["checked_at"].isna().tolist() == [False, True]
+    # and a column that is not a date is left alone
+    assert frame["job"].tolist() == ["live_daily", "live_daily"]
+    assert frame["init"].tolist() == [5, 9]
+    # which is what the merge that failed needs: the two types now compare
+    assert frame["run_date"].max() == pd.Timestamp("2026-09-04")
+
+
 def test_no_test_leaks_the_store_directory_by_assignment() -> None:
     """The bug the full suite caught, pinned so the fast selection cannot hide it.
 

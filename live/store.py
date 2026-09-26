@@ -303,6 +303,24 @@ def upsert(table: str, rows: list[dict[str, Any]]) -> None:
     frame.to_parquet(path, index=False)
 
 
+def _dated(frame: pd.DataFrame) -> pd.DataFrame:
+    """Date and timestamp columns as pandas datetimes, whichever store answered.
+
+    Postgres hands back `datetime.date` and `datetime.datetime` objects; the parquet
+    fallback hands back pandas timestamps. The same column therefore arrives with two
+    types depending on the store, and anything that merges the two raises "Cannot
+    compare Timestamp with datetime.date", which is how the second Render run died in
+    the appendix on a store whose rows were perfectly good. Converting here, at the
+    boundary, is what makes the two modes interchangeable.
+    """
+    for column in frame.columns:
+        values = frame[column]
+        # a datetime is a date, so one isinstance covers both
+        if values.map(lambda value: isinstance(value, dt.date)).any():
+            frame[column] = pd.to_datetime(values)
+    return frame
+
+
 def select(table: str) -> pd.DataFrame:
     """Every row of a live-series table, empty frame when there are none."""
     if table not in TABLES:
@@ -313,7 +331,7 @@ def select(table: str) -> pd.DataFrame:
             cursor.execute(f"SELECT * FROM {_qualified(table)} ORDER BY 1")
             columns = [description.name for description in cursor.description]
             data = cursor.fetchall()
-        return pd.DataFrame(data, columns=columns)
+        return _dated(pd.DataFrame(data, columns=columns))
     path = _local_path(table)
     if not path.exists():
         return pd.DataFrame()
