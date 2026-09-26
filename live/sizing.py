@@ -24,17 +24,40 @@ def hedge_exact_robust(design: np.ndarray, exposures: np.ndarray) -> np.ndarray:
     return -(design @ loadings)
 
 
+def procedure_6_3_hedged_with_exposures(
+    alpha: np.ndarray,
+    design: np.ndarray,
+    factor_covariance: np.ndarray,
+    specific: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The hedged book, and the pre-hedge exposure the hedge acted on.
+
+    `X'w` of the pre-hedge book is what the hedge itself computes to decide what to
+    subtract, so it is returned here rather than reconstructed by a caller: two
+    constructions of the same vector could disagree, and the page shows this one.
+    """
+    del factor_covariance  # the hedge does not read it, matching procedure_6_3
+    unhedged = size.proportional(alpha, specific)
+    exposures = design.T @ unhedged
+    return unhedged + hedge_exact_robust(design, exposures), exposures
+
+
 def procedure_6_3_robust(
     alpha: np.ndarray,
     design: np.ndarray,
     factor_covariance: np.ndarray,
     specific: np.ndarray,
 ) -> np.ndarray:
-    """Procedure 6.3 on a subset, with the least-squares hedge fallback."""
-    del factor_covariance  # the hedge does not read it, matching procedure_6_3
-    sized = size.proportional(alpha, specific)
-    exposures = design.T @ sized
-    return sized + hedge_exact_robust(design, exposures)
+    """Procedure 6.3 on a subset, with the least-squares hedge fallback.
+
+    One implementation: this delegates to `procedure_6_3_hedged_with_exposures`, so
+    a caller that wants both halves and a caller that wants the book alone cannot
+    drift apart.
+    """
+    hedged, _exposures = procedure_6_3_hedged_with_exposures(
+        alpha, design, factor_covariance, specific
+    )
+    return hedged
 
 
 def renormalize(weights: np.ndarray, gross: float = 1.0) -> np.ndarray:

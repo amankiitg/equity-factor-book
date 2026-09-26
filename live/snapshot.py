@@ -206,6 +206,7 @@ def build(
         },
         # One value per design column, named by fx.ESTIMATED_NAMES, after the
         # hedge. The hedge itself stays in `hedge` beside them.
+        "exposures_before_hedge": _numbers(proposal.get("exposures_before_hedge")),
         "exposures_after_hedge": _numbers(proposal.get("exposures_after_hedge")),
         "hedge": {
             "idio_share_after_fmp": _number(proposal.get("idio_share_after_fmp")),

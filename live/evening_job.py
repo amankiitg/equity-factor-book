@@ -175,15 +175,30 @@ def exposures(weights: np.ndarray, design: np.ndarray) -> np.ndarray:
     return vector
 
 
-def labelled_exposures(weights: np.ndarray, design: np.ndarray) -> dict[str, float]:
-    """`X'w` as a dict keyed by factor name, which is what the page shows."""
+def label_exposures(vector: np.ndarray) -> dict[str, float]:
+    """One value per design column, keyed by `fx.ESTIMATED_NAMES`.
+
+    Shared by both sides of the hedge: the vector either comes from
+    `exposures(weights, design)` or straight from the hedge's own `X'w`, and the
+    labels are the same either way.
+    """
     from efb.models import fundamental as fx
 
-    vector = exposures(weights, design)
+    values = np.asarray(vector, dtype=float)
+    if len(values) != len(fx.ESTIMATED_NAMES):
+        raise ValueError(
+            f"the exposure vector has {len(values)} entries and the factor names "
+            f"{len(fx.ESTIMATED_NAMES)}, so they cannot be labelled"
+        )
     return {
         str(name): float(value)
-        for name, value in zip(fx.ESTIMATED_NAMES, vector, strict=True)
+        for name, value in zip(fx.ESTIMATED_NAMES, values, strict=True)
     }
+
+
+def labelled_exposures(weights: np.ndarray, design: np.ndarray) -> dict[str, float]:
+    """`X'w` as a dict keyed by factor name, which is what the page shows."""
+    return label_exposures(exposures(weights, design))
 
 
 def _decomposition(
@@ -251,7 +266,9 @@ def sized_kept_weights(
     specific: np.ndarray,
     close: dict[str, float],
     nav: float,
-) -> tuple[np.ndarray, list[str], np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[
+    np.ndarray, list[str], np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray
+]:
     """Procedure 6.3 on the kept subset, hedged and renormalized to gross 1.0.
 
     One implementation for the whole module: `finalize_kept_set` builds its
@@ -261,12 +278,12 @@ def sized_kept_weights(
     del nav  # the renorm is to gross 1.0; the share counts take the NAV
     idx = np.where(keep)[0]
     names_sub = [names[i] for i in idx]
-    w_sub = sizing.procedure_6_3_robust(
+    w_sub, pre_hedge = sizing.procedure_6_3_hedged_with_exposures(
         alpha_vec[idx], design[idx], factor_covariance, specific[idx]
     )
     w_sub = sizing.renormalize(w_sub, gross=1.0)
     prices = usable_prices(names_sub, close)
-    return idx, names_sub, w_sub, prices, design[idx], specific[idx]
+    return idx, names_sub, w_sub, prices, design[idx], specific[idx], pre_hedge
 
 
 def usable_prices(names_sub: list[str], close: dict[str, float]) -> np.ndarray:
@@ -318,8 +335,10 @@ def finalize_kept_set(
     shares at the close. Nothing downstream re-weights it, so the floor must
     be checked against this vector, not the full-book weights.
     """
-    idx, names_sub, w_sub, prices, design_sub, specific_sub = sized_kept_weights(
-        keep, names, alpha_vec, design, factor_covariance, specific, close, nav
+    idx, names_sub, w_sub, prices, design_sub, specific_sub, pre_hedge = (
+        sized_kept_weights(
+            keep, names, alpha_vec, design, factor_covariance, specific, close, nav
+        )
     )
     decomp = _decomposition(w_sub, design_sub, factor_covariance, specific_sub)
     quant = alpaca.whole_share_quantization(
@@ -332,6 +351,9 @@ def finalize_kept_set(
         "idx": idx,
         "names_sub": names_sub,
         "w_sub": w_sub,
+        # The pre-hedge exposure the hedge acted on, straight from the sizing
+        # step's own `X'w`, so the page and the hedge cannot disagree.
+        "pre_hedge_exposures": pre_hedge,
         "decomp": decomp,
         "quant": quant,
         "prices": prices,
@@ -359,7 +381,15 @@ def kept_set_clears_floor(
     sizing and share math without the report payload `finalize_kept_set`
     builds. The vector it checks is the same one, from the same function.
     """
-    _idx, _names_sub, w_sub, prices, _design_sub, _specific_sub = sized_kept_weights(
+    (
+        _idx,
+        _names_sub,
+        w_sub,
+        prices,
+        _design_sub,
+        _specific_sub,
+        _pre_hedge,
+    ) = sized_kept_weights(
         keep, names, alpha_vec, design, factor_covariance, specific, close, nav
     )
     shares = kept_shares(w_sub, prices, nav)
@@ -1029,13 +1059,11 @@ def build_proposal(
         "gross": full_decomposition["gross"],
         "net": full_decomposition["net"],
         # X'w after the hedge, one value per design column, named by
-        # fx.ESTIMATED_NAMES. The hedge neutralizes every factor, so these are zero
-        # to within floating point, which is what the test pins. The BEFORE vector
-        # is not here yet: the hedge runs inside the sizing step, so the pre-hedge
-        # book is `sizing.procedure_6_3_with_exposures`'s second return value, and
-        # threading it out needs `sized_kept_weights` to carry it to this manifest.
-        # A first attempt took X'w of the post-hedge book and produced a duplicate
-        # of this vector under the other name, which is worse than a missing field.
+        # fx.ESTIMATED_NAMES: the hedge neutralizes every factor, so these are zero
+        # to within floating point, which the test pins below 1e-10. The BEFORE
+        # vector is the hedge's own pre-hedge `X'w`, taken from the sizing step
+        # rather than reconstructed here, and it is clearly nonzero.
+        "exposures_before_hedge": label_exposures(finalize["pre_hedge_exposures"]),
         "exposures_after_hedge": labelled_exposures(weights, design),
         "n_eff_kept": kept_decomposition["effective_breadth"],
         "n_nonzero": full_decomposition["n_nonzero"],

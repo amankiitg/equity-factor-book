@@ -10,6 +10,7 @@
     "target_close",
     "book_as_of",
     "expected_next_by",
+    "exposures_before_hedge",
     "exposures_after_hedge",
     "dry_run",
     "store",
@@ -111,6 +112,11 @@
           }
         }
       }
+    },
+    "exposures_before_hedge": {
+      "type": "object",
+      "description": "X'w of the pre-hedge book, one value per design column, named by fx.ESTIMATED_NAMES. This is the hedge's own X'w, taken from the sizing step rather than reconstructed, and it is clearly nonzero.",
+      "additionalProperties": {"type": ["number", "null"]}
     },
     "exposures_after_hedge": {
       "type": "object",

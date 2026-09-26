@@ -304,9 +304,16 @@ def test_the_hedge_drives_the_exposures_to_zero() -> None:
     from live import evening_job
 
     manifest = evening_job.build_proposal(store=False)
+    before = manifest["exposures_before_hedge"]
     exposures = manifest["exposures_after_hedge"]
     assert list(exposures) == list(fx.ESTIMATED_NAMES)
-    worst = max(abs(float(value)) for value in exposures.values())
-    assert worst < 1e-10, f"the hedge left an exposure of {worst:.3e}"
+    assert list(before) == list(fx.ESTIMATED_NAMES)
+    worst_after = max(abs(float(value)) for value in exposures.values())
+    assert worst_after < 1e-10, f"the hedge left an exposure of {worst_after:.3e}"
+    # And the pre-hedge side is the hedge's own X'w of the unhedged book, so it is
+    # clearly nonzero: a zero here means the two vectors are the same number under
+    # two names, which is the mistake this asserts against.
+    worst_before = max(abs(float(value)) for value in before.values())
+    assert worst_before > 1e-3, f"the pre-hedge exposures are only {worst_before:.3e}"
     # and the book the exposures were taken from is the stored one
     assert manifest["n_eff_kept"] == pytest.approx(70.5921, abs=1e-3)
