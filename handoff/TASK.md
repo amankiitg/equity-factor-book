@@ -1,8 +1,160 @@
-task_id: e11-pre-deploy
-status: in_progress
-base_commit: 4048b97
+task_id: e11-deploy
+status: ready
+base_commit: 3e9dbe1
 
-## Reviewer notes on B-cron, notes a, b, d and the raw-artifact rewrite (2026-09-25, mid-task; the task continues)
+## e11-deploy: the critical path to a deployed dry run (owner, 2026-09-25)
+
+**Done means:**
+- the cron runs on Render in dry run and emails the owner every evening;
+- the Cloudflare page shows a real proposal from a real snapshot.
+
+The owner then runs two gate evenings and flips. Everything below serves that
+state, and nothing else is in this task.
+
+**The blocker rule.** A finding blocks the deploy only if it does one of
+three things:
+1. changes what the cron actually does;
+2. risks losing or rewriting data or evidence;
+3. could leak a credential.
+
+Everything else goes to the post-deploy list in `LOG.md` and never into this
+file. Do not open investigations outside this task. If you find something,
+apply the rule. A blocker is fixed here. Anything else is one line in the
+report under "Post-deploy", and you move on. Rule 20's Verification section
+still applies. A wording gap in it is logged post-deploy, and the task is not
+returned for it.
+
+Closed from `e11-pre-deploy`: c (mypy, clean on 25 files, in `make lint`) and
+e (full suite 835 passed, 1 skipped, at 3e9dbe1).
+
+There are two tracks, and they can run in parallel. The web track needs only
+commit C0 from the cron track.
+
+### Track 1, the cron. One session, in this order, one commit each
+
+**C0. The Render plan, and the snapshot fields the page needs.**
+- `render.yaml` has no `plan:` key. Without it, Render creates the cron on its
+  default instance and not on the 4 GB one B-cron chose, and a 1.07 GiB peak
+  falls over on the first evening. Set `plan:` to Render's 2 CPU / 4 GB
+  instance. Read the blueprint spec for the exact value, and paste the line
+  you read. Add a test that asserts the key.
+- The page shows factor exposures before and after the hedge, and the book as
+  of its own close. Make sure the snapshot carries three things:
+  `exposures_before_hedge`, `exposures_after_hedge` (the hedge itself stays
+  beside them), and `book_as_of` (the close of the proposal the book came
+  from, see C2).
+- Add whichever of those is missing to the writer and to
+  `docs/snapshot.schema.json`.
+- Commit a fixture: one snapshot built by the Python writer from the 09-21
+  proposal, at `web/fixtures/snapshot_ok.json`. Also commit the four state
+  variants the page tests need (`stale_stopped`, `error`, expired, catch-up),
+  each derived from it by the writer, not written by hand.
+- **Commit C0 first. The web track starts from it.**
+
+**C1. f: the evening job has no write path into `data/raw/`.** Remove the
+writes; do not guard them. History is in git, and new days go to Postgres.
+- Name every write the job made under `data/raw/`, with file and function, and
+  show each one removed.
+- Test 1: hash every file under `data/raw/` before and after the full dry-run
+  job, and assert that nothing changed.
+- Test 2: make the parquet and file writers raise on any path under
+  `data/raw/`, and run the job.
+- The archived SPY files stay byte-identical to `evidence/`. Paste
+  `make verify-evidence`.
+
+**C2. g: a stopped run shows the right book.** On Render the disk is the
+deploy image, so the last proposal must come from the store, not from
+`live/proposals/`.
+- Read the most recent proposal from Postgres, and set `book_as_of` to its
+  close.
+- If the store holds none, the snapshot carries an empty book with the
+  reason. It never falls back to a git file.
+- Test with a store whose last proposal is newer than anything on disk.
+
+**C3. l: R2 through `boto3`.** Delete the hand-written SigV4. Use `boto3`
+pinned in `requirements.txt`, which the Render build installs.
+- Set `endpoint_url=https://<EFB_R2_ACCOUNT_ID>.r2.cloudflarestorage.com` and
+  `region_name="auto"`.
+- Make one `put_object` per key, with `ContentType` and a checksum.
+- Tests, with `botocore.stub.Stubber` or a fake client:
+  - the endpoint, the bucket, both keys, the body and the checksum are
+    correct;
+  - a refused put fails the run, **and the email still sends and names the
+    upload failure**;
+  - a `boto3` error string carrying a credential comes out scrubbed.
+
+**C4. The clean full suite (rule 21, before the live clock), then `status:
+gate-ready`.** Paste `make test`, `make lint` and `make verify-evidence`. The
+count must be at least 835.
+
+### Track 2, the web page. One session, starting from C0
+
+**Tooling, from nutri-track.** Use
+`/Users/amankesarwani/PycharmProjects/nutritrack-your-daily-food-guide`'s
+toolchain and versions: Vite 8, React 19, TypeScript 5, Tailwind 4, Vitest and
+wrangler 4, with `npm run deploy` running `vite build && wrangler deploy`.
+- Do not take TanStack Start. nutri-track needs it for many server routes, and
+  this page has one.
+- Build a plain Vite React app plus a Worker with static assets:
+  `wrangler.jsonc` with `main: "worker/index.ts"` and `assets`.
+- Everything lives under `web/` in this repository.
+
+**W1. The Worker.**
+- `GET /api/snapshot` reads `latest.json` through an **R2 binding** (no keys
+  in the Worker). It returns `404 {"missing": true}` when the object is
+  absent, and it sends `Cache-Control: no-store`.
+- It verifies the `Cf-Access-Jwt-Assertion` header against the Access team's
+  certs and the application's AUD, with `jose`, and returns 403 without a
+  valid one.
+- The team domain and the AUD are plain Worker vars, not secrets.
+- Set `preview_urls: false`, so the Worker has no second hostname outside
+  Access.
+- Everything else serves the static page.
+
+**W2. The page.** One screen, from `docs/snapshot.schema.json` (generate the
+types from it, or validate the fixtures against it in a test):
+1. **Status first.** Show:
+   - `run_status` and the target close;
+   - `generated_at` and the snapshot's age;
+   - a failure state for any non-`ok` status, for `now > expected_next_by`,
+     and for a missing snapshot;
+   - the catch-up label when present;
+   - an unmissable dry-run banner;
+   - `book_as_of` next to the book whenever it differs from the target close.
+2. **The book:** ticker, side, weight and the trade reason, sorted by absolute
+   weight.
+3. **Exposures before and after the hedge,** side by side, with the hedge
+   itself.
+
+Breadth is not on the minimal page. When it comes, it comes with item 3's
+labels.
+
+**W3. Tests (Vitest), on the C0 fixtures:**
+- the page: fresh `ok`, expired, `stale_stopped`, `error`, missing;
+- the Worker: 403 without a JWT, 404 on a missing object, `no-store` set;
+- a build check that fails if `dist/` or `web/src` contains `supabase`,
+  `postgres`, `DB_URL`, `r2.cloudflarestorage` or any `VITE_` variable
+  carrying a key.
+
+Then `status: web-ready`. The first real deploy is the owner's; see their list
+below.
+
+### The owner's deploy list
+
+Written in `LOG.md` under this review, and handed to the owner directly. Its
+gate half runs after `gate-ready`, and its flip half after `web-ready`. If
+anything in the code makes a step in it untrue, say so in the report; the
+list is not rewritten in this file.
+
+### After the owner's first real runs
+
+The first real contact is expected to surface defects in three places, because
+no SQL path, R2 put or Resend send has yet run against the real service. Fix
+them under the blocker rule, in one session.
+
+---
+
+## Previous: reviewer notes on B-cron, notes a, b, d and the raw-artifact rewrite (2026-09-25). f, g and l moved into e11-deploy above; the rest are post-deploy in LOG.md
 
 **B-cron is accepted in design.** These are accepted: the web service, the
 `efb_reader` role and `delete` all go, with one grep as the evidence. The switch

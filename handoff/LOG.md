@@ -2466,3 +2466,141 @@ memory check joins the deploy list.
   pointed at the R2 endpoint, since R2 is S3-compatible. A maintained library
   is better than a hand-rolled signer plus a test vector. The tests stub the
   client, and the scrub covers boto3's error text.
+
+---
+
+## 2026-09-25 review: notes c and e and report sections h, i, j, at 3e9dbe1; e11-deploy written
+
+**c and e are closed.**
+- (c) `mypy live scripts` had 14 errors, and all were in unattended code. All
+  14 are fixed, and `make lint` now runs the check.
+- (e) The five full-suite failures were one leaked `store.LOCAL_DIR`
+  assignment, in a slow test the fast selection never ran. The leak was
+  reproduced before the fix, and a guard test now scans for the assignment
+  form. The clean full suite is 835 passed, 1 skipped, which grows from 786.
+- (h, i, j) were answered in 3e9dbe1. Under the owner's blocker rule they are
+  post-deploy and are not re-reviewed.
+
+**The owner's blocker rule is in force from this review.** A finding blocks
+the deploy only if it changes what the cron does, risks losing or rewriting
+data or evidence, or could leak a credential. Everything else is listed here
+and stays out of TASK.md.
+
+**One new blocker, found while writing the deploy list.** `render.yaml` has no
+`plan:` key, so the Blueprint would create the cron on Render's default
+instance, not the 4 GB one B-cron chose. That is rule 1, and it is C0 in
+e11-deploy.
+
+**e11-deploy is written.** Track 1, the cron, is five commits: C0 (the plan
+and the snapshot fields), f, g, l, then the full suite. Track 2, the web page,
+starts from C0. Expected: three DeepSeek sessions, one per track plus one for
+what the first real runs surface, and two if the first real contact is clean.
+
+### Post-deploy list (not in TASK.md)
+
+- (h, i, j) are answered in 3e9dbe1 and not re-reviewed.
+- (n) The fourth restore line (`spy_holdings_2026-09-21`) is missing, and the
+  `git add -A` sentence is still wrong. C1's `make verify-evidence` paste
+  settles whether the file is intact.
+- (k) Measure the full-job memory locally once f lands. The deploy's only
+  memory check is Render's metrics on the first dry run.
+- (m) Say what the snapshot's notify field holds at write time. The
+  email-on-failed-upload test is in C3.
+- The `.env.example` comment still says "The dashboard holds a read-only
+  role's string". There is no reader now.
+- Item 5: E5's `evaluated_at` and the 0.000031 explanation.
+- Smaller items:
+  - the explicit first-run marker. **The owner may want to promote it.** An
+    appendix wiped after the seed would re-seed silently, which is close to
+    rule 2;
+  - Guard 1's movement per name.
+- Item 6, retention (E11-F16), within a month of the deploy, with
+  `efb_archiver`.
+- Propose deleting `live/dashboard_app.py` once the page is proven.
+- Breadth on the page, with item 3's labels.
+
+### The owner's deploy list
+
+**Before the first step:** `main` is ahead of `origin/main`. Render builds
+from GitHub, so push once DeepSeek reports `gate-ready`.
+
+**What the gate needs (after `gate-ready`):**
+
+1. **Supabase, the schema.** In the shared project's SQL editor, run
+   `live/supabase_schema.sql`.
+2. **Supabase, the writer role.** Generate a long random password. Replace the
+   placeholder in `live/supabase_roles.sql` with it, and run the file. Do not
+   commit the file with the password in it.
+   - The writer's connection string is the pooler string with user
+     `efb_writer.<project-ref>` and that password. It goes in two places:
+     Render `EFB_SUPABASE_DB_URL` and local `.env` `EFB_SUPABASE_DB_URL`.
+     Nowhere else.
+   - Known limit, accepted: PostgreSQL grants EXECUTE on functions to PUBLIC,
+     so the role can call functions in the credit lab's `public` schema.
+     Revoking that is a shared-project change.
+3. **The real-database check, local.** In `.env`, set the writer string and
+   `EFB_DB_SCHEMA=efb`, and **remove `EFB_STORE=local`**, because the check
+   refuses local mode. Run `.venv/bin/python scripts/verify_store_roundtrip.py`
+   and expect exit 0.
+   - If it fails on the transaction pooler (port 6543), try the session pooler
+     (5432), and tell the reviewer which one passed.
+   - Nothing else proceeds until this passes.
+4. **Alpaca.** Put EFB's own paper account keys in Render
+   `EFB_ALPACA_PAPER_API_KEY` and `EFB_ALPACA_PAPER_SECRET_KEY`, and in local
+   `.env`. They never go in the credit lab's.
+5. **Resend.** Create a key under the same Resend account with **Sending
+   access** only. It goes in Render `EFB_RESEND_API_KEY` only.
+   - `EFB_NOTIFY_EMAIL_TO` is the address that owns the Resend account. The
+     shared sender `onboarding@resend.dev` delivers only there.
+   - Leave `EFB_NOTIFY_EMAIL_FROM` unset for
+     `equity-factor-book <onboarding@resend.dev>`, as the credit lab does.
+6. **Render.** Choose New > Blueprint, pick this repository, and it creates
+   `efb-live-daily`.
+   - Confirm the instance is 4 GB.
+   - Set `EFB_SUPABASE_DB_URL`, `EFB_DB_SCHEMA=efb`, the two Alpaca keys,
+     `EFB_DRY_RUN=true`, the three Resend values and `EFB_SNAPSHOT=off`.
+   - Leave the four `EFB_R2_*` empty for now.
+   - Never set `EFB_STORE`, `EFB_SUPABASE_ACCESS_TOKEN` or
+     `EFB_SUPABASE_PROJECT_URL` on Render.
+7. **The first run.** Trigger a run by hand in Render.
+   - The email arrives with subject `EFB ok <close> | ...`, in the inbox and
+     not in spam. Set a filter or label.
+   - Read peak memory in Render's metrics, and send it to the reviewer. It
+     must be under 2 GB.
+   - Optional: a healthchecks.io heartbeat for a job that never starts.
+
+**What the flip needs (after `web-ready`):**
+
+8. **R2, the bucket.** Create a bucket such as `efb-snapshots`. Confirm
+   Public access is **off**: no `r2.dev` URL and no custom domain on the
+   bucket.
+9. **R2, the token.** Create an R2 API token with Object Read & Write,
+   **scoped to that bucket only**.
+   - Its access key id goes in Render `EFB_R2_ACCESS_KEY_ID`, and its secret
+     in Render `EFB_R2_SECRET_ACCESS_KEY`.
+   - The account id goes in `EFB_R2_ACCOUNT_ID`, and the bucket name in
+     `EFB_R2_BUCKET`.
+   - Render only: not in `.env`, and never in the Worker.
+10. **Render, the switch.** Set `EFB_SNAPSHOT=on`, and keep `EFB_DRY_RUN=true`.
+    Trigger a run, and confirm that `latest.json` and `snapshots/<close>.json`
+    are in the bucket.
+11. **The Worker.** From `web/`, run `npx wrangler login` with the owner's
+    Cloudflare account, then `npm run deploy`. The R2 binding names the bucket
+    and carries no secret.
+12. **Access.** In Zero Trust, add a self-hosted application on the Worker's
+    hostname.
+    - Policy: Allow, include the owner's email. Login by one-time PIN or
+      Google.
+    - Copy the application's AUD tag and the team domain into the Worker's two
+      vars, then redeploy.
+13. **The check.** Run `curl -sI https://<host>/api/snapshot` without a
+    session: it returns a 302 to Access or a 403. Then sign in: the page
+    shows the real proposal, a recent `generated_at` and the dry-run banner.
+
+**Then:** two gate evenings. The flip is `EFB_DRY_RUN=false` on Render, with
+the snapshot already on.
+
+**Local `.env` holds:** the writer string, `EFB_DB_SCHEMA`, the Alpaca keys,
+and optionally the Resend key for a local test. The Supabase access token and
+project URL are for provisioning only, and are deleted after use. R2 keys are
+never in `.env`.
