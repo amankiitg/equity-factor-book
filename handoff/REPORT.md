@@ -99,6 +99,32 @@ was written: **the file list and its total size are the one number missing from
 this report.** It is the owner's to read off the command's output, or mine in the
 next session, and it is not a hand-written list in either case.
 
+**The first measurement run found a bug in the measurement, not in the seed.** It
+reported `files the run opened under data/: 0`, and the reason is worth keeping:
+`push_seed.measure` prepared a run tree and then called `main`, which prepares one
+of its own and reports it through `adopt`, so the comparison was made against a
+tree the run never used. It also copied the 876 MB tree twice. `measure` now pins
+the tree through `EFB_RUN_ROOT` before the run starts, reads the tree back from
+`staleness.DATA_ROOT` afterwards, and **raises rather than returning** when a run
+opened no files, so a zero can never again be reported as a measurement.
+
+**Two things that run also showed, both worth the reviewer's eye.**
+
+1. It stopped at the gate: `stale stop for the 2026-09-25 close: prices is 1
+   session behind; ... shares is 3 sessions behind`. The run went at 17:48 ET,
+   before the vendor had the 09-25 session, and the gate did exactly what it
+   exists to do: no book priced on a stale close. That is also why the
+   measurement pins the close, and it is the behaviour the owner will watch for
+   on the two production evenings.
+2. `live/appendix.py:403` warns `DataFrame columns are not unique, some columns
+   will be omitted` while writing the universe appendix rows. That is a real
+   fidelity defect in `persist_new_sessions` and not one this round introduced:
+   a frame with duplicate names is written through `to_dict("records")`, so some
+   columns of the SPY rows may not reach `efb.e11_universe`. It is not in f's or
+   the seed track's scope, and it is recorded here rather than fixed quietly at
+   the end of a long session. **It should be checked before the first real run**,
+   because the appendix is what the cron prices from.
+
 ## f: the check that the job writes nothing under `data/` (`8f380e8`)
 
 Test 1 hashes every file under `data/` before and after a full dry-run job and

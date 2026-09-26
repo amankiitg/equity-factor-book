@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,19 +35,36 @@ from live import runroot, seed  # noqa: E402
 def measure(*, quiet: bool = False) -> tuple[Path, list[str]]:
     """Run the job in a throwaway tree and report the files it read.
 
-    The job runs as the cron runs it, with `EFB_SEED_SOURCE=local` so the tree is
+    The job runs as the cron runs it, with `EFB_SEED_SOURCE=local` so its tree is
     a copy of the repository's artifacts, and the store is the run's own. Its
     outcome does not matter to the manifest: what matters is which files it
     opened, and a run that stops early still names the files it got to.
+
+    The tree is pinned into a temporary directory before the run starts, because
+    `main` prepares a tree of its own and reports which one through `adopt`. A
+    measurement that prepared one and then compared against it would be comparing
+    against a tree the run never used, and the first version of this function did
+    exactly that and reported **zero files**, which is why a zero is an error here
+    rather than a result.
     """
+    from live import staleness
     from scripts import run_live_daily
 
     os.environ.setdefault(runroot.SEED_SOURCE_ENV, runroot.LOCAL_SOURCE)
-    tree = runroot.prepare()
-    runroot.adopt(tree)
+    os.environ[runroot.RUN_ROOT_ENV] = str(
+        Path(tempfile.mkdtemp(prefix="efb-seed-measure-")) / "data"
+    )
     with seed.record_reads() as opened:
         run_live_daily.main()
+    # `adopt`, inside the run, is what says which tree the run actually used.
+    tree = Path(staleness.DATA_ROOT)
     rels = seed.relative_reads(tree, opened)
+    if not rels:
+        raise seed.SeedUnavailable(
+            f"the run opened no files under {tree}, so it either stopped before "
+            "reading anything or did not use the tree it was given; a seed cannot "
+            "be measured from that run"
+        )
     if not quiet:
         print(f"run tree: {tree}")
         print(f"files the run opened under data/: {len(rels)}")
