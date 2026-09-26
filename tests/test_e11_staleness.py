@@ -166,6 +166,10 @@ def _patch_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         corporate_actions, "apply_to_artifact", lambda *a, **k: _NoCorporateActions()
     )
+    # The suite runs whatever day it happens to, and the cron correctly does
+    # nothing at all on a day the exchange is shut (tests/test_e11_holiday.py).
+    # These tests are about the evening, so the day is declared a session.
+    monkeypatch.setattr(staleness, "is_session", lambda day: True)
 
 
 def test_a_monday_run_on_fridays_close_passes(tmp_path: Path) -> None:

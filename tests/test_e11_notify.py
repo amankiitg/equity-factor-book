@@ -315,6 +315,10 @@ def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.setattr(extend, name, lambda *a, **k: {})
     monkeypatch.setattr(run_live_daily, "already_ran", lambda job, day: False)
+    # The suite runs whatever day it happens to, and the cron correctly does
+    # nothing at all on a day the exchange is shut (tests/test_e11_holiday.py).
+    # These tests are about the evening, so the day is declared a session.
+    monkeypatch.setattr(staleness, "is_session", lambda day: True)
     monkeypatch.setattr(run_live_daily, "store_proposal", lambda *a, **k: None)
     monkeypatch.setattr(run_live_daily, "store_orders", lambda as_of, dry: None)
     monkeypatch.setattr(run_live_daily, "store_reconciliation", lambda as_of, row: None)

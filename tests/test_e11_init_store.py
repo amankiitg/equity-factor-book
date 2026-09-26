@@ -242,6 +242,9 @@ def test_a_refusal_fails_the_run_and_names_the_fix_in_the_email(
     ):
         monkeypatch.setattr(module, "DATA_ROOT", module.DATA_ROOT)
     monkeypatch.setattr(run_live_daily, "already_ran", lambda job, day: False)
+    # The suite runs whatever day it happens to, and the cron correctly does
+    # nothing on a day the exchange is shut. These tests are about the evening.
+    monkeypatch.setattr(staleness, "is_session", lambda day: True)
     monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
     monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
     sent: list[dict[str, object]] = []

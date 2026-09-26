@@ -62,13 +62,16 @@ class _NoCorporateActions:
 
 def _stub_the_work(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Every step that fetches, sizes or writes, plus the store and the gate."""
-    from live import corporate_actions, reconcile, sanity
+    from live import corporate_actions, reconcile, sanity, staleness
 
     monkeypatch.setenv(runroot.SEED_SOURCE_ENV, runroot.LOCAL_SOURCE)
     monkeypatch.setenv(store.INIT_STORE_ENV, "true")
     monkeypatch.setenv(runroot.RUN_ROOT_ENV, str(tmp_path / "run" / "data"))
     monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
     monkeypatch.setattr(run_live_daily, "already_ran", lambda job, day: False)
+    # The suite runs whatever day it happens to, and the cron correctly does
+    # nothing on a day the exchange is shut. These tests are about the evening.
+    monkeypatch.setattr(staleness, "is_session", lambda day: True)
     monkeypatch.setattr(appendix, "open_store", lambda *a, **k: True)
     for name in ("hydrate", "persist_new_sessions", "appendix_manifest"):
         monkeypatch.setattr(appendix, name, lambda *args, **kwargs: {})

@@ -427,6 +427,58 @@ def finish_run(
     return 0 if status == "ok" else 1
 
 
+def market_closed_run(run_date: str) -> int:
+    """The exchange is shut: one message, no seed, no extension, no book.
+
+    Asked before anything else, because the run has nothing to do: there is no
+    close to price, so downloading a 600 MB seed and extending nine inputs would
+    be work spent to produce nothing. The owner is told rather than left in
+    silence, because silence is the alarm for a run that never started.
+
+    The day is recorded in `cron_runs` so a re-fire does not send a second
+    message, and **no `run_status` row is written**: the dashboard reads the
+    latest row and judges it against `target_close`, which on a holiday is the
+    previous session's row, already clean. A `market_closed` run_status row
+    would replace that with a failure state on a day nothing failed.
+    """
+    from live import notify, store
+
+    reason = f"there is no NYSE session on {run_date}"
+    try:
+        if already_ran("live_daily", run_date):
+            logger.info("market closed for %s and already recorded, exit 0", run_date)
+            return 0
+    except Exception as exc:  # noqa: BLE001 - nothing to write on a closed day
+        logger.warning(
+            "could not check the run record: %s",
+            notify.scrub(f"{type(exc).__name__}: {exc}"),
+        )
+
+    try:
+        store_name = store.store_label()
+    except Exception:  # noqa: BLE001 - the message matters more than the store
+        # Unconfigured or unreachable. The message says so rather than the run
+        # dying before it can explain why there is no book.
+        store_name = "no store configured"
+    logger.info("market closed: %s", reason)
+    notified = notify.notify_run(
+        status="market_closed",
+        target_close=run_date,
+        dry_run=True,
+        detail=reason,
+        store=store_name,
+    )
+    delivered = notified["status"] == notify.STATUS_SENT
+    try:
+        record_run("live_daily", run_date, "market_closed", reason)
+    except Exception as exc:  # noqa: BLE001 - the message already went out
+        logger.warning(
+            "could not record the closed day: %s",
+            notify.scrub(f"{type(exc).__name__}: {exc}"),
+        )
+    return 0 if delivered else 1
+
+
 def main() -> int:
     from live import (
         corporate_actions,
@@ -440,6 +492,13 @@ def main() -> int:
     )
 
     run_date = datetime.now(UTC).date().isoformat()
+    # The exchange's own calendar decides first, because a shut market has no
+    # close to price: no seed, no extension, no gate, no book. The check is
+    # before `already_ran` so a holiday is recognised without needing the store
+    # to be reachable, and the closed path does its own idempotency check so a
+    # re-fire does not send the owner a second message.
+    if not staleness.is_session(run_date):
+        return market_closed_run(run_date)
     if already_ran("live_daily", run_date):
         logger.info("already ran for %s, exit 0 (idempotent)", run_date)
         return 0

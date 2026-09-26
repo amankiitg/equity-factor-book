@@ -79,6 +79,9 @@ STATUS_LABELS: dict[str, str] = {
     "ok": "ok, the run completed",
     "stale_stopped": "stale_stopped, the run refused to price a book",
     "error": "error, the run failed",
+    # The exchange was shut: there was no close to price, so the run did nothing
+    # and said so. Not a failure, and not a silent evening either.
+    "market_closed": "market_closed, the exchange was shut",
 }
 
 # Patterns that must never leave the process. The URL rule catches the webhook
@@ -252,6 +255,11 @@ def compose(
             "Orders: none. The run stopped on staleness before sizing, so no "
             "book was priced and no order was built."
         )
+    elif status == "market_closed":
+        lines.append(
+            "Orders: none. The exchange was shut, so there was no close to price "
+            "and no book was built."
+        )
     else:
         lines.append(
             "Orders: none. The run failed before sizing, so no book was priced."
@@ -273,6 +281,9 @@ def compose(
         )
     if status == "stale_stopped" and failures:
         lines.append(f"Failing inputs: {_failure_list(failures, inputs)}.")
+    if status == "market_closed":
+        reason = scrub(detail).strip()
+        lines.append("Market: closed" + (f", {reason}" if reason else "") + ".")
     if no_price:
         # A member with no price leaves the book by construction, and a book quietly
         # smaller than the index is a book nobody can check, so the names are said
@@ -351,6 +362,8 @@ def subject_text(
         word = "ok"
     elif status == "stale_stopped":
         word = "STALE"
+    elif status == "market_closed":
+        word = "CLOSED"
     else:
         word = "ERROR"
     caught_up = len(catch_up_sessions or [])
@@ -371,6 +384,8 @@ def subject_text(
         middle = "none proposed"
     if status == "error":
         tail = error_type or "Exception"
+    elif status == "market_closed":
+        tail = "market closed"
     else:
         if worst_input is None and inputs:
             # The same worst input the body names, so the two cannot disagree.
