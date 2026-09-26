@@ -2631,3 +2631,231 @@ written, by the measurement rather than by the item's own code, all four were
 restored byte-for-byte from `evidence/`, and the underlying defect is item f. The
 snapshot itself wrote nothing anywhere at that commit, because `EFB_SNAPSHOT` is
 required and the measurement ran with it off.
+
+## Preflip: everything needed before real paper orders
+
+Branch `preflip`, seven commits off `702d01d`, one per item. **Nothing is pushed
+to `main`**: `main` auto-deploys to the live cron, and the owner's rule is that it
+does not move until the two gate evenings pass.
+
+1. **Order timing (`f0d432e`).** The cron fires at 22:30 UTC, which is 18:30 ET in
+   summer and 17:30 ET in winter: after the 16:00 ET close and inside the 16:00 to
+   20:00 ET after-hours window. Alpaca's Time in Force table
+   (`docs.alpaca.markets/docs/orders-at-alpaca#time-in-force`) says of `opg`:
+   "OPG orders submitted after 9:28am but before 7:00pm ET will be rejected", and
+   both spellings of the cron's slot are inside that window, so `opg` would have
+   been refused every evening; `cls` is rejected between 3:50pm and 7:00pm ET.
+   `day` is accepted there and queued for the next session ("If submitted after
+   the close, it is queued and submitted the following trading day"), and it is
+   the only TIF a notional order may carry. `alpaca.NEXT_OPEN_TIF = "day"` carries
+   the rule and the citations and the submitter uses it.
+   `scripts/smoke_order_timing.py` is the proof the owner runs once: one 1-share
+   market order with that time-in-force, verified as an acceptance, then
+   cancelled. It refuses without `--yes` and outside the 16:00 to 20:00 ET window
+   (`--force-hour` is the deliberate escape), because the hour is what is being
+   tested.
+2. **A shut exchange (`002031d`).** `staleness.is_session` asks the NYSE calendar;
+   `run_live_daily.main` checks it first, before the seed, the extension or the
+   store, so a holiday costs nothing and says so. A new `market_closed` status
+   emails the owner (subject `EFB CLOSED <date> | none proposed | market closed`)
+   and no `run_status` row is written, because the dashboard judges the latest row
+   against its own `target_close` and a holiday row would replace a clean state
+   with a failure on a day nothing failed. The day goes in `cron_runs` so a retry
+   does not repeat the message, and a store that cannot be reached still sends it.
+   The 2026 closure list is pinned in the tests (ten weekdays), so a calendar that
+   changes its mind is visible.
+3. **The establishment day (`77bc1ed`).** `guards.traded_notional_limit` returns
+   the limit and its basis: on the first trading day the ceiling is the book
+   itself (`ESTABLISHMENT_GROSS`, 1.0 NAV of gross) and from the second the
+   absolute brake applies. `run_morning` measures every traded leg against the
+   book the account holds, which is what makes the flag real (from flat a leg is
+   the whole target, from a held book the difference, so a rebalance that already
+   holds its targets trades nothing). The day is recorded as `establishment` and
+   its cost as `cost_label`, in the row, the snapshot and the email.
+4. **Shorts (`82dca2d`).** The v9.2 pattern: `alpaca.short_refusal` reads
+   `tradable`, `shortable` and `easy_to_borrow` live, once per run and never
+   persisted, and names the first thing that is wrong. `submit_market_orders`
+   returns one record per intended leg; an `APIError` is recorded with its code
+   and the book keeps trading; anything else is transport class, so submission
+   halts and the rest are `SKIPPED_AFTER_HALT`. Nothing raises. `reason_code`
+   lands on every execution row, in `efb.orders` and on the run summary, because
+   Alpaca keeps no record of a refused leg at all.
+5. **Rerun safety and pacing (`2bf391c`).** `client_order_id(close, ticker, side)`
+   is deterministic, so a rerun of the same evening is refused by the broker
+   instead of doubling the book, and it is recorded on the row. `Throttle` spaces
+   submissions 0.35 s apart (about 171 a minute against the documented 200).
+   `check_buying_power` runs on the whole book before the first order and raises
+   with both numbers named, because Alpaca checks leg by leg and a book that does
+   not fit ends half-built.
+6. **The account before sizing (`0d0f560`).** `live/positions.py` reads both books
+   and states the difference: names the store holds and the account does not,
+   names the account holds and the store does not, and per-name drift over a
+   dollar. An account that could not be read is not an empty account (`matches` is
+   null with the reason). The account's book is what the orders are measured
+   against. The check goes into the email, `run_status.positions_check` and the
+   snapshot.
+7. **The Cloudflare page (`447992d`).** `web/`: Vite 8, React 19, TypeScript 5,
+   Tailwind 4, Vitest 3, wrangler 4, with `npm run deploy` as
+   `vite build && wrangler deploy`. One Worker serves the page and
+   `GET /api/snapshot`, which reads `latest.json` through an R2 binding and
+   verifies the Access assertion against the team's certificates and the AUD (403
+   without one), answers `404 {"missing": true}` for an absent object, and sends
+   `Cache-Control: no-store`. `preview_urls` is false, so there is no hostname
+   outside Access. The page leads with status, then the dry-run banner, the
+   catch-up label, the positions check, the book and the exposures either side of
+   the hedge.
+
+### The rehearsal
+
+Local Postgres, the real R2 seed, `EFB_DRY_RUN=true`, `EFB_SNAPSHOT=off`,
+`EFB_INIT_STORE` unset. One thing is pinned and it is the sandbox's: the clock says
+**Saturday 2026-09-26**, so `is_session` is false and the cron correctly does
+nothing, which the first attempt proved (`market closed for 2026-09-26 and already
+recorded, exit 0`). The rehearsal pins the calendar true and clears the day's
+`cron_runs` row so the idempotency gate does not skip it. Everything else is real,
+including the read of the paper account.
+
+```text
+cleared 1 cron_runs row(s) for 2026-09-26
+15:30:56 store: postgres/efb
+15:31:03 seed allowlist: 19 path(s) allowed
+15:31:03 run tree: /var/folders/.../efb-run-kof52woh/data
+15:39:12 positions: mismatch: the account holds 0 name(s) and the store 150: 150
+         name(s) the store holds and the account does not (ABT, ADM, AIG, AKAM,
+         ALB, AMCR, ...). Expected in dry run: nothing has been sent to the
+         account, so the store's book is an intention, not a holding;
+         held 0 name(s), establishment=True
+15:39:13 run recorded as ok, notification sent
+exit: 0
+```
+
+The stored run, and the message it sent:
+
+```text
+run_status:  target_close 2026-09-25, status ok, notify_status sent, dry_run True,
+             n_orders 150, gross_notional 1,000,000, establishment True,
+             cost_label establishment, snapshot "snapshot: off (dry run)"
+positions_check: matches False, n_broker 0, n_store 150,
+             source "alpaca paper account", max_abs_drift 0.0
+gate:        universe 1 session behind / 1 allowed, every other input 0 / 0,
+             failures []
+orders:      150 rows, statuses {DRY_RUN}, reason_codes {DRY_RUN: 150},
+             ids like efb-2026-09-25-CMG-B-250e410aa205
+proposal:    499 names, n_eff_kept 61.03, achieved vol 0.10,
+             universe raw/spy_holdings/spy_holdings_2026-09-24.parquet
+reconciliation: intended 1,000,000, filled 0, cost 53.73 bps, dry_run True
+
+SUBJECT: EFB ok 2026-09-25 | 150 proposed, none sent | stale 1 (universe)
+store: postgres/efb
+EFB live book 2026-09-25: ok, the run completed
+Orders: dry run: 150 orders proposed, $1,000,000 gross, none sent
+Staleness: worst input universe, 1 session behind (allowed 1).
+Snapshot: snapshot: off (dry run).
+Establishment: the first trading day, so this run creates the book and may trade
+up to the full book ($1,000,000 of gross); the daily brake starts on the second
+trading day.
+Cost: establishment, 53.73 bps of NAV.
+Positions: mismatch: the account holds 0 name(s) and the store 150: 150 name(s)
+the store holds and the account does not (ABT, ADM, AIG, AKAM, ALB, AMCR, ...).
+Expected in dry run: nothing has been sent to the account, so the store's book is
+an intention, not a holding.
+```
+
+The one number worth reading twice is the positions line: the paper account was
+read for real and holds nothing, while the store carries the 150-name book the dry
+runs intended. That is the state the flip starts from, and it is now stated every
+evening rather than assumed.
+
+### Verification
+
+Per step, the fast suite and `make lint`, and the web toolchain's own tests:
+
+```text
+$ make test
+942 passed, 1 skipped, 32 deselected, 4 warnings in 37.22s
+
+$ cd web && npx vitest run
+ Test Files  4 passed (4)
+      Tests  43 passed (43)
+
+$ cd web && npm run build
+vite v8.3.1 building client environment for production...
+dist/assets/index-e1vaoGEe.js   226.35 kB │ gzip: 70.88 kB
+✓ built in 833ms
+
+$ make lint
+ruff: All checks passed!
+mypy efb: Success: no issues found in 33 source files
+mypy live scripts: Success: no issues found in 31 source files
+black: 190 files would be left unchanged.
+```
+
+The full suite, `make test-all`, at the branch tip:
+
+```text
+$ make test-all > /tmp/efb-test-all.log 2>&1; echo "EXIT=$?"
+$ tail -4 /tmp/efb-test-all.log
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+974 passed, 1 skipped, 4 warnings in 633.07s (0:10:33)
+EXIT=0
+```
+
+The previous full run recorded in `LOG.md` was 900 passed, 1 skipped. This one
+collects 975, up 75: the seven items' own tests plus the page's 43 Vitest tests
+are not in that number (the Python suite is), so the growth is the E11 tests
+added here, and nothing was lost.
+
+`make verify-evidence`: `evidence OK`. Nothing under `data/` or `evidence/` was
+written by this branch: the rehearsal works in its own tree and the web fixtures
+are JSON under `web/`.
+
+**Headline numbers, with where each was read from.** `establishment True` and
+`cost_label establishment` from `efb.run_status.establishment`, `cost_label`.
+`positions_check` from `efb.run_status.positions_check` (broker 0, store 150).
+`reason_code` and `client_order_id` from `efb.orders.reason_code`,
+`efb.orders.client_order_id`. The gate's allowance from
+`efb.run_status.inputs.universe.allowed_sessions_behind` (1). The order count and
+gross from `efb.run_status.n_orders` and `gross_notional`.
+
+**Yes or no, each with its evidence.**
+
+1. *Any two rows or two estimators identical.* **No.** The 150 order rows differ
+   by ticker, notional and `client_order_id`; the three dry-run rows printed in
+   the transcript show three distinct ids.
+2. *Any exception caught and skipped, or any fallback taken, with counts.*
+   **Yes, two, both deliberate and both counted.** The holiday path catches a
+   failure to reach the store so the message still goes out
+   (`test_a_closed_day_still_says_so_when_the_store_is_unreachable`); the
+   positions read catches a failure to read the account and reports `matches:
+   null` with the reason rather than an empty book
+   (`test_a_failed_check_is_a_refusal_not_an_exception` is the same policy on the
+   short check). Counts in the rehearsal: zero of either.
+3. *Any criterion reworded or replaced.* **No.** No F criterion is touched.
+4. *Any criterion that passes by construction.* **No.** The establishment ceiling
+   is the one that could have been: it is a real bound
+   (`test_the_establishment_ceiling_still_trips_on_ten_times_the_book`), and the
+   brake-under-500k negative control shows the same orders are rejected on a
+   rebalance day.
+5. *Any number that moved by a factor of ten or more.* **No.** The rehearsal's
+   proposal, gate, cost and exposure numbers are the same shape as the previous
+   rehearsal's, re-read from the same tables.
+6. *Any stored number typed into a notebook.* **No.**
+7. *Any earlier verdict changed.* **No.** The two gate evenings are still the
+   owner's, and nothing here changes what a stored criterion says.
+
+**Anything decided that the reviewer might disagree with.** Three.
+
+- **`day`, not `opg`.** The doc citation is in `live/alpaca.py` and the smoke test
+  exists to check the conclusion against the real account rather than the page.
+  If the owner would rather the orders be queued at 19:00 ET or later (when `opg`
+  is accepted), that is a schedule change, not a TIF change.
+- **No `run_status` row on a holiday.** The dashboard judges the latest row
+  against its own `target_close`, so a holiday row would show a failure on a day
+  nothing failed. The cost is that the Cloudflare page has no evidence of the
+  holiday other than the email and the absent snapshot.
+- **The establishment ceiling is 1.0 NAV of gross, which is tighter than the
+  absolute brake** (2,000,000). That reads oddly until the two are seen as
+  different instruments: the brake is a throughput limit on a rebalance, and day
+  one is not a rebalance. If the owner would rather day one be bounded by the
+  brake as well, that is a one-line change and the flag would still be recorded.
