@@ -811,3 +811,69 @@ def test_the_resend_key_shape_is_scrubbed() -> None:
     # The endpoint is not a secret, but the URL rule redacts every URL on the way
     # out, which is the right side to err on.
     assert notify.scrub(notify.RESEND_ENDPOINT) == "[redacted]"
+
+
+def test_the_cost_line_carries_the_four_parts_it_is_made_of() -> None:
+    """The establishment day's cost, as the arithmetic it actually is.
+
+    These are the real numbers of the rehearsed proposal: 53.7338 bp of NAV =
+    5.3558 spread + 39.0447 impact + 1.0 commission + 8.3333 borrow. One total
+    asks to be trusted; four parts can be added up by the person reading them.
+    """
+    from live import notify
+
+    text = notify.compose(
+        status="ok",
+        target_close="2026-09-22",
+        dry_run=True,
+        orders=150,
+        gross=1_000_000.0,
+        establishment=True,
+        cost_label="establishment",
+        cost_bps=53.7338,
+        cost_breakdown={
+            "spread": 5.3558,
+            "impact": 39.0447,
+            "commission": 1.0,
+            "borrow": 8.3333,
+            "total": 53.7338,
+        },
+    )
+
+    assert (
+        "Cost: establishment, 53.73 bps of NAV "
+        "(spread 5.36 + impact 39.04 + commission 1.00 + borrow 8.33)." in text
+    )
+
+
+def test_the_cost_line_says_so_when_the_parts_are_not_the_total() -> None:
+    """A breakdown that does not add up is a bug, and the message is where it shows."""
+    from live import notify
+
+    text = notify.compose(
+        status="ok",
+        target_close="2026-09-22",
+        cost_label="establishment",
+        cost_bps=75.3,
+        cost_breakdown={
+            "spread": 12.3,
+            "impact": 30.0,
+            "commission": 2.0,
+            "borrow": 6.0,
+            "total": 75.3,
+        },
+    )
+
+    assert "which sum to 50.30, not 75.30" in text
+
+
+def test_the_cost_line_stands_without_a_breakdown() -> None:
+    """An older proposal has a total and no parts, and the line still reads."""
+    from live import notify
+
+    text = notify.compose(
+        status="ok", target_close="2026-09-22", cost_label="rebalance", cost_bps=12.0
+    )
+
+    assert "Cost: rebalance, 12.00 bps of NAV." in text
+    assert "(" not in text.split("Cost:")[1].split("\n")[0]

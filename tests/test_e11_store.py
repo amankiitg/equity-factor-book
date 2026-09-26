@@ -136,6 +136,32 @@ def test_the_schema_declares_every_column_the_live_writers_use(table: str) -> No
     assert not missing, f"efb.{table} does not declare {sorted(missing)}"
 
 
+def test_every_reconciliation_upgrade_has_its_alter() -> None:
+    """A column in the create block reaches a fresh database and no other.
+
+    The shared project was provisioned months ago, so `create table if not
+    exists` is a no-op there and only an `alter table ... add column if not
+    exists` adds anything. The pre-flip cost breakdown is four new columns, and
+    the test above cannot tell the two apart: it counts a column declared in the
+    create block as declared, so a missing ALTER passes it. This one does not,
+    for the columns added after the initial provision.
+    """
+    schema = (ROOT / "live" / "supabase_schema.sql").read_text()
+    added_later = [
+        "max_abs_exposure_after_fmp",
+        "expected_spread_bps",
+        "expected_impact_bps",
+        "expected_commission_bps",
+        "expected_borrow_bps",
+    ]
+    for column in added_later:
+        statement = f"add column if not exists {column}"
+        assert f"alter table efb.reconciliation\n  {statement}" in schema, (
+            f"efb.reconciliation.{column} has no upgrade statement, so the "
+            "already-provisioned database would not get it"
+        )
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [

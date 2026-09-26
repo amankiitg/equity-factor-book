@@ -35,8 +35,44 @@ RECONCILIATION_COLUMNS = [
     "intended_notional",
     "filled_notional",
     "expected_cost_bps",
+    # The establishment cost, split the way efb/costs.py computes it. They sum to
+    # `expected_cost_bps` by construction, and the row states them so the total is
+    # an arithmetic claim rather than one number nobody can decompose.
+    "expected_spread_bps",
+    "expected_impact_bps",
+    "expected_commission_bps",
+    "expected_borrow_bps",
     "dry_run",
 ]
+
+# The parts of the establishment cost, in the order the message states them.
+COST_PARTS = ("spread", "impact", "commission", "borrow")
+
+
+def cost_breakdown(manifest: dict[str, Any]) -> dict[str, float]:
+    """The establishment cost and its four parts, in basis points of NAV.
+
+    The parts come from the proposal's own `cost_breakdown_bps`, which
+    `evening_job._cost_decomposition` builds as spread + impact + commission +
+    borrow, so the four always sum to the total. Borrow is the short leg's annual
+    rate over one 21-session horizon, not a year: the first trading day pays
+    three weeks of borrow, not twelve months of it.
+
+    A manifest written before the breakdown existed has the total and no parts;
+    then only the total is returned, because a missing part must not be invented.
+    A manifest with neither (a stored one read back on a failed evening) returns
+    nothing at all, and the message simply leaves the cost out.
+    """
+    raw = manifest.get("cost_breakdown_bps") or {}
+    breakdown: dict[str, float] = {}
+    total = manifest.get("expected_establishment_cost_bps")
+    if total is not None:
+        breakdown["total"] = float(total)
+    for part in COST_PARTS:
+        value = raw.get(part)
+        if value is not None:
+            breakdown[part] = float(value)
+    return breakdown
 
 
 def _load_manifest(as_of: str) -> dict[str, Any]:
@@ -67,6 +103,7 @@ def daily_record(
     """
     manifest = _load_manifest(as_of)
     execution = _load_execution(as_of)
+    breakdown = cost_breakdown(manifest)
     intended = (
         float(execution["intended_notional"].abs().sum()) if len(execution) else 0.0
     )
@@ -82,7 +119,13 @@ def daily_record(
         "n_eff_kept": float(manifest["n_eff_kept"]),
         "intended_notional": intended,
         "filled_notional": filled,
-        "expected_cost_bps": float(manifest["expected_establishment_cost_bps"]),
+        "expected_cost_bps": breakdown["total"],
+        # None where the manifest carries no breakdown, so the column says "not
+        # recorded" rather than a zero that reads as a free day.
+        "expected_spread_bps": breakdown.get("spread"),
+        "expected_impact_bps": breakdown.get("impact"),
+        "expected_commission_bps": breakdown.get("commission"),
+        "expected_borrow_bps": breakdown.get("borrow"),
         "dry_run": dry_run,
     }
     state_dir.mkdir(parents=True, exist_ok=True)

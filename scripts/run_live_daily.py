@@ -350,9 +350,15 @@ def finish_run(
     # of building the book from flat. Naming it beside the label keeps the number
     # from reading as a rebalance cost it never was.
     cost_bps: float | None = None
+    breakdown: dict[str, float] | None = None
     if manifest:
-        raw_cost = manifest.get("expected_establishment_cost_bps")
-        cost_bps = float(raw_cost) if raw_cost is not None else None
+        from live import reconcile as reconcile_module
+
+        # The same four parts the day's reconciliation row carries, from the same
+        # manifest: the message and the store must not be able to disagree about
+        # what the evening cost.
+        breakdown = reconcile_module.cost_breakdown(manifest)
+        cost_bps = breakdown.get("total")
     snapshot_detail, snapshot_failed = "", False
     try:
         written = snapshot_module.write_snapshot(
@@ -402,6 +408,7 @@ def finish_run(
         brake_limit=brake_limit,
         positions_check=positions_check,
         cost_bps=cost_bps,
+        cost_breakdown=breakdown or None,
         poster=poster,
     )
     delivered = notified["status"] == notify.STATUS_SENT

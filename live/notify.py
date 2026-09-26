@@ -212,6 +212,7 @@ def compose(
     establishment: bool = False,
     cost_label: str = "rebalance",
     cost_bps: float | None = None,
+    cost_breakdown: dict[str, float] | None = None,
     brake_limit: float | None = None,
     positions_check: dict[str, Any] | None = None,
 ) -> str:
@@ -328,7 +329,7 @@ def compose(
             "holds a book."
         )
     if cost_bps is not None:
-        lines.append(f"Cost: {cost_label}, {float(cost_bps):.2f} bps of NAV.")
+        lines.append(_cost_line(float(cost_bps), cost_label, cost_breakdown))
     # The broker's book against the store's, every evening. A difference is the
     # one thing that makes every traded leg wrong in the same direction, so it is
     # stated even when the answer is "they match".
@@ -344,6 +345,35 @@ def compose(
             lines.append(f"Error: {prefix}: {reason}")
 
     return "\n".join(lines)
+
+
+def _cost_line(
+    total_bps: float, cost_label: str, breakdown: dict[str, float] | None
+) -> str:
+    """The day's cost, and the four parts it is made of.
+
+    A total on its own is one number to trust; the parts are four to check. They
+    sum to the total by construction (`evening_job._cost_decomposition` adds
+    exactly these four), so the message states them and, when they do not add up,
+    says that too rather than presenting a broken total as a whole one. Borrow is
+    the short leg's annual rate over one 21-session horizon, not a year.
+    """
+    line = f"Cost: {cost_label}, {total_bps:.2f} bps of NAV"
+    parts = [
+        (name, breakdown[name])
+        for name in ("spread", "impact", "commission", "borrow")
+        if breakdown and breakdown.get(name) is not None
+    ]
+    if not parts:
+        return line + "."
+    stated = " + ".join(f"{name} {float(value):.2f}" for name, value in parts)
+    line += f" ({stated})"
+    if len(parts) == 4 and abs(sum(value for _, value in parts) - total_bps) > 0.05:
+        # Above a hundredth of a basis point of rounding, the four are not the
+        # total and the message must not read as if they were.
+        parts_bps = sum(value for _, value in parts)
+        line += f", which sum to {parts_bps:.2f}, not {total_bps:.2f}"
+    return line + "."
 
 
 def _flag_list(flags: list[dict[str, Any]]) -> str:
@@ -578,6 +608,7 @@ def notify_run(
     establishment: bool = False,
     cost_label: str = "rebalance",
     cost_bps: float | None = None,
+    cost_breakdown: dict[str, float] | None = None,
     brake_limit: float | None = None,
     positions_check: dict[str, Any] | None = None,
     api_key: str | None = None,
@@ -621,6 +652,7 @@ def notify_run(
         establishment=establishment,
         cost_label=cost_label,
         cost_bps=cost_bps,
+        cost_breakdown=cost_breakdown,
         brake_limit=brake_limit,
         positions_check=positions_check,
     )

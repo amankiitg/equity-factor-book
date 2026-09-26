@@ -99,6 +99,14 @@ create table if not exists efb.reconciliation (
   intended_notional double precision,
   filled_notional double precision,
   expected_cost_bps double precision,
+  -- The establishment cost, split the way efb/costs.py computes it. A total
+  -- alone is a number nobody can check; these four make it an arithmetic
+  -- claim. Borrow is the short leg's annual rate over one 21-session
+  -- horizon, not a year.
+  expected_spread_bps double precision,
+  expected_impact_bps double precision,
+  expected_commission_bps double precision,
+  expected_borrow_bps double precision,
   dry_run boolean not null,
   realized_pnl double precision
 );
@@ -307,6 +315,18 @@ create table if not exists efb.e11_corporate_actions (
 -- "max_abs_exposure_after_fmp" of relation "reconciliation" does not exist`.
 alter table efb.reconciliation
   add column if not exists max_abs_exposure_after_fmp double precision;
+
+-- Pre-flip: the establishment cost, split into its four parts. They sum to
+-- `expected_cost_bps` by construction (live/evening_job.py adds exactly these
+-- four), and stating them turns the total into something the owner can check.
+alter table efb.reconciliation
+  add column if not exists expected_spread_bps double precision;
+alter table efb.reconciliation
+  add column if not exists expected_impact_bps double precision;
+alter table efb.reconciliation
+  add column if not exists expected_commission_bps double precision;
+alter table efb.reconciliation
+  add column if not exists expected_borrow_bps double precision;
 
 -- Pre-flip: the establishment day's flag and its cost label.
 alter table efb.run_status
