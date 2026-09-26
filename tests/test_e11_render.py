@@ -79,11 +79,23 @@ def test_trade_reasons_classify_each_bucket() -> None:
 
 
 def test_trade_reasons_new_name_is_alpha() -> None:
+    """A name new to a book that exists entered on its score.
+
+    With no earlier book at all it is the establishment day instead, and every
+    row says "new position": nothing moved, because nothing was there to move.
+    """
     today = pd.DataFrame({"ticker": ["X"], "weight": [0.03], "z": [0.9]})
+    existing_book = pd.DataFrame({"ticker": ["Y"], "weight": [0.02], "z": [1.0]})
+
     reasons = trade_reasons.assign_trade_reasons(
-        today, None, pd.Series(dtype=float), None
+        today, existing_book, pd.Series(dtype=float), None
     )
     assert reasons["reason"].iloc[0] == "alpha moved"
+
+    established = trade_reasons.assign_trade_reasons(
+        today, None, pd.Series(dtype=float), None
+    )
+    assert established["reason"].iloc[0] == "new position"
 
 
 def test_render_dashboard_reads_no_research_parquet() -> None:

@@ -55,9 +55,9 @@ export function health(snapshot: Snapshot, now: Date): Health {
     return {
       ok: false,
       headline: closed
-        ? `no run for the session after the ${snapshot.target_close ?? "last"} close`
+        ? `no run for the session after the ${dateOnly(snapshot.target_close) ?? "last"} close`
         : "no run for the session that should have closed",
-      detail: `the snapshot for the ${snapshot.target_close ?? "next"} close was expected by ${snapshot.expected_next_by}, ${Math.abs(
+      detail: `the snapshot for the ${dateOnly(snapshot.target_close) ?? "next"} close was expected by ${snapshot.expected_next_by}, ${Math.abs(
         minutesBetween(now, due),
       )} minute(s) ago`,
     };
@@ -65,7 +65,7 @@ export function health(snapshot: Snapshot, now: Date): Health {
   if (closed) {
     return {
       ok: true,
-      headline: `market closed on ${snapshot.target_close ?? "the run's date"}: no run was due`,
+      headline: `market closed on ${dateOnly(snapshot.target_close) ?? "the run's date"}: no run was due`,
       detail:
         snapshot.run_status?.detail ||
         "the exchange was shut, so there was no close to price",
@@ -73,7 +73,7 @@ export function health(snapshot: Snapshot, now: Date): Health {
   }
   return {
     ok: true,
-    headline: `clean run for the ${snapshot.target_close ?? "latest"} close`,
+    headline: `clean run for the ${dateOnly(snapshot.target_close) ?? "latest"} close`,
     detail: snapshot.run_status?.notify_status
       ? `the owner was notified (${snapshot.run_status.notify_status})`
       : "",
@@ -88,6 +88,129 @@ const dollars = (value: number | null): string =>
 
 const exposures = (value: number | null): string =>
   value === null || value === undefined ? "n/a" : value.toFixed(4);
+
+/** A date as the day it is, never with a midnight time stapled to it. */
+const dateOnly = (value: string | null | undefined): string | null =>
+  value === null || value === undefined || value === "" ? null : value.slice(0, 10);
+
+/** One decimal place: an effective breadth of 70.59213 is 70.6 names, not 70.59. */
+const oneDecimal = (value: number | null): string =>
+  value === null || value === undefined ? "n/a" : value.toFixed(1);
+
+/**
+ * A factor exposure to four places, with negative zero shown as zero.
+ *
+ * The hedge drives every factor to zero to machine precision, so the "after"
+ * column holds values like -2.6e-18 whose four-place form is "-0.0000". That is
+ * not a negative exposure, it is rounding, and a table of minus-zeroes reads as
+ * though the hedge had missed.
+ */
+const exposure = (value: number | null | undefined): string => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "n/a";
+  const rounded = Number(value.toFixed(4));
+  return (Object.is(rounded, -0) ? 0 : rounded).toFixed(4);
+};
+
+/** A human age, so the reader does not have to subtract two timestamps. */
+function ageText(generated: Date, now: Date): string {
+  const minutes = minutesBetween(generated, now);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  return `${Math.round(hours / 24)} day${Math.round(hours / 24) === 1 ? "" : "s"} ago`;
+}
+
+// The factor vocabulary, styles first then sectors, in the order the reader
+// wants them: what the portfolio is tilted towards, then where it sits. The
+// sector labels are GICS names with their codes, because `sector_45` is not a
+// thing anyone reads off a screen.
+const STYLE_ROWS: Array<[string, string]> = [
+  ["beta", "Beta"],
+  ["liquidity", "Liquidity"],
+  ["market", "Market"],
+  ["momentum", "Momentum"],
+  ["resid_vol", "Residual vol"],
+  ["reversal", "Reversal"],
+  ["size", "Size"],
+];
+
+const SECTOR_ROWS: Array<[string, string]> = [
+  ["sector_10", "10 Energy"],
+  ["sector_15", "15 Materials"],
+  ["sector_20", "20 Industrials"],
+  ["sector_25", "25 Consumer Discretionary"],
+  ["sector_30", "30 Consumer Staples"],
+  ["sector_35", "35 Health Care"],
+  ["sector_40", "40 Financials"],
+  ["sector_45", "45 Information Technology"],
+  ["sector_50", "50 Communication Services"],
+  ["sector_55", "55 Utilities"],
+];
+
+// The sector dummy the design leaves out, so its exposure is carried by the
+// intercept rather than by a column of its own. Named in the table itself: a
+// reader who knows the GICS codes asks where 60 went.
+const REFERENCE_SECTOR = "60 Real Estate";
+
+/**
+ * The rows of the exposure table: styles, sectors, then anything the design
+ * carries that this list does not know about, so a new factor cannot disappear
+ * from the page by being unlisted.
+ */
+function exposureRows(before: Record<string, number | null>): Array<[string, string]> {
+  const known = new Set([...STYLE_ROWS, ...SECTOR_ROWS].map(([key]) => key));
+  const rest = Object.keys(before)
+    .filter((key) => !known.has(key))
+    .sort()
+    .map((key) => [key, key] as [string, string]);
+  return [...STYLE_ROWS, ...SECTOR_ROWS, ...rest];
+}
+
+/**
+ * One factor's before and after as two zero-centred bars on the same scale.
+ *
+ * The scale is the largest exposure on the page, so the rows are comparable with
+ * each other rather than each filling its own cell, and the "after" bars are
+ * visibly absent because the hedge takes every factor to zero.
+ */
+function ExposureBars({
+  before,
+  after,
+  scale,
+}: {
+  before: number;
+  after: number;
+  scale: number;
+}) {
+  return (
+    <div className="flex w-40 flex-col gap-[2px]" data-factor-bars="true">
+      <ExposureBar value={before} scale={scale} tone="before" />
+      <ExposureBar value={after} scale={scale} tone="after" />
+    </div>
+  );
+}
+
+function ExposureBar({ value, scale, tone }: { value: number; scale: number; tone: string }) {
+  const share = Math.max(0, Math.min(1, Math.abs(value) / (scale || 1)));
+  const style: Record<string, string> =
+    value >= 0 ? { left: "50%", width: `${share * 50}%` } : { right: "50%", width: `${share * 50}%` };
+  return (
+    <div className="relative h-[6px] w-full rounded-sm bg-slate-100">
+      <span className="absolute left-1/2 top-0 h-full w-px bg-slate-300" />
+      <span
+        data-bar={tone}
+        data-sign={value >= 0 ? "positive" : "negative"}
+        title={`${tone} ${exposure(value)}`}
+        className={`absolute top-0 h-full rounded-sm ${
+          tone === "before" ? "bg-slate-500" : "bg-emerald-600"
+        }`}
+        style={style}
+      />
+    </div>
+  );
+}
+
 
 function Panel({
   tone,
@@ -114,10 +237,17 @@ function Panel({
 
 export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date }) {
   const state = health(snapshot, now);
-  const age = minutesBetween(new Date(snapshot.generated_at), now);
-  const bookAsof = snapshot.book_as_of;
-  const dated = bookAsof && bookAsof !== snapshot.target_close;
+  const bookAsof = dateOnly(snapshot.book_as_of);
+  const targetClose = dateOnly(snapshot.target_close);
+  const dated = bookAsof && bookAsof !== targetClose;
   const positions = snapshot.positions;
+  const before = snapshot.exposures_before_hedge ?? {};
+  const after = snapshot.exposures_after_hedge ?? {};
+  const rows = exposureRows(before);
+  const scale = Math.max(
+    ...[...Object.values(before), ...Object.values(after)].map((value) => Math.abs(value ?? 0)),
+    0.0001,
+  );
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-4 p-6">
@@ -133,14 +263,17 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
 
       <Panel tone={state.ok ? "good" : "bad"} title={state.headline} detail={state.detail} />
       <p className="text-sm text-slate-600">
-        snapshot generated {snapshot.generated_at} ({age} minute(s) ago), target close{" "}
-        {snapshot.target_close ?? "unknown"}
+        snapshot generated {dateOnly(snapshot.generated_at) ?? "unknown"} (
+        {ageText(new Date(snapshot.generated_at), now)}), target close{" "}
+        {dateOnly(snapshot.target_close) ?? "unknown"}
       </p>
 
       {snapshot.run_status?.catch_up ? (
         <Panel
           tone="info"
-          title={`catch-up run: ${snapshot.run_status.catch_up_sessions.join(", ")}`}
+          title={`catch-up run: ${snapshot.run_status.catch_up_sessions
+            .map((session) => dateOnly(session) ?? session)
+            .join(", ")}`}
           detail="the gate evening must be a run whose target close is the only session it appended"
         />
       ) : null}
@@ -158,15 +291,35 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
           The book: {snapshot.book.n_names} name(s)
           {dated ? ` (as of ${bookAsof})` : ""}
         </h2>
-        <p className="text-sm text-slate-600">
-          {snapshot.construction} | gross {percent(snapshot.book.gross)} | net{" "}
-          {percent(snapshot.book.net)} | n_eff_kept{" "}
-          {snapshot.book.n_kept !== null ? snapshot.breadth.n_eff_kept : "n/a"} (
-          {snapshot.breadth.kept_label}) | n_eff_full_book {snapshot.breadth.n_eff_full_book} (
-          {snapshot.breadth.full_book_label}) | cost{" "}
-          {snapshot.book.expected_cost_bps?.toFixed(2) ?? "n/a"} bps
-          {snapshot.run_status?.cost_label ? ` (${snapshot.run_status.cost_label})` : ""}
-        </p>
+        {/* One labelled item per number, rather than a pipe-separated run of
+            text: a reader looking for the cost should not have to count fields. */}
+        <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-4 text-sm text-slate-600">
+          <dt className="font-medium">construction</dt>
+          <dd>{snapshot.construction}</dd>
+          <dt className="font-medium">gross</dt>
+          <dd>{percent(snapshot.book.gross)}</dd>
+          <dt className="font-medium">net</dt>
+          <dd>{percent(snapshot.book.net)}</dd>
+          {snapshot.book.n_kept !== null ? (
+            <>
+              <dt className="font-medium">n_eff_kept</dt>
+              <dd>
+                {oneDecimal(snapshot.breadth.n_eff_kept)}
+                {snapshot.breadth.kept_label ? ` (${snapshot.breadth.kept_label})` : ""}
+              </dd>
+            </>
+          ) : null}
+          <dt className="font-medium">n_eff_full_book</dt>
+          <dd>
+            {oneDecimal(snapshot.breadth.n_eff_full_book)}
+            {snapshot.breadth.full_book_label ? ` (${snapshot.breadth.full_book_label})` : ""}
+          </dd>
+          <dt className="font-medium">cost</dt>
+          <dd>
+            {snapshot.book.expected_cost_bps?.toFixed(2) ?? "n/a"} bps
+            {snapshot.run_status?.cost_label ? ` (${snapshot.run_status.cost_label})` : ""}
+          </dd>
+        </dl>
         {snapshot.book.reason ? (
           <p className="text-sm text-amber-800">no book: {snapshot.book.reason}</p>
         ) : null}
@@ -194,38 +347,54 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
 
       <section>
         <h2 className="text-lg font-semibold">Factor exposures, before and after the hedge</h2>
-        <div className="flex gap-8">
-          <table className="text-sm">
-            <caption className="text-left font-medium">before the hedge</caption>
-            <tbody>
-              {Object.entries(snapshot.exposures_before_hedge ?? {}).map(([key, value]) => (
-                <tr key={key}>
-                  <td className="pr-4 font-mono">{key}</td>
-                  <td>{exposures(value)}</td>
+        <table className="mt-2 w-full border-collapse text-sm" aria-label="factor exposures">
+          <thead>
+            <tr className="border-b border-slate-300 text-left">
+              <th className="py-1">factor</th>
+              <th className="py-1 text-right">before</th>
+              <th className="py-1 text-right">after</th>
+              <th className="py-1">before / after</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([key, label], index) => {
+              const startOfSectors =
+                index === 0 ? false : rows[index - 1][0].startsWith("sector_") === false;
+              return (
+                <tr
+                  key={key}
+                  data-factor={key}
+                  className={`border-b border-slate-100 ${
+                    key.startsWith("sector_") ? "bg-slate-50" : ""
+                  } ${startOfSectors ? "border-t-2 border-t-slate-300" : ""}`}
+                >
+                  <td className="py-1">{label}</td>
+                  <td className="py-1 text-right font-mono">{exposure(before[key])}</td>
+                  <td className="py-1 text-right font-mono">{exposure(after[key])}</td>
+                  <td className="py-1">
+                    <ExposureBars
+                      before={before[key] ?? 0}
+                      after={after[key] ?? 0}
+                      scale={scale}
+                    />
+                  </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <table className="text-sm">
-            <caption className="text-left font-medium">after the hedge</caption>
-            <tbody>
-              {Object.entries(snapshot.exposures_after_hedge ?? {}).map(([key, value]) => (
-                <tr key={key}>
-                  <td className="pr-4 font-mono">{key}</td>
-                  <td>{exposures(value)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <dl className="text-sm">
-            <dt className="font-medium">the hedge</dt>
-            <dd>idio share after FMP: {exposures(snapshot.hedge?.idio_share_after_fmp)}</dd>
-            <dd>
-              worst residual exposure: {exposures(snapshot.hedge?.max_abs_exposure_after_fmp)}
-            </dd>
-            <dd>reconciliation intended: {dollars(snapshot.reconciliation?.intended_notional)}</dd>
-          </dl>
-        </div>
+              );
+            })}
+          </tbody>
+        </table>
+        <p className="mt-1 text-xs text-slate-500">
+          The hedge is exact, so every factor's after value is zero to machine precision. The bars are
+          on one scale, the largest exposure on the page: a bar that is not there is a factor the
+          hedge has taken out. 60 Real Estate is the reference sector and has no column of its own,
+          so the ten sectors above are measured against it.
+        </p>
+        <dl className="mt-3 text-sm">
+          <dt className="font-medium">the hedge</dt>
+          <dd>idio share after FMP: {exposures(snapshot.hedge?.idio_share_after_fmp)}</dd>
+          <dd>worst residual exposure: {exposures(snapshot.hedge?.max_abs_exposure_after_fmp)}</dd>
+          <dd>reconciliation intended: {dollars(snapshot.reconciliation?.intended_notional)}</dd>
+        </dl>
       </section>
     </main>
   );

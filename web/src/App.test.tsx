@@ -70,10 +70,120 @@ describe("the page", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     expect(screen.getByText(/DRY RUN: no orders are sent/)).toBeTruthy();
     expect(screen.getByText(/The book: \d+ name\(s\)/)).toBeTruthy();
-    expect(screen.getByText("before the hedge")).toBeTruthy();
-    expect(screen.getByText("after the hedge")).toBeTruthy();
+    expect(screen.getByRole("table", { name: "factor exposures" })).toBeTruthy();
     expect(screen.getByText(/idio share after FMP/)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("states the exposures as one table, styles first then sectors by GICS name", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const table = screen.getByRole("table", { name: "factor exposures" });
+    const rows = within(table).getAllByRole("row");
+    const header = rows[0].textContent ?? "";
+    expect(header).toContain("factor");
+    expect(header).toContain("before");
+    expect(header).toContain("after");
+    const labels = rows.slice(1).map((row) => row.querySelector("td")?.textContent ?? "");
+    expect(labels.slice(0, 7)).toEqual([
+      "Beta",
+      "Liquidity",
+      "Market",
+      "Momentum",
+      "Residual vol",
+      "Reversal",
+      "Size",
+    ]);
+    // Every sector the design carries, named, and only the ten GICS sectors:
+    // 60 is the dummy the design leaves out, so it is named in the note instead.
+    expect(labels.slice(7)).toEqual([
+      "10 Energy",
+      "15 Materials",
+      "20 Industrials",
+      "25 Consumer Discretionary",
+      "30 Consumer Staples",
+      "35 Health Care",
+      "40 Financials",
+      "45 Information Technology",
+      "50 Communication Services",
+      "55 Utilities",
+    ]);
+    expect(labels.join(" ")).not.toContain("60 ");
+    expect(screen.getAllByText(/60 Real Estate is the reference sector/).length).toBeGreaterThan(0);
+  });
+
+  it("shows a hedged-to-zero exposure as 0.0000, never as -0.0000", () => {
+    // The after column holds values like -2.6e-18, whose four-place form is
+    // "-0.0000": rounding, not a short position in a factor.
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    expect(screen.queryByText("-0.0000")).toBeNull();
+    expect(screen.queryByText("-0.0001")).toBeNull();
+    const table = screen.getByRole("table", { name: "factor exposures" });
+    const zeros = within(table).getAllByText("0.0000");
+    expect(zeros.length).toBeGreaterThanOrEqual(17);
+    // A genuinely negative exposure keeps its sign, so the rule is not a clamp.
+    expect(within(table).getByText("-0.0006")).toBeTruthy();
+  });
+
+  it("draws a before and an after bar per factor, on one scale", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const table = screen.getByRole("table", { name: "factor exposures" });
+    const bars = { before: table.querySelectorAll("[data-bar='before']"), after: table.querySelectorAll("[data-bar='after']") };
+    expect(bars.before.length).toBe(17);
+    expect(bars.after.length).toBe(17);
+    const momentum = table.querySelector("[data-factor='momentum']") as HTMLElement;
+    const width = (element: Element) => parseFloat((element as HTMLElement).style.width);
+    const beforeBar = momentum.querySelector("[data-bar='before']") as HTMLElement;
+    const afterBar = momentum.querySelector("[data-bar='after']") as HTMLElement;
+    // 0.155 against a 0.155 scale: the full half-track, and nothing at all after
+    // the hedge, which is the whole point of showing them.
+    expect(width(beforeBar)).toBeCloseTo(50, 5);
+    expect(width(afterBar)).toBeLessThan(0.001);
+    expect(beforeBar.getAttribute("data-sign")).toBe("positive");
+    const energy = table.querySelector("[data-factor='sector_10'] [data-bar='before']");
+    expect(energy?.getAttribute("data-sign")).toBe("negative");
+  });
+
+  it("breaks the summary into labelled items rather than a pipe run", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    expect(screen.queryByText(/\|/)).toBeNull();
+    expect(screen.getByText("gross")).toBeTruthy();
+    expect(screen.getByText("net")).toBeTruthy();
+    expect(screen.getByText("n_eff_kept")).toBeTruthy();
+    expect(screen.getByText("n_eff_full_book")).toBeTruthy();
+    expect(screen.getByText("cost")).toBeTruthy();
+  });
+
+  it("gives the effective breadth to one decimal, and names what each one is", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const kept = OK.breadth.n_eff_kept as number;
+    const full = OK.breadth.n_eff_full_book as number;
+    expect(screen.getByText(new RegExp(`${kept.toFixed(1)} \\(`))).toBeTruthy();
+    expect(screen.getByText(new RegExp(`${full.toFixed(1)} \\(`))).toBeTruthy();
+    expect(screen.queryByText(String(kept))).toBeNull();
+  });
+
+  it("shows dates as days and the snapshot's age relative to now", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const text = document.body.textContent ?? "";
+    expect(text).not.toContain("T00:00:00");
+    // 22:41 generated, 23:00 now.
+    expect(text).toContain("19 minutes ago");
+    expect(text).toContain("target close 2026-09-21");
+    expect(text).toContain("snapshot generated 2026-09-21");
+  });
+
+  it("says a snapshot of a day or more in days, not in hours", () => {
+    const later = new Date("2026-09-24T23:00:00Z");
+    render(<SnapshotView snapshot={OK} now={later} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("3 days ago");
+    expect(text).not.toContain("72 hours");
+  });
+
+  it("keeps a day-old snapshot in hours, which is the useful unit", () => {
+    const later = new Date("2026-09-22T22:41:30Z");
+    render(<SnapshotView snapshot={OK} now={later} />);
+    expect(document.body.textContent ?? "").toContain("24 hours ago");
   });
 
   it("lists the names by absolute weight, the largest first", () => {
@@ -110,7 +220,8 @@ describe("the page", () => {
       book_as_of: "2026-09-21T00:00:00",
     };
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
-    expect(screen.getByText(/\(as of 2026-09-21T00:00:00\)/)).toBeTruthy();
+    expect(screen.getByText(/\(as of 2026-09-21\)/)).toBeTruthy();
+    expect(document.body.textContent ?? "").not.toContain("T00:00:00");
   });
 
   it("reports the account against the store", () => {

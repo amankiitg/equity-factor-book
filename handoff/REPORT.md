@@ -2873,6 +2873,135 @@ read for real and holds nothing, while the store carries the 150-name book the d
 runs intended. That is the state the flip starts from, and it is now stated every
 evening rather than assumed.
 
+### The page, and three questions about its numbers
+
+The page is deployed (Worker version `6d26561e`). Four presentation changes, and
+three questions answered **without touching sizing or cost logic**: the third
+found a cost bug that is reported here rather than fixed, because the owner asked
+for the numbers first.
+
+**The page.**
+
+1. **The exposures are one table**: factor | before | after, styles first then the
+   ten GICS sectors by name and code (`45 Information Technology`, not
+   `sector_45`), each row with a before/after pair of zero-centred bars on one
+   scale, so the hedge's effect is a bar that is not there. The note beneath says
+   what the reader would otherwise ask: the hedge is exact, so every after value
+   is zero to machine precision, and **60 Real Estate is the reference sector**
+   with no column of its own.
+2. **`-0.0000` is `0.0000`.** The after column holds values like $-2.6\times
+   10^{-18}$, whose four-place form is `-0.0000`: rounding, not a short position
+   in a factor. A genuinely negative exposure keeps its sign (`-0.0006` for 15
+   Materials), so the rule is a zero test rather than a clamp.
+3. **Dates are days** (`2026-09-25`, never `2026-09-25T00:00:00`), the snapshot's
+   age is relative (`5 days ago`, `19 minutes ago`), and effective breadth is one
+   decimal with its label beside it (`70.6 (the book's effective breadth)`).
+4. **The summary is labelled items**, not a pipe-separated run: construction,
+   gross, net, n_eff_kept, n_eff_full_book, cost, each on its own line.
+5. **An establishment day says `new position`.** With no earlier book every row is
+   a position being opened; "alpha moved" said something had moved that had never
+   been there. Pinned by `tests/test_e11_reasons.py`, and the older
+   `test_trade_reasons_new_name_is_alpha` now covers both cases: new to a book
+   that exists is still "alpha moved", because for that name its first score is
+   what put it there.
+
+**Q5 - the page says gross 90.08%, the run said gross 1.0000: both are right, and
+they are different books.** From `efb.proposals` for the 09-25 close:
+`gross 0.9008172332573943`, `kept_gross 1.0`, `kept_gross_before_renorm
+0.4655595305576498`, `notional 1000000.0`. `manifest["gross"]` is
+`full_decomposition["gross"]` - the **499-name** book after sizing and the gross
+cap, before the floor. `manifest["kept_gross"]` is the **150-name** book that
+trades, which `sizing.renormalize(..., gross=1.0)` sets to exactly 1.0, and that
+is what the traded notional (`$1,000,000`), the email's "$1,000,000 gross" and
+`run_status.gross_notional` all measure. The page renders `book.gross`, so it
+describes the 499-name book while the heading above it says "The book: 150
+name(s)". **Reported, not changed**: the one-line options are to publish
+`kept_gross` as `book.gross`, or to publish both and label them - the second is
+what I would do, and both are the owner's call because they change what a
+published number means.
+
+**Q6 - the 39.04 bp impact is one name, and the reason is a $0 ADV.** Reproduced
+from the run's own artifacts (`efb-run-9j6t4k5j`), and it matches the stored
+manifest exactly: spread 5.3558, impact 39.0447, commission 1.0000, borrow 8.3333,
+total 53.7338.
+
+| ticker | weight | trade $ | ADV $ | sigma/day | impact | bp |
+| --- | --- | --- | --- | --- | --- | --- |
+| SW | 0.49% | 4,917 | **0** | 0.02161 | 7.575e-01 | **37.2460** |
+| MRNA | 5.19% | 51,917 | 426,525,779 | 0.18454 | 1.018e-03 | 0.5285 |
+| LITE | 5.85% | 58,494 | 77,360,783 | 0.04599 | 6.323e-04 | 0.3699 |
+| MU | 5.59% | 55,935 | 853,140,490 | 0.02962 | 1.199e-04 | 0.0671 |
+| SMCI | 0.81% | 8,141 | 8,819,522 | 0.05276 | 8.015e-04 | 0.0653 |
+| ECHO | 1.03% | 10,267 | 8,245,252 | 0.03159 | 5.573e-04 | 0.0572 |
+| DELL | 2.05% | 20,526 | 179,466,229 | 0.04525 | 2.420e-04 | 0.0497 |
+| WDC | 2.32% | 23,175 | 218,673,057 | 0.03359 | 1.729e-04 | 0.0401 |
+| ALB | 1.54% | 15,435 | 109,504,844 | 0.03055 | 1.814e-04 | 0.0280 |
+| ON | 1.47% | 14,718 | 112,749,204 | 0.03227 | 1.843e-04 | 0.0271 |
+
+- **ADV units are correct**: `costs._adv_per_ticker` is the median of `volume ×
+  close`, i.e. dollars, so `dollar_trade / adv` is dimensionless. The units are
+  not the problem.
+- **The value is.** SW's full-history median dollar volume is **$0**: 2,409 of its
+  4,208 sessions have zero volume (74% before 2020, 11% since 2024), because the
+  median is taken over the whole panel rather than a trailing window. SW's
+  trailing 63-session median is **$204,732,766**.
+- **No fallback fires.** 196 of 860 tickers have NaN ADV and do take the median,
+  and none of the 150 kept names is missing a spread. SW's ADV is 0, not NaN, so
+  `adv_map.fillna(adv.median())` leaves it, and the guard `np.maximum(adv_map,
+  1.0)` turns $0 into **$1 of ADV** - the worst liquidity a name can have.
+- **What that costs.** SW contributes **37.2460 of the 39.0447 bp** (95.4%); at
+  its real ADV it contributes **0.0026 bp**, a 14,000× overstatement. The other
+  149 names are **1.7987 bp** together, so the honest establishment cost is
+  **about 16.5 bp**, not 53.73 - and the ten largest names are 98.6% of what
+  remains. Four tickers in the panel have ADV 0 (CPWR, EA, MHS, SW); only SW is
+  in the book.
+- **Also worth saying**: `dollar_trade = |w| × NAV` is the *target* notional, not
+  the trade. On an establishment day they coincide, which is why this is exact
+  tonight; on a rebalance the impact would be measured on the whole position
+  rather than the change.
+- **Not changed.** The fixes are one line each - take the ADV over a trailing
+  window, and treat a zero ADV the way a NaN one already is (or refuse to price
+  the name) - and they move a number the flip is judged on, so they are the
+  owner's call.
+
+**Q7 - the sized part makes LITE, MU and MRNA the largest; the hedge cuts all
+three by nearly the same amount.** Reconstructed exactly (max |difference| from
+the traded weights: `0.000e+00`, gross of the reconstruction `1.000000000000`):
+
+| ticker | alpha | specific var | sigma/day | sized | hedge | total | rank by sized |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| LITE | 2.056e-05 | 2.115e-03 | 4.60% | **+0.081783** | -0.023289 | +0.058494 | 1/150 |
+| MU | 8.230e-06 | 8.775e-04 | 2.96% | **+0.078904** | -0.022969 | +0.055935 | 2/150 |
+| MRNA | 2.995e-04 | 3.406e-02 | 18.45% | **+0.073988** | -0.022071 | +0.051917 | 3/150 |
+
+The three largest longs are the three largest *sized* positions, so the alpha /
+variance rule is not being escaped - it is working. MRNA carries **14.6× LITE's
+alpha** and gets **0.90× LITE's sized weight**, because its specific variance is
+16× LITE's; the division by variance is exactly what keeps it from being the
+biggest position in the book by a wide margin. The hedge part is nearly constant
+across the three (-0.0221 to -0.0233, ranks 1, 7 and 9 by size): it is the
+factor-neutrality correction, not a function of their volatility, and it *reduces*
+each of them by about 28%.
+
+Two things worth the owner's eye, both reported rather than changed:
+
+- **MRNA's specific vol is 18.45% per day, 293% annualized**, the largest in the
+  book by 3.5× (next: SMCI 83.8%, the book's median 2.0%). The input is not
+  obviously broken - MRNA really did move +176.97% on 2026-08-19 - but a 293%
+  number drives both its position size and 0.53 bp of the impact term, and it
+  deserves a look before it is trusted.
+- **The reason column is constant today, and `risk moved` is unreachable.**
+  `store_proposal` read the previous book from the run tree's own proposals
+  directory, and a fresh run tree holds exactly one proposal (the seed has none),
+  so `previous` was always None and every row fell through to "alpha moved" - the
+  page's 150 identical reasons are that, not a coincidence. It now reads the last
+  book strictly before the close from **the store**, which is where the loop
+  records what it meant to hold, with the tree's files as the fallback. Separately,
+  `run_live_daily` passes the *same* `specific_std` for both closes
+  (`prev_std = trade_reasons.specific_std(specific, as_of=as_of_ts)`, identical to
+  `today_std`), so `RISK_MOVED` can never trigger from the live path; a name whose
+  weight moved while its score did not is labelled "the hedge moved".
+
 ### The rehearsal again, after the four fixes
 
 Same setup and the same pinning, re-run at the tip of `preflip` (`2bcc8bf`). The

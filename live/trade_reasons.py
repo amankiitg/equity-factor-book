@@ -34,8 +34,9 @@ ALPHA_MOVED = "alpha moved"
 RISK_MOVED = "risk moved"
 HEDGE_MOVED = "the hedge moved"
 DRIFTED = "drifted past a band"
+NEW_POSITION = "new position"
 
-REASONS = (ALPHA_MOVED, RISK_MOVED, HEDGE_MOVED, DRIFTED, NO_TRADE)
+REASONS = (NEW_POSITION, ALPHA_MOVED, RISK_MOVED, HEDGE_MOVED, DRIFTED, NO_TRADE)
 
 
 def assign_trade_reasons(
@@ -51,13 +52,28 @@ def assign_trade_reasons(
     ticker to specific standard deviation at the two closes. A name with
     no previous row is a new position, which is alpha by construction
     because its first score is the reason it entered.
+
+    `previous is None` means there is no earlier book at all, which is the
+    establishment day: every row is a position being opened for the first time,
+    and calling that "alpha moved" would say something moved that had never been
+    there. A name that is only missing from an existing previous book keeps
+    "alpha moved", because for that name the entrance really is its first score.
     """
-    prev = previous.set_index("ticker") if previous is not None else None
+    if previous is None or previous.empty:
+        return pd.DataFrame(
+            {
+                "ticker": [str(ticker) for ticker in today["ticker"]],
+                "weight": [float(weight) for weight in today["weight"]],
+                "z": [float(value) for value in today["z"]],
+                "reason": [NEW_POSITION] * len(today),
+            }
+        )
+    prev = previous.set_index("ticker")
     rows: list[dict[str, object]] = []
     for row in today.itertuples(index=False):
         ticker = str(row.ticker)
         weight_today = float(row.weight)
-        if prev is not None and ticker in prev.index:
+        if ticker in prev.index:
             p = prev.loc[ticker]
             weight_prev = float(p["weight"])
             z_prev = float(p["z"])

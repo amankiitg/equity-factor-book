@@ -97,6 +97,35 @@ def record_run(job: str, run_date: str, status: str, detail: str = "") -> None:
     store.upsert("cron_runs", rows)
 
 
+def previous_book(as_of: str, proposal_paths: list[Path]) -> pd.DataFrame | None:
+    """The book the loop held before this close, or None on the first evening.
+
+    A fresh run tree carries no earlier proposal: the run root is the seed plus
+    this session, so `previous` read from the tree's own proposals directory was
+    always None, and every evening's reason column fell through to "alpha moved" -
+    including the rows of a book that no previous close had ever held. The store
+    is where the loop records what it meant to hold, so the last book strictly
+    before this close comes from there, and the tree's own files stay as the
+    fallback for a tree that carries them.
+
+    Strictly before: a re-run of tonight must compare against last night, not
+    against the rows it wrote earlier tonight.
+    """
+    from live import store
+
+    frame = store.select("positions")
+    needed = {"trade_date", "ticker", "weight", "z"}
+    if not frame.empty and needed.issubset(frame.columns):
+        dates = frame["trade_date"].astype(str).str.slice(0, 10)
+        earlier = frame.loc[dates < as_of]
+        if not earlier.empty:
+            latest = earlier["trade_date"].max()
+            return earlier.loc[earlier["trade_date"] == latest].reset_index(drop=True)
+    if len(proposal_paths) > 1 and proposal_paths[-1].stem == f"proposal_{as_of}":
+        return pd.read_parquet(proposal_paths[-2])
+    return None
+
+
 def store_proposal(
     as_of: str, data_root: Path | None = None, dry_run: bool = True
 ) -> pd.DataFrame:
@@ -111,9 +140,7 @@ def store_proposal(
     manifest = json.loads((PROPOSAL_DIR / f"proposal_{as_of}.json").read_text())
     rows = pd.read_parquet(PROPOSAL_DIR / f"proposal_{as_of}.parquet")
     proposal_paths = sorted(PROPOSAL_DIR.glob("proposal_*.parquet"))
-    previous = None
-    if len(proposal_paths) > 1 and proposal_paths[-1].stem == f"proposal_{as_of}":
-        previous = pd.read_parquet(proposal_paths[-2])
+    previous = previous_book(as_of, proposal_paths)
 
     specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_var.parquet")
     as_of_ts = pd.Timestamp(as_of)
