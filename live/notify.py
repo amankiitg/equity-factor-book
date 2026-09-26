@@ -36,8 +36,10 @@ that looks healthy from the outside is the first thing read.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import urllib.error
 import urllib.request
 from collections.abc import Callable
 from typing import Any
@@ -52,6 +54,11 @@ from live import store as live_store
 # here because the recipient is the owner and says what a verified domain will
 # lift.
 RESEND_ENDPOINT = "https://api.resend.com/emails"
+# An explicit agent, because the library's default is `Python-urllib/3.x` and an
+# endpoint behind a WAF is entitled to refuse that: the refusal then reads as a
+# permissions problem in the log, which is a day of hunting for the wrong thing.
+USER_AGENT = "efb-live-book/1.0"
+logger = logging.getLogger(__name__)
 API_KEY_ENV = "EFB_RESEND_API_KEY"
 FROM_ENV = "EFB_NOTIFY_EMAIL_FROM"
 TO_ENV = "EFB_NOTIFY_EMAIL_TO"
@@ -334,22 +341,54 @@ def email_payload(
     return {"from": sender, "to": [recipient], "subject": subject, "text": body}
 
 
+def _refusal_body(exc: Any) -> str:
+    """What the endpoint said, from the JSON body it sent with the refusal.
+
+    Resend answers a refused send with JSON carrying a `message`, and the status
+    alone - "HTTP Error 403: Forbidden" - discards the one thing that says what to
+    fix. The text is scrubbed: it leaves the process, and a key must never be in it.
+    """
+    try:
+        raw = exc.read().decode("utf-8", "replace")
+    except Exception:  # noqa: BLE001 - a body is a bonus, never a failure itself
+        return "no body"
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return scrub(raw)[:300]
+    if isinstance(parsed, dict):
+        for field in ("message", "error", "name"):
+            if parsed.get(field):
+                return scrub(str(parsed[field]))[:300]
+    return scrub(raw)[:300]
+
+
 def post(
     endpoint: str,
     payload: dict[str, Any],
     headers: dict[str, str] | None = None,
     timeout: float = TIMEOUT_SECONDS,
 ):
-    """POST the payload. Raises on anything but a 2xx answer."""
+    """POST the payload. Raises on anything but a 2xx answer, with the reason."""
     request = urllib.request.Request(
         endpoint,
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json", **(headers or {})},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
+            **(headers or {}),
+        },
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        if not 200 <= int(response.status) < 300:  # pragma: no cover - urllib raises
-            raise RuntimeError(f"the endpoint answered {int(response.status)}")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            if not 200 <= int(response.status) < 300:  # pragma: no cover - raises
+                raise RuntimeError(f"the endpoint answered {int(response.status)}")
+    except urllib.error.HTTPError as exc:
+        # The refusal's own words, not just its number.
+        raise RuntimeError(
+            f"the endpoint answered {exc.code}: {_refusal_body(exc)}"
+        ) from exc
 
 
 def send(
@@ -392,10 +431,12 @@ def send(
             {"Authorization": f"Bearer {key}"},
         )
     except Exception as exc:  # noqa: BLE001 - a failed send is never fatal here
-        return {
-            "status": STATUS_FAILED,
-            "detail": scrub(f"{type(exc).__name__}: {exc}")[:200],
-        }
+        detail = scrub(f"{type(exc).__name__}: {exc}")[:400]
+        # The one failure the owner cannot read off the row alone is the one where
+        # the message never arrives, so the reason goes into the run log as well as
+        # into `run_status`.
+        logger.warning("the notification was not sent: %s", detail)
+        return {"status": STATUS_FAILED, "detail": detail}
     return {"status": STATUS_SENT, "detail": ""}
 
 

@@ -296,6 +296,58 @@ def test_a_member_with_no_price_is_named_in_the_message() -> None:
     assert "Dropped for no price" not in notify.compose(**fields)
 
 
+def test_a_refused_send_keeps_the_reason_and_names_itself(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A 403 arrived as "HTTP Error 403: Forbidden", with the body thrown away.
+
+    Resend's answer says why, in JSON, and that reason is the whole value of the
+    failure: "the domain is not verified" is actionable, "403" is not. The request
+    also had no agent of its own, and the library's default is `Python-urllib/3.x`,
+    which an endpoint behind a WAF is entitled to refuse.
+    """
+    import io
+    import urllib.error
+
+    from live import notify
+
+    key = "re_abcdefghijklmnopqrstuvwxyz"
+    seen: list[Any] = []
+
+    def refuse(request: Any, timeout: float | None = None) -> Any:
+        seen.append(request)
+        raise urllib.error.HTTPError(
+            notify.RESEND_ENDPOINT,
+            403,
+            "Forbidden",
+            {},  # type: ignore[arg-type]
+            io.BytesIO(
+                b'{"statusCode":403,"name":"validation_error",'
+                b'"message":"The example.com domain is not verified"}'
+            ),
+        )
+
+    monkeypatch.setattr(notify.urllib.request, "urlopen", refuse)
+    monkeypatch.setenv(notify.API_KEY_ENV, key)
+    monkeypatch.setenv(notify.TO_ENV, "owner@example.com")
+    monkeypatch.setenv(notify.FROM_ENV, "EFB <efb@example.com>")
+
+    with caplog.at_level("WARNING"):
+        result = notify.send("subject", "body")
+
+    assert result["status"] == notify.STATUS_FAILED
+    assert "the endpoint answered 403" in result["detail"]
+    assert "example.com domain is not verified" in result["detail"]
+    # the key is stripped wherever the reason goes
+    assert key not in result["detail"]
+    assert key not in caplog.text
+    # and the run log carries the same reason as the row
+    assert "example.com domain is not verified" in caplog.text
+    # an explicit agent, rather than the library's own
+    assert seen, "no request was made"
+    assert seen[0].get_header("User-agent") == notify.USER_AGENT
+
+
 def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
