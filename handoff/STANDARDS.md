@@ -169,7 +169,9 @@ claim anyone will check. Verification is now yours to do and yours to show.
 Every report ends with a section headed `## Verification` containing all of:
 
 - **The exact commands run and the last lines of their output, pasted**, for
-  `make test`, `make lint` and `make verify-evidence`. Paste the real output,
+  `make test`, `make lint` and `make verify-evidence`. The full suite is
+  `make test-all`; `make test` is the fast subset and is what a per-step run
+  pastes. Paste the real output,
   including the test count and the exit status. A summary of output is not
   output.
 - **Every headline number with the file and key it was read from**, so each one
@@ -217,9 +219,13 @@ points only:**
 **If the full suite is skipped on a step, `REPORT.md` says which subset ran and
 why.** A skipped suite that hid a failure is a finding.
 
-**Slow markers.** Any test over about two seconds carries a pytest marker for
-the slow path, so the fast subset is the default and the full run is the
-deliberate one. Report the split: how many tests on each path and how long each
+**Slow markers.** Any test that touches the network, runs the whole evening job
+or executes a notebook carries the `slow` marker, as does any test over about two
+seconds. `make test` is the fast subset and the default for a change; `make
+test-all` is the full run and is the deliberate one, run at the points above and
+in the background rather than in front of the work. Every test has a 120 second
+limit, so a hung test fails with its name instead of holding the phase. Report the
+split: how many tests on each path and how long each
 path takes.
 
 **The suite still never shrinks, measured relatively.** Marking tests slow must
