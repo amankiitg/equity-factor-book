@@ -236,6 +236,64 @@ def test_the_comparison_basis_normalises_dates_and_missing_values() -> None:
     )
 
 
+def test_the_roundtrip_records_nothing_when_the_store_is_not_seeded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`run_status.target_close` is NOT NULL, and an empty appendix has no session.
+
+    Writing the row anyway was a NotNullViolation *after* every probe had passed,
+    which read as the verification failing when it had not: before the first run
+    there is simply nothing to compare yet.
+    """
+    from scripts import verify_store_roundtrip
+
+    written: list[dict] = []
+    monkeypatch.setattr(
+        verify_store_roundtrip.staleness,
+        "write_run_status",
+        lambda result, **kwargs: written.append(result),
+    )
+    report = [
+        {"input": name, "table": f"e11_{name}", "status": "empty", "detail": "empty"}
+        for name in ("prices", "shares")
+    ]
+    probes = [{"probe": "dates", "status": "ok", "read_back": "2026-09-24"}]
+
+    assert verify_store_roundtrip.record(report, probes, ok=False) is False
+    assert written == []
+
+
+def test_the_roundtrip_records_the_session_it_compared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The seeded case still writes exactly one row, with the session named."""
+    from scripts import verify_store_roundtrip
+
+    written: list[dict] = []
+    monkeypatch.setattr(
+        verify_store_roundtrip.staleness,
+        "write_run_status",
+        lambda result, **kwargs: written.append(result),
+    )
+    report = [
+        {
+            "input": "prices",
+            "table": "e11_prices",
+            "status": "match",
+            "rows": 10,
+            "last": "2026-09-21",
+            "sha256": "abc",
+        }
+    ]
+    probes = [{"probe": "dates", "status": "ok", "read_back": "2026-09-24"}]
+
+    assert verify_store_roundtrip.record(report, probes, ok=True) is True
+    assert len(written) == 1
+    assert written[0]["target_close"] == "2026-09-21"
+    assert written[0]["status"] == "ok"
+    assert "1/1 inputs match" in written[0]["detail"]
+
+
 def test_no_test_leaks_the_store_directory_by_assignment() -> None:
     """The bug the full suite caught, pinned so the fast selection cannot hide it.
 

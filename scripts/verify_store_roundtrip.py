@@ -18,9 +18,12 @@ cron's box, and it does three things:
 3. **Records the result** in `efb.run_status` with the per-input hashes, so the
    dashboard and the next reader see it without a terminal.
 
-It writes one `run_status` row and nothing else. Nothing is traded, no artifact
-is written, and the probe in 2 is a read: it never inserts a row to type-check a
-column.
+It writes one `run_status` row and nothing else, and it writes none at all when the
+store has not been seeded yet: `run_status.target_close` is NOT NULL and an empty
+appendix has no session to name, so a row would be a row about nothing. That state
+is expected before the first run and is reported as such rather than as a failure.
+Nothing is traded, no artifact is written, and the probe in 2 is a read: it never
+inserts a row to type-check a column.
 """
 
 from __future__ import annotations
@@ -228,8 +231,14 @@ def type_probes() -> tuple[list[dict[str, Any]], list[str]]:
 
 def record(
     report: list[dict[str, Any]], probes: list[dict[str, Any]], ok: bool
-) -> None:
-    """One `run_status` row: the hashes, the probes and the verdict."""
+) -> bool:
+    """One `run_status` row: the hashes, the probes and the verdict.
+
+    Returns whether it wrote one. `run_status.target_close` is NOT NULL, and an
+    appendix with no rows has no session to name, so there is nothing honest to put
+    in that column: a row would be a row about nothing. The caller says why instead,
+    which is what turns a NotNullViolation into a sentence.
+    """
     inputs = {
         row["input"]: {
             "sha256": row.get("sha256"),
@@ -247,6 +256,8 @@ def record(
         (row["last"] for row in report if row.get("last")),
         default=None,
     )
+    if latest is None:
+        return False
     matched = sum(1 for row in report if row["status"] == "match")
     passed = sum(1 for probe in probes if probe["status"] == "ok")
     result = {
@@ -263,6 +274,7 @@ def record(
     staleness.write_run_status(
         result, run_date=datetime.now(UTC).date().isoformat(), dry_run=True
     )
+    return True
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -301,6 +313,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {probe['probe']:<48} {probe['status']:<8} {probe['read_back']}")
 
     problems.extend(probe_problems)
+    if not any(row.get("last") for row in report):
+        # Nothing was compared, which is the state before the first run: the
+        # appendix is empty, so there is no session to name and no row to write.
+        print()
+        print(
+            "STORE NOT SEEDED YET: the appendix holds no rows, so the 0 of "
+            f"{len(report)} input matches above is expected and is not a failure. "
+            "It is the state before the first run, and the first run is the one "
+            "that seeds it, with EFB_INIT_STORE=true."
+        )
+        if probe_problems:
+            print(f"but {len(probe_problems)} type probe(s) failed:")
+            for problem in probe_problems:
+                print(f"  {problem}")
+            return 1
+        print(
+            "the type probes above are what can be checked before the seed, and "
+            "they hold. NOTHING RECORDED: a run_status row needs a target_close, "
+            "and an unseeded store has no session to name."
+        )
+        return 0
     ok = not problems
     if not args.no_record:
         record(report, probes, ok)
