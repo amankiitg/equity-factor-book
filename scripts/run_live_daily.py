@@ -360,6 +360,7 @@ def finish_run(
         worst_input=result.get("worst_input"),
         worst_sessions_behind=result.get("worst_sessions_behind"),
         failures=result.get("failures") or [],
+        inputs=result.get("inputs") or {},
         detail=detail,
         error_type=error_type,
         catch_up_sessions=catch_up_sessions,

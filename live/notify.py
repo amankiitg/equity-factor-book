@@ -133,10 +133,55 @@ def _sessions(value: Any) -> str:
     return "1 session behind" if count == 1 else f"{count} sessions behind"
 
 
-def _failure_list(failures: list[dict[str, Any]]) -> str:
+def _allowed_for(inputs: dict[str, Any] | None, name: str | None) -> int | None:
+    """The allowance the gate recorded for one input, when it recorded one."""
+    entry = (inputs or {}).get(name) if name is not None else None
+    if isinstance(entry, dict):
+        value = entry.get("allowed_sessions_behind")
+        if value is not None:
+            return int(value)
+    return None
+
+
+def _allowance_suffix(allowed: int | None) -> str:
+    """` (allowed 1)` beside a distance, or nothing when none was recorded."""
+    return "" if allowed is None else f" (allowed {int(allowed)})"
+
+
+def _worst_from_inputs(
+    inputs: dict[str, Any] | None,
+) -> tuple[str | None, int | None]:
+    """The input furthest behind, from the gate's own inputs mapping.
+
+    Used when the run passed, so no input failed and `worst_input` is unset: an
+    allowance is only worth reading beside the distance sitting inside it, and
+    that is precisely the case this names. An undated input outranks any count,
+    matching the gate's own ordering.
+    """
+    ranked = [
+        (str(name), entry.get("sessions_behind"))
+        for name, entry in (inputs or {}).items()
+        if isinstance(entry, dict)
+    ]
+    if not ranked:
+        return None, None
+    ranked.sort(key=lambda item: (item[1] is None, item[1] or 0), reverse=True)
+    return ranked[0]
+
+
+def _failure_list(
+    failures: list[dict[str, Any]], inputs: dict[str, Any] | None = None
+) -> str:
     parts = []
     for failure in failures:
-        parts.append(f"{failure['input']} {_sessions(failure['sessions_behind'])}")
+        name = str(failure["input"])
+        allowed = failure.get("allowed_sessions_behind")
+        if allowed is None:
+            allowed = _allowed_for(inputs, name)
+        parts.append(
+            f"{name} {_sessions(failure['sessions_behind'])}"
+            f"{_allowance_suffix(None if allowed is None else int(allowed))}"
+        )
     return "; ".join(parts)
 
 
@@ -150,6 +195,7 @@ def compose(
     worst_input: str | None = None,
     worst_sessions_behind: int | None = None,
     failures: list[dict[str, Any]] | None = None,
+    inputs: dict[str, Any] | None = None,
     detail: str = "",
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
@@ -170,6 +216,11 @@ def compose(
     A first run says so on that first line and beside the status. The flag is
     removed after it, so a run that seeded the appendix is an event worth reading
     at a glance rather than a detail of the row.
+
+    `inputs` is the gate's own inputs mapping. Each input's allowance is stated
+    beside how far behind it is, so a non-zero distance inside its allowance
+    (the universe, one session) does not read as a failure and a stale stop shows
+    what was allowed rather than only what broke.
     """
     close = target_close or "unknown close"
     label = STATUS_LABELS.get(status, status)
@@ -206,15 +257,22 @@ def compose(
             "Orders: none. The run failed before sizing, so no book was priced."
         )
 
+    if worst_input is None and inputs:
+        # A run that passed still has inputs behind the close: the universe sits
+        # inside its one-session allowance most evenings, and that allowance is
+        # only readable beside the distance it applies to.
+        worst_input, worst_sessions_behind = _worst_from_inputs(inputs)
     if worst_input is None:
         lines.append("Staleness: no input failed the check.")
     else:
+        allowance = _allowed_for(inputs, worst_input)
         lines.append(
             f"Staleness: worst input {worst_input}, "
-            f"{_sessions(worst_sessions_behind)}."
+            f"{_sessions(worst_sessions_behind)}"
+            f"{_allowance_suffix(allowance)}."
         )
     if status == "stale_stopped" and failures:
-        lines.append(f"Failing inputs: {_failure_list(failures)}.")
+        lines.append(f"Failing inputs: {_failure_list(failures, inputs)}.")
     if no_price:
         # A member with no price leaves the book by construction, and a book quietly
         # smaller than the index is a book nobody can check, so the names are said
@@ -450,6 +508,7 @@ def notify_run(
     worst_input: str | None = None,
     worst_sessions_behind: int | None = None,
     failures: list[dict[str, Any]] | None = None,
+    inputs: dict[str, Any] | None = None,
     detail: str = "",
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
@@ -486,6 +545,7 @@ def notify_run(
         worst_input=worst_input,
         worst_sessions_behind=worst_sessions_behind,
         failures=failures,
+        inputs=inputs,
         detail=detail,
         error_type=error_type,
         catch_up_sessions=catch_up_sessions,

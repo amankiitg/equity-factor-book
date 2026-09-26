@@ -74,8 +74,14 @@ def _passing_gate() -> dict[str, object]:
         "job": "live_daily",
         "checked_at": "2026-09-25T02:30:00+00:00",
         "target_close": PINNED_CLOSE,
-        "allowed_sessions_behind": 0,
-        "inputs": {"prices": {"content": PINNED_CLOSE, "sessions_behind": 0}},
+        "allowed_sessions_behind": {"prices": 0, "universe": 1},
+        "inputs": {
+            "prices": {
+                "content": PINNED_CLOSE,
+                "sessions_behind": 0,
+                "allowed_sessions_behind": 0,
+            }
+        },
         "failures": [],
         "worst_input": "prices",
         "worst_sessions_behind": 0,
