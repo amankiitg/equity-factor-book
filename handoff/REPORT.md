@@ -2634,9 +2634,13 @@ required and the measurement ran with it off.
 
 ## Preflip: everything needed before real paper orders
 
-Branch `preflip`, seven commits off `702d01d`, one per item. **Nothing is pushed
-to `main`**: `main` auto-deploys to the live cron, and the owner's rule is that it
-does not move until the two gate evenings pass.
+Branch `preflip`, seven commits off `702d01d`, one per item, plus a commit per
+review fix below (three) and this report. **Nothing was pushed to `main` until
+the four review fixes were in**: `main` auto-deploys to the live cron, and the
+owners rule is that it does not move until the two gate evenings pass.
+`preflip` was merged to `main` on 2026-09-26, before the Monday 22:30 UTC
+deadline, so both gate evenings run the code that goes live rather than one commit
+behind it.
 
 1. **Order timing (`f0d432e`).** The cron fires at 22:30 UTC, which is 18:30 ET in
    summer and 17:30 ET in winter: after the 16:00 ET close and inside the 16:00 to
@@ -2658,12 +2662,12 @@ does not move until the two gate evenings pass.
    `run_live_daily.main` checks it first, before the seed, the extension or the
    store, so a holiday costs nothing and says so. A new `market_closed` status
    emails the owner (subject `EFB CLOSED <date> | none proposed | market closed`)
-   and no `run_status` row is written, because the dashboard judges the latest row
-   against its own `target_close` and a holiday row would replace a clean state
-   with a failure on a day nothing failed. The day goes in `cron_runs` so a retry
-   does not repeat the message, and a store that cannot be reached still sends it.
-   The 2026 closure list is pinned in the tests (ten weekdays), so a calendar that
-   changes its mind is visible.
+   and the day goes in `cron_runs` so a retry does not repeat the message, and a
+   store that cannot be reached still sends it. (The first version wrote no
+   `run_status` row, on the reasoning that a holiday row keyed by the previous
+   close would replace a clean state with a failure. Fix 3 below changed that:
+   the keying was the problem, not the row.) The 2026 closure list is pinned in
+   the tests (ten weekdays), so a calendar that changes its mind is visible.
 3. **The establishment day (`77bc1ed`).** `guards.traded_notional_limit` returns
    the limit and its basis: on the first trading day the ceiling is the book
    itself (`ESTABLISHMENT_GROSS`, 1.0 NAV of gross) and from the second the
@@ -2704,6 +2708,109 @@ does not move until the two gate evenings pass.
    outside Access. The page leads with status, then the dry-run banner, the
    catch-up label, the positions check, the book and the exposures either side of
    the hedge.
+
+### The four review fixes
+
+Four things the owner asked for before `main` moves, one commit each off `447992d`.
+
+**1. The account, not the store, decides the establishment day (`92b5c5f` →
+`feb5fbb`).** The evening asked its own book:
+
+```python
+establishment = not held
+```
+
+`held` falls back to the store's position row when the account cannot be read, so
+the answer came from the store in exactly the case where the account had not been
+looked at, and both of those cases are silent:
+
+- an unreadable account (a missing key) with an empty store was called an
+  establishment day, so the whole book would have been bought against an account
+  whose state nobody knew;
+- an unreadable account with a store holding a dry-run evening's 150 names was
+  called a rebalance, so every traded leg was measured against the store's
+  intentions and the evening traded the difference from a book that does not exist.
+
+`positions.establishment(broker)` answers from the account alone: empty
+establishes, non-empty rebalances, and an account that could not be read is
+**not** evidence that the account is empty, so it is neither. The run logs a
+warning and keeps the store's book as the measurement, which is what it did
+before.
+
+Every position row written in dry run is labelled `kind = "intention"`
+(`"holding"` when orders were sent), in `efb.positions` (new column plus its
+idempotent alter) and in the local state parquet, so a later reader - E12's
+attribution, or the first live evening - cannot count a book that was never sent
+as one that was.
+
+Honesty about the tests, because the owner's named case does not pin this on its
+own: *store holds 150 dry-run names, account holds 0, the run establishes* passes
+under the old expression too, since `held` already fell back to the account when
+it could be read. Pinned anyway (it is the state the flip starts from), and the
+case that actually turns on the fix - the unreadable account - is pinned beside
+it. Reverting `run_live_daily` to `not held` and running the file fails exactly
+that one test and passes the other nine.
+
+**2. The 53.73 bp cost, split into the four parts it is made of (`dcffb0f`).**
+
+```text
+53.7338 bp = spread 5.3558 + impact 39.0447 + commission 1.0000 + borrow 8.3333
+```
+
+The email states all four beside the total, and `efb.reconciliation` carries them
+in four new columns (`expected_spread_bps`, `expected_impact_bps`,
+`expected_commission_bps`, `expected_borrow_bps`), each with its `alter table` so
+the already-provisioned shared project gets them. Both read the same breakdown
+from the same manifest through `reconcile.cost_breakdown`, so the message and the
+store cannot disagree. A breakdown that does not add up says so in the message
+rather than presenting a broken total as a whole one.
+
+The conditional in the request - *if borrow is charged as a full year on day one,
+change it to a daily accrual* - is **false**, so nothing was changed. From
+`live/evening_job.py::_cost_decomposition`:
+
+```python
+borrow_bps = costs_mod.BORROW_RATE * short_gross * (HORIZON / TRADING_DAYS) * 1e4
+```
+
+`BORROW_RATE` 0.02 (`efb/costs.py`), `HORIZON` 21, `TRADING_DAYS` 252:
+$0.02 \times 0.5 \times (21/252) \times 10^4 = 8.3333$ bp, which is the 8.3333 in
+the breakdown. A full year on the first day would have been
+$0.02 \times 0.5 \times 10^4 = 100$ bp, twelve times as much. It is one 21-session
+rebalance horizon, the same period E6's per-rebalance number uses, now stated in
+the docstring, the schema comment and the message rather than left implicit in the
+formula. A one-day accrual would be
+`BORROW_RATE * short_gross * (1 / TRADING_DAYS) * 1e4`: one line, not taken.
+
+**3. A closed evening leaves evidence, and the page reads it as neutral
+(`2bcc8bf`).** A holiday sent an email and recorded nothing, on the reasoning
+that a `market_closed` row would be keyed by the previous close's own target and
+so replace a clean row with a failure. True - and the reason it was wrong to
+write the row *that way*, not a reason to write no row at all. The closed day now
+goes through the same reporting path as every other evening:
+
+- a `run_status` row with status `market_closed`, `cost_label` null (nothing was
+  priced, so the day is neither an establishment nor a rebalance), keyed by the
+  **closed date itself**, which is what keeps it from displacing the previous
+  session's row;
+- a snapshot, so the page shows the closed day and the last book it could not
+  change;
+- a `cron_runs` row - `market_closed` joins `COMPLETED_STATUSES` - so a re-fire
+  sends nothing second, and the exit code is 0 because nothing failed.
+
+`staleness.run_state` reads it as neutral: a closed day *after* the last close is
+`clean: True`, labelled "the exchange was shut, so no run was due". The negative
+control is in the test file: a closed row keyed to a date the calendar says is a
+session stays a failure (`closed_on_a_session`), which is what stops the neutral
+branch from being a way to hide a skipped evening. The page follows: `market_closed`
+renders in the neutral panel, and a closed snapshot still fails once it has sat
+past the deadline for the *next* session, so a holiday cannot look current while
+the following evening never ran. Schema enum, a `snapshot_market_closed.json`
+fixture built by the writer, and tests on both sides.
+
+**4. The establishment ceiling stays at 1.0 NAV of gross.** No change:
+`guards.ESTABLISHMENT_GROSS = 1.0` and `establishment_limit` are as item 3 built
+them, and the rehearsal below trades 1,000,000 of gross against a 1,000,000 NAV.
 
 ### The rehearsal
 
@@ -2766,45 +2873,104 @@ read for real and holds nothing, while the store carries the 150-name book the d
 runs intended. That is the state the flip starts from, and it is now stated every
 evening rather than assumed.
 
+### The rehearsal again, after the four fixes
+
+Same setup and the same pinning, re-run at the tip of `preflip` (`2bcc8bf`). The
+first attempt printed the day's `cron_runs` row as cleared and then exited
+`already ran` without running: it "cleared" the row by writing the filtered frame
+back through `store.upsert`, and on Postgres `upsert` only inserts and updates, so
+the row never went anywhere. The delete is SQL now. Worth saying because the
+output looked entirely plausible - a stored run, 150 orders, `establishment True`
+- and it was **the previous rehearsal's row**, which is the same shape of mistake
+this project keeps finding.
+
+```text
+deleted 1 cron_runs row(s) for 2026-09-26
+16:27:46 store: postgres/efb
+16:27:53 seed allowlist: 19 path(s) allowed
+16:27:53 run tree: /var/folders/.../efb-run-sihek3fi/data
+16:36:01 positions: mismatch: the account holds 0 name(s) and the store 150: 150
+         name(s) the store holds and the account does not (ABT, ADM, AIG, AKAM,
+         ALB, AMCR, ...). Expected in dry run: nothing has been sent to the
+         account, so the store's book is an intention, not a holding; held 0
+         name(s) from alpaca paper account, establishment=True
+16:36:02 run recorded as ok, notification sent
+exit: 0
+
+run_status:     target_close 2026-09-25, run_date 2026-09-26, status ok,
+                notify_status sent, dry_run True, n_orders 150,
+                gross_notional 1,000,000, establishment True,
+                cost_label establishment, snapshot "snapshot: off (dry run)"
+reconciliation: expected_cost_bps 53.7338
+                expected_spread_bps 5.3558
+                expected_impact_bps 39.0447
+                expected_commission_bps 1.0000
+                expected_borrow_bps 8.3333
+                parts sum 53.7338
+positions:      150 row(s), kinds {'intention': 150}
+orders:         150 row(s), statuses {'DRY_RUN': 150}
+cron_runs:      1 row(s), status ok
+```
+
+Read against the four fixes: `held 0 name(s) from alpaca paper account` is fix 1
+(the book the morning job measures against is the account's, not the store's),
+`establishment=True` beside it is fix 1 (the decision comes from the account),
+`kind {'intention': 150}` is fix 1's label, and the four cost parts summing to
+53.7338 is fix 2, read out of `efb.reconciliation` rather than off the screen. The
+email's cost line, composed by the same function the message uses, on the same
+numbers:
+
+```text
+Cost: establishment, 53.73 bps of NAV (spread 5.36 + impact 39.04 + commission 1.00 + borrow 8.33).
+```
+
+Fix 3 is not in this transcript because the sandbox's clock is a Saturday and the
+calendar is pinned open to make it an evening: the open path is what was
+rehearsed. The closed path is driven end to end by
+`tests/test_e11_holiday.py::test_a_closed_day_sends_one_message_and_records_itself`
+(`run_live_daily.main()` with a local store, the message captured, the row and the
+cron row asserted) and by the two `run_state` tests either side of the neutral
+branch. It was not sent to the owner's inbox a second time.
+
 ### Verification
 
 Per step, the fast suite and `make lint`, and the web toolchain's own tests:
 
 ```text
 $ make test
-942 passed, 1 skipped, 32 deselected, 4 warnings in 37.22s
+958 passed, 1 skipped, 32 deselected, 4 warnings in 45.13s
 
 $ cd web && npx vitest run
  Test Files  4 passed (4)
-      Tests  43 passed (43)
+      Tests  47 passed (47)
 
 $ cd web && npm run build
 vite v8.3.1 building client environment for production...
-dist/assets/index-e1vaoGEe.js   226.35 kB │ gzip: 70.88 kB
-✓ built in 833ms
+dist/assets/index-BBChc147.css    7.61 kB │ gzip:  2.38 kB
+dist/assets/index-2Eyeihav.js   226.62 kB │ gzip: 70.96 kB
+✓ built in 128ms
 
 $ make lint
 ruff: All checks passed!
 mypy efb: Success: no issues found in 33 source files
-mypy live scripts: Success: no issues found in 31 source files
+mypy live scripts: Success: no issues found in 32 source files
 black: 190 files would be left unchanged.
 ```
 
 The full suite, `make test-all`, at the branch tip:
 
 ```text
-$ make test-all > /tmp/efb-test-all.log 2>&1; echo "EXIT=$?"
-$ tail -4 /tmp/efb-test-all.log
-
+$ make test-all 2>&1 | tail -25
+...
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-974 passed, 1 skipped, 4 warnings in 633.07s (0:10:33)
-EXIT=0
+990 passed, 1 skipped, 4 warnings in 704.42s (0:11:44)
 ```
 
-The previous full run recorded in `LOG.md` was 900 passed, 1 skipped. This one
-collects 975, up 75: the seven items' own tests plus the page's 43 Vitest tests
-are not in that number (the Python suite is), so the growth is the E11 tests
-added here, and nothing was lost.
+The previous full run recorded in `LOG.md` was 900 passed, 1 skipped. The one
+before the four fixes was 974; the sixteen added here are the fix 1 cases
+(establishment from the account, the unreadable account, the label and its round
+trip), the four cost-part cases, the migration guard, and the four holiday cases.
+Nothing was lost: 974 of the 990 were passing before these commits.
 
 `make verify-evidence`: `evidence OK`. Nothing under `data/` or `evidence/` was
 written by this branch: the rehearsal works in its own tree and the web fixtures
@@ -2816,7 +2982,10 @@ are JSON under `web/`.
 `reason_code` and `client_order_id` from `efb.orders.reason_code`,
 `efb.orders.client_order_id`. The gate's allowance from
 `efb.run_status.inputs.universe.allowed_sessions_behind` (1). The order count and
-gross from `efb.run_status.n_orders` and `gross_notional`.
+gross from `efb.run_status.n_orders` and `gross_notional`. The cost and its four
+parts from `efb.reconciliation.expected_cost_bps`,
+`expected_{spread,impact,commission,borrow}_bps`; the label on the positions rows
+from `efb.positions.kind`.
 
 **Yes or no, each with its evidence.**
 
@@ -2850,10 +3019,16 @@ gross from `efb.run_status.n_orders` and `gross_notional`.
   exists to check the conclusion against the real account rather than the page.
   If the owner would rather the orders be queued at 19:00 ET or later (when `opg`
   is accepted), that is a schedule change, not a TIF change.
-- **No `run_status` row on a holiday.** The dashboard judges the latest row
-  against its own `target_close`, so a holiday row would show a failure on a day
-  nothing failed. The cost is that the Cloudflare page has no evidence of the
-  holiday other than the email and the absent snapshot.
+- **The holiday path, revised.** It first recorded nothing, on the reasoning that
+  a holiday row would replace a clean state with a failure. Fix 3 says that
+  reasoning was half right: the *keying* was the problem, not the row. A closed
+  day now writes a `run_status` row keyed by the closed date, a snapshot and a
+  `cron_runs` row, and reads as neutral rather than failed. What a reviewer might
+  still disagree with is the neutral reading itself: a closed day after the last
+  close is `clean: True`, so the page's top line is green on a day the loop did
+  nothing. The counterweight is that the same page fails once the *next*
+  session's deadline passes, and a closed row keyed to a session day is a
+  failure, not a holiday.
 - **The establishment ceiling is 1.0 NAV of gross, which is tighter than the
   absolute brake** (2,000,000). That reads oddly until the two are seen as
   different instruments: the brake is a throughput limit on a rebalance, and day
