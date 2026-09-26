@@ -213,6 +213,13 @@ def artifact_rows(spec: InputSpec, root: Path, cutoff: pd.Timestamp | None = Non
         frames = []
         for file in _universe_files(spec, root):
             frame = pd.read_parquet(file)
+            if spec.column_map:
+                # Mapped per file rather than once after the concatenation: a
+                # tree can hold archives written by more than one writer, and a
+                # single frame cannot carry both spellings of a column. Mapping
+                # after the concat turned the two into duplicates, and the store
+                # write then kept only the later one.
+                frame = frame.rename(columns=spec.column_map)
             frame[DATE_COLUMN] = pd.to_datetime(frame["as_of"])
             frames.append(frame)
         long = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
@@ -367,7 +374,14 @@ def _hydrate_one(spec: InputSpec, root: Path, appendix: pd.DataFrame) -> int:
 
 
 def _hydrate_universe(spec: InputSpec, root: Path, appendix: pd.DataFrame) -> int:
-    """Write one dated holdings file per appendix session, idempotently."""
+    """Write one dated holdings file per appendix session, idempotently.
+
+    The columns are written as the appendix names them, not as the vendor spells
+    them. `extend_archives` archives a fetched session with the same underscored
+    names, so reversing the map here would put two conventions in one directory
+    and `artifact_rows` would read them as duplicates, which the store write then
+    collapses to whichever came last.
+    """
     if appendix.empty:
         return 0
     out_dir = root / spec.path
@@ -376,9 +390,6 @@ def _hydrate_universe(spec: InputSpec, root: Path, appendix: pd.DataFrame) -> in
     for session in sessions:
         block = appendix.loc[pd.to_datetime(appendix[DATE_COLUMN]) == session]
         frame = block.rename(columns={DATE_COLUMN: "as_of"}).copy()
-        if spec.column_map:
-            reverse = {new: old for old, new in spec.column_map.items()}
-            frame = frame.rename(columns=reverse)
         frame["as_of"] = str(pd.Timestamp(session).date())
         stamp = pd.Timestamp(session).strftime("%Y-%m-%d")
         frame.to_parquet(out_dir / f"spy_holdings_{stamp}.parquet", index=False)

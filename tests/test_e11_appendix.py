@@ -153,8 +153,12 @@ def _write_inputs(root: Path) -> None:
                 "sedol": ["S1", "S2", "S3"],
                 "weight": [0.4, 0.35, 0.25],
                 "sector": ["Industrials"] * 3,
-                "shares held": [10.0, 20.0, 30.0],
-                "local currency": ["USD"] * 3,
+                # The underscore spellings, which is what the archives on disk
+                # carry and what `efb/spy.py`'s parser writes from the vendor's
+                # header. The spaced vendor spellings are the legacy case, and
+                # `column_map` exists to read those.
+                "shares_held": [10.0, 20.0, 30.0],
+                "local_currency": ["USD"] * 3,
                 "as_of": [str(date.date())] * 3,
             }
         )
@@ -191,6 +195,61 @@ def test_hydration_reproduces_every_input_it_seeded(
         if spec.name == "factor_cov":
             continue  # a snapshot with no date; covered by the session stamping
         assert _hash(seeded, spec) == _hash(reference, spec), spec.name
+
+
+def test_hydration_writes_the_universe_with_the_names_the_loop_fetches(
+    seeded: Path,
+) -> None:
+    """One directory, one convention, so the reader cannot see two spellings."""
+    import pyarrow.parquet as pq  # noqa: PLC0415 - only this test reads a schema
+
+    files = sorted((seeded / "raw" / "spy_holdings").glob("*.parquet"))
+    assert files, "hydration wrote no archive"
+    for path in files:
+        names = set(pq.read_schema(path).names)
+        assert {"shares_held", "local_currency"} <= names, path.name
+        assert not {"shares held", "local currency"} & names, path.name
+
+
+def test_a_legacy_spelled_archive_does_not_duplicate_the_universe_columns(
+    tmp_path: Path,
+) -> None:
+    """A mixed directory must not lose a column the way mapping after the concat did.
+
+    Both archives are written by hand rather than by hydration, because the point
+    is a tree that holds two conventions at once: the loop fetches a session with
+    the parser's underscore names, and an older hand-made file carries the
+    vendor's spaced ones. With the map applied once, after the concatenation, the
+    two became one column name twice and the store write kept only the later one,
+    so every session from the other file lost `shares_held` and `local_currency`.
+    """
+    spec = appendix.SPEC_BY_NAME["universe"]
+    archive = tmp_path / "data" / "raw" / "spy_holdings"
+    archive.mkdir(parents=True)
+    columns = ["ticker", "name", "identifier", "sedol", "weight", "sector"]
+    values = [
+        ["AAA", "Alpha", "C1", "S1", 0.4, "Industrials"],
+        ["BBB", "Beta", "C2", "S2", 0.6, "Industrials"],
+    ]
+    fetched = pd.DataFrame(values, columns=columns)
+    fetched["shares_held"] = [10.0, 20.0]
+    fetched["local_currency"] = ["USD", "USD"]
+    fetched["as_of"] = ["2026-09-21"] * 2
+    fetched.to_parquet(archive / "spy_holdings_2026-09-21.parquet", index=False)
+    legacy = fetched.rename(
+        columns={"shares_held": "shares held", "local_currency": "local currency"}
+    )
+    legacy["as_of"] = ["2026-09-18"] * 2
+    legacy.to_parquet(archive / "spy_holdings_2026-09-18.parquet", index=False)
+
+    rows = appendix.artifact_rows(spec, tmp_path / "data")
+
+    assert not rows.columns.duplicated().any(), list(rows.columns)
+    # and the values survive for both sessions, not only the one read last
+    assert len(rows) == 4
+    assert rows["shares_held"].notna().all()
+    assert rows["local_currency"].notna().all()
+    assert sorted(rows["shares_held"]) == [10.0, 10.0, 20.0, 20.0]
 
 
 def test_the_appendix_holds_only_sessions_after_the_cutoff(seeded: Path) -> None:
