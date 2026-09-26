@@ -85,6 +85,9 @@ services:
         sync: false
       - key: EFB_R2_ACCOUNT_ID
         sync: false
+      # The snapshot bucket is `efb-snapshots`: private, and read by the Cloudflare
+      # Worker through an R2 binding, so the browser never reaches it and no key
+      # reaches the browser either. The token here is scoped to that one bucket.
       - key: EFB_R2_BUCKET
         sync: false
       - key: EFB_R2_ACCESS_KEY_ID

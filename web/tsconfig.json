@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "types": ["@cloudflare/workers-types", "vitest/globals", "node"]
+  },
+  // The two config files are excluded on purpose: Vite 8 ships rolldown-based
+  // plugin types while Vitest 3 bundles a rollup-based Vite of its own, so a
+  // single file that names both is a type conflict rather than a bug in either.
+  // Each tool type-checks its own config, and the source is what this checks.
+  "include": ["src", "worker"]
+}

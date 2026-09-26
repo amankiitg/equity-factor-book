@@ -1,0 +1,27 @@
+{
+  // The EFB live book monitor on Cloudflare.
+  //
+  // `npm run deploy` = `vite build && wrangler deploy`. One Worker serves the
+  // built page and one API route. `preview_urls: false` matters: without it the
+  // Worker gets a second hostname (the *.workers.dev preview) that Cloudflare
+  // Access does not cover, which would put positions outside the policy.
+  //
+  // `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are plain vars, not secrets: they name
+  // the Access application, and the Worker verifies the assertion against the
+  // team's own certificates rather than trusting a header.
+  "name": "efb-live-book",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "efb-snapshots" }],
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "REPLACE-WITH-YOUR-TEAM-DOMAIN.cloudflareaccess.com",
+    "ACCESS_AUD": "REPLACE-WITH-THE-ACCESS-APPLICATION-AUD"
+  },
+  "preview_urls": false,
+  "observability": { "enabled": true }
+}

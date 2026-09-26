@@ -7,7 +7,7 @@ RUFF ?= $(if $(VENV_BIN),$(VENV_BIN)/ruff,ruff)
 MYPY ?= $(if $(VENV_BIN),$(VENV_BIN)/mypy,mypy)
 BLACK ?= $(if $(VENV_BIN),$(VENV_BIN)/black,black)
 
-.PHONY: help test test-fast test-all lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild-e4 rebuild-e5 rebuild-e6 rebuild-e7 rebuild-e8 rebuild-e9 rebuild-e10 rebuild evidence verify-evidence clean
+.PHONY: help test test-fast test-all lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild-e4 rebuild-e5 rebuild-e6 rebuild-e7 rebuild-e8 rebuild-e9 rebuild-e10 rebuild evidence verify-evidence web-install web-test web-build clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-15s %s\n", $$1, $$2}'
@@ -30,6 +30,15 @@ lint: ## Static checks: ruff, mypy, black
 format: ## Auto-format with black and ruff
 	$(BLACK) efb dashboard live tests
 	$(RUFF) check --fix efb dashboard live tests
+
+web-install: ## Install the Cloudflare page's toolchain from the lockfile
+	cd web && npm ci
+
+web-test: ## The page's and the Worker's tests, including the leak check
+	cd web && npm run test
+
+web-build: ## Type-check and build the page, then check the bundle for leaks
+	cd web && npm run build && npm run test
 
 dashboard: publish ## Run the EFB Console (Streamlit)
 	$(STREAMLIT) run dashboard/app.py --server.headless true

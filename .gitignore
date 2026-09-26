@@ -35,5 +35,14 @@ live/logs/
 # Copies of the sprint documents and notebooks served by the Methodology tab
 dashboard/static/docs/
 
+# The Cloudflare page's toolchain: dependencies, the built bundle, and wrangler's
+# own scratch state. The lockfile IS committed, so the deploy build is the same
+# tree every time.
+web/node_modules/
+web/dist/
+web/.wrangler/
+web/.vite/
+*.tsbuildinfo
+
 # OS
 .DS_Store
