@@ -270,6 +270,7 @@ def finish_run(
     book: pd.DataFrame | None = None,
     reconciliation: dict[str, Any] | None = None,
     init: bool = False,
+    no_price: list[str] | None = None,
     poster: Any = None,
     snapshot_poster: Any = None,
 ) -> int:
@@ -361,6 +362,7 @@ def finish_run(
         store=store_name,
         snapshot=snapshot_detail,
         cross_checks_capped=cross_checks_capped,
+        no_price=no_price,
         init=init,
         poster=poster,
     )
@@ -511,6 +513,28 @@ def main() -> int:
         if flags:
             logger.warning("large moves in the appended session: %s", flags)
         extend.extend_model()
+        # A member of tonight's universe with no price is out of tonight's book,
+        # which is the right answer and not something to stop over. It is named in
+        # the email instead, because a book quietly smaller than the index is a
+        # book nobody can check.
+        #
+        # This is a report, so a failure to build it is reported and the run goes
+        # on: whatever is wrong with the artifacts will stop the run at the book
+        # itself, where it belongs, rather than here in the note about it.
+        try:
+            no_price = evening_job.universe_without_prices(run_tree)
+        except Exception as exc:  # noqa: BLE001 - a note, not a step
+            no_price = []
+            logger.warning(
+                "could not tell which members had no price: %s: %s",
+                type(exc).__name__,
+                notify.scrub(str(exc)),
+            )
+        if no_price:
+            logger.warning(
+                "%s had no price tonight, so they are out of the book",
+                ", ".join(no_price),
+            )
         # `data/VERSION.json` is not rehashed here, and nothing in the live loop
         # writes it. It belongs to the research pipeline, which is what E1 to E10
         # were scored on, and a loop that rewrote it would replace that record
@@ -598,6 +622,7 @@ def main() -> int:
         flags=flags,
         started_at=started_at,
         cross_checks_capped=capped,
+        no_price=no_price,
         init=first_run,
         **snapshot_inputs,
     )

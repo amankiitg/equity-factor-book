@@ -151,6 +151,7 @@ def compose(
     store: str | None = None,
     snapshot: str | None = None,
     cross_checks_capped: str | None = None,
+    no_price: list[str] | None = None,
     init: bool = False,
 ) -> str:
     """The fields, in order, ready for a preview.
@@ -207,6 +208,11 @@ def compose(
         )
     if status == "stale_stopped" and failures:
         lines.append(f"Failing inputs: {_failure_list(failures)}.")
+    if no_price:
+        # A member with no price leaves the book by construction, and a book quietly
+        # smaller than the index is a book nobody can check, so the names are said
+        # out loud rather than left to be noticed.
+        lines.append(f"Dropped for no price: {', '.join(sorted(no_price))}.")
     # A split is named here because it moves a held position without a decision
     # being made, and an unexplained large move is named because it is the one
     # thing in the appended session a person has to look at.
@@ -411,6 +417,7 @@ def notify_run(
     store: str | None = None,
     snapshot: str | None = None,
     cross_checks_capped: str | None = None,
+    no_price: list[str] | None = None,
     init: bool = False,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
@@ -443,6 +450,7 @@ def notify_run(
         catch_up_sessions=catch_up_sessions,
         splits=splits,
         flags=flags,
+        no_price=no_price,
         store=store,
         snapshot=snapshot,
         cross_checks_capped=cross_checks_capped,

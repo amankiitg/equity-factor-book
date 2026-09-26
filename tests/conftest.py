@@ -28,14 +28,35 @@ import pytest  # noqa: E402 - after the environment, which must be set first
 
 from live import seed  # noqa: E402
 
+# `scripts/provision_supabase.py` loads the repository's `.env` into the process when
+# it runs, and the tests drive its functions. Without this, a test run picks up the
+# developer's real credentials, which is both a hygiene problem and a functional one:
+# with a database URL and `EFB_STORE=local` both present the store refuses to choose,
+# and every later test fails at `store_mode` with nothing to do with the change under
+# test. The suite's documented invariant is that it writes only to the local
+# fallback, so the credentials are removed before each test as well as after.
+LIVE_CREDENTIALS = (
+    "EFB_SUPABASE_DB_URL",
+    "EFB_RESEND_API_KEY",
+    "EFB_SEED_R2_ACCESS_KEY_ID",
+    "EFB_SEED_R2_SECRET_ACCESS_KEY",
+    "EFB_R2_ACCESS_KEY_ID",
+    "EFB_R2_SECRET_ACCESS_KEY",
+)
+
 
 @pytest.fixture(autouse=True)
-def _no_leaked_watchers():
-    """The run installs a read allowlist on itself; no test may leave one on.
+def _no_leaked_environment():
+    """No test runs with, or leaves behind, the developer's own credentials.
 
-    A test that drives `run_live_daily.main()` installs the guard for real. Left
-    installed it would wrap every later test's reads, which is both slower and a
-    false premise for the test that asserts the recorder cleans up after itself.
+    Also takes the read allowlist off, because a test that drives
+    `run_live_daily.main()` installs one for real: left installed it would wrap
+    every later test's reads, which is both slower and a false premise for the test
+    that asserts the recorder cleans up after itself.
     """
+    for name in LIVE_CREDENTIALS:
+        os.environ.pop(name, None)
     yield
     seed.unwatch()
+    for name in LIVE_CREDENTIALS:
+        os.environ.pop(name, None)

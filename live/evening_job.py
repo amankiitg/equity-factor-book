@@ -130,6 +130,29 @@ def load_spy_universe(
     return frame, path
 
 
+def universe_without_prices(
+    data_root: Path | None = None, as_of: pd.Timestamp | None = None
+) -> list[str]:
+    """Current universe members with no price for the session being priced.
+
+    A takeover, a halt or a stale archive can leave a name in the index with no
+    print. It drops out of the book by construction, because the model needs its
+    return, and that is the right answer: the run must not stop for it. What must
+    not happen is the drop going unmentioned, because a book quietly smaller than
+    the index is a book nobody can check. The names travel to the email.
+    """
+    root = Path(data_root) if data_root is not None else DATA_ROOT
+    frame, _ = load_spy_universe(root, as_of=as_of)
+    members = {str(name).upper().strip() for name in frame["ticker"]}
+    prices = pd.read_parquet(root / "raw" / "prices.parquet", columns=["close"])
+    dates = prices.index.get_level_values("date")
+    if len(dates) == 0:
+        return sorted(members)
+    tonight = dates == pd.Timestamp(dates.max())
+    priced = prices.index.get_level_values("ticker")[tonight]
+    return sorted(members - {str(name).upper().strip() for name in priced})
+
+
 def _stored_ic(signal: str, data_root: Path) -> float:
     """The stored horizon-1 IC of the signal, read, never typed by hand."""
     summary = pd.read_parquet(data_root / "alpha" / "summary.parquet")

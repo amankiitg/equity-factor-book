@@ -275,6 +275,27 @@ def _patch_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(reconcile, "daily_record", lambda *a, **k: {"dry_run": True})
 
 
+def test_a_member_with_no_price_is_named_in_the_message() -> None:
+    """A book quietly smaller than the index is a book nobody can check.
+
+    The member drops out by construction, because the model needs its return. What
+    the message must not do is leave the owner to notice the gap.
+    """
+    from live import notify
+
+    fields = {
+        "status": "ok",
+        "target_close": "2026-09-21",
+        "dry_run": True,
+        "orders": 3,
+        "gross": 1000.0,
+    }
+    message = notify.compose(**fields, no_price=["WBA", "EA"])
+
+    assert "Dropped for no price: EA, WBA." in message
+    assert "Dropped for no price" not in notify.compose(**fields)
+
+
 def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

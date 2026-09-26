@@ -40,6 +40,33 @@ def _write_spy_archive(data_root: Path, as_of: str, tickers: list[str]) -> Path:
     return path
 
 
+def test_a_member_with_no_price_is_reported_by_name(tmp_path: Path) -> None:
+    """A takeover or a halt leaves a name in the index with no print.
+
+    It drops out of the book because the model needs its return, and that is the
+    right answer: the run must not stop for it. The names come back so that the
+    message can say them rather than leave the gap to be noticed.
+    """
+    _write_spy_archive(tmp_path, "2026-09-21", ["PRICED", "HALTED"])
+    priced = pd.MultiIndex.from_product(
+        [[pd.Timestamp("2026-09-21")], ["PRICED"]], names=["date", "ticker"]
+    )
+    pd.DataFrame({"close": [10.0]}, index=priced).to_parquet(
+        tmp_path / "raw" / "prices.parquet"
+    )
+
+    assert ev.universe_without_prices(tmp_path) == ["HALTED"]
+
+    # and with every member priced there is nothing to report
+    full = pd.MultiIndex.from_product(
+        [[pd.Timestamp("2026-09-21")], ["PRICED", "HALTED"]], names=["date", "ticker"]
+    )
+    pd.DataFrame({"close": [10.0, 20.0]}, index=full).to_parquet(
+        tmp_path / "raw" / "prices.parquet"
+    )
+    assert ev.universe_without_prices(tmp_path) == []
+
+
 def test_load_spy_universe_uses_the_latest_archive(tmp_path: Path) -> None:
     _write_spy_archive(tmp_path, "2026-09-17", ["AAA", "BBB"])
     _write_spy_archive(tmp_path, "2026-09-18", ["AAA", "CCC"])
