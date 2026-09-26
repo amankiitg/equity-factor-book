@@ -230,8 +230,16 @@ def test_the_appendix_identity_names_what_was_read(seeded: Path) -> None:
 
 
 @pytest.mark.slow
-def test_the_proposal_names_the_appendix_it_was_priced_from() -> None:
-    """A proposal never priced from an appendix it cannot name (E11-F15)."""
+def test_the_proposal_names_the_appendix_it_was_priced_from(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A proposal never priced from an appendix it cannot name (E11-F15).
+
+    The empty-appendix half of this test makes its own empty directory rather than
+    reading the ambient one: a full run leaves rows in the real fallback, and the
+    assertion then depends on which tests ran before it.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "state")
     from live import evening_job
 
     identity = appendix.appendix_manifest()
@@ -245,7 +253,9 @@ def test_the_proposal_names_the_appendix_it_was_priced_from() -> None:
 
 
 @pytest.mark.slow
-def test_the_real_artifacts_round_trip_and_report_hashes(tmp_path: Path) -> None:
+def test_the_real_artifacts_round_trip_and_report_hashes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The evidence run: seed plus appendix equals the committed artifacts."""
     reference = appendix.DATA_ROOT
     root = tmp_path / "data"
@@ -261,7 +271,11 @@ def test_the_real_artifacts_round_trip_and_report_hashes(tmp_path: Path) -> None
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-    store.LOCAL_DIR = tmp_path / "state"
+    # Through monkeypatch, never by assignment: this test is marked slow, so the
+    # fast selection never runs it, and a direct assignment here leaked the
+    # temporary directory into every later test in the same process. The full
+    # suite caught it; the guard below keeps it caught.
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "state")
     appendix.hydrate(root)
     for spec in appendix.SPECS:
         if spec.name == "factor_cov":

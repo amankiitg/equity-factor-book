@@ -234,3 +234,24 @@ def test_the_comparison_basis_normalises_dates_and_missing_values() -> None:
     assert verify_store_roundtrip.frame_hash(left) != verify_store_roundtrip.frame_hash(
         verify_store_roundtrip.canonical(other)
     )
+
+
+def test_no_test_leaks_the_store_directory_by_assignment() -> None:
+    """The bug the full suite caught, pinned so the fast selection cannot hide it.
+
+    `tests/test_e11_appendix.py` used to assign `store.LOCAL_DIR` directly. That
+    test is marked slow, so `make test-fast` never ran it and never saw the leak,
+    while a full run had every later test reading and writing a temporary
+    directory. Monkeypatch is the only way this module's directory may move.
+    """
+    offenders = []
+    for path in sorted((ROOT / "tests").glob("test_*.py")):
+        for number, line in enumerate(path.read_text().splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("monkeypatch.setattr("):
+                continue
+            if re.search(r"\bstore\.LOCAL_DIR\s*=", stripped):
+                offenders.append(f"{path.name}:{number}: {stripped}")
+    assert not offenders, "assign store.LOCAL_DIR through monkeypatch: " + "; ".join(
+        offenders
+    )
