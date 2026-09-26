@@ -31,6 +31,12 @@ current time with the instant the next snapshot should already exist by.
 **No unqualified `n_eff`.** The breadth keys are `n_eff_kept` for the book that
 trades and `n_eff_full_book` for the 499-name book before the floor, with the same
 labels item 3 put on both pages.
+
+**A stopped run's book comes from the store, never from a file.** Render's disk is
+the deploy image, so the newest `live/proposals/` file there is whatever was
+committed, and showing it on a stale evening would tell the owner they hold a book
+from weeks ago. `previous_proposal` reads the last proposal the loop actually
+proposed, and when the store holds none the book is empty and says why.
 """
 
 from __future__ import annotations
@@ -55,7 +61,6 @@ SNAPSHOT_ENV = "EFB_SNAPSHOT"
 ON = "on"
 OFF = "off"
 LATEST_KEY = "latest.json"
-ROOT_PROPOSALS = Path(__file__).resolve().parents[1] / "live" / "proposals"
 DATED_TEMPLATE = "snapshots/{close}.json"
 
 R2_ENVS = (
@@ -65,6 +70,11 @@ R2_ENVS = (
     "EFB_R2_SECRET_ACCESS_KEY",
 )
 R2_REGION = "auto"
+
+# Why a stopped run's book is empty, when it is. Stated rather than implied: the
+# page shows an empty book with this sentence beside it.
+NO_STORED_BOOK = "no proposal is in the store yet"
+STORED_BOOK_HAS_NO_ROWS = "the store's latest proposal has no position rows"
 
 
 class SnapshotNotConfigured(RuntimeError):
@@ -131,6 +141,7 @@ def build(
     book: pd.DataFrame | None = None,
     reconciliation: dict[str, Any] | None = None,
     construction: dict[str, Any] | None = None,
+    book_reason: str | None = None,
     generated_at: datetime | None = None,
 ) -> dict[str, Any]:
     """The document the page reads, assembled from what the run already knows.
@@ -205,6 +216,10 @@ def build(
             "expected_cost_bps": _number(
                 proposal.get("expected_establishment_cost_bps")
             ),
+            # Why the book is empty, when it is. A stopped evening whose store
+            # holds nothing must not read as a book of zero names for no stated
+            # reason, so the reason travels with the empty book.
+            "reason": book_reason,
             "names": names,
         },
         # One value per design column, named by fx.ESTIMATED_NAMES, after the
@@ -411,6 +426,7 @@ def write_snapshot(
     book: pd.DataFrame | None = None,
     reconciliation: dict[str, Any] | None = None,
     construction: dict[str, Any] | None = None,
+    book_reason: str | None = None,
     dry_run: bool = True,
     mode: str | None = None,
     poster: Callable[..., Any] | None = None,
@@ -428,6 +444,7 @@ def write_snapshot(
         book=book,
         reconciliation=reconciliation,
         construction=construction,
+        book_reason=book_reason,
         generated_at=generated_at,
     )
     if resolved == OFF:
@@ -456,8 +473,6 @@ def chosen_row(manifest: dict[str, Any] | None, root: Any = None) -> dict[str, A
     The table holds one row per candidate construction, so the row is selected by
     the name the manifest records rather than by position or by best number.
     """
-    from pathlib import Path
-
     path = (
         Path(root) / "construction_table.parquet"
         if root is not None
@@ -494,22 +509,40 @@ def chosen_row(manifest: dict[str, Any] | None, root: Any = None) -> dict[str, A
     }
 
 
-def previous_proposal() -> tuple[dict[str, Any] | None, pd.DataFrame | None]:
-    """The last proposal on disk, so a stopped run still has a book to show.
+def previous_proposal() -> (
+    tuple[dict[str, Any] | None, pd.DataFrame | None, str | None]
+):
+    """The last proposal in the store, so a stopped run still shows the book.
 
-    A stopped evening has no manifest of its own, and blanking the page on the
-    evening the run refused to price a book would hide the book the owner is
-    still holding. The rows carry no trade reasons: those belong to the evening
-    that proposed them, and inventing them for a night that traded nothing is the
-    kind of guess this pipeline does not make.
+    Read from the store and never from `live/proposals/`. On Render the disk is
+    the deploy image, so the newest file there is whatever was committed, and a
+    stale evening would show the owner a book from weeks ago as the one they
+    hold. The store holds the last book the loop actually proposed, with the trade
+    reasons of the evening that proposed it.
+
+    Returns the manifest, the rows and the reason the book is empty, which is None
+    when it is not empty. When the store holds no proposal the book is empty and
+    the reason says so; there is no fallback to a committed file, because a book
+    that was never proposed is not a book the owner holds.
     """
-    directory = ROOT_PROPOSALS
-    if not directory.exists():  # pragma: no cover - before the first run
-        return None, None
-    manifests = sorted(directory.glob("proposal_*.json"))
-    if not manifests:  # pragma: no cover - before the first run
-        return None, None
-    manifest = json.loads(manifests[-1].read_text())
-    frame_path = manifests[-1].with_suffix(".parquet")
-    frame = pd.read_parquet(frame_path) if frame_path.exists() else None
-    return manifest, frame
+    proposals = store.select("proposals")
+    if proposals.empty:
+        return None, None, NO_STORED_BOOK
+    latest = proposals.sort_values("trade_date").iloc[-1].to_dict()
+    manifest = _json_value(latest.get("manifest"), None)
+    if not isinstance(manifest, dict):
+        # A row without a manifest cannot date a book, so it is not shown as one.
+        return None, None, NO_STORED_BOOK
+    positions = store.select("positions")
+    if positions.empty:
+        return manifest, None, STORED_BOOK_HAS_NO_ROWS
+    # The store hands dates back as dates from Postgres and as timestamps from the
+    # parquet fallback, so the session is compared as its date string.
+    keep = (
+        positions["trade_date"].astype(str).str.slice(0, 10)
+        == str(latest["trade_date"])[:10]
+    )
+    frame = positions.loc[keep]
+    if frame.empty:
+        return manifest, None, STORED_BOOK_HAS_NO_ROWS
+    return manifest, frame.reset_index(drop=True), None

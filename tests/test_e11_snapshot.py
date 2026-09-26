@@ -280,16 +280,118 @@ def test_a_failed_upload_raises_so_the_run_can_fail(
         )
 
 
-def test_a_stopped_run_still_carries_a_book_from_the_last_proposal() -> None:
+def _store_proposal(trade_date: str, tickers: list[str]) -> None:
+    """One proposal and its rows in the store, in the shape the run writes them."""
+    from live import store
+
+    store.upsert(
+        "proposals",
+        [
+            {
+                "trade_date": trade_date,
+                "signal": "idio_momentum",
+                "as_of": trade_date,
+                "manifest": json.dumps({**MANIFEST, "as_of": trade_date}),
+            }
+        ],
+    )
+    store.upsert(
+        "positions",
+        [
+            {
+                "trade_date": trade_date,
+                "ticker": ticker,
+                "weight": 0.05 if index == 0 else -0.04,
+                "side": "long" if index == 0 else "short",
+                "z": 1.5 if index == 0 else -1.2,
+                "alpha": 0.003,
+                "reason": "alpha moved",
+            }
+            for index, ticker in enumerate(tickers)
+        ],
+    )
+
+
+@pytest.fixture
+def stored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty store under the local fallback, which is the whole of `efb`."""
+    from live import store
+
+    where = tmp_path / "store"
+    monkeypatch.setattr(store, "LOCAL_DIR", where)
+    return where
+
+
+def test_a_stopped_run_reads_the_book_from_the_store(stored: Path) -> None:
     """The page must not blank on the evening the loop refused to price one."""
-    manifest, frame = snapshot.previous_proposal()
-    assert manifest is not None and frame is not None
-    payload = built(run={"target_close": "2026-09-25", "status": "stale_stopped"})
+    _store_proposal("2026-09-25", ["MU", "WBD"])
+
+    manifest, frame, reason = snapshot.previous_proposal()
+
+    assert reason is None
+    assert manifest is not None and manifest["as_of"] == "2026-09-25"
+    assert frame is not None and list(frame["ticker"]) == ["MU", "WBD"]
+    payload = snapshot.build(
+        run={**RUN, "status": "stale_stopped"},
+        manifest=manifest,
+        book=frame,
+        book_reason=reason,
+    )
+    jsonschema.validate(instance=payload, schema=SCHEMA)
     assert payload["run_status"]["status"] == "stale_stopped"
     assert payload["book"]["n_names"] == 2
-    # and the helper itself reads the newest stored proposal
-    assert manifest["as_of"] >= "2026-09-18"
-    assert {"ticker", "weight"}.issubset(frame.columns)
+    assert payload["book"]["reason"] is None
+    assert str(payload["book_as_of"]).startswith("2026-09-25")
+
+
+def test_the_store_beats_anything_on_disk(stored: Path) -> None:
+    """On Render the disk is the deploy image, so it must not be read at all."""
+    on_disk = json.loads(
+        (ROOT / "live" / "proposals" / "proposal_2026-09-21.json").read_text()
+    )
+    _store_proposal("2026-09-25", ["MU", "WBD"])
+
+    manifest, frame, _ = snapshot.previous_proposal()
+
+    assert manifest is not None and frame is not None
+    assert manifest["as_of"] == "2026-09-25" > on_disk["as_of"]
+    assert list(frame["ticker"]) == ["MU", "WBD"]
+
+
+def test_an_empty_store_shows_no_book_and_says_why(stored: Path) -> None:
+    """A book that was never proposed is not a book the owner holds."""
+    manifest, frame, reason = snapshot.previous_proposal()
+
+    assert manifest is None and frame is None
+    assert reason == snapshot.NO_STORED_BOOK
+    payload = snapshot.build(
+        run={**RUN, "status": "stale_stopped"},
+        manifest=manifest,
+        book=frame,
+        book_reason=reason,
+    )
+    jsonschema.validate(instance=payload, schema=SCHEMA)
+    # the committed proposal is on disk, and none of it reaches the page
+    assert (ROOT / "live" / "proposals" / "proposal_2026-09-21.json").exists()
+    assert payload["book"]["n_names"] == 0
+    assert payload["book"]["names"] == []
+    assert payload["book"]["reason"] == snapshot.NO_STORED_BOOK
+    assert payload["book_as_of"] is None
+
+
+def test_a_stored_proposal_with_no_rows_says_so(stored: Path) -> None:
+    from live import store
+
+    store.upsert(
+        "proposals",
+        [{"trade_date": "2026-09-25", "as_of": "2026-09-25", "manifest": "{}"}],
+    )
+
+    manifest, frame, reason = snapshot.previous_proposal()
+
+    assert manifest == {}
+    assert frame is None
+    assert reason == snapshot.STORED_BOOK_HAS_NO_ROWS
 
 
 @pytest.mark.slow

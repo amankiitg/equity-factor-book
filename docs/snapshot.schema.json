@@ -85,9 +85,13 @@
     },
     "book": {
       "type": "object",
-      "required": ["n_names", "names"],
+      "required": ["n_names", "reason", "names"],
       "properties": {
         "n_names": {"type": "integer"},
+        "reason": {
+          "type": ["string", "null"],
+          "description": "Why the book is empty, when it is: a stopped run whose store holds no proposal shows no names and this sentence. Null when the book has names."
+        },
         "n_kept": {"type": ["integer", "number", "null"]},
         "n_long": {"type": ["integer", "number", "null"]},
         "n_short": {"type": ["integer", "number", "null"]},

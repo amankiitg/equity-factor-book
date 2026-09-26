@@ -306,10 +306,14 @@ def finish_run(
         cross_checks_capped=cross_checks_capped,
         init=init,
     )
+    book_reason: str | None = None
     if manifest is None:
-        # A stopped run still has a book to show: the last one proposed. The page
-        # must not blank on the evening the loop refused to price another.
-        manifest, book = snapshot_module.previous_proposal()
+        # A stopped run still has a book to show: the last one the loop proposed,
+        # read from the store rather than from the deploy image's disk. The page
+        # must not blank on the evening the loop refused to price another, and it
+        # must not show a committed file as the book the owner holds either. When
+        # the store holds none, the book is empty and `book_reason` says why.
+        manifest, book, book_reason = snapshot_module.previous_proposal()
     if reconciliation is None:
         reconciliation = result.get("reconciliation") or {}
     snapshot_detail, snapshot_failed = "", False
@@ -320,6 +324,7 @@ def finish_run(
             book=book,
             reconciliation=reconciliation,
             construction=snapshot_module.chosen_row(manifest),
+            book_reason=book_reason,
             dry_run=dry_run,
             poster=snapshot_poster,
         )
