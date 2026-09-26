@@ -118,6 +118,8 @@ def _patch_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
 
     for name in ("hydrate", "persist_new_sessions", "appendix_manifest"):
         monkeypatch.setattr(appendix, name, lambda *args, **kwargs: {})
+    # The first-run guard has its own tests; here the store is already open.
+    monkeypatch.setattr(appendix, "open_store", lambda *args, **kwargs: False)
     for name in (
         "extend_archives",
         "extend_prices",

@@ -270,6 +270,7 @@ def finish_run(
     manifest: dict[str, Any] | None = None,
     book: pd.DataFrame | None = None,
     reconciliation: dict[str, Any] | None = None,
+    init: bool = False,
     poster: Any = None,
     snapshot_poster: Any = None,
 ) -> int:
@@ -303,6 +304,7 @@ def finish_run(
         flags=flags,
         started_at=started_at,
         cross_checks_capped=cross_checks_capped,
+        init=init,
     )
     if manifest is None:
         # A stopped run still has a book to show: the last one proposed. The page
@@ -350,6 +352,7 @@ def finish_run(
         store=store_name,
         snapshot=snapshot_detail,
         cross_checks_capped=cross_checks_capped,
+        init=init,
         poster=poster,
     )
     delivered = notified["status"] == notify.STATUS_SENT
@@ -413,6 +416,9 @@ def main() -> int:
     splits: list[str] = []
     flags: list[dict[str, Any]] = []
     capped: str = ""
+    # Whether this run seeded the store. False on every path that is not the
+    # explicit first run, including a run that fails before the guard decides.
+    first_run = False
     # The instant the run began, recorded so the gate can tell an evening of the
     # close from a run that was delayed into the next morning.
     started_at = datetime.now(UTC).isoformat(timespec="seconds")
@@ -429,7 +435,19 @@ def main() -> int:
         # decided here and a misconfiguration stops the run as an error.
         logger.info("store: %s", store.store_label())
         store.store_mode()
-        appendix_mod.hydrate()
+        # First-run detection is explicit, never inferred from what the tables
+        # happen to hold: an empty appendix refuses to run unless
+        # EFB_INIT_STORE=true says so, and that flag seeds the store once, writes
+        # the marker and is removed afterwards. A flag left set on a seeded store
+        # fails the evening loudly, and a marker with an empty appendix is an
+        # error whatever the flag says, because data was lost after the seed and
+        # it is never re-seeded automatically.
+        first_run = appendix_mod.open_store()
+        if first_run:
+            logger.info(
+                "first run: seeded the appendix from the git artifacts through %s",
+                appendix_mod.SEED_FROM.date(),
+            )
         # The sessions this run appends are measured, not assumed: the first run
         # on a fresh container finds the panel sessions behind and catches them
         # up in one go, and a catch-up run may not be one of the gate's closes.
@@ -497,6 +515,7 @@ def main() -> int:
                 dry_run=dry_run,
                 detail=stopped,
                 catch_up_sessions=catch_up_sessions,
+                init=first_run,
             )
 
         # Evening: propose tomorrow's book from the latest close.
@@ -528,6 +547,7 @@ def main() -> int:
             detail=detail,
             error_type=type(exc).__name__,
             catch_up_sessions=catch_up_sessions,
+            init=first_run,
         )
 
     return finish_run(
@@ -542,6 +562,7 @@ def main() -> int:
         flags=flags,
         started_at=started_at,
         cross_checks_capped=capped,
+        init=first_run,
         **snapshot_inputs,
     )
 

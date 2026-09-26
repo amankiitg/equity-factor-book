@@ -50,6 +50,20 @@ POSTGRES_MODE_VALUE = "postgres"
 RENDER_ENV = "RENDER"
 URL_ENV = "EFB_SUPABASE_DB_URL"
 
+# The explicit first-run request, and the only two values it accepts. A store is
+# seeded exactly once, by a run that says so, and never inferred from what the
+# tables happen to hold: the round-trip check writes `run_status` rows of its own
+# on a store that has never been seeded.
+INIT_STORE_ENV = "EFB_INIT_STORE"
+INIT_TRUE = "true"
+INIT_FALSE = "false"
+
+# The one-row marker that makes a store count as seeded, and its key. It is its
+# own table so that "the store has rows" can never be mistaken for "the store has
+# been seeded", and so the marker can be read or wiped deliberately.
+SEED_MARKER_TABLE = "store_seed"
+SEED_MARKER_KEY = "first_run"
+
 
 class StoreNotConfigured(RuntimeError):
     """The store cannot be used as configured, so the run has to stop.
@@ -72,6 +86,7 @@ TABLES: tuple[str, ...] = (
     "decisions",
     "cron_runs",
     "run_status",
+    SEED_MARKER_TABLE,
 )
 
 # The natural key of each live-series table, used by the upsert's
@@ -89,6 +104,9 @@ TABLE_KEYS: dict[str, tuple[str, ...]] = {
     # keyed by the target close rather than the day the job ran, so a re-fire
     # for the same session replaces its row and a missing session stays missing
     "run_status": ("target_close", "job"),
+    # one row, keyed by the marker's own name, so the seed is written once and a
+    # re-run of the first run replaces it instead of adding a second
+    SEED_MARKER_TABLE: ("marker",),
 }
 
 
@@ -161,6 +179,26 @@ def store_label() -> str:
             where = LOCAL_DIR
         return f"local parquet ({where})"
     return f"postgres/{_schema()}"
+
+
+def init_store_flag() -> bool:
+    """Whether this run asked to seed the store, and never a guess.
+
+    Unset and `false` are a normal run; `true` is a first run; anything else is
+    an error that names the value. A strict parse is the point: a spelling nobody
+    meant (`yes`, `1`, a typo) must not be read as permission to seed, and a flag
+    left set after the first run has to fail the next evening loudly rather than
+    re-seed quietly.
+    """
+    value = os.environ.get(INIT_STORE_ENV, "").strip().lower()
+    if value in ("", INIT_FALSE):
+        return False
+    if value == INIT_TRUE:
+        return True
+    raise StoreNotConfigured(
+        f"{INIT_STORE_ENV}={value!r} is not a first-run flag: set it to "
+        f"{INIT_TRUE!r} for the first run only, or leave it unset"
+    )
 
 
 def json_safe(value: Any) -> Any:
@@ -287,3 +325,37 @@ def upsert_one(table: str, key: str, value: Any, row: dict[str, Any]) -> None:
     frame = select(table)
     frame = frame.loc[~frame[key].astype(str).isin([str(value)])]
     upsert(table, frame.to_dict("records") + [row])
+
+
+def seed_marker() -> dict[str, Any] | None:
+    """The one-row record that this store was seeded, or None.
+
+    This marker is what "seeded" means. A store that holds any rows at all is not
+    evidence of a seed, because `scripts/verify_store_roundtrip.py` records its
+    result in `run_status` with `job = store_roundtrip` on a store that has never
+    been seeded, and the owner runs that check before the first run.
+    """
+    frame = select(SEED_MARKER_TABLE)
+    if frame.empty:
+        return None
+    return {str(key): value for key, value in frame.iloc[-1].to_dict().items()}
+
+
+def write_seed_marker(*, seeded_from: str, data_hash: str, written_at: str) -> None:
+    """Write the marker that makes a store count as seeded, once.
+
+    It records the close the seed was taken through, the committed data hash it
+    was taken from, and when it was written, so a seeded store names its own
+    provenance rather than trusting that somebody remembers.
+    """
+    upsert(
+        SEED_MARKER_TABLE,
+        [
+            {
+                "marker": SEED_MARKER_KEY,
+                "seeded_from": seeded_from,
+                "data_hash": data_hash,
+                "written_at": written_at,
+            }
+        ],
+    )

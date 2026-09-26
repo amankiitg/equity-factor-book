@@ -25,7 +25,9 @@ the appendix holds nothing but the post-cutoff sessions.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -418,3 +420,92 @@ def _factor_cov_with_session(root: Path, rows: pd.DataFrame) -> pd.DataFrame:
 def appendix_manifest() -> dict[str, dict[str, Any]]:
     """Per input, the appendix state the run was priced from."""
     return {spec.name: appendix_identity(spec) for spec in SPECS}
+
+
+# The close the marker records: the last session the git seed carries. The seed
+# is the committed artifacts through this date, so it is what a first run names.
+SEED_FROM = SEED_CUTOFF
+
+
+class StoreNotSeeded(RuntimeError):
+    """The store holds no seed marker, so this run may not write to it."""
+
+
+class StoreAlreadySeeded(RuntimeError):
+    """The first-run flag is set on a store that is already seeded."""
+
+
+class StoreAppendixLost(RuntimeError):
+    """The marker says seeded, but the appendix holds no rows at all."""
+
+
+def data_hash(root: Path = DATA_ROOT) -> str | None:
+    """The committed data hash, which is the seed's own version string."""
+    path = root / "VERSION.json"
+    if not path.exists():
+        return None
+    try:
+        return str(json.loads(path.read_text())["data_hash"])
+    except (KeyError, ValueError):
+        return None
+
+
+def is_empty() -> bool:
+    """Whether the appendix holds no rows at all, in any of its inputs.
+
+    Every input rather than any: `e11_factor_cov` is legitimately empty after a
+    seed, because the covariance artifact is a dateless snapshot that only gets a
+    session once a run stamps it, so an any-table test would refuse a store that
+    is perfectly fine.
+    """
+    return all(read_appendix(spec).empty for spec in SPECS)
+
+
+def open_store(root: Path = DATA_ROOT, now: datetime | None = None) -> bool:
+    """Decide that this run may use the store, and seed it exactly once.
+
+    `EFB_INIT_STORE` is parsed strictly and the marker is what "seeded" means, so
+    the four states are told apart rather than guessed at:
+
+        1. no marker, flag not `true`  -> refuse: the store was never seeded
+        2. no marker, flag `true`      -> seed from git, write the marker
+        3. marker, flag `true`         -> refuse: the flag was left set
+        4. marker, appendix empty      -> refuse: data was lost after the seed
+
+    Case 4 is tested before case 3, so a store whose appendix was wiped is never
+    re-seeded, whatever the flag says. Only case 2 has a seeding path and every
+    other case raises before `hydrate` is called with `seed_empty=True`, which is
+    what makes "never re-seeded automatically" structural rather than a promise.
+
+    Returns whether this run seeded the store, which the run records as `init`
+    and states in its message. The rule applies to Postgres and to the local
+    fallback alike, because a store is a store wherever it lives.
+    """
+    first_run = store.init_store_flag()
+    marker = store.seed_marker()
+    if marker is not None:
+        if is_empty():
+            raise StoreAppendixLost(
+                f"the store is seeded through {SEED_FROM.date()} but the appendix "
+                "holds no rows at all: data was lost after the seed, and it is "
+                "never re-seeded automatically; restore the appendix, or wipe "
+                f"the {store.SEED_MARKER_TABLE} marker deliberately"
+            )
+        if first_run:
+            raise StoreAlreadySeeded(
+                f"store already seeded: remove {store.INIT_STORE_ENV}"
+            )
+        hydrate(root, seed_empty=False)
+        return False
+    if not first_run:
+        raise StoreNotSeeded(
+            f"store not seeded: set {store.INIT_STORE_ENV}=true for the first run "
+            "only"
+        )
+    hydrate(root, seed_empty=True)
+    store.write_seed_marker(
+        seeded_from=SEED_FROM.date().isoformat(),
+        data_hash=data_hash(root) or "",
+        written_at=(now or datetime.now(UTC)).isoformat(),
+    )
+    return True

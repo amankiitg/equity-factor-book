@@ -191,6 +191,7 @@ def test_env_example_names_the_keys_without_values() -> None:
         "EFB_SUPABASE_ACCESS_TOKEN",
         "EFB_DRY_RUN",
         "EFB_STORE",
+        "EFB_INIT_STORE",
         "EFB_RESEND_API_KEY",
         "EFB_NOTIFY_EMAIL_FROM",
         "EFB_NOTIFY_EMAIL_TO",
@@ -210,6 +211,7 @@ def test_render_yaml_commits_key_names_not_values() -> None:
     # direct Postgres, never PostgREST
     assert "EFB_SUPABASE_DB_URL" in render
     assert "EFB_DB_SCHEMA" in render
+    assert "EFB_INIT_STORE" in render
     # the account-wide access token must never reach a Render service
     assert "EFB_SUPABASE_ACCESS_TOKEN" not in render
     assert "EFB_SUPABASE_SECRET_KEY" not in render
@@ -226,6 +228,7 @@ def test_render_yaml_runs_one_service_and_it_holds_the_credentials() -> None:
     assert render.count("- type: cron") == 1
     _, cron = render.split("- type: cron")
     for name in (
+        "EFB_INIT_STORE",
         "EFB_RESEND_API_KEY",
         "EFB_NOTIFY_EMAIL_FROM",
         "EFB_NOTIFY_EMAIL_TO",

@@ -13,6 +13,11 @@ import os
 os.environ["EFB_STORE"] = "local"
 os.environ.pop("EFB_SUPABASE_DB_URL", None)
 
+# The first-run flag seeds the store and is removed after it, so a stray value in
+# a developer's shell must not decide whether a test run seeds. A test that wants
+# the flag sets it itself with monkeypatch.
+os.environ.pop("EFB_INIT_STORE", None)
+
 # The snapshot switch is required, and the suite must never upload: `off` is
 # allowed while dry_run is true, which is what every test run is. A test that
 # wants the upload path sets EFB_SNAPSHOT=on and a fake poster itself.

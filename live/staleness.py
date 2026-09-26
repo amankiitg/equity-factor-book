@@ -563,6 +563,7 @@ def run_status_row(
     snapshot: str | None = None,
     started_at: str | None = None,
     cross_checks_capped: str | None = None,
+    init: bool = False,
 ) -> dict[str, Any]:
     """The `run_status` row for one run: the target close and every date.
 
@@ -588,6 +589,10 @@ def run_status_row(
         "n_orders": n_orders,
         "gross_notional": gross_notional,
         "dry_run": dry_run,
+        # Whether this run seeded the store. It is a first and last thing: the
+        # flag is removed afterwards and a store is seeded once, so the row is
+        # the record of the evening the appendix was taken from git.
+        "init": bool(init),
         # A catch-up run appended several sessions at once, which the first
         # deploy will do and which no gate close may be: a gate close is a run
         # whose target close is the only session it appended.

@@ -40,6 +40,13 @@ services:
         sync: false
       - key: EFB_DB_SCHEMA
         sync: false
+      # The explicit first-run request, set for the first run only. Unset or
+      # "false" is a normal run, "true" seeds the store from the git artifacts and
+      # writes its marker, and any other value is an error that names it. The
+      # owner sets it for the first run and deletes it before the next evening; a
+      # flag left set on a seeded store fails the run loudly.
+      - key: EFB_INIT_STORE
+        sync: false
       - key: EFB_ALPACA_PAPER_API_KEY
         sync: false
       - key: EFB_ALPACA_PAPER_SECRET_KEY

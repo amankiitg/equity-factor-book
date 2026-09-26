@@ -140,19 +140,31 @@ def compose(
     store: str | None = None,
     snapshot: str | None = None,
     cross_checks_capped: str | None = None,
+    init: bool = False,
 ) -> str:
     """The fields, in order, ready for a preview.
 
     The first line names the store every write went to, or says why it could not
     be used. A wrong store is the one failure that looks healthy from the
     outside, so it is the first thing the owner reads.
+
+    A first run says so on that first line and beside the status. The flag is
+    removed after it, so a run that seeded the appendix is an event worth reading
+    at a glance rather than a detail of the row.
     """
     close = target_close or "unknown close"
     label = STATUS_LABELS.get(status, status)
     caught_up = len(catch_up_sessions or [])
+    qualifiers = []
     if caught_up > 1:
-        label = f"{label} (catch-up of {caught_up} sessions)"
+        qualifiers.append(f"catch-up of {caught_up} sessions")
+    if init:
+        qualifiers.append("first run, the store was seeded")
+    if qualifiers:
+        label = f"{label} ({', '.join(qualifiers)})"
     store_line = store if store is not None else live_store.store_label()
+    if init:
+        store_line = f"{store_line}, first run"
     lines = [f"store: {store_line}", f"EFB live book {close}: {label}"]
 
     if status == "ok":
@@ -234,6 +246,7 @@ def subject_text(
     flags: list[dict[str, Any]] | None = None,
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
+    init: bool = False,
 ) -> str:
     """The inbox line: the status, then what was proposed, then staleness.
 
@@ -252,8 +265,13 @@ def subject_text(
     else:
         word = "ERROR"
     caught_up = len(catch_up_sessions or [])
+    qualifiers = []
     if caught_up > 1:
-        word = f"{word} (catch-up {caught_up})"
+        qualifiers.append(f"catch-up {caught_up}")
+    if init:
+        qualifiers.append("first run")
+    if qualifiers:
+        word = f"{word} ({', '.join(qualifiers)})"
     if status == "ok":
         middle = (
             f"{int(orders or 0)} proposed, none sent"
@@ -382,6 +400,7 @@ def notify_run(
     store: str | None = None,
     snapshot: str | None = None,
     cross_checks_capped: str | None = None,
+    init: bool = False,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -397,6 +416,7 @@ def notify_run(
         flags=flags,
         error_type=error_type,
         catch_up_sessions=catch_up_sessions,
+        init=init,
     )
     message = compose(
         status=status,
@@ -415,6 +435,7 @@ def notify_run(
         store=store,
         snapshot=snapshot,
         cross_checks_capped=cross_checks_capped,
+        init=init,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message

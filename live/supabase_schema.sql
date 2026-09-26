@@ -217,6 +217,9 @@ create table if not exists efb.run_status (
   n_orders int,
   gross_notional double precision,
   dry_run boolean,
+  -- Whether this run seeded the store. True exactly once, on the explicit first
+  -- run; the marker in efb.store_seed is what "seeded" means.
+  init boolean default false,
   catch_up boolean default false,
   catch_up_sessions jsonb,
   splits jsonb,
@@ -231,6 +234,19 @@ create table if not exists efb.run_status (
   -- cross-check hit its request cap. Null when it did not.
   cross_checks_capped text,
   primary key (target_close, job)
+);
+
+-- The explicit first-run marker. Its presence is what "seeded" means: a store
+-- that holds rows is not evidence of a seed, because scripts/verify_store_roundtrip.py
+-- records a run_status row of its own (job = store_roundtrip) on a store that was
+-- never seeded. One row, written by the run that seeds the appendix. It is never
+-- written automatically again: a marker with an empty appendix is an error, and a
+-- flag left set on a seeded store is an error, so nothing re-seeds by accident.
+create table if not exists efb.store_seed (
+  marker text primary key,
+  seeded_from date not null,
+  data_hash text,
+  written_at timestamptz not null
 );
 
 -- Item 4b: the corporate-actions rule. One row per split applied to a session,
