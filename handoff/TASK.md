@@ -1,18 +1,21 @@
 task_id: e11-deploy
-status: blocked
+status: ready
 base_commit: 3e9dbe1
 
 ## e11-deploy: the critical path to a deployed dry run (owner, 2026-09-25)
 
-**BLOCKED, 2026-09-25, before f.** A fresh clone of this repository holds no model
-inputs: `data/**/*.parquet` is gitignored, and `render.yaml`'s build is two pip
-installs, so the deploy image has no `data/raw/prices.parquet`. The first run's seed
-dies on it with a `FileNotFoundError` before the marker is written, and every later
-run is the case 1 refusal, so the cron would never propose anything. The
-reproduction, the per-input seed measurement and the three candidate fixes are at
-the top of `handoff/REPORT.md`. Fixing it needs an owner decision, so the track
-stops at the step 4 boundary: steps 1, 2 and 3 are committed (`47799d6`, `ff7c308`,
-`fb2c8e7`), and f, g, l and the full suite are not started.
+**Progress, 2026-09-25.** The blocker at the top of the previous report is closed by
+an owner decision: the frozen history goes in a private R2 bucket, `efb-seed`. Steps
+1, 2 and 3 (C0) are committed as `47799d6`, `ff7c308`, `fb2c8e7`; g as `7aa12b4`; l
+as `e4cdbb5`; the seed track as `45a49a5` and `3fe7358`; and f as `8f380e8`. The
+per-step evidence is in `REPORT.md`, which also carries the step 5 measurement of
+the momentum window.
+
+**Two things are not finished, which is why this is `ready` and not `gate-ready`:**
+the clean full suite (C4) and the seed file list were still executing when the
+session ended, alongside each other and the vendor-bound measurement runs. Their
+command lines are in the report and their outputs are all that is missing. **The
+full-suite count must be at least 835 and pasted before the clock starts.**
 
 **Done means:**
 - the cron runs on Render in dry run and emails the owner every evening;
