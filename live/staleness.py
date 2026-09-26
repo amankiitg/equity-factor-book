@@ -5,9 +5,12 @@ The owner's rule, pre-registered in `handoff/TASK.md`:
 - the target close is the most recent completed NYSE session at run time, and
   staleness is counted in sessions behind it, never in calendar days, so a
   Friday close read on Monday is fresh;
-- prices, descriptors, factor returns, specific returns, factor covariance,
-  specific variance and the universe are gated on their content date, at zero
-  sessions behind the target close;
+- prices, descriptors, factor returns, specific returns, factor covariance and
+  specific variance are gated on their content date at zero sessions behind the
+  target close, and the universe is allowed **one** session behind, because the
+  SPY holdings file is published on a lag and a constituent list one session old
+  still names the index being priced; every other input prices a close, so one
+  session old is the wrong close and the allowance stays zero;
 - shares and sectors change slowly, so they are gated on the date of the last
   successful fetch and their content age is reported beside it;
 - the check runs before any sizing. On failure no proposal row and no order is
@@ -55,7 +58,6 @@ from live import store
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
 CALENDAR_NAME = "NYSE"
-ALLOWED_SESSIONS_BEHIND = 0
 JOB = "live_daily"
 TABLE = "run_status"
 # long enough to span a holiday week plus the sessions around it
@@ -72,6 +74,18 @@ INPUTS: tuple[str, ...] = (
     "shares",
     "sectors",
 )
+
+# The gate's per-input allowance, in sessions behind the target close. Every
+# input is allowed zero except the universe, which is allowed one: the SPY
+# holdings file is published on a lag, so an evening's fetch can name the
+# previous session, and a constituent list one session old still names the index
+# being priced. A price, a return or a covariance one session old prices the
+# wrong close, so those stay at zero. The allowance travels with each input into
+# the stored row and the email, rather than being one number the reader has to
+# remember applies to some inputs and not others.
+ALLOWED_SESSIONS_BEHIND: dict[str, int] = {
+    name: (1 if name == "universe" else 0) for name in INPUTS
+}
 
 # The two inputs gated on the fetch rather than the content date, because
 # their content changes slowly and rebuilding it is not what the loop does.
@@ -487,9 +501,11 @@ def check(
         content_behind = sessions_behind(info["content"], stamp)
         fetch_behind = sessions_behind(info["fetch"], stamp)
         behind = fetch_behind if GATED_BY[name] == "fetch" else content_behind
+        allowed = ALLOWED_SESSIONS_BEHIND[name]
         entry = {
             "gated_by": GATED_BY[name],
             "source": info["source"],
+            "allowed_sessions_behind": allowed,
             "content": _iso(info["content"]),
             "content_sessions_behind": content_behind,
             "fetch": _iso(info["fetch"]),
@@ -497,7 +513,7 @@ def check(
             "sessions_behind": behind,
         }
         inputs[name] = entry
-        if behind is None or behind > ALLOWED_SESSIONS_BEHIND:
+        if behind is None or behind > allowed:
             failures.append({"input": name, **entry})
     calendar_days = [
         (stamp - _naive(inputs[name]["content"])).days
