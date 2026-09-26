@@ -242,3 +242,18 @@ def test_render_yaml_runs_one_service_and_it_holds_the_credentials() -> None:
     # and the channel the code no longer has is gone from the blueprint
     assert "SLACK" not in render
     assert "EFB_NOTIFY_SLACK_WEBHOOK_URL" not in render
+
+
+def test_the_cron_is_created_on_the_four_gigabyte_plan() -> None:
+    """Without `plan`, Render creates a cron on 0.5c-512mb and the peak kills it.
+
+    The measured peak is 1.07 GiB, so the plan has to be at least 4 GB to keep the
+    2x headroom rule. From Render's Blueprint reference, the `plan` field's Cron
+    Job table: `2c-4g` is 2 CPU and 4 GB, and the same page says an omitted field
+    gives a new cron job `0.5c-512mb`.
+    """
+    render = (ROOT / "render.yaml").read_text()
+    _, cron = render.split("- type: cron")
+    assert "plan: 2c-4g" in cron
+    assert "plan: 0.5c-512mb" not in render
+    assert "plan: 1c-2g" not in render

@@ -24,6 +24,14 @@ services:
   - type: cron
     name: efb-live-daily
     runtime: python
+    # The measured peak is 1,146,863,616 bytes (1.07 GiB) and the rule is 2x
+    # headroom, so 2 GB is out. From Render's Blueprint reference, the `plan`
+    # field's Cron Job table: "| 2 CPU | 4 GB | `2c-4g` |", which is 3.5x the
+    # peak. The same page, on omitting the field: "Render uses `0.5c-512mb` for a
+    # new web service, private service, background worker, or cron job", so
+    # without this line the cron would be created on 512 MB and fall over on the
+    # first evening.
+    plan: 2c-4g
     buildCommand: pip install -r requirements.txt && pip install -e .
     schedule: "30 22 * * 1-5"
     startCommand: python scripts/run_live_daily.py

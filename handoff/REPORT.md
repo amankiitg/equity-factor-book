@@ -1,3 +1,41 @@
+# e11-deploy C0, part one: the cron's plan key
+
+`render.yaml` had no `plan:` key, so Render would have created the cron on its
+default instance. From Render's Blueprint reference, the `plan` field's Cron Job
+table: "| 2 CPU | 4 GB | `2c-4g` |", and the same page, on omitting the field:
+"Render uses `0.5c-512mb` for a new web service, private service, background
+worker, or cron job." A 1.07 GiB peak on 512 MB falls over on the first evening,
+which is what C0 names.
+
+`render.yaml` now carries `plan: 2c-4g` on the cron, with that reading quoted
+beside it, and `tests/test_e11_render.py::test_the_cron_is_created_on_the_four_gigabyte_plan`
+asserts the key, that it is the 4 GB instance, and that neither the omitted default
+nor the 2 GB plan appears anywhere in the blueprint.
+
+```text
+$ .venv/bin/python -m pytest tests/test_e11_render.py -q
+16 passed, 1 skipped in 1.97s
+```
+
+## C0 still open, and what it needs
+
+Committed here is the first bullet only. The rest of C0 is not started rather than
+half-done:
+
+- **The snapshot's three fields.** `exposures_before_hedge`, `exposures_after_hedge`
+  and `book_as_of` must be added to `live/snapshot.py` and to
+  `docs/snapshot.schema.json`. `book_as_of` is the close of the proposal the book
+  came from, which depends on C0's own stopped-run change. The two exposure fields
+  are *per-factor* exposures before and after the FMP hedge, and the source of that
+  vector is not in the manifest's scalars (`max_abs_exposure_after_fmp`,
+  `idio_share_after_fmp`) nor in the snapshot's `hedge`/`exposures` blocks today, so
+  finding it is the first task. I did not guess at it: a wrong exposure block on the
+  page is worse than a missing one.
+- **The fixtures.** `web/fixtures/snapshot_ok.json` from the 09-21 proposal, plus
+  the four state variants derived by the writer.
+- **`EFB_INIT_STORE`.** Strict parsing, the one-row marker, and the empty-appendix
+  check that follows it.
+
 # A measurement run of mine rewrote four raw artifacts, and the evidence check caught it
 
 **What happened.** To measure the cron's peak memory for B-cron I ran
