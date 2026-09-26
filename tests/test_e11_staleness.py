@@ -155,7 +155,6 @@ def _patch_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
         "extend_shares",
         "extend_returns",
         "extend_model",
-        "refresh_version",
     ):
         monkeypatch.setattr(extend, name, lambda *a, **k: {})
     # No evidence stub: the run no longer calls `efb.evidence.snapshot`, which is

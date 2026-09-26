@@ -229,7 +229,6 @@ def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
         "extend_shares",
         "extend_returns",
         "extend_model",
-        "refresh_version",
     ):
         monkeypatch.setattr(extend, name, lambda *a, **k: {})
     monkeypatch.setattr(run_live_daily, "already_ran", lambda job, day: False)

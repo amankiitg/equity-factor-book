@@ -65,8 +65,8 @@ def _tree(tmp_path: Path) -> Path:
 
 def _manifest(root: Path) -> dict[str, Any]:
     # VERSION.json is in the seed because the run reads it: `appendix.data_hash`
-    # takes the marker's data hash from it, and `extend.refresh_version` rewrites
-    # it. It is also what `verify` holds the tree against.
+    # takes the marker's data hash from it. Nothing in the live loop writes it,
+    # so the seed's copy is the research pipeline's and stays that way.
     return seed.manifest_for(
         root,
         ["VERSION.json", "raw/prices.parquet", "models/XS-v1/descriptors.parquet"],

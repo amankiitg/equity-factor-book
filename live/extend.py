@@ -344,42 +344,6 @@ def revert_model_to_frozen(data_root: Path | None = None) -> None:
     )
 
 
-def refresh_version(data_root: Path | None = None) -> dict[str, object]:
-    """Rehash every versioned artifact into data/VERSION.json.
-
-    The live extension appends sessions, so the content hashes of the
-    extended artifacts move and the version file must be re-read rather
-    than rebuilt from source. The artifact set and the note follow the
-    E10 rebuild; the archive files join through `write_version`.
-    """
-    from efb import build
-
-    root = Path(data_root) if data_root is not None else DATA_ROOT
-    rels = (
-        build.ARTIFACTS
-        + build.E2_ARTIFACTS
-        + build.E3_ARTIFACTS
-        + build.E4_ARTIFACTS
-        + build.E5_ARTIFACTS
-        + build.E6_ARTIFACTS
-        + build.E7_ARTIFACTS
-        + build.E8_ARTIFACTS
-        + build.E9_ARTIFACTS
-        + build.E10_ARTIFACTS
-    )
-    paths = [root / rel for rel in rels if (root / rel).exists()]
-    returns_path = root / "processed" / "returns.parquet"
-    dates = pd.read_parquet(returns_path).index.get_level_values("date")
-    new_dates = sorted(pd.unique(dates[dates > FROZEN_AS_OF]))
-    first = new_dates[0].date() if len(new_dates) else FROZEN_AS_OF.date()
-    last = new_dates[-1].date() if len(new_dates) else FROZEN_AS_OF.date()
-    note = (
-        f"Extended daily by the E11 live loop from {first} to {last}; "
-        "pre-2026-09-04 rows byte-identical. Universe from the SPY archive."
-    )
-    return build.write_version(paths, root / "VERSION.json", note=note)
-
-
 def _block_hash(frame: pd.DataFrame, cutoff: pd.Timestamp) -> str:
     """SHA-256 of the rows dated on or before the cutoff, row order fixed."""
     import hashlib

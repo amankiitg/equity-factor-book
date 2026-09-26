@@ -78,7 +78,6 @@ def _stub_the_work(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         "extend_shares",
         "extend_returns",
         "extend_model",
-        "refresh_version",
     ):
         monkeypatch.setattr(extend, name, lambda *a, **k: {})
     monkeypatch.setattr(

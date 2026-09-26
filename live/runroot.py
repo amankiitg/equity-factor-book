@@ -75,8 +75,8 @@ def prepare(*, seed: Path | None = None, dest: Path | None = None) -> Path:
     The tree starts as the seed: downloaded and verified from the bucket, or a
     copy of the local tree when `EFB_SEED_SOURCE=local` says so. It is then the
     only place the run reads or writes under `data/`, so a run that appends a
-    session, refits a model or rehashes `VERSION.json` leaves the repository's
-    artifact tree untouched. The copy is 876 MB on this checkout and takes 2.4
+    session or refits a model leaves the repository's artifact tree untouched.
+    The copy is 876 MB on this checkout and takes 2.4
     seconds; the two big caches that only the E4 and E2 rebuild paths read are
     left behind.
     """

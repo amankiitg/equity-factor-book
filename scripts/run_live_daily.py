@@ -470,7 +470,7 @@ def main() -> int:
         # on a fresh container finds the panel sessions behind and catches them
         # up in one go, and a catch-up run may not be one of the gate's closes.
         before_last = extend.last_price_session()
-        # Extend the data and model layers by one session, then rehash.
+        # Extend the data and model layers by one session.
         extend.extend_archives()
         extend.extend_prices()
         extend.extend_shares()
@@ -500,7 +500,13 @@ def main() -> int:
         if flags:
             logger.warning("large moves in the appended session: %s", flags)
         extend.extend_model()
-        extend.refresh_version()
+        # `data/VERSION.json` is not rehashed here, and nothing in the live loop
+        # writes it. It belongs to the research pipeline, which is what E1 to E10
+        # were scored on, and a loop that rewrote it would replace that record
+        # with its own extended artifacts. The loop's integrity is the seed
+        # manifest's hashes instead: every seed file is verified before the run
+        # does anything, so a changed input fails there rather than being
+        # rehashed into a version file nobody can place.
         catch_up_sessions = _catch_up_sessions(before_last)
         if len(catch_up_sessions) > 1:
             logger.info(
