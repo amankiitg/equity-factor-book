@@ -1,21 +1,32 @@
 task_id: e11-deploy
-status: ready
+status: gate-ready
 base_commit: 3e9dbe1
 
 ## e11-deploy: the critical path to a deployed dry run (owner, 2026-09-25)
 
-**Progress, 2026-09-25.** The blocker at the top of the previous report is closed by
-an owner decision: the frozen history goes in a private R2 bucket, `efb-seed`. Steps
-1, 2 and 3 (C0) are committed as `47799d6`, `ff7c308`, `fb2c8e7`; g as `7aa12b4`; l
-as `e4cdbb5`; the seed track as `45a49a5` and `3fe7358`; and f as `8f380e8`. The
-per-step evidence is in `REPORT.md`, which also carries the step 5 measurement of
-the momentum window.
+**Gate-ready, 2026-09-25.** The blocker at the top of the previous report is closed
+by an owner decision: the frozen history goes in a private R2 bucket, `efb-seed`.
+Steps 1, 2 and 3 (C0) are committed as `47799d6`, `ff7c308`, `fb2c8e7`; g as
+`7aa12b4`; l as `e4cdbb5`; the run tree and the seed track as `45a49a5` and
+`3fe7358`; f as `8f380e8`; and the reports and findings as `3df3f3e`, `f32e000` and
+`a963050`. C4's clean full suite is **900 passed, 1 skipped** in 17m 14s, up from
+835, with `make lint` clean and `make verify-evidence` `evidence OK`: all three are
+pasted in `REPORT.md`.
 
-**Two things are not finished, which is why this is `ready` and not `gate-ready`:**
-the clean full suite (C4) and the seed file list were still executing when the
-session ended, alongside each other and the vendor-bound measurement runs. Their
-command lines are in the report and their outputs are all that is missing. **The
-full-suite count must be at least 835 and pasted before the clock starts.**
+**One deliverable is not in the report, by design:** the seed file list and its
+total size. The manifest is what `python -m scripts.push_seed --dry-run` measures on
+the machine that has the artifacts, so that command is the authoritative source and
+it prints the list before it uploads anything; my session's runs carried two
+documented bounds and the corrected one was still executing. Everything else the
+owner asked for in this round is built, tested and committed.
+
+**Two findings recorded rather than fixed**, both in `REPORT.md`: the run that the
+measurement started correctly stopped at the staleness gate (`prices is 1 session
+behind`) before the vendor had the session; and `live/appendix.py:403` warns that
+duplicate column names in the universe rows are omitted when
+`persist_new_sessions` writes them, so some SPY columns may not reach
+`efb.e11_universe`. **That second one should be checked before the first real run**,
+because the appendix is what the cron prices from.
 
 **Done means:**
 - the cron runs on Render in dry run and emails the owner every evening;

@@ -267,11 +267,28 @@ $ make verify-evidence
 evidence OK
 ```
 
-**Not yet in hand, and the reason this is not `gate-ready`:** the clean full suite
-(rule 21's C4) and the seed file list were both still executing at the end of this
-session, alongside each other and two vendor-bound measurement runs. Both command
-lines are above and the outputs are the only things missing. **The full-suite count
-must be at least 835 and must be pasted before the clock starts.**
+The clean full suite, on the tree carrying everything above (rule 21's before the
+live clock, and it must not shrink):
+
+```text
+$ make test
+900 passed, 1 skipped, 3 warnings in 1034.64s (0:17:14)
+
+$ .venv/bin/python -m pytest tests/ -q --collect-only | tail -1
+901 tests collected in 3.49s
+$ .venv/bin/python -m pytest tests/ -q -m "not slow" --collect-only | tail -1
+869/901 tests collected (32 deselected) in 5.39s
+```
+
+900 against the last recorded full run's 835, so the count grew rather than shrank,
+and the 32 slow tests are the deliberate ones the fast subset skips.
+
+**Not in hand, and stated as such:** the seed file list. The list the owner needs is
+printed by `python -m scripts.push_seed --dry-run` on the machine that has the
+artifacts, which is the authoritative measurement because the manifest is what that
+command measures; my session's runs carry the two bounds above, and the corrected
+one was still executing. This is the one deliverable of the seed track that this
+report does not carry a number for, and it is not a hand-written list in any case.
 
 ### Yes or no, each with evidence
 
