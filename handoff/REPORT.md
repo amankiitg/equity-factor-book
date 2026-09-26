@@ -620,7 +620,6 @@ live/notify.py                    |  17 +-
  tests/conftest.py                 |  14 ++
  tests/test_e11_notify.py          |  11 +-
  tests/test_e11_store.py           | 139 +++++++++++++++++
- 8 files changed, 675 insertions(+), 41 deletions(-)
 ```
 
 From the task's `base_commit` (4048b97), which carries items 1, 2, 3, 4 and 4a:
@@ -692,7 +691,6 @@ README.md                               |  34 +-
  tests/test_e11_reconcile.py             |   2 +-
  tests/test_e11_sanity.py                |   2 +-
  tests/test_e11_store.py                 | 139 +++++
- 32 files changed, 3850 insertions(+), 333 deletions(-)
 ```
 
 ### Yes or no, each with evidence
@@ -1016,7 +1014,6 @@ README.md                               |  22 ++
  tests/test_e11_reconcile.py             |   2 +-
  tests/test_e11_sanity.py                |   2 +-
  28 files changed, 2937 insertions(+), 297 deletions(-)
- 28 files changed, 2673 insertions(+), 300 deletions(-)
 ```
 
 No stored artifact and no research number is in either list.
@@ -1331,8 +1328,6 @@ dashboard/tabs/d10_book.py              |  11 +-
  tests/test_e11_notify.py                |  92 +++++++
  tests/test_e11_reconcile.py             |   2 +-
  tests/test_e11_sanity.py                |   2 +-
- 24 files changed, 1316 insertions(+), 298 deletions(-)
- 24 files changed, 1316 insertions(+), 298 deletions(-)
 ```
 
 ### Yes or no, each with evidence
@@ -1383,3 +1378,184 @@ second copy of the labels in `dashboard/tabs/d10_book.py`, which is how
 `_construction_label` ended up duplicated. One shared, tested reader is the
 reason the two pages cannot disagree, and `live/breadth.py` imports nothing but
 `__future__` and typing.
+
+# Review notes c and e, and the report sections notes h and j asked for
+
+This closes notes c, e, h and j from the reviewer's second round.
+
+## Note c: the mypy errors in unattended code
+
+`mypy live scripts` reported fourteen errors, not ten: the four this item set added
+after the note was written are in the same split, and every one is in code the cron
+runs unattended, so every one is a fix rather than a listed exception. The split by
+file, before: `live/staleness.py` 3, `live/evening_job.py` 3,
+`live/construction_table.py` 2, `live/appendix.py` 1,
+`live/corporate_actions.py` 1, `live/morning_job.py` 1,
+`scripts/run_live_daily.py` 2, `scripts/verify_store_roundtrip.py` 1. After:
+
+```text
+$ .venv/bin/mypy live scripts
+Success: no issues found in 25 source files
+```
+
+`make lint` now runs `mypy live scripts` beside `mypy efb`, so the drift cannot
+return:
+
+```text
+$ make lint
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+.venv/bin/mypy efb
+Success: no issues found in 33 source files
+.venv/bin/mypy live scripts
+Success: no issues found in 25 source files
+.venv/bin/black --check efb dashboard live tests
+All done! 177 files would be left unchanged.
+```
+
+## Note e: one clean full suite on a frozen tree
+
+The first full run over the B-cron tree failed five tests, three of them ones the
+fast selection passes. The cause was one line: `tests/test_e11_appendix.py` assigned
+`store.LOCAL_DIR` directly instead of through monkeypatch, in a test marked slow, so
+`make test-fast` never ran it and never saw the leak, while a full run left every
+later test reading and writing a temporary directory. Reproduced minimally before
+fixing anything:
+
+```text
+$ .venv/bin/python -m pytest \
+    tests/test_e11_appendix.py::test_the_real_artifacts_round_trip_and_report_hashes \
+    tests/test_e11_store.py::test_the_store_label_names_the_store_or_the_error -q
+E  assert 'local parquet (/private/var/.../pytest-293/test_the_real_artifacts_round_0/state)'
+   == 'local parquet (live/state/supabase)'
+1 failed, 1 passed in 54.81s
+```
+
+Two fixes and a guard, in `029b300`: monkeypatch at that site; the other slow test
+that assumed an empty appendix from the ambient store now makes its own empty
+directory (the real fallback holds `cron_runs` and eight `e11_*` tables from local
+runs, so it is not empty); and
+`tests/test_e11_store.py::test_no_test_leaks_the_store_directory_by_assignment`
+scans the suite for the assignment form. The three previously failing files together
+in one process, after:
+
+```text
+$ .venv/bin/python -m pytest tests/test_e11_appendix.py tests/test_e11_store.py \
+    tests/test_e11_notify.py -q
+49 passed in 93.23s
+```
+
+And the clean full suite, on the committed tree, with nothing edited while it ran:
+
+```text
+$ make test
+835 passed, 1 skipped, 3 warnings in 601.00s (0:10:01)
+EXIT=0
+```
+
+835 collected against item 3's 787, so the count grew; the 29 marked-slow tests the
+fast selection deselects are inside it.
+
+## Notes a and b: the gate-close window and the visible cap
+
+**a. A gate close is an evening of that close, not merely one appended session.**
+Item 2's wording was "a run whose target close is the only session it appended".
+The owner's rule is two closes each fetched by a run on that session's own evening,
+and the reviewer agreed that the note's own phrase, `expected_next_by`, is too loose
+for a Friday close: it points at Monday evening, so a Saturday run would have
+counted. `live/staleness.py` now has `session_close`, `gate_window_end` and
+`gate_close`, and `run_status` records `started_at`, which the runner sets at the top
+of the run. The two instants for the 2026-09-25 close:
+
+```text
+$ .venv/bin/python -c "from live import staleness as st; print(st.gate_window_end('2026-09-25')); print(st.expected_next_by('2026-09-25'))"
+2026-09-26 01:30:00+00:00
+2026-09-29T01:30:00Z
+```
+
+and the four cases, measured:
+
+```text
+$ .venv/bin/python -c "from live import staleness as st
+base = {'target_close':'2026-09-25','status':'ok','catch_up':False,'catch_up_sessions':['2026-09-25']}
+for label, started in [('the cron slot','2026-09-25T22:30:00+00:00'),('inside the grace','2026-09-26T01:00:00+00:00'),('the next morning','2026-09-28T13:00:00+00:00'),('before the close','2026-09-25T19:00:00+00:00')]:
+    print(f'{label:<20} counts={st.gate_close({**base, "started_at": started})["counts"]}')"
+the cron slot        counts=True
+inside the grace     counts=True
+the next morning     counts=False
+before the close     counts=False
+```
+
+**b. The cross-check cap is visible when it is hit.** `apply_to_append` returns the
+names the request cap stopped it reaching, `live/corporate_actions.py::cap_note`
+phrases them, `run_status` carries `cross_checks_capped`, and the email says
+"Cross-check capped: N unchecked (names)". It is not an error, and an unchecked name
+above 40% is still flagged; what it is not is silent.
+
+### Verification
+
+The subset is every test touching the gate, the run record, the cap, the snapshot
+and the message:
+
+```text
+$ .venv/bin/python -m pytest tests/test_e11_staleness.py tests/test_e11_corporate_actions.py \
+    tests/test_e11_notify.py tests/test_run_live_daily.py tests/test_e11_snapshot.py \
+    tests/test_e11_store.py tests/test_e11_deploy.py tests/test_e11_render.py \
+    tests/test_dashboard_d10.py -q
+134 passed, 1 skipped in 44.30s
+```
+
+`make lint` exit 0 and `make verify-evidence` exit 0, both pasted in the note c
+section above and in B-cron's section below.
+
+### Yes or no, each with evidence
+
+1. **Any two rows or two estimators identical.** No: the four gate cases differ in
+   their verdicts, and the two instants differ by three days.
+2. **Any exception caught and skipped, or fallback taken, with counts.** One, and it
+   is the cap, which is now counted and named rather than silent. A run with no
+   `started_at` refuses to be a gate close and says why.
+3. **Any criterion reworded or replaced by a different test.** No `RESULTS.json`
+   criterion. One staleness test and one corporate-actions test were added; none was
+   replaced.
+4. **Any criterion that passes by construction.** One, declared: the gate cases feed
+   `gate_close` the instants directly, so they pin the rule and not the runner's own
+   clock. The runner's `started_at` has its own test.
+5. **Any number that moved by a factor of 10 or more from its previous stored
+   value.** No stored number moved; no artifact was rebuilt.
+6. **Any stored number typed into a notebook.** No notebook was opened, edited or
+   executed.
+7. **Any earlier verdict changed.** No. Item 2's `catch_up` flag and its record are
+   unchanged; this narrows what counts as a gate close, which is the note's intent.
+
+## Note j: B-cron's Verification gaps, answered
+
+Three gaps, answered rather than edited away.
+
+**The two gates, pasted here.** `make lint` is pasted in full in the note c section
+above. `make verify-evidence`:
+
+```text
+$ make verify-evidence
+evidence OK
+```
+
+**Timing, stated plainly.** `make verify-evidence` was **failing** at the end of
+B-cron, because the memory measurement in that item rewrote four raw artifacts. It
+passed only after they were restored byte-for-byte from their evidence snapshots,
+which is the incident commit. So the honest reading is: verify-evidence did **not**
+pass at B-cron's commit, ran **after** the measurement, and passes from the
+restoration commit onward. Neither B-cron's report nor its commit claims otherwise
+now.
+
+**Yes/no item 5 was false, and here is the correction beside it, not instead of
+it.** The old line reads "No stored number moved: no artifact was written, and the
+snapshot is a new object rather than a change to an existing one." The first clause
+is true of the snapshot; the second is false of the run: the memory measurement in
+that item rewrote `data/raw/prices.parquet`, `data/raw/shares_history.parquet` and
+both `data/raw/spy_holdings/spy_holdings_2026-09-1[8|21].parquet`, one of them
+losing `sector`, `shares_held` and `local_currency`. **Correction:** an artifact was
+written, by the measurement rather than by the item's own code, all four were
+restored byte-for-byte from `evidence/`, and the underlying defect is item f. The
+snapshot itself wrote nothing anywhere at that commit, because `EFB_SNAPSHOT` is
+required and the measurement ran with it off.
