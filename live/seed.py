@@ -23,6 +23,15 @@ What "through" means for the recording is stated rather than implied: pandas'
 readers are wrapped, and Python's `open` is wrapped for its reading modes.
 pyarrow's own C++ file opens do not raise Python-level events, which is exactly
 why `read_parquet` itself is wrapped rather than relying on `open`.
+
+**A run reads what it just produced, and that is not seed material.** The evening
+job fetches the session's SPY holdings and its prices and then reads them back, so
+a read the pristine root does not hold is not automatically a gap in the seed.
+pyarrow's writers raise no Python-level events either, so `to_parquet` is wrapped
+as well and the paths a run creates are known: a missing read the run wrote is its
+own output, reported as such and left out of the manifest, while a missing read it
+did not write is still refused. A write through a path this does not wrap fails in
+that loud direction rather than being quietly accepted.
 """
 
 from __future__ import annotations
@@ -135,21 +144,42 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+class Reads(set[str]):
+    """The paths a run opened, and which of them it created.
+
+    A `set` subclass, so a caller that only wants the reads still has a set;
+    `writes` is the second fact that separates a read of a file the run produced
+    this session from a read of an input the seed has to hold.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.writes: set[str] = set()
+
+
 @contextmanager
-def record_reads() -> Iterator[set[str]]:
+def record_reads() -> Iterator[Reads]:
     """Record every path the wrapped readers open while the block runs.
 
     The set holds whatever was passed in, which for the layer under test is a
-    `Path`; callers make it relative to their tree.
+    `Path`; callers make it relative to their tree. A write goes into `writes` and
+    not into the reads: a path the run both wrote and read is its own output, and
+    keeping the two apart is what `seed_material` does.
     """
-    opened: set[str] = set()
+    opened = Reads()
     original_parquet = pd.read_parquet
+    original_to_parquet = pd.DataFrame.to_parquet
     original_open = builtins.open
     original_io_open = io.open
 
     def _parquet(path: Any, *args: Any, **kwargs: Any) -> Any:
         opened.add(str(path))
         return original_parquet(path, *args, **kwargs)
+
+    def _to_parquet(self: Any, path: Any, *args: Any, **kwargs: Any) -> Any:
+        if isinstance(path, (str, os.PathLike)):
+            opened.writes.add(str(path))
+        return original_to_parquet(self, path, *args, **kwargs)
 
     def _open(file: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
         if not any(flag in str(mode) for flag in "wax+"):
@@ -162,6 +192,9 @@ def record_reads() -> Iterator[set[str]]:
         return original_io_open(file, mode, *args, **kwargs)
 
     pd.read_parquet = _parquet  # type: ignore[assignment]
+    # pyarrow writes without a Python-level `open`, so the one write path that
+    # would otherwise be invisible is wrapped by name.
+    pd.DataFrame.to_parquet = _to_parquet  # type: ignore[method-assign]
     builtins.open = _open  # type: ignore[assignment]
     # `pathlib.Path.read_text` and `Path.open` call `io.open` rather than
     # `builtins.open`, so both names have to be wrapped to see a text read.
@@ -170,6 +203,7 @@ def record_reads() -> Iterator[set[str]]:
         yield opened
     finally:
         pd.read_parquet = original_parquet  # type: ignore[assignment]
+        pd.DataFrame.to_parquet = original_to_parquet  # type: ignore[method-assign]
         builtins.open = original_open  # type: ignore[assignment]
         io.open = original_io_open  # type: ignore[assignment]
 
@@ -189,6 +223,37 @@ def relative_reads(tree: Path, opened: set[str]) -> list[str]:
         except ValueError:
             continue
     return sorted(found)
+
+
+def seed_material(
+    seed_root: Path, tree: Path, opened: Reads
+) -> tuple[list[str], list[str]]:
+    """The reads that are seed material, and the reads that are the run's own work.
+
+    The two are told apart by the tree, not by a list. A read the pristine root
+    holds is an input the seed supplies. A read it does not hold is acceptable
+    only when the run created that file itself in the same run, because the
+    evening job fetches the session's SPY holdings and prices before reading them
+    back, and those are outputs rather than inputs. Anything else the root does
+    not hold is a gap in the seed, and the run that measured it refuses here
+    rather than pushing a manifest no later run could start from.
+    """
+    root = Path(seed_root)
+    inside = Path(tree).resolve()
+    written = {str(Path(path).resolve()) for path in opened.writes}
+    material: list[str] = []
+    produced: list[str] = []
+    for rel in relative_reads(tree, opened):
+        if (root / rel).exists():
+            material.append(rel)
+        elif str(inside / rel) in written:
+            produced.append(rel)
+        else:
+            raise SeedUnavailable(
+                f"the run read {rel}, which the seed root {root} does not hold and "
+                "the run did not write either, so the seed cannot be described"
+            )
+    return material, produced
 
 
 def manifest_for(seed_root: Path, rels: list[str]) -> dict[str, Any]:

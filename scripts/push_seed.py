@@ -7,10 +7,16 @@ in the local `.env`, and a read-only token on Render.
 
 What it pushes is measured, not listed. The evening job is run in a throwaway run
 tree with its reads recorded, and the manifest is exactly the files that run
-opened inside `data/`, hashed from the pristine tree so the run's own writes are
-not mistaken for the seed. Every future run then verifies those hashes before it
-does anything else, which is what makes a new input fail loudly rather than
-silently being absent.
+opened inside `data/` which the pristine tree held before the run started, hashed
+from the pristine tree so the run's own writes are not mistaken for the seed.
+Every future run then verifies those hashes before it does anything else, which is
+what makes a new input fail loudly rather than silently being absent.
+
+The distinction matters on every single evening: the job fetches the new session's
+SPY holdings and its prices and then reads them back, and those files are the run's
+own output, not something the seed can hold. They are named in the output and left
+out of the manifest. A read the pristine tree did not hold and the run did not
+write is still refused.
 
 Use:
 
@@ -32,13 +38,18 @@ sys.path.insert(0, str(ROOT))
 from live import runroot, seed  # noqa: E402
 
 
-def measure(*, quiet: bool = False) -> tuple[Path, list[str]]:
+def measure(*, quiet: bool = False) -> tuple[Path, list[str], list[str]]:
     """Run the job in a throwaway tree and report the files it read.
 
     The job runs as the cron runs it, with `EFB_SEED_SOURCE=local` so its tree is
     a copy of the repository's artifacts, and the store is the run's own. Its
     outcome does not matter to the manifest: what matters is which files it
     opened, and a run that stops early still names the files it got to.
+
+    Returns the seed root, the reads the pristine tree held before the run, and
+    the reads the run produced itself. The second list is empty on a day that
+    fetches nothing new, and on an ordinary evening it names the session the run
+    just fetched, which no seed can contain.
 
     The tree is pinned into a temporary directory before the run starts, because
     `main` prepares a tree of its own and reports which one through `adopt`. A
@@ -65,10 +76,16 @@ def measure(*, quiet: bool = False) -> tuple[Path, list[str]]:
             "reading anything or did not use the tree it was given; a seed cannot "
             "be measured from that run"
         )
+    seed_root = runroot.DEFAULT_SEED_ROOT
+    material, produced = seed.seed_material(seed_root, tree, opened)
     if not quiet:
         print(f"run tree: {tree}")
         print(f"files the run opened under data/: {len(rels)}")
-    return runroot.DEFAULT_SEED_ROOT, rels
+        print(f"  seed material:      {len(material)}")
+        print(f"  produced by the run: {len(produced)}")
+        for rel in produced:
+            print(f"    {rel}")
+    return seed_root, material, produced
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -89,8 +106,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     seed_root = Path(args.seed_root)
-    _same, rels = measure()
-    manifest = seed.manifest_for(seed_root, rels)
+    seed_root, material, produced = measure()
+    manifest = seed.manifest_for(seed_root, material)
     print(f"seed root: {seed_root}")
     print(f"n_files: {manifest['n_files']}")
     print(
@@ -99,6 +116,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"data_hash: {manifest['data_hash']}")
     for entry in manifest["files"]:
         print(f"  {entry['path']:<58} {entry['bytes']:>12}  {entry['sha256'][:12]}")
+    if produced:
+        print(
+            f"{len(produced)} file(s) the run produced and read back are the run's "
+            "own output, so they are not pushed:"
+        )
+        for rel in produced:
+            print(f"  {rel}")
     if args.dry_run:
         print("dry run: nothing uploaded")
         return 0

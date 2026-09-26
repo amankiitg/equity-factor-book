@@ -127,6 +127,68 @@ def test_a_file_the_run_read_but_the_seed_lacks_is_refused(tmp_path: Path) -> No
     assert "raw/not_there.parquet" in str(err.value)
 
 
+def test_a_parquet_write_is_recorded_as_a_write_and_not_a_read(
+    tmp_path: Path,
+) -> None:
+    """The write path pyarrow hides from `open`, which is why `to_parquet` is wrapped.
+
+    Without this the recorder sees only the later read of the run's own output, and
+    `manifest_for` refuses a file the seed root can never hold.
+    """
+    tree = tmp_path / "run"
+    target = tree / "raw" / "produced.parquet"
+    target.parent.mkdir(parents=True)
+
+    with seed.record_reads() as opened:
+        pd.DataFrame({"close": [1.0]}).to_parquet(target, index=False)
+
+    assert opened.writes == {str(target)}
+    assert seed.relative_reads(tree, opened) == []
+    assert pd.DataFrame.to_parquet.__name__ == "to_parquet"
+
+
+def test_a_file_the_run_produced_and_read_back_is_not_seed_material(
+    tmp_path: Path,
+) -> None:
+    """Every ordinary evening fetches a session, so this is the common case."""
+    seed_root = _tree(tmp_path / "pristine")
+    tree = _tree(tmp_path / "run")
+    # the seed tree's prices are bytes, but this one is read for real by the alias
+    pd.DataFrame({"close": [1.0, 2.0]}).to_parquet(tree / "raw" / "prices.parquet")
+    fetched = tree / "raw" / "spy_holdings" / "spy_holdings_2026-09-24.parquet"
+    fetched.parent.mkdir(parents=True)
+
+    with seed.record_reads() as opened:
+        pd.DataFrame({"ticker": ["AAA"]}).to_parquet(fetched, index=False)
+        pd.read_parquet(fetched)
+        pd.read_parquet(tree / "raw" / "prices.parquet")
+
+    material, produced = seed.seed_material(seed_root, tree, opened)
+
+    assert produced == ["raw/spy_holdings/spy_holdings_2026-09-24.parquet"]
+    assert material == ["raw/prices.parquet"]
+    # and the manifest describes the seed, not the session the run just fetched
+    assert seed.manifest_for(seed_root, material)["n_files"] == 1
+
+
+def test_a_read_the_run_did_not_write_is_still_a_gap_in_the_seed(
+    tmp_path: Path,
+) -> None:
+    """The control: wrapping the writers must not turn a missing input into a pass."""
+    seed_root = _tree(tmp_path / "pristine")
+    tree = _tree(tmp_path / "run")
+    unheld = tree / "raw" / "new_input.parquet"
+    pd.DataFrame({"close": [1.0]}).to_parquet(unheld, index=False)
+
+    with seed.record_reads() as opened:
+        pd.read_parquet(unheld)
+
+    with pytest.raises(seed.SeedUnavailable) as err:
+        seed.seed_material(seed_root, tree, opened)
+    assert "raw/new_input.parquet" in str(err.value)
+    assert "did not write" in str(err.value)
+
+
 # The download, the verification, and the refusals. --------------------------
 
 
