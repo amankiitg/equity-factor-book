@@ -9,6 +9,19 @@
   // `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are plain vars, not secrets: they name
   // the Access application, and the Worker verifies the assertion against the
   // team's own certificates rather than trusting a header.
+  //
+  // The team domain is `amankesar`, not `efb-live`. That is what Cloudflare's own
+  // metadata for this hostname says, and it is the name the tokens are signed
+  // under, so the Worker's issuer check and its JWKS fetch both need it:
+  //
+  //   GET /.well-known/cloudflare-access-protected-resource/api/snapshot
+  //   {"protected":true,"team_domain":"amankesar.cloudflareaccess.com",
+  //    "authorization_servers":["https://amankesar.cloudflareaccess.com"]}
+  //
+  // and `https://amankesar.cloudflareaccess.com/cdn-cgi/access/certs` answers
+  // 200 with the signing keys while `https://efb-live.cloudflareaccess.com/...`
+  // answers 404. With `efb-live` here the JWKS fetch fails and every logged-in
+  // request is answered 403 - including the owner's.
   "name": "efb-live-book",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-01",
@@ -19,8 +32,8 @@
   },
   "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "efb-snapshots" }],
   "vars": {
-    "ACCESS_TEAM_DOMAIN": "REPLACE-WITH-YOUR-TEAM-DOMAIN.cloudflareaccess.com",
-    "ACCESS_AUD": "REPLACE-WITH-THE-ACCESS-APPLICATION-AUD"
+    "ACCESS_TEAM_DOMAIN": "amankesar.cloudflareaccess.com",
+    "ACCESS_AUD": "6d6b4aec421a3a0c13d54d45a7f6a6ad2bd0b1c75602fa88ba4f073b15908620"
   },
   "preview_urls": false,
   "observability": { "enabled": true }
