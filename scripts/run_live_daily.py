@@ -206,6 +206,7 @@ def store_orders(as_of: str, dry_run: bool) -> None:
             # persist a submit-time rejection, so this is the only durable
             # record that the leg was intended at all.
             "reason_code": getattr(row, "reason_code", ""),
+            "client_order_id": getattr(row, "client_order_id", ""),
         }
         for row in execution.itertuples(index=False)
     ]

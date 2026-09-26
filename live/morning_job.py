@@ -40,6 +40,9 @@ EXECUTION_COLUMNS = [
     # not persist a submit-time rejection, so this column is the durable record
     # that the leg was intended at all.
     "reason_code",
+    # The id the leg was sent with: deterministic from the close, the ticker and
+    # the side, so a rerun is refused by the broker rather than doubling the book.
+    "client_order_id",
 ]
 
 
@@ -103,6 +106,7 @@ def submit_orders(
     client: object | None,
     dry_run: bool,
     prices: dict[str, float] | None = None,
+    close: str | None = None,
 ) -> pd.DataFrame:
     """Submit guarded orders and record one row per order, filled or not.
 
@@ -113,6 +117,8 @@ def submit_orders(
     the broker refused, and the run's own halt code for a leg never attempted.
     """
     records: list[dict[str, object]] = []
+    from live import alpaca
+
     for order in orders:
         if order.status != guards.PASSED:
             records.append(
@@ -123,6 +129,7 @@ def submit_orders(
                     "status": order.status,
                     "reason": "guard rejected the order",
                     "reason_code": order.status,
+                    "client_order_id": "",
                 }
             )
             continue
@@ -135,15 +142,25 @@ def submit_orders(
                     "status": "DRY_RUN",
                     "reason": "dry run: no order sent",
                     "reason_code": "DRY_RUN",
+                    # The id the leg would have carried, computed the same way the
+                    # live path computes it, so a dry evening shows the rerun-proof
+                    # ticket the live evening will send.
+                    "client_order_id": (
+                        alpaca.client_order_id(
+                            close,
+                            order.ticker,
+                            "buy" if order.target_notional >= 0 else "sell",
+                        )
+                        if close
+                        else ""
+                    ),
                 }
             )
             continue
         if client is None:  # pragma: no cover - guarded by connect()
             raise RuntimeError("live submission needs a client")
     if not dry_run and client is not None:
-        from live import alpaca
-
-        fills = alpaca.submit_market_orders(orders, client, prices or {})
+        fills = alpaca.submit_market_orders(orders, client, prices or {}, close=close)
         for fill in fills:
             records.append(
                 {
@@ -153,6 +170,7 @@ def submit_orders(
                     "status": fill.status,
                     "reason": fill.detail or "live paper fill",
                     "reason_code": fill.reason_code,
+                    "client_order_id": fill.client_order_id,
                 }
             )
     return pd.DataFrame(records, columns=EXECUTION_COLUMNS[1:])
@@ -211,7 +229,17 @@ def run_morning(
     )
     guarded = guards.apply_guards(orders, nav, establishment=is_establishment)
     prices = _close_prices(as_of, data_root)
-    records = submit_orders(guarded, client, dry_run, prices)
+    if not dry_run and client is not None:
+        # Enough buying power for the whole run, checked before the first order.
+        # Alpaca checks leg by leg and reduces available buying power by every open
+        # order, so a book that does not fit ends half-built; a failure here raises
+        # and nothing is submitted.
+        from live import alpaca as alpaca_module
+
+        alpaca_module.check_buying_power(
+            client, [order for order in guarded if order.status == guards.PASSED]
+        )
+    records = submit_orders(guarded, client, dry_run, prices, close=as_of)
     records["trade_date"] = as_of
     positions_frame = _positions_from_records(records, proposal)
     state.write_positions(as_of, positions_frame.to_dict("records"))

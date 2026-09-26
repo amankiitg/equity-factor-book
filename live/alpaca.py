@@ -17,9 +17,11 @@ credit-trading-lab's without a second login.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -97,6 +99,70 @@ class Fill:
     status: str
     reason_code: str = ""
     detail: str = ""
+    # The id the leg was sent with, so the row can be tied to the broker's own
+    # order without a second lookup, and a rerun's rejection can be traced to the
+    # id it collided with.
+    client_order_id: str = ""
+
+
+# ---------------------------------------------------------------- rate limiting
+#
+# Alpaca's trading API allows 200 requests per minute. This loop reads an asset
+# per short, submits, then polls each order, so the submissions are spaced rather
+# than the requests counted: a shared token bucket would need every caller to
+# share a clock, and the interval is one number that is easy to read and to test.
+# 0.35 s between submissions is about 171 a minute, which leaves the rest of the
+# minute to the polls.
+RATE_LIMIT_PER_MINUTE = 200
+MIN_SUBMIT_INTERVAL_SECS = float(os.environ.get("EFB_MIN_SUBMIT_INTERVAL_SECS", "0.35"))
+
+
+def client_order_id(close: Any, ticker: str, side: str) -> str:
+    """A deterministic id for one leg, from the three things that define it.
+
+    Alpaca requires `client_order_id` to be unique per account and refuses a
+    repeat, so a rerun of the same evening cannot double-submit: the second
+    attempt is rejected by the broker rather than sent. The id is recomputed from
+    the proposal rather than stored, so it survives a wiped container and does not
+    depend on the loop remembering anything.
+    """
+    stamp = pd.Timestamp(close).date().isoformat() if close else "unknown"
+    digest = hashlib.sha256(f"{stamp}|{ticker}|{side}".encode()).hexdigest()[:12]
+    return f"efb-{stamp}-{ticker}-{str(side)[:1].upper()}-{digest}"[:128]
+
+
+class Throttle:
+    """A minimum interval between submissions.
+
+    `clock` and `sleep` are injectable so a test can prove the waiting happened
+    without waiting for it, which is the only way to test a sleep.
+    """
+
+    def __init__(
+        self,
+        interval: float = MIN_SUBMIT_INTERVAL_SECS,
+        clock: Any = time.monotonic,
+        sleep: Any = time.sleep,
+    ) -> None:
+        self.interval = float(interval)
+        self._clock = clock
+        self._sleep = sleep
+        self._last: float | None = None
+
+    def wait(self) -> float:
+        """Sleep if the last submission was recent, and return the slept time."""
+        if self.interval <= 0:
+            return 0.0
+        now = self._clock()
+        slept = 0.0
+        if self._last is not None:
+            remaining = self.interval - (now - self._last)
+            if remaining > 0:
+                self._sleep(remaining)
+                slept = remaining
+                now += remaining
+        self._last = now
+        return slept
 
 
 # ---------------------------------------------------------------- reason codes
@@ -227,6 +293,37 @@ def connect(dry_run: bool = DRY_RUN_DEFAULT):
         paper=True,
         url_override=PAPER_ENDPOINT,
     )
+
+
+def get_buying_power(client) -> float:
+    """The account's available buying power, or a raised failure.
+
+    No fallback, for the same reason `get_nav` has none: a read that silently
+    restored a design default would report healthy while blind.
+    """
+    value = float(client.get_account().buying_power)
+    if not math.isfinite(value) or value < 0:
+        raise RuntimeError(f"invalid buying power: {value}")
+    return value
+
+
+def check_buying_power(client, orders) -> float:
+    """Raise unless the run's traded notional fits inside available buying power.
+
+    Alpaca applies a buying-power check to longs and to short sells alike and
+    reduces available buying power by every open order, so a book that does not
+    fit is rejected leg by leg and the run ends half-built. The check is on the
+    whole run before any submission, and the bound is the traded notional, the
+    same number the brake uses. A failure raises and no order is sent.
+    """
+    buying_power = get_buying_power(client)
+    required = float(sum(abs(order.traded_notional) for order in orders))
+    if required > buying_power:
+        raise RuntimeError(
+            f"the run needs {required:,.0f} of traded notional and the account "
+            f"has {buying_power:,.0f} of buying power, so no order was sent"
+        )
+    return buying_power
 
 
 def get_nav(client) -> float:
@@ -373,6 +470,8 @@ def submit_market_orders(
     client,
     prices: dict[str, float],
     short_cache: dict[str, dict[str, bool]] | None = None,
+    close: Any = None,
+    throttle: Throttle | None = None,
 ) -> list[Fill]:
     """Submit market orders and wait for fills, one record per intended leg.
 
@@ -392,16 +491,25 @@ def submit_market_orders(
     Every order carries `NEXT_OPEN_TIF`: submitted at the cron's hour the order is
     queued and released for the next session, which is the next-open execution the
     loop wants. The reasoning and the doc citation are on the constant.
+
+    Every order also carries a deterministic `client_order_id` built from the
+    close, the ticker and the side, so a rerun of the same evening is refused by
+    the broker instead of doubling the book, and submissions are spaced by
+    `throttle` to stay under the trading API's rate limit.
     """
     from alpaca.trading.enums import OrderSide, TimeInForce  # type: ignore
     from alpaca.trading.requests import MarketOrderRequest  # type: ignore
 
     time_in_force = TimeInForce(NEXT_OPEN_TIF)
     cache = {} if short_cache is None else short_cache
+    pace = throttle if throttle is not None else Throttle()
     fills: list[Fill] = []
     halted = False
     for order in orders:
         notional = abs(order.target_notional)
+        side = OrderSide.BUY if order.target_notional >= 0 else OrderSide.SELL
+        side_word = "buy" if order.target_notional >= 0 else "sell"
+        ticket = client_order_id(close, order.ticker, side_word)
         if halted:
             fills.append(
                 _skipped(
@@ -436,6 +544,7 @@ def submit_market_orders(
                 qty=qty,
                 side=side,
                 time_in_force=time_in_force,
+                client_order_id=ticket,
             )
         else:
             request = MarketOrderRequest(
@@ -443,7 +552,9 @@ def submit_market_orders(
                 notional=round(notional, 2),
                 side=side,
                 time_in_force=time_in_force,
+                client_order_id=ticket,
             )
+        pace.wait()
         try:
             submitted = client.submit_order(order_data=request)
         except Exception as exc:  # noqa: BLE001 - classified, never propagated
@@ -458,11 +569,11 @@ def submit_market_orders(
                     status=SKIPPED,
                     reason_code=code,
                     detail=f"{type(exc).__name__}: {exc}",
+                    client_order_id=ticket,
                 )
             )
             halted = halted or halts
             continue
-        import time
 
         filled_notional = 0.0
         fill_price = 0.0
@@ -489,6 +600,7 @@ def submit_market_orders(
                 filled_notional=filled_notional,
                 fill_price=fill_price,
                 status=status,
+                client_order_id=ticket,
             )
         )
     return fills
