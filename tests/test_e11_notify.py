@@ -104,6 +104,57 @@ def test_a_stale_stop_names_every_failing_input() -> None:
     assert "0 orders" not in message
 
 
+def test_the_staleness_line_states_each_inputs_allowance() -> None:
+    """An allowance is only readable beside the distance it applies to.
+
+    The universe sits one session behind and is allowed one, so a run that
+    passes still names it as the worst input, with its allowance beside it; a
+    stale stop states the allowance on every failing input, so a two-session
+    universe reads as over its allowance rather than as an unexplained number.
+    """
+    clean = notify.compose(
+        status="ok",
+        target_close=SESSION,
+        dry_run=True,
+        orders=150,
+        gross=2_000_000.0,
+        inputs={
+            "prices": {"sessions_behind": 0, "allowed_sessions_behind": 0},
+            "universe": {"sessions_behind": 1, "allowed_sessions_behind": 1},
+        },
+    )
+    assert "Staleness: worst input universe, 1 session behind (allowed 1)." in clean
+
+    failures = [
+        {
+            "input": "universe",
+            "sessions_behind": 2,
+            "allowed_sessions_behind": 1,
+            "gated_by": "content",
+        },
+        {
+            "input": "prices",
+            "sessions_behind": 1,
+            "allowed_sessions_behind": 0,
+            "gated_by": "content",
+        },
+    ]
+    stopped = notify.compose(
+        status="stale_stopped",
+        target_close=SESSION,
+        dry_run=True,
+        worst_input="universe",
+        worst_sessions_behind=2,
+        failures=failures,
+        inputs={"universe": {"sessions_behind": 2, "allowed_sessions_behind": 1}},
+    )
+    assert "Staleness: worst input universe, 2 sessions behind (allowed 1)." in stopped
+    assert (
+        "Failing inputs: universe 2 sessions behind (allowed 1); "
+        "prices 1 session behind (allowed 0)." in stopped
+    )
+
+
 def test_an_error_message_names_the_type_and_scrubs_the_reason() -> None:
     message = notify.compose(
         status="error",
@@ -243,11 +294,22 @@ def _patch_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         "job": "live_daily",
         "checked_at": "2026-09-22T22:30:00+00:00",
         "target_close": SESSION,
-        "allowed_sessions_behind": 0,
-        "inputs": {"prices": {"content": SESSION, "sessions_behind": 0}},
+        "allowed_sessions_behind": {"prices": 0, "universe": 1},
+        "inputs": {
+            "prices": {
+                "content": SESSION,
+                "sessions_behind": 0,
+                "allowed_sessions_behind": 0,
+            },
+            "universe": {
+                "content": "2026-09-21",
+                "sessions_behind": 1,
+                "allowed_sessions_behind": 1,
+            },
+        },
         "failures": [],
-        "worst_input": "prices",
-        "worst_sessions_behind": 0,
+        "worst_input": None,
+        "worst_sessions_behind": None,
         "max_input_staleness_days": 0,
         "status": "ok",
     }
@@ -393,6 +455,9 @@ def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     assert len(sent) == 1
     assert f"EFB live book {SESSION}: ok" in sent[0]
     assert "dry run: 152 orders proposed, $2,014,000 gross, none sent" in sent[0]
+    # the gate's own inputs mapping reaches the message: the universe is one
+    # session behind and allowed one, and the line says both
+    assert "Staleness: worst input universe, 1 session behind (allowed 1)." in sent[0]
     row = store.select("run_status").iloc[0]
     assert row["status"] == "ok"
     assert row["notify_status"] == notify.STATUS_SENT

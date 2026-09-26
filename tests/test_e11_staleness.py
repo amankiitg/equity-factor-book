@@ -273,6 +273,76 @@ def test_an_undated_input_is_stale_and_outranks_a_count(tmp_path: Path) -> None:
     assert "prices is 1 session behind" in described
 
 
+def test_the_universe_is_allowed_one_session_behind(tmp_path: Path) -> None:
+    """The SPY holdings file lags, so the universe may be one session behind.
+
+    And only the universe: the negative control is the same one-session lag on a
+    priced input, which still stops the run, so the allowance is a property of
+    the input rather than a loosening of the gate.
+    """
+    dates = _all_at(SESSION)
+    dates["universe"] = PRIOR
+    root = _write_root(tmp_path / "data", dates)
+    result = staleness.check(root=root, now=pd.Timestamp("2026-09-22T22:30:00Z"))
+    assert result["status"] == "ok"
+    assert result["failures"] == []
+    universe = result["inputs"]["universe"]
+    assert universe["sessions_behind"] == 1
+    assert universe["allowed_sessions_behind"] == 1
+    # every other input carries its own allowance, which is the zero
+    assert result["inputs"]["prices"]["allowed_sessions_behind"] == 0
+
+    # the negative control: the same one-session lag on prices still stops it
+    priced = _all_at(SESSION)
+    priced["prices"] = PRIOR
+    late = staleness.check(
+        root=_write_root(tmp_path / "priced", priced),
+        now=pd.Timestamp("2026-09-22T22:30:00Z"),
+    )
+    assert late["status"] == "stale_stopped"
+    assert late["worst_input"] == "prices"
+    assert late["failures"][0]["allowed_sessions_behind"] == 0
+
+
+def test_the_universe_two_sessions_behind_stops_the_run(tmp_path: Path) -> None:
+    """One session of lag is allowed; two is not, and the row says what was allowed."""
+    dates = _all_at(SESSION)
+    dates["universe"] = "2026-09-18"  # 09-21 and 09-22 come after it
+    root = _write_root(tmp_path / "data", dates)
+    result = staleness.check(root=root, now=pd.Timestamp("2026-09-22T22:30:00Z"))
+    assert result["status"] == "stale_stopped"
+    assert result["worst_input"] == "universe"
+    assert result["worst_sessions_behind"] == 2
+    assert result["failures"][0]["allowed_sessions_behind"] == 1
+
+
+def test_a_universe_one_session_behind_reaches_sizing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The allowance is real on the run path, not only in the gate's return."""
+    dates = _all_at(SESSION)
+    dates["universe"] = PRIOR
+    root = _write_root(tmp_path / "data", dates)
+    monkeypatch.setattr(staleness, "DATA_ROOT", root)
+    monkeypatch.setattr(
+        staleness, "target_close", lambda now=None: pd.Timestamp(SESSION)
+    )
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    _patch_no_work(monkeypatch)
+    reached: list[str] = []
+
+    def _record_then_fail(*args, **kwargs):
+        reached.append("sizing")
+        raise AssertionError("reached sizing")
+
+    monkeypatch.setattr(evening_job, "build_proposal", _record_then_fail)
+    monkeypatch.setattr(run_live_daily, "already_ran", lambda job, day: False)
+
+    assert run_live_daily.main() == 1
+
+    assert reached == ["sizing"]
+
+
 def test_a_stale_input_stops_the_run_with_no_proposal_and_no_orders(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
