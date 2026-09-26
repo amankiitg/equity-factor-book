@@ -24,6 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-timeout>=2.3",
     "mypy>=1.10",
     "black>=24.0",
     "ruff>=0.4",
@@ -52,9 +53,13 @@ include = ["efb*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# Every test gets 120 seconds. A test that hangs is a failed test with a stack
+# dump, not an hour of silence: waiting on a stuck suite hides the stuck test.
+timeout = 120
+timeout_method = "signal"
 markers = [
     "integration: reads the built artifacts or an executed notebook instead of a fixture",
-    "slow: over about two seconds; the fast subset skips it, the full run does not",
+    "slow: over about two seconds, or it touches the network, runs the whole evening job or executes a notebook; `make test` skips it and `make test-all` does not",
 ]
 
 [tool.black]
