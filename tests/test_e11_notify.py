@@ -155,6 +155,38 @@ def test_the_staleness_line_states_each_inputs_allowance() -> None:
     )
 
 
+def test_the_subject_names_the_worst_input_when_the_run_passed() -> None:
+    """A clean evening still has an input behind the close, inside an allowance.
+
+    The gate reports no failures on a clean run, so the subject's staleness field
+    had nothing to name and read "stale unknown" on every evening that passed. It
+    names the same worst input the body does, derived from the gate's own inputs
+    mapping: the universe, one session behind and allowed one.
+    """
+    subject = notify.subject_text(
+        status="ok",
+        target_close="2026-09-25",
+        orders=150,
+        inputs={
+            "prices": {"sessions_behind": 0, "allowed_sessions_behind": 0},
+            "universe": {"sessions_behind": 1, "allowed_sessions_behind": 1},
+        },
+    )
+    assert subject == "EFB ok 2026-09-25 | 150 proposed, none sent | stale 1 (universe)"
+    # The negative control: with no mapping there is nothing to name, and an
+    # error run still names its type rather than a staleness.
+    assert (
+        notify.subject_text(status="ok", target_close="2026-09-25", orders=1)
+        == "EFB ok 2026-09-25 | 1 proposed, none sent | stale unknown"
+    )
+    assert (
+        notify.subject_text(
+            status="error", target_close="2026-09-25", error_type="ValueError"
+        )
+        == "EFB ERROR 2026-09-25 | none proposed | ValueError"
+    )
+
+
 def test_an_error_message_names_the_type_and_scrubs_the_reason() -> None:
     message = notify.compose(
         status="error",
@@ -440,24 +472,29 @@ def test_an_errored_run_does_not_mark_the_day_done(
 def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    sent: list[str] = []
+    sent: list[dict[str, Any]] = []
     _no_work(monkeypatch)
     _patch_gate(monkeypatch, tmp_path)
     _patch_success(monkeypatch)
     monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
     monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
     monkeypatch.setattr(
-        notify, "post", lambda url, payload, headers=None: sent.append(payload["text"])
+        notify, "post", lambda url, payload, headers=None: sent.append(payload)
     )
 
     assert run_live_daily.main() == 0
 
     assert len(sent) == 1
-    assert f"EFB live book {SESSION}: ok" in sent[0]
-    assert "dry run: 152 orders proposed, $2,014,000 gross, none sent" in sent[0]
+    body = str(sent[0]["text"])
+    assert f"EFB live book {SESSION}: ok" in body
+    assert "dry run: 152 orders proposed, $2,014,000 gross, none sent" in body
     # the gate's own inputs mapping reaches the message: the universe is one
-    # session behind and allowed one, and the line says both
-    assert "Staleness: worst input universe, 1 session behind (allowed 1)." in sent[0]
+    # session behind and allowed one, and both the body's line and the subject's
+    # staleness field say so
+    assert "Staleness: worst input universe, 1 session behind (allowed 1)." in body
+    assert sent[0]["subject"] == (
+        f"EFB ok {SESSION} | 152 proposed, none sent | stale 1 (universe)"
+    )
     row = store.select("run_status").iloc[0]
     assert row["status"] == "ok"
     assert row["notify_status"] == notify.STATUS_SENT

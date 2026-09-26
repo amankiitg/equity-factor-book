@@ -329,15 +329,22 @@ def subject_text(
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
     init: bool = False,
+    inputs: dict[str, Any] | None = None,
 ) -> str:
     """The inbox line: the status, then what was proposed, then staleness.
 
     Readable without opening the email, which is the whole point of it, so it
     carries the three things the owner checks from a phone: `EFB ok 2026-09-25 |
-    150 proposed, none sent | stale 0`, `EFB STALE <close> | none proposed |
-    stale 3 (prices)`, `EFB ERROR <close> | none proposed | <ExceptionType>`. A
-    catch-up run says so beside the status, and a split or an unexplained move is
-    appended rather than left for the body.
+    150 proposed, none sent | stale 1 (universe)`, `EFB STALE <close> | none
+    proposed | stale 3 (prices)`, `EFB ERROR <close> | none proposed |
+    <ExceptionType>`. A catch-up run says so beside the status, and a split or an
+    unexplained move is appended rather than left for the body.
+
+    `inputs` is the gate's own inputs mapping, and the staleness field names the
+    same worst input the body does. Without it a clean run has no failures and so
+    no worst input, and the field would read `stale unknown` on every evening the
+    gate passed, including the clean ones: the universe sits inside its allowance
+    most evenings, and the worst input on a clean run is that, not a mystery.
     """
     close = target_close or "unknown close"
     if status == "ok":
@@ -364,12 +371,16 @@ def subject_text(
         middle = "none proposed"
     if status == "error":
         tail = error_type or "Exception"
-    elif worst_sessions_behind is None:
-        tail = "stale unknown"
-    elif int(worst_sessions_behind) == 0:
-        tail = "stale 0"
     else:
-        tail = f"stale {int(worst_sessions_behind)} ({worst_input})"
+        if worst_input is None and inputs:
+            # The same worst input the body names, so the two cannot disagree.
+            worst_input, worst_sessions_behind = _worst_from_inputs(inputs)
+        if worst_sessions_behind is None:
+            tail = "stale unknown"
+        elif int(worst_sessions_behind) == 0:
+            tail = "stale 0"
+        else:
+            tail = f"stale {int(worst_sessions_behind)} ({worst_input})"
     parts = [f"EFB {word} {close}", middle, tail]
     if splits:
         parts.append(_split_short(splits))
@@ -535,6 +546,7 @@ def notify_run(
         error_type=error_type,
         catch_up_sessions=catch_up_sessions,
         init=init,
+        inputs=inputs,
     )
     message = compose(
         status=status,
