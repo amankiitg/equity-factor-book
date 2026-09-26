@@ -36,6 +36,10 @@ EXECUTION_COLUMNS = [
     "filled_notional",
     "status",
     "reason",
+    # The stable code for a leg that never became a submitted order. Alpaca does
+    # not persist a submit-time rejection, so this column is the durable record
+    # that the leg was intended at all.
+    "reason_code",
 ]
 
 
@@ -102,9 +106,11 @@ def submit_orders(
 ) -> pd.DataFrame:
     """Submit guarded orders and record one row per order, filled or not.
 
-    Dry run records every order with zero fill and status DRY_RUN. The
-    live path submits market orders through live.alpaca and records the
-    fills, so no order is dropped without a record.
+    Dry run records every order with zero fill and status DRY_RUN. The live path
+    submits market orders through live.alpaca and records the fills, so no order
+    is dropped without a record. Every row carries a `reason_code`: the guard's
+    own status for a leg a guard rejected, the broker's classification for a leg
+    the broker refused, and the run's own halt code for a leg never attempted.
     """
     records: list[dict[str, object]] = []
     for order in orders:
@@ -116,6 +122,7 @@ def submit_orders(
                     "filled_notional": 0.0,
                     "status": order.status,
                     "reason": "guard rejected the order",
+                    "reason_code": order.status,
                 }
             )
             continue
@@ -127,6 +134,7 @@ def submit_orders(
                     "filled_notional": 0.0,
                     "status": "DRY_RUN",
                     "reason": "dry run: no order sent",
+                    "reason_code": "DRY_RUN",
                 }
             )
             continue
@@ -143,7 +151,8 @@ def submit_orders(
                     "intended_notional": fill.intended_notional,
                     "filled_notional": fill.filled_notional,
                     "status": fill.status,
-                    "reason": "live paper fill",
+                    "reason": fill.detail or "live paper fill",
+                    "reason_code": fill.reason_code,
                 }
             )
     return pd.DataFrame(records, columns=EXECUTION_COLUMNS[1:])
@@ -230,6 +239,11 @@ def run_morning(
                 if order.status == guards.PASSED
             )
         ),
+        # The legs the broker refused or the run never attempted, by code. A
+        # refused short is a decision the book made, not an error: it is reported
+        # with the code that says why rather than being dropped in silence.
+        "skipped": int((records["status"] == "SKIPPED").sum()),
+        "reason_codes": _reason_code_counts(records),
         # The day's kind, the limit it was held to, and why: the three things the
         # owner needs to read a first evening's order list correctly.
         "establishment": is_establishment,
@@ -239,6 +253,20 @@ def run_morning(
         "n_held": len(held),
         "held_notional": float(sum(abs(value) for value in held.values())),
     }
+
+
+def _reason_code_counts(records: pd.DataFrame) -> dict[str, int]:
+    """How many legs carry each reason code, refusals only.
+
+    Submitted legs have no code and dry-run legs carry DRY_RUN, so neither is a
+    refusal; both are excluded, which is what makes the count readable as "what
+    was refused tonight".
+    """
+    codes = records.get("reason_code")
+    if codes is None:
+        return {}
+    counts = codes[(codes != "") & (codes != "DRY_RUN")].value_counts()
+    return {str(code): int(count) for code, count in counts.items()}
 
 
 def _positions_from_records(

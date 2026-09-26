@@ -202,6 +202,10 @@ def store_orders(as_of: str, dry_run: bool) -> None:
             "filled_notional": row.filled_notional,
             "status": row.status,
             "reason": row.reason,
+            # The stable code for a refused or unattempted leg. Alpaca does not
+            # persist a submit-time rejection, so this is the only durable
+            # record that the leg was intended at all.
+            "reason_code": getattr(row, "reason_code", ""),
         }
         for row in execution.itertuples(index=False)
     ]
@@ -413,9 +417,7 @@ def finish_run(
     elif notified["status"] == notify.STATUS_SKIPPED:
         # On the row and on the dashboard; not noise in the cron's own line.
         logger.warning("no notification channel: %s", notified["detail"])
-    completed = (
-        status == COMPLETED_STATUS and delivered and not snapshot_failed
-    )
+    completed = status == COMPLETED_STATUS and delivered and not snapshot_failed
     try:
         # The same condition the exit code uses: the run finished its work, the
         # message went out and the snapshot is up. Nothing else marks the day done,

@@ -21,8 +21,21 @@ import logging
 import math
 import os
 from dataclasses import dataclass
+from typing import Any
 
 import pandas as pd
+
+# `APIError` is what tells an evaluated-and-declined order apart from a transport
+# failure, and alpaca-py is an optional dependency, so the import is guarded: a
+# missing library must not break module import, only the live path that needs it.
+# Bound to an `Any`-typed name so the fallback needs no ignore of its own.
+API_ERROR_CLS: Any
+try:  # pragma: no cover - depends on the environment
+    from alpaca.common.exceptions import (
+        APIError as API_ERROR_CLS,  # type: ignore[import-not-found]
+    )
+except ImportError:  # pragma: no cover - alpaca-py is optional
+    API_ERROR_CLS = None
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +81,13 @@ NEXT_OPEN_TIF = "day"
 
 @dataclass(frozen=True)
 class Fill:
-    """One submitted order and what came back."""
+    """One submitted order and what came back.
+
+    `reason_code` is set on every leg that never became a submitted order, and it
+    is the durable record of that intent: Alpaca does not persist a submit-time
+    rejection as an order record, so the code and its detail are the only evidence
+    the leg was ever intended. See the reason-code block below.
+    """
 
     ticker: str
     order_id: str
@@ -76,6 +95,108 @@ class Fill:
     filled_notional: float
     fill_price: float
     status: str
+    reason_code: str = ""
+    detail: str = ""
+
+
+# ---------------------------------------------------------------- reason codes
+#
+# Every leg that does not become a submitted order carries one of these. They are
+# the audit trail, not decoration: Alpaca does not persist a submit-time rejection
+# as an order record at all (credit-trading-lab v9.2 established this on
+# 2026-09-24, after a rejected sell_to_open left no trace in the order history over
+# a 30 day window), so the code and its detail are the only durable evidence that
+# the leg was ever intended.
+#
+# The vocabulary and the policy are v9.2's. Order-level failures continue and log,
+# because the broker evaluated the order and declined it: the state is known, and
+# the rest of the book should still trade. A transport-class failure halts
+# submission, because Alpaca may or may not have received the order and continuing
+# would stack ambiguity on ambiguity.
+REASON_ALPACA_ERROR = "ALPACA_API_ERROR"
+REASON_SUBMIT_UNKNOWN = "SUBMIT_EXCEPTION_UNKNOWN_STATE"
+REASON_SKIPPED_AFTER_HALT = "SKIPPED_AFTER_HALT"
+REASON_QTY_ROUNDS_TO_ZERO = "QTY_ROUNDS_TO_ZERO"
+REASON_SHORT_CHECK_FAILED = "SHORTABLE_CHECK_FAILED"
+REASON_NOT_TRADABLE = "ASSET_NOT_TRADABLE"
+REASON_NOT_SHORTABLE = "ASSET_NOT_SHORTABLE"
+REASON_NOT_EASY_TO_BORROW = "ASSET_NOT_EASY_TO_BORROW"
+
+# The status a leg carries when it was never submitted. The code beside it says
+# why, and the two are kept separate so a reader can group by either.
+SKIPPED = "SKIPPED"
+
+
+def classify_submit_failure(exc: Exception) -> tuple[str, bool]:
+    """(reason_code, halts_run) for a submit that raised.
+
+    An `APIError` means the broker evaluated the order and declined it, so the
+    state is known, the leg is recorded and the book keeps trading. Anything else
+    is transport-class: the order may have arrived, so submission halts and the
+    remaining legs are recorded as not attempted.
+    """
+    if API_ERROR_CLS is not None and isinstance(exc, API_ERROR_CLS):
+        return REASON_ALPACA_ERROR, False
+    return REASON_SUBMIT_UNKNOWN, True
+
+
+def asset_flags(
+    client, symbol: str, cache: dict[str, dict[str, bool]] | None = None
+) -> dict[str, bool]:
+    """The broker's own flags for one symbol, read live once per run.
+
+    Shortability is not static: the same name filled sell_to_open on three
+    September days and reported `shortable=false` on the fourth (v9.2,
+    2026-09-24), so a cached or hardcoded list would have been wrong. The cache
+    here is per run and never persisted across runs.
+    """
+    held = {} if cache is None else cache
+    key = str(symbol)
+    if key not in held:
+        asset = client.get_asset(key)
+        held[key] = {
+            "tradable": bool(getattr(asset, "tradable", False)),
+            "shortable": bool(getattr(asset, "shortable", False)),
+            "easy_to_borrow": bool(getattr(asset, "easy_to_borrow", False)),
+        }
+    return held[key]
+
+
+def short_refusal(
+    client, ticker: str, cache: dict[str, dict[str, bool]] | None = None
+) -> tuple[str, str] | None:
+    """Why a short leg may not be submitted, or None when it may.
+
+    Both flags are checked, in the order tradable, shortable, easy_to_borrow, so
+    the reason code names the first thing that was actually wrong rather than a
+    convenient one. A check that itself fails is a refusal too, and says why: a
+    short that could not be verified is not a short that may be sent.
+    """
+    try:
+        flags = asset_flags(client, ticker, cache)
+    except Exception as exc:  # noqa: BLE001 - a failed check is a refusal
+        return REASON_SHORT_CHECK_FAILED, f"{type(exc).__name__}: {exc}"
+    if not flags["tradable"]:
+        return REASON_NOT_TRADABLE, f"{ticker} reports tradable=false"
+    if not flags["shortable"]:
+        return REASON_NOT_SHORTABLE, f"{ticker} reports shortable=false"
+    if not flags["easy_to_borrow"]:
+        return REASON_NOT_EASY_TO_BORROW, f"{ticker} reports easy_to_borrow=false"
+    return None
+
+
+def _skipped(ticker: str, notional: float, code: str, detail: str) -> Fill:
+    """A leg that was never submitted, with the code that says why."""
+    return Fill(
+        ticker=ticker,
+        order_id="",
+        intended_notional=notional,
+        filled_notional=0.0,
+        fill_price=0.0,
+        status=SKIPPED,
+        reason_code=code,
+        detail=detail,
+    )
 
 
 def connect(dry_run: bool = DRY_RUN_DEFAULT):
@@ -247,41 +368,66 @@ def get_positions(client, dry_run: bool = DRY_RUN_DEFAULT) -> dict[str, float]:
     return result
 
 
-def submit_market_orders(orders, client, prices: dict[str, float]) -> list[Fill]:
-    """Submit market orders and wait for fills.
+def submit_market_orders(
+    orders,
+    client,
+    prices: dict[str, float],
+    short_cache: dict[str, dict[str, bool]] | None = None,
+) -> list[Fill]:
+    """Submit market orders and wait for fills, one record per intended leg.
 
-    Longs use notional orders; shorts use whole-share quantities because
-    Alpaca paper rejects fractional sell-to-open orders. `prices` maps
-    each ticker to its last close so a short notional can be quantized to
-    whole shares. Each order is submitted, polled, and recorded as one
-    Fill. A timeout is a recorded fill with status TIMEOUT, never a
-    silently dropped order.
+    Longs use notional orders; shorts use whole-share quantities because Alpaca
+    paper rejects fractional sell-to-open orders. `prices` maps each ticker to its
+    last close so a short notional can be quantized to whole shares. Each order is
+    submitted, polled, and recorded as one Fill. A timeout is a recorded fill with
+    status TIMEOUT, never a silently dropped order.
 
-    Every order carries `NEXT_OPEN_TIF`: submitted at the cron's hour the order
-    is queued and released for the next session, which is the next-open
-    execution the loop wants. The reasoning and the doc citation are on the
-    constant.
+    Every short is checked against the broker's own `shortable` and
+    `easy_to_borrow` flags before it is submitted, and a refused leg is recorded
+    with its reason code rather than raising. A broker rejection (`APIError`) is
+    recorded the same way and the book keeps trading; a transport-class failure
+    halts the run and the legs after it are recorded `SKIPPED_AFTER_HALT`, because
+    the order may or may not have arrived.
+
+    Every order carries `NEXT_OPEN_TIF`: submitted at the cron's hour the order is
+    queued and released for the next session, which is the next-open execution the
+    loop wants. The reasoning and the doc citation are on the constant.
     """
     from alpaca.trading.enums import OrderSide, TimeInForce  # type: ignore
     from alpaca.trading.requests import MarketOrderRequest  # type: ignore
 
     time_in_force = TimeInForce(NEXT_OPEN_TIF)
+    cache = {} if short_cache is None else short_cache
     fills: list[Fill] = []
+    halted = False
     for order in orders:
         notional = abs(order.target_notional)
+        if halted:
+            fills.append(
+                _skipped(
+                    order.ticker,
+                    notional,
+                    REASON_SKIPPED_AFTER_HALT,
+                    "the run halted on an unknown-state submit failure",
+                )
+            )
+            continue
         side = OrderSide.BUY if order.target_notional >= 0 else OrderSide.SELL
         if order.target_notional < 0:
+            refusal = short_refusal(client, order.ticker, cache)
+            if refusal is not None:
+                code, detail = refusal
+                fills.append(_skipped(order.ticker, notional, code, detail))
+                continue
             price = prices.get(order.ticker, 0.0)
             qty = int(notional / price) if price > 0 else 0
             if qty < 1:
                 fills.append(
-                    Fill(
-                        ticker=order.ticker,
-                        order_id="",
-                        intended_notional=notional,
-                        filled_notional=0.0,
-                        fill_price=0.0,
-                        status="SKIPPED_NO_PRICE",
+                    _skipped(
+                        order.ticker,
+                        notional,
+                        REASON_QTY_ROUNDS_TO_ZERO,
+                        f"{notional:.2f} at {price:.4f} rounds to zero shares",
                     )
                 )
                 continue
@@ -300,7 +446,8 @@ def submit_market_orders(orders, client, prices: dict[str, float]) -> list[Fill]
             )
         try:
             submitted = client.submit_order(order_data=request)
-        except Exception as exc:  # noqa: BLE001 - recorded, not skipped
+        except Exception as exc:  # noqa: BLE001 - classified, never propagated
+            code, halts = classify_submit_failure(exc)
             fills.append(
                 Fill(
                     ticker=order.ticker,
@@ -308,9 +455,12 @@ def submit_market_orders(orders, client, prices: dict[str, float]) -> list[Fill]
                     intended_notional=notional,
                     filled_notional=0.0,
                     fill_price=0.0,
-                    status=f"REJECTED_ALPACA: {type(exc).__name__}",
+                    status=SKIPPED,
+                    reason_code=code,
+                    detail=f"{type(exc).__name__}: {exc}",
                 )
             )
+            halted = halted or halts
             continue
         import time
 

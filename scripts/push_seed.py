@@ -103,9 +103,9 @@ def _inject_split(tree: Path, session: pd.Timestamp) -> tuple[str, float]:
     ticker = str(block.index[0])
     factor = 2.0
     frame.loc[(session, ticker), "split_factor"] = factor
-    frame.loc[(session, ticker), "adj_close"] = float(
-        frame.loc[(session, ticker), "adj_close"]
-    ) / factor
+    frame.loc[(session, ticker), "adj_close"] = (
+        float(frame.loc[(session, ticker), "adj_close"]) / factor
+    )
     frame.to_parquet(path)
     return ticker, factor
 

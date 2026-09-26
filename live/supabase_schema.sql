@@ -56,8 +56,11 @@ create table if not exists efb.orders (
   intended_notional double precision not null,
   filled_notional double precision not null,
   status text not null,
-  reason text not null,
-  primary key (trade_date, ticker)
+  reason text not null,  -- The stable code for a leg that never became a submitted order: the guard's
+  -- status, the broker's classification, or SKIPPED_AFTER_HALT. Alpaca does not
+  -- persist a submit-time rejection, so this column is the durable record that
+  -- the leg was intended.
+  reason_code text,  primary key (trade_date, ticker)
 );
 
 create table if not exists efb.fills (
@@ -296,3 +299,7 @@ alter table efb.run_status
   add column if not exists establishment boolean default false;
 alter table efb.run_status
   add column if not exists cost_label text;
+
+-- Pre-flip: the refusal code for a leg that was never submitted.
+alter table efb.orders
+  add column if not exists reason_code text;
