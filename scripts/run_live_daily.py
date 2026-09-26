@@ -56,6 +56,12 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+# The status a run carries when it finished its work and told the owner. Only that
+# marks the day done, so a failure retries on the next tick instead of being told
+# it already ran on a day nothing was produced.
+COMPLETED_STATUS = "ok"
+
+
 def already_ran(job: str, run_date: str) -> bool:
     """Whether this job already completed for this date."""
     from live import store
@@ -388,8 +394,26 @@ def finish_run(
     elif notified["status"] == notify.STATUS_SKIPPED:
         # On the row and on the dashboard; not noise in the cron's own line.
         logger.warning("no notification channel: %s", notified["detail"])
+    completed = (
+        status == COMPLETED_STATUS and delivered and not snapshot_failed
+    )
     try:
-        record_run("live_daily", run_date, status, cron_detail.strip(" |"))
+        # The same condition the exit code uses: the run finished its work, the
+        # message went out and the snapshot is up. Nothing else marks the day done,
+        # so a failure retries on the next tick.
+        if completed:
+            record_run("live_daily", run_date, status, cron_detail.strip(" |"))
+        else:
+            # Leaving no row is what makes a failure retry. The first Render evening
+            # recorded the day from a run that died at the email, and every later
+            # attempt exited "already ran" without sending anything: a day nothing
+            # was produced on, filed as finished.
+            logger.info(
+                "%s did not complete (%s), so the day is not marked done and the "
+                "next tick will run again",
+                run_date,
+                status,
+            )
     except Exception as exc:  # noqa: BLE001 - the message already went out
         store_failed = True
         logger.error(

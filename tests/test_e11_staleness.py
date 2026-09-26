@@ -314,9 +314,10 @@ def test_a_stale_input_stops_the_run_with_no_proposal_and_no_orders(
     state = staleness.run_state(dict(row), now=pd.Timestamp("2026-09-22T22:30:00Z"))
     assert not state["clean"]
     assert "prices is 1 session behind" in state["message"]
-    cron = store.select("cron_runs")
-    assert cron.iloc[0]["status"] == "stale_stopped"
-    assert cron.iloc[0]["detail"] == "prices is 1 session behind"
+    # a stopped run does not mark the day done, so the next tick runs again: the
+    # first Render evening recorded the day from a run that died at the email, and
+    # every later attempt exited "already ran" without sending anything
+    assert store.select("cron_runs").empty
 
 
 def test_a_fresh_run_reaches_sizing(
@@ -349,7 +350,8 @@ def test_a_fresh_run_reaches_sizing(
     assert len(status) == 1
     assert status.iloc[0]["status"] == "error"
     assert "reached sizing" in status.iloc[0]["detail"]
-    assert "reached sizing" in store.select("cron_runs").iloc[0]["detail"]
+    # the failure is on the record in run_status, and the day is not marked done
+    assert store.select("cron_runs").empty
 
 
 def _dashboard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: list[dict]):

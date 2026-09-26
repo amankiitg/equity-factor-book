@@ -348,6 +348,33 @@ def test_a_refused_send_keeps_the_reason_and_names_itself(
     assert seen[0].get_header("User-agent") == notify.USER_AGENT
 
 
+def test_an_errored_run_does_not_mark_the_day_done(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed run must leave no `cron_runs` row, or the retry is a no-op.
+
+    The first Render evening recorded the day from a run that died at the email, and
+    every later attempt that day exited "already ran" without sending anything: a day
+    nothing was produced on, filed as finished. Only a run that completes marks the
+    day done.
+    """
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+
+    def refuse(url: str, payload: dict, headers: dict | None = None) -> None:
+        raise RuntimeError("the endpoint answered 403: the domain is not verified")
+
+    monkeypatch.setattr(notify, "post", refuse)
+
+    assert run_live_daily.main() == 1
+    assert store.select("cron_runs").empty
+    # and the failure is still on the record, where it belongs
+    assert not store.select("run_status").empty
+
+
 def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -442,11 +469,9 @@ def test_a_failed_send_is_recorded_and_the_run_exits_nonzero(
     assert bool(row["notify_failed"])
     assert row["notify_status"] == notify.STATUS_FAILED
     assert "152" not in str(row["detail"])
-    # the failure is visible in the cron record, and never the URL
-    cron = store.select("cron_runs").iloc[0]
-    assert cron["status"] == "ok"
-    assert "notification failed" in cron["detail"]
-    assert "hooks.slack.com" not in cron["detail"]
+    # the day is not marked done, so the next tick runs again and tries to tell the
+    # owner again: a run whose message never arrived did not do its job
+    assert store.select("cron_runs").empty
     # the dashboard shows the notification failure rather than a clean run
     state = staleness.run_state(
         {str(key): value for key, value in row.items()},
