@@ -1,4 +1,309 @@
-# e11-deploy C0, part two: the exposures are computed, and where that stopped
+# e11-deploy stopped at f: the deploy image holds no model inputs, so the first run cannot seed
+
+**What I was doing, and how I found it.** f requires naming every write the evening
+job makes under `data/raw/` before removing them, so I mapped the write surface and
+then asked where the *reads* come from on Render. They do not come from anywhere.
+
+**The measurement.** No parquet under `data/` is tracked by git:
+
+```text
+$ git ls-files data | wc -l
+      15
+$ git ls-files data | grep -c parquet
+0
+$ git check-ignore -v data/raw/prices.parquet
+.gitignore:20:data/**/*.parquet	data/raw/prices.parquet
+```
+
+The only tracked artifact data is the LFS-compressed evidence snapshot, and it
+covers the fetched raw inputs alone (`efb/evidence.py::EVIDENCE_GLOBS`): prices,
+shares, factors, spy_holdings, wikipedia_constituents, and four other raw files.
+The derived inputs the run needs are snapshotted by nothing: `processed/returns`,
+`processed/sectors`, `processed/ticker_identity`, and all five
+`models/XS-v1/*.parquet`. `render.yaml`'s `buildCommand` is
+`pip install -r requirements.txt && pip install -e .`, so a Render build is a fresh
+clone plus two pip installs and nothing else.
+
+**The reproduction, on a tree holding exactly what git tracks:**
+
+```text
+$ EFB_STORE=local EFB_INIT_STORE=true .venv/bin/python - <<'PY'
+import tempfile
+from pathlib import Path
+root = Path(tempfile.mkdtemp()) / "data"
+(root / "raw").mkdir(parents=True)
+(root / "processed").mkdir(parents=True)
+(root / "models" / "XS-v1").mkdir(parents=True)
+(root / "VERSION.json").write_text(Path("data/VERSION.json").read_text())
+from live import store, appendix
+store.LOCAL_DIR = Path(tempfile.mkdtemp())
+try:
+    appendix.open_store(root)
+except Exception as exc:
+    print(f"{type(exc).__name__}: {exc}")
+PY
+seeding a store from a tree holding only the tracked files ...
+FileNotFoundError: [Errno 2] No such file or directory: '.../data/raw/prices.parquet'
+```
+
+`live/appendix.py::seed_appendix` is the first thing the first run does, and its
+first read is `pd.read_parquet(root / "raw/prices.parquet")`. On Render that file
+does not exist, so:
+
+- the first evening, with `EFB_INIT_STORE=true`, is an `error` run whose email
+  names a `FileNotFoundError` under the deploy directory;
+- no marker is written, because the seed raises before the marker does;
+- every later evening is the case 1 refusal, "store not seeded: set
+  EFB_INIT_STORE=true for the first run only", with the flag now removed;
+- and the loop never proposes anything. `gate-ready` would certify a deploy that
+  cannot run.
+
+**Under the task's blocker rule this is rule 1: it changes what the cron does.** It
+is the same class as the `plan:` key C0 was written for, and it is measured, not
+reasoned.
+
+**I did not fix it, and why.** Every candidate fix is a decision that is yours, not
+mine:
+
+1. commit a pre-cutoff seed snapshot so the image carries its own seed. For the
+   nine appendix inputs alone that is **89.58 MB compressed**, measured by
+   truncating each artifact at `SEED_CUTOFF` and gzipping it, and the per-input
+   split is below. It is Git LFS again, and it changes the evidence policy rather
+   than touching it. It is also not the whole seed: the loop reads
+   `processed/returns`, `processed/ticker_identity` and `alpha/summary`, and
+   `live/extend.py::refresh_version` rehashes every artifact E1 to E10 declares, so
+   the seed set has to be defined before it can be committed;
+2. add a build step that restores the raw inputs from `evidence/data/raw/*.gz` and
+   then rebuilds `processed/` and `models/XS-v1/` on the image. `make rebuild-e1`
+   to `e3` fetches from the vendor, so the build would depend on the network and
+   could produce a data hash other than the frozen one;
+3. hold every row in Postgres rather than only the post-cutoff rows, which is the
+   option the 80 percent free-tier check in `handoff/LOG.md` was written against.
+
+The seed measurement, per input, pre-cutoff rows only, gzipped:
+
+```text
+prices             rows    3597594  gz    51.68 MB
+descriptors        rows     664146  gz    17.96 MB
+specific_returns   rows    1842865  gz    14.71 MB
+specific_var       rows      88455  gz     1.94 MB
+shares             rows     434409  gz     1.81 MB
+factor_returns     rows      70938  gz     1.47 MB
+factor_cov         rows         18  gz     0.00 MB
+sectors            rows          0  gz     0.00 MB
+universe           rows          0  gz     0.00 MB
+TOTAL                          gz    89.58 MB
+```
+
+Two of the nine need no seed at all: the sectors snapshot is dated 09-11 and both
+SPY files are dated 09-18 and 09-21, so every row of those three is already
+post-cutoff and lives in the appendix.
+
+**The other half of f, done while mapping.** Every write the evening job makes under
+`data/raw/`, with file and function. This is f's first deliverable, so it is
+recorded here rather than lost:
+
+| write | file and function |
+| --- | --- |
+| `data/raw/prices.parquet`, `data/raw/shares_history.parquet` | `live/appendix.py::_hydrate_one`, `out.to_parquet(path)` (line 364) |
+| `data/raw/spy_holdings/spy_holdings_<close>.parquet` | `live/appendix.py::_hydrate_universe`, `frame.to_parquet(out_dir / ...)` (line 383) |
+| `data/raw/spy_holdings/spy_holdings_<as_of>.parquet` | `live/extend.py::extend_archives` to `efb/spy.py::archive_snapshot`, `payload.to_parquet(path)` (line 234) |
+| `data/raw/wikipedia_constituents/wikipedia_constituents_<date>.parquet` | `live/extend.py::extend_archives` to `efb/universe.py::archive_constituents`, `constituents.to_parquet(path)` (line 85) |
+| `data/raw/prices.parquet` | `live/extend.py::extend_prices`, `combined.to_parquet(path)` (line 93) |
+| `data/raw/shares_history.parquet` | `live/extend.py::extend_shares` to `efb/probes.py::fetch_share_history`, cache path `efb/probes.py::SHARES_CACHE` (line 77) and `cached.to_parquet(path)` (line 490) |
+
+Two facts about that list that shape the fix: the shares path is a *module
+constant* in `efb/probes.py`, not a parameter, and `data/raw/yf_cache.parquet`
+(`efb/probes.py::CACHE_PATH`) is the same shape. So removing the writes is not one
+call site: it needs the loop to work in a tree of its own, with every module's
+default resolved there, and it needs the derived writers (`extend_returns`,
+`extend_model`, `refresh_version`) pointed at the same tree or the readers see a
+mixed tree. That is the design I would build, and it is the same design the seed
+decision above has to slot into, which is why I am not building it first and
+guessing afterwards.
+
+**One more write in the same class, outside f's scope but worth naming.**
+`scripts/run_live_daily.py::main` calls `efb/evidence.py::snapshot()` on every run,
+which rewrites `evidence/data/raw/*.gz` and `evidence/MANIFEST.json`. Those are
+tracked, through Git LFS, so a *local* full run (which item k needs) dirties tracked
+files unless that call is diverted too, and `snapshot(evidence_dir=...)` still
+writes the manifest through the module constant `efb/evidence.py::MANIFEST`
+(line 141). Item k cannot be run locally and left alone until this and f are
+decided together.
+
+**State.** Steps 1, 2 and 3 are committed (`47799d6`, `ff7c308`, `fb2c8e7`). Step 4
+(f, g, l) and step 5 are not started: f is the first item of step 4, so the track
+stops at a step boundary rather than part way through one. `handoff/TASK.md` is set
+to `blocked`, because a decision is pending and the protocol says a decision pending
+is `blocked`, not `gate-ready`.
+
+# e11-deploy step 3: EFB_INIT_STORE, the four cases, and the seed marker
+
+First-run detection is explicit and never inferred. `live/store.py::init_store_flag`
+parses `EFB_INIT_STORE` strictly: unset or `false` is a normal run, `true` is a first
+run, and any other value is a `StoreNotConfigured` that names the value, so a
+spelling nobody meant cannot be read as permission to seed.
+
+`live/appendix.py::open_store` is the one decision, and only one of its four states
+seeds:
+
+| state | what happens |
+| --- | --- |
+| no marker, flag not `true` | `StoreNotSeeded`: "store not seeded: set EFB_INIT_STORE=true for the first run only". Nothing is written to the appendix |
+| no marker, flag `true` | `hydrate(root, seed_empty=True)`, then the marker is written; the run records `init: true` |
+| marker, flag `true` | `StoreAlreadySeeded`: "store already seeded: remove EFB_INIT_STORE". Nothing is re-seeded |
+| marker, appendix empty | `StoreAppendixLost`, whatever the flag says |
+
+**Case 4 is decided before case 3**, deliberately: an appendix wiped after the seed
+is an error about lost data rather than a flag reminder, and it is never re-seeded.
+Every case but the second raises before `hydrate` is called with `seed_empty=True`,
+which is what makes "never re-seeded automatically" structural. The test that would
+catch a regression is the parametrized one: the same state tested with the flag
+unset and with the flag set.
+
+**The marker is its own table, `efb.store_seed`.** A store that holds rows is not
+evidence of a seed: the owner's pre-first-run check writes a `run_status` row of its
+own (`scripts/verify_store_roundtrip.py`, `job = store_roundtrip`), and
+`test_the_roundtrip_rows_do_not_count_as_a_seed` drives exactly that row and then
+asserts the store still refuses. The marker records the close the seed was taken
+through (2026-09-03), the committed `data_hash`, and when it was written.
+
+**"Empty" is judged across every input, not any.** `e11_factor_cov` is legitimately
+empty after a seed: its artifact is a dateless snapshot, `artifact_rows` stamps it
+1970 before the cutoff filter, and only a run's `persist_new_sessions` gives it a
+session. An any-table test would refuse a store that is perfectly fine.
+
+**The run's own record and message.** `efb.run_status` gains an `init` column,
+`staleness.run_status_row` carries it, and `notify.compose` and
+`notify.subject_text` say it in three places: the subject word
+(`EFB ok (first run) 2026-09-22 | ...`), the store line that leads the body
+(`store: postgres/efb, first run`), and the status line beside the catch-up label.
+A first run that is also a catch-up reads `EFB ok (catch-up 4, first run)`, and the
+qualifier list is built once so one is not mistaken for the other.
+
+**Declared where it belongs.** `render.yaml` carries `EFB_INIT_STORE` with
+`sync: false` and a comment saying it is set for the first run only, `.env.example`
+carries it empty with the same comment, and `tests/conftest.py` pops a stray value
+from the environment so a developer's shell cannot decide whether a test run seeds.
+The two harnesses that drive `run_live_daily.main()` end to end
+(`tests/test_e11_notify.py::_no_work`, `tests/test_e11_staleness.py::_patch_no_work`)
+stub `appendix.open_store` the way they already stub `appendix.hydrate`, because
+those tests are about what happens once the store is open.
+
+## Tests
+
+`tests/test_e11_init_store.py`, 22 cases: the strict parse and five rejected values;
+the four states; the round-trip rows not counting as a seed; the refusal failing the
+run with the fix in the email body; the first-run wording in the subject, the store
+line and the row; and one slow end-to-end case that copies the real artifacts to a
+temporary root, seeds once, and reads the appendix on the second run.
+
+## Verification
+
+```text
+$ .venv/bin/python -m pytest tests/test_e11_init_store.py -q -m "not slow"
+21 passed, 1 deselected in 1.52s
+
+$ .venv/bin/python -m pytest tests/test_e11_init_store.py tests/test_e11_store.py \
+    tests/test_e11_notify.py tests/test_e11_staleness.py tests/test_e11_render.py \
+    tests/test_e11_snapshot.py tests/test_e11_web_fixtures.py tests/test_e11_appendix.py \
+    tests/test_e11_deploy.py tests/test_e11_corporate_actions.py tests/test_run_live_daily.py \
+    -q -m "not slow"
+163 passed, 1 skipped, 4 deselected in 59.82s
+
+$ .venv/bin/python -m pytest tests/test_e11_init_store.py tests/test_e11_appendix.py \
+    tests/test_e11_store.py tests/test_e11_snapshot.py -q -m slow
+4 passed, 65 deselected in 70.89s (0:01:10)
+
+$ make lint
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+.venv/bin/mypy efb
+Success: no issues found in 33 source files
+.venv/bin/mypy live scripts
+Success: no issues found in 26 source files
+.venv/bin/black --check efb dashboard live tests
+All done! 179 files would be left unchanged.
+
+$ make verify-evidence
+evidence OK
+```
+
+The full suite is not run here: it is C4's step, and it is deliberately not reached
+because f stopped the track.
+
+### Headline numbers, file and key
+
+| number | file and key |
+| --- | --- |
+| the strict parse | `live/store.py::init_store_flag`, `INIT_STORE_ENV`, `INIT_TRUE`, `INIT_FALSE` |
+| the four states | `live/appendix.py::open_store`, `StoreNotSeeded`, `StoreAlreadySeeded`, `StoreAppendixLost` |
+| the marker | `live/store.py::SEED_MARKER_TABLE`, `SEED_MARKER_KEY`, `seed_marker`, `write_seed_marker` |
+| the empty test | `live/appendix.py::is_empty`, `SEED_FROM` |
+| the close the seed records | `live/appendix.py::SEED_CUTOFF` = 2026-09-03 |
+| the row's record | `efb.run_status.init`, `live/staleness.py::run_status_row` |
+| the message | `live/notify.py::compose`, `subject_text` |
+| 22 cases | `tests/test_e11_init_store.py` |
+
+### git diff --stat for the item's own commit (`fb2c8e7`)
+
+```text
+$ git diff --stat fb2c8e7^ fb2c8e7
+ .env.example                 |   8 +
+ live/appendix.py             |  91 ++++++++++++
+ live/notify.py               |  25 +++-
+ live/staleness.py            |   5 +
+ live/store.py                |  72 +++++++++
+ live/supabase_schema.sql     |  16 ++
+ render.yaml                  |   7 +
+ scripts/run_live_daily.py    |  23 ++-
+ tests/conftest.py            |   5 +
+ tests/test_e11_init_store.py | 337 +++++++++++++++++++++++++++++++++++++++++++
+ tests/test_e11_notify.py     |   3 +
+ tests/test_e11_render.py     |   3 +
+ tests/test_e11_staleness.py  |   2 +
+ 13 files changed, 594 insertions(+), 3 deletions(-)
+```
+
+### Yes or no, each with evidence
+
+1. **Any two rows or two estimators identical.** No. The new tests compare a store
+   seeded versus unseeded, and a marker present versus absent; no estimator runs.
+2. **Any exception caught and skipped, or fallback taken, with counts.** No fallback.
+   The four states raise and the run turns the raise into an `error` run, which is
+   the specified behaviour; the one caught exception path exercised here is
+   `finish_run`'s, asserted on the `run_status` row and the email body.
+3. **Any criterion reworded or replaced by a different test.** No `RESULTS.json`
+   criterion. Two render tests and one deploy-independent list gained
+   `EFB_INIT_STORE`, which is this item's own subject.
+4. **Any criterion that passes by construction.** Declared: the four-case tests drive
+   `appendix.open_store` directly for the decisions, with `hydrate` replaced by a
+   recorder in case 2. What proves hydration really seeds is the slow end-to-end case
+   on copied real artifacts, and `tests/test_e11_appendix.py`'s existing round trip.
+5. **Any number that moved by a factor of 10 or more from its previous stored
+   value.** No stored number moved. `make verify-evidence` is pasted above, and
+   `data/raw` is byte-identical: the slow case copies it rather than writing it.
+6. **Any stored number typed into a notebook.** No notebook was opened, edited or
+   executed.
+7. **Any earlier verdict changed.** No. `efb.run_status` gains a column and the
+   message gains a phrase; no verdict or criterion is touched.
+
+### Anything decided that the reviewer might disagree with
+
+**Case 4 wins over case 3 when both apply.** The task lists case 3 before case 4,
+and case 4 says "whatever the flag says", so a marker with an empty appendix and the
+flag still set reports lost data rather than a leftover flag. If the other order is
+meant, it is one branch and one parametrized case.
+
+**"Empty" is all inputs rather than any.** Explained above: `e11_factor_cov` is
+empty on a healthy seeded store, so an any-input test would be wrong. The cost is
+that a partial wipe of one table is not caught here; the run's own staleness gate is
+what catches that.
+
+**A stray `EFB_INIT_STORE` is popped in `tests/conftest.py`.** It is the same
+treatment `EFB_SUPABASE_DB_URL` gets, for the same reason.
+
+
 
 **`exposures_after_hedge` is in, and it is the hedge's own number.**
 `live/evening_job.py::exposures` is `X'w` exactly as `_decomposition` computes it,
