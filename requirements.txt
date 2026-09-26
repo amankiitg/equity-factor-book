@@ -5,3 +5,9 @@ alpaca-py>=0.20
 psycopg[binary]>=3.1
 # the NYSE session calendar the staleness gate and the dashboard both read
 pandas_market_calendars>=4.4
+# The R2 object puts. R2 is S3-compatible, so the upload is boto3 pointed at the
+# account's endpoint rather than a hand-written SigV4 signer. Pinned exactly: the
+# pin is the version the upload path was built and tested against. It brings
+# botocore, s3transfer and jmespath, 23.91 MB installed in total, and it is
+# imported inside the upload call so a run that uploads nothing never loads it.
+boto3==1.43.103

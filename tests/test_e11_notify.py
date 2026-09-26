@@ -161,6 +161,23 @@ def test_a_send_failure_is_recorded_without_the_key() -> None:
     assert "RuntimeError" in result["detail"]
 
 
+def test_a_boto3_error_carrying_a_credential_is_scrubbed() -> None:
+    """boto3 raises with the service's own text, and R2's XML carries the key id."""
+    access_key = "AKIAIOSFODNN7EXAMPLE"
+    secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    message = (
+        "An error occurred (InvalidAccessKeyId) when calling the PutObject "
+        f"operation: <Error><AWSAccessKeyId>{access_key}</AWSAccessKeyId>"
+        f"<Message>aws_secret_access_key={secret}</Message></Error>"
+    )
+
+    cleaned = notify.scrub(message)
+
+    assert access_key not in cleaned
+    assert secret not in cleaned
+    assert "[redacted]" in cleaned
+
+
 def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace every step that would fetch, size or hash."""
     from efb import evidence
@@ -249,6 +266,51 @@ def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     assert row["n_orders"] == 152
     assert row["gross_notional"] == 2_014_000.0
     assert store.select("cron_runs").iloc[0]["status"] == "ok"
+
+
+def test_a_refused_snapshot_upload_fails_the_run_and_is_named_in_the_email(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refused put fails the run, and the email says which failure it was."""
+    from live import snapshot
+
+    access_key = "AKIAIOSFODNN7EXAMPLE"
+    secret = "test-secret-access-key"
+    sent: list[str] = []
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: sent.append(payload["text"])
+    )
+    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "on")
+    for name in snapshot.R2_ENVS:
+        monkeypatch.setenv(name, "test-value-for-" + name)
+
+    def _refuse(key: str, text: str, *, poster: Any = None) -> None:
+        raise RuntimeError(
+            "An error occurred (AccessDenied) when calling the PutObject "
+            f"operation: <AWSAccessKeyId>{access_key}</AWSAccessKeyId> "
+            f"secret_access_key={secret}"
+        )
+
+    monkeypatch.setattr(snapshot, "put_object", _refuse)
+
+    assert run_live_daily.main() == 1
+
+    assert len(sent) == 1
+    assert "snapshot failed" in sent[0]
+    assert "RuntimeError" in sent[0]
+    assert access_key not in sent[0]
+    assert secret not in sent[0]
+    assert "[redacted]" in sent[0]
+    row = store.select("run_status").iloc[0]
+    assert row["status"] == "error"
+    assert "snapshot failed" in str(row["detail"])
+    assert str(row["snapshot"]).startswith("snapshot failed")
+    assert access_key not in str(row["snapshot"])
 
 
 def test_a_failed_send_is_recorded_and_the_run_exits_nonzero(

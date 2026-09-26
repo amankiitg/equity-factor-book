@@ -57,6 +57,10 @@ FROM_ENV = "EFB_NOTIFY_EMAIL_FROM"
 TO_ENV = "EFB_NOTIFY_EMAIL_TO"
 DEFAULT_SENDER = "equity-factor-book <onboarding@resend.dev>"
 RESEND_KEY_SHAPE = r"\bre_[A-Za-z0-9_-]{8,}\b"
+# boto3 raises with the service's own error text inside it, and an S3-compatible
+# error body carries the access key id in XML. `AKIA`-style ids are 20 characters,
+# below both the base64 and the hex length floors, so they need their own rule.
+AWS_KEY_SHAPE = r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"
 TIMEOUT_SECONDS = 15.0
 STATUS_SENT = "sent"
 STATUS_FAILED = "failed"
@@ -78,13 +82,20 @@ _SCRUBS: tuple[tuple[re.Pattern[str], str], ...] = (
     # Resend's key shape, which is not long enough to be caught by the base64
     # rules and is not spelled `api_key=` by anything that raises it.
     (re.compile(RESEND_KEY_SHAPE), REDACTION),
+    # The same reasoning for an S3 access key id, which arrives inside boto3's
+    # message rather than as a header.
+    (re.compile(AWS_KEY_SHAPE), REDACTION),
     (re.compile(r"\beyJ[A-Za-z0-9._-]{10,}"), REDACTION),
     (re.compile(r"\b[A-Za-z0-9+/]{32,}={0,2}\b"), REDACTION),
     (re.compile(r"\b[0-9a-fA-F]{32,}\b"), REDACTION),
     (
+        # No plain `\b`: the shape that matters most is `aws_secret_access_key=`,
+        # where `access_key` sits inside a word, so a word boundary never fires
+        # and the value would sail through. `_` is allowed to precede it and a
+        # letter or digit is not.
         re.compile(
-            r"(?i)\b(pass(?:word|wd)?|secret|token|api[_-]?key|access[_-]?key)"
-            r"\s*[=:]\s*[^\s,;)\"]+"
+            r"(?i)(?<![A-Za-z0-9])(pass(?:word|wd)?|secret|token|api[_-]?key|"
+            r"access[_-]?key)\s*[=:]\s*[^\s,;)\"<]+"
         ),
         REDACTION,
     ),

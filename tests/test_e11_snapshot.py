@@ -37,6 +37,11 @@ MANIFEST: dict[str, Any] = {
     "idio_share_after_fmp": 1.0,
     "max_abs_exposure_after_fmp": 3.8e-15,
 }
+GENERATED_AT = datetime(2026, 9, 25, 23, 4, tzinfo=UTC)
+CONSTRUCTION: dict[str, Any] = {
+    "post_hedge_idio_share": 1.0,
+    "post_hedge_max_abs_exposure": 1e-15,
+}
 RUN: dict[str, Any] = {
     "target_close": "2026-09-25",
     "status": "ok",
@@ -74,15 +79,24 @@ def built(**overrides: Any) -> dict[str, Any]:
         run=run,
         manifest={**MANIFEST, **overrides.pop("manifest", {})},
         book=overrides.pop("book", book_frame()),
-        construction={
-            "post_hedge_idio_share": 1.0,
-            "post_hedge_max_abs_exposure": 1e-15,
-        },
-        generated_at=overrides.pop(
-            "generated_at", datetime(2026, 9, 25, 23, 4, tzinfo=UTC)
-        ),
+        construction=overrides.pop("construction", CONSTRUCTION),
+        generated_at=overrides.pop("generated_at", GENERATED_AT),
         **overrides,
     )
+
+
+def _settings(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    """The four R2 variables and the switch, as the run sees them."""
+    values = {
+        "EFB_R2_ACCOUNT_ID": "account123",
+        "EFB_R2_BUCKET": "efb-snapshots",
+        "EFB_R2_ACCESS_KEY_ID": "test-access-key-id",
+        "EFB_R2_SECRET_ACCESS_KEY": "test-secret-access-key",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "on")
+    return values
 
 
 def test_the_writer_satisfies_the_committed_schema() -> None:
@@ -192,7 +206,7 @@ def test_off_writes_nothing_and_says_so(monkeypatch: pytest.MonkeyPatch) -> None
         manifest=MANIFEST,
         book=book_frame(),
         dry_run=True,
-        poster=lambda url, body, headers: written.append(url),
+        poster=lambda **kwargs: written.append(kwargs["Key"]),
     )
     assert result["mode"] == "off"
     assert written == []
@@ -200,40 +214,77 @@ def test_off_writes_nothing_and_says_so(monkeypatch: pytest.MonkeyPatch) -> None
     assert result["payload"]["run_status"]["snapshot"] == "off (dry run)"
 
 
+def test_the_client_points_at_the_accounts_r2_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R2 is S3-compatible: boto3 against the account's endpoint, region auto."""
+    import boto3
+
+    values = {
+        "EFB_R2_ACCOUNT_ID": "account123",
+        "EFB_R2_BUCKET": "efb-snapshots",
+        "EFB_R2_ACCESS_KEY_ID": "test-access-key-id",
+        "EFB_R2_SECRET_ACCESS_KEY": "test-secret-access-key",
+    }
+    captured: dict[str, Any] = {}
+
+    def _client(name: str, **kwargs: Any) -> object:
+        captured["name"] = name
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(boto3, "client", _client)
+
+    snapshot.r2_client(values)
+
+    assert snapshot.r2_endpoint(values) == (
+        "https://account123.r2.cloudflarestorage.com"
+    )
+    assert captured["name"] == "s3"
+    assert captured["endpoint_url"] == snapshot.r2_endpoint(values)
+    assert captured["region_name"] == "auto"
+    assert captured["aws_access_key_id"] == "test-access-key-id"
+    assert captured["aws_secret_access_key"] == "test-secret-access-key"
+
+
 def test_on_writes_latest_and_the_dated_copy(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "on")
-    for name in snapshot.R2_ENVS:
-        monkeypatch.setenv(name, "test-value-for-" + name)
-    puts: list[tuple[str, bytes, dict[str, str]]] = []
+    """One put per key, through a real client, with a checksum over the body."""
+    from botocore.stub import Stubber
+
+    values = _settings(monkeypatch)
+    client = snapshot.r2_client(values)
+    body = snapshot.payload_text(built()).encode()
+    stubber = Stubber(client)
+    for key in ("latest.json", "snapshots/2026-09-25.json"):
+        stubber.add_response(
+            "put_object",
+            {},
+            {
+                "Bucket": values["EFB_R2_BUCKET"],
+                "Key": key,
+                "Body": body,
+                "ContentType": "application/json",
+                "ChecksumSHA256": snapshot.checksum_sha256(body),
+            },
+        )
+    stubber.activate()
+
     result = snapshot.write_snapshot(
         run=RUN,
         manifest=MANIFEST,
         book=book_frame(),
+        construction=CONSTRUCTION,
         dry_run=True,
-        poster=lambda url, body, headers: puts.append((url, body, headers)),
+        poster=client.put_object,
+        generated_at=GENERATED_AT,
     )
+
+    stubber.assert_no_pending_responses()
     assert result["mode"] == "on"
     assert result["written"] == ["latest.json", "snapshots/2026-09-25.json"]
-    assert len(puts) == 2
-    urls = [url for url, _, _ in puts]
-    assert urls[0].endswith("/test-value-for-EFB_R2_BUCKET/latest.json")
-    assert urls[1].endswith("/snapshots/2026-09-25.json")
-    # Both objects carry the same document, and it is the signed body's own.
-    bodies = [body for _, body, _ in puts]
-    assert bodies[0] == bodies[1]
-    payload = json.loads(bodies[0])
+    payload = json.loads(body)
     assert payload["schema_version"] == 1
     assert payload["book"]["n_names"] == 2
-    # The signature is a SigV4 one, with the payload hash inside it.
-    headers = puts[0][2]
-    assert headers["Authorization"].startswith("AWS4-HMAC-SHA256 Credential=")
-    assert (
-        "SignedHeaders=host;x-amz-content-sha256;x-amz-date" in headers["Authorization"]
-    )
-    assert (
-        headers["x-amz-content-sha256"]
-        == snapshot.hashlib.sha256(bodies[0]).hexdigest()
-    )
 
 
 def test_the_document_carries_no_credential(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -267,12 +318,13 @@ def test_a_missing_r2_variable_is_an_error_naming_it(
 def test_a_failed_upload_raises_so_the_run_can_fail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "on")
-    for name in snapshot.R2_ENVS:
-        monkeypatch.setenv(name, "test-value-for-" + name)
+    _settings(monkeypatch)
 
-    def _refuse(url: str, body: bytes, headers: dict[str, str]) -> None:
-        raise RuntimeError(f"HTTP 403 for {url} with {headers['Authorization']}")
+    def _refuse(**kwargs: Any) -> None:
+        raise RuntimeError(
+            "An error occurred (AccessDenied) when calling the PutObject "
+            f"operation: {kwargs['Key']}"
+        )
 
     with pytest.raises(RuntimeError):
         snapshot.write_snapshot(

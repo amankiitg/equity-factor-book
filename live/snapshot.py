@@ -41,8 +41,8 @@ proposed, and when the store holds none the book is empty and says why.
 
 from __future__ import annotations
 
+import base64
 import hashlib
-import hmac
 import json
 import math
 import os
@@ -50,7 +50,6 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 import pandas as pd
 
@@ -70,6 +69,10 @@ R2_ENVS = (
     "EFB_R2_SECRET_ACCESS_KEY",
 )
 R2_REGION = "auto"
+# R2 is S3-compatible, so the client is boto3 against the account's endpoint, and
+# every object goes up as one `put_object` with this content type and a checksum.
+R2_ENDPOINT_TEMPLATE = "https://{account}.r2.cloudflarestorage.com"
+CONTENT_TYPE = "application/json"
 
 # Why a stopped run's book is empty, when it is. Stated rather than implied: the
 # page shows an empty book with this sentence beside it.
@@ -316,78 +319,37 @@ def r2_settings() -> dict[str, str]:
     return {name: os.environ[name].strip() for name in R2_ENVS}
 
 
-def object_url(key: str, settings: dict[str, str] | None = None) -> str:
-    """The S3-compatible URL for one object, path-style."""
+def r2_endpoint(settings: dict[str, str] | None = None) -> str:
+    """The account's S3-compatible endpoint, which is what R2 speaks."""
     values = settings or r2_settings()
-    account = values["EFB_R2_ACCOUNT_ID"]
-    return (
-        f"https://{account}.r2.cloudflarestorage.com/"
-        f"{values['EFB_R2_BUCKET']}/{quote(key, safe='/')}"
-    )
+    return R2_ENDPOINT_TEMPLATE.format(account=values["EFB_R2_ACCOUNT_ID"])
 
 
-def _sign(key: bytes, message: str) -> bytes:
-    return hmac.new(key, message.encode(), hashlib.sha256).digest()
+def r2_client(settings: dict[str, str] | None = None) -> Any:
+    """A boto3 S3 client for the snapshot bucket.
 
-
-def signing_headers(
-    url: str,
-    body: bytes,
-    settings: dict[str, str],
-    *,
-    now: datetime | None = None,
-) -> dict[str, str]:
-    """The headers for one signed `PUT`, in AWS SigV4 as R2 requires it.
-
-    Written by hand rather than with a client library: one object, one verb, and
-    no dependency worth carrying for it. The signature covers the payload hash, so
-    a truncated body is rejected by the server rather than stored.
+    R2 is S3-compatible, so the client is a maintained library pointed at the
+    account's endpoint rather than a hand-written signer: one less piece of
+    cryptography in this repository and a signature the vendor keeps correct.
+    `region_name="auto"` is what Cloudflare documents for R2. boto3 is imported
+    here, not at module import, so the research stack and the test suite do not
+    need it unless a snapshot is actually uploaded.
     """
-    stamp = (now or datetime.now(UTC)).astimezone(UTC)
-    amz_date = stamp.strftime("%Y%m%dT%H%M%SZ")
-    day = stamp.strftime("%Y%m%d")
-    host = url.split("/", 3)[2]
-    path = "/" + url.split("/", 3)[3]
-    payload_hash = hashlib.sha256(body).hexdigest()
-    canonical_headers = (
-        f"host:{host}\n"
-        f"x-amz-content-sha256:{payload_hash}\n"
-        f"x-amz-date:{amz_date}\n"
+    values = settings or r2_settings()
+    import boto3  # noqa: PLC0415 - only a real upload needs the client
+
+    return boto3.client(
+        "s3",
+        endpoint_url=r2_endpoint(values),
+        region_name=R2_REGION,
+        aws_access_key_id=values["EFB_R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=values["EFB_R2_SECRET_ACCESS_KEY"],
     )
-    signed = "host;x-amz-content-sha256;x-amz-date"
-    canonical_request = "\n".join(
-        ["PUT", path, "", canonical_headers, signed, payload_hash]
-    )
-    scope = f"{day}/{R2_REGION}/s3/aws4_request"
-    to_sign = "\n".join(
-        [
-            "AWS4-HMAC-SHA256",
-            amz_date,
-            scope,
-            hashlib.sha256(canonical_request.encode()).hexdigest(),
-        ]
-    )
-    key = _sign(
-        _sign(
-            _sign(
-                _sign(f"AWS4{settings['EFB_R2_SECRET_ACCESS_KEY']}".encode(), day),
-                R2_REGION,
-            ),
-            "s3",
-        ),
-        "aws4_request",
-    )
-    signature = hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest()
-    return {
-        "Host": host,
-        "x-amz-content-sha256": payload_hash,
-        "x-amz-date": amz_date,
-        "Authorization": (
-            f"AWS4-HMAC-SHA256 Credential={settings['EFB_R2_ACCESS_KEY_ID']}/{scope}, "
-            f"SignedHeaders={signed}, Signature={signature}"
-        ),
-        "Content-Type": "application/json",
-    }
+
+
+def checksum_sha256(body: bytes) -> str:
+    """The base64 SHA-256 R2 checks a body against, so a truncated one is refused."""
+    return base64.b64encode(hashlib.sha256(body).digest()).decode()
 
 
 def put_object(
@@ -397,20 +359,23 @@ def put_object(
     settings: dict[str, str] | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> None:
-    """One single-object PUT. Raises on anything but a 2xx answer."""
-    values = settings or r2_settings()
-    url = object_url(key, values)
-    body = text.encode()
-    headers = signing_headers(url, body, values)
-    if poster is not None:
-        poster(url, body, headers)
-        return
-    import urllib.request  # noqa: PLC0415 - only the real upload needs it
+    """One single-object PUT, with the content type and a checksum.
 
-    request = urllib.request.Request(url, data=body, headers=headers, method="PUT")
-    with urllib.request.urlopen(request, timeout=30) as response:
-        if not 200 <= int(response.status) < 300:  # pragma: no cover - urllib raises
-            raise RuntimeError(f"R2 answered {int(response.status)}")
+    One object, one key, one verb. The checksum is what makes a truncated body a
+    refused upload rather than a stored one: R2 verifies it against the bytes it
+    received. `poster` is the put callable, so a test drives the request's shape,
+    its two keys, its body and its checksum without a network.
+    """
+    values = settings or r2_settings()
+    body = text.encode()
+    put = poster or r2_client(values).put_object
+    put(
+        Bucket=values["EFB_R2_BUCKET"],
+        Key=key,
+        Body=body,
+        ContentType=CONTENT_TYPE,
+        ChecksumSHA256=checksum_sha256(body),
+    )
 
 
 def keys_for(close: Any) -> list[str]:

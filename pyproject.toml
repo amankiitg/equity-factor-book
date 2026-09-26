@@ -38,6 +38,8 @@ live = [
     "alpaca-py>=0.20",
     "psycopg[binary]>=3.1",
     "pandas_market_calendars>=4.4",
+    # the same pin as requirements.txt, which is what the cron actually installs
+    "boto3==1.43.103",
 ]
 
 [build-system]
@@ -72,5 +74,6 @@ warn_unused_configs = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["yfinance", "pandas", "requests", "alpaca", "alpaca.trading.*"]
+# boto3 ships no type marker; botocore does, so only boto3 needs the exemption.
+module = ["yfinance", "pandas", "requests", "alpaca", "alpaca.trading.*", "boto3"]
 ignore_missing_imports = true
