@@ -91,7 +91,7 @@ def _archive_date(path: Path) -> pd.Timestamp:
 
 
 def load_spy_universe(
-    data_root: Path = DATA_ROOT, as_of: pd.Timestamp | None = None
+    data_root: Path | None = None, as_of: pd.Timestamp | None = None
 ) -> tuple[pd.DataFrame, Path]:
     """The live universe from the SPY archive, asserted rather than assumed.
 
@@ -105,7 +105,7 @@ def load_spy_universe(
     archive on or before it is refused rather than served a later one: a look-ahead
     universe is a wrong book, not a parse to be patched.
     """
-    root = Path(data_root)
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     archive_dir = root / "raw" / "spy_holdings"
     files = sorted(archive_dir.glob("spy_holdings_*.parquet"))
     if not files:
@@ -907,7 +907,7 @@ def _cost_decomposition(
 
 
 def build_proposal(
-    data_root: Path = DATA_ROOT,
+    data_root: Path | None = None,
     as_of: pd.Timestamp | None = None,
     nav: float = PAPER_NAV,
     store: bool = True,
@@ -927,7 +927,7 @@ def build_proposal(
             "nav must be a finite positive number; a proposal with a null "
             "nav is a failed run"
         )
-    root = Path(data_root)
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     # The close comes first, because the universe is clamped to it: a holdings
     # snapshot filed after the close must not inform the book priced on it.
     wide, _counts = eval_risk.load_clean_wide(root)

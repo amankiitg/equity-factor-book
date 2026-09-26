@@ -55,7 +55,7 @@ def _load_execution(as_of: str) -> pd.DataFrame:
 
 def daily_record(
     as_of: str,
-    data_root: Path = DATA_ROOT,
+    data_root: Path | None = None,
     state_dir: Path = state.STATE_DIR,
     dry_run: bool = True,
 ) -> dict[str, object]:

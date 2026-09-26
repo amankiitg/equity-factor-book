@@ -32,8 +32,8 @@ import pandas as pd
 
 from efb import alpha as alpha_mod
 from efb import eval_risk, size
+from live import evening_job
 from live.evening_job import (
-    DATA_ROOT,
     PAPER_NAV,
     SHARE_FLOOR,
     SIGNAL,
@@ -736,13 +736,13 @@ def _no_floor_row(row: dict[str, object]) -> None:
 
 
 def build_table(
-    data_root: Path = DATA_ROOT,
+    data_root: Path | None = None,
     as_of: pd.Timestamp | None = None,
     nav: float = PAPER_NAV,
     store: bool = True,
 ) -> pd.DataFrame:
     """Build the construction table for the owner's decision."""
-    root = Path(data_root)
+    root = Path(data_root) if data_root is not None else evening_job.DATA_ROOT
     wide, _counts = eval_risk.load_clean_wide(root)
     as_of_ts = pd.Timestamp(as_of) if as_of is not None else wide.index.max()
     names, alpha_vec, signal_z, design, factor_covariance, specific = _raw_pieces(

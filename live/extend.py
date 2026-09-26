@@ -21,7 +21,7 @@ DATA_ROOT = ROOT / "data"
 FROZEN_AS_OF = pd.Timestamp("2026-09-03")
 
 
-def last_price_session(data_root: Path = DATA_ROOT) -> pd.Timestamp | None:
+def last_price_session(data_root: Path | None = None) -> pd.Timestamp | None:
     """The latest session in the price panel, read without extending anything.
 
     The daily run reads it before and after the extension, so the sessions the
@@ -29,7 +29,8 @@ def last_price_session(data_root: Path = DATA_ROOT) -> pd.Timestamp | None:
     fresh container catches up several sessions at once, and the run has to be
     able to say which ones.
     """
-    path = Path(data_root) / "raw" / "prices.parquet"
+    root = Path(data_root) if data_root is not None else DATA_ROOT
+    path = root / "raw" / "prices.parquet"
     if not path.exists():
         return None
     dates = pd.DatetimeIndex(
@@ -53,11 +54,12 @@ def _spy_tickers(data_root: Path) -> list[str]:
     return sorted(frame["ticker"].astype(str).str.upper().str.strip())
 
 
-def extend_archives(data_root: Path = DATA_ROOT) -> dict[str, str]:
+def extend_archives(data_root: Path | None = None) -> dict[str, str]:
     """Fetch and archive a fresh SPY holdings file and Wikipedia snapshot."""
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     fetched = spy.fetch_spy_holdings()
-    spy_path = spy.archive_snapshot(fetched["equity"], fetched["as_of"], data_root)
-    wiki_path = universe.archive_constituents(data_root)
+    spy_path = spy.archive_snapshot(fetched["equity"], fetched["as_of"], root)
+    wiki_path = universe.archive_constituents(root)
     return {
         "spy_as_of": str(spy_path.stem).replace("spy_holdings_", ""),
         "wiki_as_of": str(wiki_path.stem).replace("wikipedia_constituents_", ""),
@@ -65,7 +67,7 @@ def extend_archives(data_root: Path = DATA_ROOT) -> dict[str, str]:
 
 
 def extend_prices(
-    data_root: Path = DATA_ROOT,
+    data_root: Path | None = None,
     end: str | None = None,
     tickers: list[str] | None = None,
 ) -> int:
@@ -74,7 +76,7 @@ def extend_prices(
     Returns the number of new sessions appended. Nothing is overwritten:
     rows already present keep their values.
     """
-    root = Path(data_root)
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     path = root / "raw" / "prices.parquet"
     existing = pd.read_parquet(path)
     last_date = pd.Timestamp(existing.index.get_level_values("date").max())
@@ -94,7 +96,7 @@ def extend_prices(
     return int(tail.index.get_level_values("date").nunique())
 
 
-def extend_returns(data_root: Path = DATA_ROOT) -> int:
+def extend_returns(data_root: Path | None = None) -> int:
     """Recompute returns and flags over the extended price frame.
 
     Identity drops and truncations are applied exactly as the E1 build
@@ -103,7 +105,7 @@ def extend_returns(data_root: Path = DATA_ROOT) -> int:
     """
     from efb import identity
 
-    root = Path(data_root)
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     path = root / "processed" / "returns.parquet"
     before = pd.read_parquet(path).index.get_level_values("date").nunique()
     prices_frame = pd.read_parquet(root / "raw" / "prices.parquet")
@@ -123,21 +125,25 @@ def extend_returns(data_root: Path = DATA_ROOT) -> int:
     return int(after - before)
 
 
-def extend_shares(data_root: Path = DATA_ROOT, tickers: list[str] | None = None) -> int:
+def extend_shares(
+    data_root: Path | None = None, tickers: list[str] | None = None
+) -> int:
     """Fetch share counts for names not yet in the cache and append.
 
     Returns the number of names newly fetched. Cached names are not
     re-asked, because a share count does not change unless a corporate
     action does.
     """
-    root = Path(data_root)
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     if tickers is None:
         tickers = _frozen_tickers(root)
     before = set()
     cache = root / "raw" / "shares_history.parquet"
     if cache.exists():
         before = set(pd.read_parquet(cache)["ticker"])
-    probes.fetch_share_history(tickers)
+    # The cache path is passed rather than left to the module default: on a run
+    # that works in its own tree, the default would fetch into the repository.
+    probes.fetch_share_history(tickers, cache_path=cache)
     after = set(pd.read_parquet(cache)["ticker"])
     return int(len(after - before))
 
@@ -201,7 +207,7 @@ def _descriptor_rows_for_dates(
     return pd.DataFrame(rows)
 
 
-def extend_model(data_root: Path = DATA_ROOT) -> dict[str, object]:
+def extend_model(data_root: Path | None = None) -> dict[str, object]:
     """Append one or more sessions to the XS-v1 artifacts.
 
     Descriptors, factor returns and specific returns are fitted only for
@@ -209,7 +215,7 @@ def extend_model(data_root: Path = DATA_ROOT) -> dict[str, object]:
     covariance snapshot and the specific variance roll forward by one
     session each.
     """
-    root = Path(data_root)
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     xs_dir = root / "models" / "XS-v1"
     inputs = probes.load_panel(root)
     returns_frame = inputs["returns"]
@@ -305,7 +311,7 @@ def extend_model(data_root: Path = DATA_ROOT) -> dict[str, object]:
     }
 
 
-def revert_model_to_frozen(data_root: Path = DATA_ROOT) -> None:
+def revert_model_to_frozen(data_root: Path | None = None) -> None:
     """Trim every XS-v1 artifact back to the frozen as-of.
 
     Used after an extension is rolled back: the rows dated after
@@ -313,7 +319,7 @@ def revert_model_to_frozen(data_root: Path = DATA_ROOT) -> None:
     recomputed from the frozen factor returns, so the next extension
     restarts from the frozen state.
     """
-    root = Path(data_root)
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     xs_dir = root / "models" / "XS-v1"
     trimmed_names = (
         "descriptors",
@@ -338,7 +344,7 @@ def revert_model_to_frozen(data_root: Path = DATA_ROOT) -> None:
     )
 
 
-def refresh_version(data_root: Path = DATA_ROOT) -> dict[str, object]:
+def refresh_version(data_root: Path | None = None) -> dict[str, object]:
     """Rehash every versioned artifact into data/VERSION.json.
 
     The live extension appends sessions, so the content hashes of the
@@ -348,7 +354,7 @@ def refresh_version(data_root: Path = DATA_ROOT) -> dict[str, object]:
     """
     from efb import build
 
-    root = Path(data_root)
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     rels = (
         build.ARTIFACTS
         + build.E2_ARTIFACTS
@@ -390,10 +396,10 @@ def _block_hash(frame: pd.DataFrame, cutoff: pd.Timestamp) -> str:
 
 
 def incremental_integrity(
-    data_root: Path = DATA_ROOT, cutoff: pd.Timestamp = FROZEN_AS_OF
+    data_root: Path | None = None, cutoff: pd.Timestamp = FROZEN_AS_OF
 ) -> dict[str, str]:
     """The hash of the pre-cutoff block of each extended cross-sectional artifact."""
-    root = Path(data_root)
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     xs_dir = root / "models" / "XS-v1"
     out: dict[str, str] = {}
     for name in ("descriptors", "factor_returns", "specific_returns"):

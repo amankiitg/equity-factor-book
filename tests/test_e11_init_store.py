@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from live import appendix, notify, staleness, store
+from live import appendix, notify, runroot, staleness, store
 from scripts import run_live_daily
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -222,6 +222,25 @@ def test_a_refusal_fails_the_run_and_names_the_fix_in_the_email(
 ) -> None:
     monkeypatch.delenv(store.INIT_STORE_ENV, raising=False)
     _local_store(tmp_path, monkeypatch)
+    # The run tree is stubbed: this test refuses before anything reads the
+    # artifacts, and the guard under test is the store's, not the seed's.
+    monkeypatch.setattr(
+        runroot, "prepare", lambda *args, **kwargs: runroot.DEFAULT_SEED_ROOT
+    )
+    # `adopt` moves every live module's DATA_ROOT for the rest of the process, so
+    # each one is pinned through monkeypatch here and put back after the test.
+    from live import evening_job, extend, morning_job, reconcile, sanity
+
+    for module in (
+        appendix,
+        evening_job,
+        extend,
+        morning_job,
+        reconcile,
+        sanity,
+        staleness,
+    ):
+        monkeypatch.setattr(module, "DATA_ROOT", module.DATA_ROOT)
     monkeypatch.setattr(run_live_daily, "already_ran", lambda job, day: False)
     monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
     monkeypatch.setenv(notify.TO_ENV, FAKE_TO)

@@ -36,7 +36,7 @@ def _weight_turnover(before: pd.Series, after: pd.Series) -> float:
 
 
 def run_gate(
-    data_root: Path = DATA_ROOT,
+    data_root: Path | None = None,
     nav: float = evening_job.PAPER_NAV,
     path: Path = GATE_PATH,
 ) -> dict:
@@ -46,10 +46,11 @@ def run_gate(
     model input, so a failure names the input that is not advancing rather
     than only reporting that the proposals matched.
     """
-    wide, _counts = evening_job.eval_risk.load_clean_wide(data_root)
+    root = Path(data_root) if data_root is not None else DATA_ROOT
+    wide, _counts = evening_job.eval_risk.load_clean_wide(root)
     closes = sorted(wide.index.unique())[-2:]
-    before = evening_job.build_proposal(data_root, as_of=closes[0], nav=nav, store=True)
-    after = evening_job.build_proposal(data_root, as_of=closes[1], nav=nav, store=True)
+    before = evening_job.build_proposal(root, as_of=closes[0], nav=nav, store=True)
+    after = evening_job.build_proposal(root, as_of=closes[1], nav=nav, store=True)
     w_before = _weights(str(before["as_of"]))
     w_after = _weights(str(after["as_of"]))
     turnover = _weight_turnover(w_before, w_after)

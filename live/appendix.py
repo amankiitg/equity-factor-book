@@ -310,7 +310,7 @@ def seed_appendix(spec: InputSpec, root: Path) -> int:
     return int(len(rows))
 
 
-def hydrate(root: Path = DATA_ROOT, seed_empty: bool = True) -> dict[str, int]:
+def hydrate(data_root: Path | None = None, seed_empty: bool = True) -> dict[str, int]:
     """Rewrite each artifact as seed plus appendix, and report rows written.
 
     The seed is the artifact's rows on or before the cutoff; the appendix is
@@ -318,6 +318,7 @@ def hydrate(root: Path = DATA_ROOT, seed_empty: bool = True) -> dict[str, int]:
     calls on a fresh container, and the test that proves the read equals the
     local artifacts drives it end to end.
     """
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     written: dict[str, int] = {}
     for spec in SPECS:
         if seed_empty:
@@ -384,12 +385,13 @@ def _hydrate_universe(spec: InputSpec, root: Path, appendix: pd.DataFrame) -> in
     return int(len(appendix))
 
 
-def persist_new_sessions(root: Path = DATA_ROOT) -> dict[str, int]:
+def persist_new_sessions(data_root: Path | None = None) -> dict[str, int]:
     """Write each input's post-cutoff sessions to the appendix.
 
     Called after the extension, so the appendix holds every session the run
     created. Idempotent: the store upserts on the table's key.
     """
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     written: dict[str, int] = {}
     for spec in SPECS:
         rows = artifact_rows(spec, root, cutoff=SEED_CUTOFF)
@@ -439,8 +441,9 @@ class StoreAppendixLost(RuntimeError):
     """The marker says seeded, but the appendix holds no rows at all."""
 
 
-def data_hash(root: Path = DATA_ROOT) -> str | None:
+def data_hash(data_root: Path | None = None) -> str | None:
     """The committed data hash, which is the seed's own version string."""
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     path = root / "VERSION.json"
     if not path.exists():
         return None
@@ -461,7 +464,7 @@ def is_empty() -> bool:
     return all(read_appendix(spec).empty for spec in SPECS)
 
 
-def open_store(root: Path = DATA_ROOT, now: datetime | None = None) -> bool:
+def open_store(data_root: Path | None = None, now: datetime | None = None) -> bool:
     """Decide that this run may use the store, and seed it exactly once.
 
     `EFB_INIT_STORE` is parsed strictly and the marker is what "seeded" means, so
@@ -481,6 +484,7 @@ def open_store(root: Path = DATA_ROOT, now: datetime | None = None) -> bool:
     and states in its message. The rule applies to Postgres and to the local
     fallback alike, because a store is a store wherever it lives.
     """
+    root = Path(data_root) if data_root is not None else DATA_ROOT
     first_run = store.init_store_flag()
     marker = store.seed_marker()
     if marker is not None:

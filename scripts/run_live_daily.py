@@ -91,7 +91,7 @@ def record_run(job: str, run_date: str, status: str, detail: str = "") -> None:
     store.upsert("cron_runs", rows)
 
 
-def store_proposal(as_of: str) -> pd.DataFrame:
+def store_proposal(as_of: str, data_root: Path | None = None) -> pd.DataFrame:
     """Write the proposal manifest, positions and trade reasons to the store.
 
     Returns the rows it wrote, reasons attached, because the snapshot carries the
@@ -99,6 +99,7 @@ def store_proposal(as_of: str) -> pd.DataFrame:
     """
     from live import store, trade_reasons
 
+    root = Path(data_root) if data_root is not None else ROOT / "data"
     manifest = json.loads((PROPOSAL_DIR / f"proposal_{as_of}.json").read_text())
     rows = pd.read_parquet(PROPOSAL_DIR / f"proposal_{as_of}.parquet")
     proposal_paths = sorted(PROPOSAL_DIR.glob("proposal_*.parquet"))
@@ -106,9 +107,7 @@ def store_proposal(as_of: str) -> pd.DataFrame:
     if len(proposal_paths) > 1 and proposal_paths[-1].stem == f"proposal_{as_of}":
         previous = pd.read_parquet(proposal_paths[-2])
 
-    specific = pd.read_parquet(
-        ROOT / "data" / "models" / "XS-v1" / "specific_var.parquet"
-    )
+    specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_var.parquet")
     as_of_ts = pd.Timestamp(as_of)
     today_std = trade_reasons.specific_std(specific, as_of=as_of_ts)
     prev_std = trade_reasons.specific_std(specific, as_of=as_of_ts)
@@ -415,6 +414,7 @@ def main() -> int:
 
     dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
     from live import appendix as appendix_mod
+    from live import runroot
 
     gate: dict[str, Any] | None = None
     catch_up_sessions: list[str] = []
@@ -440,6 +440,15 @@ def main() -> int:
         # decided here and a misconfiguration stops the run as an error.
         logger.info("store: %s", store.store_label())
         store.store_mode()
+        # The run's own tree, built before anything is read. Every live module's
+        # default resolves to it from here, so nothing under the repository's
+        # data/ is written even though the run appends sessions and refits
+        # models, and a container that has only the deploy image still has
+        # artifacts to read. A seed that cannot be supplied raises inside this
+        # try, so the failure is a run with an email rather than a traceback.
+        run_tree = runroot.prepare()
+        runroot.adopt(run_tree)
+        logger.info("run tree: %s", run_tree)
         # First-run detection is explicit, never inferred from what the tables
         # happen to hold: an empty appendix refuses to run unless
         # EFB_INIT_STORE=true says so, and that flag seeds the store once, writes
@@ -468,7 +477,7 @@ def main() -> int:
         # The appended session's return is computed from the raw closes and the
         # factor, so no stored row is restated. A back-adjustment no record
         # explains raises here, before the gate and before any sizing.
-        outcome = corporate_actions.apply_to_artifact(ROOT / "data", since=before_last)
+        outcome = corporate_actions.apply_to_artifact(run_tree, since=before_last)
         if outcome.splits:
             splits = [corporate_actions.describe([split]) for split in outcome.splits]
             store.upsert(
@@ -526,7 +535,7 @@ def main() -> int:
         # Evening: propose tomorrow's book from the latest close.
         manifest = evening_job.build_proposal(appendix=appendix_identity)
         as_of = str(manifest["as_of"])
-        book = store_proposal(as_of)
+        book = store_proposal(as_of, run_tree)
 
         # Morning: gate, guard, submit (dry run by default), reconcile.
         morning = morning_job.run_morning(as_of, dry_run=dry_run)

@@ -112,14 +112,44 @@ def _all_at(session: str, fetch: str | None = None) -> dict[str, str]:
     return dates
 
 
+class _NoCorporateActions:
+    """The stub outcome of the corporate-actions step: no split, no flags."""
+
+    splits: list = []
+    sessions: list = []
+    ratios: dict = {}
+    flags: list = []
+    unchecked = 0
+
+
 def _patch_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace every step of the run that would fetch, size or hash."""
     from efb import evidence
+    from live import corporate_actions
 
     for name in ("hydrate", "persist_new_sessions", "appendix_manifest"):
         monkeypatch.setattr(appendix, name, lambda *args, **kwargs: {})
     # The first-run guard has its own tests; here the store is already open.
     monkeypatch.setattr(appendix, "open_store", lambda *args, **kwargs: False)
+    # The run tree is the repository's own data root: these tests stub every read
+    # and write, and pin whichever root they need on the module itself.
+    from live import runroot
+
+    monkeypatch.setattr(runroot, "prepare", lambda *args, **kwargs: staleness.DATA_ROOT)
+    # `adopt` moves every live module's DATA_ROOT for the rest of the process, so
+    # each one is pinned through monkeypatch here and put back after the test.
+    from live import reconcile, sanity
+
+    for module in (
+        appendix,
+        evening_job,
+        extend,
+        morning_job,
+        reconcile,
+        sanity,
+        staleness,
+    ):
+        monkeypatch.setattr(module, "DATA_ROOT", module.DATA_ROOT)
     for name in (
         "extend_archives",
         "extend_prices",
@@ -130,6 +160,13 @@ def _patch_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.setattr(extend, name, lambda *a, **k: {})
     monkeypatch.setattr(evidence, "snapshot", lambda *a, **k: None)
+    # The corporate-actions rule has its own tests. It is stubbed here because it
+    # reads and writes the price artifact: reached for real it would run against
+    # whichever tree the run was pointed at, which is not what these tests are
+    # about, and on the synthetic root its columns are thinner than it expects.
+    monkeypatch.setattr(
+        corporate_actions, "apply_to_artifact", lambda *a, **k: _NoCorporateActions()
+    )
 
 
 def test_a_monday_run_on_fridays_close_passes(tmp_path: Path) -> None:

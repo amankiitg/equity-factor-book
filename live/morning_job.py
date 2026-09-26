@@ -49,7 +49,7 @@ def should_execute(decision: str | None, auto_approve: bool) -> bool:
     return True
 
 
-def load_proposal(as_of: str, data_root: Path = DATA_ROOT) -> pd.DataFrame:
+def load_proposal(as_of: str, data_root: Path | None = None) -> pd.DataFrame:
     """The evening proposal for a trade date, weights gross-normalized."""
     path = PROPOSAL_DIR / f"proposal_{as_of}.parquet"
     if not path.exists():
@@ -57,9 +57,10 @@ def load_proposal(as_of: str, data_root: Path = DATA_ROOT) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
-def _close_prices(as_of: str, data_root: Path = DATA_ROOT) -> dict[str, float]:
+def _close_prices(as_of: str, data_root: Path | None = None) -> dict[str, float]:
     """{ticker: close} at the proposal close, for short-share quantization."""
-    prices = pd.read_parquet(data_root / "raw" / "prices.parquet")
+    root = Path(data_root) if data_root is not None else DATA_ROOT
+    prices = pd.read_parquet(root / "raw" / "prices.parquet")
     day = prices[prices.index.get_level_values("date") == pd.Timestamp(as_of)]
     close = day["close"].droplevel("date") if not day.empty else pd.Series(dtype=float)
     return {str(ticker): float(value) for ticker, value in close.items()}
@@ -154,7 +155,7 @@ def run_morning(
     decision: str | None = None,
     auto_approve: bool = True,
     dry_run: bool = DRY_RUN_DEFAULT,
-    data_root: Path = DATA_ROOT,
+    data_root: Path | None = None,
 ) -> dict[str, Any]:
     """The whole morning flow: gate, propose, guard, submit, reconcile.
 

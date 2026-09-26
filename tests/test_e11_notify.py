@@ -178,6 +178,16 @@ def test_a_boto3_error_carrying_a_credential_is_scrubbed() -> None:
     assert "[redacted]" in cleaned
 
 
+class _NoCorporateActions:
+    """The stub outcome of the corporate-actions step: no split, no flags."""
+
+    splits: list = []
+    sessions: list = []
+    ratios: dict = {}
+    flags: list = []
+    unchecked = 0
+
+
 def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace every step that would fetch, size or hash."""
     from efb import evidence
@@ -187,6 +197,27 @@ def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     # The first-run guard decides whether the store may be used at all, and its
     # four cases have their own tests; here the store is simply already open.
     monkeypatch.setattr(appendix, "open_store", lambda *args, **kwargs: False)
+    # Every read and write the run makes is stubbed in these tests, so the run
+    # tree is the repository's own data root rather than a 876 MB copy of it.
+    from live import runroot
+
+    monkeypatch.setattr(
+        runroot, "prepare", lambda *args, **kwargs: runroot.DEFAULT_SEED_ROOT
+    )
+    # `adopt` moves every live module's DATA_ROOT for the rest of the process, so
+    # each one is pinned through monkeypatch here and put back after the test.
+    from live import reconcile, sanity
+
+    for module in (
+        appendix,
+        evening_job,
+        extend,
+        morning_job,
+        reconcile,
+        sanity,
+        staleness,
+    ):
+        monkeypatch.setattr(module, "DATA_ROOT", module.DATA_ROOT)
     for name in (
         "extend_archives",
         "extend_prices",
@@ -197,8 +228,16 @@ def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.setattr(extend, name, lambda *a, **k: {})
     monkeypatch.setattr(evidence, "snapshot", lambda *a, **k: None)
+    # The corporate-actions rule is stubbed for the same reason it is in the
+    # staleness harness: reached for real it reads and writes the price artifact
+    # of whichever tree the run is pointed at.
+    from live import corporate_actions
+
+    monkeypatch.setattr(
+        corporate_actions, "apply_to_artifact", lambda *a, **k: _NoCorporateActions()
+    )
     monkeypatch.setattr(run_live_daily, "already_ran", lambda job, day: False)
-    monkeypatch.setattr(run_live_daily, "store_proposal", lambda as_of: None)
+    monkeypatch.setattr(run_live_daily, "store_proposal", lambda *a, **k: None)
     monkeypatch.setattr(run_live_daily, "store_orders", lambda as_of, dry: None)
     monkeypatch.setattr(run_live_daily, "store_reconciliation", lambda as_of, row: None)
 
