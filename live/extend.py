@@ -66,6 +66,31 @@ def extend_archives(data_root: Path | None = None) -> dict[str, str]:
     }
 
 
+def _live_tickers(data_root: Path) -> list[str]:
+    """Tonight's fetch: the current universe plus whatever the book holds.
+
+    The frozen panel is every name the history ever held, so asking the vendor
+    about all of it meant 206 failures an evening for tickers delisted years ago,
+    which bury the one failure that would matter. The archive is the universe being
+    priced tonight, and the last stored proposal is what the book actually holds: a
+    name outside the index but still held is still fetched.
+
+    The stored book is a convenience, not a requirement: if the store cannot
+    answer, the universe alone is fetched, because a run must not stop over the
+    set it prices rather than the prices themselves.
+    """
+    tickers = set(_spy_tickers(data_root))
+    try:
+        from live import snapshot
+
+        _, book, _ = snapshot.previous_proposal()
+    except Exception:  # noqa: BLE001 - the universe alone is the safe subset
+        book = None
+    if book is not None and "ticker" in book.columns:
+        tickers |= {str(name).upper().strip() for name in book["ticker"]}
+    return sorted(tickers)
+
+
 def extend_prices(
     data_root: Path | None = None,
     end: str | None = None,
@@ -81,7 +106,7 @@ def extend_prices(
     existing = pd.read_parquet(path)
     last_date = pd.Timestamp(existing.index.get_level_values("date").max())
     if tickers is None:
-        tickers = _frozen_tickers(root)
+        tickers = _live_tickers(root)
     end = end or pd.Timestamp.now().strftime("%Y-%m-%d")
     tail = prices.download_prices(tickers, start=str(last_date.date()), end=end)
     if tail is None or len(tail) == 0:
@@ -136,7 +161,7 @@ def extend_shares(
     """
     root = Path(data_root) if data_root is not None else DATA_ROOT
     if tickers is None:
-        tickers = _frozen_tickers(root)
+        tickers = _live_tickers(root)
     before = set()
     cache = root / "raw" / "shares_history.parquet"
     if cache.exists():

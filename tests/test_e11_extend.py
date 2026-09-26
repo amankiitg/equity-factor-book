@@ -75,3 +75,53 @@ def test_identity_drops_do_not_reappear_in_the_extension() -> None:
     specific = pd.read_parquet(XS / "specific_returns.parquet")
     assert "DD" not in set(returns_frame.index.get_level_values("ticker"))
     assert "DD" not in set(specific["ticker"])
+
+
+def _live_tree(root: Path) -> None:
+    """A tree with a four-name panel and a two-name universe."""
+    (root / "raw" / "spy_holdings").mkdir(parents=True)
+    (root / "processed").mkdir(parents=True)
+    pd.DataFrame(
+        {"ticker": ["LIVE1", "LIVE2", "DELISTED", "HELD"], "gics_sector": ["Tech"] * 4}
+    ).to_parquet(root / "processed" / "sectors.parquet")
+    index = pd.MultiIndex.from_product(
+        [[pd.Timestamp("2026-09-21")], ["LIVE1", "LIVE2", "DELISTED", "HELD"]],
+        names=["date", "ticker"],
+    )
+    pd.DataFrame({"ret": [0.1] * 4}, index=index).to_parquet(
+        root / "processed" / "returns.parquet"
+    )
+    pd.DataFrame(
+        {"ticker": ["LIVE1", "LIVE2"], "as_of": ["2026-09-21"] * 2}
+    ).to_parquet(root / "raw" / "spy_holdings" / "spy_holdings_2026-09-21.parquet")
+
+
+def test_the_fetch_is_the_live_universe_and_the_book_not_the_frozen_panel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The panel is every name the history ever held, and most are delisted.
+
+    Asking the vendor about the panel every evening produced 206 failures a night,
+    which bury the one failure that would matter. Nothing outside the universe and
+    the held book can reach the book being priced, so nothing else is asked for.
+    """
+    from live import snapshot
+
+    root = tmp_path / "data"
+    _live_tree(root)
+    book = pd.DataFrame({"ticker": ["HELD"], "weight": [1.0]})
+    monkeypatch.setattr(snapshot, "previous_proposal", lambda: (None, book, None))
+
+    # the held name is outside the universe and is still fetched
+    assert extend._live_tickers(root) == ["HELD", "LIVE1", "LIVE2"]
+
+    # a store that cannot answer leaves the universe, which is what the run needs
+    # to price: the held names are a convenience, not a requirement
+    def explode() -> None:
+        raise RuntimeError("the store is unreachable")
+
+    monkeypatch.setattr(snapshot, "previous_proposal", explode)
+    assert extend._live_tickers(root) == ["LIVE1", "LIVE2"]
+
+    # and the frozen panel still exists for the callers that ask for it
+    assert extend._frozen_tickers(root) == ["DELISTED", "HELD", "LIVE1", "LIVE2"]
