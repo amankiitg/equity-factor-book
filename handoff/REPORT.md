@@ -266,6 +266,7 @@ the window. None of the 8 is in the book's kept 150 names.
 
 ```text
 $ git log --oneline 3e9dbe1..HEAD
+c643f2d e11-deploy: the universe appendix lost two columns on any tree holding both spellings
 78beba7 e11-deploy seed: a file the run produced is not seed material
 66889d0 e11-deploy C4: the clean full suite, and gate-ready
 a963050 The measurement needs one more bound, and the run showed why
@@ -321,10 +322,20 @@ $ .venv/bin/python -m pytest tests/test_e11_seed.py -q   # the produced-file fix
 
 $ make test-fast   # the same tree, after that fix
 871 passed, 1 skipped, 32 deselected, 3 warnings in 35.26s
+
+$ .venv/bin/python -m pytest tests/test_e11_appendix.py -q   # the appendix fix
+8 passed in 54.84s
+
+$ git stash push -- live/appendix.py   # the negative control, before committing
+$ .venv/bin/python -m pytest tests/test_e11_appendix.py -q
+3 failed, 5 passed, 3 warnings in 57.47s
+  live/appendix.py:403: UserWarning: DataFrame columns are not unique,
+  some columns will be omitted.
 ```
 
 The fast count went from 869 to 872 collected, which is exactly the three tests the
-fix added and nothing else.
+seed fix added and nothing else. The control's failing run prints the production
+warning from the line the real evening run printed it from.
 
 The clean full suite, on the tree carrying everything above (rule 21's before the
 live clock, and it must not shrink):
@@ -346,10 +357,27 @@ and the 32 slow tests are the deliberate ones the fast subset skips.
 evening, the run tree copied from the repository's own artifacts:
 
 ```text
-n_files: 184
-total_bytes: 617837063 (617.84 MB)
+n_files: 19
+total_bytes: 169462918 (169.46 MB)
 data_hash: c3e0db6f92209ebce7bd46180b35845f3b75a98dbbcf359634dedcbd0da1aea8
 ```
+
+That is the **union of the five routes**, each measured in one throwaway store and
+reported as it goes:
+
+```text
+  first_run         19 seed file(s)
+  normal_evening    17 seed file(s)
+  stopped_evening   15 seed file(s)
+  split_day          2 seed file(s)
+  morning            1 seed file(s)
+```
+
+`first_run` is a superset of all of them on this evening, which was measured rather
+than assumed: the ordinary evening, the stopped evening, the split branch and the
+morning job each read a subset of what the first run read, so the union is the first
+run's nineteen files. The run's own output was one file, the session it fetched:
+`raw/spy_holdings/spy_holdings_2026-09-24.parquet`.
 
 That is a measurement and not a list anyone wrote: every entry is hashed from the
 pristine tree's own bytes, and a read the pristine tree does not hold and the run
@@ -382,20 +410,30 @@ answers with the local bytes, so the network leg is excluded and the hashing, th
 writes and the verification are not:
 
 ```text
-seed: 184 files, 617.84 MB
-hash all of it (the push side):        0.58 s
-verify it (every run does this):       0.29 s
-write it all + verify, no network:     1.68 s
-peak RSS for the whole script:        445.6 MB
+seed: 19 files, 169.46 MB
+verify it (every run does this):       0.08 s
+write it all + verify, no network:     0.33 s
+peak RSS for the whole script:        186.6 MB
 the downloaded tree verifies:       True
 ```
 
-The download leg itself is Render's to read off the first real run's metrics, which
-is in the deploy list below.
+against 0.29 s and 1.68 s and 445.6 MB for the 617.84 MB set, so the shrink pays for
+itself at the start of every evening as well as in the bucket. The download leg
+itself is Render's to read off the first real run's metrics, which is in the deploy
+list below.
 
-The 184 files, path and bytes as the command printed them (the manifest in the
-bucket carries a SHA-256 for each, and the full row-per-file form with the hashes
-is what `seed_manifest.json` holds):
+**Why the set shrank from 617.84 MB to 169.46 MB.** The owner took `VERSION.json`
+out of the live loop, and the rehash was what dragged the research tree in:
+`extend.refresh_version` called `efb.build.write_version`, which hashes every
+artifact E1 to E10 declares plus the dated archives under `raw/spy_holdings` and
+`raw/wikipedia_constituents`. With that call gone the loop reads only what the book
+needs, so the E4, E5 and E8 evaluation artifacts, the alpha, costs, hedge and
+portfolio artifacts, `models/PCA-*`, `models/TS-*` and `models/XS-v2/*` all leave
+the seed, and so does the Wikipedia archive: it was read by the version writer and
+by nothing else. The SPY archives stay, because the universe loader reads them.
+
+The pre-union measurement, 184 files and 617.84 MB, kept for the record and for the
+comparison above:
 
 ```text
 VERSION.json                                                       21808
