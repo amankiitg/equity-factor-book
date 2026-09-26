@@ -108,6 +108,29 @@ the tree through `EFB_RUN_ROOT` before the run starts, reads the tree back from
 `staleness.DATA_ROOT` afterwards, and **raises rather than returning** when a run
 opened no files, so a zero can never again be reported as a measurement.
 
+**A second bound, found the same way.** Pinning the close is not enough on its own:
+with the share fetch stubbed, the shares cache stays at 09-21 and the gate stops
+the run on `shares is 2 sessions behind`, which is *before* `build_proposal`, so
+the build steps' reads are still not observed. A complete list therefore needs the
+gate stubbed to a pass as well, and that is stated in the command below rather than
+folded into the seed. The gate is not part of what the seed has to satisfy, and its
+own behaviour is tested at length elsewhere. **The list the running measurement
+returns is therefore the pre-build read set**, which is honest and incomplete: it
+covers hydrate, the extension, the corporate-actions rule, the appendix write and
+the gate, and not the proposal build.
+
+**A second bound, found the same way.** Pinning the close is not enough on its own:
+with the share fetch stubbed, the shares cache stays at 09-21 and the gate stops the
+run on `shares is 2 sessions behind`, which is *before* `build_proposal`, so the
+build steps' reads are still not observed. A complete list therefore needs the gate
+stubbed to a pass as well, and the gate is not part of what the seed has to satisfy:
+its own behaviour is tested at length elsewhere, and the three bounds belong to the
+measurement harness rather than to `scripts/push_seed.py`, because the owner's own
+run on a fresh evening has no bounds at all. **The list the running measurement
+returns is therefore the pre-build read set** — honest and incomplete. It covers
+hydrate, the extension, the corporate-actions rule, the appendix write and the gate,
+and not the proposal build.
+
 **Two things that run also showed, both worth the reviewer's eye.**
 
 1. It stopped at the gate: `stale stop for the 2026-09-25 close: prices is 1
