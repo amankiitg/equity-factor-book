@@ -44,7 +44,19 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from live import runroot, seed  # noqa: E402
+from live import runroot, seed, store  # noqa: E402
+
+# The environment the measurement owns for its duration, and hands back afterwards.
+# `EFB_SUPABASE_DB_URL` is in the list because the measurement forces a local store
+# and `store.store_mode` refuses both being set, so a developer whose `.env` is
+# sourced would fail at the first route instead of measuring anything.
+_MEASURE_ENVS = (
+    store.URL_ENV,
+    store.LOCAL_MODE_ENV,
+    store.INIT_STORE_ENV,
+    runroot.SEED_SOURCE_ENV,
+    runroot.RUN_ROOT_ENV,
+)
 
 PATHS = ("first_run", "normal_evening", "stopped_evening", "split_day", "morning")
 # The paths that must read something under the tree, because they are the job
@@ -102,6 +114,28 @@ def _split_fetcher(session: pd.Timestamp, factor: float):
 
 
 def measure(*, quiet: bool = False) -> tuple[Path, list[str], list[str]]:
+    """Measure the union in the measurement's own environment, then restore it.
+
+    The database URL is removed from the process for the duration: the measurement
+    forces a local store, and the store refuses to be both local and pointed at
+    Postgres, so a developer whose `.env` is sourced would otherwise fail at the
+    first route rather than measure anything. Every variable the measurement sets is
+    put back afterwards, so its environment is unchanged whatever the measurement
+    does with it.
+    """
+    saved = {name: os.environ.get(name) for name in _MEASURE_ENVS}
+    os.environ.pop(store.URL_ENV, None)
+    try:
+        return _measure_paths(quiet=quiet)
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+def _measure_paths(*, quiet: bool = False) -> tuple[Path, list[str], list[str]]:
     """Every path the loop can take, and the union of what they read.
 
     One pinned run is not the seed. The loop takes different routes, and a file

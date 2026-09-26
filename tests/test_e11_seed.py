@@ -9,13 +9,14 @@ and all four refusal paths are exercised without a bucket.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import pytest
 
-from live import runroot, seed
+from live import runroot, seed, store
 from scripts import push_seed
 
 SETTINGS = {
@@ -351,6 +352,59 @@ def test_the_push_command_refuses_to_run_on_render(
     monkeypatch.setenv("RENDER", "true")
     assert push_seed.main([]) == 2
     assert "never runs on Render" in capsys.readouterr().out
+
+
+# The measurement's own environment. -----------------------------------------
+
+
+def test_the_measurement_clears_the_database_url_and_puts_it_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A sourced `.env` sets both, and the store refuses to be both.
+
+    `store_mode` raises when a URL and a forced local store are both present, so the
+    measurement failed at the first route instead of measuring: it has to own the
+    environment for the duration and hand it back afterwards.
+    """
+    url = "postgresql://efb_writer:example@host:5432/postgres"
+    monkeypatch.setenv(store.URL_ENV, url)
+    monkeypatch.setenv(store.LOCAL_MODE_ENV, "local")
+    seen: dict[str, Any] = {}
+
+    def fake_measure_paths(*, quiet: bool = False):
+        seen["url"] = os.environ.get(store.URL_ENV)
+        seen["mode"] = os.environ.get(store.LOCAL_MODE_ENV)
+        seen["quiet"] = quiet
+        return Path("seed-root"), ["raw/prices.parquet"], []
+
+    monkeypatch.setattr(push_seed, "_measure_paths", fake_measure_paths)
+
+    seed_root, union, produced = push_seed.measure(quiet=True)
+
+    assert seen == {"url": None, "mode": "local", "quiet": True}
+    assert union == ["raw/prices.parquet"] and produced == []
+    assert seed_root == Path("seed-root")
+    # and the caller's environment is handed back exactly as it was
+    assert os.environ[store.URL_ENV] == url
+    assert os.environ[store.LOCAL_MODE_ENV] == "local"
+
+
+def test_the_measurement_restores_the_environment_when_it_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A measurement that raises must not leave the URL missing behind it."""
+    url = "postgresql://efb_writer:example@host:5432/postgres"
+    monkeypatch.setenv(store.URL_ENV, url)
+
+    def exploding_measure(*, quiet: bool = False):
+        raise seed.SeedUnavailable("the stopped_evening path opened no files")
+
+    monkeypatch.setattr(push_seed, "_measure_paths", exploding_measure)
+
+    with pytest.raises(seed.SeedUnavailable):
+        push_seed.measure()
+
+    assert os.environ[store.URL_ENV] == url
 
 
 def test_the_seed_settings_name_the_missing_variables(
