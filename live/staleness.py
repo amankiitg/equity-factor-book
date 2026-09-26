@@ -674,6 +674,8 @@ def _positions_summary(check: dict[str, Any] | None) -> dict[str, Any]:
         "missing_at_broker",
         "missing_in_store",
         "max_abs_drift",
+        "account_read",
+        "establishment",
     )
     return {key: check.get(key) for key in keys if key in check}
 

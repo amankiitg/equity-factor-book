@@ -16,7 +16,16 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE_DIR = ROOT / "live" / "state"
 
 DECISION_COLUMNS = ["trade_date", "decision", "reason", "created_at"]
-POSITION_COLUMNS = ["trade_date", "ticker", "signed_notional", "weight", "side"]
+POSITION_COLUMNS = [
+    "trade_date",
+    "ticker",
+    "signed_notional",
+    "weight",
+    "side",
+    # `intention` when no order left the process (every dry-run evening) and
+    # `holding` when they did, so an intention is never read as a holding.
+    "kind",
+]
 
 
 def _load_frame(path: Path, columns: list[str]) -> pd.DataFrame:

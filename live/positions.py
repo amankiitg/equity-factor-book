@@ -131,14 +131,32 @@ def check(*, dry_run: bool = True) -> dict[str, Any]:
         {
             "broker": broker,
             "broker_source": broker_source,
+            "account_read": broker is not None,
             "store": believed,
             "store_source": believed_source,
             "source": BROKER_SOURCE if broker is not None else STORE_SOURCE,
             "held": broker if broker is not None else believed,
+            "establishment": establishment(broker),
         }
     )
     result["note"] = describe(result, dry_run=dry_run)
     return result
+
+
+def establishment(broker: dict[str, float] | None) -> bool:
+    """Whether this run creates the book, decided by the account and never the store.
+
+    The store's position row is the loop's record of what it meant to hold: after a
+    dry-run evening it names 150 names the paper account has never held. A
+    store-based answer would call the first live evening a rebalance, measure every
+    traded leg against a book that does not exist, and trade nothing at all. The
+    account is the only thing that can say whether there is a book, so an account
+    that could not be read (`None`) is not an empty account and is not an
+    establishment day either.
+    """
+    if broker is None:
+        return False
+    return not broker
 
 
 def describe(result: dict[str, Any], *, dry_run: bool = True) -> str:

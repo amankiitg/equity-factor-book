@@ -149,6 +149,213 @@ def test_the_message_carries_the_comparison() -> None:
     assert "Positions:" not in without
 
 
+def test_the_first_live_day_is_establishment_even_with_a_dry_run_store(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The store says 150 names, the account says none, and the day establishes.
+
+    This is the state the flip starts from and the case a store-based answer gets
+    wrong: every dry-run evening has written a 150-name intention into the store
+    while the paper account has never held anything. Asking the store would call
+    the first live evening a rebalance, measure every traded leg against a book
+    that does not exist, and trade nothing at all.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    store.upsert(
+        "positions",
+        [
+            {
+                "trade_date": "2026-09-25",
+                "ticker": f"T{index:03d}",
+                "signed_notional": 1000.0,
+                "kind": "intention",
+            }
+            for index in range(150)
+        ],
+    )
+    monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([]))
+
+    result = positions.check(dry_run=False)
+
+    assert result["account_read"] is True
+    assert result["n_store"] == 150 and result["n_broker"] == 0
+    assert result["establishment"] is True
+    # The negative control: the store is emphatically not empty, so the store
+    # cannot be the thing that answers "is there a book".
+    assert bool(result["store"]) is True
+    assert result["held"] == {}, "the intentions were measured as holdings"
+
+
+def test_an_unreadable_account_is_not_an_empty_one(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The case the store-based answer got wrong.
+
+    `held` falls back to the store's book when the account cannot be read, so
+    asking the run's own book "is it empty" answers "yes" whenever the store is,
+    and the evening would be treated as an establishment day on the strength of a
+    missing credential: the whole book bought against an account whose state is
+    unknown. The store's emptiness is not evidence about the account.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(alpaca, "read_client", lambda: None)
+
+    result = positions.check(dry_run=False)
+
+    assert result["account_read"] is False and result["broker"] is None
+    assert result["establishment"] is False
+    # The negative control, at the level of the old expression: the book the run
+    # holds is the empty store, so `not held` would have said True.
+    assert result["held"] == {} and not result["held"]
+
+
+def test_the_run_passes_the_accounts_answer_to_the_morning_job(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The wiring: establishment is derived from the account, not from the store.
+
+    The store holds 150 dry-run intentions and the account holds none, which is
+    exactly the state the first live evening starts from: the morning job must be
+    told to establish, and must be handed the account's (empty) book rather than
+    the store's 150 names to trade the difference from.
+    """
+    from live import morning_job
+    from tests.test_e11_notify import _no_work, _patch_gate
+
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "live.evening_job.build_proposal", lambda *a, **k: {"as_of": "2026-09-22"}
+    )
+    monkeypatch.setattr("scripts.run_live_daily.store_proposal", lambda *a, **k: None)
+    store.upsert(
+        "positions",
+        [
+            {
+                "trade_date": "2026-09-25",
+                "ticker": f"T{index:03d}",
+                "signed_notional": 1000.0,
+                "kind": "intention",
+            }
+            for index in range(150)
+        ],
+    )
+    monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([]))
+    seen: dict[str, Any] = {}
+
+    def _capture(as_of: str, **kwargs: Any) -> dict[str, Any]:
+        seen.update(kwargs)
+        seen["as_of"] = as_of
+        return {"orders": 0, "intended_notional": 0.0, "establishment": True}
+
+    monkeypatch.setattr(morning_job, "run_morning", _capture)
+    monkeypatch.setattr("scripts.run_live_daily.store_orders", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "scripts.run_live_daily.store_reconciliation", lambda *a, **k: None
+    )
+    from live import reconcile
+
+    monkeypatch.setattr(reconcile, "daily_record", lambda *a, **k: {"dry_run": True})
+
+    from scripts import run_live_daily
+
+    run_live_daily.main()
+
+    assert seen["establishment"] is True, "the store's 150 names decided the day"
+    assert seen["positions"] == {}, "the orders were not measured from the account"
+
+
+def test_the_run_refuses_to_establish_when_the_account_cannot_be_read(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An unreadable account is not an establishment day, and the run says so.
+
+    Nothing is written to the store here, so the book the run holds is empty and
+    the old expression (`not held`) called this an establishment day: a missing
+    key would have bought the whole book against an account nobody had looked at.
+    """
+    from live import morning_job
+    from tests.test_e11_notify import _no_work, _patch_gate
+
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "live.evening_job.build_proposal", lambda *a, **k: {"as_of": "2026-09-22"}
+    )
+    monkeypatch.setattr("scripts.run_live_daily.store_proposal", lambda *a, **k: None)
+    monkeypatch.setattr(alpaca, "read_client", lambda: None)
+    seen: dict[str, Any] = {}
+
+    def _capture(as_of: str, **kwargs: Any) -> dict[str, Any]:
+        seen.update(kwargs)
+        seen["as_of"] = as_of
+        return {"orders": 0, "intended_notional": 0.0, "establishment": False}
+
+    monkeypatch.setattr(morning_job, "run_morning", _capture)
+    monkeypatch.setattr("scripts.run_live_daily.store_orders", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "scripts.run_live_daily.store_reconciliation", lambda *a, **k: None
+    )
+    from live import reconcile
+
+    monkeypatch.setattr(reconcile, "daily_record", lambda *a, **k: {"dry_run": True})
+
+    from scripts import run_live_daily
+
+    with caplog.at_level("WARNING"):
+        run_live_daily.main()
+
+    assert seen["establishment"] is False
+    assert "not an establishment day" in caplog.text
+
+
+def test_a_dry_run_position_row_is_labelled_an_intention() -> None:
+    """The store must say that a dry-run book was never a book.
+
+    Every evening before the flip writes 150 rows into `efb.positions` that no
+    order ever created. They are the loop's intention, and the row says so, so
+    E12's attribution cannot attribute P&L to a book that never existed.
+    """
+    import pandas as pd
+
+    from live import morning_job
+
+    records = pd.DataFrame(
+        {
+            "ticker": ["AAA", "BBB"],
+            "intended_notional": [1000.0, -500.0],
+        }
+    )
+    proposal = pd.DataFrame({"ticker": ["AAA", "BBB"], "weight": [0.01, -0.005]})
+
+    dry = morning_job._positions_from_records(records, proposal, dry_run=True)
+    live_rows = morning_job._positions_from_records(records, proposal, dry_run=False)
+
+    assert set(dry["kind"]) == {"intention"}
+    assert set(live_rows["kind"]) == {"holding"}
+
+
+def test_the_intention_label_survives_the_round_trip(tmp_path: Any) -> None:
+    """A label the state writer drops is not a label."""
+    from live import state
+
+    rows = [
+        {
+            "trade_date": "2026-09-25",
+            "ticker": "AAA",
+            "signed_notional": 1000.0,
+            "weight": 0.01,
+            "side": "long",
+            "kind": "intention",
+        }
+    ]
+    state.write_positions("2026-09-25", rows, state_dir=tmp_path)
+
+    read = state.fetch_positions("2026-09-25", state_dir=tmp_path)
+
+    assert list(read["kind"]) == ["intention"]
+
+
 def test_the_row_records_the_check_without_the_name_maps() -> None:
     from live import staleness
 

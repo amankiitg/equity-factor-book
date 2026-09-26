@@ -241,7 +241,7 @@ def run_morning(
         )
     records = submit_orders(guarded, client, dry_run, prices, close=as_of)
     records["trade_date"] = as_of
-    positions_frame = _positions_from_records(records, proposal)
+    positions_frame = _positions_from_records(records, proposal, dry_run)
     state.write_positions(as_of, positions_frame.to_dict("records"))
     _write_execution_log(as_of, records)
     return {
@@ -298,12 +298,15 @@ def _reason_code_counts(records: pd.DataFrame) -> dict[str, int]:
 
 
 def _positions_from_records(
-    records: pd.DataFrame, proposal: pd.DataFrame
+    records: pd.DataFrame, proposal: pd.DataFrame, dry_run: bool = True
 ) -> pd.DataFrame:
-    """The positions the loop records: intended targets, dry-run labeled.
+    """The positions the loop records: intended targets, labelled by kind.
 
-    In dry run nothing is filled, so the book the loop intends to hold is
-    stored as the position state and the fill gap is the reconciliation.
+    In dry run nothing is filled, so the book the loop intends to hold is stored as
+    the position state and the fill gap is the reconciliation. `kind` says which
+    it is: `intention` when no order left the process, `holding` when they did, so
+    a later reader (E12's attribution, or the first live evening) cannot count an
+    intention as a holding.
     """
     weights = proposal.set_index("ticker")["weight"]
     rows: list[dict[str, object]] = []
@@ -315,6 +318,7 @@ def _positions_from_records(
                 "signed_notional": record.intended_notional,
                 "weight": weight,
                 "side": "long" if weight >= 0 else "short",
+                "kind": "intention" if dry_run else "holding",
             }
         )
     return pd.DataFrame(rows)

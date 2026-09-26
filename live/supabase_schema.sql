@@ -47,6 +47,10 @@ create table if not exists efb.positions (
   previous_weight double precision not null,
   trade double precision not null,
   reason text not null,
+  -- `intention` when no order left the process (every dry-run evening) and
+  -- `holding` when they did. A dry-run book is what the loop meant to hold, and
+  -- E12's attribution must never count one as a holding.
+  kind text,
   primary key (trade_date, ticker)
 );
 
@@ -321,3 +325,7 @@ alter table efb.orders
 -- Pre-flip: the rerun-proof ticket for each leg.
 alter table efb.orders
   add column if not exists client_order_id text;
+
+-- Pre-flip: a position row is an intention until orders have actually gone out.
+alter table efb.positions
+  add column if not exists kind text;

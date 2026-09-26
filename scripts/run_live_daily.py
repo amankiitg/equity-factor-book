@@ -97,7 +97,9 @@ def record_run(job: str, run_date: str, status: str, detail: str = "") -> None:
     store.upsert("cron_runs", rows)
 
 
-def store_proposal(as_of: str, data_root: Path | None = None) -> pd.DataFrame:
+def store_proposal(
+    as_of: str, data_root: Path | None = None, dry_run: bool = True
+) -> pd.DataFrame:
     """Write the proposal manifest, positions and trade reasons to the store.
 
     Returns the rows it wrote, reasons attached, because the snapshot carries the
@@ -181,6 +183,11 @@ def store_proposal(as_of: str, data_root: Path | None = None) -> pd.DataFrame:
                 "previous_weight": previous_weight,
                 "trade": weight - previous_weight,
                 "reason": row.reason,
+                # The book the loop meant to hold, not one it holds. In dry run
+                # nothing is ever sent, so these rows are intentions and are
+                # labelled so: E12 must never count them as holdings, and the
+                # first live evening must not read them as a book.
+                "kind": "intention" if dry_run else "holding",
             }
         )
     store.upsert("positions", position_rows)
@@ -687,7 +694,7 @@ def main() -> int:
         # Evening: propose tomorrow's book from the latest close.
         manifest = evening_job.build_proposal(appendix=appendix_identity)
         as_of = str(manifest["as_of"])
-        book = store_proposal(as_of, run_tree)
+        book = store_proposal(as_of, run_tree, dry_run=dry_run)
 
         # What the account actually holds, read before the orders are built: the
         # traded leg of every order is the difference between the target and this
@@ -696,11 +703,21 @@ def main() -> int:
         # resolved, because the two are different questions.
         holdings = positions.check(dry_run=dry_run)
         held = holdings["held"]
-        establishment = not held
+        # The day's kind comes from the account, never from the store: after a
+        # dry-run evening the store names a book the account has never held, and a
+        # store-based answer would miss the real first trading day and measure
+        # every leg against a book that does not exist.
+        establishment = bool(holdings["establishment"])
+        if not holdings["account_read"]:
+            logger.warning(
+                "the account could not be read, so this is not an establishment "
+                "day and the store's book is what the orders are measured against"
+            )
         logger.info(
-            "positions: %s; held %d name(s), establishment=%s",
+            "positions: %s; held %d name(s) from %s, establishment=%s",
             holdings["note"],
             len(held),
+            holdings["source"],
             establishment,
         )
 
