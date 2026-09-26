@@ -2604,3 +2604,20 @@ the snapshot already on.
 and optionally the Resend key for a local test. The Supabase access token and
 project URL are for provisioning only, and are deleted after use. R2 keys are
 never in `.env`.
+
+**Addendum, owner 2026-09-25: first-run detection is promoted into C0.** An
+empty store refuses to run unless `EFB_INIT_STORE=true` is set explicitly,
+the same pattern as E11-F17. The owner sets it for the first run only. The
+marker row decides whether the store is seeded, and the round-trip check's
+rows do not count. A flag left set on a seeded store is an `error`, so it
+cannot re-seed. A marker with empty appendix tables is an `error` whatever the
+flag says. This item leaves the post-deploy list.
+
+**Deploy list, steps 6 and 7 amended:**
+- Step 6: also set `EFB_INIT_STORE=true` on Render.
+- Step 7: the first run's email says it was the first run. **Once that run
+  succeeds, delete `EFB_INIT_STORE` on Render before the next evening.** If it
+  is left set, the next run fails with "store already seeded: remove
+  EFB_INIT_STORE".
+- Step 3, the local database check, runs without the flag and does not seed
+  the store.

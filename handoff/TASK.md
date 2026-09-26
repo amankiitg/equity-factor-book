@@ -49,6 +49,37 @@ commit C0 from the cron track.
   proposal, at `web/fixtures/snapshot_ok.json`. Also commit the four state
   variants the page tests need (`stale_stopped`, `error`, expired, catch-up),
   each derived from it by the writer, not written by hand.
+- **First-run detection is explicit (owner, 2026-09-25). This follows the
+  E11-F17 pattern: never inferred, never silent.** Today the first run is
+  inferred from an empty appendix. A store wiped after the seed would then
+  re-seed from git without a word.
+  - `EFB_INIT_STORE` is parsed strictly:
+    - unset or `false` is a normal run;
+    - `true` is a first run;
+    - any other value is an `error` that names it.
+  - The seed writes a one-row marker in `efb` recording the close it seeded
+    from, the seed's data hash and when it was written.
+  - **What "seeded" means:** the marker exists. The rows that
+    `scripts/verify_store_roundtrip.py` writes (`job = store_roundtrip`) do not
+    count, so the owner's database check before the first run cannot make the
+    store look seeded.
+  - The four cases, each a test:
+    1. **No marker, flag not `true`:** an `error`. The email reads "store not
+       seeded: set EFB_INIT_STORE=true for the first run only". Nothing is
+       written to the appendix.
+    2. **No marker, flag `true`:** seed, write the marker, then run as normal.
+       `run_status` records `init: true`, and the email's subject and first
+       line say it was the first run.
+    3. **Marker present, flag `true`:** an `error`: "store already seeded:
+       remove EFB_INIT_STORE". Nothing is re-seeded. A flag left set after the
+       first run therefore fails the next evening loudly, never silently.
+    4. **Marker present, appendix tables empty:** an `error` whatever the flag
+       says. Data was lost after the seed, and it is never re-seeded
+       automatically.
+  - The rule applies to the Postgres store and the local store alike. Tests
+    and local dry runs set the flag or seed a marker explicitly.
+  - Declare `EFB_INIT_STORE` in `render.yaml` (`sync: false`) and in
+    `.env.example`, with a comment saying it is set for the first run only.
 - **Commit C0 first. The web track starts from it.**
 
 **C1. f: the evening job has no write path into `data/raw/`.** Remove the
