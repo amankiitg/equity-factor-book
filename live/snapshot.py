@@ -166,7 +166,10 @@ def build(
         # The close of the proposal the book came from. On a run that proposed one
         # it is the target close; on a stopped run it is the close of the book the
         # page is still showing, so the page can never show a book without its date.
-        "book_as_of": proposal.get("as_of"),
+        # Normalized the same way as `target_close`, because the page compares the
+        # two to decide whether to date the book, and two spellings of one close
+        # would read as a difference.
+        "book_as_of": _iso(proposal.get("as_of")),
         "expected_next_by": expected_next_by(target_close) if target_close else None,
         "dry_run": bool(run.get("dry_run", True)),
         "store": run.get("store"),
