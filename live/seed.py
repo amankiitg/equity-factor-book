@@ -277,15 +277,29 @@ def record_reads() -> Iterator[Reads]:
 
 
 def enforce_reads(tree: Path, allowed: set[str]) -> Reads:
-    """Install the allowlist for the rest of the process, and record as it goes.
+    """Install the allowlist, and record as it goes, until `unwatch` is called.
 
     Not a context manager on purpose: the run's own failure handling has to keep
     reading after a refusal, so the refusal disarms the check itself rather than
-    the caller unwinding a `with` block. The watchers stay installed for the
-    process's life, which for the cron is the whole run.
+    the caller unwinding a `with` block. The installer is registered so the run can
+    take it off again when it finishes, which keeps a process that runs the job
+    more than once from stacking a watcher per run.
     """
-    opened, _uninstall = _watch(Path(tree), allowed)
+    opened, uninstall = _watch(Path(tree), allowed)
+    _INSTALLED.append(uninstall)
     return opened
+
+
+_INSTALLED: list[Callable[[], None]] = []
+
+
+def unwatch() -> int:
+    """Remove every watcher installed by `enforce_reads`, innermost first."""
+    removed = 0
+    while _INSTALLED:
+        _INSTALLED.pop()()
+        removed += 1
+    return removed
 
 
 def guard(tree: Path) -> int:

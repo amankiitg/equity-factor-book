@@ -284,9 +284,14 @@ def finish_run(
     the owner was not told, or the page cannot show it, and either way the run did
     not do its job.
     """
-    from live import notify, staleness, store
+    from live import notify, seed, staleness, store
     from live import snapshot as snapshot_module
     from live.store import store_label
+
+    # The job body is over, so the read allowlist has done its work. Taking it off
+    # here means the reporting steps read freely, and a process that runs the job
+    # more than once does not stack one watcher per run.
+    seed.unwatch()
 
     store_name = store_label()
     row = staleness.run_status_row(

@@ -134,6 +134,10 @@ def measure(*, quiet: bool = False) -> tuple[Path, list[str], list[str]]:
     from live import corporate_actions, morning_job, staleness, store
     from scripts import run_live_daily
 
+    # The measurement must never reach the store the developer's .env points at.
+    # It runs the whole job three times, which writes run rows, so a store that is
+    # not local would take them. Forced rather than defaulted, for that reason.
+    os.environ[store.LOCAL_MODE_ENV] = "local"
     original_check = staleness.check
     os.environ.setdefault(runroot.SEED_SOURCE_ENV, runroot.LOCAL_SOURCE)
     os.environ[store.INIT_STORE_ENV] = "true"
