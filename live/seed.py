@@ -41,7 +41,7 @@ import hashlib
 import io
 import json
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -157,22 +157,71 @@ class Reads(set[str]):
         self.writes: set[str] = set()
 
 
-@contextmanager
-def record_reads() -> Iterator[Reads]:
-    """Record every path the wrapped readers open while the block runs.
+class SeedReadNotAllowed(SeedMismatch):
+    """The run opened a file under its tree that the seed did not supply."""
 
-    The set holds whatever was passed in, which for the layer under test is a
-    `Path`; callers make it relative to their tree. A write goes into `writes` and
-    not into the reads: a path the run both wrote and read is its own output, and
-    keeping the two apart is what `seed_material` does.
+
+def _relative_under(path: Any, tree: Path) -> str | None:
+    """The path relative to the tree, or None when it is not under it at all."""
+    candidate = Path(str(path))
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    try:
+        return candidate.resolve().relative_to(Path(tree).resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def _was_written(path: Any, opened: Reads) -> bool:
+    """Whether this run created the file itself earlier in the same run."""
+    candidate = Path(str(path))
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    resolved = str(candidate.resolve())
+    return any(str(Path(item).resolve()) == resolved for item in opened.writes)
+
+
+def _watch(
+    tree: Path | None = None, allowed: set[str] | None = None
+) -> tuple[Reads, Callable[[], None]]:
+    """Install the readers and writers, and return what they record and how to stop.
+
+    One installer for both callers: the measurement records without enforcing, and
+    the run enforces the allowlist as it records.
     """
     opened = Reads()
+    armed = True
     original_parquet = pd.read_parquet
     original_to_parquet = pd.DataFrame.to_parquet
     original_open = builtins.open
     original_io_open = io.open
 
+    def _before(path: Any) -> None:
+        """Refuse a read of the tree that the seed did not supply.
+
+        The allowlist is the tree as it stood when the run started, which is what
+        the seed supplied. A read outside it is a file the loop needs and the seed
+        does not hold, so the run stops here and names it rather than reaching
+        Render and dying on a missing file the message cannot explain.
+
+        The check disarms itself as it raises: the run's failure handling still has
+        to read the store and the tree to send the mail, and a second refusal there
+        would lose the message entirely.
+        """
+        nonlocal armed
+        if not armed or tree is None or allowed is None:
+            return
+        rel = _relative_under(path, tree)
+        if rel is None or rel in allowed or _was_written(path, opened):
+            return
+        armed = False
+        raise SeedReadNotAllowed(
+            f"{rel} is not a file the seed holds, so the run stops before reading "
+            "it; the seed manifest is what the run may read under data/"
+        )
+
     def _parquet(path: Any, *args: Any, **kwargs: Any) -> Any:
+        _before(path)
         opened.add(str(path))
         return original_parquet(path, *args, **kwargs)
 
@@ -183,11 +232,13 @@ def record_reads() -> Iterator[Reads]:
 
     def _open(file: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
         if not any(flag in str(mode) for flag in "wax+"):
+            _before(file)
             opened.add(str(file))
         return original_open(file, mode, *args, **kwargs)
 
     def _io_open(file: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
         if not any(flag in str(mode) for flag in "wax+"):
+            _before(file)
             opened.add(str(file))
         return original_io_open(file, mode, *args, **kwargs)
 
@@ -199,13 +250,58 @@ def record_reads() -> Iterator[Reads]:
     # `pathlib.Path.read_text` and `Path.open` call `io.open` rather than
     # `builtins.open`, so both names have to be wrapped to see a text read.
     io.open = _io_open  # type: ignore[assignment]
-    try:
-        yield opened
-    finally:
+
+    def uninstall() -> None:
         pd.read_parquet = original_parquet  # type: ignore[assignment]
         pd.DataFrame.to_parquet = original_to_parquet  # type: ignore[method-assign]
         builtins.open = original_open  # type: ignore[assignment]
         io.open = original_io_open  # type: ignore[assignment]
+
+    return opened, uninstall
+
+
+@contextmanager
+def record_reads() -> Iterator[Reads]:
+    """Record every path the wrapped readers open while the block runs.
+
+    The set holds whatever was passed in, which for the layer under test is a
+    `Path`; callers make it relative to their tree. A write goes into `writes` and
+    not into the reads: a path the run both wrote and read is its own output, and
+    keeping the two apart is what `seed_material` does.
+    """
+    opened, uninstall = _watch()
+    try:
+        yield opened
+    finally:
+        uninstall()
+
+
+def enforce_reads(tree: Path, allowed: set[str]) -> Reads:
+    """Install the allowlist for the rest of the process, and record as it goes.
+
+    Not a context manager on purpose: the run's own failure handling has to keep
+    reading after a refusal, so the refusal disarms the check itself rather than
+    the caller unwinding a `with` block. The watchers stay installed for the
+    process's life, which for the cron is the whole run.
+    """
+    opened, _uninstall = _watch(Path(tree), allowed)
+    return opened
+
+
+def guard(tree: Path) -> int:
+    """Allow the run to read the tree as the seed left it, and nothing else.
+
+    The allowlist is the tree as it stood when the run adopted it, which is what
+    the seed supplied: the bucket's manifest files on the deploy path, the copied
+    files on the local one. Called once, before the first read, and returns how
+    many paths it allows so the run can log what it is holding itself to.
+    """
+    root = Path(tree)
+    allowed = {
+        path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
+    }
+    enforce_reads(root, allowed)
+    return len(allowed)
 
 
 def relative_reads(tree: Path, opened: set[str]) -> list[str]:

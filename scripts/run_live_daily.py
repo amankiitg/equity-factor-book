@@ -414,7 +414,7 @@ def main() -> int:
 
     dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
     from live import appendix as appendix_mod
-    from live import runroot
+    from live import runroot, seed
 
     gate: dict[str, Any] | None = None
     catch_up_sessions: list[str] = []
@@ -448,6 +448,12 @@ def main() -> int:
         # try, so the failure is a run with an email rather than a traceback.
         run_tree = runroot.prepare()
         runroot.adopt(run_tree)
+        # From here the run may read nothing under the tree that the seed did not
+        # supply. The seed is the bucket's manifest on the deploy path and the
+        # copied tree on the local one, and either way a read outside it is a file
+        # the loop needs and the seed does not hold. Better a refusal that names
+        # the path here than a crash on Render the message cannot explain.
+        logger.info("seed allowlist: %s path(s) allowed", seed.guard(run_tree))
         # The proposal files move with the tree, so a local run does not add a
         # proposal to the repository either.
         global PROPOSAL_DIR

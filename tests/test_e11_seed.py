@@ -189,6 +189,51 @@ def test_a_read_the_run_did_not_write_is_still_a_gap_in_the_seed(
     assert "did not write" in str(err.value)
 
 
+# The read allowlist the run installs on itself. ----------------------------
+
+
+def test_the_guard_allows_what_the_seed_supplied_and_refuses_what_it_did_not(
+    tmp_path: Path,
+) -> None:
+    """A missing file must fail here, naming the path, not on Render unnamed."""
+    tree = _tree(tmp_path / "run")
+    allowed = seed.guard(tree)
+    assert allowed >= 3
+
+    (tree / "raw" / "prices.parquet").read_bytes()  # a file the seed supplied
+
+    with pytest.raises(seed.SeedReadNotAllowed) as err:
+        (tree / "raw" / "not_in_the_seed.parquet").read_bytes()
+
+    message = str(err.value)
+    assert "raw/not_in_the_seed.parquet" in message
+    assert "not a file the seed holds" in message
+
+
+def test_the_guard_allows_a_file_the_run_itself_produced(tmp_path: Path) -> None:
+    """Every evening reads back the session it just fetched, so this must pass."""
+    tree = _tree(tmp_path / "run")
+    seed.guard(tree)
+    produced = tree / "raw" / "spy_holdings_2026-09-24.parquet"
+    pd.DataFrame({"close": [1.0]}).to_parquet(produced, index=False)
+
+    assert len(pd.read_parquet(produced)) == 1
+
+
+def test_the_guard_stops_refusing_after_the_first_refusal(tmp_path: Path) -> None:
+    """The failure path still has to read enough to send the mail."""
+    tree = _tree(tmp_path / "run")
+    seed.guard(tree)
+    with pytest.raises(seed.SeedReadNotAllowed):
+        (tree / "raw" / "nowhere.parquet").read_bytes()
+
+    # disarmed: a file that arrived after the guard was built now reads, which is
+    # what the failure path needs to read the store and write the mail
+    late = tree / "raw" / "arrived_late.parquet"
+    late.write_bytes(b"after the guard was built")
+    assert late.read_bytes() == b"after the guard was built"
+
+
 # The download, the verification, and the refusals. --------------------------
 
 
