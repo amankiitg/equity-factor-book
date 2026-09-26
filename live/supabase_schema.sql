@@ -76,6 +76,10 @@ create table if not exists efb.reconciliation (
   forecast_annual_vol double precision,
   realized_annual_vol double precision,
   idio_share_after_fmp double precision,
+  -- The hedge's worst residual factor exposure, beside the idio share: the
+  -- proposal and the snapshot both carry it, and the reconciled row is the
+  -- day's record of the same book.
+  max_abs_exposure_after_fmp double precision,
   gross double precision,
   net double precision,
   n_eff_kept double precision,
@@ -264,3 +268,19 @@ create table if not exists efb.e11_corporate_actions (
   cross_check_ratio double precision,
   primary key (trade_date, ticker)
 );
+
+-- Additive changes, for a database that was already provisioned from an
+-- earlier version of this file. `create table if not exists` says nothing
+-- about a table that already exists, so a column added to a table above reaches
+-- a fresh database only. These statements are idempotent and safe to re-run,
+-- and they are what the shared project - and a developer's local `efb` - needs
+-- after pulling this file. Fresh databases get the same column from the
+-- `create table` above.
+
+-- E11: the reconciled row carries the hedge's worst residual exposure beside
+-- the idio share. The first version of this table omitted it while
+-- `live/reconcile.py` wrote it every evening, which failed the first real run
+-- against a database at `store_reconciliation` with `column
+-- "max_abs_exposure_after_fmp" of relation "reconciliation" does not exist`.
+alter table efb.reconciliation
+  add column if not exists max_abs_exposure_after_fmp double precision;

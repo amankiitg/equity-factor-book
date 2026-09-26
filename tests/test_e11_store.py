@@ -74,6 +74,68 @@ def test_the_schema_sql_targets_only_the_efb_schema() -> None:
             assert "public" not in line
 
 
+def _schema_columns() -> dict[str, set[str]]:
+    """Each table's declared columns, from the schema file's own DDL.
+
+    Both spellings count: a column on a `create table` block reaches a fresh
+    database, and an `alter table ... add column if not exists` reaches one that
+    was provisioned from an earlier version of the file.
+    """
+    schema = (ROOT / "live" / "supabase_schema.sql").read_text()
+    columns: dict[str, set[str]] = {}
+    current: str | None = None
+    for raw in schema.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("--"):
+            continue
+        if line.startswith("create table"):
+            current = line.split("efb.", 1)[1].split(" ", 1)[0].strip("(")
+            columns.setdefault(current, set())
+            continue
+        if line.startswith("alter table") and "add column if not exists" in line:
+            table = line.split("efb.", 1)[1].split(" ", 1)[0]
+            name = line.split("add column if not exists", 1)[1].split()[0]
+            columns.setdefault(table, set()).add(name)
+            continue
+        if current is None:
+            continue
+        if line.startswith(");"):
+            current = None
+            continue
+        if line.startswith(("primary key", "unique", "constraint")):
+            continue
+        name = line.split(" ", 1)[0].strip(",")
+        if name:
+            columns[current].add(name)
+    return columns
+
+
+@pytest.mark.parametrize("table", ["reconciliation", "run_status"])
+def test_the_schema_declares_every_column_the_live_writers_use(table: str) -> None:
+    """The schema file is the database's source of truth, so drift shows here.
+
+    The first real run against a database failed at `store_reconciliation`:
+    `live/reconcile.py` wrote `max_abs_exposure_after_fmp` every evening while
+    `efb.reconciliation` never declared it. `create table if not exists` is
+    silent on a table that already exists, so nothing caught it until a run
+    wrote the row.
+    """
+    from live import reconcile, staleness
+
+    if table == "reconciliation":
+        written = set(reconcile.RECONCILIATION_COLUMNS)
+    else:
+        written = set(
+            staleness.run_status_row(
+                {"target_close": "2026-09-25", "job": "live_daily", "status": "ok"},
+                run_date="2026-09-25",
+            )
+        )
+    declared = _schema_columns()
+    missing = written - declared[table]
+    assert not missing, f"efb.{table} does not declare {sorted(missing)}"
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
