@@ -13,20 +13,40 @@ Steps 1, 2 and 3 (C0) are committed as `47799d6`, `ff7c308`, `fb2c8e7`; g as
 835, with `make lint` clean and `make verify-evidence` `evidence OK`: all three are
 pasted in `REPORT.md`.
 
-**One deliverable is not in the report, by design:** the seed file list and its
-total size. The manifest is what `python -m scripts.push_seed --dry-run` measures on
-the machine that has the artifacts, so that command is the authoritative source and
-it prints the list before it uploads anything; my session's runs carried two
-documented bounds and the corrected one was still executing. Everything else the
-owner asked for in this round is built, tested and committed.
+**The seed list is in `REPORT.md`, measured.** `python -m scripts.push_seed
+--dry-run` on a real local evening returned **184 files, 617.84 MB**, each hashed
+from the pristine tree, with `data_hash`
+`c3e0db6f92209ebce7bd46180b35845f3b75a98dbbcf359634dedcbd0da1aea8`. The run's own
+output that evening was exactly two files, named and not pushed. The report also
+carries why the set is 617.84 MB rather than the 89.58 MB of appendix inputs
+(`refresh_version` rehashes every versioned artifact each evening) and what the
+start of a run costs: verifying the seed 0.29 s, writing it and verifying 1.68 s,
+peak RSS 446 MB, with the network leg left for Render's metrics.
 
-**Two findings recorded rather than fixed**, both in `REPORT.md`: the run that the
+**A third finding was a blocker and is fixed (`78beba7`).** The measurement run
+raised `SeedUnavailable` naming
+`raw/spy_holdings/spy_holdings_2026-09-24.parquet`, a file the pristine tree does
+not hold. Reproduced before fixing: pyarrow writes without a Python-level `open`
+event, so the recorder saw the write only through the later read of it, and the
+manifest builder then refused a file the seed can never hold. **That left
+`python -m scripts.push_seed` unable to succeed on any evening that fetched a
+session, which is every evening**, so it did change what the deploy does and it was
+fixed rather than reported: the recorder now also wraps `to_parquet` and
+`seed.seed_material` splits the reads into the seed's own files and the run's own
+output, the latter printed and not pushed. A read the seed does not hold that the
+run did not write is still refused.
+
+**One finding stands recorded, and the other was checked and fixed.** The run the
 measurement started correctly stopped at the staleness gate (`prices is 1 session
-behind`) before the vendor had the session; and `live/appendix.py:403` warns that
-duplicate column names in the universe rows are omitted when
-`persist_new_sessions` writes them, so some SPY columns may not reach
-`efb.e11_universe`. **That second one should be checked before the first real run**,
-because the appendix is what the cron prices from.
+behind`) before the vendor had the session, which is the gate doing its job.
+`live/appendix.py:403`'s duplicate-column warning was recorded as needing a check
+before the first real run; the check was done on that run's own tree and the defect
+was worse than the note said, so it is fixed as `c643f2d`: hydration reversed the
+column map and rewrote the two pre-existing SPY archives into the vendor's
+spellings, the concatenation then held two spellings of `shares_held` and
+`local_currency`, and the store write kept only the later of each, so the
+pre-existing sessions reached `efb.e11_universe` with both columns null. The fix
+writes one convention and reads per file, and three tests fail without it.
 
 **Done means:**
 - the cron runs on Render in dry run and emails the owner every evening;

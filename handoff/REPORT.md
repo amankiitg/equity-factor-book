@@ -94,10 +94,7 @@ no-op (its only reads are the shares cache, which the manifest already holds
 through hydrate), and the target close is pinned to 2026-09-24 because the sandbox
 clock is 09-25 while the vendors' latest session is 09-24, so an unpinned run stops
 at the gate before the build steps' reads happen. The list is printed by
-`python -m scripts.push_seed --dry-run`, and the run was still executing when this
-was written: **the file list and its total size are the one number missing from
-this report.** It is the owner's to read off the command's output, or mine in the
-next session, and it is not a hand-written list in either case.
+`python -m scripts.push_seed --dry-run`, and what it returned is below.
 
 **The first measurement run found a bug in the measurement, not in the seed.** It
 reported `files the run opened under data/: 0`, and the reason is worth keeping:
@@ -108,16 +105,26 @@ the tree through `EFB_RUN_ROOT` before the run starts, reads the tree back from
 `staleness.DATA_ROOT` afterwards, and **raises rather than returning** when a run
 opened no files, so a zero can never again be reported as a measurement.
 
-**A second bound, found the same way.** Pinning the close is not enough on its own:
-with the share fetch stubbed, the shares cache stays at 09-21 and the gate stops
-the run on `shares is 2 sessions behind`, which is *before* `build_proposal`, so
-the build steps' reads are still not observed. A complete list therefore needs the
-gate stubbed to a pass as well, and that is stated in the command below rather than
-folded into the seed. The gate is not part of what the seed has to satisfy, and its
-own behaviour is tested at length elsewhere. **The list the running measurement
-returns is therefore the pre-build read set**, which is honest and incomplete: it
-covers hydrate, the extension, the corporate-actions rule, the appendix write and
-the gate, and not the proposal build.
+**The measurement run then found a real bug in the seed command, not in the seed.**
+It raised `SeedUnavailable` naming
+`raw/spy_holdings/spy_holdings_2026-09-24.parquet`, a file the pristine root does
+not hold. Reproduced before fixing: pyarrow writes without raising a Python-level
+`open` event, so `record_reads` never saw the write, and the file entered the
+recorded set only through the later read of it, at which point `manifest_for` found
+a read the seed root could never hold and refused. The pristine root holds only the
+09-18 and 09-21 archives, so the 09-24 file could only have come from inside the
+run. **That left `python -m scripts.push_seed` unable to succeed on any evening
+that fetched a session, which is every evening**, so it was fixed here rather than
+reported: `record_reads` now wraps `to_parquet` as well and yields a `Reads` set
+carrying `writes`, and `seed.seed_material` splits the reads into the files the
+pristine root held before the run, which are the seed, and the files the run
+produced itself, which are its own output and are printed rather than pushed. A
+read the root does not hold that the run did not write is still refused, so a new
+input still fails loudly, and a write through a path this does not wrap fails in
+that same loud direction rather than being quietly accepted. Three tests carry it:
+the write is recorded as a write and not a read, a produced file the run reads back
+stays out of the manifest, and the control, that a read the run did not write is
+still a gap (`78beba7`).
 
 **A second bound, found the same way.** Pinning the close is not enough on its own:
 with the share fetch stubbed, the shares cache stays at 09-21 and the gate stops the
@@ -131,7 +138,7 @@ returns is therefore the pre-build read set** — honest and incomplete. It cove
 hydrate, the extension, the corporate-actions rule, the appendix write and the gate,
 and not the proposal build.
 
-**Two things that run also showed, both worth the reviewer's eye.**
+**Two things that run also showed, one of them now checked and fixed.**
 
 1. It stopped at the gate: `stale stop for the 2026-09-25 close: prices is 1
    session behind; ... shares is 3 sessions behind`. The run went at 17:48 ET,
@@ -139,14 +146,52 @@ and not the proposal build.
    exists to do: no book priced on a stale close. That is also why the
    measurement pins the close, and it is the behaviour the owner will watch for
    on the two production evenings.
-2. `live/appendix.py:403` warns `DataFrame columns are not unique, some columns
-   will be omitted` while writing the universe appendix rows. That is a real
-   fidelity defect in `persist_new_sessions` and not one this round introduced:
-   a frame with duplicate names is written through `to_dict("records")`, so some
-   columns of the SPY rows may not reach `efb.e11_universe`. It is not in f's or
-   the seed track's scope, and it is recorded here rather than fixed quietly at
-   the end of a long session. **It should be checked before the first real run**,
-   because the appendix is what the cron prices from.
+2. The warning below was recorded as a finding and not fixed, with a note that it
+   should be checked before the first real run. The check was done on that run's
+   own tree, and the finding was worse than the note said, so it is fixed as
+   `c643f2d`. See the section after this one for the mechanism and the negative
+   control.
+
+### The appendix warning, checked rather than reasoned about (`c643f2d`)
+
+The recorded finding said the warning might keep some SPY columns out of
+`efb.e11_universe`. Checking it on the tree that produced it says something more
+specific and worse:
+
+```text
+universe         rows=   1509 cols= 11 dupes=['local_currency', 'shares_held'] warns=True
+```
+
+Every other spec is clean, so it is the universe alone, and the two columns it
+loses are the two the spec's `column_map` exists to normalise. The directory holds
+two header conventions, which is why no single rename can read it:
+
+```text
+data/raw/spy_holdings/spy_holdings_2026-09-[18|21].parquet   shares_held, local_currency
+<run tree>/spy_holdings_2026-09-24.parquet                   shares_held, local_currency
+<run tree>/spy_holdings_2026-09-[18|21].parquet              shares held, local currency
+```
+
+`_hydrate_universe` reversed the map and wrote the vendor's spellings, so hydration
+itself rewrote the two pre-existing archives into the other convention, while
+`efb/spy.py`'s parser and every archive on disk write the underscore names. The
+concatenation of the three files therefore carried 11 columns, and the single map
+applied afterwards produced two columns named `shares_held` and two named
+`local_currency`. `to_dict("records")` keeps the last of a repeated key, which is
+the pair the new session carries, so **the pre-existing sessions were written to
+`efb.e11_universe` with both columns null.**
+
+Two changes, both with a test that fails without it: `_hydrate_universe` writes the
+appendix's own names, so one directory holds one convention, and `artifact_rows`
+maps per file rather than once after the concatenation, so a directory that does
+hold a legacy vendor-spelled file reads correctly instead of duplicating.
+
+The negative control, run before the fix was committed: with `live/appendix.py`
+stashed and only the new tests in place, three tests fail and the failing run
+prints the production warning from `appendix.py:403`. With the fix, 8 pass and
+`make lint` is clean. The fixture's universe artifact was carrying the spaced
+vendor names, which no writer in this repository produces, so it now carries the
+underscore ones and the round-trip test asserts the real convention.
 
 ## f: the check that the job writes nothing under `data/` (`8f380e8`)
 
@@ -221,6 +266,11 @@ the window. None of the 8 is in the book's kept 150 names.
 
 ```text
 $ git log --oneline 3e9dbe1..HEAD
+78beba7 e11-deploy seed: a file the run produced is not seed material
+66889d0 e11-deploy C4: the clean full suite, and gate-ready
+a963050 The measurement needs one more bound, and the run showed why
+f32e000 push_seed.measure reported zero files: the measurement prepared its own tree
+3df3f3e e11-deploy report: g, l, the seed track and f, with the momentum measurement
 8f380e8 e11-deploy C1 (f): the check that the job writes nothing under data/
 3fe7358 e11-deploy seed track: the frozen history comes from R2 and is verified every run
 45a49a5 e11-deploy seed track 1: the run works in its own tree, so data/ is never written
@@ -265,7 +315,16 @@ All done! 183 files would be left unchanged.
 
 $ make verify-evidence
 evidence OK
+
+$ .venv/bin/python -m pytest tests/test_e11_seed.py -q   # the produced-file fix
+18 passed in 0.46s
+
+$ make test-fast   # the same tree, after that fix
+871 passed, 1 skipped, 32 deselected, 3 warnings in 35.26s
 ```
+
+The fast count went from 869 to 872 collected, which is exactly the three tests the
+fix added and nothing else.
 
 The clean full suite, on the tree carrying everything above (rule 21's before the
 live clock, and it must not shrink):
@@ -283,12 +342,251 @@ $ .venv/bin/python -m pytest tests/ -q -m "not slow" --collect-only | tail -1
 900 against the last recorded full run's 835, so the count grew rather than shrank,
 and the 32 slow tests are the deliberate ones the fast subset skips.
 
-**Not in hand, and stated as such:** the seed file list. The list the owner needs is
-printed by `python -m scripts.push_seed --dry-run` on the machine that has the
-artifacts, which is the authoritative measurement because the manifest is what that
-command measures; my session's runs carry the two bounds above, and the corrected
-one was still executing. This is the one deliverable of the seed track that this
-report does not carry a number for, and it is not a hand-written list in any case.
+**The seed set, measured.** `python -m scripts.push_seed --dry-run` on a real local
+evening, the run tree copied from the repository's own artifacts:
+
+```text
+n_files: 184
+total_bytes: 617837063 (617.84 MB)
+data_hash: c3e0db6f92209ebce7bd46180b35845f3b75a98dbbcf359634dedcbd0da1aea8
+```
+
+That is a measurement and not a list anyone wrote: every entry is hashed from the
+pristine tree's own bytes, and a read the pristine tree does not hold and the run
+did not write is refused. The run's own output that evening was exactly two files,
+named on the command's output and left out of the manifest:
+
+```text
+produced by the run (2):
+  raw/spy_holdings/spy_holdings_2026-09-24.parquet
+  raw/wikipedia_constituents/wikipedia_constituents_2026-09-25.parquet
+```
+
+Both are the session the run fetched for itself, which is why the distinction had
+to exist: the pristine tree holds the 09-18 and 09-21 SPY archives and no 09-24,
+so that file could only have come from inside the run.
+
+**Why 617.84 MB and not the 89.58 MB of appendix inputs.** `refresh_version`
+rehashes every versioned artifact into `data/VERSION.json`, and its list is the
+union of `build.ARTIFACTS` through `build.E10_ARTIFACTS`, so the E4, E5 and E8
+evaluation artifacts are read on every evening even though the loop does not
+compute them. The five largest are `eval/e5_rolling_bias.parquet` 144.83 MB,
+`processed/returns.parquet` 62.09 MB, `raw/prices.parquet` 61.23 MB,
+`portfolios/persistent_proportional.parquet` 32.71 MB and
+`models/XS-v2/residual_loadings.parquet` 31.06 MB. Trimming the seed would mean
+changing what a run verifies, which is the property the owner asked for, so it is
+reported rather than changed.
+
+**What a run costs before it does anything.** Measured against a client that
+answers with the local bytes, so the network leg is excluded and the hashing, the
+writes and the verification are not:
+
+```text
+seed: 184 files, 617.84 MB
+hash all of it (the push side):        0.58 s
+verify it (every run does this):       0.29 s
+write it all + verify, no network:     1.68 s
+peak RSS for the whole script:        445.6 MB
+the downloaded tree verifies:       True
+```
+
+The download leg itself is Render's to read off the first real run's metrics, which
+is in the deploy list below.
+
+The 184 files, path and bytes as the command printed them (the manifest in the
+bucket carries a SHA-256 for each, and the full row-per-file form with the hashes
+is what `seed_manifest.json` holds):
+
+```text
+VERSION.json                                                       21808
+allocation/config.json                                               180
+allocation/drawdown.parquet                                         7984
+allocation/kelly.parquet                                            7950
+allocation/regime.parquet                                           3609
+allocation/stoploss.parquet                                        11229
+allocation/voltarget.parquet                                        5666
+allocation/voltarget_daily.parquet                                  5580
+alpha/f71b_audit.parquet                                            5154
+alpha/f71c_audit.parquet                                            5154
+alpha/idio_momentum/alpha.parquet                                4083538
+alpha/idio_momentum/audit.parquet                                 143065
+alpha/idio_momentum/ic.parquet                                    173030
+alpha/idio_momentum/neutral_ic.parquet                              5052
+alpha/idio_momentum/quantiles.parquet                             188968
+alpha/idio_momentum/regime_ic.parquet                               2768
+alpha/low_residual_volatility/alpha.parquet                      4083538
+alpha/low_residual_volatility/audit.parquet                       148400
+alpha/low_residual_volatility/ic.parquet                          180167
+alpha/low_residual_volatility/neutral_ic.parquet                    5052
+alpha/low_residual_volatility/quantiles.parquet                   187722
+alpha/low_residual_volatility/regime_ic.parquet                     2768
+alpha/momentum_12_1/alpha.parquet                                4083538
+alpha/momentum_12_1/audit.parquet                                 152646
+alpha/momentum_12_1/ic.parquet                                    185004
+alpha/momentum_12_1/neutral_ic.parquet                              5052
+alpha/momentum_12_1/quantiles.parquet                             216532
+alpha/momentum_12_1/regime_ic.parquet                               2768
+alpha/post_earnings_drift/alpha.parquet                          1746073
+alpha/post_earnings_drift/audit.parquet                            59961
+alpha/post_earnings_drift/ic.parquet                               62075
+alpha/post_earnings_drift/neutral_ic.parquet                        5044
+alpha/post_earnings_drift/quantiles.parquet                         43883
+alpha/post_earnings_drift/regime_ic.parquet                         2762
+alpha/short_interest/alpha.parquet                               2670817
+alpha/short_interest/audit.parquet                                 94605
+alpha/short_interest/ic.parquet                                   107604
+alpha/short_interest/neutral_ic.parquet                             4301
+alpha/short_interest/quantiles.parquet                            112170
+alpha/short_interest/regime_ic.parquet                              2768
+alpha/short_term_reversal/alpha.parquet                          4083282
+alpha/short_term_reversal/audit.parquet                           161229
+alpha/short_term_reversal/ic.parquet                              196415
+alpha/short_term_reversal/neutral_ic.parquet                        5052
+alpha/short_term_reversal/quantiles.parquet                       210104
+alpha/short_term_reversal/regime_ic.parquet                         2768
+alpha/summary.parquet                                              16820
+costs/capacity.parquet                                              8472
+costs/capacity_halving.parquet                                      2957
+costs/capacity_phi.parquet                                          8548
+costs/capacity_phi_halving.parquet                                  3056
+costs/capacity_spread_sensitivity.parquet                           3110
+costs/cost_curves.parquet                                           4639
+costs/spread_probe.parquet                                         21309
+costs/turnover_tradeoff.parquet                                     2459
+eval/beta_horse_race.parquet                                        3487
+eval/bias_pca_v1_factor_tilted.parquet                           2204980
+eval/bias_pca_v1_long_only.parquet                               1999594
+eval/bias_pca_v1_long_short.parquet                              1997139
+eval/bias_pca_v1_sector_concentrated.parquet                     1509308
+eval/bias_pca_v1c_factor_tilted.parquet                          2204980
+eval/bias_pca_v1c_long_only.parquet                              1999594
+eval/bias_pca_v1c_long_short.parquet                             1997139
+eval/bias_pca_v1c_sector_concentrated.parquet                    1509308
+eval/bias_sample_factor_tilted.parquet                           2204980
+eval/bias_sample_long_only.parquet                               1999594
+eval/bias_sample_long_short.parquet                              1997139
+eval/bias_sample_sector_concentrated.parquet                     1509308
+eval/bias_ts_v1_factor_tilted.parquet                            2204980
+eval/bias_ts_v1_long_only.parquet                                1999594
+eval/bias_ts_v1_long_short.parquet                               1997139
+eval/bias_ts_v1_sector_concentrated.parquet                      1509308
+eval/bias_xs_v1_factor_tilted.parquet                            2204980
+eval/bias_xs_v1_long_only.parquet                                1999594
+eval/bias_xs_v1_long_short.parquet                               1997139
+eval/bias_xs_v1_sector_concentrated.parquet                      1509308
+eval/bias_xs_v2_factor_tilted.parquet                            2204980
+eval/bias_xs_v2_long_only.parquet                                1999594
+eval/bias_xs_v2_long_short.parquet                               1997139
+eval/bias_xs_v2_sector_concentrated.parquet                      1509308
+eval/cov_horse_race.parquet                                        81322
+eval/e4_f41_pc1_correlations.parquet                                4391
+eval/e4_f44_held_out.parquet                                        2598
+eval/e5_asset_level.parquet                                         7837
+eval/e5_bias_summary.parquet                                      136814
+eval/e5_family_bias.parquet                                         9903
+eval/e5_forecast_diag.parquet                                    3924347
+eval/e5_forecast_portfolios.parquet                              2304370
+eval/e5_horizon.parquet                                             4686
+eval/e5_portfolios.parquet                                       5645842
+eval/e5_regimes.parquet                                             8293
+eval/e5_rolling_bias.parquet                                   144830501
+eval/e5_stress_haircut.parquet                                      4784
+eval/momentum_exposure.parquet                                      9775
+eval/momentum_exposure_rolling.parquet                             14776
+eval/portfolio_risk_snapshot.parquet                                8804
+eval/vol_horse_race.parquet                                        37524
+eval/vol_horse_race_aligned.parquet                                60713
+eval/vol_window_dependence.parquet                                  4569
+eval/xs_bias.parquet                                               27139
+eval/xs_bias_by_exposure.parquet                                    7989
+eval/xs_coverage_by_year.parquet                                    8558
+eval/xs_exposure_timeseries.parquet                                39299
+eval/xs_fm_premia.parquet                                           7839
+eval/xs_residual_covariance.parquet                                23465
+eval/xs_residual_loadings.parquet                                 230411
+eval/xs_residual_spectrum.parquet                                  22322
+eval/xs_risk_decomposition.parquet                               4033179
+eval/xs_survivor_excluded_names.parquet                             5638
+eval/xs_survivor_measurement.parquet                                6562
+eval/xs_survivor_restriction.parquet                                7024
+eval/xs_survivor_universe_summary.parquet                           3656
+eval/xs_task3_confound.parquet                                      8748
+eval/xs_task3_decomposition.parquet                                47331
+eval/xs_task3_orthogonality.parquet                                15999
+eval/xs_task3_projection.parquet                                   20439
+eval/xs_task3_sweep.parquet                                        18256
+hedge/e6_decay.parquet                                              3129
+hedge/e6_efficacy.parquet                                           4272
+hedge/e6_exposures.parquet                                        162874
+hedge/hedge_metrics.parquet                                        81418
+hedge/hedge_positions.parquet                                      57189
+models/PCA-v1/eigenvalues.parquet                                  22352
+models/PCA-v1/eigenvalues_panel.parquet                            24219
+models/PCA-v1/factor_returns.parquet                               69848
+models/PCA-v1/loadings.parquet                                    133927
+models/PCA-v1c/eigenvalues.parquet                                 22387
+models/PCA-v1c/factor_returns.parquet                            2294706
+models/PCA-v1c/loadings.parquet                                  2515665
+models/PCA-v1c/spectrum.parquet                                     8825
+models/TS-v1/beta_history.parquet                                5064571
+models/TS-v1/factor_cov.parquet                                     4973
+models/TS-v1/idio_vol.parquet                                      27770
+models/TS-v1/loadings.parquet                                      60016
+models/TS-v1/loadings_se.parquet                                   98759
+models/TS-v1/residuals.parquet                                  20344112
+models/XS-v1/descriptors.parquet                                22808475
+models/XS-v1/factor_cov.parquet                                    14603
+models/XS-v1/factor_returns.parquet                              1856680
+models/XS-v1/fmp_weights.parquet                                 8834286
+models/XS-v1/specific_returns.parquet                           16172652
+models/XS-v1/specific_var.parquet                                2248200
+models/XS-v1/xs_r2.parquet                                        106138
+models/XS-v2/residual_factors.parquet                              20751
+models/XS-v2/residual_loadings.parquet                          31058144
+models/XS-v2/residual_remainder.parquet                          2512501
+models/registry.json                                               14754
+portfolios/combined.parquet                                     11100562
+portfolios/e8_f81b_gls_identity.parquet                             3092
+portfolios/e8_f84_resampling.parquet                                3205
+portfolios/e8_f87_correlated.parquet                                7693
+portfolios/e8_persistence.parquet                                   3793
+portfolios/e8_summary.parquet                                       9510
+portfolios/mv_constrained.parquet                               11108964
+portfolios/mv_unconstrained.parquet                             10984090
+portfolios/persistent_proportional.parquet                      32712073
+portfolios/procedure_6_3.parquet                                10892350
+portfolios/proportional.parquet                                 11100562
+portfolios/seed_ew.parquet                                        522630
+portfolios/seed_ew_risk.parquet                                    18540
+portfolios/seed_mom_ls.parquet                                    250266
+portfolios/seed_mom_ls_risk.parquet                                18620
+portfolios/seed_mom_ls_risk_21.parquet                             18691
+portfolios/sharpe.parquet                                       11100562
+portfolios/shrunk.parquet                                       11100562
+processed/events.parquet                                           90364
+processed/market_cap.parquet                                    27392000
+processed/returns.parquet                                       62086841
+processed/sectors.parquet                                           9964
+processed/ticker_identity.parquet                                  24707
+processed/ticker_identity_readded.parquet                           7175
+processed/universe_changes.parquet                                 32588
+processed/universe_constituents.parquet                            30673
+processed/universe_membership.parquet                             426994
+raw/earnings_dates.parquet                                        242028
+raw/etf_prices.parquet                                            455352
+raw/factors_ff.parquet                                            199378
+raw/prices.parquet                                              61233059
+raw/shares_history.parquet                                       2146029
+raw/short_interest.parquet                                       4238241
+raw/spy_holdings/spy_holdings_2026-09-18.parquet                   34358
+raw/spy_holdings/spy_holdings_2026-09-21.parquet                   34283
+raw/vix.parquet                                                    46935
+raw/wikipedia_constituents/wikipedia_constituents_2026-09-22.parquet  30612
+```
+
+The two archives the run produced are deliberately absent from that list, and
+`raw/wikipedia_constituents/wikipedia_constituents_2026-09-22.parquet` is present
+because it already existed in the pristine tree.
 
 ### Yes or no, each with evidence
 
