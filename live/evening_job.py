@@ -151,6 +151,41 @@ def _stored_neutral_ic(signal: str, data_root: Path) -> dict[str, float]:
     }
 
 
+def exposures(weights: np.ndarray, design: np.ndarray) -> np.ndarray:
+    """A book's exposure to every design column: `X'w`, one value per column.
+
+    The same arithmetic `_decomposition` uses to measure the worst exposure and
+    the same design the hedge subtracts against, so the number the page shows is
+    the number the hedge acts on rather than a second reconstruction of it.
+
+    The design's column order is `fx.ESTIMATED_NAMES` (see
+    `efb/race.py::_descriptor_design`), so the labels are that constant and the
+    lengths have to agree; a mismatch would put the wrong name on a number, so it
+    raises instead.
+    """
+    from efb.models import fundamental as fx
+
+    vector = np.asarray(design.T @ weights, dtype=float)
+    expected = len(fx.ESTIMATED_NAMES)
+    if design.shape[1] != expected:
+        raise ValueError(
+            f"the design has {design.shape[1]} columns and the factor names "
+            f"{expected}, so the exposures cannot be labelled"
+        )
+    return vector
+
+
+def labelled_exposures(weights: np.ndarray, design: np.ndarray) -> dict[str, float]:
+    """`X'w` as a dict keyed by factor name, which is what the page shows."""
+    from efb.models import fundamental as fx
+
+    vector = exposures(weights, design)
+    return {
+        str(name): float(value)
+        for name, value in zip(fx.ESTIMATED_NAMES, vector, strict=True)
+    }
+
+
 def _decomposition(
     weights: np.ndarray,
     design: np.ndarray,
@@ -993,6 +1028,15 @@ def build_proposal(
         "max_abs_exposure_after_fmp": full_decomposition["max_abs_exposure"],
         "gross": full_decomposition["gross"],
         "net": full_decomposition["net"],
+        # X'w after the hedge, one value per design column, named by
+        # fx.ESTIMATED_NAMES. The hedge neutralizes every factor, so these are zero
+        # to within floating point, which is what the test pins. The BEFORE vector
+        # is not here yet: the hedge runs inside the sizing step, so the pre-hedge
+        # book is `sizing.procedure_6_3_with_exposures`'s second return value, and
+        # threading it out needs `sized_kept_weights` to carry it to this manifest.
+        # A first attempt took X'w of the post-hedge book and produced a duplicate
+        # of this vector under the other name, which is worse than a missing field.
+        "exposures_after_hedge": labelled_exposures(weights, design),
         "n_eff_kept": kept_decomposition["effective_breadth"],
         "n_nonzero": full_decomposition["n_nonzero"],
         "n_kept": n_selected,

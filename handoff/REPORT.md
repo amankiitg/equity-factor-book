@@ -1,3 +1,48 @@
+# e11-deploy C0, part two: the exposures are computed, and where that stopped
+
+**`exposures_after_hedge` is in, and it is the hedge's own number.**
+`live/evening_job.py::exposures` is `X'w` exactly as `_decomposition` computes it,
+on the same design the hedge subtracts against: standardized descriptors plus sector
+dummies, whose column order `efb/race.py::_descriptor_design` documents as
+`fx.ESTIMATED_NAMES`. `labelled_exposures` names each value and raises if the design
+has a different width than the names, because a mismatch would put the wrong name on
+a number. The manifest carries it, `snapshot.build` copies it, and
+`docs/snapshot.schema.json` has it. Measured on the real 09-21 book, one value per
+design column, 17 of them:
+
+```text
+factors: 17
+max |after| : 1.207e-15
+sample after: market -3.34e-16, size -1.20e-15, beta 2.50e-16
+```
+
+The test asserts the labels equal `fx.ESTIMATED_NAMES`, that the worst exposure is
+below 1e-10, and that the book it came from is the stored one, `n_eff_kept` 70.5921.
+
+**`exposures_before_hedge` is deliberately not in, and here is exactly why.** My
+first attempt took `X'w` of the book *after* `size.procedure_6_3`, which applies the
+hedge itself, so the "before" vector came out identical to the "after" one:
+`max |before|` was 0.000000 when a pre-hedge book has real exposures. Putting that
+field on the page would have shown a duplicate under a second name, which is worse
+than showing nothing. The hedge's own pre-hedge vector exists and is
+`design.T @ size.proportional(alpha, specific)` inside
+`live/sizing.py::procedure_6_3_robust`, so the change is to surface it there and have
+`sized_kept_weights` carry it to the manifest, which touches its two call sites. That
+is the next step, not a missing idea.
+
+**One mistake of mine, and how it was caught.** The edit that was meant to add the
+sizing companion wrote `evening_job.py`'s text into `live/sizing.py`, because a
+variable in the script was still bound to the wrong path. Nothing was committed:
+`git checkout -- live/sizing.py` restored it, the call site went back to the function
+that exists, and `ruff`, `mypy live scripts` and 62 tests pass on the restored tree.
+The `git status` before the restore listed the four files that were meant to change,
+so the mistake was visible in the same command that made it.
+
+**`book_as_of` is in.** `snapshot.build` carries the close of the proposal the book
+came from, which is the manifest's own `as_of`: the target close on a run that
+proposed a book, and the previous proposal's close on a stopped run, so the page
+cannot show a book without its date. The schema requires it.
+
 # e11-deploy C0, part one: the cron's plan key
 
 `render.yaml` had no `plan:` key, so Render would have created the cron on its

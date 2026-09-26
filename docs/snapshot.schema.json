@@ -8,7 +8,9 @@
     "schema_version",
     "generated_at",
     "target_close",
+    "book_as_of",
     "expected_next_by",
+    "exposures_after_hedge",
     "dry_run",
     "store",
     "run_status",
@@ -29,6 +31,10 @@
     "target_close": {
       "type": ["string", "null"],
       "description": "The session the book is priced from."
+    },
+    "book_as_of": {
+      "type": ["string", "null"],
+      "description": "The close of the proposal the book came from. On a stopped run this is the previous proposal's close, never the target, so the page cannot show a book without its date."
     },
     "expected_next_by": {
       "type": ["string", "null"],
@@ -105,6 +111,11 @@
           }
         }
       }
+    },
+    "exposures_after_hedge": {
+      "type": "object",
+      "description": "X'w after the FMP hedge, on the same labels. The hedge neutralizes every factor, so these are zero to within floating point.",
+      "additionalProperties": {"type": ["number", "null"]}
     },
     "hedge": {
       "type": "object",

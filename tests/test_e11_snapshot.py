@@ -290,3 +290,23 @@ def test_a_stopped_run_still_carries_a_book_from_the_last_proposal() -> None:
     # and the helper itself reads the newest stored proposal
     assert manifest["as_of"] >= "2026-09-18"
     assert {"ticker", "weight"}.issubset(frame.columns)
+
+
+@pytest.mark.slow
+def test_the_hedge_drives_the_exposures_to_zero() -> None:
+    """X'w after the hedge is zero, which is exactly what the hedge guarantees.
+
+    One value per design column, labelled by `fx.ESTIMATED_NAMES`, taken from the
+    live book the run builds rather than from a fixture. A nonzero value here is a
+    bug worth catching before it reaches the page.
+    """
+    from efb.models import fundamental as fx
+    from live import evening_job
+
+    manifest = evening_job.build_proposal(store=False)
+    exposures = manifest["exposures_after_hedge"]
+    assert list(exposures) == list(fx.ESTIMATED_NAMES)
+    worst = max(abs(float(value)) for value in exposures.values())
+    assert worst < 1e-10, f"the hedge left an exposure of {worst:.3e}"
+    # and the book the exposures were taken from is the stored one
+    assert manifest["n_eff_kept"] == pytest.approx(70.5921, abs=1e-3)

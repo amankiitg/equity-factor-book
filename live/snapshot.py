@@ -163,6 +163,10 @@ def build(
         "schema_version": SCHEMA_VERSION,
         "generated_at": stamp.astimezone(UTC).isoformat().replace("+00:00", "Z"),
         "target_close": target_close,
+        # The close of the proposal the book came from. On a run that proposed one
+        # it is the target close; on a stopped run it is the close of the book the
+        # page is still showing, so the page can never show a book without its date.
+        "book_as_of": proposal.get("as_of"),
         "expected_next_by": expected_next_by(target_close) if target_close else None,
         "dry_run": bool(run.get("dry_run", True)),
         "store": run.get("store"),
@@ -200,6 +204,9 @@ def build(
             ),
             "names": names,
         },
+        # One value per design column, named by fx.ESTIMATED_NAMES, after the
+        # hedge. The hedge itself stays in `hedge` beside them.
+        "exposures_after_hedge": _numbers(proposal.get("exposures_after_hedge")),
         "hedge": {
             "idio_share_after_fmp": _number(proposal.get("idio_share_after_fmp")),
             "max_abs_exposure_after_fmp": _number(
@@ -265,6 +272,13 @@ def _json_value(value: Any, fallback: Any) -> Any:
         except json.JSONDecodeError:
             return value
     return value
+
+
+def _numbers(value: Any) -> dict[str, Any]:
+    """A dict of numbers with the non-finite ones nulled, or an empty dict."""
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): _number(item) for key, item in value.items()}
 
 
 def payload_text(payload: dict[str, Any]) -> str:
