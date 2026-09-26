@@ -20,7 +20,6 @@ import pandas as pd
 import pytest
 
 from live import guards, morning_job, notify, store
-from scripts import run_live_daily
 
 NAV = 1_000_000.0
 
@@ -145,10 +144,9 @@ def test_the_message_says_the_day_and_labels_the_cost() -> None:
         cost_label="establishment",
         cost_bps=53.73,
         brake_limit=NAV,
-        held_source="store: no position row yet",
         store="postgres/efb",
     )
-    assert "Establishment: store: no position row yet" in establishment
+    assert "Establishment: the first trading day" in establishment
     assert "may trade up to the full book ($1,000,000 of gross)" in establishment
     assert "the daily brake starts on the second trading day" in establishment
     assert "Cost: establishment, 53.73 bps of NAV." in establishment
@@ -175,10 +173,12 @@ def test_the_message_says_the_day_and_labels_the_cost() -> None:
 def test_the_held_book_is_read_from_the_store_with_its_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from live import positions
+
     monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
-    held, source = run_live_daily.held_positions()
+    held, source = positions.store_positions()
     assert held == {}
-    assert "no position row yet" in source
+    assert "no position row" in source
 
     store.upsert(
         "positions",
@@ -188,6 +188,6 @@ def test_the_held_book_is_read_from_the_store_with_its_source(
             {"trade_date": "2026-09-25", "ticker": "BBB", "signed_notional": -250.0},
         ],
     )
-    held, source = run_live_daily.held_positions()
+    held, source = positions.store_positions()
     assert held == {"AAA": 500.0, "BBB": -250.0}
     assert "2026-09-25" in source

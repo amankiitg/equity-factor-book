@@ -252,6 +252,10 @@ create table if not exists efb.run_status (
   -- run is a rebalance and the absolute traded-notional brake applies.
   establishment boolean default false,
   cost_label text,
+  -- The broker's position book against the store's, read before the orders were
+  -- built: the counts, the names only one side holds, and the largest drift. A
+  -- difference here makes every traded leg wrong in the same direction.
+  positions_check jsonb,
   primary key (target_close, job)
 );
 
@@ -305,6 +309,10 @@ alter table efb.run_status
   add column if not exists establishment boolean default false;
 alter table efb.run_status
   add column if not exists cost_label text;
+
+-- Pre-flip: the broker's book against the store's, read before sizing.
+alter table efb.run_status
+  add column if not exists positions_check jsonb;
 
 -- Pre-flip: the refusal code for a leg that was never submitted.
 alter table efb.orders

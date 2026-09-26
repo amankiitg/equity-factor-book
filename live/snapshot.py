@@ -206,6 +206,11 @@ def build(
             "cost_label": run.get("cost_label"),
         },
         "construction": construction_table.construction_label(proposal),
+        # The account's book against the store's, read before the orders were
+        # built. The page shows it beside the book, because a book the loop
+        # believes it holds and the account does not is the one failure that
+        # makes every number below it wrong.
+        "positions": _positions_block(run.get("positions_check")),
         "breadth": {
             "n_eff_kept": _number(proposal.get("n_eff_kept")),
             "n_eff_full_book": _number(proposal.get("n_eff_full_book")),
@@ -261,6 +266,28 @@ def build(
                 "expected_cost_bps",
             )
         },
+    }
+
+
+def _positions_block(raw: Any) -> dict[str, Any]:
+    """The stored position check as the page's own object, minus the name maps.
+
+    The two name maps are summarized rather than shipped: the counts, the names
+    that are only in one book, and the largest drift are the evidence, and the
+    document is read on every page load.
+    """
+    check = _json_value(raw, {})
+    if not isinstance(check, dict):
+        check = {}
+    return {
+        "matches": check.get("matches"),
+        "n_broker": _number(check.get("n_broker")),
+        "n_store": _number(check.get("n_store")),
+        "source": check.get("source"),
+        "note": check.get("note"),
+        "missing_at_broker": check.get("missing_at_broker") or [],
+        "missing_in_store": check.get("missing_in_store") or [],
+        "max_abs_drift": _number(check.get("max_abs_drift")),
     }
 
 

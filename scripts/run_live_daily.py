@@ -280,7 +280,7 @@ def finish_run(
     establishment: bool = False,
     cost_label: str = "rebalance",
     brake_limit: float | None = None,
-    held_source: str = "",
+    positions_check: dict[str, Any] | None = None,
     manifest: dict[str, Any] | None = None,
     book: pd.DataFrame | None = None,
     reconciliation: dict[str, Any] | None = None,
@@ -327,6 +327,7 @@ def finish_run(
         init=init,
         establishment=establishment,
         cost_label=cost_label,
+        positions_check=positions_check,
     )
     book_reason: str | None = None
     if manifest is None:
@@ -392,7 +393,7 @@ def finish_run(
         establishment=establishment,
         cost_label=cost_label,
         brake_limit=brake_limit,
-        held_source=held_source,
+        positions_check=positions_check,
         cost_bps=cost_bps,
         poster=poster,
     )
@@ -446,29 +447,6 @@ def finish_run(
     if not delivered or store_failed or snapshot_failed:
         return 1
     return 0 if status == "ok" else 1
-
-
-def held_positions() -> tuple[dict[str, float], str]:
-    """The book the loop believes it holds, and where that belief comes from.
-
-    The store is the loop's own record of what it meant to hold, in signed
-    notional. It is not the broker's holding: nothing is sent in dry run, so on
-    the evening of the flip this says the loop holds a book the paper account
-    does not. That difference is exactly what the Alpaca read exists to catch,
-    and until it does the source is named so a reader knows which question was
-    answered.
-    """
-    from live import store
-
-    frame = store.select("positions")
-    if frame.empty:
-        return {}, "store: no position row yet"
-    latest = frame["trade_date"].max()
-    rows = frame.loc[frame["trade_date"] == latest]
-    return (
-        {str(row.ticker): float(row.signed_notional) for row in rows.itertuples()},
-        f"store: the {latest} position row",
-    )
 
 
 def market_closed_run(run_date: str) -> int:
@@ -530,6 +508,7 @@ def main() -> int:
         extend,
         morning_job,
         notify,
+        positions,
         reconcile,
         staleness,
         store,
@@ -546,7 +525,6 @@ def main() -> int:
     if already_ran("live_daily", run_date):
         logger.info("already ran for %s, exit 0 (idempotent)", run_date)
         return 0
-
     dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
     from live import appendix as appendix_mod
     from live import runroot, seed
@@ -711,14 +689,17 @@ def main() -> int:
         as_of = str(manifest["as_of"])
         book = store_proposal(as_of, run_tree)
 
-        # What the loop believes it holds, before the orders are built from it:
-        # the traded leg of every order is the difference between the target and
-        # this book, and a run that starts from nothing is the establishment day.
-        held, held_source = held_positions()
+        # What the account actually holds, read before the orders are built: the
+        # traded leg of every order is the difference between the target and this
+        # book, and a run that starts from nothing is the establishment day. The
+        # store's own book is read beside it and any difference is reported, not
+        # resolved, because the two are different questions.
+        holdings = positions.check(dry_run=dry_run)
+        held = holdings["held"]
         establishment = not held
         logger.info(
-            "held book: %s (%d name(s), establishment=%s)",
-            held_source,
+            "positions: %s; held %d name(s), establishment=%s",
+            holdings["note"],
             len(held),
             establishment,
         )
@@ -772,7 +753,7 @@ def main() -> int:
         establishment=bool(morning.get("establishment")),
         cost_label=str(morning.get("cost_label") or "rebalance"),
         brake_limit=float(morning.get("brake_limit") or 0.0),
-        held_source=held_source,
+        positions_check=holdings,
         **snapshot_inputs,
     )
 

@@ -81,6 +81,21 @@
       "type": "string",
       "description": "Generated from the proposal's own fields, never asserted beside it."
     },
+    "positions": {
+      "type": "object",
+      "required": ["matches", "n_broker", "n_store", "source", "note"],
+      "description": "The paper account's book against the store's, read before the orders were built. matches is null when the account could not be read, which is a different answer from an account that holds nothing.",
+      "properties": {
+        "matches": {"type": ["boolean", "null"]},
+        "n_broker": {"type": ["integer", "number", "null"]},
+        "n_store": {"type": ["integer", "number", "null"]},
+        "source": {"type": ["string", "null"], "enum": ["alpaca paper account", "store", null]},
+        "note": {"type": ["string", "null"]},
+        "missing_at_broker": {"type": "array", "items": {"type": "string"}},
+        "missing_in_store": {"type": "array", "items": {"type": "string"}},
+        "max_abs_drift": {"type": ["number", "null"]}
+      }
+    },
     "breadth": {
       "type": "object",
       "required": ["n_eff_kept", "n_eff_full_book", "kept_label", "full_book_label"],

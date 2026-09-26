@@ -326,6 +326,22 @@ def check_buying_power(client, orders) -> float:
     return buying_power
 
 
+def read_client():
+    """A paper client for reading the account, or None without keys.
+
+    Reading is free and read-only, so the evening reads the account even in dry
+    run: `connect(dry_run=True)` returns None because it guards *submission*, and
+    the question "what does the broker hold" has a real answer before the flip.
+    No keys is not an error here; it is a question that could not be asked, and
+    the caller says so rather than pretending the account is empty.
+    """
+    key = os.environ.get("EFB_ALPACA_PAPER_API_KEY", "").strip()
+    secret = os.environ.get("EFB_ALPACA_PAPER_SECRET_KEY", "").strip()
+    if not key or not secret:
+        return None
+    return connect(dry_run=False)
+
+
 def get_nav(client) -> float:
     """The live account equity, or a raised failure.
 

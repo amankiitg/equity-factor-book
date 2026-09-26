@@ -213,7 +213,7 @@ def compose(
     cost_label: str = "rebalance",
     cost_bps: float | None = None,
     brake_limit: float | None = None,
-    held_source: str = "",
+    positions_check: dict[str, Any] | None = None,
 ) -> str:
     """The fields, in order, ready for a preview.
 
@@ -316,8 +316,8 @@ def compose(
     # the book from flat and a rebalance cost would be a different number.
     if establishment:
         lines.append(
-            f"Establishment: {held_source or 'the account held nothing'}, so this "
-            "run creates the book and may trade up to the full book"
+            "Establishment: the first trading day, so this run creates the book "
+            "and may trade up to the full book"
             + (f" (${float(brake_limit):,.0f} of gross)" if brake_limit else "")
             + "; the daily brake starts on the second trading day."
         )
@@ -329,6 +329,11 @@ def compose(
         )
     if cost_bps is not None:
         lines.append(f"Cost: {cost_label}, {float(cost_bps):.2f} bps of NAV.")
+    # The broker's book against the store's, every evening. A difference is the
+    # one thing that makes every traded leg wrong in the same direction, so it is
+    # stated even when the answer is "they match".
+    if positions_check:
+        lines.append(f"Positions: {positions_check.get('note', 'not read')}.")
     if status == "error":
         reason = scrub(detail).strip() or "no reason recorded"
         prefix = error_type or "Exception"
@@ -574,7 +579,7 @@ def notify_run(
     cost_label: str = "rebalance",
     cost_bps: float | None = None,
     brake_limit: float | None = None,
-    held_source: str = "",
+    positions_check: dict[str, Any] | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -617,7 +622,7 @@ def notify_run(
         cost_label=cost_label,
         cost_bps=cost_bps,
         brake_limit=brake_limit,
-        held_source=held_source,
+        positions_check=positions_check,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message

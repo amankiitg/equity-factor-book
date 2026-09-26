@@ -42,6 +42,11 @@ LIVE_CREDENTIALS = (
     "EFB_SEED_R2_SECRET_ACCESS_KEY",
     "EFB_R2_ACCESS_KEY_ID",
     "EFB_R2_SECRET_ACCESS_KEY",
+    # The paper keys are here because the evening now reads the account even in
+    # dry run: without this a test run with a developer's shell would call the
+    # real paper API, and a test must never touch it.
+    "EFB_ALPACA_PAPER_API_KEY",
+    "EFB_ALPACA_PAPER_SECRET_KEY",
 )
 
 

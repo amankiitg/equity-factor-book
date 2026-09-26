@@ -596,6 +596,7 @@ def run_status_row(
     init: bool = False,
     establishment: bool = False,
     cost_label: str = "rebalance",
+    positions_check: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The `run_status` row for one run: the target close and every date.
 
@@ -649,7 +650,32 @@ def run_status_row(
         # absolute brake applies.
         "establishment": bool(establishment),
         "cost_label": cost_label,
+        # The broker's book against the store's, read before the orders were
+        # built. A difference here is the one thing that makes every traded leg
+        # wrong in the same direction, so it is recorded rather than reasoned
+        # about. The name maps are dropped: the counts and the drift are the
+        # evidence, and the row is read on every page load.
+        "positions_check": store.json_text(_positions_summary(positions_check)),
     }
+
+
+def _positions_summary(check: dict[str, Any] | None) -> dict[str, Any]:
+    """The position check without the two name maps, for a stored row."""
+    if not check:
+        return {}
+    keys = (
+        "matches",
+        "n_broker",
+        "n_store",
+        "source",
+        "broker_source",
+        "store_source",
+        "note",
+        "missing_at_broker",
+        "missing_in_store",
+        "max_abs_drift",
+    )
+    return {key: check.get(key) for key in keys if key in check}
 
 
 def write_run_status(result: dict[str, Any], **kwargs: Any) -> None:
