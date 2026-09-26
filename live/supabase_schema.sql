@@ -237,6 +237,12 @@ create table if not exists efb.run_status (
   -- "cross-check capped: N unchecked (...)" when the corporate-actions
   -- cross-check hit its request cap. Null when it did not.
   cross_checks_capped text,
+  -- Whether this run created the book or rebalanced it. An establishment run
+  -- started from an empty account, was allowed to trade up to the full book, and
+  -- carries "establishment" as its cost label; from the second trading day the
+  -- run is a rebalance and the absolute traded-notional brake applies.
+  establishment boolean default false,
+  cost_label text,
   primary key (target_close, job)
 );
 
@@ -284,3 +290,9 @@ create table if not exists efb.e11_corporate_actions (
 -- "max_abs_exposure_after_fmp" of relation "reconciliation" does not exist`.
 alter table efb.reconciliation
   add column if not exists max_abs_exposure_after_fmp double precision;
+
+-- Pre-flip: the establishment day's flag and its cost label.
+alter table efb.run_status
+  add column if not exists establishment boolean default false;
+alter table efb.run_status
+  add column if not exists cost_label text;

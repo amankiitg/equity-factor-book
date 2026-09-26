@@ -156,11 +156,22 @@ def run_morning(
     auto_approve: bool = True,
     dry_run: bool = DRY_RUN_DEFAULT,
     data_root: Path | None = None,
+    positions: dict[str, float] | None = None,
+    establishment: bool | None = None,
 ) -> dict[str, Any]:
     """The whole morning flow: gate, propose, guard, submit, reconcile.
 
     Returns the summary with the decision, the guard outcomes and the
     fill-vs-intent reconciliation.
+
+    `positions` is the book the account actually holds, in signed notional, and
+    `establishment` says whether this run creates the book or rebalances it.
+    Every traded leg is measured against `positions`, so a rebalance trades the
+    difference instead of the whole book; when the account holds nothing the two
+    are the same thing and the run is an establishment run, which the caller
+    names explicitly or leaves to be inferred from the empty book. The day's cost
+    is labelled from the same flag, because the proposal's cost is the cost of
+    building the book from flat and calling a rebalance that would be wrong.
     """
     if not should_execute(decision, auto_approve):
         return {
@@ -173,6 +184,8 @@ def run_morning(
             ),
             "orders": 0,
         }
+    held = {str(key): float(value) for key, value in (positions or {}).items()}
+    is_establishment = (not held) if establishment is None else bool(establishment)
     proposal = load_proposal(as_of, data_root)
     client = connect(dry_run)
     if not dry_run:
@@ -181,13 +194,18 @@ def run_morning(
         from live import alpaca
 
         nav = alpaca.get_nav(client)
-    orders = target_orders(proposal, nav)
-    guarded = guards.apply_guards(orders, nav)
+    # From flat, the traded leg is the whole target; from a book, it is the
+    # difference. An establishment run is by definition the former.
+    orders = target_orders(proposal, nav, None if is_establishment else held)
+    brake_limit, brake_basis = guards.traded_notional_limit(
+        nav, establishment=is_establishment
+    )
+    guarded = guards.apply_guards(orders, nav, establishment=is_establishment)
     prices = _close_prices(as_of, data_root)
     records = submit_orders(guarded, client, dry_run, prices)
     records["trade_date"] = as_of
-    positions = _positions_from_records(records, proposal)
-    state.write_positions(as_of, positions.to_dict("records"))
+    positions_frame = _positions_from_records(records, proposal)
+    state.write_positions(as_of, positions_frame.to_dict("records"))
     _write_execution_log(as_of, records)
     return {
         "as_of": as_of,
@@ -202,6 +220,24 @@ def run_morning(
         ),
         "intended_notional": float(records["intended_notional"].abs().sum()),
         "filled_notional": float(records["filled_notional"].abs().sum()),
+        # The dollars this run would actually move: the brake's own basis, and
+        # the number that separates an establishment (the whole book) from a
+        # rebalance that already holds it (nothing, when the target is unchanged).
+        "traded_notional": float(
+            sum(
+                order.traded_notional
+                for order in guarded
+                if order.status == guards.PASSED
+            )
+        ),
+        # The day's kind, the limit it was held to, and why: the three things the
+        # owner needs to read a first evening's order list correctly.
+        "establishment": is_establishment,
+        "brake_limit": brake_limit,
+        "brake_basis": brake_basis,
+        "cost_label": "establishment" if is_establishment else "rebalance",
+        "n_held": len(held),
+        "held_notional": float(sum(abs(value) for value in held.values())),
     }
 
 

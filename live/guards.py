@@ -42,6 +42,18 @@ MAX_TRADED_NOTIONAL_PER_RUN: float = float(
     os.environ.get("MAX_TRADED_NOTIONAL_PER_RUN", "2000000")
 )
 
+# The establishment day's ceiling, in units of NAV of gross.
+#
+# The book is renormalized to gross 1.0 after names are dropped, so building it
+# from flat trades exactly one book's gross. Day one is not a rebalance: it is the
+# creation of the book, and the throughput brake is the wrong instrument for it.
+# The ceiling is the book itself, which is a real bound (a corrupted order set
+# ten times the book still trips it) and exactly what the owner's rule says:
+# "allowed to trade up to the full book, the daily brake applies from the second
+# trading day". Guard 1, the position cap, applies on every day including this
+# one, so no single name can run away on day one either.
+ESTABLISHMENT_GROSS: float = 1.0
+
 PASSED = "PASSED"
 REJECTED_CAP = "REJECTED_CAP"
 REJECTED_TRADED_NOTIONAL = "REJECTED_TRADED_NOTIONAL"
@@ -74,18 +86,56 @@ def traded_notional_brake(
     return traded_so_far + leg_traded > limit
 
 
+def traded_notional_limit(
+    nav: float,
+    *,
+    establishment: bool,
+    max_traded: float | None = None,
+) -> tuple[float, str]:
+    """The brake's limit for this run, and the basis it was chosen on.
+
+    Two days, two instruments. On the establishment day the ceiling is the book's
+    own gross, because the run is creating the book rather than rebalancing one,
+    and the basis says so. From the second trading day the absolute brake applies:
+    the account already holds a book, so the question is how much a single evening
+    may move, which is what a fat-finger limit is for.
+    """
+    if establishment:
+        return establishment_limit(nav), (
+            "establishment: the first trading day, so the run may trade up to the "
+            f"full book ({ESTABLISHMENT_GROSS:g} NAV of gross); the daily brake of "
+            f"{MAX_TRADED_NOTIONAL_PER_RUN:,.0f} starts on the second trading day"
+        )
+    limit = MAX_TRADED_NOTIONAL_PER_RUN if max_traded is None else max_traded
+    return limit, (
+        f"daily brake {limit:,.0f}: the account already holds a book, so this is "
+        "a rebalance and the absolute throughput limit applies"
+    )
+
+
+def establishment_limit(nav: float, gross: float = ESTABLISHMENT_GROSS) -> float:
+    """The most an establishment run may trade: the book itself, in dollars."""
+    return abs(float(gross)) * float(nav)
+
+
 def apply_guards(
     orders: list[OrderSpec],
     nav: float,
     max_traded: float | None = None,
+    establishment: bool = False,
 ) -> list[OrderSpec]:
     """Apply both guards in order; a rejected order is never submitted.
 
     Guard 1 checks the destination position against the cap; Guard 2
     accumulates the run's traded notional against the brake. The brake is
-    absolute and independent of NAV, so a large book is still caught.
+    absolute and independent of NAV, so a large book is still caught — except on
+    the establishment day, where its place is taken by the book's own gross
+    (`traded_notional_limit`), because that day creates the book rather than
+    rebalancing it.
     """
-    limit = MAX_TRADED_NOTIONAL_PER_RUN if max_traded is None else max_traded
+    limit, _basis = traded_notional_limit(
+        nav, establishment=establishment, max_traded=max_traded
+    )
     results: list[OrderSpec] = []
     traded_so_far = 0.0
     for order in orders:

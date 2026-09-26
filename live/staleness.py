@@ -594,6 +594,8 @@ def run_status_row(
     started_at: str | None = None,
     cross_checks_capped: str | None = None,
     init: bool = False,
+    establishment: bool = False,
+    cost_label: str = "rebalance",
 ) -> dict[str, Any]:
     """The `run_status` row for one run: the target close and every date.
 
@@ -641,6 +643,12 @@ def run_status_row(
         # Whether the corporate-actions cross-check hit its request cap, and how
         # many names went unchecked because of it. Never an error; never silent.
         "cross_checks_capped": cross_checks_capped,
+        # The day's kind. An establishment run creates the book from flat, is
+        # allowed to trade up to the full book, and is labelled establishment on
+        # its cost; from the second trading day the run is a rebalance and the
+        # absolute brake applies.
+        "establishment": bool(establishment),
+        "cost_label": cost_label,
     }
 
 

@@ -272,6 +272,10 @@ def finish_run(
     flags: list[dict[str, Any]] | None = None,
     started_at: str | None = None,
     cross_checks_capped: str | None = None,
+    establishment: bool = False,
+    cost_label: str = "rebalance",
+    brake_limit: float | None = None,
+    held_source: str = "",
     manifest: dict[str, Any] | None = None,
     book: pd.DataFrame | None = None,
     reconciliation: dict[str, Any] | None = None,
@@ -316,6 +320,8 @@ def finish_run(
         started_at=started_at,
         cross_checks_capped=cross_checks_capped,
         init=init,
+        establishment=establishment,
+        cost_label=cost_label,
     )
     book_reason: str | None = None
     if manifest is None:
@@ -327,6 +333,13 @@ def finish_run(
         manifest, book, book_reason = snapshot_module.previous_proposal()
     if reconciliation is None:
         reconciliation = result.get("reconciliation") or {}
+    # The day's cost is the proposal's own establishment cost, which is the cost
+    # of building the book from flat. Naming it beside the label keeps the number
+    # from reading as a rebalance cost it never was.
+    cost_bps: float | None = None
+    if manifest:
+        raw_cost = manifest.get("expected_establishment_cost_bps")
+        cost_bps = float(raw_cost) if raw_cost is not None else None
     snapshot_detail, snapshot_failed = "", False
     try:
         written = snapshot_module.write_snapshot(
@@ -371,6 +384,11 @@ def finish_run(
         cross_checks_capped=cross_checks_capped,
         no_price=no_price,
         init=init,
+        establishment=establishment,
+        cost_label=cost_label,
+        brake_limit=brake_limit,
+        held_source=held_source,
+        cost_bps=cost_bps,
         poster=poster,
     )
     delivered = notified["status"] == notify.STATUS_SENT
@@ -425,6 +443,29 @@ def finish_run(
     if not delivered or store_failed or snapshot_failed:
         return 1
     return 0 if status == "ok" else 1
+
+
+def held_positions() -> tuple[dict[str, float], str]:
+    """The book the loop believes it holds, and where that belief comes from.
+
+    The store is the loop's own record of what it meant to hold, in signed
+    notional. It is not the broker's holding: nothing is sent in dry run, so on
+    the evening of the flip this says the loop holds a book the paper account
+    does not. That difference is exactly what the Alpaca read exists to catch,
+    and until it does the source is named so a reader knows which question was
+    answered.
+    """
+    from live import store
+
+    frame = store.select("positions")
+    if frame.empty:
+        return {}, "store: no position row yet"
+    latest = frame["trade_date"].max()
+    rows = frame.loc[frame["trade_date"] == latest]
+    return (
+        {str(row.ticker): float(row.signed_notional) for row in rows.itertuples()},
+        f"store: the {latest} position row",
+    )
 
 
 def market_closed_run(run_date: str) -> int:
@@ -667,8 +708,25 @@ def main() -> int:
         as_of = str(manifest["as_of"])
         book = store_proposal(as_of, run_tree)
 
+        # What the loop believes it holds, before the orders are built from it:
+        # the traded leg of every order is the difference between the target and
+        # this book, and a run that starts from nothing is the establishment day.
+        held, held_source = held_positions()
+        establishment = not held
+        logger.info(
+            "held book: %s (%d name(s), establishment=%s)",
+            held_source,
+            len(held),
+            establishment,
+        )
+
         # Morning: gate, guard, submit (dry run by default), reconcile.
-        morning = morning_job.run_morning(as_of, dry_run=dry_run)
+        morning = morning_job.run_morning(
+            as_of,
+            dry_run=dry_run,
+            positions=held,
+            establishment=establishment,
+        )
         store_orders(as_of, dry_run)
 
         row = reconcile.daily_record(as_of, dry_run=dry_run)
@@ -708,6 +766,10 @@ def main() -> int:
         cross_checks_capped=capped,
         no_price=no_price,
         init=first_run,
+        establishment=bool(morning.get("establishment")),
+        cost_label=str(morning.get("cost_label") or "rebalance"),
+        brake_limit=float(morning.get("brake_limit") or 0.0),
+        held_source=held_source,
         **snapshot_inputs,
     )
 

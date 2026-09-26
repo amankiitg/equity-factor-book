@@ -65,7 +65,16 @@
         "splits": {"type": "array", "items": {"type": "string"}},
         "flags": {"type": "array"},
         "notify_status": {"type": ["string", "null"]},
-        "snapshot": {"type": ["string", "null"]}
+        "snapshot": {"type": ["string", "null"]},
+        "establishment": {
+          "type": "boolean",
+          "description": "True when the run created the book from an empty account: it may trade up to the full book and the daily traded-notional brake starts on the second trading day."
+        },
+        "cost_label": {
+          "type": ["string", "null"],
+          "enum": ["establishment", "rebalance", null],
+          "description": "What the day's cost number is the cost of: building the book from flat (establishment) or a rebalance. The proposal's cost is the establishment cost, so a rebalance day must not read as though it were one."
+        }
       }
     },
     "construction": {

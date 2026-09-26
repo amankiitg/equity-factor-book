@@ -209,6 +209,11 @@ def compose(
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
     init: bool = False,
+    establishment: bool = False,
+    cost_label: str = "rebalance",
+    cost_bps: float | None = None,
+    brake_limit: float | None = None,
+    held_source: str = "",
 ) -> str:
     """The fields, in order, ready for a preview.
 
@@ -304,6 +309,26 @@ def compose(
         lines.append(f"Corporate actions: {', '.join(splits)}.")
     if flags:
         lines.append(f"Large moves: {_flag_list(flags)}.")
+    # The day's kind, in the owner's own terms. An establishment day creates the
+    # book, so its ceiling is the book itself and the throughput brake is not yet
+    # the instrument in force; from the second trading day it is. The cost label
+    # travels with the number, because the proposal's cost is the cost of building
+    # the book from flat and a rebalance cost would be a different number.
+    if establishment:
+        lines.append(
+            f"Establishment: {held_source or 'the account held nothing'}, so this "
+            "run creates the book and may trade up to the full book"
+            + (f" (${float(brake_limit):,.0f} of gross)" if brake_limit else "")
+            + "; the daily brake starts on the second trading day."
+        )
+    elif brake_limit:
+        lines.append(
+            f"Day: rebalance. The absolute traded-notional brake of "
+            f"${float(brake_limit):,.0f} applies, because the account already "
+            "holds a book."
+        )
+    if cost_bps is not None:
+        lines.append(f"Cost: {cost_label}, {float(cost_bps):.2f} bps of NAV.")
     if status == "error":
         reason = scrub(detail).strip() or "no reason recorded"
         prefix = error_type or "Exception"
@@ -545,6 +570,11 @@ def notify_run(
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
     init: bool = False,
+    establishment: bool = False,
+    cost_label: str = "rebalance",
+    cost_bps: float | None = None,
+    brake_limit: float | None = None,
+    held_source: str = "",
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -583,6 +613,11 @@ def notify_run(
         snapshot=snapshot,
         cross_checks_capped=cross_checks_capped,
         init=init,
+        establishment=establishment,
+        cost_label=cost_label,
+        cost_bps=cost_bps,
+        brake_limit=brake_limit,
+        held_source=held_source,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message

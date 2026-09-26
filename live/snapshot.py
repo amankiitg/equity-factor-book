@@ -199,6 +199,11 @@ def build(
             "flags": _json_value(run.get("flags"), []),
             "notify_status": run.get("notify_status"),
             "snapshot": run.get("snapshot"),
+            # The day's kind: an establishment run creates the book and may trade
+            # up to the full book, and its cost is labelled establishment; from the
+            # second trading day the run is a rebalance under the absolute brake.
+            "establishment": bool(run.get("establishment", False)),
+            "cost_label": run.get("cost_label"),
         },
         "construction": construction_table.construction_label(proposal),
         "breadth": {
