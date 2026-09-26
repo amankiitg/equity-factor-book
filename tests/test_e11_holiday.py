@@ -97,7 +97,7 @@ def _pin_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[dict]:
     return sent
 
 
-def test_a_closed_day_sends_one_message_and_writes_no_book(
+def test_a_closed_day_sends_one_message_and_records_itself(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sent = _pin_closed(monkeypatch, tmp_path)
@@ -108,14 +108,85 @@ def test_a_closed_day_sends_one_message_and_writes_no_book(
     assert "market_closed" in str(sent[0]["text"])
     assert "there is no NYSE session" in str(sent[0]["text"])
     assert str(sent[0]["subject"]).startswith("EFB CLOSED")
-    # Nothing was priced and nothing was written but the day's own record.
+    # Nothing was priced. The day's own record is what there is of it, and it is
+    # the evidence the page reads: an email alone leaves an evening nothing can
+    # be checked against later.
     assert store.select("proposals").empty
     assert store.select("orders").empty
-    assert store.select("run_status").empty
+    days = store.select("run_status")
+    assert len(days) == 1
+    assert days.iloc[0]["status"] == "market_closed"
+    # Keyed by the closed date itself, so it cannot displace the previous
+    # session's own clean row.
+    assert str(days.iloc[0]["target_close"])[:10] == str(days.iloc[0]["run_date"])[:10]
+    # No book was built, so the day is not labelled an establishment or a
+    # rebalance.
+    assert days.iloc[0]["cost_label"] is None
     runs = store.select("cron_runs")
     assert len(runs) == 1
     assert runs.iloc[0]["status"] == "market_closed"
     assert runs.iloc[0]["job"] == "live_daily"
+
+
+def test_the_closed_day_is_neutral_on_the_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The day the exchange is shut is not a day the loop broke.
+
+    A page that reads `market_closed` as a failure teaches the owner to ignore
+    the one line that must never be ignored, and the row would exist only to
+    produce an alarm. The day is judged against the last session that closed,
+    which is the day before it.
+    """
+    from live import staleness
+
+    # The local fallback store is shared by the whole suite, so this test reads
+    # the row it wrote rather than whatever the last test left behind.
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    staleness.write_run_status(
+        staleness.closed_result("2026-11-26"),
+        run_date="2026-11-26",
+        status="market_closed",
+        cost_label=None,
+    )
+
+    # 18:00 ET on Thanksgiving: the most recent completed session is the 25th.
+    state = staleness.run_state(now=pd.Timestamp("2026-11-26T23:00:00+00:00"))
+
+    assert state["clean"] is True
+    assert state["state"] == "market_closed"
+    assert state["label"] == "the exchange was shut, so no run was due"
+    assert state["target_close"] == "2026-11-25"
+    assert state["recorded_target_close"] == "2026-11-26"
+    assert "Nothing is wrong" in state["message"]
+
+
+def test_a_closed_day_keyed_to_a_session_is_a_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The negative control: the row is neutral because of the calendar, not its name.
+
+    If a run records `market_closed` against a date the calendar says is a
+    session, then the calendar and the run disagree and no book was priced. That
+    is the one case where this status must alarm, and it is what stops the neutral
+    branch from being a way to hide a skipped evening.
+    """
+    from live import staleness
+
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    staleness.write_run_status(
+        staleness.closed_result("2026-11-27"),
+        run_date="2026-11-27",
+        status="market_closed",
+        cost_label=None,
+    )
+
+    state = staleness.run_state(now=pd.Timestamp("2026-11-27T23:00:00+00:00"))
+
+    assert state["clean"] is False
+    assert state["state"] == "closed_on_a_session"
+    assert state["label"] == "MARKET CLOSED on a day the calendar says is a session"
+    assert "the calendar and the run disagree" in state["message"]
 
 
 def test_a_refire_of_a_closed_day_sends_nothing_second(

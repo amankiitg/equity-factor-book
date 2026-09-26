@@ -53,8 +53,8 @@
       "properties": {
         "status": {
           "type": ["string", "null"],
-          "enum": ["ok", "stale_stopped", "error", null],
-          "description": "Every value except ok is a failure state on the page."
+          "enum": ["ok", "stale_stopped", "error", "market_closed", null],
+          "description": "Every value except ok and market_closed is a failure state on the page. market_closed is a day the exchange was shut: no close to price, so no run was due."
         },
         "detail": {"type": "string"},
         "failing_inputs": {"type": "array"},

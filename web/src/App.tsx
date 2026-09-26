@@ -26,7 +26,15 @@ function minutesBetween(from: Date, to: Date): number {
 /** Whether this snapshot is current, and if not, why in one sentence. */
 export function health(snapshot: Snapshot, now: Date): Health {
   const status = snapshot.run_status?.status ?? "unknown";
-  if (status !== "ok") {
+  // A day the exchange was shut is neither clean nor broken: there was no close
+  // to price, so no run was due and nothing is late. It must not read as a
+  // failure, or the one line that has to mean something stops meaning anything.
+  // It is not a licence to stop paying attention either, so the deadline check
+  // below still applies: the next session's run is due the evening after it, and
+  // a closed day must not sit on the page looking current while that run is
+  // missing.
+  const closed = status === "market_closed";
+  if (!closed && status !== "ok") {
     const failing = (snapshot.run_status?.failing_inputs ?? [])
       .map((item) => `${item.input} ${item.sessions_behind ?? "no date"}`)
       .join("; ");
@@ -46,10 +54,21 @@ export function health(snapshot: Snapshot, now: Date): Health {
   if (due && now.getTime() > due.getTime()) {
     return {
       ok: false,
-      headline: "no run for the session that should have closed",
+      headline: closed
+        ? `no run for the session after the ${snapshot.target_close ?? "last"} close`
+        : "no run for the session that should have closed",
       detail: `the snapshot for the ${snapshot.target_close ?? "next"} close was expected by ${snapshot.expected_next_by}, ${Math.abs(
         minutesBetween(now, due),
       )} minute(s) ago`,
+    };
+  }
+  if (closed) {
+    return {
+      ok: true,
+      headline: `market closed on ${snapshot.target_close ?? "the run's date"}: no run was due`,
+      detail:
+        snapshot.run_status?.detail ||
+        "the exchange was shut, so there was no close to price",
     };
   }
   return {

@@ -575,6 +575,31 @@ def error_result(
     }
 
 
+def closed_result(run_date: str) -> dict[str, Any]:
+    """The gate result for a day the exchange is shut.
+
+    Neither a pass nor a failure: there was no close to price, so there was
+    nothing to check. It exists so the closed day can be recorded as what it was.
+    The row it produces is keyed by the closed date itself, which is what keeps it
+    from overwriting the previous session's own clean row (`run_status` is keyed by
+    target close and job), and `run_state` reads a closed day after the last close
+    as neutral rather than as a run that never happened.
+    """
+    return {
+        "job": JOB,
+        "checked_at": pd.Timestamp(datetime.now(UTC)).isoformat(),
+        "target_close": run_date,
+        "allowed_sessions_behind": ALLOWED_SESSIONS_BEHIND,
+        "inputs": {},
+        "failures": [],
+        "worst_input": None,
+        "worst_sessions_behind": None,
+        "max_input_staleness_days": None,
+        "status": "market_closed",
+        "detail": f"there is no NYSE session on {run_date}",
+    }
+
+
 def run_status_row(
     result: dict[str, Any],
     *,
@@ -595,7 +620,7 @@ def run_status_row(
     cross_checks_capped: str | None = None,
     init: bool = False,
     establishment: bool = False,
-    cost_label: str = "rebalance",
+    cost_label: str | None = "rebalance",
     positions_check: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The `run_status` row for one run: the target close and every date.
@@ -717,6 +742,9 @@ LABELS: dict[str, str] = {
     "error": "the run errored",
     "notify_failed": "the notification failed",
     "notify_not_configured": "no notification channel is configured",
+    # The exchange was shut: a day of no work, not a day of failure.
+    "market_closed": "the exchange was shut, so no run was due",
+    "closed_on_a_session": ("MARKET CLOSED on a day the calendar says is a session"),
 }
 
 
@@ -755,6 +783,23 @@ def _evaluate(
             ),
         }
     recorded = _iso(row.get("target_close"))
+    status = str(row.get("status") or "unknown")
+    if status == "market_closed" and recorded is not None and recorded > expected:
+        # A closed day after the last close: the exchange was shut, so no run was
+        # due and nothing is late. The row is keyed by the closed date rather than
+        # by the previous close's own, which is why the comparison below sees a
+        # target close that is not the session the book belongs to.
+        return {
+            "state": "market_closed",
+            "clean": True,
+            "target_close": expected,
+            "recorded_target_close": recorded,
+            "message": (
+                f"The exchange was shut on {recorded}, so there was no close to "
+                f"price and no run was due. Nothing is wrong; the book below is "
+                f"the {expected} close's own."
+            ),
+        }
     if recorded != expected:
         return {
             "state": "no_run_for_session",
@@ -767,7 +812,6 @@ def _evaluate(
                 f"status for {expected}, so nothing below is current."
             ),
         }
-    status = str(row.get("status") or "unknown")
     notify_status = str(row.get("notify_status") or "")
     notify_failed = bool(row.get("notify_failed"))
     if status != "ok" or notify_failed:
@@ -784,6 +828,16 @@ def _evaluate(
                 f"The run for the {expected} close failed: "
                 f"{reason or 'no reason recorded'}."
             )
+        elif status == "market_closed":
+            # The row's date is the session the book belongs to, so here the
+            # calendar and the run disagree about whether the exchange was open.
+            # One of them is wrong and the book is not priced, so this is a
+            # failure to look at rather than a closed day.
+            message = (
+                f"The run for the {expected} close recorded market_closed, but "
+                f"{expected} is a session: the calendar and the run disagree about "
+                f"whether the exchange was open. No book was priced for it."
+            )
         elif notify_status == "skipped":
             message = (
                 f"The run for the {expected} close completed, but no notification "
@@ -798,7 +852,7 @@ def _evaluate(
         else:
             message = f"The run for the {expected} close recorded status {status}."
         if status != "ok":
-            state = status
+            state = "closed_on_a_session" if status == "market_closed" else status
         elif notify_status == "skipped":
             state = "notify_not_configured"
         else:

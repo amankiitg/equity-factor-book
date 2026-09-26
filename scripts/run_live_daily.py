@@ -59,7 +59,7 @@ def _now() -> str:
 # The status a run carries when it finished its work and told the owner. Only that
 # marks the day done, so a failure retries on the next tick instead of being told
 # it already ran on a day nothing was produced.
-COMPLETED_STATUS = "ok"
+COMPLETED_STATUSES = frozenset({"ok", "market_closed"})
 
 
 def already_ran(job: str, run_date: str) -> bool:
@@ -285,7 +285,7 @@ def finish_run(
     started_at: str | None = None,
     cross_checks_capped: str | None = None,
     establishment: bool = False,
-    cost_label: str = "rebalance",
+    cost_label: str | None = "rebalance",
     brake_limit: float | None = None,
     positions_check: dict[str, Any] | None = None,
     manifest: dict[str, Any] | None = None,
@@ -433,7 +433,7 @@ def finish_run(
     elif notified["status"] == notify.STATUS_SKIPPED:
         # On the row and on the dashboard; not noise in the cron's own line.
         logger.warning("no notification channel: %s", notified["detail"])
-    completed = status == COMPLETED_STATUS and delivered and not snapshot_failed
+    completed = status in COMPLETED_STATUSES and delivered and not snapshot_failed
     try:
         # The same condition the exit code uses: the run finished its work, the
         # message went out and the snapshot is up. Nothing else marks the day done,
@@ -460,7 +460,7 @@ def finish_run(
     logger.info("run recorded as %s, notification %s", status, notified["status"])
     if not delivered or store_failed or snapshot_failed:
         return 1
-    return 0 if status == "ok" else 1
+    return 0 if status in COMPLETED_STATUSES else 1
 
 
 def market_closed_run(run_date: str) -> int:
@@ -471,13 +471,15 @@ def market_closed_run(run_date: str) -> int:
     be work spent to produce nothing. The owner is told rather than left in
     silence, because silence is the alarm for a run that never started.
 
-    The day is recorded in `cron_runs` so a re-fire does not send a second
-    message, and **no `run_status` row is written**: the dashboard reads the
-    latest row and judges it against `target_close`, which on a holiday is the
-    previous session's row, already clean. A `market_closed` run_status row
-    would replace that with a failure state on a day nothing failed.
+    The day is recorded like every other evening: a `run_status` row with status
+    `market_closed`, keyed by the closed date so it cannot overwrite the previous
+    session's own row, a snapshot so the page shows the closed day rather than the
+    last book with no explanation, and a `cron_runs` row so a re-fire does not
+    send a second message. An evening that sends a message and records nothing is
+    an evening with no evidence beyond the message, and the page would have shown
+    the closed day as a run that never happened.
     """
-    from live import notify, store
+    from live import notify, staleness, store
 
     reason = f"there is no NYSE session on {run_date}"
     try:
@@ -497,22 +499,35 @@ def market_closed_run(run_date: str) -> int:
         # dying before it can explain why there is no book.
         store_name = "no store configured"
     logger.info("market closed: %s", reason)
-    notified = notify.notify_run(
-        status="market_closed",
-        target_close=run_date,
-        dry_run=True,
-        detail=reason,
-        store=store_name,
-    )
-    delivered = notified["status"] == notify.STATUS_SENT
     try:
-        record_run("live_daily", run_date, "market_closed", reason)
-    except Exception as exc:  # noqa: BLE001 - the message already went out
-        logger.warning(
-            "could not record the closed day: %s",
-            notify.scrub(f"{type(exc).__name__}: {exc}"),
+        return finish_run(
+            run_date=run_date,
+            result=staleness.closed_result(run_date),
+            status="market_closed",
+            dry_run=True,
+            detail=reason,
+            # No book was built, so the day is neither an establishment nor a
+            # rebalance: an empty label rather than a claim about a cost.
+            cost_label=None,
         )
-    return 0 if delivered else 1
+    except Exception as exc:  # noqa: BLE001 - the message still has to go out
+        # The reporting path failed before it could send anything. The owner is
+        # told in the plainest way available rather than left with silence, which
+        # on a closed evening reads as a broken loop.
+        detail = notify.scrub(f"{type(exc).__name__}: {exc}")[:200]
+        logger.exception("the closed day could not be recorded")
+        try:
+            notified = notify.notify_run(
+                status="market_closed",
+                target_close=run_date,
+                dry_run=True,
+                detail=f"{reason}; the day could not be recorded: {detail}",
+                store=store_name,
+            )
+        except Exception:  # noqa: BLE001 - nothing left to try
+            logger.exception("could not send the closed-day message either")
+            return 1
+        return 0 if notified["status"] == notify.STATUS_SENT else 1
 
 
 def main() -> int:

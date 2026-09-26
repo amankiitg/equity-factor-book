@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import App, { health, SnapshotView } from "./App";
 import type { Snapshot } from "./types";
 import catchUp from "../fixtures/snapshot_catch_up.json";
+import closed from "../fixtures/snapshot_market_closed.json";
 import errored from "../fixtures/snapshot_error.json";
 import expired from "../fixtures/snapshot_expired.json";
 import ok from "../fixtures/snapshot_ok.json";
@@ -45,6 +46,22 @@ describe("health", () => {
     const state = health(expired as unknown as Snapshot, new Date("2027-01-01T00:00:00Z"));
     expect(state.ok).toBe(false);
     expect(state.headline).toContain("no run for the session that should have closed");
+  });
+
+  it("passes a closed day, and says the exchange was shut rather than the loop", () => {
+    const state = health(closed as unknown as Snapshot, new Date("2026-11-26T23:00:00Z"));
+    expect(state.ok).toBe(true);
+    expect(state.headline).toContain("market closed");
+    expect(state.detail).toContain("no NYSE session");
+  });
+
+  it("still fails a closed day that is sitting past the next session's deadline", () => {
+    // The holiday is not a licence to stop paying attention: the run for the
+    // session after it was due the next evening, and a closed day left on the
+    // page would otherwise look current for as long as nobody ran.
+    const state = health(closed as unknown as Snapshot, new Date("2026-11-29T00:00:00Z"));
+    expect(state.ok).toBe(false);
+    expect(state.headline).toContain("no run for the session after");
   });
 });
 

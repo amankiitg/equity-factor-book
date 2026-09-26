@@ -210,7 +210,7 @@ def compose(
     no_price: list[str] | None = None,
     init: bool = False,
     establishment: bool = False,
-    cost_label: str = "rebalance",
+    cost_label: str | None = "rebalance",
     cost_bps: float | None = None,
     cost_breakdown: dict[str, float] | None = None,
     brake_limit: float | None = None,
@@ -348,7 +348,7 @@ def compose(
 
 
 def _cost_line(
-    total_bps: float, cost_label: str, breakdown: dict[str, float] | None
+    total_bps: float, cost_label: str | None, breakdown: dict[str, float] | None
 ) -> str:
     """The day's cost, and the four parts it is made of.
 
@@ -357,8 +357,12 @@ def _cost_line(
     exactly these four), so the message states them and, when they do not add up,
     says that too rather than presenting a broken total as a whole one. Borrow is
     the short leg's annual rate over one 21-session horizon, not a year.
+
+    A day with no kind of its own (a closed day, which prices nothing and so has
+    no cost line at all) has no label either; if a cost is ever stated beside one,
+    it is stated as a cost rather than as a kind it does not have.
     """
-    line = f"Cost: {cost_label}, {total_bps:.2f} bps of NAV"
+    line = f"Cost: {cost_label or 'cost'}, {total_bps:.2f} bps of NAV"
     parts = [
         (name, breakdown[name])
         for name in ("spread", "impact", "commission", "borrow")
@@ -606,7 +610,7 @@ def notify_run(
     no_price: list[str] | None = None,
     init: bool = False,
     establishment: bool = False,
-    cost_label: str = "rebalance",
+    cost_label: str | None = "rebalance",
     cost_bps: float | None = None,
     cost_breakdown: dict[str, float] | None = None,
     brake_limit: float | None = None,

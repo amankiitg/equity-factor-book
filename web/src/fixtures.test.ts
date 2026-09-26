@@ -22,6 +22,7 @@ const NAMES = [
   "snapshot_stale_stopped.json",
   "snapshot_error.json",
   "snapshot_catch_up.json",
+  "snapshot_market_closed.json",
 ];
 
 const TOP_LEVEL = [

@@ -36,6 +36,7 @@ CLOSE = "2026-09-21"
 NEXT_CLOSE = "2026-09-22"
 CATCH_UP_CLOSE = "2026-09-24"
 STOPPED_CLOSE = "2026-09-25"
+CLOSED_CLOSE = "2026-11-26"
 STORE_LABEL = "local parquet (live/state/supabase)"
 SPECIFIC = ROOT / "data" / "models" / "XS-v1" / "specific_var.parquet"
 
@@ -45,6 +46,7 @@ NAMES: tuple[str, ...] = (
     "snapshot_error.json",
     "snapshot_expired.json",
     "snapshot_catch_up.json",
+    "snapshot_market_closed.json",
 )
 
 
@@ -180,7 +182,24 @@ def snapshots() -> dict[str, dict[str, Any]]:
             construction=chosen,
             generated_at=_stamp("2026-09-24T22:41:00"),
         ),
-    }
+        # A closed day: Thanksgiving 2026. The run had nothing to price, so the
+        # row is keyed by the closed date itself and the page must read it as a
+        # day of no work rather than a day the loop broke. The book below it is
+        # the last session's own, which is what the closed evening could not
+        # change.
+        NAMES[5]: snapshot.build(
+            run=_run(
+                status="market_closed",
+                target_close=CLOSED_CLOSE,
+                detail=f"there is no NYSE session on {CLOSED_CLOSE}",
+                cost_label=None,
+                notify_status="sent",
+            ),
+            manifest=proposal,
+            book=rows,
+            construction=chosen,
+            generated_at=_stamp("2026-11-26T22:41:00"),
+        ),    }
     missing = [name for name in NAMES if name not in built]
     if missing:  # pragma: no cover - a guard against a variant going unwritten
         raise RuntimeError(f"no fixture was built for {', '.join(missing)}")
