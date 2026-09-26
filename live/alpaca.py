@@ -34,6 +34,37 @@ DELTA_MIN_NOTIONAL = 250.0
 FILL_POLL_TIMEOUT_SECS = 30
 FILL_POLL_INTERVAL_SECS = 1.0
 
+# The time-in-force every order carries. `day`, not `opg`, and the reason is the
+# cron's own hour.
+#
+# The cron fires at 22:30 UTC (render.yaml, "30 22 * * 1-5"), which is 18:30 ET
+# in summer and 17:30 ET in winter: after the 16:00 ET close and inside the
+# 16:00-20:00 ET after-hours window. Alpaca's Time in Force table
+# (https://docs.alpaca.markets/docs/orders-at-alpaca#time-in-force) says of `opg`:
+# "OPG orders submitted after 9:28am but before 7:00pm ET will be rejected. OPG
+# orders submitted after 7:00pm will be queued and routed to the following day's
+# opening auction." Both spellings of the cron's slot fall inside the rejected
+# window, so `opg` would be refused every evening. `cls` is the mirror image and
+# is "rejected" between 3:50pm and 7:00pm ET.
+#
+# `day` is accepted at that hour and lands on the next session: "A day order is
+# eligible for execution only on the day it is live. ... If submitted after the
+# close, it is queued and submitted the following trading day." Under "Orders
+# Submitted Outside of Eligible Trading Hours" the same page adds that an order
+# not eligible for extended hours submitted after 4:00pm ET "will be queued up
+# for release the next trading day", and a released market order fills in that
+# session's opening auction, which is the next-open execution the loop wants: the
+# proposal priced on Tuesday's close is executed at Wednesday's open.
+#
+# It is also the only TIF a notional order may carry. The Create Order schema
+# says of `notional`: "dollar amount to trade. Cannot work with `qty`. Can only
+# work for market order types and day for time in force."
+#
+# The smoke test that proves this against the real paper account is
+# `scripts/smoke_order_timing.py`, and it refuses to run outside the cron's own
+# window because the hour is the point.
+NEXT_OPEN_TIF = "day"
+
 
 @dataclass(frozen=True)
 class Fill:
@@ -225,10 +256,16 @@ def submit_market_orders(orders, client, prices: dict[str, float]) -> list[Fill]
     whole shares. Each order is submitted, polled, and recorded as one
     Fill. A timeout is a recorded fill with status TIMEOUT, never a
     silently dropped order.
+
+    Every order carries `NEXT_OPEN_TIF`: submitted at the cron's hour the order
+    is queued and released for the next session, which is the next-open
+    execution the loop wants. The reasoning and the doc citation are on the
+    constant.
     """
     from alpaca.trading.enums import OrderSide, TimeInForce  # type: ignore
     from alpaca.trading.requests import MarketOrderRequest  # type: ignore
 
+    time_in_force = TimeInForce(NEXT_OPEN_TIF)
     fills: list[Fill] = []
     for order in orders:
         notional = abs(order.target_notional)
@@ -252,14 +289,14 @@ def submit_market_orders(orders, client, prices: dict[str, float]) -> list[Fill]
                 symbol=order.ticker,
                 qty=qty,
                 side=side,
-                time_in_force=TimeInForce.DAY,
+                time_in_force=time_in_force,
             )
         else:
             request = MarketOrderRequest(
                 symbol=order.ticker,
                 notional=round(notional, 2),
                 side=side,
-                time_in_force=TimeInForce.DAY,
+                time_in_force=time_in_force,
             )
         try:
             submitted = client.submit_order(order_data=request)
