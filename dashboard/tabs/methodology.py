@@ -149,6 +149,13 @@ LINKS = [
         "Walkthrough notebook E10 (risk allocation)",
         "notebooks/E10_walkthrough.html",
     ),
+    ("Sprint E13 PRD", "sprints/E13/PRD.md"),
+    ("Sprint E13 tasks", "sprints/E13/TASKS.md"),
+    ("Sprint E13 results (F criteria)", "sprints/E13/RESULTS.json"),
+    (
+        "Research deliverable: Credit Port Design Note",
+        "docs/credit_port_design.md",
+    ),
     ("RG-Operate checklist", "docs/research/RG_OPERATE.md"),
 ]
 
