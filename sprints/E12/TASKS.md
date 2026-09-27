@@ -200,3 +200,16 @@ grant select, insert, update on efb.attribution to efb_writer;
       is luck, written down before the numbers.
 - [ ] Walkthrough rendered to HTML and linked; D11 checked off.
 - [ ] Merged into `main` only after the flip, on the owner's word.
+
+## What the exit items mean now
+
+- F12.1, F12.2 and F12.3 stay open because two of them are statements about thirty
+  live trading days and the third can only be scored once it is a live book. Their
+  machinery is standing, their numbers are registered, and F12.3's expected verdict
+  is written down.
+- "Walkthrough rendered and linked; D11 checked off": the notebook is rendered to
+  `notebooks/E12_walkthrough.html` and both it and the memo are linked from the
+  Methodology tab through `dashboard/tabs/methodology.py`, which is how E1 to E10
+  are linked. D11 is the page's attribution section, built into the live page rather
+  than as a new Streamlit tab: item 6 of the owner's list asks for the page, and the
+  page is where the evening run's snapshot already goes.
