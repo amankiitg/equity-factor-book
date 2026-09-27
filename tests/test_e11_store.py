@@ -466,3 +466,152 @@ def test_no_test_leaks_the_store_directory_by_assignment() -> None:
     assert not offenders, "assign store.LOCAL_DIR through monkeypatch: " + "; ".join(
         offenders
     )
+
+
+def _position_row(trade_date: str, ticker: str, weight: float) -> dict[str, object]:
+    return {"trade_date": trade_date, "ticker": ticker, "weight": weight}
+
+
+def test_a_rerun_of_a_date_leaves_none_of_the_earlier_rows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The date is replaced, not merged: the whole point of the change.
+
+    Positions are keyed by (trade_date, ticker), so the upsert a re-run used to do
+    updated the names it still had and left the ones it no longer had. Two
+    rehearsals of the 2026-09-25 close left 195 position rows for a 169-name book,
+    the extra 26 still carrying the reasons the earlier run gave them, and anything
+    that re-reads the day then reads a book no run ever held.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path)
+    rows = [
+        _position_row("2026-09-25", "AAA", 0.01),
+        _position_row("2026-09-25", "BBB", 0.02),
+    ]
+    store.replace_by_date("positions", "2026-09-25", rows)
+
+    # The rerun keeps AAA and no longer has BBB. An upsert would leave BBB behind.
+    store.replace_by_date(
+        "positions", "2026-09-25", [_position_row("2026-09-25", "AAA", 0.03)]
+    )
+
+    frame = store.select("positions")
+    assert frame["ticker"].tolist() == ["AAA"], "the earlier run's row survived"
+    assert frame["weight"].tolist() == [0.03], "the rerun's own row is the one stored"
+
+
+def test_replacing_a_date_leaves_other_dates_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """One date at a time, and a date whose rerun wrote nothing ends up empty."""
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path)
+    store.replace_by_date(
+        "positions", "2026-09-24", [_position_row("2026-09-24", "AAA", 0.01)]
+    )
+    store.replace_by_date(
+        "positions", "2026-09-25", [_position_row("2026-09-25", "BBB", 0.02)]
+    )
+    store.replace_by_date(
+        "orders",
+        "2026-09-25",
+        [{"trade_date": "2026-09-25", "ticker": "BBB", "status": "filled"}],
+    )
+
+    # The 25th is rerun and this run wrote no orders: the date is cleared.
+    store.replace_by_date("orders", "2026-09-25", [])
+    # And a table nothing has ever been written for stays unwritten.
+    store.replace_by_date("fills", "2026-09-25", [])
+
+    frame = store.select("positions")
+    assert frame["trade_date"].astype(str).str.slice(0, 10).tolist() == [
+        "2026-09-24",
+        "2026-09-25",
+    ], "each date kept its own row"
+    assert frame["ticker"].tolist() == ["AAA", "BBB"]
+    assert store.select("orders").empty
+    assert not (tmp_path / "fills.parquet").exists()
+
+
+class _Recorder:
+    """A connection that records what the store asked of it, and in what order.
+
+    The transaction is `psycopg`'s contract, not this fake's: the test asserts that
+    the delete and the insert are issued inside one `connection.transaction()` and
+    that nothing commits behind its back, which is what "in one transaction" means
+    in the source.
+    """
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+        self.parameters: list[object] = []
+        self.inserted: list[tuple] = []
+        self._cursor = self
+
+    def transaction(self) -> _Recorder:
+        self.events.append("begin")
+        return self
+
+    def __enter__(self) -> _Recorder:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        self.events.append("end")
+        return False
+
+    def cursor(self) -> _Recorder:
+        return self
+
+    def execute(self, statement: str, parameters: object = None) -> None:
+        self.events.append(statement)
+        self.parameters.append(parameters)
+
+    def executemany(self, statement: str, values: list[tuple]) -> None:
+        self.events.append(statement)
+        self.inserted = list(values)
+
+    def commit(self) -> None:  # pragma: no cover - asserted absent
+        self.events.append("commit")
+
+
+def test_the_replacement_deletes_the_date_then_inserts_it_in_one_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _Recorder()
+    monkeypatch.setattr(store, "get_connection", lambda: recorder)
+    rows = [
+        {
+            "trade_date": "2026-09-25",
+            "ticker": "AAA",
+            "intended_notional": 1000.0,
+            "status": "filled",
+        }
+    ]
+
+    store.replace_by_date("orders", "2026-09-25", rows)
+
+    assert recorder.events[0] == "begin", "the delete runs inside the transaction"
+    assert recorder.events[1] == (
+        'DELETE FROM "efb"."orders" WHERE "trade_date" = %s'
+    ), "the day is deleted first, by date, schema-qualified"
+    assert recorder.parameters == [("2026-09-25",)], "and for the date it was given"
+    assert recorder.events[2].startswith(
+        'INSERT INTO "efb"."orders"'
+    ), "the rerun's rows go in after the delete"
+    # Plain insert: the delete already removed the keys, so a conflict is a caller
+    # bug and has to raise with the key in it rather than be resolved.
+    assert "ON CONFLICT" not in recorder.events[2]
+    assert recorder.events[-1] == "end", "the transaction is closed once"
+    assert (
+        "commit" not in recorder.events
+    ), "the transaction block commits, not the store"
+    assert recorder.inserted == [
+        tuple(rows[0][column] for column in sorted(rows[0].keys()))
+    ], "every column's value goes in, in the order the statement names them"
+
+
+def test_the_replacement_is_one_transaction_in_the_source() -> None:
+    """Pinned in the source as well, because the fake cannot prove `psycopg`'s part."""
+    block = (ROOT / "live" / "store.py").read_text().split("def replace_by_date")[1]
+    block = block.split("\ndef ")[0]
+    assert "with connection.transaction():" in block
+    assert "connection.commit()" not in block

@@ -303,6 +303,78 @@ def upsert(table: str, rows: list[dict[str, Any]]) -> None:
     frame.to_parquet(path, index=False)
 
 
+def _insert_sql(table: str, columns: list[str]) -> str:
+    """The schema-qualified plain insert for one table's columns.
+
+    Plain, with no ON CONFLICT: `replace_by_date` deletes the date first, so a
+    conflict here can only mean the caller handed two rows for one key, and that
+    has to raise with the key in the message rather than be silently resolved.
+    """
+    column_sql = ", ".join(f'"{c}"' for c in columns)
+    placeholders = ", ".join(["%s"] * len(columns))
+    return f"INSERT INTO {_qualified(table)} ({column_sql}) VALUES ({placeholders})"
+
+
+def replace_by_date(table: str, on: Any, rows: list[dict[str, Any]]) -> None:
+    """Put one date's rows in place of that date's old rows, in one transaction.
+
+    A day's rows are one statement about one book, and the upsert could not say
+    that. Positions and orders are keyed by (trade_date, ticker), so a re-run of a
+    date updates the names it still has and leaves the ones it no longer has: after
+    two rehearsals of the same close the store held 195 position rows for
+    2026-09-25 where the run wrote 169, and the 26 leftovers still carried the
+    reasons of the run before it. Anything that re-reads the day then reads a book
+    that no run ever held.
+
+    So the date is replaced rather than merged: DELETE by date, then INSERT, both
+    inside one transaction, so another reader never sees the date half-replaced and
+    an insert that raises takes the delete back with it. `rows` empty is a
+    legitimate replacement, and it is what clears a date whose run wrote nothing.
+
+    The local parquet fallback does the same thing by building the day's frame in
+    memory and writing it once, which is the whole file either way.
+    """
+    if table not in TABLES:
+        raise ValueError(f"unknown live-series table {table!r}")
+    date_column = TABLE_KEYS[table][0]
+    connection = get_connection()
+    if connection is not None:
+        with connection.transaction():
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"DELETE FROM {_qualified(table)} WHERE " f'"{date_column}" = %s',
+                    (on,),
+                )
+                if rows:
+                    columns = sorted(rows[0].keys())
+                    cursor.executemany(
+                        _insert_sql(table, columns),
+                        [tuple(row.get(c) for c in columns) for row in rows],
+                    )
+        return
+    LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+    path = _local_path(table)
+    frame = pd.read_parquet(path) if path.exists() else pd.DataFrame()
+    if len(frame) and date_column in frame.columns:
+        # Both spellings of one date live in this file: a run writes the string
+        # the job was handed, and the parquet round trip can hand a timestamp
+        # back. Compared as the first ten characters, the way `snapshot` compares
+        # the store's dates for the same reason.
+        keep = frame[date_column].astype(str).str.slice(0, 10) != str(on)[:10]
+        frame = frame.loc[keep]
+    if rows:
+        incoming = pd.DataFrame(rows)
+        frame = pd.concat([frame, incoming], ignore_index=True)
+    if not len(frame.columns):
+        # Nothing has ever been written for this table and this call has nothing
+        # to write: a column-less frame cannot be stored, and `select` reads an
+        # absent file as the empty frame it is. A file that exists with zero rows
+        # keeps its columns and is written, so clearing a date does not leave the
+        # rows it cleared behind.
+        return
+    frame.to_parquet(path, index=False)
+
+
 def _dated(frame: pd.DataFrame) -> pd.DataFrame:
     """Date and timestamp columns as pandas datetimes, whichever store answered.
 

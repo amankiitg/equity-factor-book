@@ -250,15 +250,21 @@ def store_proposal(
                 "kind": "intention" if dry_run else "holding",
             }
         )
-    store.upsert("positions", position_rows)
+    store.replace_by_date("positions", as_of, position_rows)
 
 
 def store_orders(as_of: str, dry_run: bool) -> None:
-    """Write the day's order records to the store."""
+    """Write the day's order records to the store, replacing the day's old ones.
+
+    A missing execution log is not a reason to leave the day as it was: the day
+    has no orders, so the day's orders are cleared. That is the same replacement
+    the rows themselves get.
+    """
     from live import store
 
     path = ROOT / "live" / "logs" / f"execution_{as_of}.parquet"
     if not path.exists():
+        store.replace_by_date("orders", as_of, [])
         return
     execution = pd.read_parquet(path)
     orders = [
@@ -277,7 +283,7 @@ def store_orders(as_of: str, dry_run: bool) -> None:
         }
         for row in execution.itertuples(index=False)
     ]
-    store.upsert("orders", orders)
+    store.replace_by_date("orders", as_of, orders)
 
 
 def store_reconciliation(as_of: str, row: dict) -> None:

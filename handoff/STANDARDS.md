@@ -193,28 +193,32 @@ yes and explain: a yes that is explained is fine, a yes that is hidden is the
 defect. If the section is missing or an item is unanswered, the task comes back
 unreviewed.
 
-## 21. Test running: fast per step, full at the points that matter
+## 21. Test running: the touched files per change, the full suite at sprint close
 
-Effective 2026-09-22. Running 640 tests after every commit is the bottleneck,
-and most of those runs are redundant. The saving comes from running fewer
-redundant suites, never from pasting less evidence.
+Effective 2026-09-22, amended 2026-09-26 (see `handoff/LOG.md`). Running 640
+tests after every commit is the bottleneck, and most of those runs are redundant.
+The saving comes from running fewer redundant suites, never from pasting less
+evidence.
 
 **Per step.** Run only the tests touching what changed, plus `make lint`. Paste
 that output. **Paste the selection command too**, not just the result, so the
 subset is auditable: a subset that quietly shrinks step by step is the failure
 mode this rule invites.
 
-**The full suite is required, and pasted in the Verification section, at these
-points only:**
+**The full suite runs once: at sprint close.** Effective 2026-09-26, on the
+owner's instruction. A change is verified with **the tests for the files it
+touched, plus `make lint`**, and `make test-all` runs once, when the sprint
+closes, pasted in the Verification section with its count. Per-step full runs were
+spending most of the clock on tests the change could not reach.
 
-1. Before setting `handoff/TASK.md` to `done`.
-2. After any change to an `efb/` module that other sprints import:
-   `build`, `evaluate`, `costs`, `risk`, `size` and anything under `models/`.
-   The criterion is import fanout, not this list, so the list grows: verify the
-   actual fanout once with an import graph and record the resulting set, since
-   `registry`, `evidence`, `perf`, `universe` and `cov` also look shared.
-3. After any artifact rebuild.
-4. Before anything that starts or restarts the live clock.
+The risk this trades away is a shared module changed without a full run, so the
+selection has to be honest about fanout. A change to a module other sprints import
+(`build`, `evaluate`, `costs`, `risk`, `size`, `store`, `universe`, `cov`,
+anything under `models/`) selects every test file that touches it, not only the
+file named after it: derive the selection from the usage graph, paste the selection
+command beside its result, and re-derive it when a test file is added. A full run
+is also required before setting `handoff/TASK.md` to `done`, after an artifact
+rebuild, and before anything that starts or restarts the live clock.
 
 **If the full suite is skipped on a step, `REPORT.md` says which subset ran and
 why.** A skipped suite that hid a failure is a finding.
@@ -222,11 +226,12 @@ why.** A skipped suite that hid a failure is a finding.
 **Slow markers.** Any test that touches the network, runs the whole evening job
 or executes a notebook carries the `slow` marker, as does any test over about two
 seconds. `make test` is the fast subset and the default for a change; `make
-test-all` is the full run and is the deliberate one, run at the points above and
-in the background rather than in front of the work. Every test has a 120 second
-limit, so a hung test fails with its name instead of holding the phase. Report the
-split: how many tests on each path and how long each
-path takes.
+test-all` is the full run and the deliberate one, run once at sprint close and in
+the background rather than in front of the work. Every test has a 120 second
+limit, so a hung test fails with its name instead of holding the phase; the three
+tests whose own runtime sits at that limit carry a per-test bound with their
+measured duration in a comment. Report the split: how many tests on each path and
+how long each path takes.
 
 **The suite still never shrinks, measured relatively.** Marking tests slow must
 not reduce what a full run executes. Every full run reports its count, and that

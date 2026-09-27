@@ -2716,3 +2716,53 @@ is **1010 passed, 1 skipped in 9m51s**, with those three at 141.6 s, 86.8 s and
 67.9 s and the fourth slowest at 48.7 s: the set of tests that need their own bound
 is closed at three, measured rather than assumed.
 
+
+## 2026-09-26 a rerun replaces its date, and the standing rules change with it
+
+**STANDARDS.md changed, on the owner's instruction.** Section 21 now reads: per
+change, run only the tests for the files you touched plus `make lint`; `make
+test-all` runs once, at sprint close. The file says DeepSeek does not edit it, so
+this is the owner's change authority, recorded here as the rule itself asks. Kept in
+the same edit: the selection has to follow fanout (a shared module selects every
+test file that touches it, not only the file named after it), the selection command
+is pasted beside its result, and a full run is still required before `TASK.md` goes
+to `done`.
+
+**Positions and orders are replaced by date, in one transaction.**
+`store.replace_by_date` deletes the date and inserts the run's rows inside
+`connection.transaction()`, so a reader never sees a date half-replaced and an
+insert that raises takes the delete with it. `run_live_daily` uses it for both
+tables, and a missing execution log now clears the day's orders rather than leaving
+the previous run's behind. The plain INSERT (no `ON CONFLICT`) is deliberate: after
+the delete, a conflict can only mean the caller passed two rows for one key, and
+that has to raise with the key in its message.
+
+Why it was needed, measured: positions are keyed by (trade_date, ticker), so two
+rehearsals of the 2026-09-25 close left **195 rows for a 169-name book**, the extra
+26 still reading `alpha moved` from the run before it. On the real local Postgres:
+
+```text
+before: 195 rows for 2026-09-25, reasons {'new position': 169, 'alpha moved': 26}
+after:  169 rows for 2026-09-25, reasons {'new position': 169}
+        other dates: 0 rows
+scratch: 1 row after a clean replacement
+scratch: duplicate key raised UniqueViolation
+scratch: after the failed replacement [{'trade_date': Timestamp('1999-01-01 00:00:00'), 'ticker': 'AAA', 'weight': 0.1}]
+scratch: dropped
+```
+
+The scratch line is the transaction proof: a replacement whose insert raises on a
+duplicate key leaves the date exactly as it was, because the delete rolled back with
+it. That ran on a schema of its own (`efb_scratch`, dropped afterwards), so `efb`
+was never touched by the experiment. The 26 stale rows were in the local store,
+which is where the rehearsals wrote. The shared project was not read or written by
+this session, because it is the owner's live store and the gate evenings have not
+run yet: if any rerun happened there, the fix now replaces its date rather than
+leaving a row behind, and the local cleanup is the same statement the evening now
+issues.
+
+Tests: `tests/test_e11_store.py` carries four new tests (a rerun of a date leaves
+none of the earlier rows; other dates, and an empty replacement clearing a date; the
+delete-then-insert order with schema qualification; the transaction pinned in the
+source). The subset selected by usage - every test file that touches `store` or
+`run_live_daily` - is **273 passed, 1 skipped**, and `make lint` is clean.
