@@ -200,6 +200,68 @@ def test_an_account_with_no_equity_stops_a_live_run(
         positions.check(dry_run=False)
 
 
+def test_the_comparison_is_against_the_last_book_before_tonight(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not against tonight's target, which no order has been sent for yet.
+
+    The store holds the book the loop meant to hold tonight, written by the
+    proposal step before any order leaves the process. Comparing the account
+    against it reports every one of tonight's names as missing at the broker on
+    the evening the run is about to buy them, which is what the first live
+    evening would have said about all 150 of them.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    store.upsert(
+        "positions",
+        [
+            {"trade_date": "2026-09-21", "ticker": "AAA", "signed_notional": 500.0},
+            {"trade_date": "2026-09-22", "ticker": "BBB", "signed_notional": 700.0},
+            {"trade_date": "2026-09-22", "ticker": "CCC", "signed_notional": 300.0},
+        ],
+    )
+    monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([("AAA", 500.0)]))
+
+    result = positions.check(dry_run=True, before="2026-09-22")
+
+    assert result["n_store"] == 1
+    assert result["matches"] is True
+    assert result["store_source"] == "the 2026-09-21 position row"
+    # The negative control, on the same store and the same account: without the
+    # date the latest row is tonight's target, and the account "misses" a book
+    # that was never sent.
+    unfiltered = positions.check(dry_run=True)
+    assert unfiltered["n_store"] == 2
+    assert unfiltered["matches"] is False
+    assert unfiltered["missing_at_broker"] == ["BBB", "CCC"]
+    assert unfiltered["store_source"] == "the 2026-09-22 position row"
+
+
+def test_a_store_with_nothing_before_tonight_says_so(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first evening has one row, its own, and the sentence says which.
+
+    An empty book and a book that could not be found are different answers, and
+    the note names the date it looked before rather than leaving an empty account
+    to be read as a flat one.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    store.upsert(
+        "positions",
+        [
+            {"trade_date": "2026-09-22", "ticker": "AAA", "signed_notional": 500.0},
+        ],
+    )
+    monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([]))
+
+    result = positions.check(dry_run=True, before="2026-09-22")
+
+    assert result["store"] == {}
+    assert result["store_source"] == "the store holds no position row before 2026-09-22"
+    assert result["establishment"] is True
+
+
 def test_the_message_carries_the_comparison() -> None:
     check = {
         "matches": False,

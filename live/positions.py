@@ -34,11 +34,26 @@ BROKER_SOURCE = "alpaca paper account"
 STORE_SOURCE = "store"
 
 
-def store_positions() -> tuple[dict[str, float], str]:
-    """The loop's own record of the book, and which row it came from."""
+def store_positions(before: str | None = None) -> tuple[dict[str, float], str]:
+    """The loop's own record of the book, and which row it came from.
+
+    `before` is the close this run is pricing. The store's row for that close is
+    tonight's target, written by the evening before any order was sent, and
+    comparing the account against it asks the account to match a book nobody has
+    traded yet: on the first live evening it reported 150 names missing at the
+    broker that the run was about to buy. The book to compare against is the last
+    one the loop actually held, which is the most recent row strictly before this
+    close.
+    """
     frame = store.select("positions")
     if frame.empty:
         return {}, "the store holds no position row"
+    if before is not None and "trade_date" in frame.columns:
+        # String order is date order for ISO dates. A stored timestamp sorts
+        # after its own date, so tonight's row is excluded either way.
+        frame = frame.loc[frame["trade_date"].astype(str) < str(before)]
+        if frame.empty:
+            return {}, f"the store holds no position row before {before}"
     latest = frame["trade_date"].max()
     rows = frame.loc[frame["trade_date"] == latest]
     return (
@@ -180,13 +195,16 @@ def compare(
     }
 
 
-def check(*, dry_run: bool = True) -> dict[str, Any]:
+def check(*, dry_run: bool = True, before: str | None = None) -> dict[str, Any]:
     """The whole read: both books, the difference between them, and one sentence.
 
     `held` is the book the orders should be measured against, and it is the
     broker's whenever the broker could be read: that is the point of the exercise.
     In live mode a failed broker read raises (`account_read`), so the store
     book is used only in dry run.
+
+    `before` is the close being priced and is passed to `store_positions`: the
+    comparison is against the last book the loop held, not tonight's target.
 
     `nav` is the account's equity and `nav_source` says so, because the book is
     sized from this number: passing it on from here is what keeps the sizing, the
@@ -197,7 +215,7 @@ def check(*, dry_run: bool = True) -> dict[str, Any]:
     broker_quantities = read["quantities"]
     broker_source = read["source"]
     nav, nav_source = sizing_nav(read["equity"])
-    believed, believed_source = store_positions()
+    believed, believed_source = store_positions(before)
     result = compare(broker, believed)
     result.update(
         {

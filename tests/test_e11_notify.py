@@ -592,6 +592,44 @@ def test_the_evening_stores_the_brokers_book_and_the_accounts_equity(
     assert "the account's own equity" in str(seen["nav_source"])
 
 
+def test_the_run_compares_against_the_book_before_tonight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The check is handed the close being priced, and compares against what came
+    before it.
+
+    The store here holds a row for a date after tonight's close, which is the
+    state a run that got ahead of itself leaves behind, and the account holds the
+    book of the close before. The note naming the earlier row is what proves the
+    date reached the check: unpinned, the latest row is the future one and every
+    name in it would be reported missing at the broker.
+    """
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    store.upsert(
+        "positions",
+        [
+            {"trade_date": "2026-09-21", "ticker": "AAA", "signed_notional": 500.0},
+            {"trade_date": "2026-09-23", "ticker": "BBB", "signed_notional": 700.0},
+        ],
+    )
+    monkeypatch.setattr(alpaca, "read_client", _AccountBroker)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+
+    assert run_live_daily.main() == 0
+
+    row = store.select("run_status").iloc[0]
+    note = str(row["positions_check"])
+    assert "the 2026-09-21 position row" in note
+    assert "2026-09-23" not in note
+    # the negative control, at the level of the store: the row the check would
+    # have used without the date is the later one
+    assert store.select("positions")["trade_date"].max() == "2026-09-23"
+
+
 def test_the_recorded_run_states_both_books_risk_figures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

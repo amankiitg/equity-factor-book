@@ -856,8 +856,13 @@ def main() -> int:
         # sized: the traded leg of every order is the difference between the
         # target and this book, and the NAV the book is sized from is the
         # account's own equity rather than a constant. A live evening whose
-        # account cannot be read stops here, with no book and no order.
-        holdings = positions.check(dry_run=dry_run)
+        # account cannot be read stops here, with no book and no order. The
+        # comparison is against the last book the loop held, which is the row
+        # strictly before the close being priced: tonight's own target is written
+        # by the proposal step below and has never been traded.
+        holdings = positions.check(
+            dry_run=dry_run, before=str(gate["target_close"])
+        )
         held = holdings["held"]
         # The day's kind comes from the account, never from the store: after a
         # dry-run evening the store names a book the account has never held, and a
