@@ -284,6 +284,39 @@ IN_SAMPLE_END = pd.Timestamp("2020-12-31")
 OUT_OF_SAMPLE_START = pd.Timestamp("2021-01-01")
 KAPPA = 0.1  # the E7 shrinkage toward zero, an E8 input
 
+
+def alpha_from_contract(
+    ic: float,
+    specific_variance: np.ndarray,
+    z: np.ndarray,
+    kappa: float = KAPPA,
+) -> np.ndarray:
+    """The E8 alpha contract, in one place: alpha_i = IC x sigma_i x z_i x kappa.
+
+    `sigma_i` is the name's specific volatility, the square root of the specific
+    variance the model stores on its diagonal. The model publishes a variance,
+    the contract multiplies a volatility, and the square root belongs here rather
+    than at each call site: the evening job, the E8 conversion and the
+    construction table all size from this one number, and a site that multiplied
+    the variance instead would add a factor of the name's own volatility to every
+    alpha, tilting the whole book toward whichever names move most. Every
+    downstream test that only checks the sign or the ranking passes either way,
+    which is how the two spellings coexisted.
+
+    A name with no finite variance takes the cross-section's median variance, as
+    it did before: the model has no diagonal entry for it, and dropping it would
+    change the book rather than the estimate. A negative entry is impossible for
+    a variance, so it is read as zero: the square root of it is not a number the
+    sizing step can use, and an alpha with the wrong sign is worse than none.
+    """
+    variance = np.asarray(specific_variance, dtype=float)
+    z = np.asarray(z, dtype=float)
+    median = float(np.nanmedian(variance)) if variance.size else float("nan")
+    filled = np.where(np.isfinite(variance), variance, median)
+    sigma = np.sqrt(np.maximum(filled, 0.0))
+    return ic * sigma * z * kappa
+
+
 # Every builder is point-in-time by construction: the signal at t uses data
 # at t-1 or earlier. The property is pinned by tests/test_alpha.py, which
 # perturbs the returns row at t and asserts the signal at t does not move.
@@ -734,8 +767,10 @@ def _converted_alpha(
 
     The E8 input contract: columns date, ticker, alpha, ic, sigma_idio_xs_v1,
     sigma_idio_xs_v2, z, kappa. The IC is the stored horizon-1 IC of the
-    signal, sigma_idio is the champion's specific volatility and the
-    alternative's diagonal, z is the cross-sectional z-score of the signal.
+    signal, z is the cross-sectional z-score of the signal, and the two
+    `sigma_idio` columns are the model diagonals the alpha is built from: each
+    holds a specific *variance*, and `alpha_from_contract` multiplies by its
+    square root, the specific volatility the contract names.
     """
     from efb import hygiene
 
@@ -761,16 +796,8 @@ def _converted_alpha(
         s = s.set_index("ticker")["signal"].reindex(names)
         z = (s - s.mean()) / s.std(ddof=1)
         z = z.fillna(0.0).to_numpy(dtype=float)
-        alpha = np.where(
-            np.isfinite(specific_v1),
-            ic_value * specific_v1 * z * KAPPA,
-            ic_value * np.nanmedian(specific_v1) * z * KAPPA,
-        )
-        alpha_v2 = np.where(
-            np.isfinite(diag_v2),
-            ic_value * diag_v2 * z * KAPPA,
-            ic_value * np.nanmedian(diag_v2) * z * KAPPA,
-        )
+        alpha = alpha_from_contract(ic_value, specific_v1, z, KAPPA)
+        alpha_v2 = alpha_from_contract(ic_value, diag_v2, z, KAPPA)
         rows.append(
             pd.DataFrame(
                 {

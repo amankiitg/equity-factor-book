@@ -616,6 +616,39 @@ def test_build_proposal_stores_the_share_only_floor_and_breadth() -> None:
 
 
 @pytest.mark.slow
+def test_the_traded_alpha_is_the_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every alpha the evening sizes from is IC x sigma x z x kappa.
+
+    The formula is written out here rather than called: the test's job is to
+    disagree with the code if the code moves the contract, so it may not borrow
+    the function it is checking. On the code before S1 the alpha carries an extra
+    factor of the name's own volatility, so the negative control below fails
+    there.
+    """
+    monkeypatch.setattr(ev, "PROPOSAL_DIR", tmp_path)
+    manifest = ev.build_proposal(store=True)
+    rows = pd.read_parquet(tmp_path / f"proposal_{manifest['as_of']}.parquet")
+    kept = {entry["ticker"]: entry for entry in manifest["kept_book"]}
+    # the traded book is the recorded book, name by name
+    assert set(rows["ticker"]) == set(kept)
+    variance = np.array(
+        [kept[ticker]["specific_variance"] for ticker in rows["ticker"]]
+    )
+    z = rows["z"].to_numpy(dtype=float)
+    ic = float(manifest["ic"])
+    kappa = float(manifest["kappa"])
+
+    expected = ic * np.sqrt(variance) * z * kappa
+
+    assert np.allclose(rows["alpha"].to_numpy(dtype=float), expected, rtol=1e-12)
+    # the negative control: the variance where the volatility belongs
+    old = ic * variance * z * kappa
+    assert not np.allclose(rows["alpha"].to_numpy(dtype=float), old)
+
+
+@pytest.mark.slow
 def test_build_proposal_stores_every_input_as_of_and_max_staleness() -> None:
     manifest = ev.build_proposal(store=False)
     for key in (

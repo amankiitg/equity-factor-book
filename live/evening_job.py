@@ -1081,11 +1081,10 @@ def build_proposal(
     raw = day.set_index("ticker")["signal"].reindex(names)
     z = (raw - raw.mean()) / raw.std(ddof=1)
     z = z.fillna(0.0).to_numpy(dtype=float)
-    alpha_vec = np.where(
-        np.isfinite(specific),
-        ic * specific * z * kappa,
-        ic * float(np.nanmedian(specific)) * z * kappa,
-    )
+    # The contract, from the one place it lives: alpha_i = IC x sigma_i x
+    # z_i x kappa, with sigma the specific volatility, the square root of the
+    # specific variance the model stores.
+    alpha_vec = alpha_mod.alpha_from_contract(ic, specific, z, kappa)
 
     # Procedure 6.3: size on D^-1 alpha, then hedge factors with the exact
     # in-model FMPs. The hedge drives every factor exposure, styles and

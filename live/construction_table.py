@@ -85,11 +85,9 @@ def _raw_pieces(
     raw = day.set_index("ticker")["signal"].reindex(names)
     z = (raw - raw.mean()) / raw.std(ddof=1)
     z = z.fillna(0.0).to_numpy(dtype=float)
-    alpha_vec = np.where(
-        np.isfinite(specific),
-        ic * specific * z * kappa,
-        ic * float(np.nanmedian(specific)) * z * kappa,
-    )
+    # The same contract the evening job sizes from, so the table's rows are the
+    # book's own alphas rather than a second opinion about them.
+    alpha_vec = alpha_mod.alpha_from_contract(ic, specific, z, kappa)
     return names, alpha_vec, z, design, factor_covariance, specific
 
 

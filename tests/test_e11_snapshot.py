@@ -537,8 +537,13 @@ def test_the_hedge_drives_the_exposures_to_zero() -> None:
     # raises the effective breadth of the book. It moved again, to 94.2573, when
     # the hedge started using the design for the session the book is held over
     # rather than the row dated the close: the two designs differ in the size of
-    # the book they produce, not only in the exposures they zero.
-    assert manifest["n_eff_kept"] == pytest.approx(94.2573, abs=1e-3)
+    # the book they produce, not only in the exposures they zero. It moved once
+    # more, to 131.9175, when the alpha contract stopped multiplying the specific
+    # variance where the specific volatility belongs (S1): the old spelling gave
+    # every alpha an extra factor of the name's own volatility, so the book leaned
+    # on the volatile names, and the corrected contract spreads the same signal
+    # across more of the cross-section.
+    assert manifest["n_eff_kept"] == pytest.approx(131.9175, abs=1e-3)
 
 
 def test_the_headline_gross_is_the_book_that_trades() -> None:
