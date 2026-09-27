@@ -188,6 +188,59 @@
         "realized_annual_vol": {"type": ["number", "null"]},
         "expected_cost_bps": {"type": ["number", "null"]}
       }
+    },
+    "risk": {
+      "type": ["object", "null"],
+      "description": "Per-name share of the book's predicted specific variance, for the page's concentration panel. Not written today: the sizing step caps that share at a fixed fraction, so the numbers exist inside the evening job's sizing call but the manifest does not carry them. The page hides the panel until this block is present rather than drawing it empty. `variance_share_cap` is the cap as a fraction, so 0.10 is the ten percent cap the sizing applies.",
+      "properties": {
+        "variance_share_cap": {"type": ["number", "null"]},
+        "concentration": {
+          "type": ["array", "null"],
+          "description": "One entry per name, largest share first. Shares are fractions of the same total and add to one.",
+          "items": {
+            "type": "object",
+            "required": ["ticker", "share"],
+            "properties": {
+              "ticker": {"type": "string"},
+              "share": {"type": "number"}
+            }
+          }
+        }
+      }
+    },
+    "movers": {
+      "type": ["object", "null"],
+      "description": "What moved the book in the latest session, in dollars, for the page's movers panel. Not written today: the evening step that attributes a stored day lives on the E12 branch, and its per-name contributions are not in the manifest. The page hides the panel until this block is present.",
+      "properties": {
+        "session": {
+          "type": ["string", "null"],
+          "description": "The session the contributions belong to."
+        },
+        "by_name": {
+          "type": ["array", "null"],
+          "description": "Per-name contribution to the session's P&L, in dollars, signed. The page shows the five best and the five worst.",
+          "items": {
+            "type": "object",
+            "required": ["ticker", "contribution"],
+            "properties": {
+              "ticker": {"type": "string"},
+              "contribution": {"type": "number"}
+            }
+          }
+        },
+        "by_sector": {
+          "type": ["array", "null"],
+          "description": "The same contributions summed by GICS sector, in dollars, signed. The sector names are the model's own, so they match the bundled map's labels.",
+          "items": {
+            "type": "object",
+            "required": ["sector", "contribution"],
+            "properties": {
+              "sector": {"type": ["string", "null"]},
+              "contribution": {"type": "number"}
+            }
+          }
+        }
+      }
     }
   }
 }

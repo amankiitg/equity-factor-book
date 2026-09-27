@@ -53,6 +53,7 @@ NAMES: tuple[str, ...] = (
     "snapshot_expired.json",
     "snapshot_catch_up.json",
     "snapshot_market_closed.json",
+    "snapshot_no_book.json",
 )
 
 
@@ -111,10 +112,11 @@ def _run(**over: Any) -> dict[str, Any]:
 def snapshots() -> dict[str, dict[str, Any]]:
     """Every fixture, each an output of `live.snapshot.build`.
 
-    The four variants are run rows the cron can genuinely produce, not edits of
-    the ok document, so the page is tested against states the job has, and each
-    variant keeps the 09-21 book: a stopped run still shows the last book, with
-    `book_as_of` naming its close instead of the close it could not reach.
+    The state variants are run rows the cron can genuinely produce, not edits of
+    the ok document, so the page is tested against states the job has. Each of the
+    first six keeps the 09-21 book: a stopped run still shows the last book, with
+    `book_as_of` naming its close instead of the close it could not reach. The
+    last one is the opposite case, a run with no book at all.
     """
     proposal = manifest()
     rows = book()
@@ -205,7 +207,30 @@ def snapshots() -> dict[str, dict[str, Any]]:
             book=rows,
             construction=chosen,
             generated_at=_stamp("2026-11-26T22:41:00"),
-        ),    }
+        ),
+        # No book at all: the evening found nothing in the store for the close it
+        # asked for, so every number the page could derive from a book is absent
+        # rather than zero, and the reason travels with the empty book. This is
+        # the state that decides whether a section is hidden for want of data or
+        # rendered as a row of zeroes claiming the book is flat.
+        NAMES[6]: snapshot.build(
+            run=_run(
+                status="error",
+                target_close=STOPPED_CLOSE,
+                detail=(
+                    "the 09-25 evening found no book in the store: nothing to price "
+                    "and nothing to carry forward"
+                ),
+                failures=["store"],
+                worst_input="store",
+                cost_label=None,
+            ),
+            manifest=None,
+            book=None,
+            book_reason="the store holds no book for this close",
+            generated_at=_stamp("2026-09-25T22:41:00"),
+        ),
+    }
     missing = [name for name in NAMES if name not in built]
     if missing:  # pragma: no cover - a guard against a variant going unwritten
         raise RuntimeError(f"no fixture was built for {', '.join(missing)}")
