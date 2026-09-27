@@ -123,13 +123,17 @@ def timing(daily: pd.DataFrame) -> pd.DataFrame:
 
 
 def size_column_check(panel: attribution.ModelPanel, daily: pd.DataFrame) -> dict:
-    """Is the session-dated design computable one close earlier?
+    """A negative control for "is the session-dated design computable a close earlier".
 
     Measured on the size column, which the model's own `shift_test` documents as the
-    log of market capitalisation at the session - that is, the previous cap times one
-    plus the return being explained - so its contents were not knowable before the
-    session. The correlation with the same day's cap against the previous day's says
-    which one it actually carries.
+    log of market capitalisation at the session. The correlation with the same day's
+    cap against the previous day's looks like the test, and it is not: the two
+    regressors differ by one day of returns, so they are nearly the same variable and
+    their correlations agree to three decimals (measured: 0.2100 against 0.2093).
+    That is the point of printing it. A correlation cannot answer this question at
+    all, because the value's *date* is not what separates the two series; what
+    separates them is whether the value was knowable before the session closed, and
+    by construction it was not.
     """
     prices = pd.read_parquet(ROOT / "data" / "raw" / "prices.parquet")
     close = prices["close"].unstack("ticker")
@@ -199,7 +203,8 @@ def main() -> int:
           f"timing P&L sum {daily['pnl_timing'].sum():.6f}")
     print("largest exposure gaps:")
     print(gap.reindex(gap["mean_gap"].abs().sort_values(ascending=False).index).head(5).to_string(index=False))
-    print("size column: " + json.dumps(size_column_check(panel, daily)))
+    print("size column, the negative control (one day of returns cannot separate "
+          "the two vintages): " + json.dumps(size_column_check(panel, daily)))
     print(f"timeseries: {int(timeseries_frame['within_one_se'].sum())} of "
           f"{len(timeseries_frame)} terms agree with the holdings view within one SE")
     return 0
