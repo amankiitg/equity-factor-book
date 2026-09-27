@@ -64,6 +64,8 @@ other three.
 
 from __future__ import annotations
 
+import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -414,6 +416,98 @@ def attribute_book(
     if frame.empty:
         return frame
     return _with_risk_lines(frame)
+
+
+def store_rows(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    """The frame as rows `live.store` can write, one per session.
+
+    `TABLE_COLUMNS` and nothing else, the date as an ISO string, and the four
+    per-factor maps as JSON text with no NaN in it. The maps are serialized here
+    rather than handed over as dicts because every other jsonb column in this
+    project goes in as text (`live.staleness.run_status_row` does the same), and a
+    NaN inside one makes `jsonb` refuse the whole row rather than the one number.
+    """
+    columns = [name for name in TABLE_COLUMNS if name in frame.columns]
+    rows: list[dict[str, Any]] = []
+    for record in frame[columns].to_dict("records"):
+        row: dict[str, Any] = {}
+        for key, value in record.items():
+            if key == "trade_date":
+                row[key] = str(pd.Timestamp(value).date())
+            elif key in JSON_COLUMNS:
+                row[key] = json.dumps(
+                    {
+                        str(name): _jsonable(number)
+                        for name, number in (value or {}).items()
+                    },
+                    sort_keys=True,
+                )
+            else:
+                row[key] = _jsonable(value)
+        rows.append(row)
+    return rows
+
+
+def _jsonable(value: Any) -> Any:
+    """A value JSON can hold: NaN and infinity become null, dates become strings."""
+    if value is None:
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, (pd.Timestamp,)) or type(value).__name__ == "datetime":
+        return str(value)[:10]
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return _jsonable(float(value))
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    return value
+
+
+def from_positions(
+    positions: pd.DataFrame,
+    panel: ModelPanel,
+    *,
+    done: set[str] | None = None,
+    costs: dict[pd.Timestamp, dict[str, Any]] | None = None,
+    forecasts: dict[pd.Timestamp, dict[str, Any]] | None = None,
+) -> pd.DataFrame:
+    """The books a store holds, attributed for every session not already done.
+
+    `positions` is the live store's own table: one row per name per day, in that
+    table's columns. The books are the same point-in-time books `daily_weights`
+    builds for the seed, so the live days and the historical days are attributed
+    by one implementation rather than two.
+
+    The window ends at the newest session the artifacts can price, which is the
+    smaller of the returns panel's last date and the last date the model's fit was
+    extended to: a session with no stored factor returns cannot be attributed, and
+    asking for one is a refusal rather than a zero.
+    """
+    done = done or set()
+    if positions.empty:
+        return pd.DataFrame()
+    books = positions.rename(columns={"trade_date": "date"})[
+        ["date", "ticker", "weight"]
+    ].copy()
+    books["date"] = pd.to_datetime(books["date"].astype(str).str.slice(0, 10))
+    books["weight"] = pd.to_numeric(books["weight"], errors="coerce").astype(float)
+    books = books.dropna(subset=["weight"])
+    if books.empty:
+        return pd.DataFrame()
+    last = min(panel.sessions.max(), panel.factor_returns.index.max())
+    sessions = panel.sessions[
+        (panel.sessions > books["date"].min()) & (panel.sessions <= last)
+    ]
+    holdings = daily_weights(books, pd.Series(sessions))
+    if holdings.empty:
+        return holdings
+    holding_days = holdings["date"].astype(str).str.slice(0, 10)
+    holdings = holdings.loc[~holding_days.isin(done)]
+    if holdings.empty:
+        return pd.DataFrame(columns=holdings.columns)
+    return attribute_book(holdings, panel, forecasts=forecasts, costs=costs)
 
 
 def _with_risk_lines(frame: pd.DataFrame) -> pd.DataFrame:
