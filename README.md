@@ -36,10 +36,10 @@ Two branches sit unmerged by design, and both merge after the flip.
   windowed on the live book, so they cannot be evaluated honestly until the window
   has thirty trading days behind it. It also carries the E11 and E12 walkthroughs,
   and the fix to a store guard test that fails on `main`.
-- `e13` carries the credit port design note and the status report rewrite. The
-  note is a document with no code, and it describes the repository with E12 in it,
-  because four of the modules it maps are E12's; that is why the two branches land
-  together rather than one at a time.
+- `e13` carries the credit port design note, the E11 launch note and the status
+  report rewrite. The two notes are documents with no code; the credit note
+  describes the repository with E12 in it, because four of the modules it maps are
+  E12's, and that is why the two branches land together rather than one at a time.
 
 Until then `main` is what the cron runs, and neither branch changes that.
 
@@ -142,6 +142,11 @@ The last two are on branch `e12`, with the engine they read; the first two are o
 - **The status report**, [`docs/research/STATUS_REPORT.md`](docs/research/STATUS_REPORT.md):
   the whole project in prose, written for a reader with a quantitative background
   and no knowledge of it. Start here.
+- **The E11 launch note**, [`docs/research/E11_live_launch.md`](docs/research/E11_live_launch.md):
+  the story of taking the book live, written for a listener who has never seen the
+  project, from the order that would have gone the wrong way to the pre-launch
+  reviews that caught it. Every figure in it is checked back to a stored file by
+  `tests/test_e11_live_launch_traceability.py`.
 - **The sprint walkthroughs**, `notebooks/E1_walkthrough.ipynb` and so on: one per
   sprint, each reproducing its sprint's numbers and asserting every printed value
   against the stored artifact it came from. The notebooks are the tracked form,
