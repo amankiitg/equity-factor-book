@@ -49,13 +49,16 @@ def store_positions() -> tuple[dict[str, float], str]:
 
 def account_positions(
     *, raise_on_failure: bool = False
-) -> tuple[dict[str, float] | None, str]:
-    """The broker's book, or None with the reason it could not be read.
+) -> tuple[dict[str, float] | None, dict[str, float], str]:
+    """The broker's book and its quantities, or None with the reason it failed.
 
     None is not an empty book. An account that could not be reached and an account
     that holds nothing are different answers, and the message says which one it
     has. Reading is deliberately separate from `alpaca.connect(dry_run=True)`,
     which returns None because it guards submission.
+
+    The quantities come back with the notionals from one read, because a full
+    close must send the broker's exact held size rather than a re-derived one.
 
     In live mode (`raise_on_failure`) a read that fails raises instead of
     answering None. The store-book fallback is allowed only in dry run: without
@@ -76,16 +79,16 @@ def account_positions(
                 f"the account's positions could not be read ({reason}), so the "
                 "run stopped before building any order"
             )
-        return None, reason
+        return None, {}, reason
     try:
         account = client.get_account()
-        positions = alpaca.get_positions(client, dry_run=False)
+        positions, quantities = alpaca.position_book(client, dry_run=False)
     except Exception:
         if raise_on_failure:
             raise
         logger.warning("could not read the account's positions", exc_info=True)
-        return None, "not read: see the log"
-    return positions, f"{BROKER_SOURCE} {getattr(account, 'id', '?')}"
+        return None, {}, "not read: see the log"
+    return positions, quantities, f"{BROKER_SOURCE} {getattr(account, 'id', '?')}"
 
 
 def compare(
@@ -142,7 +145,9 @@ def check(*, dry_run: bool = True) -> dict[str, Any]:
     In live mode a failed broker read raises (`account_positions`), so the store
     book is used only in dry run.
     """
-    broker, broker_source = account_positions(raise_on_failure=not dry_run)
+    broker, broker_quantities, broker_source = account_positions(
+        raise_on_failure=not dry_run
+    )
     believed, believed_source = store_positions()
     result = compare(broker, believed)
     result.update(
@@ -154,6 +159,10 @@ def check(*, dry_run: bool = True) -> dict[str, Any]:
             "store_source": believed_source,
             "source": BROKER_SOURCE if broker is not None else STORE_SOURCE,
             "held": broker if broker is not None else believed,
+            # Shares, not dollars: what a full close sends. The store book has no
+            # share counts, so a dry-run fallback carries none and a close sizes
+            # from its own notional instead.
+            "held_quantities": broker_quantities if broker is not None else {},
             "establishment": establishment(broker),
         }
     )

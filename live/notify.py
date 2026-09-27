@@ -219,6 +219,7 @@ def compose(
     cost_breakdown: dict[str, float] | None = None,
     brake_limit: float | None = None,
     positions_check: dict[str, Any] | None = None,
+    deferred_reversals: list[dict[str, Any]] | None = None,
 ) -> str:
     """The fields, in order, ready for a preview.
 
@@ -345,6 +346,20 @@ def compose(
     # stated even when the answer is "they match".
     if positions_check:
         lines.append(f"Positions: {positions_check.get('note', 'not read')}.")
+    if deferred_reversals:
+        # A target that reverses is closed tonight and opened tomorrow, in two
+        # orders, because Alpaca refuses to cross zero in one. Naming the names
+        # mid-reversal is what makes the shorter trade list read correctly.
+        lines.append(
+            "Reversals deferred: "
+            + "; ".join(
+                f"{item['ticker']} closed tonight, "
+                f"{'short' if float(item['target_notional']) < 0 else 'long'} "
+                f"{_money(abs(float(item['target_notional'])))} opens next evening"
+                for item in deferred_reversals
+            )
+            + "."
+        )
     if status == "error":
         reason = scrub(detail).strip() or "no reason recorded"
         prefix = error_type or "Exception"
@@ -652,6 +667,7 @@ def notify_run(
     cost_breakdown: dict[str, float] | None = None,
     brake_limit: float | None = None,
     positions_check: dict[str, Any] | None = None,
+    deferred_reversals: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -697,6 +713,7 @@ def notify_run(
         cost_breakdown=cost_breakdown,
         brake_limit=brake_limit,
         positions_check=positions_check,
+        deferred_reversals=deferred_reversals,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message

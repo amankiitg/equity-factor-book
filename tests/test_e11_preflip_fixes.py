@@ -1,12 +1,15 @@
-"""The pre-flip review fixes, tested where each one lives.
+"""The broker-review fixes, tested where each one lives.
 
-An order is the signed change to a name, not the target: the union of the target
-book and the book the account holds, each leg `trade = target - held`, the side
-from the sign, the size from the absolute value, and a held name absent from the
-target closed to zero. A rerun looks every leg's deterministic `client_order_id`
-up at the broker and resolves the orders it already holds before submitting
-anything. Any leg that is halted, left in an unknown state, refused or rejected
-makes the run incomplete, so the day is not filed and the next tick retries.
+An order is the signed change to a name, over the union of the target book and the
+book the account holds. Every leg carries an Alpaca **position intent**: a long
+increase is BUY_TO_OPEN (notional), a long decrease or close is SELL_TO_CLOSE (a
+quantity, exact for a full close), a new or larger short is SELL_TO_OPEN (whole
+shares, shortable-checked), and a short cover is BUY_TO_CLOSE (a quantity). A
+change that would cross zero is split: closed tonight, opened next evening, and the
+deferred target is named in the email. Submitted after the close, an accepted DAY
+order is success and nothing polls for a fill; a refusal or rejection still makes
+the run incomplete. A rerun resolves the orders the broker already holds by their
+deterministic `client_order_id` before submitting anything.
 """
 
 from __future__ import annotations
@@ -14,10 +17,11 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from live import alpaca, guards, morning_job
+from live import alpaca, guards, morning_job, notify
+from scripts import smoke_position_intents
 
 NAV = 1_000_000.0
-PRICES = {"AAA": 100.0, "BBB": 100.0}
+PRICES = {"AAA": 100.0, "BBB": 100.0, "CCC": 200.0, "SPY": 100.0}
 
 
 def _proposal(weights: dict[str, float]) -> pd.DataFrame:
@@ -27,19 +31,51 @@ def _proposal(weights: dict[str, float]) -> pd.DataFrame:
 
 
 @pytest.mark.parametrize(
-    ("held", "target", "expected_trade"),
+    ("held", "target", "expected_trade", "expected_intent", "deferred_target"),
     [
-        pytest.param({"AAA": 60_000.0}, 0.10, 40_000.0, id="increase"),
-        pytest.param({"AAA": 140_000.0}, 0.10, -40_000.0, id="decrease"),
-        pytest.param({"AAA": -100_000.0}, 0.05, 150_000.0, id="cover-a-short"),
-        pytest.param({"AAA": 100_000.0}, -0.05, -150_000.0, id="long-to-short"),
-        pytest.param({"AAA": 80_000.0}, None, -80_000.0, id="removal"),
+        pytest.param(
+            {"AAA": 60_000.0}, 0.10, 40_000.0, "buy_to_open", 0.0, id="increase"
+        ),
+        pytest.param(
+            {"AAA": 140_000.0}, 0.10, -40_000.0, "sell_to_close", 0.0, id="decrease"
+        ),
+        pytest.param(
+            {"AAA": -100_000.0},
+            -0.05,
+            50_000.0,
+            "buy_to_close",
+            0.0,
+            id="cover-a-short",
+        ),
+        pytest.param(
+            {"AAA": 100_000.0},
+            -0.05,
+            -100_000.0,
+            "sell_to_close",
+            -50_000.0,
+            id="long-to-short-is-closed-then-deferred",
+        ),
+        pytest.param(
+            {"AAA": -100_000.0},
+            0.05,
+            100_000.0,
+            "buy_to_close",
+            50_000.0,
+            id="short-to-long-is-closed-then-deferred",
+        ),
+        pytest.param(
+            {"AAA": 80_000.0}, None, -80_000.0, "sell_to_close", 0.0, id="removal"
+        ),
     ],
 )
-def test_an_order_is_the_signed_change_over_the_union(
-    held: dict[str, float], target: float | None, expected_trade: float
+def test_an_order_is_the_signed_change_with_a_position_intent(
+    held: dict[str, float],
+    target: float | None,
+    expected_trade: float,
+    expected_intent: str,
+    deferred_target: float,
 ) -> None:
-    """Every case the target-as-order bug got wrong, one row each."""
+    """Every case the target-as-order bug got wrong, and both reversal directions."""
     weights = {} if target is None else {"AAA": target}
     orders = morning_job.target_orders(_proposal(weights), NAV, held)
 
@@ -47,8 +83,14 @@ def test_an_order_is_the_signed_change_over_the_union(
     order = orders[0]
     assert order.trade_notional == pytest.approx(expected_trade)
     assert order.traded_notional == pytest.approx(abs(expected_trade))
-    # Guard 1 still caps the destination, which is why the target is kept.
-    assert order.target_notional == pytest.approx((target or 0.0) * NAV)
+    assert order.intent == expected_intent
+    # A reversal is closed tonight and deferred; every other leg targets its book.
+    if deferred_target:
+        assert order.target_notional == 0.0
+        assert order.deferred_target_notional == pytest.approx(deferred_target)
+    else:
+        assert order.target_notional == pytest.approx((target or 0.0) * NAV)
+        assert order.deferred_target_notional == 0.0
 
 
 def test_holding_the_target_trades_nothing() -> None:
@@ -66,27 +108,29 @@ def test_a_held_name_absent_from_the_target_is_always_closed() -> None:
     close = {order.ticker: order for order in orders}["AAA"]
     assert close.trade_notional == pytest.approx(-100.0)
     assert close.target_notional == 0.0
+    assert close.intent == "sell_to_close"
 
 
 class _Asset:
-    def __init__(self) -> None:
+    def __init__(self, shortable: bool = True, easy_to_borrow: bool = True) -> None:
         self.tradable = True
-        self.shortable = True
-        self.easy_to_borrow = True
+        self.shortable = shortable
+        self.easy_to_borrow = easy_to_borrow
 
 
 class _Submitted:
-    def __init__(self, order_id: str) -> None:
+    def __init__(self, order_id: str, status: str = "accepted") -> None:
         self.id = order_id
-        self.status = "filled"
-        self.filled_avg_price = 100.0
-        self.filled_qty = 1.0
+        self.status = status
+        self.filled_avg_price = None
+        self.filled_qty = None
 
 
 class _RecordingClient:
-    """A broker that records what it was asked to submit."""
+    """A broker that records what it was asked to submit and never polls."""
 
-    def __init__(self) -> None:
+    def __init__(self, assets: dict[str, _Asset] | None = None) -> None:
+        self.assets = assets or {}
         self.requests: list[object] = []
 
     def get_account(self) -> object:
@@ -98,53 +142,144 @@ class _RecordingClient:
         return _Account()
 
     def get_asset(self, symbol: str) -> _Asset:
-        return _Asset()
+        return self.assets.get(symbol, _Asset())
 
     def submit_order(self, order_data: object) -> _Submitted:
         self.requests.append(order_data)
         return _Submitted(f"order-{len(self.requests)}")
 
-    def get_order(self, order_id: str) -> _Submitted:
-        return _Submitted(order_id)
+    def get_order(self, order_id: str) -> _Submitted:  # pragma: no cover - never called
+        raise AssertionError("submit_market_orders must not poll for a fill")
+
+
+def _intent(request: object) -> str:
+    value = getattr(request, "position_intent", None)
+    return str(getattr(value, "value", value) or "")
 
 
 def _side(request: object) -> str:
     return str(getattr(getattr(request, "side", None), "value", ""))
 
 
-def test_a_reversal_sells_the_whole_change_and_a_cover_buys_it() -> None:
-    """Side from the sign, size from the absolute value of the change."""
-    client = _RecordingClient()
-    alpaca.submit_market_orders(
-        [guards.OrderSpec("AAA", -50_000.0, -150_000.0)],
-        client,
-        PRICES,
-        close="2026-09-25",
-        throttle=alpaca.Throttle(0),
+def _submit(orders, client, prices, close="2026-09-25"):
+    return alpaca.submit_market_orders(
+        orders, client, prices, close=close, throttle=alpaca.Throttle(0)
     )
-    reversal = client.requests[0]
-    assert _side(reversal) == "sell"
-    assert int(reversal.qty) == 1500  # 150,000 at 100, the change, not the target
 
+
+def test_each_intent_builds_the_order_shape_alpaca_expects() -> None:
+    """Notional opens a long; quantity closes; whole shares open a short."""
+    # BUY_TO_OPEN: a notional order, the one TIF a notional order may carry.
     client = _RecordingClient()
-    alpaca.submit_market_orders(
-        [guards.OrderSpec("AAA", 50_000.0, 150_000.0)],
-        client,
-        PRICES,
-        close="2026-09-25",
-        throttle=alpaca.Throttle(0),
-    )
+    _submit([guards.OrderSpec("AAA", 50_000.0, 50_000.0)], client, PRICES)
+    open_long = client.requests[0]
+    assert _intent(open_long) == "buy_to_open"
+    assert _side(open_long) == "buy"
+    assert float(open_long.notional) == pytest.approx(50_000.0)
+
+    # SELL_TO_CLOSE: a quantity order for a partial decrease.
+    client = _RecordingClient()
+    _submit([guards.OrderSpec("AAA", 40_000.0, -10_000.0)], client, PRICES)
+    trim = client.requests[0]
+    assert _intent(trim) == "sell_to_close"
+    assert _side(trim) == "sell"
+    assert float(trim.qty) == pytest.approx(100.0)  # 10,000 at 100
+
+    # SELL_TO_OPEN: whole shares, shortable-checked.
+    client = _RecordingClient()
+    _submit([guards.OrderSpec("AAA", -60_000.0, -60_000.0)], client, PRICES)
+    open_short = client.requests[0]
+    assert _intent(open_short) == "sell_to_open"
+    assert _side(open_short) == "sell"
+    assert int(open_short.qty) == 600
+
+    # BUY_TO_CLOSE: a quantity order for a cover.
+    client = _RecordingClient()
+    _submit([guards.OrderSpec("AAA", -20_000.0, 40_000.0)], client, PRICES)
     cover = client.requests[0]
+    assert _intent(cover) == "buy_to_close"
     assert _side(cover) == "buy"
-    assert float(cover.notional) == pytest.approx(150_000.0)
+    assert float(cover.qty) == pytest.approx(400.0)  # 40,000 at 100
+
+
+def test_a_full_close_sends_the_exact_held_quantity_fractional_allowed() -> None:
+    """A close lands on zero from the broker's own size, not a re-derived one."""
+    client = _RecordingClient()
+    _submit(
+        [
+            guards.OrderSpec(
+                "AAA",
+                target_notional=0.0,
+                trade_notional=-150.0,
+                intent=alpaca.INTENT_SELL_TO_CLOSE,
+                held_quantity=1.5,
+            )
+        ],
+        client,
+        {"AAA": 100.0},
+    )
+    assert float(client.requests[0].qty) == pytest.approx(1.5)
+
+
+def test_the_shortability_checks_run_only_on_sell_to_open() -> None:
+    """Closing a long is not a short, even when the asset reports shortable=false."""
+    refusing = _RecordingClient({"BBB": _Asset(shortable=False, easy_to_borrow=False)})
+    fills = _submit(
+        [
+            guards.OrderSpec(
+                "AAA",
+                target_notional=0.0,
+                trade_notional=-10_000.0,
+                intent=alpaca.INTENT_SELL_TO_CLOSE,
+                held_quantity=100.0,
+            ),
+            guards.OrderSpec("BBB", -60_000.0, -60_000.0),
+        ],
+        refusing,
+        PRICES,
+    )
+    by_ticker = {fill.ticker: fill for fill in fills}
+    # The close was submitted although AAA reports shortable=false: it is not a short.
+    assert by_ticker["AAA"].status == "ACCEPTED"
+    assert by_ticker["AAA"].reason_code == ""
+    assert by_ticker["BBB"].reason_code == alpaca.REASON_NOT_SHORTABLE
+    assert [request.symbol for request in refusing.requests] == ["AAA"]
+
+
+def test_a_submitted_leg_is_never_polled_for_a_fill() -> None:
+    """The client's get_order raises if called: accepted is success."""
+    client = _RecordingClient()
+    fills = _submit([guards.OrderSpec("AAA", 50_000.0, 50_000.0)], client, PRICES)
+    assert fills[0].status == "ACCEPTED"
+    assert fills[0].intent == "buy_to_open"
+    assert fills[0].filled_notional == 0.0
+
+
+def test_a_dry_run_is_complete_and_a_refusal_is_not() -> None:
+    dry = pd.DataFrame(
+        {"ticker": ["AAA"], "status": ["DRY_RUN"], "reason_code": ["DRY_RUN"]}
+    )
+    assert morning_job.incomplete_legs(dry) == []
+
+    live = pd.DataFrame(
+        {
+            "ticker": ["AAA", "BBB", "CCC", "DDD", "EEE"],
+            "status": ["ACCEPTED", "NEW", "SKIPPED", "REJECTED", "CANCELED"],
+            "reason_code": ["", "", "ASSET_NOT_SHORTABLE", "", ""],
+        }
+    )
+    legs = morning_job.incomplete_legs(live)
+    assert [leg["ticker"] for leg in legs] == ["CCC", "DDD", "EEE"]
+    # An accepted order stays accepted until the open, and that is complete.
+    assert not any(leg["ticker"] in {"AAA", "BBB"} for leg in legs)
 
 
 class _ExistingOrder:
-    def __init__(self, status: str = "filled") -> None:
+    def __init__(self, status: str = "accepted") -> None:
         self.id = "order-existing"
         self.status = status
-        self.filled_avg_price = 100.0
-        self.filled_qty = 500.0
+        self.filled_avg_price = None
+        self.filled_qty = None
 
 
 class _ExistingClient(_RecordingClient):
@@ -164,15 +299,13 @@ def test_a_rerun_resolves_existing_orders_before_submitting_anything() -> None:
     second = alpaca.client_order_id("2026-09-25", "BBB", "buy")
     client = _ExistingClient({first: _ExistingOrder()})
 
-    fills = alpaca.submit_market_orders(
+    fills = _submit(
         [
             guards.OrderSpec("AAA", 50_000.0, 50_000.0),
             guards.OrderSpec("BBB", 50_000.0, 50_000.0),
         ],
         client,
         PRICES,
-        close="2026-09-25",
-        throttle=alpaca.Throttle(0),
     )
     by_ticker = {fill.ticker: fill for fill in fills}
     assert by_ticker["AAA"].resolved is True
@@ -181,43 +314,17 @@ def test_a_rerun_resolves_existing_orders_before_submitting_anything() -> None:
     # Only the leg the broker did not hold was submitted.
     assert [request.symbol for request in client.requests] == ["BBB"]
 
-    # A second rerun, with the first leg resolved and the second now filled, has
-    # nothing left to send: the lookup covers both.
     client.existing[second] = _ExistingOrder()
-    again = alpaca.submit_market_orders(
+    again = _submit(
         [
             guards.OrderSpec("AAA", 50_000.0, 50_000.0),
             guards.OrderSpec("BBB", 50_000.0, 50_000.0),
         ],
         client,
         PRICES,
-        close="2026-09-25",
-        throttle=alpaca.Throttle(0),
     )
     assert all(fill.resolved for fill in again)
     assert [request.symbol for request in client.requests] == ["BBB"]
-
-
-def test_a_dry_run_is_complete_and_a_refusal_is_not() -> None:
-    dry = pd.DataFrame(
-        {"ticker": ["AAA"], "status": ["DRY_RUN"], "reason_code": ["DRY_RUN"]}
-    )
-    assert morning_job.incomplete_legs(dry) == []
-
-    live = pd.DataFrame(
-        {
-            "ticker": ["AAA", "BBB", "CCC", "DDD"],
-            "status": ["FILLED", "SKIPPED", "REJECTED_CAP", "TIMEOUT"],
-            "reason_code": ["", "ASSET_NOT_SHORTABLE", "REJECTED_CAP", ""],
-        }
-    )
-    legs = morning_job.incomplete_legs(live)
-    assert [leg["ticker"] for leg in legs] == ["BBB", "CCC", "DDD"]
-    assert {leg["reason_code"] for leg in legs} == {
-        "ASSET_NOT_SHORTABLE",
-        "REJECTED_CAP",
-        "",
-    }
 
 
 def test_a_live_run_with_a_refused_short_is_incomplete(
@@ -227,15 +334,7 @@ def test_a_live_run_with_a_refused_short_is_incomplete(
     proposal = pd.DataFrame(
         {"ticker": ["AAA", "BBB"], "weight": [0.05, -0.05], "alpha": [0.0, 0.0]}
     )
-
-    class _Refusing(_RecordingClient):
-        def get_asset(self, symbol: str) -> _Asset:
-            asset = _Asset()
-            if symbol == "BBB":
-                asset.easy_to_borrow = False
-            return asset
-
-    client = _Refusing()
+    client = _RecordingClient({"BBB": _Asset(shortable=True, easy_to_borrow=False)})
     monkeypatch.setattr(morning_job, "load_proposal", lambda *a, **k: proposal)
     monkeypatch.setattr(morning_job, "connect", lambda dry_run: client)
     monkeypatch.setattr(morning_job, "_close_prices", lambda *a, **k: PRICES)
@@ -249,3 +348,165 @@ def test_a_live_run_with_a_refused_short_is_incomplete(
     assert (
         summary["incomplete_legs"][0]["reason_code"] == alpaca.REASON_NOT_EASY_TO_BORROW
     )
+
+
+def test_a_reversal_is_reported_as_deferred_and_named_in_the_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The run trades a close, and the message says which side waits for tomorrow."""
+    proposal = pd.DataFrame({"ticker": ["CCC"], "weight": [-0.06], "alpha": [0.0]})
+    client = _RecordingClient()
+    monkeypatch.setattr(morning_job, "load_proposal", lambda *a, **k: proposal)
+    monkeypatch.setattr(morning_job, "connect", lambda dry_run: client)
+    monkeypatch.setattr(morning_job, "_close_prices", lambda *a, **k: PRICES)
+    monkeypatch.setattr(morning_job.state, "write_positions", lambda *a, **k: None)
+    monkeypatch.setattr(morning_job, "_write_execution_log", lambda *a, **k: None)
+
+    summary = morning_job.run_morning(
+        "2026-09-28",
+        nav=NAV,
+        dry_run=False,
+        positions={"CCC": 80_000.0},
+        quantities={"CCC": 400.0},
+    )
+
+    assert summary["complete"] is True
+    deferred = summary["deferred_reversals"]
+    assert len(deferred) == 1 and deferred[0]["ticker"] == "CCC"
+    assert deferred[0]["held_notional"] == pytest.approx(80_000.0)
+    assert deferred[0]["target_notional"] == pytest.approx(-60_000.0)
+    # One leg, a close, sent as the broker's exact held quantity.
+    assert len(client.requests) == 1
+    assert _intent(client.requests[0]) == "sell_to_close"
+    assert float(client.requests[0].qty) == pytest.approx(400.0)
+
+    message = notify.compose(
+        status="ok",
+        target_close="2026-09-28",
+        dry_run=True,
+        orders=1,
+        gross=80_000.0,
+        deferred_reversals=deferred,
+    )
+    assert (
+        "Reversals deferred: CCC closed tonight, short $60,000 opens next evening."
+        in message
+    )
+
+
+class _SmokeBroker(_RecordingClient):
+    """A broker with positions that accepts after-close DAY orders."""
+
+    def __init__(self, positions: dict[str, float] | None = None) -> None:
+        super().__init__()
+        self.positions = dict(positions or {})
+
+    def get_all_positions(self) -> list[object]:
+        class _Position:
+            def __init__(self, symbol: str, shares: float) -> None:
+                self.symbol = symbol
+                self.qty = str(abs(shares))
+                self.market_value = str(abs(shares) * PRICES[symbol])
+                self.side = "long" if shares >= 0 else "short"
+
+        return [
+            _Position(symbol, shares)
+            for symbol, shares in sorted(self.positions.items())
+            if abs(shares) > 1e-9
+        ]
+
+
+def test_the_smoke_opens_then_closes_with_ids_that_never_collide() -> None:
+    """Two evenings, four intents, ids prefixed so the book can never clash."""
+    broker = _SmokeBroker()
+
+    opened = smoke_position_intents.evening_one(
+        broker,
+        long_symbol="SPY",
+        short_symbol="AAA",
+        notional=500.0,
+        short_qty=1,
+        short_price=100.0,
+        close="2026-09-25",
+    )
+    assert [leg["position_intent"] for leg in opened] == [
+        "buy_to_open",
+        "sell_to_open",
+    ]
+    assert all(leg["accepted"] for leg in opened)
+    for request in broker.requests:
+        ticket = str(request.client_order_id)
+        assert ticket.startswith("efb-smoke-")
+        book_ticket = alpaca.client_order_id(
+            "2026-09-25", str(request.symbol), _side(request)
+        )
+        assert ticket != book_ticket
+
+    # The one-share short is a quantity order; the long is a notional order.
+    by_intent = {_intent(request): request for request in broker.requests}
+    assert float(by_intent["buy_to_open"].notional) == pytest.approx(500.0)
+    assert int(by_intent["sell_to_open"].qty) == 1
+
+    # Overnight the two orders fill: a long of five shares and a one-share short.
+    broker.positions = {"SPY": 5.0, "AAA": -1.0}
+    broker.requests.clear()
+
+    closed = smoke_position_intents.evening_two(
+        broker, long_symbol="SPY", short_symbol="AAA", close="2026-09-28"
+    )
+    assert [leg["position_intent"] for leg in closed] == [
+        "sell_to_close",
+        "buy_to_close",
+    ]
+    assert all(leg["accepted"] for leg in closed)
+    by_intent = {_intent(request): request for request in broker.requests}
+    assert float(by_intent["sell_to_close"].qty) == pytest.approx(5.0)
+    assert float(by_intent["buy_to_close"].qty) == pytest.approx(1.0)
+
+
+def test_the_smoke_reports_whether_every_order_was_accepted(capsys) -> None:
+    """The two commands the owner runs print their verdict and exit on it."""
+    broker = _SmokeBroker({"SPY": 5.0, "AAA": -1.0})
+    code = smoke_position_intents.main(
+        [
+            "--evening",
+            "two",
+            "--long-symbol",
+            "SPY",
+            "--short-symbol",
+            "AAA",
+            "--yes",
+        ],
+        client=broker,
+    )
+    assert code == 0
+    assert "every order was accepted" in capsys.readouterr().out
+
+    # A refused leg is reported and fails the evening, not buried.
+    refusing = _SmokeBroker()
+    refusing.assets = {"AAA": _Asset(shortable=False, easy_to_borrow=False)}
+    code = smoke_position_intents.main(
+        [
+            "--evening",
+            "one",
+            "--long-symbol",
+            "SPY",
+            "--short-symbol",
+            "AAA",
+            "--price",
+            "100",
+            "--yes",
+        ],
+        client=refusing,
+    )
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "SOME ORDERS WERE REFUSED" in out
+    assert alpaca.REASON_NOT_SHORTABLE in out
+
+
+def test_the_smoke_refuses_without_yes(capsys) -> None:
+    broker = _SmokeBroker()
+    assert smoke_position_intents.main(["--evening", "one"], client=broker) == 2
+    assert broker.requests == []
+    assert "refusing to submit without --yes" in capsys.readouterr().err

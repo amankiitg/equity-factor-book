@@ -146,7 +146,8 @@ def test_a_non_shortable_name_is_skipped_and_the_longs_still_trade() -> None:
     assert by_ticker["BBB"].status == alpaca.SKIPPED
     assert by_ticker["BBB"].reason_code == alpaca.REASON_NOT_SHORTABLE
     assert by_ticker["DDD"].reason_code == alpaca.REASON_NOT_TRADABLE
-    assert by_ticker["AAA"].status == "FILLED"
+    # An accepted after-close order is the success the loop records.
+    assert by_ticker["AAA"].status == "ACCEPTED"
     assert len(fills) == 4, "every intended leg keeps a record"
 
 

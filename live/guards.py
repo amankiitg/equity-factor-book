@@ -70,15 +70,21 @@ class OrderSpec:
     absolute value, which is what the throughput brake accumulates, kept as a
     property so the sign and the size can never disagree.
 
-    Both numbers are needed. Sizing the order from the target would, from a held
-    book, buy the whole position again on an increase and turn a cut into a
-    same-direction order on a decrease.
+    `intent` is the Alpaca position intent the leg carries (one of
+    `alpaca.INTENT_*`), empty when a guard rejected the leg. `held_quantity` is
+    the broker's signed share count, which a full close sends exactly.
+    `deferred_target_notional` is a target this leg does not trade to tonight
+    because reaching it would cross zero: the reversal is closed tonight and the
+    other side is opened by the next evening's normal delta logic.
     """
 
     ticker: str
     target_notional: float
     trade_notional: float
     status: str = PASSED
+    intent: str = ""
+    held_quantity: float = 0.0
+    deferred_target_notional: float = 0.0
 
     @property
     def traded_notional(self) -> float:
@@ -141,7 +147,7 @@ def apply_guards(
 
     Guard 1 checks the destination position against the cap; Guard 2
     accumulates the run's traded notional against the brake. The brake is
-    absolute and independent of NAV, so a large book is still caught — except on
+    absolute and independent of NAV, so a large book is still caught, except on
     the establishment day, where its place is taken by the book's own gross
     (`traded_notional_limit`), because that day creates the book rather than
     rebalancing it.
@@ -158,20 +164,26 @@ def apply_guards(
         if position_cap(order.target_notional, nav):
             results.append(
                 OrderSpec(
-                    order.ticker,
-                    order.target_notional,
-                    order.trade_notional,
-                    REJECTED_CAP,
+                    ticker=order.ticker,
+                    target_notional=order.target_notional,
+                    trade_notional=order.trade_notional,
+                    status=REJECTED_CAP,
+                    intent=order.intent,
+                    held_quantity=order.held_quantity,
+                    deferred_target_notional=order.deferred_target_notional,
                 )
             )
             continue
         if traded_notional_brake(traded_so_far, order.traded_notional, limit):
             results.append(
                 OrderSpec(
-                    order.ticker,
-                    order.target_notional,
-                    order.trade_notional,
-                    REJECTED_TRADED_NOTIONAL,
+                    ticker=order.ticker,
+                    target_notional=order.target_notional,
+                    trade_notional=order.trade_notional,
+                    status=REJECTED_TRADED_NOTIONAL,
+                    intent=order.intent,
+                    held_quantity=order.held_quantity,
+                    deferred_target_notional=order.deferred_target_notional,
                 )
             )
             continue

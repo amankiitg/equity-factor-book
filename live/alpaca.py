@@ -46,8 +46,38 @@ PAPER_ENDPOINT = "https://paper-api.alpaca.markets"
 # itself, so url_override carries the base without the /v2 suffix.
 DRY_RUN_DEFAULT = True
 DELTA_MIN_NOTIONAL = 250.0
-FILL_POLL_TIMEOUT_SECS = 30
-FILL_POLL_INTERVAL_SECS = 1.0
+
+# Alpaca's own position intents, spelled exactly as its API takes them. Every
+# order carries one, because the same side can mean open or close and the broker
+# needs to be told which: a sell on a held long is a close, a sell on nothing is
+# an open short, and they carry different margin, borrow and reporting treatment.
+INTENT_BUY_TO_OPEN = "buy_to_open"
+INTENT_BUY_TO_CLOSE = "buy_to_close"
+INTENT_SELL_TO_OPEN = "sell_to_open"
+INTENT_SELL_TO_CLOSE = "sell_to_close"
+
+
+def position_intent(held: float, target: float) -> str:
+    """The position intent for a leg from `held` to `target`, both signed dollars.
+
+    A long increase opens long; a long decrease or a close sells to close; a new
+    or larger short opens short; a short cover buys to close. A reversal never
+    reaches here with both signs set, because it is split into a close tonight and
+    an open the next evening, so the two sides never meet in one order.
+
+    Returns an empty string when the leg does not move, which is not an order.
+    """
+    if held >= 0 and target > held:
+        return INTENT_BUY_TO_OPEN
+    if held > 0 and target < held:
+        # A decrease and a full close are the same intent; only the size differs.
+        return INTENT_SELL_TO_CLOSE
+    if held <= 0 and target < held:
+        return INTENT_SELL_TO_OPEN
+    if held < 0 and target > held:
+        return INTENT_BUY_TO_CLOSE
+    return ""
+
 
 # The time-in-force every order carries. `day`, not `opg`, and the reason is the
 # cron's own hour.
@@ -99,6 +129,8 @@ class Fill:
     status: str
     reason_code: str = ""
     detail: str = ""
+    # The Alpaca position intent the leg carried, so the log says open vs close.
+    intent: str = ""
     # The id the leg was sent with, so the row can be tied to the broker's own
     # order without a second lookup, and a rerun's rejection can be traced to the
     # id it collided with.
@@ -111,16 +143,15 @@ class Fill:
 # ---------------------------------------------------------------- rate limiting
 #
 # Alpaca's trading API allows 200 requests per minute. This loop reads an asset
-# per short, submits, then polls each order, so the submissions are spaced rather
-# than the requests counted: a shared token bucket would need every caller to
-# share a clock, and the interval is one number that is easy to read and to test.
-# 0.35 s between submissions is about 171 a minute, which leaves the rest of the
-# minute to the polls.
+# per short open and then submits, so the submissions are spaced rather than the
+# requests counted: a shared token bucket would need every caller to share a
+# clock, and the interval is one number that is easy to read and to test. 0.35 s
+# between submissions is about 171 a minute, which leaves room for the reads.
 RATE_LIMIT_PER_MINUTE = 200
 MIN_SUBMIT_INTERVAL_SECS = float(os.environ.get("EFB_MIN_SUBMIT_INTERVAL_SECS", "0.35"))
 
 
-def client_order_id(close: Any, ticker: str, side: str) -> str:
+def client_order_id(close: Any, ticker: str, side: str, *, prefix: str = "efb") -> str:
     """A deterministic id for one leg, from the three things that define it.
 
     Alpaca requires `client_order_id` to be unique per account and refuses a
@@ -128,10 +159,14 @@ def client_order_id(close: Any, ticker: str, side: str) -> str:
     attempt is rejected by the broker rather than sent. The id is recomputed from
     the proposal rather than stored, so it survives a wiped container and does not
     depend on the loop remembering anything.
+
+    `prefix` keeps a different tool's ids from ever colliding with the book's: a
+    smoke order sent under `efb-smoke` can never be mistaken for, or block, a real
+    leg, even on the same close and ticker.
     """
     stamp = pd.Timestamp(close).date().isoformat() if close else "unknown"
     digest = hashlib.sha256(f"{stamp}|{ticker}|{side}".encode()).hexdigest()[:12]
-    return f"efb-{stamp}-{ticker}-{str(side)[:1].upper()}-{digest}"[:128]
+    return f"{prefix}-{stamp}-{ticker}-{str(side)[:1].upper()}-{digest}"[:128]
 
 
 class Throttle:
@@ -190,6 +225,9 @@ REASON_SHORT_CHECK_FAILED = "SHORTABLE_CHECK_FAILED"
 REASON_NOT_TRADABLE = "ASSET_NOT_TRADABLE"
 REASON_NOT_SHORTABLE = "ASSET_NOT_SHORTABLE"
 REASON_NOT_EASY_TO_BORROW = "ASSET_NOT_EASY_TO_BORROW"
+# A close whose size cannot be computed: no price and no broker quantity to take
+# the whole position from. Guessing is worse than not sending.
+REASON_CLOSE_QTY_UNKNOWN = "CLOSE_QUANTITY_UNKNOWN"
 
 # The status a leg carries when it was never submitted. The code beside it says
 # why, and the two are kept separate so a reader can group by either.
@@ -254,7 +292,9 @@ def short_refusal(
     return None
 
 
-def _skipped(ticker: str, notional: float, code: str, detail: str) -> Fill:
+def _skipped(
+    ticker: str, notional: float, code: str, detail: str, intent: str = ""
+) -> Fill:
     """A leg that was never submitted, with the code that says why."""
     return Fill(
         ticker=ticker,
@@ -265,6 +305,7 @@ def _skipped(ticker: str, notional: float, code: str, detail: str) -> Fill:
         status=SKIPPED,
         reason_code=code,
         detail=detail,
+        intent=intent,
     )
 
 
@@ -465,23 +506,35 @@ def _quantization_distribution(frame: pd.DataFrame) -> dict[str, object]:
     }
 
 
-def get_positions(client, dry_run: bool = DRY_RUN_DEFAULT) -> dict[str, float]:
-    """{ticker: signed notional} for the current paper positions.
+def position_book(
+    client, dry_run: bool = DRY_RUN_DEFAULT
+) -> tuple[dict[str, float], dict[str, float]]:
+    """({ticker: signed notional}, {ticker: signed quantity}) in one read.
 
-    Positive is long, negative is short, absent means flat. Dry run
-    returns an empty dict without calling Alpaca.
+    Positive is long, negative is short, absent means flat. The quantity is what a
+    close is sized from: a full close must send the exact held quantity, and the
+    broker's own position is the only place that number comes from. A position
+    object without a `qty` (an older shape, or a test double) contributes zero, and
+    a close then falls back to the trade's own notional over the close price.
+
+    Dry run returns two empty dicts without calling Alpaca.
     """
     if dry_run:
-        return {}
-    positions = client.get_all_positions()
-    result: dict[str, float] = {}
-    for pos in positions:
-        market_value = abs(float(pos.market_value))
-        if str(pos.side).lower() == "long":
-            result[str(pos.symbol)] = market_value
-        else:
-            result[str(pos.symbol)] = -market_value
-    return result
+        return {}, {}
+    notional: dict[str, float] = {}
+    quantity: dict[str, float] = {}
+    for pos in client.get_all_positions():
+        symbol = str(pos.symbol)
+        sign = -1.0 if str(pos.side).lower() == "short" else 1.0
+        notional[symbol] = sign * abs(float(pos.market_value))
+        raw = getattr(pos, "qty", None)
+        quantity[symbol] = sign * abs(float(raw)) if raw is not None else 0.0
+    return notional, quantity
+
+
+def get_positions(client, dry_run: bool = DRY_RUN_DEFAULT) -> dict[str, float]:
+    """{ticker: signed notional} for the current paper positions."""
+    return position_book(client, dry_run)[0]
 
 
 def _side_word(trade_notional: float) -> str:
@@ -509,7 +562,7 @@ def find_existing_order(client: Any, ticket: str) -> Any | None:
         return None
 
 
-def _resolved_fill(order: Any, ticket: str, existing: Any) -> Fill:
+def _resolved_fill(order: Any, ticket: str, existing: Any, intent: str) -> Fill:
     """The record for a leg the broker already held under this id."""
     price = 0.0
     if getattr(existing, "filled_avg_price", None) is not None:
@@ -526,9 +579,25 @@ def _resolved_fill(order: Any, ticket: str, existing: Any) -> Fill:
         fill_price=price,
         status=status,
         detail="already submitted: resolved from the broker by client_order_id",
+        intent=intent,
         client_order_id=ticket,
         resolved=True,
     )
+
+
+def _close_quantity(order: Any, price: float) -> float:
+    """The shares a close leg sends.
+
+    A full close sends the **exact held quantity** the broker reports, fractional
+    included, so the position lands on zero rather than on a rounding remainder. A
+    partial decrease or cover has no such quantity to take, so its size is the
+    trade's own notional over the close price, which may be fractional too.
+    """
+    if order.target_notional == 0.0 and order.held_quantity:
+        return abs(float(order.held_quantity))
+    if price > 0:
+        return abs(float(order.trade_notional)) / price
+    return 0.0
 
 
 def submit_market_orders(
@@ -538,40 +607,53 @@ def submit_market_orders(
     short_cache: dict[str, dict[str, bool]] | None = None,
     close: Any = None,
     throttle: Throttle | None = None,
+    id_prefix: str = "efb",
 ) -> list[Fill]:
-    """Submit market orders and wait for fills, one record per intended leg.
+    """Submit market orders, one record per intended leg, and do not poll.
 
-    Each order submits its signed `trade_notional`, not its target: positive buys,
-    negative sells, and its absolute value is the size. Longs use notional orders;
-    shorts use whole-share quantities because Alpaca paper rejects fractional
-    sell-to-open orders. `prices` maps each ticker to its last close so a short
-    notional can be quantized to whole shares. Each order is submitted, polled,
-    and recorded as one Fill. A timeout is a recorded fill with status TIMEOUT,
-    never a silently dropped order.
+    Each leg carries an Alpaca **position intent**, derived from held and target
+    when the caller did not set one: `BUY_TO_OPEN` for a long increase (a notional
+    order), `SELL_TO_CLOSE` for a long decrease or close (a quantity order),
+    `SELL_TO_OPEN` for a new or larger short (whole shares), and `BUY_TO_CLOSE` for
+    a short cover (a quantity order). The long decrease and every close send a
+    quantity, and a full close sends the broker's exact held quantity. The
+    `shortable` and `easy_to_borrow` checks run only on `SELL_TO_OPEN`: a sell that
+    closes a long is not a short.
 
-    Every short is checked against the broker's own `shortable` and
-    `easy_to_borrow` flags before it is submitted, and a refused leg is recorded
-    with its reason code rather than raising. A broker rejection (`APIError`) is
-    recorded the same way and the book keeps trading; a transport-class failure
-    halts the run and the legs after it are recorded `SKIPPED_AFTER_HALT`, because
-    the order may or may not have arrived.
+    Nothing polls for a fill. Submitted after the close, a DAY order the broker
+    accepts stays accepted or new until the next open, and that acceptance is
+    success: the leg's record is the broker's own status, and the fills are
+    reconciled the next evening from the broker's positions. A refusal or rejection
+    is recorded with its reason code and makes the run incomplete; a broker
+    rejection (`APIError`) lets the book keep trading, while a transport-class
+    failure halts and the legs after it are recorded `SKIPPED_AFTER_HALT`.
 
-    Every order carries `NEXT_OPEN_TIF`: submitted at the cron's hour the order is
-    queued and released for the next session, which is the next-open execution the
-    loop wants. The reasoning and the doc citation are on the constant.
-
-    Every order also carries a deterministic `client_order_id` built from the
-    close, the ticker and the side. A rerun looks every leg's id up first and
-    resolves the orders the broker already holds, before it submits anything, so a
-    crash mid-run cannot double the book. Submissions are spaced by `throttle` to
-    stay under the trading API's rate limit.
+    Every leg carries a deterministic `client_order_id`, under `id_prefix` so a
+    smoke order can never collide with the book's. A rerun looks every leg's id up
+    first and resolves the orders the broker already holds, before it submits
+    anything. Submissions are spaced by `throttle` to stay under the rate limit.
     """
-    from alpaca.trading.enums import OrderSide, TimeInForce  # type: ignore
+    from alpaca.trading.enums import (  # type: ignore
+        OrderSide,
+        PositionIntent,
+        TimeInForce,
+    )
     from alpaca.trading.requests import MarketOrderRequest  # type: ignore
 
+    intent_enum = {
+        INTENT_BUY_TO_OPEN: PositionIntent.BUY_TO_OPEN,
+        INTENT_BUY_TO_CLOSE: PositionIntent.BUY_TO_CLOSE,
+        INTENT_SELL_TO_OPEN: PositionIntent.SELL_TO_OPEN,
+        INTENT_SELL_TO_CLOSE: PositionIntent.SELL_TO_CLOSE,
+    }
     time_in_force = TimeInForce(NEXT_OPEN_TIF)
     cache = {} if short_cache is None else short_cache
     pace = throttle if throttle is not None else Throttle()
+
+    def _intent_for(order: Any) -> str:
+        # The held book is derivable from the leg itself: trade = target - held.
+        held = order.target_notional - order.trade_notional
+        return order.intent or position_intent(held, order.target_notional)
 
     # The deterministic ticket for every leg, and the broker's answer for it. All
     # lookups happen before the first submission: that is what "resolve the rerun
@@ -579,7 +661,7 @@ def submit_market_orders(
     # second copy of an earlier one.
     tickets = {
         order.ticker: client_order_id(
-            close, order.ticker, _side_word(order.trade_notional)
+            close, order.ticker, _side_word(order.trade_notional), prefix=id_prefix
         )
         for order in orders
     }
@@ -594,8 +676,13 @@ def submit_market_orders(
         trade = order.trade_notional
         notional = abs(trade)
         ticket = tickets[order.ticker]
+        intent = _intent_for(order)
+        if not intent:
+            # The leg does not move: it is not an order, so there is nothing to
+            # record. `target_orders` never emits one.
+            continue
         if existing[order.ticker] is not None:
-            fills.append(_resolved_fill(order, ticket, existing[order.ticker]))
+            fills.append(_resolved_fill(order, ticket, existing[order.ticker], intent))
             continue
         if halted:
             fills.append(
@@ -604,17 +691,49 @@ def submit_market_orders(
                     trade,
                     REASON_SKIPPED_AFTER_HALT,
                     "the run halted on an unknown-state submit failure",
+                    intent,
                 )
             )
             continue
-        side = OrderSide.BUY if trade >= 0 else OrderSide.SELL
-        if trade < 0:
+        price = prices.get(order.ticker, 0.0)
+        if intent == INTENT_BUY_TO_OPEN:
+            request = MarketOrderRequest(
+                symbol=order.ticker,
+                notional=round(notional, 2),
+                side=OrderSide.BUY,
+                time_in_force=time_in_force,
+                client_order_id=ticket,
+                position_intent=intent_enum[intent],
+            )
+        elif intent in (INTENT_SELL_TO_CLOSE, INTENT_BUY_TO_CLOSE):
+            qty = _close_quantity(order, price)
+            if qty <= 0:
+                fills.append(
+                    _skipped(
+                        order.ticker,
+                        trade,
+                        REASON_CLOSE_QTY_UNKNOWN,
+                        "no price and no broker quantity to size the close",
+                        intent,
+                    )
+                )
+                continue
+            request = MarketOrderRequest(
+                symbol=order.ticker,
+                qty=qty,
+                side=(
+                    OrderSide.SELL if intent == INTENT_SELL_TO_CLOSE else OrderSide.BUY
+                ),
+                time_in_force=time_in_force,
+                client_order_id=ticket,
+                position_intent=intent_enum[intent],
+            )
+        elif intent == INTENT_SELL_TO_OPEN:
             refusal = short_refusal(client, order.ticker, cache)
             if refusal is not None:
                 code, detail = refusal
-                fills.append(_skipped(order.ticker, trade, code, detail))
+                fills.append(_skipped(order.ticker, trade, code, detail, intent))
                 continue
-            price = prices.get(order.ticker, 0.0)
             qty = int(notional / price) if price > 0 else 0
             if qty < 1:
                 fills.append(
@@ -623,24 +742,20 @@ def submit_market_orders(
                         trade,
                         REASON_QTY_ROUNDS_TO_ZERO,
                         f"{notional:.2f} at {price:.4f} rounds to zero shares",
+                        intent,
                     )
                 )
                 continue
             request = MarketOrderRequest(
                 symbol=order.ticker,
                 qty=qty,
-                side=side,
+                side=OrderSide.SELL,
                 time_in_force=time_in_force,
                 client_order_id=ticket,
+                position_intent=intent_enum[intent],
             )
-        else:
-            request = MarketOrderRequest(
-                symbol=order.ticker,
-                notional=round(notional, 2),
-                side=side,
-                time_in_force=time_in_force,
-                client_order_id=ticket,
-            )
+        else:  # pragma: no cover - the four intents above are exhaustive
+            raise RuntimeError(f"unknown position intent {intent!r}")
         pace.wait()
         try:
             submitted = client.submit_order(order_data=request)
@@ -656,37 +771,33 @@ def submit_market_orders(
                     status=SKIPPED,
                     reason_code=code,
                     detail=f"{type(exc).__name__}: {exc}",
+                    intent=intent,
                     client_order_id=ticket,
                 )
             )
             halted = halted or halts
             continue
 
-        filled_notional = 0.0
+        # The broker's own status is the record. Accepted or new is success: the
+        # order is queued for the next open, and there is nothing to poll for. A
+        # fill only if the broker filled it on the spot.
+        status = str(getattr(submitted, "status", "") or "").upper() or "ACCEPTED"
         fill_price = 0.0
-        deadline = time.time() + FILL_POLL_TIMEOUT_SECS
-        status = "TIMEOUT"
-        while time.time() < deadline:
-            try:
-                status_obj = client.get_order(submitted.id)
-                if str(status_obj.status) in ("filled", "canceled", "rejected"):
-                    status = str(status_obj.status).upper()
-                    if status_obj.filled_avg_price is not None:
-                        fill_price = float(status_obj.filled_avg_price)
-                    if status_obj.filled_qty is not None:
-                        filled_notional = float(status_obj.filled_qty) * fill_price
-                    break
-            except Exception:  # noqa: BLE001 - poll again
-                pass
-            time.sleep(FILL_POLL_INTERVAL_SECS)
+        filled_notional = 0.0
+        if status == "FILLED":
+            if getattr(submitted, "filled_avg_price", None) is not None:
+                fill_price = float(submitted.filled_avg_price)
+            if getattr(submitted, "filled_qty", None) is not None:
+                filled_notional = abs(float(submitted.filled_qty) * fill_price)
         fills.append(
             Fill(
                 ticker=order.ticker,
-                order_id=str(submitted.id),
+                order_id=str(getattr(submitted, "id", "")),
                 intended_notional=trade,
                 filled_notional=filled_notional,
                 fill_price=fill_price,
                 status=status,
+                intent=intent,
                 client_order_id=ticket,
             )
         )

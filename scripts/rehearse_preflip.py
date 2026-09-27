@@ -1,14 +1,20 @@
-"""Rehearse two trading days against a fake broker that holds positions.
+"""Rehearse three days against a broker that behaves like Alpaca after the close.
 
-Day one establishes the book from flat. Day two rebalances it: some names
-increased, some decreased, one reversed from long to short, one removed and one
-short covered. The transcript shows that each order is exactly the signed change
-(`target - held`), that the removed name is closed to zero, and that rerunning day
-two, with the broker already holding the new book, submits nothing new.
+Day one establishes the book from flat. Day two rebalances it: a long increased, a
+long decreased, a long removed, a short covered, and a long reversed. The reversal
+cannot cross zero in one order, so tonight only closes the long and the short side
+opens on day three. The transcript shows the position intent and size of every leg,
+that each order is the signed change, that the removed name is closed to zero, and
+that a reversal is a close tonight and an open tomorrow.
+
+The fake broker is deliberately strict, the three ways Alpaca is:
+  * an order that would cross zero is rejected;
+  * a sell beyond the held quantity is rejected unless it is SELL_TO_OPEN;
+  * a DAY order submitted after the close is **accepted**, not filled, and fills
+    at the next open, which `settle_open` performs between days.
 
 Run it with `.venv/bin/python scripts/rehearse_preflip.py`. Nothing here touches a
-network, a key or a store: the broker is an in-process object and the proposal,
-the close prices, the state writer and the execution log are all replaced.
+network, a key or a store.
 """
 
 from __future__ import annotations
@@ -33,31 +39,48 @@ from live import alpaca, morning_job  # noqa: E402 - after the env line above
 NAV = 1_000_000.0
 PRICES = {"AAA": 100.0, "BBB": 50.0, "CCC": 200.0, "DDD": 25.0, "FFF": 40.0}
 
-# Day one: from flat, five names, four long and one short.
+# Day one: from flat, four long and one short.
 DAY_ONE = {"AAA": 0.08, "BBB": 0.08, "CCC": 0.08, "DDD": 0.08, "FFF": -0.08}
-# Day two: AAA up, BBB down, CCC reversed, DDD removed, FFF half covered.
+# Day two: AAA up, BBB down, CCC reversed (long to short), DDD removed, FFF covered.
 DAY_TWO = {"AAA": 0.10, "BBB": 0.04, "CCC": -0.06, "FFF": -0.02}
+# Day three: the same targets, so CCC's deferred short opens in the normal delta.
+DAY_THREE = dict(DAY_TWO)
+
+_OPEN_INTENTS = frozenset({alpaca.INTENT_BUY_TO_OPEN, alpaca.INTENT_SELL_TO_OPEN})
+_CLOSE_INTENTS = frozenset({alpaca.INTENT_BUY_TO_CLOSE, alpaca.INTENT_SELL_TO_CLOSE})
+
+
+class BrokerRejection(RuntimeError):
+    """The broker evaluated the order and declined it."""
 
 
 class _FakeOrder:
-    def __init__(self, record: dict) -> None:
+    def __init__(self, record: dict[str, Any]) -> None:
         self.id = record["id"]
         self.status = record["status"]
-        self.filled_qty = record["filled_qty"]
-        self.filled_avg_price = record["filled_avg_price"]
+        self.qty = record["qty"]
+        self.filled_qty = record.get("filled_qty")
+        self.filled_avg_price = record.get("filled_avg_price")
+
+
+def _intent_of(order_data: Any) -> str:
+    value = getattr(order_data, "position_intent", "")
+    return str(getattr(value, "value", value) or "")
 
 
 class FakeBroker:
-    """A broker that holds positions, fills every order and refuses a repeat id."""
+    """Holds positions, accepts after-close DAY orders, settles at the open."""
 
     def __init__(self, prices: dict[str, float], nav: float = NAV) -> None:
         self.prices = dict(prices)
-        self.holdings: dict[str, float] = {}
-        self.orders: dict[str, dict] = {}
-        self.submitted: list[dict] = []
+        self.holdings: dict[str, float] = {}  # signed shares
+        self.orders: dict[str, dict[str, Any]] = {}
+        self.pending: list[dict[str, Any]] = []
+        self.submitted: list[dict[str, Any]] = []
         self.equity = nav
         self.buying_power = nav
 
+    # --- reads ---------------------------------------------------------------
     def get_account(self) -> object:
         broker = self
 
@@ -78,15 +101,16 @@ class FakeBroker:
 
     def get_all_positions(self) -> list[object]:
         class _Position:
-            def __init__(self, symbol: str, value: float) -> None:
+            def __init__(self, symbol: str, shares: float, price: float) -> None:
                 self.symbol = symbol
-                self.market_value = str(abs(value))
-                self.side = "long" if value >= 0 else "short"
+                self.qty = str(abs(shares))
+                self.market_value = str(abs(shares) * price)
+                self.side = "long" if shares >= 0 else "short"
 
         return [
-            _Position(symbol, value)
-            for symbol, value in sorted(self.holdings.items())
-            if abs(value) > 1e-9
+            _Position(symbol, shares, self.prices[symbol])
+            for symbol, shares in sorted(self.holdings.items())
+            if abs(shares) > 1e-9
         ]
 
     def get_order_by_client_id(self, ticket: str) -> _FakeOrder | None:
@@ -99,35 +123,68 @@ class FakeBroker:
                 return _FakeOrder(record)
         raise KeyError(order_id)
 
+    # --- writes --------------------------------------------------------------
     def submit_order(self, order_data: Any) -> _FakeOrder:
         ticket = str(getattr(order_data, "client_order_id", ""))
         if ticket in self.orders:
-            raise RuntimeError(f"the broker already holds client_order_id {ticket}")
+            raise BrokerRejection(f"duplicate client_order_id {ticket}")
         symbol = str(order_data.symbol)
         price = self.prices[symbol]
-        side = str(getattr(getattr(order_data, "side", None), "value", ""))
+        intent = _intent_of(order_data)
         notional = getattr(order_data, "notional", None)
-        if notional is not None:
-            amount = float(notional)
-            qty = amount / price
-        else:
-            qty = float(order_data.qty)
-            amount = qty * price
-        signed = amount if side == "buy" else -amount
-        self.holdings[symbol] = self.holdings.get(symbol, 0.0) + signed
-        record = {
+        qty = float(notional) / price if notional is not None else float(order_data.qty)
+        delta = (
+            qty
+            if intent in (alpaca.INTENT_BUY_TO_OPEN, alpaca.INTENT_BUY_TO_CLOSE)
+            else -qty
+        )
+        self._validate(symbol, intent, qty, delta)
+        record: dict[str, Any] = {
             "id": f"fake-{len(self.orders) + 1}",
             "client_order_id": ticket,
-            "status": "filled",
-            "filled_qty": qty,
-            "filled_avg_price": price,
+            # After the close a DAY order is accepted, not filled.
+            "status": "accepted",
             "symbol": symbol,
-            "side": side,
-            "signed_notional": signed,
+            "intent": intent,
+            "qty": qty,
+            "delta": delta,
+            "price": price,
         }
         self.orders[ticket] = record
+        self.pending.append(record)
         self.submitted.append(record)
         return _FakeOrder(record)
+
+    def _validate(self, symbol: str, intent: str, qty: float, delta: float) -> None:
+        held = self.holdings.get(symbol, 0.0)
+        after = held + delta
+        if intent not in _OPEN_INTENTS | _CLOSE_INTENTS:
+            raise BrokerRejection(f"{symbol}: missing position_intent")
+        if intent in _CLOSE_INTENTS and abs(held) <= 1e-9:
+            raise BrokerRejection(f"{symbol}: nothing to close")
+        if held > 0 and after < -1e-9:
+            raise BrokerRejection(f"{symbol}: order crosses zero ({held} -> {after})")
+        if held < 0 and after > 1e-9:
+            raise BrokerRejection(f"{symbol}: order crosses zero ({held} -> {after})")
+        if intent == alpaca.INTENT_SELL_TO_CLOSE and qty > abs(held) + 1e-9:
+            raise BrokerRejection(f"{symbol}: sell {qty} beyond held {abs(held)}")
+        if intent == alpaca.INTENT_BUY_TO_CLOSE and qty > abs(held) + 1e-9:
+            raise BrokerRejection(f"{symbol}: buy {qty} beyond held {abs(held)}")
+        if intent == alpaca.INTENT_SELL_TO_OPEN and held > 1e-9:
+            raise BrokerRejection(f"{symbol}: sell-to-open would cross a long")
+
+    def settle_open(self) -> list[str]:
+        """Fill every accepted order at the next open and report the tickers."""
+        filled: list[str] = []
+        for record in self.pending:
+            symbol = record["symbol"]
+            self.holdings[symbol] = self.holdings.get(symbol, 0.0) + record["delta"]
+            record["status"] = "filled"
+            record["filled_qty"] = abs(record["qty"])
+            record["filled_avg_price"] = record["price"]
+            filled.append(symbol)
+        self.pending = []
+        return filled
 
 
 def _proposal(weights: dict[str, float]) -> pd.DataFrame:
@@ -142,8 +199,8 @@ def _proposal(weights: dict[str, float]) -> pd.DataFrame:
 
 def run_day(
     as_of: str, weights: dict[str, float], broker: FakeBroker
-) -> tuple[dict[str, float], dict, pd.DataFrame]:
-    """One morning: read the broker, build and submit the deltas, return the log."""
+) -> tuple[dict[str, float], dict[str, float], dict, pd.DataFrame]:
+    """One evening: read the broker, build and submit the deltas, return the log."""
     captured: dict[str, pd.DataFrame] = {}
 
     def _capture(day: str, records: pd.DataFrame) -> None:
@@ -157,99 +214,117 @@ def run_day(
         patch.object(morning_job.state, "write_positions", lambda *a, **k: None),
         patch.object(morning_job, "_write_execution_log", _capture),
     ):
-        held = alpaca.get_positions(broker, dry_run=False)
+        held, quantities = alpaca.position_book(broker, dry_run=False)
         summary = morning_job.run_morning(
             as_of,
             nav=NAV,
             dry_run=False,
             positions=held,
+            quantities=quantities,
             establishment=not held,
         )
-    return held, summary, captured[as_of]
+    return held, quantities, summary, captured[as_of]
 
 
-def _nonzero(holdings: dict[str, float]) -> dict[str, float]:
-    """The broker's book with flat names dropped, for a readable line."""
-    return {
-        name: value for name, value in sorted(holdings.items()) if abs(value) > 1e-9
-    }
+def _show(records: pd.DataFrame, held: dict[str, float]) -> None:
+    print(f"  {'ticker':<7}{'held':>12}{'delta':>12}{'intent':>16}  status")
+    for row in records.itertuples(index=False):
+        name = str(row.ticker)
+        print(
+            f"  {name:<7}{held.get(name, 0.0):>+12,.0f}"
+            f"{float(row.intended_notional):>+12,.0f}"
+            f"{str(row.position_intent):>16}  {row.status}"
+        )
+
+
+def _shares(quantities: dict[str, float]) -> str:
+    return ", ".join(
+        f"{name} {value:+.4g}" for name, value in sorted(quantities.items())
+    )
 
 
 def main() -> int:
     broker = FakeBroker(PRICES)
-    print("=== EFB pre-flip rehearsal: two trading days, fake broker ===")
+    print("=== EFB broker rehearsal: three trading days, strict fake broker ===")
     print(f"NAV {NAV:,.0f}; prices {PRICES}")
 
     print("\n--- DAY 1 (2026-09-25): account flat, establishes from zero ---")
-    held, summary, records = run_day("2026-09-25", DAY_ONE, broker)
-    print(
-        f"  held {len(held)} name(s); establishment={summary['establishment']}; "
-        f"cost label {summary['cost_label']}"
-    )
-    print("  orders (the whole target, since held is zero):")
+    held, quantities, summary, records = run_day("2026-09-25", DAY_ONE, broker)
+    print(f"  held {len(held)}; establishment={summary['establishment']}")
     for row in records.itertuples(index=False):
-        delta = float(row.intended_notional)
         print(
-            f"    {str(row.ticker):<5} {'buy ' if delta >= 0 else 'sell'} "
-            f"{delta:>+12,.0f}  target {DAY_ONE[str(row.ticker)] * NAV:>+12,.0f}"
-            f"  {row.status}"
+            f"    {str(row.ticker):<5}{str(row.position_intent):>16}"
+            f"{float(row.intended_notional):>+12,.0f}  {row.status}"
         )
-    day_one_book = {name: weight * NAV for name, weight in DAY_ONE.items()}
     assert summary["complete"] and summary["orders"] == len(DAY_ONE)
-    assert sorted(broker.holdings) == sorted(day_one_book)
+    assert set(records["status"]) == {"ACCEPTED"}, list(records["status"])
+    assert broker.holdings == {}, "an accepted order changed holdings before the open"
+    applied = broker.settle_open()
+    print(f"  next open: filled {len(applied)}: {', '.join(sorted(applied))}")
     print(
-        f"  broker now holds {len(_nonzero(broker.holdings))} name(s): "
-        f"{_nonzero(broker.holdings)}"
+        "  broker holds (shares): "
+        f"{_shares(alpaca.position_book(broker, dry_run=False)[1])}"
     )
 
-    print("\n--- DAY 2 (2026-09-28): rebalances the held book ---")
-    held, summary, records = run_day("2026-09-28", DAY_TWO, broker)
-    print(f"  held {len(held)} name(s); establishment={summary['establishment']}")
-    expected = {
-        name: DAY_TWO.get(name, 0.0) * NAV - held.get(name, 0.0)
-        for name in sorted(set(DAY_TWO) | set(held))
-    }
-    print(
-        f"  {'ticker':<7}{'held':>12}{'target':>12}{'delta':>12}"
-        f"{'order':>12}  side  equal"
-    )
-    ok = True
-    for name, delta in expected.items():
-        order = records.loc[records["ticker"] == name]
-        got = float(order["intended_notional"].iloc[0]) if len(order) else 0.0
-        equal = abs(got - delta) < 0.01
-        ok = ok and equal
-        print(
-            f"  {name:<7}{held.get(name, 0.0):>+12,.0f}"
-            f"{DAY_TWO.get(name, 0.0) * NAV:>+12,.0f}{delta:>+12,.0f}{got:>+12,.0f}"
-            f"  {'buy ' if delta >= 0 else 'sell'} {'yes' if equal else 'NO'}"
-        )
-    assert ok, "an order was not exactly the delta"
+    print("\n--- DAY 2 (2026-09-28): rebalances; CCC reverses ---")
+    held, quantities, summary, records = run_day("2026-09-28", DAY_TWO, broker)
+    print(f"  held {len(held)}; establishment={summary['establishment']}")
+    print(f"  held (shares): {_shares(quantities)}")
+    _show(records, held)
     assert summary["complete"], summary["incomplete_legs"]
-    # The removed name is closed: DDD is in the held book and not in the target.
-    ddd = records.loc[records["ticker"] == "DDD"]
-    assert len(ddd) == 1
-    assert float(ddd["intended_notional"].iloc[0]) == -DAY_ONE["DDD"] * NAV
-    # The short is covered: FFF goes from -80,000 to -20,000 with a buy.
-    fff = float(records.loc[records["ticker"] == "FFF", "intended_notional"].iloc[0])
-    assert fff == 60_000.0, fff
-    print("  removal: DDD closed to zero; cover: FFF bought back 60,000")
+    assert set(records["status"]) == {"ACCEPTED"}, list(records["status"])
+    ccc = records.loc[records["ticker"] == "CCC"].iloc[0]
+    assert ccc["position_intent"] == "sell_to_close", ccc["position_intent"]
+    assert float(ccc["intended_notional"]) == -DAY_ONE["CCC"] * NAV
+    deferred = summary["deferred_reversals"]
+    assert [item["ticker"] for item in deferred] == ["CCC"]
+    assert float(deferred[0]["target_notional"]) == DAY_TWO["CCC"] * NAV
     print(
-        f"  broker now holds {len(_nonzero(broker.holdings))} name(s): "
-        f"{_nonzero(broker.holdings)}"
+        "  deferred reversal: "
+        f"{deferred[0]['ticker']} closed tonight, "
+        f"{float(deferred[0]['target_notional']):+,.0f} opens next evening"
+    )
+    ddd = records.loc[records["ticker"] == "DDD"].iloc[0]
+    assert ddd["position_intent"] == "sell_to_close", "the removal was not a close"
+    assert float(ddd["intended_notional"]) == -DAY_ONE["DDD"] * NAV
+    fff = records.loc[records["ticker"] == "FFF"].iloc[0]
+    assert fff["position_intent"] == "buy_to_close", "the cover was not a close"
+    applied = broker.settle_open()
+    print(f"  next open: filled {len(applied)}: {', '.join(sorted(applied))}")
+    print(
+        "  broker holds (shares): "
+        f"{_shares(alpaca.position_book(broker, dry_run=False)[1])}"
     )
 
-    print("\n--- DAY 2 RERUN: the broker already holds the day-2 book ---")
-    submitted_before = len(broker.submitted)
-    held, summary, records = run_day("2026-09-28", DAY_TWO, broker)
+    print("\n--- DAY 3 (2026-09-29): the deferred short opens ---")
+    held, quantities, summary, records = run_day("2026-09-29", DAY_THREE, broker)
+    print(f"  held {len(held)}; establishment={summary['establishment']}")
+    print(f"  held (shares): {_shares(quantities)}")
+    _show(records, held)
+    assert summary["complete"], summary["incomplete_legs"]
+    assert list(records["ticker"]) == ["CCC"], list(records["ticker"])
+    ccc = records.iloc[0]
+    assert ccc["position_intent"] == "sell_to_open", ccc["position_intent"]
+    assert float(ccc["intended_notional"]) == DAY_THREE["CCC"] * NAV
+    assert summary["deferred_reversals"] == []
+    applied = broker.settle_open()
+    print(f"  next open: filled {len(applied)}: {', '.join(sorted(applied))}")
+    print(
+        "  broker holds (shares): "
+        f"{_shares(alpaca.position_book(broker, dry_run=False)[1])}"
+    )
+
+    print("\n--- DAY 3 RERUN: the broker holds the day-3 book ---")
+    before = len(broker.submitted)
+    _held, _quantities, summary, _records = run_day("2026-09-29", DAY_THREE, broker)
     assert summary["orders"] == 0, summary["orders"]
-    assert len(broker.submitted) == submitted_before, "a rerun submitted an order"
+    assert len(broker.submitted) == before, "a rerun submitted an order"
     assert summary["complete"]
     print("  orders 0 (nothing new submitted); complete=True")
-    print(f"  broker submitted {len(broker.submitted)} order(s) across all three runs")
 
-    print("\nAll checks passed: orders are the deltas, the removed name is closed,")
-    print("and rerunning day two submits nothing new.")
+    print("\nAll checks passed: every leg carried a position intent, the reversal")
+    print("closed tonight and opened tomorrow, the removed name was closed, and an")
+    print("accepted after-close DAY order changed nothing until the next open.")
     return 0
 
 
