@@ -5,7 +5,7 @@
       "stored_numbers": [
         {
           "source": "docs/credit_port_design.md section 13",
-          "value": 86,
+          "value": 90,
           "what": "modules in the map"
         },
         {
@@ -14,13 +14,18 @@
           "what": "modules in the repository"
         },
         {
-          "source": "docs/credit_port_design.md section 13, counted over the 96 mapped rows (86 modules plus 10 repository items)",
+          "source": "docs/credit_port_design.md section 13, counted over the 100 mapped rows (86 modules in this tree, 4 that arrive with e12, and 10 repository items)",
           "value": {
             "dropped": 0,
-            "re-specified": 33,
-            "unchanged": 63
+            "re-specified": 34,
+            "unchanged": 66
           },
           "what": "statuses assigned in the map"
+        },
+        {
+          "source": "tests/test_e13_design_note.py::test_the_e12_modules_are_mapped_even_though_they_are_not_in_this_tree",
+          "value": 4,
+          "what": "modules that arrive with the e12 branch, mapped by name"
         },
         {
           "source": "docs/credit_port_design.md, every number is cited as EFB: path",
@@ -37,7 +42,7 @@
     }
   },
   "deliverable": {
-    "lines": 992,
+    "lines": 1007,
     "path": "docs/credit_port_design.md",
     "required_sections_present": 13,
     "required_sections_required": 13
@@ -57,7 +62,8 @@
     "Document-only sprint: no model code, no new panel, no new live data, and no change to any E1 to E12 artifact, criterion or stored number.",
     "The design note cites no credit data, because none was available. Its credit statements are design statements or predictions, and the note says so where the distinction matters.",
     "F13.1 is a statement about the repository and the document together, so it is checked by a test that enumerates the repository rather than claimed: 86 modules found, 86 in the map.",
-    "One module was missing from the map when the test first ran (efb/models/__init__.py). It is recorded here because the test, not a reviewer, found it."
+    "One module was missing from the map when the test first ran (efb/models/__init__.py). It is recorded here because the test, not a reviewer, found it.",
+    "Four further modules are mapped by name rather than found in the tree (efb/attribution.py, live/attribution_job.py, scripts/build_attribution.py, scripts/review_week.py): they are E12's attribution engine, which lands with the unmerged e12 branch. The map would be incomplete for E1 to E12 without them, and the suite fails if they are missing."
   ],
   "registered_at": "2026-09-27T12:27:14+00:00",
   "sprint": "E13",

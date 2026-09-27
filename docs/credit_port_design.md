@@ -751,6 +751,21 @@ criterion is a test rather than a claim.
 | docs/roadmap_v2.md | unchanged | the programme record |
 | handoff/ | unchanged | the handoff convention, which the credit port should adopt on day one |
 
+### 13.5 The E12 modules
+
+E12's attribution engine lands with the `e12` branch, which is unmerged, so these
+four modules are mapped here by name from that branch rather than found in this
+tree. Without them the map would be incomplete for E1 to E12, and the test named
+below fails if they are missing, exactly as it fails for a module missing from
+the tree.
+
+| module | status | reason |
+| --- | --- | --- |
+| efb/attribution.py | unchanged | the holdings-based attribution engine, its identity and its variance columns are asset-class-agnostic, and in credit it gains carry and roll-down as terms |
+| live/attribution_job.py | unchanged | the job that attributes every stored day it has not attributed is the same shape in credit |
+| scripts/build_attribution.py | unchanged | the build that produces the attribution artifacts from the stored books |
+| scripts/review_week.py | re-specified | the weekly review reads the same stored columns, and in credit its skill line has to run on a spread P&L series with defaults in it |
+
 Two statuses in that map deserve a warning, because both are places where a
 credit port will be tempted to write "unchanged" and be wrong. `efb/race.py` and
 `efb/cov.py` are marked unchanged as *algorithms*. Both will need their inputs
