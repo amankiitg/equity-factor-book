@@ -369,6 +369,7 @@ def finish_run(
     thin_adv: list[dict[str, Any]] | None = None,
     poster: Any = None,
     snapshot_poster: Any = None,
+    deferred_reversals: list[dict[str, Any]] | None = None,
 ) -> int:
     """Snapshot the run, notify the owner, record it, and return the exit code.
 
@@ -485,6 +486,7 @@ def finish_run(
         cost_bps=cost_bps,
         cost_breakdown=breakdown or None,
         poster=poster,
+        deferred_reversals=deferred_reversals,
     )
     delivered = notified["status"] == notify.STATUS_SENT
     store_failed = False
@@ -855,6 +857,7 @@ def main() -> int:
             as_of,
             dry_run=dry_run,
             positions=held,
+            quantities=holdings.get("held_quantities"),
             establishment=establishment,
         )
         store_orders(as_of, dry_run)
@@ -920,6 +923,7 @@ def main() -> int:
         cost_label=str(morning.get("cost_label") or "rebalance"),
         brake_limit=float(morning.get("brake_limit") or 0.0),
         positions_check=holdings,
+        deferred_reversals=morning.get("deferred_reversals") or [],
         **snapshot_inputs,
     )
 

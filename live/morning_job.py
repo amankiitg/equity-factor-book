@@ -43,6 +43,9 @@ EXECUTION_COLUMNS = [
     # The id the leg was sent with: deterministic from the close, the ticker and
     # the side, so a rerun is refused by the broker rather than doubling the book.
     "client_order_id",
+    # The Alpaca position intent the leg carried, so the log says open vs close
+    # rather than inferring it from the sign of a notional.
+    "position_intent",
 ]
 
 # A leg with one of these statuses, or one of these reason codes, was not
@@ -58,6 +61,7 @@ INCOMPLETE_STATUSES = frozenset(
         "TIMEOUT",
         "REJECTED",
         "CANCELED",
+        "EXPIRED",
     }
 )
 INCOMPLETE_REASON_CODES = frozenset(
@@ -66,6 +70,7 @@ INCOMPLETE_REASON_CODES = frozenset(
         alpaca.REASON_SUBMIT_UNKNOWN,
         alpaca.REASON_SKIPPED_AFTER_HALT,
         alpaca.REASON_QTY_ROUNDS_TO_ZERO,
+        alpaca.REASON_CLOSE_QTY_UNKNOWN,
         alpaca.REASON_SHORT_CHECK_FAILED,
         alpaca.REASON_NOT_TRADABLE,
         alpaca.REASON_NOT_SHORTABLE,
@@ -128,6 +133,7 @@ def target_orders(
     proposal: pd.DataFrame,
     nav: float,
     current: dict[str, float] | None = None,
+    quantities: dict[str, float] | None = None,
 ) -> list[OrderSpec]:
     """The signed change to every name, over the union of the two books.
 
@@ -138,12 +144,25 @@ def target_orders(
     from the target would, from a held book, buy the whole position again on an
     increase and send a cut in the same direction as the position on a decrease.
 
+    A change that would cross zero is never sent as one order. When the held and
+    target signs are opposite, tonight's leg only closes the held position, the
+    name's effective target is zero, and the target it could not reach is recorded
+    as deferred so the email can name it. The next evening's normal delta logic
+    opens the other side. Alpaca refuses an order that reverses a position in one
+    step, and closing then opening is the honest description of the two events.
+
     A leg whose change is under `DELTA_MIN_NOTIONAL` is not worth an order and is
     left out, so a rerun of an unchanged book sends nothing. The exception is a
-    held name absent from the target: it is a close, and it is always emitted so
-    a small leftover cannot survive an evening.
+    held name absent from the target: it is a close, and it is always emitted so a
+    small leftover cannot survive an evening.
+
+    `quantities` is the broker's signed share count, carried on each leg so a full
+    close can send the exact held quantity.
     """
     held = {str(key): float(value) for key, value in (current or {}).items()}
+    held_quantity = {
+        str(key): float(value) for key, value in (quantities or {}).items()
+    }
     targets = {
         str(row.ticker): float(row.weight) * nav
         for row in proposal.itertuples(index=False)
@@ -151,8 +170,23 @@ def target_orders(
     orders: list[OrderSpec] = []
     for name in sorted(set(targets) | set(held)):
         target = targets.get(name, 0.0)
-        trade = target - held.get(name, 0.0)
-        closing = name not in targets and held.get(name, 0.0) != 0.0
+        position = held.get(name, 0.0)
+        if position != 0.0 and target != 0.0 and (position > 0) != (target > 0):
+            # Opposite signs: close the held position tonight, and let tomorrow's
+            # delta open the other side. Crossing zero in one order is refused.
+            orders.append(
+                OrderSpec(
+                    ticker=name,
+                    target_notional=0.0,
+                    trade_notional=-position,
+                    intent=alpaca.position_intent(position, 0.0),
+                    held_quantity=held_quantity.get(name, 0.0),
+                    deferred_target_notional=target,
+                )
+            )
+            continue
+        trade = target - position
+        closing = name not in targets and position != 0.0
         if not closing and abs(trade) < alpaca.DELTA_MIN_NOTIONAL:
             continue
         orders.append(
@@ -160,6 +194,8 @@ def target_orders(
                 ticker=name,
                 target_notional=target,
                 trade_notional=trade,
+                intent=alpaca.position_intent(position, target),
+                held_quantity=held_quantity.get(name, 0.0),
             )
         )
     return orders
@@ -207,6 +243,7 @@ def submit_orders(
                     "reason": "guard rejected the order",
                     "reason_code": order.status,
                     "client_order_id": "",
+                    "position_intent": order.intent,
                 }
             )
             continue
@@ -231,6 +268,7 @@ def submit_orders(
                         if close
                         else ""
                     ),
+                    "position_intent": order.intent,
                 }
             )
             continue
@@ -248,6 +286,7 @@ def submit_orders(
                     "reason": fill.detail or "live paper fill",
                     "reason_code": fill.reason_code,
                     "client_order_id": fill.client_order_id,
+                    "position_intent": fill.intent,
                 }
             )
     return pd.DataFrame(records, columns=EXECUTION_COLUMNS[1:])
@@ -262,6 +301,7 @@ def run_morning(
     data_root: Path | None = None,
     positions: dict[str, float] | None = None,
     establishment: bool | None = None,
+    quantities: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """The whole morning flow: gate, propose, guard, submit, reconcile.
 
@@ -269,13 +309,14 @@ def run_morning(
     fill-vs-intent reconciliation.
 
     `positions` is the book the account actually holds, in signed notional, and
-    `establishment` says whether this run creates the book or rebalances it.
-    Every traded leg is measured against `positions`, so a rebalance trades the
-    difference instead of the whole book; when the account holds nothing the two
-    are the same thing and the run is an establishment run, which the caller
-    names explicitly or leaves to be inferred from the empty book. The day's cost
-    is labelled from the same flag, because the proposal's cost is the cost of
-    building the book from flat and calling a rebalance that would be wrong.
+    `quantities` is the same book in signed shares. Every traded leg is measured
+    against `positions`, so a rebalance trades the difference instead of the whole
+    book; the quantities let a full close send the broker's exact held size. When
+    the account holds nothing the two are the same thing and the run is an
+    establishment run, which the caller names explicitly or leaves to be inferred
+    from the empty book. The day's cost is labelled from the same flag, because the
+    proposal's cost is the cost of building the book from flat and calling a
+    rebalance that would be wrong.
     """
     if not should_execute(decision, auto_approve):
         return {
@@ -289,6 +330,9 @@ def run_morning(
             "orders": 0,
         }
     held = {str(key): float(value) for key, value in (positions or {}).items()}
+    held_quantity = {
+        str(key): float(value) for key, value in (quantities or {}).items()
+    }
     is_establishment = (not held) if establishment is None else bool(establishment)
     proposal = load_proposal(as_of, data_root)
     client = connect(dry_run)
@@ -300,8 +344,9 @@ def run_morning(
         nav = alpaca.get_nav(client)
     # Every leg is the signed difference between the target and the held book,
     # over the union of the two. From flat the whole target trades; from a book
-    # only the change does, and a held name absent from the target is closed.
-    orders = target_orders(proposal, nav, held)
+    # only the change does, and a held name absent from the target is closed. A
+    # change that would cross zero is split: closed tonight, opened tomorrow.
+    orders = target_orders(proposal, nav, held, held_quantity)
     brake_limit, brake_basis = guards.traded_notional_limit(
         nav, establishment=is_establishment
     )
@@ -319,7 +364,10 @@ def run_morning(
         )
     records = submit_orders(guarded, client, dry_run, prices, close=as_of)
     records["trade_date"] = as_of
-    confirmed = _confirmed_tickers(records, dry_run)
+    # Holdings come from the broker's positions read, never from a fill status:
+    # the only book the loop holds is the one the account reports. In dry run
+    # nothing is held, so every row is an intention.
+    confirmed = set(held) if not dry_run else set()
     positions_frame = _positions_from_records(
         proposal, nav, dry_run=dry_run, confirmed=confirmed
     )
@@ -359,6 +407,9 @@ def run_morning(
         # file it as ok. `incomplete_legs` names each one and why.
         "complete": not incomplete,
         "incomplete_legs": incomplete,
+        # The names whose target this run could not reach because the change would
+        # cross zero: closed tonight, opened by tomorrow's normal delta logic.
+        "deferred_reversals": _deferred_reversals(orders),
         # The day's kind, the limit it was held to, and why: the three things the
         # owner needs to read a first evening's order list correctly.
         "establishment": is_establishment,
@@ -370,20 +421,21 @@ def run_morning(
     }
 
 
-def _confirmed_tickers(records: pd.DataFrame, dry_run: bool) -> set[str]:
-    """The tickers the broker confirmed it holds, from this run's own execution.
+def _deferred_reversals(orders: list[OrderSpec]) -> list[dict[str, Any]]:
+    """The reversals this run only closes, with the target it deferred.
 
-    A leg counts only when the broker reported it filled. An order queued for the
-    next open is not a holding yet, and nothing is a holding before the broker
-    says so; in dry run nothing left the process, so nothing is confirmed.
+    `held_notional` is the position closed tonight (the leg's trade is its
+    negative) and `target_notional` is the side tomorrow's run opens.
     """
-    if dry_run or records.empty or "status" not in records.columns:
-        return set()
-    return {
-        str(row.ticker)
-        for row in records.itertuples(index=False)
-        if str(row.status).upper() == "FILLED"
-    }
+    return [
+        {
+            "ticker": order.ticker,
+            "held_notional": -order.trade_notional,
+            "target_notional": order.deferred_target_notional,
+        }
+        for order in orders
+        if order.deferred_target_notional
+    ]
 
 
 def _reason_code_counts(records: pd.DataFrame) -> dict[str, int]:
@@ -409,11 +461,11 @@ def _positions_from_records(
     """The positions the loop records: the target book, labelled by kind.
 
     Every row is the proposed target and is signed with the target's weight. A row
-    is a `holding` only when the broker confirmed it after execution, in
-    `confirmed`: no name is labelled held before the broker says so, and in dry
-    run nothing is ever confirmed. Everything else is an `intention`, so a later
-    reader (E12's attribution, or the next evening) cannot count a book that was
-    never created as one the loop holds.
+    is a `holding` only when the broker's own positions confirm the name, passed in
+    `confirmed`: the broker's positions read is the only place holdings come from,
+    and in dry run nothing is ever confirmed. Everything else is an `intention`, so
+    a later reader (E12's attribution, or the next evening) cannot count a book
+    that was never created as one the loop holds.
     """
     held = confirmed or set()
     weights = proposal.set_index("ticker")["weight"]
