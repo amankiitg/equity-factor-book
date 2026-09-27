@@ -21,9 +21,11 @@ task, the reviewer's log and the implementer report.
 
 ## Branch state
 
-`main` carries the live book. Render builds both the dashboard service and the
-daily cron from it (the blueprint names no other branch) and deploys on push, so a
-merge to `main` is a deployment rather than a checkpoint.
+`main` carries the live book. Render runs one service from it, the daily cron
+`efb-live-daily` (the blueprint declares no other), and deploys on push, so a
+merge to `main` is a deployment rather than a checkpoint. The live page is not on
+Render: it is a Cloudflare Worker reading the run snapshot from a private R2
+bucket, and the Streamlit app is a research view that runs locally.
 
 Two branches sit unmerged by design, and both merge after the flip.
 
@@ -212,8 +214,8 @@ full tree and the engineering discipline. Quick map:
 - `sprints/` - one folder per sprint: PRD, TASKS, RESULTS, PROBES
 - `docs/` - ledgers, research deliverables, standards
 - `notebooks/` - hand-derived walkthroughs
-- `live/` - the paper-trading loop and the Render dashboard (E11)
-- `render.yaml` - the Render blueprint (dashboard web service plus daily cron)
+- `live/` - the paper-trading loop and its dashboard app, run locally (E11)
+- `render.yaml` - the Render blueprint: one service, the daily cron
 - `scripts/` - the daily cron entrypoint and the Supabase provisioning script
 - `.streamlit/` - the Streamlit server configuration
 - `handoff/` - the standing rules, the current task, the reviewer's log, the
