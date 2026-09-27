@@ -300,6 +300,50 @@ create table if not exists efb.e11_corporate_actions (
   primary key (trade_date, ticker)
 );
 
+-- E12: the holdings-based attribution, one row per attributed session. The three
+-- components sum to the total to machine precision by construction, and the
+-- residual is stored rather than assumed zero so a later reader can see the
+-- identity was checked and not restated. Row level security is disabled
+-- deliberately: the loop writes this table as `efb_writer` through
+-- `scripts/run_live_daily.py`, which is a direct Postgres connection and not an
+-- anonymous API client, so a policy would refuse the writer rather than protect
+-- anything. The statement is idempotent, and the grants come from
+-- `live/supabase_roles.sql`, which grants on all tables in the schema.
+create table if not exists efb.attribution (
+  trade_date date primary key,
+  n_names int,
+  gross double precision,
+  net double precision,
+  pnl_total double precision,
+  pnl_factor double precision,
+  pnl_idio double precision,
+  pnl_cost double precision,
+  identity_residual double precision,
+  pnl_factor_json jsonb,
+  pnl_timing double precision,
+  pnl_timing_json jsonb,
+  exposure_json jsonb,
+  book_exposure_json jsonb,
+  n_computed_specific int,
+  book_beta double precision,
+  market_return double precision,
+  pnl_beta double precision,
+  forecast_vol double precision,
+  realized_vol double precision,
+  vol_ratio double precision,
+  bias_statistic double precision,
+  expected_cost_bps double precision,
+  realized_cost_bps double precision,
+  n_target int,
+  n_filled int,
+  max_fill_gap double precision,
+  n_missing_return int,
+  missing_return_weight double precision,
+  written_at timestamptz not null default now()
+);
+
+alter table efb.attribution disable row level security;
+
 -- Additive changes, for a database that was already provisioned from an
 -- earlier version of this file. `create table if not exists` says nothing
 -- about a table that already exists, so a column added to a table above reaches
@@ -349,3 +393,17 @@ alter table efb.orders
 -- Pre-flip: a position row is an intention until orders have actually gone out.
 alter table efb.positions
   add column if not exists kind text;
+
+-- E12: the attribution table as first provisioned, before the hedge-timing line
+-- and the two design vintages existed. A database created from an earlier
+-- version of this file holds `efb.attribution` without them, and `live/store.py`
+-- writes every column it is handed, so a missing one is a failed evening rather
+-- than a nullable field.
+alter table efb.attribution
+  add column if not exists pnl_timing double precision;
+alter table efb.attribution
+  add column if not exists pnl_timing_json jsonb;
+alter table efb.attribution
+  add column if not exists exposure_json jsonb;
+alter table efb.attribution
+  add column if not exists book_exposure_json jsonb;

@@ -74,6 +74,51 @@ from efb.models.fundamental import FACTOR_NAMES
 
 IDENTITY_ATOL = 1e-10
 
+# The columns `efb.attribution` stores, in the order the table declares them. The
+# schema file and this tuple are checked against each other by the store test, so a
+# line added to a row without a migration fails a test instead of an evening run.
+TABLE_COLUMNS: tuple[str, ...] = (
+    "trade_date",
+    "n_names",
+    "gross",
+    "net",
+    "pnl_total",
+    "pnl_factor",
+    "pnl_idio",
+    "pnl_cost",
+    "identity_residual",
+    "pnl_factor_json",
+    "pnl_timing",
+    "pnl_timing_json",
+    "exposure_json",
+    "book_exposure_json",
+    "n_computed_specific",
+    "book_beta",
+    "market_return",
+    "pnl_beta",
+    "forecast_vol",
+    "realized_vol",
+    "vol_ratio",
+    "bias_statistic",
+    "expected_cost_bps",
+    "realized_cost_bps",
+    "n_target",
+    "n_filled",
+    "max_fill_gap",
+    "n_missing_return",
+    "missing_return_weight",
+)
+
+# The columns the row is allowed to carry and the table is not asked to hold: the
+# per-factor timing split is a jsonb beside its own total, and `written_at` is the
+# database's clock rather than the run's.
+JSON_COLUMNS: tuple[str, ...] = (
+    "pnl_factor_json",
+    "pnl_timing_json",
+    "exposure_json",
+    "book_exposure_json",
+)
+
 # The book's own realized volatility is measured over a quarter of its own daily
 # P&L, which is the shortest window that can say anything about a 10% target.
 REALIZED_VOL_WINDOW = 63
@@ -99,9 +144,12 @@ def daily_weights(books: pd.DataFrame, sessions: pd.Series) -> pd.DataFrame:
         stamp = frame.loc[before, "date"].max()
         day = frame.loc[frame["date"] == stamp, ["ticker", "weight"]].copy()
         day["date"] = session
+        # The close the book was built at, which is the vintage the hedge zeroed:
+        # a monthly book held into the next month still carries its own date.
+        day["book_date"] = stamp
         out.append(day)
     if not out:
-        return pd.DataFrame(columns=["date", "ticker", "weight"])
+        return pd.DataFrame(columns=["date", "ticker", "weight", "book_date"])
     return pd.concat(out, ignore_index=True)
 
 
@@ -290,6 +338,20 @@ def attribute_book(
         )
         exposure = weight @ np.nan_to_num(design, nan=0.0)
         per_factor = exposure * factor_returns.to_numpy(dtype=float)
+        # The book's own exposures: the design at the close the book was built, the
+        # one the hedge zeroed. The gap between the two vintages is what the hedge
+        # timing item measures, and the P&L it produces is `(E_s - E_book) f_s`.
+        # A caller that hands over only (date, ticker, weight) has told us nothing
+        # about when the book was built, so the session is the honest reading and
+        # the timing line is then zero rather than a guess.
+        book_stamp = (
+            pd.Timestamp(day["book_date"].iloc[0])
+            if "book_date" in day.columns
+            else session
+        )
+        book_design = panel.reported_design(book_stamp, names)
+        book_exposure = weight @ np.nan_to_num(book_design, nan=0.0)
+        timing = (exposure - book_exposure) * factor_returns.to_numpy(dtype=float)
         factor_pnl = float(np.nansum(per_factor))
         # A name with no return that session is not a fallback: its P&L cannot be
         # measured from this panel, so it contributes zero and its weight is
@@ -320,6 +382,19 @@ def attribute_book(
                 "pnl_factor_json": {
                     name: float(value)
                     for name, value in zip(factor_names, per_factor, strict=True)
+                },
+                "exposure_json": {
+                    name: float(value)
+                    for name, value in zip(factor_names, exposure, strict=True)
+                },
+                "book_exposure_json": {
+                    name: float(value)
+                    for name, value in zip(factor_names, book_exposure, strict=True)
+                },
+                "pnl_timing": float(np.nansum(timing)),
+                "pnl_timing_json": {
+                    name: float(value)
+                    for name, value in zip(factor_names, timing, strict=True)
                 },
                 "n_computed_specific": n_computed,
                 "book_beta": book_beta,
