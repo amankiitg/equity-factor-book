@@ -163,6 +163,94 @@ def test_daily_weights_use_the_book_dated_before_the_session() -> None:
     assert on_22.to_dict() == {"AAA": 0.3, "CCC": -0.3}, "and the 09-21 book the 22nd"
 
 
+class _VintagePanel:
+    """A panel whose design at the session is not the design at the book's close.
+
+    The hedge zeroed the exposure of the design dated the close the book was built
+    on; the model prices the session with the design dated the session. Measuring
+    the gap needs a panel where the two differ, which the fixture panel cannot do
+    because it returns one design for every date.
+    """
+
+    def __init__(
+        self,
+        returns: pd.DataFrame,
+        factor_returns: pd.DataFrame,
+        session_design: np.ndarray,
+        book_design: np.ndarray,
+        book_close: pd.Timestamp,
+        betas: np.ndarray,
+    ) -> None:
+        self._returns = returns
+        self.factor_returns = factor_returns
+        self._session_design = session_design
+        self._book_design = book_design
+        self.book_close = pd.Timestamp(book_close)
+        self._betas = betas
+        self.returns = returns.stack(future_stack=True)
+
+    def design(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
+        return self._session_design
+
+    def factor_names(self, date: pd.Timestamp) -> list[str]:
+        return list(self.factor_returns.columns)
+
+    def raw_design(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
+        return self._session_design
+
+    def reported_design(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
+        """The book's own close gets the book's design, the session gets its own."""
+        if pd.Timestamp(date) <= self.book_close:
+            return self._book_design
+        return self._session_design
+
+    def fit_or_stored(self, date, names, returns, raw):
+        factor_returns = self.factor_returns.loc[date]
+        fitted = self._session_design @ factor_returns.to_numpy(dtype=float)
+        specific = self._returns.loc[date, names].to_numpy(dtype=float) - fitted
+        return factor_returns, specific, "fixture"
+
+    def betas_at(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
+        return self._betas
+
+
+def test_the_hedge_timing_gap_is_measured_against_the_book_s_own_close() -> None:
+    """The two design vintages, and the P&L between them, on numbers by hand.
+
+    The book was built at the 09-18 close, where one name at weight 1.0 had a
+    design exposure of 1.5, and the hedge zeroed that 1.5. The session is 09-21,
+    where the same name's design exposure is 2.0 and the factor returns 1%. So the
+    session's factor P&L is 2.0 * 0.01 = 0.02, the hedge's own vintage implies
+    1.5 * 0.01 = 0.015, and the 0.5 of exposure drift is 0.005 of factor P&L that
+    the hedge did not zero. The book must carry its own close, not the session, so
+    the exposure dated the session can be read beside the one the hedge acted on.
+    """
+    book_close = pd.Timestamp("2026-09-18")
+    session = pd.Timestamp("2026-09-21")
+    books = pd.DataFrame({"date": [book_close], "ticker": ["AAA"], "weight": [1.0]})
+    panel = _VintagePanel(
+        returns=pd.DataFrame({"AAA": [0.03]}, index=[session]),
+        factor_returns=pd.DataFrame({"market": [0.01]}, index=[session]),
+        session_design=np.array([[2.0]]),
+        book_design=np.array([[1.5]]),
+        book_close=book_close,
+        betas=np.array([1.1]),
+    )
+
+    held = attribution.daily_weights(books, pd.Series([session]))
+    assert held["book_date"].iloc[0] == book_close
+
+    row = attribution.attribute_book(held, panel).iloc[0]
+    assert row["pnl_factor"] == pytest.approx(0.02)
+    assert row["exposure_json"] == {"market": pytest.approx(2.0)}
+    assert row["book_exposure_json"] == {"market": pytest.approx(1.5)}
+    assert row["pnl_timing"] == pytest.approx(0.005)
+    assert row["pnl_timing_json"] == {"market": pytest.approx(0.005)}
+    # The timing line is a gap, not a fifth component: the identity still closes on
+    # total = factor + idio + cost, with the timing already inside the factor part.
+    assert row["identity_residual"] == 0.0
+
+
 def test_the_pipeline_attributes_the_seed_book_every_session() -> None:
     """The historical book the seed carries, through the real design and returns.
 

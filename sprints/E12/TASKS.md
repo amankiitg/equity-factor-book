@@ -69,9 +69,14 @@ alter table efb.attribution disable row level security;
 grant select, insert, update on efb.attribution to efb_writer;
 ```
 
-- [ ] Added to `live/supabase_schema.sql` with the same idempotent `add column if
+- [x] Added to `live/supabase_schema.sql` with the same idempotent `add column if
       not exists` block the other tables carry, and the table registered in
-      `live/store.py` with `trade_date` as its key.
+      `live/store.py` with `trade_date` as its key. The create block carries the
+      three columns added with the hedge-timing line, and the additive block
+      repeats them, so a database provisioned from the earlier file gets them too.
+      `efb/attribution.TABLE_COLUMNS` is the row's own column list and the store
+      test compares it against the schema, which is the drift check the other
+      tables have.
 
 ## 5. Evening wiring
 

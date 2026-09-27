@@ -794,3 +794,63 @@ def test_the_upsert_nulls_missing_values_too(monkeypatch: pytest.MonkeyPatch) ->
     assert by_column["detail"] is None
     assert by_column["n_orders"] == 192, "a count is not a missing value"
     assert by_column["run_date"] == "2026-10-07"
+def test_the_attribution_table_is_registered_on_the_trade_date() -> None:
+    """E12: one attributed session is one row, so a re-run replaces the day."""
+    assert "attribution" in store.TABLES
+    assert store.TABLE_KEYS["attribution"] == ("trade_date",)
+    statement = store._upsert_sql("attribution", ["trade_date", "pnl_total"])
+    assert 'INSERT INTO "efb"."attribution"' in statement
+    assert 'ON CONFLICT ("trade_date")' in statement
+    assert "public" not in statement
+
+
+def test_the_schema_declares_every_column_the_attribution_row_carries() -> None:
+    """The drift check for the new table, for the same reason as the others.
+
+    `store.upsert` writes exactly the columns it is handed, so a column the
+    attribution row carries and the table does not declare is a failed evening
+    run rather than a nullable field. `attribution.TABLE_COLUMNS` is the row's
+    own list, so the two are compared rather than described.
+    """
+    from efb import attribution
+
+    declared = _schema_columns()
+    assert "attribution" in declared, "the schema does not create efb.attribution"
+    missing = set(attribution.TABLE_COLUMNS) - declared["attribution"]
+    assert not missing, f"efb.attribution does not declare {sorted(missing)}"
+    # The four per-factor maps are jsonb, not text: the writer hands over Python
+    # dicts and `json.dumps` in the store would store a string that no query can
+    # index into by factor.
+    schema = (ROOT / "live" / "supabase_schema.sql").read_text()
+    for column in attribution.JSON_COLUMNS:
+        assert f"{column} jsonb" in schema, f"{column} is not jsonb"
+
+
+def test_the_attribution_rows_round_trip_through_the_local_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Registration is not enough: the table has to hold a row and give it back.
+
+    The local fallback is the same code path a developer's dry run takes, and it
+    is the one that reads the columns back out of a parquet file, which is where
+    a jsonb column silently becomes a string.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path)
+    monkeypatch.setenv("EFB_STORE", "local")
+    first = {
+        "trade_date": "2026-09-25",
+        "n_names": 169,
+        "gross": 1.0,
+        "pnl_total": 0.0012,
+        "pnl_factor_json": {"market": 3e-05, "size": -1e-05},
+    }
+    store.upsert("attribution", [first])
+    stored = store.select("attribution")
+    assert len(stored) == 1
+    assert stored["pnl_factor_json"].iloc[0] == {"market": 3e-05, "size": -1e-05}
+    # A re-run of the same date replaces the day instead of adding a second
+    # reading of it, which is what the (trade_date,) key is for.
+    store.upsert("attribution", [{**first, "pnl_total": -0.0009}])
+    stored = store.select("attribution")
+    assert len(stored) == 1
+    assert stored["pnl_total"].iloc[0] == pytest.approx(-0.0009)
