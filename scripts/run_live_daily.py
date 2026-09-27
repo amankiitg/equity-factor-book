@@ -374,6 +374,24 @@ def resolve_dry_run(value: str | None) -> bool:
     return value != "false"
 
 
+# The deliberate out-of-hours bypass, the env equivalent of the smoke scripts'
+# `--force-hour`: the window is what keeps an order inside the after-hours session
+# the broker's DAY semantics are defined for, so opening it must be explicit.
+FORCE_HOUR_ENV = "EFB_FORCE_HOUR"
+
+
+def resolve_force_hour(value: str | None) -> bool:
+    """The window override opens only on the exact string "true".
+
+    The opposite default from `resolve_dry_run`, and for the same reason: a
+    missing or mistyped variable must never open the window, so a case difference
+    or a stray space refuses the run rather than trading at the wrong hour. A
+    dry-run flag left unset costs a rehearsal; a window left open costs an order
+    at an hour the broker does not hold a DAY order for.
+    """
+    return value == "true"
+
+
 def _catch_up_sessions(before: pd.Timestamp | None) -> list[str]:
     """The sessions this run appended, as ISO dates.
 
@@ -684,6 +702,31 @@ def main() -> int:
     # re-fire does not send the owner a second message.
     if not staleness.is_session(run_date):
         return market_closed_run(run_date)
+
+    # The window, before anything else. An evening that fires at another hour is
+    # not pricing the close it thinks it is: Alpaca's after-hours session is
+    # 16:00-20:00 New York, an order placed inside it is held for the next open and
+    # one placed outside it is not. The refusal does no work and records nothing,
+    # because it is not a run: the day is still owed its evening, and the in-window
+    # cron later that day must find it un-run. The override is explicit, and it is
+    # the only way past this.
+    stamp = datetime.now(UTC)
+    if not staleness.in_cron_window(stamp) and not resolve_force_hour(
+        os.environ.get(FORCE_HOUR_ENV)
+    ):
+        local = stamp.astimezone(staleness.NEW_YORK)
+        logger.error(
+            "refused: %s is %s in New York, outside the %02d:00-%02d:00 window "
+            "the loop trades in (set %s=true only for a deliberate out-of-hours "
+            "rehearsal)",
+            stamp.isoformat(timespec="seconds"),
+            local.isoformat(timespec="seconds"),
+            staleness.WINDOW_START_HOUR_ET,
+            staleness.WINDOW_END_HOUR_ET,
+            FORCE_HOUR_ENV,
+        )
+        return 1
+
     if already_ran("live_daily", run_date):
         logger.info("already ran for %s, exit 0 (idempotent)", run_date)
         return 0

@@ -9,6 +9,7 @@ owner would see.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -126,6 +127,11 @@ def _patch_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace every step of the run that would fetch, size or hash."""
     from live import corporate_actions
 
+    # The evening refuses outside the 16:00-20:00 New York window it trades in.
+    # These tests are about the gate, which runs inside it, so the window is
+    # overridden exactly as a rehearsal does; the refusal has its own tests in
+    # tests/test_run_live_daily.py.
+    monkeypatch.setenv(run_live_daily.FORCE_HOUR_ENV, "true")
     for name in ("hydrate", "persist_new_sessions", "appendix_manifest"):
         monkeypatch.setattr(appendix, name, lambda *args, **kwargs: {})
     # The first-run guard has its own tests; here the store is already open.
@@ -601,6 +607,42 @@ def test_the_gate_window_is_the_closes_own_evening_not_the_next_runs_deadline() 
     assert staleness.gate_window_end("2026-09-18") == pd.Timestamp(
         "2026-09-19T01:30:00+00:00"
     )
+
+
+def test_the_trading_window_is_new_york_time_not_utc() -> None:
+    """The window is the exchange's clock, so the same UTC hour is in and out.
+
+    20:30 UTC is 16:30 in New York in July (EDT) and 15:30 in December (EST): the
+    first is inside the 16:00-20:00 window and the second is before it opens. A
+    UTC-blind test would accept both, and the evening would submit at an hour
+    Alpaca does not hold a DAY order for.
+    """
+    summer = datetime(2026, 7, 15, 20, 30, tzinfo=UTC)
+    winter = datetime(2026, 12, 15, 20, 30, tzinfo=UTC)
+
+    assert summer.astimezone(staleness.NEW_YORK).hour == 16
+    assert winter.astimezone(staleness.NEW_YORK).hour == 15
+    assert staleness.in_cron_window(summer) is True
+    assert staleness.in_cron_window(winter) is False
+
+
+def test_the_window_opens_at_four_and_closes_at_eight() -> None:
+    """The close is 16:00 ET and the overnight session starts at 20:00 ET."""
+    for hour, minute, inside in (
+        (15, 59, False),
+        (16, 0, True),
+        (18, 30, True),
+        (19, 59, True),
+        (20, 0, False),
+        (3, 0, False),
+    ):
+        local = datetime(2026, 7, 15, hour, minute, tzinfo=staleness.NEW_YORK)
+        stamp = local.astimezone(UTC)
+        assert (hour, minute) == (
+            stamp.astimezone(staleness.NEW_YORK).hour,
+            stamp.astimezone(staleness.NEW_YORK).minute,
+        )
+        assert staleness.in_cron_window(stamp) is inside, (hour, minute)
 
 
 def test_the_run_records_when_it_started() -> None:

@@ -9,6 +9,7 @@ owner and the dashboard actually see.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -325,6 +326,11 @@ def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.setattr(extend, name, lambda *a, **k: {})
     monkeypatch.setattr(run_live_daily, "already_ran", lambda job, day: False)
+    # The suite runs whenever it runs, and the evening refuses outside the
+    # 16:00-20:00 New York window it trades in. These tests are about the run, so
+    # the window is overridden exactly as a rehearsal does. The refusal itself is
+    # pinned in tests/test_run_live_daily.py and here.
+    monkeypatch.setenv(run_live_daily.FORCE_HOUR_ENV, "true")
     # The suite runs whatever day it happens to, and the cron correctly does
     # nothing at all on a day the exchange is shut (tests/test_e11_holiday.py).
     # These tests are about the evening, so the day is declared a session.
@@ -483,6 +489,17 @@ def test_an_errored_run_does_not_mark_the_day_done(
     assert not store.select("run_status").empty
 
 
+def _clock(instant: str):
+    """A `datetime` pinned to one instant, for the run's own window check."""
+
+    class _Fixed(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ANN001, ANN206 - the stdlib signature
+            return datetime.fromisoformat(instant)
+
+    return _Fixed
+
+
 class _AccountBroker:
     """An account read: what it holds and what it is worth, from one request."""
 
@@ -628,6 +645,35 @@ def test_the_run_compares_against_the_book_before_tonight(
     # the negative control, at the level of the store: the row the check would
     # have used without the date is the later one
     assert store.select("positions")["trade_date"].max() == "2026-09-23"
+
+
+def test_the_window_override_lets_an_out_of_hours_run_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same evening, at 05:00 New York, runs with the override and refuses
+    without it.
+
+    The override is the only way past the window, and the refusal has to come
+    before any work: an evening that fired at the wrong hour has not priced the
+    close, so it must leave the day un-run for the in-window cron.
+    """
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(run_live_daily, "datetime", _clock("2026-09-22T09:00:00+00:00"))
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    assert staleness.in_cron_window(
+        run_live_daily.datetime.now(run_live_daily.UTC)
+    ) is (False)
+
+    assert run_live_daily.main() == 0
+    assert not store.select("run_status").empty
+
+    # the negative control: the same harness, the same instant, no override
+    monkeypatch.delenv(run_live_daily.FORCE_HOUR_ENV)
+    assert run_live_daily.main() == 1
 
 
 def test_the_recorded_run_states_both_books_risk_figures(

@@ -252,6 +252,7 @@ def test_a_refusal_fails_the_run_and_names_the_fix_in_the_email(
         notify, "post", lambda url, payload, headers=None: sent.append(payload)
     )
 
+    monkeypatch.setenv(run_live_daily.FORCE_HOUR_ENV, "true")
     assert run_live_daily.main() == 1
 
     assert len(sent) == 1

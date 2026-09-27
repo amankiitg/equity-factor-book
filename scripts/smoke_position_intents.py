@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from live import alpaca, guards  # noqa: E402 - after the path fix above
+from live import alpaca, guards, staleness  # noqa: E402 - after the path fix above
 
 SMOKE_ID_PREFIX = "efb-smoke"
 NEW_YORK = ZoneInfo("America/New_York")
@@ -60,9 +60,14 @@ REFUSED_STATUSES = frozenset({"rejected", "canceled", "expired", "suspended"})
 
 
 def in_cron_window(stamp: datetime) -> bool:
-    """Whether `stamp` is inside the after-hours window the smoke submits in."""
-    local = stamp.astimezone(NEW_YORK)
-    return WINDOW_START_HOUR_ET <= local.hour < WINDOW_END_HOUR_ET
+    """Whether `stamp` is inside the window the loop submits in.
+
+    The definition lives in `live.staleness`, beside the cron slot and the
+    calendar, and the daily run refuses outside it, so the smoke order and the
+    book cannot disagree about which hour the after-hours semantics are defined
+    for.
+    """
+    return staleness.in_cron_window(stamp)
 
 
 def _fill_report(fill: Any) -> dict[str, Any]:
