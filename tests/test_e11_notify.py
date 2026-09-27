@@ -8,6 +8,7 @@ owner and the dashboard actually see.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -506,6 +507,61 @@ def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     assert row["n_orders"] == 152
     assert row["gross_notional"] == 2_014_000.0
     assert store.select("cron_runs").iloc[0]["status"] == "ok"
+
+
+def test_the_recorded_run_states_both_books_risk_figures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The day's row carries the traded book's figures and the full book's.
+
+    Both come from the manifest the evening built, so the row the page reads and
+    the row the reconciliation stores cannot describe two different books. Each
+    figure keeps the name that says which book it is.
+    """
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        evening_job,
+        "build_proposal",
+        lambda *a, **k: {
+            "as_of": SESSION,
+            "n_kept": 150,
+            "kept_achieved_annual_vol": 0.0459,
+            "kept_idio_share": 0.981,
+            "kept_max_abs_exposure": 0.0334,
+            "kept_gross": 0.94,
+            "kept_net": 0.0,
+            "n_eff_kept": 94.2573,
+            "max_kept_weight": 0.033448,
+            "variance_share_cap_binds": False,
+            "top_variance_shares": [{"ticker": "AAA", "variance_share": 0.031}],
+            "achieved_annual_vol": 0.06,
+            "idio_share_after_fmp": 1.0,
+            "max_abs_exposure_after_fmp": 3.8e-15,
+            "gross": 1.0,
+            "net": 0.0,
+            "n_eff_full_book": 157.3,
+            "n_names": 499,
+        },
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+
+    assert run_live_daily.main() == 0
+
+    row = store.select("run_status").iloc[0]
+    traded = json.loads(row["traded_risk"])
+    full = json.loads(row["full_risk"])
+    assert traded["forecast_annual_vol"] == pytest.approx(0.0459)
+    assert full["forecast_annual_vol"] == pytest.approx(0.06)
+    assert traded["gross"] == pytest.approx(0.94)
+    assert full["gross"] == pytest.approx(1.0)
+    assert traded["n_eff"] == pytest.approx(94.2573)
+    assert full["n_names"] == 499
+    assert traded["variance_share_cap_binds"] is False
+    assert traded["top_variance_shares"] == [{"ticker": "AAA", "variance_share": 0.031}]
 
 
 def test_an_incomplete_run_is_not_ok_and_is_not_marked_done(

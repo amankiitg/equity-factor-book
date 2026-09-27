@@ -622,6 +622,8 @@ def run_status_row(
     establishment: bool = False,
     cost_label: str | None = "rebalance",
     positions_check: dict[str, Any] | None = None,
+    traded_risk: str | None = None,
+    full_risk: str | None = None,
 ) -> dict[str, Any]:
     """The `run_status` row for one run: the target close and every date.
 
@@ -681,6 +683,10 @@ def run_status_row(
         # about. The name maps are dropped: the counts and the drift are the
         # evidence, and the row is read on every page load.
         "positions_check": store.json_text(_positions_summary(positions_check)),
+        # The traded book's risk figures and the full book's, each under its own
+        # names. A stopped run that never built a book carries null in both.
+        "traded_risk": traded_risk,
+        "full_risk": full_risk,
     }
 
 

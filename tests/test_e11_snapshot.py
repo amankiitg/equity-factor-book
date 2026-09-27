@@ -169,6 +169,68 @@ def test_the_names_carry_weight_side_reason_and_alpha() -> None:
     assert names[1]["alpha"] == pytest.approx(-0.002)
 
 
+def test_the_reconciliation_block_carries_both_books_risk_figures() -> None:
+    """The traded book's figures and the full book's, each under its own names.
+
+    The row stores them as JSON text, the way `reconcile.daily_record` writes
+    them, and the page reads objects: the traded book's volatility must not be
+    labelled with the full book's breadth, and the two keys must be there for the
+    page to read at all.
+    """
+    traded = {
+        "forecast_annual_vol": 0.0459,
+        "idio_share": 0.981,
+        "max_abs_exposure": 0.0334,
+        "gross": 0.94,
+        "net": 0.0,
+        "n_eff": 94.2573,
+        "max_weight": 0.033448,
+        "variance_share_cap_binds": False,
+        "top_variance_shares": [{"ticker": "MU", "variance_share": 0.031}],
+    }
+    full = {
+        "forecast_annual_vol": 0.06,
+        "idio_share": 1.0,
+        "max_abs_exposure": 3.8e-15,
+        "gross": 1.0,
+        "net": 0.0,
+        "n_eff": 157.3291,
+        "n_names": 499,
+    }
+    payload = built(
+        reconciliation={
+            "intended_notional": 1000.0,
+            "filled_notional": 0.0,
+            "realized_annual_vol": None,
+            "expected_cost_bps": 8.4,
+            "traded_risk": json.dumps(traded),
+            "full_risk": json.dumps(full),
+        }
+    )
+
+    block = payload["reconciliation"]
+    assert block["traded_risk"] == traded
+    assert block["full_risk"] == full
+    assert block["traded_risk"]["forecast_annual_vol"] != (
+        block["full_risk"]["forecast_annual_vol"]
+    )
+    jsonschema.validate(instance=payload, schema=SCHEMA)
+
+
+def test_a_run_with_no_book_publishes_null_figures_not_missing_keys() -> None:
+    """A stopped run has no traded book; the keys are there and null.
+
+    The page reads the keys it knows, so an absent key would read as an unbuilt
+    page rather than as the evening that refused to price a book.
+    """
+    payload = built(reconciliation={"intended_notional": None})
+
+    block = payload["reconciliation"]
+    assert "traded_risk" in block and block["traded_risk"] is None
+    assert "full_risk" in block and block["full_risk"] is None
+    assert json.loads(snapshot.payload_text(payload))["reconciliation"] == block
+
+
 def test_expected_next_by_comes_from_the_nyse_calendar() -> None:
     # Friday 2026-09-25: the next session is Monday 09-28, whose cron slot is
     # 22:30 UTC, plus the three-hour grace.

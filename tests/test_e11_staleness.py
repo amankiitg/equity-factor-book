@@ -611,3 +611,29 @@ def test_the_run_records_when_it_started() -> None:
     assert row["started_at"] == "2026-09-25T22:30:41+00:00"
     assert row["gate_close"] is None if "gate_close" in row else True
     assert staleness.run_status_row(result, run_date="2026-09-25")["started_at"] is None
+
+
+def test_the_run_status_row_carries_both_books_risk_figures() -> None:
+    """The traded book's figures and the full book's, each under its own names.
+
+    The row is what the page and the reconciliation read, and both texts come
+    from the same manifest, so one evening cannot show the traded book's
+    volatility beside the full book's breadth.
+    """
+    result = {"target_close": "2026-09-25", "job": "evening", "status": "ok"}
+    traded = store.json_text({"forecast_annual_vol": 0.0459})
+    full = store.json_text({"forecast_annual_vol": 0.06})
+
+    row = staleness.run_status_row(
+        result, run_date="2026-09-25", traded_risk=traded, full_risk=full
+    )
+
+    assert row["traded_risk"] == traded
+    assert row["full_risk"] == full
+    # A stopped run that never built a book carries null in both rather than a
+    # figure from the last book it did not hold.
+    stopped = staleness.run_status_row(
+        {**result, "status": "stale_stopped"}, run_date="2026-09-25"
+    )
+    assert stopped["traded_risk"] is None
+    assert stopped["full_risk"] is None

@@ -147,19 +147,35 @@ def test_every_reconciliation_upgrade_has_its_alter() -> None:
     for the columns added after the initial provision.
     """
     schema = (ROOT / "live" / "supabase_schema.sql").read_text()
-    added_later = [
-        "max_abs_exposure_after_fmp",
-        "expected_spread_bps",
-        "expected_impact_bps",
-        "expected_commission_bps",
-        "expected_borrow_bps",
-    ]
-    for column in added_later:
-        statement = f"add column if not exists {column}"
-        assert f"alter table efb.reconciliation\n  {statement}" in schema, (
-            f"efb.reconciliation.{column} has no upgrade statement, so the "
-            "already-provisioned database would not get it"
-        )
+    added_later = {
+        "reconciliation": [
+            "max_abs_exposure_after_fmp",
+            "expected_spread_bps",
+            "expected_impact_bps",
+            "expected_commission_bps",
+            "expected_borrow_bps",
+            # The traded book's risk figures and the full book's, each under its
+            # own names.
+            "traded_risk",
+            "full_risk",
+        ],
+        "run_status": [
+            "establishment",
+            "cost_label",
+            "positions_check",
+            # The same two figures on the run's own row, so the page can read
+            # them without joining the day's reconciliation.
+            "traded_risk",
+            "full_risk",
+        ],
+    }
+    for table, columns in added_later.items():
+        for column in columns:
+            statement = f"add column if not exists {column}"
+            assert f"alter table efb.{table}\n  {statement}" in schema, (
+                f"efb.{table}.{column} has no upgrade statement, so the "
+                "already-provisioned database would not get it"
+            )
 
 
 @pytest.mark.parametrize(

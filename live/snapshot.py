@@ -285,6 +285,12 @@ def build(
                 "realized_annual_vol",
                 "expected_cost_bps",
             )
+        }
+        | {
+            # The traded book's risk figures and the full book's, each under its
+            # own names, from the manifest via the reconciled row.
+            "traded_risk": _json_value((reconciliation or {}).get("traded_risk"), None),
+            "full_risk": _json_value((reconciliation or {}).get("full_risk"), None),
         },
     }
 

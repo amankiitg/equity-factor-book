@@ -583,6 +583,36 @@ def test_build_proposal_stores_the_share_only_floor_and_breadth() -> None:
     assert manifest["floor_iterated"] is True
     assert isinstance(manifest["code_commit"], str) and manifest["code_commit"]
     assert 0.0 < manifest["kept_gross_before_renorm"] < manifest["kept_gross"]
+    # the traded book name by name, with each name's specific variance and its
+    # share of the book's predicted specific variance, so the comparison and the
+    # page's risk block read the book the run traded rather than re-deriving it
+    kept = manifest["kept_book"]
+    assert len(kept) == manifest["n_effective"] == manifest["n_kept"]
+    assert sum(entry["variance_share"] for entry in kept) == pytest.approx(1.0)
+    for entry in kept:
+        assert set(entry) == {
+            "ticker",
+            "weight",
+            "specific_variance",
+            "variance_share",
+        }
+        # a variance, so its square root is the specific volatility the alpha
+        # contract multiplies by
+        assert entry["specific_variance"] > 0.0
+        assert abs(entry["weight"]) > 1e-12
+    # the concentration reading: the cap binds when a name sits at or above it
+    assert manifest["variance_share_cap"] == pytest.approx(ev.sizing.VARIANCE_SHARE_CAP)
+    assert manifest["max_variance_share"] == pytest.approx(
+        max(entry["variance_share"] for entry in kept)
+    )
+    assert manifest["variance_share_cap_binds"] is (
+        manifest["max_variance_share"] >= ev.sizing.VARIANCE_SHARE_CAP - 1e-12
+    )
+    top = manifest["top_variance_shares"]
+    assert [entry["ticker"] for entry in top] == [
+        entry["ticker"]
+        for entry in sorted(kept, key=lambda row: -row["variance_share"])[:5]
+    ]
 
 
 @pytest.mark.slow

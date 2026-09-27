@@ -16,7 +16,7 @@ from typing import Any
 
 import pandas as pd
 
-from live import state
+from live import state, store
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
@@ -43,7 +43,52 @@ RECONCILIATION_COLUMNS = [
     "expected_commission_bps",
     "expected_borrow_bps",
     "dry_run",
+    # The traded book's risk figures and the full book's, each under its own
+    # names, as JSON text. They come from the proposal manifest, so the row, the
+    # run_status row and the snapshot cannot disagree about the book.
+    "traded_risk",
+    "full_risk",
 ]
+
+# The manifest keys behind each risk figure. The traded book is the kept book,
+# and the full book is every name the model sized before the floor dropped any.
+TRADED_RISK_FIELDS: dict[str, str] = {
+    "forecast_annual_vol": "kept_achieved_annual_vol",
+    "idio_share": "kept_idio_share",
+    "max_abs_exposure": "kept_max_abs_exposure",
+    "gross": "kept_gross",
+    "net": "kept_net",
+    "n_eff": "n_eff_kept",
+    "max_weight": "max_kept_weight",
+    "variance_share_cap_binds": "variance_share_cap_binds",
+    "top_variance_shares": "top_variance_shares",
+}
+FULL_RISK_FIELDS: dict[str, str] = {
+    "forecast_annual_vol": "achieved_annual_vol",
+    "idio_share": "idio_share_after_fmp",
+    "max_abs_exposure": "max_abs_exposure_after_fmp",
+    "gross": "gross",
+    "net": "net",
+    "n_eff": "n_eff_full_book",
+    "n_names": "n_names",
+}
+
+
+def risk_figures(manifest: dict[str, Any] | None) -> dict[str, Any]:
+    """The day's risk figures, traded book and full book, under their own names.
+
+    The manifest is the source; nothing is recomputed here, so the reconciliation
+    row, the run_status row and the snapshot cannot disagree about the book. A
+    manifest written before a field existed returns None for it rather than a
+    zero that reads as a measurement.
+    """
+    data = manifest or {}
+    return {
+        "traded": {name: data.get(key) for name, key in TRADED_RISK_FIELDS.items()},
+        "full": {name: data.get(key) for name, key in FULL_RISK_FIELDS.items()},
+        "variance_share_cap": data.get("variance_share_cap"),
+    }
+
 
 # The parts of the establishment cost, in the order the message states them.
 COST_PARTS = ("spread", "impact", "commission", "borrow")
@@ -104,6 +149,7 @@ def daily_record(
     manifest = _load_manifest(as_of)
     execution = _load_execution(as_of)
     breakdown = cost_breakdown(manifest)
+    risk = risk_figures(manifest)
     intended = (
         float(execution["intended_notional"].abs().sum()) if len(execution) else 0.0
     )
@@ -127,6 +173,8 @@ def daily_record(
         "expected_commission_bps": breakdown.get("commission"),
         "expected_borrow_bps": breakdown.get("borrow"),
         "dry_run": dry_run,
+        "traded_risk": store.json_text(risk["traded"]),
+        "full_risk": store.json_text(risk["full"]),
     }
     state_dir.mkdir(parents=True, exist_ok=True)
     path = state_dir / "reconciliation.parquet"

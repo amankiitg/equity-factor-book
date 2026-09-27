@@ -1147,6 +1147,24 @@ def build_proposal(
 
     kept_decomposition = _decomposition(weights, design, factor_covariance, specific)
 
+    # The traded book, name by name, with each name's specific variance and its
+    # share of the book's predicted specific variance. S1's alpha-contract
+    # comparison reads these rather than re-deriving the book, and the page's
+    # risk block is built from the same numbers.
+    variance_shares = sizing.variance_shares(weights, specific)
+    kept_indices = np.where(np.abs(weights) > 1e-12)[0]
+    by_share = sorted(
+        ((str(names[index]), float(variance_shares[index])) for index in kept_indices),
+        key=lambda pair: -pair[1],
+    )
+    top_variance_shares = [
+        {"ticker": ticker, "variance_share": share} for ticker, share in by_share[:5]
+    ]
+    max_variance_share = float(variance_shares.max()) if len(names) else 0.0
+    variance_share_cap_binds = bool(
+        max_variance_share >= sizing.VARIANCE_SHARE_CAP - 1e-12
+    )
+
     previous_weights = (
         previous.reindex(names).fillna(0.0).to_numpy(dtype=float)
         if previous is not None
@@ -1238,6 +1256,23 @@ def build_proposal(
         "kept_idio_share": kept_decomposition["idio_share"],
         "kept_max_abs_exposure": kept_decomposition["max_abs_exposure"],
         "max_kept_weight": float(np.max(np.abs(weights))),
+        # The traded book, name by name, so a reader (or the S1 comparison) does
+        # not have to re-derive it, plus its concentration reading: the cap binds
+        # when a name sits at or above VARIANCE_SHARE_CAP of the book's predicted
+        # specific variance.
+        "kept_book": [
+            {
+                "ticker": str(names[index]),
+                "weight": float(weights[index]),
+                "specific_variance": float(specific[index]),
+                "variance_share": float(variance_shares[index]),
+            }
+            for index in kept_indices
+        ],
+        "variance_share_cap": float(sizing.VARIANCE_SHARE_CAP),
+        "max_variance_share": max_variance_share,
+        "variance_share_cap_binds": variance_share_cap_binds,
+        "top_variance_shares": top_variance_shares,
         "kept_achieved_annual_vol": float(
             math.sqrt(
                 kept_decomposition["idio_variance"]

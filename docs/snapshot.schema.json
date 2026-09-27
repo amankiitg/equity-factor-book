@@ -186,7 +186,15 @@
         "intended_notional": {"type": ["number", "null"]},
         "filled_notional": {"type": ["number", "null"]},
         "realized_annual_vol": {"type": ["number", "null"]},
-        "expected_cost_bps": {"type": ["number", "null"]}
+        "expected_cost_bps": {"type": ["number", "null"]},
+        "traded_risk": {
+          "type": ["object", "null"],
+          "description": "The traded book's risk figures under their own names: forecast_annual_vol, idio_share, max_abs_exposure, gross, net, n_eff, max_weight, variance_share_cap_binds, top_variance_shares. Read from the proposal manifest, so the page, the reconciliation row and the run_status row cannot disagree."
+        },
+        "full_risk": {
+          "type": ["object", "null"],
+          "description": "The full book's risk figures under their own names: forecast_annual_vol, idio_share, max_abs_exposure, gross, net, n_eff, n_names."
+        }
       }
     }
   }

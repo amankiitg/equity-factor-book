@@ -434,6 +434,12 @@ def finish_run(
         # what the evening cost.
         breakdown = reconcile_module.cost_breakdown(manifest)
         cost_bps = breakdown.get("total")
+        # The traded book's risk figures and the full book's, from the same
+        # manifest the proposal was written from, so the run_status row and the
+        # reconciliation row cannot describe different books.
+        risk = reconcile_module.risk_figures(manifest)
+        row["traded_risk"] = store.json_text(risk["traded"])
+        row["full_risk"] = store.json_text(risk["full"])
     snapshot_detail, snapshot_failed = "", False
     try:
         written = snapshot_module.write_snapshot(
