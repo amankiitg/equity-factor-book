@@ -472,8 +472,11 @@ def test_the_hedge_drives_the_exposures_to_zero() -> None:
     # and the book the exposures were taken from is the stored one. The breadth
     # moved from 70.5921 to 96.3664 when the 10% variance-share cap joined the
     # sizing: levelling the few names that carried most of the residual risk raises
-    # the effective breadth of the book.
-    assert manifest["n_eff_kept"] == pytest.approx(96.3664, abs=1e-3)
+    # raises the effective breadth of the book. It moved again, to 94.2573, when
+    # the hedge started using the design for the session the book is held over
+    # rather than the row dated the close: the two designs differ in the size of
+    # the book they produce, not only in the exposures they zero.
+    assert manifest["n_eff_kept"] == pytest.approx(94.2573, abs=1e-3)
 
 
 def test_the_headline_gross_is_the_book_that_trades() -> None:

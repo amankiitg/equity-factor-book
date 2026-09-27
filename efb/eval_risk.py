@@ -18,6 +18,7 @@ survivor-only cross-section.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 import pandas as pd
@@ -353,18 +354,39 @@ def _window_names(wide: pd.DataFrame, date: pd.Timestamp) -> list[str]:
     return [name for name in wide.columns if block[name].notna().all()]
 
 
+class XsPieces(TypedDict):
+    """XS-v1's design, factor covariance and specific diagonal for one date.
+
+    Typed rather than a bare dict so the arrays stay arrays: `design_vintage` is
+    a string, and widening the value type to suit it made every caller that does
+    `pieces["design"] @ x` an error.
+    """
+
+    design: np.ndarray
+    design_vintage: str
+    factor_covariance: np.ndarray
+    specific: np.ndarray
+
+
 def _xs_pieces(
     date: pd.Timestamp, names: list[str], data_root: Path
-) -> dict[str, np.ndarray] | None:
+) -> XsPieces | None:
     """XS-v1's point-in-time design, factor covariance and specific diagonal.
 
     The factor covariance is the model's own EWMA over the factor returns
-    strictly before the rebalance date, and the design and the diagonal are
-    read from the XS-v1 artifacts at the latest published date at or before
-    it, which is exactly what `efb.race.xs_supplier` documents. The race's
+    strictly before the rebalance date, and the diagonal is read from the
+    specific-variance artifact at the latest published date at or before it,
+    which is exactly what `efb.race.xs_supplier` documents. The race's
     supplier itself is not used: its single-level-index extraction branch
     selects one row of the factor covariance and drops every window, which is
     part of the F5.0b record, so the engine reads the matrix directly.
+
+    The design is `efb.race.next_descriptor_design`: the row the model will date
+    with the session after `date`, because that is the session the book being
+    built earns its return in. It falls back to the row dated `date` only when
+    the next session's row cannot be built at all. The vintage that was used
+    comes back under `design_vintage` so the run can record which row the hedge
+    was built against.
     """
     root = Path(data_root)
     factor_returns = pd.read_parquet(
@@ -381,7 +403,12 @@ def _xs_pieces(
     factor_covariance = fx.ewma_factor_cov(
         history.loc[:, ordered], half_life=fx.F_HALF_LIFE
     ).to_numpy(dtype=float)
-    design = race._descriptor_design(date, names, root)
+    # The book built tonight earns the next session, so the exposures to zero are
+    # the ones that session carries, not the ones the row dated `date` carries.
+    # `design_vintage` names the row that was used, so a reader can tell which
+    # vintage the hedge was built against; a label starting with `stale` means the
+    # next session's row was not available and the row dated the close was used.
+    design, design_vintage = race.next_descriptor_design(date, names, root)
     specific, _missing = race._specific_for(date, names, root)
     design = np.nan_to_num(design, nan=0.0, posinf=0.0, neginf=0.0)
     median_specific = float(np.nanmedian(specific))
@@ -395,6 +422,7 @@ def _xs_pieces(
         return None
     return {
         "design": design,
+        "design_vintage": design_vintage,
         "factor_covariance": factor_covariance,
         "specific": specific,
     }

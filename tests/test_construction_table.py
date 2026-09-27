@@ -184,17 +184,22 @@ def test_the_book_is_the_drop_then_admit_local_maximum() -> None:
     # drop-only count and the E11-F13 prefix, which keeps far fewer names
     assert (floor_rows["n_kept_prefix"] < floor_rows["n_kept"]).all()
     assert (floor_rows["n_kept_drop_only"] < floor_rows["n_kept"]).all()
-    # the five checks, recorded per row. All of them hold on every floor row.
-    # The $5,000 row was the one exception until the 10% variance-share cap: it
-    # kept 35 names against the 51 the owner's rank margin needs, and capping
-    # the largest variance contributors spreads the book until 51 names clear
-    # their floor. The row now sits exactly on the margin, so it is asserted at
-    # the margin rather than above it - one name lost and the check fires again
-    assert (floor_rows["floor_book_checks"] == "ok").all()
+    # the five checks, recorded per row. All of them hold on every floor row
+    # except the $5,000 one, whose own message is pinned instead. That row sat
+    # exactly on the owner's 51-name margin until the hedge started using the
+    # design for the session the book is held over rather than the row dated the
+    # close: the two designs size the book a few names apart, and this variant -
+    # the most aggressive floor on a $1M book - no longer clears the margin. The
+    # construction that trades is `share_only_20shares`, which keeps 158 names.
+    checks = floor_rows.set_index("construction")["floor_book_checks"]
+    assert checks.drop("min_position_5000").eq("ok").all()
+    assert checks["min_position_5000"] == (
+        f"45 kept names, below the {ev.MIN_FLOOR_BOOK_NAMES} name rank margin"
+    )
     margin = floor_rows.loc[
         floor_rows["construction"] == "min_position_5000", "n_kept"
     ].iloc[0]
-    assert int(margin) == ev.MIN_FLOOR_BOOK_NAMES
+    assert int(margin) < ev.MIN_FLOOR_BOOK_NAMES
     # the search and its ordering robustness are reported
     for column in (
         "admit_passes",

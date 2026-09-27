@@ -27,7 +27,7 @@ import pandas as pd
 
 from efb import alpha as alpha_mod
 from efb import costs as costs_mod
-from efb import eval_risk, registry, size
+from efb import eval_risk, race, registry, size
 from efb.build import hash_file
 from live import alpaca, sizing
 
@@ -987,6 +987,40 @@ def _cost_decomposition(
     )
 
 
+def previous_book_exposure(
+    as_of_ts: pd.Timestamp, previous: pd.Series | None, data_root: Path
+) -> dict[str, object] | None:
+    """The previous book's exposure under the row the model published for this close.
+
+    The book written at the previous close was hedged against the design for
+    *this* session, and that design had to be built at that close because the
+    model had not published the row yet. The row it dates this session is in the
+    artifact now, so this close is the first moment the number is knowable, and
+    it is the real post-hedge exposure rather than the zero the run reports
+    against the design it hedged with. E12 reads it from the stored manifest.
+
+    That book is the one that traded, quantised to whole shares, so this number
+    carries the quantisation too; it is the realized book's exposure, not the
+    hedge's own vector. None on an establishment day, when no earlier book was
+    held and there is nothing to measure.
+    """
+    if previous is None or len(previous) == 0:
+        return None
+    root = Path(data_root)
+    names = [str(ticker) for ticker in previous.index]
+    weights = np.asarray(previous.to_numpy(dtype=float), dtype=float)
+    stamp = race.descriptor_stamp(as_of_ts, root)
+    published = race._descriptor_design(as_of_ts, names, root)
+    exposures = published.T @ weights
+    return {
+        "as_of": str(as_of_ts.date()),
+        "published_row": None if stamp is None else str(pd.Timestamp(stamp).date()),
+        "n_names": len(names),
+        "max_abs_exposure": float(np.abs(exposures).max()),
+        "exposures": label_exposures(exposures),
+    }
+
+
 def build_proposal(
     data_root: Path | None = None,
     as_of: pd.Timestamp | None = None,
@@ -1149,6 +1183,20 @@ def build_proposal(
         "factor_neutral_t_h21": neutral_ic["factor_neutral_t_h21"],
         "idio_share_after_fmp": full_decomposition["idio_share"],
         "max_abs_exposure_after_fmp": full_decomposition["max_abs_exposure"],
+        # Which design row the hedge was built against. The exposures the book
+        # earns are the ones the session after this close carries, so the hedge
+        # uses the row the model will date with that session, built here when the
+        # model has not published it yet. Recording the vintage is what lets a
+        # reader tell the two apart, and it is the only place the difference is
+        # visible: `exposures_after_hedge` below is zero against whichever design
+        # was used, by construction.
+        "hedge_design_vintage": str(pieces["design_vintage"]),
+        # The previous book's exposure under the row the model has now published
+        # for this session: the real number for the hedge built last night, one
+        # session later, since nothing earlier can know it.
+        "previous_book_exposure_vs_published": previous_book_exposure(
+            as_of_ts, previous, root
+        ),
         "gross": full_decomposition["gross"],
         "net": full_decomposition["net"],
         # X'w after the hedge, one value per design column, named by

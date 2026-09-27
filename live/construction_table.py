@@ -32,6 +32,7 @@ import pandas as pd
 
 from efb import alpha as alpha_mod
 from efb import eval_risk, size
+from efb.models import fundamental as fx
 from live import evening_job
 from live.evening_job import (
     PAPER_NAV,
@@ -92,19 +93,29 @@ def _raw_pieces(
     return names, alpha_vec, z, design, factor_covariance, specific
 
 
-def _load_beta_stages(names: list[str], root: Path) -> dict[str, Any]:
+def _load_beta_stages(
+    names: list[str], root: Path, design: np.ndarray
+) -> dict[str, Any]:
     """TS-v1's raw beta beside XS-v1's beta-descriptor pipeline stages.
 
     The raw beta is TS-v1's unshrunk 252-day CAPM beta, read at its latest
     date (2026-09-03; the live extension did not rebuild TS-v1). The stages
-    come from XS-v1's descriptors artifact at its latest date (2026-09-21,
-    the close the book is hedged against): `value_raw` is the Vasicek-shrunk
-    beta, `value_winsor` the 3-MAD clipped value, `value_z` the standardized
-    value before orthogonalization, `value_z_orth` the finished descriptor the
-    FMP hedge zeroes. A name the descriptor cross-section drops contributes
-    zero to the hedge, so every stage is filled with 0 for it, and the name is
-    recorded as a zero fill. Market cap, the weight XS-v1's fit uses, is read
-    at its own latest date (2026-09-03, frozen beside TS-v1).
+    come from XS-v1's descriptors artifact at its latest date (2026-09-21):
+    `value_raw` is the Vasicek-shrunk beta, `value_winsor` the 3-MAD clipped
+    value and `value_z` the standardized value before orthogonalization. A name
+    the descriptor cross-section drops contributes zero to the hedge, so every
+    stage is filled with 0 for it, and the name is recorded as a zero fill.
+    Market cap, the weight XS-v1's fit uses, is read at its own latest date
+    (2026-09-03, frozen beside TS-v1).
+
+    `descriptor` is the finished column, the one the FMP hedge zeroes, and it
+    comes from `design` rather than from the artifact: the hedge is built
+    against the row the model dates with the session the book is held over,
+    which the artifact does not carry until that session closes. Reading it here
+    instead measured the hedge's book against a different row and left a
+    beta-descriptor exposure of 4.6e-03 where the hedge's own design is zero.
+    The other stages stay the artifact's latest row, so the raw-units residual
+    terms below are measured against the close's own pipeline.
     """
     beta = pd.read_parquet(root / "models" / "TS-v1" / "beta_history.parquet")
     beta = beta[beta["method"] == "raw"]
@@ -127,33 +138,34 @@ def _load_beta_stages(names: list[str], root: Path) -> dict[str, Any]:
     beta_desc = descriptors[descriptors["descriptor"] == "beta"]
     stamp = pd.to_datetime(beta_desc["date"]).max()
     day = beta_desc.loc[pd.to_datetime(beta_desc["date"]) == stamp].set_index("ticker")
+    hedge_descriptor = design[:, fx.ESTIMATED_NAMES.index("beta")]
     shrunk_map: dict[str, float] = {}
     winsor_map: dict[str, float] = {}
     standardized_map: dict[str, float] = {}
     descriptor_map: dict[str, float] = {}
     zero_filled: set[str] = set()
-    for ticker in names:
+    for position, ticker in enumerate(names):
+        descriptor_map[ticker] = float(hedge_descriptor[position])
+        if (
+            not np.isfinite(hedge_descriptor[position])
+            or hedge_descriptor[position] == 0.0
+        ):
+            # a name the cross-section dropped contributes zero to the hedge, and
+            # so does one the artifact carries a row for with no value: count it.
+            zero_filled.add(ticker)
         if ticker in day.index:
             shrunk = day.loc[ticker, "value_raw"]
             winsor = day.loc[ticker, "value_winsor"]
             standardized = day.loc[ticker, "value_z"]
-            descriptor = day.loc[ticker, "value_z_orth"]
             shrunk_map[ticker] = float(shrunk) if pd.notna(shrunk) else 0.0
             winsor_map[ticker] = float(winsor) if pd.notna(winsor) else 0.0
             standardized_map[ticker] = (
                 float(standardized) if pd.notna(standardized) else 0.0
             )
-            descriptor_map[ticker] = float(descriptor) if pd.notna(descriptor) else 0.0
-            # a name present in the cross-section but with no descriptor value
-            # is filled with 0 just as a name absent from it is: count it.
-            if pd.isna(descriptor):
-                zero_filled.add(ticker)
         else:
             shrunk_map[ticker] = 0.0
             winsor_map[ticker] = 0.0
             standardized_map[ticker] = 0.0
-            descriptor_map[ticker] = 0.0
-            zero_filled.add(ticker)
 
     mcap = pd.read_parquet(root / "processed" / "market_cap.parquet")
     mcap_latest = pd.to_datetime(mcap["date"]).max()
@@ -751,7 +763,7 @@ def build_table(
         root, as_of_ts
     )
     close = _close_prices(as_of_ts, root)
-    beta_stages = _load_beta_stages(names, root)
+    beta_stages = _load_beta_stages(names, root, design)
 
     full_weights = size.procedure_6_3(alpha_vec, design, factor_covariance, specific)
     full_weights, _gross_cap_bound = _scale_to_target(

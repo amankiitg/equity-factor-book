@@ -30,6 +30,13 @@ MIN_NAMES = 50
 # covariance exists. Windows behind this are skipped for the XS-v1 row only.
 MIN_FACTOR_HISTORY = 126
 
+# Sessions of history `next_descriptor_design` needs to build a row that matches
+# the one the model will publish. The longest descriptor chain is the beta window
+# (252) followed by the residual-volatility window (63), so 400 sessions is
+# enough and the build stays a pure function of the window: every descriptor is a
+# rolling statistic or a shift, and none of them reaches further back than this.
+NEXT_DESIGN_WINDOW = 400
+
 # (date, n_names, n_names the model could not price) for every supplier call,
 # so the XS-v1 row can be read knowing how much of it is the model's fallback
 _COVERAGE: list[tuple[pd.Timestamp, int, int]] = []
@@ -100,6 +107,59 @@ def _fmp_design(date: pd.Timestamp, names: list[str], data_root: Path) -> np.nda
     return np.nan_to_num(wide.to_numpy(dtype=float), nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def _sector_codes(data_root: Path) -> pd.Series:
+    """The sector label per ticker, from whichever column the file carries."""
+    sectors = pd.read_parquet(data_root / "processed" / "sectors.parquet")
+    sector_column = [c for c in sectors.columns if c != "ticker"][0]
+    return sectors.set_index("ticker")[sector_column]
+
+
+def _design_from_styles(
+    z: pd.DataFrame, names: list[str], codes: pd.Series
+) -> np.ndarray:
+    """One day's design matrix from its orthogonalized z and the sector map.
+
+    INPUT: the pivot of `value_z_orth` by ticker and descriptor, the names the
+    caller wants in the row, and the sector label per ticker. OUTPUT: the
+    constant, the six non-market styles and one dummy per estimated sector with
+    the reference sector dropped, in `fx.ESTIMATED_NAMES` order.
+
+    Shared by the published row and the row built for the next session, so the
+    two cannot assemble the same day differently: a name the cross-section drops
+    is a zero row rather than a missing one, and a name with no sector is its
+    own string, which matches no dummy.
+    """
+    styles = [name for name in fx.STYLE_NAMES if name != "market"]
+    aligned = z.reindex(index=names, columns=styles)
+    design = np.column_stack(
+        [np.ones(len(names)), np.nan_to_num(aligned.to_numpy(dtype=float), nan=0.0)]
+    )
+    labels = codes.reindex(names).astype(str)
+    # `SECTOR_FACTORS_ESTIMATED` names sectors by code, while the sector file may
+    # hold either the code or the sector name, so both are accepted here
+    by_code = {str(code): name for name, code in fx.SECTOR_CODES.items()}
+    for factor in fx.SECTOR_FACTORS_ESTIMATED:
+        code = factor.replace("sector_", "")
+        sector_name = str(by_code.get(code, code))
+        column = ((labels == code) | (labels == sector_name)).to_numpy(dtype=float)
+        design = np.column_stack([design, column])
+    return design
+
+
+def descriptor_stamp(date: pd.Timestamp, data_root: Path) -> pd.Timestamp | None:
+    """The date of the descriptor row the artifact serves for `date`.
+
+    The latest published row at or before `date`, which is what every reader of
+    the artifact gets. A run that reports a number measured against that row
+    records this beside it, so a row older than the close cannot pass for the
+    close's own.
+    """
+    descriptors = pd.read_parquet(
+        Path(data_root) / "models" / "XS-v1" / "descriptors.parquet"
+    )
+    return _as_of(descriptors, date)
+
+
 def _descriptor_design(
     date: pd.Timestamp, names: list[str], data_root: Path
 ) -> np.ndarray:
@@ -118,24 +178,156 @@ def _descriptor_design(
     stamp = _as_of(descriptors, date)
     day = descriptors.loc[pd.to_datetime(descriptors["date"]) == stamp]
     z = day.pivot_table(index="ticker", columns="descriptor", values="value_z_orth")
-    styles = [name for name in fx.STYLE_NAMES if name != "market"]
-    z = z.reindex(index=names, columns=styles)
-    design = np.column_stack(
-        [np.ones(len(names)), np.nan_to_num(z.to_numpy(dtype=float), nan=0.0)]
+    return _design_from_styles(z, names, _sector_codes(Path(data_root)))
+
+
+def _published_z(descriptors: pd.DataFrame, stamp: pd.Timestamp) -> pd.DataFrame:
+    """One published row's `value_z_orth`, pivoted by ticker and descriptor."""
+    day = descriptors.loc[pd.to_datetime(descriptors["date"]) == stamp]
+    return day.pivot_table(index="ticker", columns="descriptor", values="value_z_orth")
+
+
+def _session_after(date: pd.Timestamp, data_root: Path) -> pd.Timestamp | None:
+    """The next session after `date`, or None when the panel stops at `date`.
+
+    Read from the returns artifact's index alone, which is the session grid every
+    other frame is reindexed to, so this cannot disagree with the panel a build
+    reads. Reading only the index keeps the sparse-replay path off the panel load.
+    """
+    frame = pd.read_parquet(data_root / "processed" / "returns.parquet", columns=[])
+    sessions = pd.DatetimeIndex(frame.index.get_level_values("date").unique())
+    ahead = sessions.sort_values()[sessions > date]
+    return pd.Timestamp(ahead[0]) if len(ahead) else None
+
+
+def next_descriptor_design(
+    date: pd.Timestamp, names: list[str], data_root: Path
+) -> tuple[np.ndarray, str]:
+    """The design for the session after `date`, and a label naming its vintage.
+
+    The book built at the close of `date` is held over the next session, so the
+    exposures the hedge has to zero are the ones that session carries: the design
+    row the model dates with the next session. That row's raw descriptors are
+    computed from data through `date`, because every descriptor on a row is a
+    shifted quantity, so the row is knowable at this close with one exception.
+    `fx.standardize` takes its cross-section over the names priced on the row's
+    own date, and that set is fixed by the next session's own prices, which do
+    not exist yet. Three readings follow, and the label says which one was used:
+
+    - the model has published the row for the next session, so it is used as it
+      stands. It is exactly the object to hedge against. This is the shape a
+      replay has when the artifact carries the daily rows.
+    - the panel stops at the close, which is the live shape, so the row is built
+      here from data through `date` with the cross-section taken as the names
+      priced at `date`. The build is exact whenever the priced set does not move
+      between the two sessions, which is every ordinary session, and it cannot be
+      exact on the session before a market holiday, when the set does move.
+      Measured on 2026-09-04 to 2026-09-08 (Labor Day) one name is priced at the
+      next close and not at this one, so its z is zero here and a full z there,
+      and the traded book is left with 4e-03 of exposure against 5.8e-02 for the
+      row dated the close.
+    - neither: the tree publishes sparsely, so a live run at that close would have
+      published a row this tree does not have (the seed's month ends), or there is
+      too little history behind the close to build one. The row dated `date` is
+      used, which is what every caller used before this change.
+
+    Always returns a design. A label starting with `stale` means the row dated the
+    close was used, so the caller records that this hedge is one session behind.
+    """
+    from efb import probes  # the shared panel loader that live/extend.py reads
+
+    root = Path(data_root)
+    stamp = pd.Timestamp(date)
+    descriptors = pd.read_parquet(root / "models" / "XS-v1" / "descriptors.parquet")
+    codes = _sector_codes(root)
+    published = pd.DatetimeIndex(sorted(pd.to_datetime(descriptors["date"]).unique()))
+    stale_stamp = _as_of(descriptors, stamp)
+    if stale_stamp is None:
+        raise RuntimeError(
+            f"the descriptor artifact has no row at or before {stamp.date()}"
+        )
+    following = _session_after(stamp, root)
+
+    if following is not None and following in published:
+        label = f"published {following.date()} (the row the model dated it with)"
+        return (
+            _design_from_styles(_published_z(descriptors, following), names, codes),
+            label,
+        )
+
+    if following is not None:
+        label = (
+            f"stale {stale_stamp.date()} (the panel reaches past the close and the"
+            f" model has published no row for {following.date()})"
+        )
+        return (
+            _design_from_styles(_published_z(descriptors, stale_stamp), names, codes),
+            label,
+        )
+
+    panel = probes.load_panel(root)
+    frame = panel["returns"]
+    close = panel["close"]
+    volume = panel["volume"]
+    shares = panel["shares"]
+    mapped = panel["mapped"]
+    assert isinstance(frame, pd.DataFrame)
+    assert isinstance(close, pd.DataFrame)
+    assert isinstance(volume, pd.DataFrame)
+    assert isinstance(shares, pd.DataFrame)
+    assert isinstance(mapped, list)
+
+    returns = frame[mapped]
+    sessions = pd.DatetimeIndex(sorted(returns.index))
+    window = sessions[sessions <= stamp][-NEXT_DESIGN_WINDOW:]
+    if len(window) < NEXT_DESIGN_WINDOW:
+        label = (
+            f"stale {stale_stamp.date()} (only {len(window)} sessions behind the"
+            f" close, fewer than the {NEXT_DESIGN_WINDOW} the built row needs)"
+        )
+        return (
+            _design_from_styles(_published_z(descriptors, stale_stamp), names, codes),
+            label,
+        )
+
+    # One synthetic row for the session being described, appended after the close.
+    # Its returns encode the cross-section the standardisation is taken over: a
+    # number where the name was priced at the close, NaN where it was not. Every
+    # descriptor on that row is a shifted quantity, so it reads data through the
+    # close and never this row's own values, and the label only has to be later
+    # than the close for the shifts to line up.
+    row_date = stamp + pd.Timedelta(days=1)
+    priced = returns.loc[stamp].notna()
+    blank = pd.DataFrame(np.nan, index=[row_date], columns=returns.columns, dtype=float)
+    described = blank.copy()
+    described.loc[row_date, priced[priced].index] = 0.0
+
+    r = pd.concat([returns.loc[window], described])
+    c = pd.concat([close[mapped].loc[window], blank])
+    v = pd.concat([volume[mapped].loc[window], blank])
+    sh = pd.concat([shares[mapped].loc[window], blank])
+    cap = fx.market_cap(c, sh)
+    raw = fx.raw_descriptors(r, c, v, cap, fx.market_proxy(r, cap))
+    standard: dict[str, pd.DataFrame] = {"market": raw["market"]}
+    for name in fx.STYLE_NAMES:
+        if name == "market":
+            continue
+        frame_z, _table, _clipped = fx.standardize(raw[name], r.notna(), cap.shift(1))
+        frame_z.columns = r.columns
+        standard[name] = frame_z
+    orthogonal = fx.orthogonalize(standard, fx.DEFAULT_ORTHOGONALIZATION)
+    z = pd.DataFrame(
+        {
+            name: orthogonal[name].loc[row_date]
+            for name in fx.STYLE_NAMES
+            if name != "market"
+        }
     )
-    sectors = pd.read_parquet(data_root / "processed" / "sectors.parquet")
-    sector_column = [c for c in sectors.columns if c != "ticker"][0]
-    codes = sectors.set_index("ticker")[sector_column]
-    aligned = codes.reindex(names).astype(str)
-    # `SECTOR_FACTORS_ESTIMATED` names sectors by code, while the sector file may
-    # hold either the code or the sector name, so both are accepted here
-    by_code = {str(code): name for name, code in fx.SECTOR_CODES.items()}
-    for factor in fx.SECTOR_FACTORS_ESTIMATED:
-        code = factor.replace("sector_", "")
-        sector_name = str(by_code.get(code, code))
-        column = ((aligned == code) | (aligned == sector_name)).to_numpy(dtype=float)
-        design = np.column_stack([design, column])
-    return design
+    label = (
+        f"built from data through {stamp.date()}"
+        f" (cross-section: the {int(priced.sum())} names priced at the close)"
+    )
+    return _design_from_styles(z, names, codes), label
 
 
 def design_diagnosis(
