@@ -645,19 +645,34 @@ def _resolved_fill(order: Any, ticket: str, existing: Any, intent: str) -> Fill:
     )
 
 
-def _close_quantity(order: Any, price: float) -> float:
+def _close_quantity(order: Any, price: float, intent: str) -> float:
     """The shares a close leg sends.
 
     A full close sends the **exact held quantity** the broker reports, fractional
-    included, so the position lands on zero rather than on a rounding remainder. A
-    partial decrease or cover has no such quantity to take, so its size is the
-    trade's own notional over the close price, which may be fractional too.
+    included, so the position lands on zero rather than on a rounding remainder.
+
+    A partial **cover** has no such quantity to take, so its size is the trade's
+    own notional over the close price, rounded **down** to whole shares. Down, not
+    nearest: a cover that buys one share more than the position holds does not
+    reduce the short, it closes it and can leave the book long in a name whose
+    target is still short, which is a position the run never chose. Whole shares,
+    because a half-covered short is a size the sizing step never asked for and
+    cannot reason about.
+
+    A partial **long** decrease keeps the fractional size it has always had.
+    Selling part of a share cannot turn the position into a short while the target
+    still holds shares, and flooring a small trim would round it away entirely and
+    skip a leg that should trade.
     """
-    if order.target_notional == 0.0 and order.held_quantity:
-        return abs(float(order.held_quantity))
-    if price > 0:
-        return abs(float(order.trade_notional)) / price
-    return 0.0
+    held = abs(float(order.held_quantity or 0.0))
+    if order.target_notional == 0.0 and held:
+        return held
+    if price <= 0:
+        return 0.0
+    raw = abs(float(order.trade_notional)) / price
+    if intent == INTENT_BUY_TO_CLOSE:
+        return float(math.floor(raw))
+    return raw
 
 
 def submit_market_orders(
@@ -768,8 +783,24 @@ def submit_market_orders(
                 position_intent=intent_enum[intent],
             )
         elif intent in (INTENT_SELL_TO_CLOSE, INTENT_BUY_TO_CLOSE):
-            qty = _close_quantity(order, price)
+            qty = _close_quantity(order, price, intent)
             if qty <= 0:
+                # A cover that rounds down to no whole share cannot be sent as the
+                # fractional size it was sized at, and it must not be rounded up to
+                # the one share that would close more than the run asked for.
+                if intent == INTENT_BUY_TO_CLOSE and price > 0:
+                    fills.append(
+                        _skipped(
+                            order.ticker,
+                            trade,
+                            REASON_QTY_ROUNDS_TO_ZERO,
+                            f"{notional:.2f} at {price:.4f} is under one whole "
+                            "share, so the cover cannot be sent without "
+                            "covering more of the short than was sized",
+                            intent,
+                        )
+                    )
+                    continue
                 fills.append(
                     _skipped(
                         order.ticker,

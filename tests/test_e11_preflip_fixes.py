@@ -227,6 +227,95 @@ def test_a_full_close_sends_the_exact_held_quantity_fractional_allowed() -> None
     assert float(client.requests[0].qty) == pytest.approx(1.5)
 
 
+def test_a_partial_short_cover_rounds_down_to_whole_shares() -> None:
+    """A cover is floored, because one share too many closes the short.
+
+    The account is short five shares at $100 and the target is one share short, so
+    $490 buys back 4.9 shares' worth. Four shares leave one short, which is the
+    target; the nearest whole share (five) or the ceiling would close the position
+    and leave the book flat in a name it is supposed to be short. Whole shares
+    too: the sizing step never asks for a half-covered short.
+    """
+    client = _RecordingClient()
+    _submit(
+        [
+            guards.OrderSpec(
+                "AAA",
+                target_notional=-100.0,
+                trade_notional=490.0,
+                intent=alpaca.INTENT_BUY_TO_CLOSE,
+                held_quantity=-5.0,
+            )
+        ],
+        client,
+        {"AAA": 100.0},
+    )
+
+    assert _intent(client.requests[0]) == "buy_to_close"
+    assert float(client.requests[0].qty) == pytest.approx(4.0)
+    # the cover leaves the target position, still a short
+    assert -5.0 + float(client.requests[0].qty) == pytest.approx(-1.0)
+    # the negative control: the size that was sent before this rule, and the
+    # nearest whole share, both over-cover
+    assert 490.0 / 100.0 == pytest.approx(4.9)
+    assert -5.0 + round(490.0 / 100.0) == pytest.approx(0.0)
+
+
+def test_a_cover_under_one_whole_share_is_skipped_rather_than_rounded() -> None:
+    """Under a share there is no cover to send, and rounding up is the one thing
+    that must not happen.
+
+    Half a share's worth of cover is not a size the book asked for; the leg is
+    recorded as skipped, with the reason, and nothing is submitted. The negative
+    control is the fractional order the code sent before: no request is built here.
+    """
+    client = _RecordingClient()
+    fills = _submit(
+        [
+            guards.OrderSpec(
+                "AAA",
+                target_notional=-450.0,
+                trade_notional=50.0,
+                intent=alpaca.INTENT_BUY_TO_CLOSE,
+                held_quantity=-5.0,
+            )
+        ],
+        client,
+        {"AAA": 100.0},
+    )
+
+    assert client.requests == []
+    assert fills[0].status == alpaca.SKIPPED
+    assert fills[0].reason_code == alpaca.REASON_QTY_ROUNDS_TO_ZERO
+    assert "under one whole share" in fills[0].detail
+
+
+def test_a_partial_long_decrease_keeps_its_fraction() -> None:
+    """The rule is about covers. A long trim still sends the size it was sized at.
+
+    Selling part of a share cannot make the position short while the target holds
+    shares, and flooring a small trim would round it away and skip a leg that
+    should trade.
+    """
+    client = _RecordingClient()
+    _submit(
+        [
+            guards.OrderSpec(
+                "AAA",
+                target_notional=248_750.0,
+                trade_notional=-1_250.0,
+                intent=alpaca.INTENT_SELL_TO_CLOSE,
+                held_quantity=250.0,
+            )
+        ],
+        client,
+        {"AAA": 100.0},
+    )
+
+    assert _intent(client.requests[0]) == "sell_to_close"
+    assert float(client.requests[0].qty) == pytest.approx(12.5)
+
+
 def test_the_shortability_checks_run_only_on_sell_to_open() -> None:
     """Closing a long is not a short, even when the asset reports shortable=false."""
     refusing = _RecordingClient({"BBB": _Asset(shortable=False, easy_to_borrow=False)})
