@@ -9,6 +9,7 @@ owner would see.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -126,6 +127,11 @@ def _patch_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace every step of the run that would fetch, size or hash."""
     from live import corporate_actions
 
+    # The evening refuses outside the 16:00-20:00 New York window it trades in.
+    # These tests are about the gate, which runs inside it, so the window is
+    # overridden exactly as a rehearsal does; the refusal has its own tests in
+    # tests/test_run_live_daily.py.
+    monkeypatch.setenv(run_live_daily.FORCE_HOUR_ENV, "true")
     for name in ("hydrate", "persist_new_sessions", "appendix_manifest"):
         monkeypatch.setattr(appendix, name, lambda *args, **kwargs: {})
     # The first-run guard has its own tests; here the store is already open.
@@ -603,6 +609,42 @@ def test_the_gate_window_is_the_closes_own_evening_not_the_next_runs_deadline() 
     )
 
 
+def test_the_trading_window_is_new_york_time_not_utc() -> None:
+    """The window is the exchange's clock, so the same UTC hour is in and out.
+
+    20:30 UTC is 16:30 in New York in July (EDT) and 15:30 in December (EST): the
+    first is inside the 16:00-20:00 window and the second is before it opens. A
+    UTC-blind test would accept both, and the evening would submit at an hour
+    Alpaca does not hold a DAY order for.
+    """
+    summer = datetime(2026, 7, 15, 20, 30, tzinfo=UTC)
+    winter = datetime(2026, 12, 15, 20, 30, tzinfo=UTC)
+
+    assert summer.astimezone(staleness.NEW_YORK).hour == 16
+    assert winter.astimezone(staleness.NEW_YORK).hour == 15
+    assert staleness.in_cron_window(summer) is True
+    assert staleness.in_cron_window(winter) is False
+
+
+def test_the_window_opens_at_four_and_closes_at_eight() -> None:
+    """The close is 16:00 ET and the overnight session starts at 20:00 ET."""
+    for hour, minute, inside in (
+        (15, 59, False),
+        (16, 0, True),
+        (18, 30, True),
+        (19, 59, True),
+        (20, 0, False),
+        (3, 0, False),
+    ):
+        local = datetime(2026, 7, 15, hour, minute, tzinfo=staleness.NEW_YORK)
+        stamp = local.astimezone(UTC)
+        assert (hour, minute) == (
+            stamp.astimezone(staleness.NEW_YORK).hour,
+            stamp.astimezone(staleness.NEW_YORK).minute,
+        )
+        assert staleness.in_cron_window(stamp) is inside, (hour, minute)
+
+
 def test_the_run_records_when_it_started() -> None:
     result = {"target_close": "2026-09-25", "job": "evening", "status": "ok"}
     row = staleness.run_status_row(
@@ -611,3 +653,29 @@ def test_the_run_records_when_it_started() -> None:
     assert row["started_at"] == "2026-09-25T22:30:41+00:00"
     assert row["gate_close"] is None if "gate_close" in row else True
     assert staleness.run_status_row(result, run_date="2026-09-25")["started_at"] is None
+
+
+def test_the_run_status_row_carries_both_books_risk_figures() -> None:
+    """The traded book's figures and the full book's, each under its own names.
+
+    The row is what the page and the reconciliation read, and both texts come
+    from the same manifest, so one evening cannot show the traded book's
+    volatility beside the full book's breadth.
+    """
+    result = {"target_close": "2026-09-25", "job": "evening", "status": "ok"}
+    traded = store.json_text({"forecast_annual_vol": 0.0459})
+    full = store.json_text({"forecast_annual_vol": 0.06})
+
+    row = staleness.run_status_row(
+        result, run_date="2026-09-25", traded_risk=traded, full_risk=full
+    )
+
+    assert row["traded_risk"] == traded
+    assert row["full_risk"] == full
+    # A stopped run that never built a book carries null in both rather than a
+    # figure from the last book it did not hold.
+    stopped = staleness.run_status_row(
+        {**result, "status": "stale_stopped"}, run_date="2026-09-25"
+    )
+    assert stopped["traded_risk"] is None
+    assert stopped["full_risk"] is None

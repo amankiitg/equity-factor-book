@@ -8,11 +8,12 @@ date must replace the row rather than duplicate it.
 from __future__ import annotations
 
 import importlib.util
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from live import store
+from live import staleness, store
 from scripts import run_live_daily
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +41,48 @@ def test_record_run_replaces_the_same_date_duplicate(
     assert len(frame) == 1
     assert frame.iloc[0]["status"] == "failed"
     assert frame.iloc[0]["detail"] == "boom"
+
+
+def test_the_window_override_opens_only_on_the_exact_word() -> None:
+    """The opposite default from the dry-run flag, and for the same reason.
+
+    A dry-run flag left unset costs a rehearsal. A window left open costs an
+    order at an hour the broker's DAY semantics do not hold for.
+    """
+    assert run_live_daily.resolve_force_hour("true") is True
+    for value in (None, "", "TRUE ", " yes", "1", "false"):
+        assert run_live_daily.resolve_force_hour(value) is False, value
+
+
+def test_the_run_refuses_outside_the_window_and_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An evening at the wrong hour is not the evening.
+
+    The refusal is before the day's bookkeeping, so the day stays un-run and the
+    in-window cron later that day still has its evening. Writing a row here would
+    either mark the day done or need a status the page then has to explain.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(run_live_daily, "datetime", _clock("2026-09-22T09:00:00+00:00"))
+    monkeypatch.setattr(staleness, "is_session", lambda day: True)
+    monkeypatch.delenv(run_live_daily.FORCE_HOUR_ENV, raising=False)
+
+    assert run_live_daily.main() == 1
+
+    assert store.select("cron_runs").empty
+    assert store.select("run_status").empty
+
+
+def _clock(instant: str):
+    """A `datetime` pinned to one instant, for the run's own window check."""
+
+    class _Fixed(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ANN001, ANN206 - the stdlib signature
+            return datetime.fromisoformat(instant)
+
+    return _Fixed
 
 
 def test_a_failed_row_still_allows_a_retry(

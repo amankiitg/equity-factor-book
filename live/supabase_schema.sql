@@ -54,6 +54,21 @@ create table if not exists efb.positions (
   primary key (trade_date, ticker)
 );
 
+-- What the broker itself reports holding, per name, read in the same request
+-- that sized the evening's book. `positions` above is the loop's intention and
+-- this is the account's own answer: a run that reads a book back has to be able
+-- to tell the two apart, and E12's attribution must never count an intention as
+-- a holding. `weight` is the name's share of the account's own equity.
+create table if not exists efb.broker_positions (
+  trade_date date not null,
+  ticker text not null,
+  side text not null,
+  quantity double precision,
+  market_value double precision not null,
+  weight double precision,
+  primary key (trade_date, ticker)
+);
+
 create table if not exists efb.orders (
   trade_date date not null,
   ticker text not null,
@@ -108,7 +123,12 @@ create table if not exists efb.reconciliation (
   expected_commission_bps double precision,
   expected_borrow_bps double precision,
   dry_run boolean not null,
-  realized_pnl double precision
+  realized_pnl double precision,
+  -- The traded book's risk figures and the full book's, each under its own
+  -- names, as jsonb. The traded book is what the run holds; the full book is
+  -- every name the model sized before the floor dropped any.
+  traded_risk jsonb,
+  full_risk jsonb
 );
 
 create table if not exists efb.nav (
@@ -268,6 +288,10 @@ create table if not exists efb.run_status (
   -- built: the counts, the names only one side holds, and the largest drift. A
   -- difference here makes every traded leg wrong in the same direction.
   positions_check jsonb,
+  -- The traded book's risk figures and the full book's, each under its own
+  -- names, as jsonb, copied from the manifest the run was priced from.
+  traded_risk jsonb,
+  full_risk jsonb,
   primary key (target_close, job)
 );
 
@@ -349,3 +373,14 @@ alter table efb.orders
 -- Pre-flip: a position row is an intention until orders have actually gone out.
 alter table efb.positions
   add column if not exists kind text;
+
+-- Pre-launch: the traded book's risk figures and the full book's, each under its
+-- own names, on the day's reconciliation row and on the run_status row.
+alter table efb.reconciliation
+  add column if not exists traded_risk jsonb;
+alter table efb.reconciliation
+  add column if not exists full_risk jsonb;
+alter table efb.run_status
+  add column if not exists traded_risk jsonb;
+alter table efb.run_status
+  add column if not exists full_risk jsonb;

@@ -8,13 +8,24 @@ owner and the dashboard actually see.
 
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import pytest
 
-from live import appendix, evening_job, extend, morning_job, notify, staleness, store
+from live import (
+    alpaca,
+    appendix,
+    evening_job,
+    extend,
+    morning_job,
+    notify,
+    staleness,
+    store,
+)
 from scripts import run_live_daily
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -315,13 +326,18 @@ def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.setattr(extend, name, lambda *a, **k: {})
     monkeypatch.setattr(run_live_daily, "already_ran", lambda job, day: False)
+    # The suite runs whenever it runs, and the evening refuses outside the
+    # 16:00-20:00 New York window it trades in. These tests are about the run, so
+    # the window is overridden exactly as a rehearsal does. The refusal itself is
+    # pinned in tests/test_run_live_daily.py and here.
+    monkeypatch.setenv(run_live_daily.FORCE_HOUR_ENV, "true")
     # The suite runs whatever day it happens to, and the cron correctly does
     # nothing at all on a day the exchange is shut (tests/test_e11_holiday.py).
     # These tests are about the evening, so the day is declared a session.
     monkeypatch.setattr(staleness, "is_session", lambda day: True)
     monkeypatch.setattr(run_live_daily, "store_proposal", lambda *a, **k: None)
-    monkeypatch.setattr(run_live_daily, "store_orders", lambda as_of, dry: None)
-    monkeypatch.setattr(run_live_daily, "store_reconciliation", lambda as_of, row: None)
+    monkeypatch.setattr(run_live_daily, "store_orders", lambda *a, **k: None)
+    monkeypatch.setattr(run_live_daily, "store_reconciliation", lambda *a, **k: None)
 
 
 def _patch_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -371,6 +387,11 @@ def _patch_success(monkeypatch: pytest.MonkeyPatch) -> None:
     from live import reconcile
 
     monkeypatch.setattr(reconcile, "daily_record", lambda *a, **k: {"dry_run": True})
+
+
+# The real morning job, saved before the harness replaces it: a test that is about
+# the day's own legs puts it back.
+_real_run_morning = morning_job.run_morning
 
 
 def test_a_member_with_no_price_is_named_in_the_message() -> None:
@@ -473,6 +494,44 @@ def test_an_errored_run_does_not_mark_the_day_done(
     assert not store.select("run_status").empty
 
 
+def _clock(instant: str):
+    """A `datetime` pinned to one instant, for the run's own window check."""
+
+    class _Fixed(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ANN001, ANN206 - the stdlib signature
+            return datetime.fromisoformat(instant)
+
+    return _Fixed
+
+
+class _AccountBroker:
+    """An account read: what it holds and what it is worth, from one request."""
+
+    def get_account(self) -> Any:
+        class _Account:
+            id = "paper-account"
+            equity = "1234567.89"
+            cash = "23456.78"
+
+        return _Account()
+
+    def get_all_positions(self) -> list[Any]:
+        class _Position:
+            def __init__(self, symbol: str, value: float, side: str) -> None:
+                self.symbol = symbol
+                self.market_value = str(abs(value))
+                self.side = side
+                # signed the way the broker signs it, so the read's own check
+                # that the side and the quantity agree has something to check
+                self.qty = str(value / 100.0)
+
+        return [
+            _Position("AAA", 500.0, "long"),
+            _Position("BBB", -250.0, "short"),
+        ]
+
+
 def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -506,6 +565,175 @@ def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     assert row["n_orders"] == 152
     assert row["gross_notional"] == 2_014_000.0
     assert store.select("cron_runs").iloc[0]["status"] == "ok"
+
+
+def test_the_evening_stores_the_brokers_book_and_the_accounts_equity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The day's row carries the account's own equity, and the broker's book.
+
+    The store's own position row is what the loop meant to hold. The account's
+    answer is a different question and is stored apart, so a run that reads a book
+    back can tell the two apart. The NAV the book is sized from and the names the
+    broker reports come from one read of one account.
+    """
+    real_store_reconciliation = run_live_daily.store_reconciliation
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    # The harness stubs the day's rows away; this test is about them.
+    monkeypatch.setattr(
+        run_live_daily, "store_reconciliation", real_store_reconciliation
+    )
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        evening_job,
+        "build_proposal",
+        lambda *a, **k: seen.update(k) or {"as_of": SESSION, "n_kept": 150},
+    )
+    monkeypatch.setattr(alpaca, "read_client", _AccountBroker)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+
+    assert run_live_daily.main() == 0
+
+    nav_row = store.select("nav").iloc[0]
+    assert nav_row["nav"] == pytest.approx(1_234_567.89)
+    assert nav_row["cash"] == pytest.approx(23_456.78)
+    book = store.select("broker_positions")
+    assert sorted(book["ticker"]) == ["AAA", "BBB"]
+    aaa = book.loc[book["ticker"] == "AAA"].iloc[0]
+    assert aaa["side"] == "long"
+    assert aaa["market_value"] == pytest.approx(500.0)
+    # the weight is the name's share of the account's own equity, not of a
+    # constant
+    assert aaa["weight"] == pytest.approx(500.0 / 1_234_567.89)
+    # and the book itself was sized from that same number
+    assert seen["nav"] == pytest.approx(1_234_567.89)
+    assert "the account's own equity" in str(seen["nav_source"])
+
+
+def test_the_run_compares_against_the_book_before_tonight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The check is handed the close being priced, and compares against what came
+    before it.
+
+    The store here holds a row for a date after tonight's close, which is the
+    state a run that got ahead of itself leaves behind, and the account holds the
+    book of the close before. The note naming the earlier row is what proves the
+    date reached the check: unpinned, the latest row is the future one and every
+    name in it would be reported missing at the broker.
+    """
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    store.upsert(
+        "positions",
+        [
+            {"trade_date": "2026-09-21", "ticker": "AAA", "signed_notional": 500.0},
+            {"trade_date": "2026-09-23", "ticker": "BBB", "signed_notional": 700.0},
+        ],
+    )
+    monkeypatch.setattr(alpaca, "read_client", _AccountBroker)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+
+    assert run_live_daily.main() == 0
+
+    row = store.select("run_status").iloc[0]
+    note = str(row["positions_check"])
+    assert "the 2026-09-21 position row" in note
+    assert "2026-09-23" not in note
+    # the negative control, at the level of the store: the row the check would
+    # have used without the date is the later one
+    assert store.select("positions")["trade_date"].max() == "2026-09-23"
+
+
+def test_the_window_override_lets_an_out_of_hours_run_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same evening, at 05:00 New York, runs with the override and refuses
+    without it.
+
+    The override is the only way past the window, and the refusal has to come
+    before any work: an evening that fired at the wrong hour has not priced the
+    close, so it must leave the day un-run for the in-window cron.
+    """
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(run_live_daily, "datetime", _clock("2026-09-22T09:00:00+00:00"))
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    assert staleness.in_cron_window(
+        run_live_daily.datetime.now(run_live_daily.UTC)
+    ) is (False)
+
+    assert run_live_daily.main() == 0
+    assert not store.select("run_status").empty
+
+    # the negative control: the same harness, the same instant, no override
+    monkeypatch.delenv(run_live_daily.FORCE_HOUR_ENV)
+    assert run_live_daily.main() == 1
+
+
+def test_the_recorded_run_states_both_books_risk_figures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The day's row carries the traded book's figures and the full book's.
+
+    Both come from the manifest the evening built, so the row the page reads and
+    the row the reconciliation stores cannot describe two different books. Each
+    figure keeps the name that says which book it is.
+    """
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        evening_job,
+        "build_proposal",
+        lambda *a, **k: {
+            "as_of": SESSION,
+            "n_kept": 150,
+            "kept_achieved_annual_vol": 0.0459,
+            "kept_idio_share": 0.981,
+            "kept_max_abs_exposure": 0.0334,
+            "kept_gross": 0.94,
+            "kept_net": 0.0,
+            "n_eff_kept": 94.2573,
+            "max_kept_weight": 0.033448,
+            "variance_share_cap_binds": False,
+            "top_variance_shares": [{"ticker": "AAA", "variance_share": 0.031}],
+            "achieved_annual_vol": 0.06,
+            "idio_share_after_fmp": 1.0,
+            "max_abs_exposure_after_fmp": 3.8e-15,
+            "gross": 1.0,
+            "net": 0.0,
+            "n_eff_full_book": 157.3,
+            "n_names": 499,
+        },
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+
+    assert run_live_daily.main() == 0
+
+    row = store.select("run_status").iloc[0]
+    traded = json.loads(row["traded_risk"])
+    full = json.loads(row["full_risk"])
+    assert traded["forecast_annual_vol"] == pytest.approx(0.0459)
+    assert full["forecast_annual_vol"] == pytest.approx(0.06)
+    assert traded["gross"] == pytest.approx(0.94)
+    assert full["gross"] == pytest.approx(1.0)
+    assert traded["n_eff"] == pytest.approx(94.2573)
+    assert full["n_names"] == 499
+    assert traded["variance_share_cap_binds"] is False
+    assert traded["top_variance_shares"] == [{"ticker": "AAA", "variance_share": 0.031}]
 
 
 def test_an_incomplete_run_is_not_ok_and_is_not_marked_done(
@@ -957,3 +1185,188 @@ def test_the_email_names_the_names_whose_liquidity_is_a_median() -> None:
         status="ok", target_close="2026-09-25", dry_run=True, orders=150
     )
     assert "Liquidity:" not in clean
+
+
+def test_the_email_names_the_kept_names_the_minimum_left_untraded() -> None:
+    """A kept name that did not move is named, with the size of its leg.
+
+    The name is in tonight's book and nothing was sent for it: its target and its
+    holding differ by less than an order is worth. Saying which names and by how
+    much is what makes a short trade list read as a book that stood still rather
+    than as a book that lost a name.
+    """
+    from live import notify
+
+    skipped = [
+        {"ticker": "AAA", "intended_notional": 84.0},
+        {"ticker": "BBB", "intended_notional": -121.5},
+    ]
+
+    message = notify.compose(
+        status="ok",
+        target_close="2026-09-25",
+        dry_run=True,
+        orders=150,
+        skipped_minimum=skipped,
+    )
+
+    assert (
+        "Under the $250 minimum, left untraded: 2 name(s) (AAA $84, BBB $122)."
+        in message
+    )
+    # The negative control: a book that moved in full says nothing about the floor.
+    clean = notify.compose(
+        status="ok", target_close="2026-09-25", dry_run=True, orders=150
+    )
+    assert "minimum" not in clean
+
+
+def test_the_email_counts_the_rest_when_many_names_are_under_the_minimum() -> None:
+    """A long list is counted rather than spilled into the message."""
+    from live import notify
+
+    skipped = [
+        {"ticker": f"T{index:03d}", "intended_notional": float(index)}
+        for index in range(20)
+    ]
+
+    message = notify.compose(
+        status="ok",
+        target_close="2026-09-25",
+        dry_run=True,
+        orders=5,
+        skipped_minimum=skipped,
+    )
+
+    assert "20 name(s) (T000 $0, T001 $1, " in message
+    assert ", and 8 more)" in message
+
+
+def test_a_run_with_a_name_under_the_minimum_records_the_skip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The skipped leg reaches the day's leg log and the message, and the day is ok.
+
+    The leg is not an order (the order count does not move), it is on the record
+    with the code that says why, it does not make the run incomplete, and the
+    message names it. A run that quietly traded 149 of its 150 names and said
+    "ok, 149 orders" is the failure this pins.
+    """
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    # This test is about the legs the run writes, so the morning job is the real
+    # one; the harness's stub for it is put back. The day's log is captured
+    # instead of written, because the repository already holds a log for this
+    # session and `store_orders` reads that file, not the run's own frame.
+    monkeypatch.setattr(morning_job, "run_morning", _real_run_morning)
+    proposal = pd.DataFrame({"ticker": ["BIG", "TINY"], "weight": [0.10, 0.0001]})
+    monkeypatch.setattr(morning_job, "load_proposal", lambda *a, **k: proposal)
+    monkeypatch.setattr(
+        morning_job, "_close_prices", lambda *a, **k: {"BIG": 100.0, "TINY": 100.0}
+    )
+    monkeypatch.setattr(morning_job, "connect", lambda dry_run: None)
+    monkeypatch.setattr(morning_job.state, "write_positions", lambda *a, **k: None)
+    logged: dict[str, pd.DataFrame] = {}
+    monkeypatch.setattr(
+        morning_job,
+        "_write_execution_log",
+        lambda as_of, records: logged.update({as_of: records}),
+    )
+    captured: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: captured.append(payload)
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+
+    assert run_live_daily.main() == 0
+
+    frame = logged[SESSION]
+    by_ticker = {row["ticker"]: row for row in frame.to_dict("records")}
+    assert sorted(by_ticker) == ["BIG", "TINY"]
+    assert by_ticker["BIG"]["status"] == "DRY_RUN"
+    assert by_ticker["TINY"]["status"] == "SKIPPED"
+    assert by_ticker["TINY"]["reason_code"] == "BELOW_MIN_NOTIONAL"
+    assert "$100.00" in str(by_ticker["TINY"]["reason"])
+    assert "$250 minimum" in str(by_ticker["TINY"]["reason"])
+    # the day is not unfiled and the order count is the orders, not the legs
+    assert store.select("cron_runs").iloc[0]["status"] == "ok"
+    row = store.select("run_status").iloc[0]
+    assert row["status"] == "ok"
+    assert int(row["n_orders"]) == 1
+    body = str(captured[0]["text"])
+    assert "1 orders proposed" in body
+    assert "left untraded: 1 name(s) (TINY $100)" in body
+
+
+def test_a_snapshot_misconfiguration_stops_the_run_before_any_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The switch is read at the start, so a missing credential costs no trade.
+
+    The writer checks the same settings when the evening is over. By then the book
+    is sized and the orders have been sent, and a run that traded and cannot
+    publish is a run that traded invisibly: the page is the only place the owner
+    sees the book. The morning job must not be reached at all.
+    """
+    from live import snapshot
+
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        morning_job,
+        "run_morning",
+        lambda *a, **k: pytest.fail("an order was built with no page to show it"),
+    )
+    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "on")
+    for name in snapshot.R2_ENVS:
+        monkeypatch.delenv(name, raising=False)
+    sent: list[str] = []
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: sent.append(payload["text"])
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+
+    assert run_live_daily.main() == 1
+
+    assert store.select("orders").empty
+    assert len(sent) == 1
+    assert "EFB_R2_ACCOUNT_ID" in sent[0]
+    row = store.select("run_status").iloc[0]
+    assert row["status"] == "error"
+    assert "EFB_R2_ACCOUNT_ID" in str(row["detail"])
+
+
+def test_a_configured_snapshot_reaches_the_morning_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The negative control: the same run with the four variables set goes on.
+
+    Without this the check above would pass on a build that refused every evening.
+    """
+    from live import snapshot
+
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    reached: list[str] = []
+    monkeypatch.setattr(
+        morning_job,
+        "run_morning",
+        lambda *a, **k: reached.append("called")
+        or {"orders": 152, "intended_notional": 2_014_000.0, "dry_run": True},
+    )
+    monkeypatch.setattr(snapshot, "put_object", lambda *a, **k: None)
+    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "on")
+    for name in snapshot.R2_ENVS:
+        monkeypatch.setenv(name, "test-value")
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+
+    assert run_live_daily.main() == 0
+
+    assert reached == ["called"]

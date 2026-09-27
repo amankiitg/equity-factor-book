@@ -19,16 +19,27 @@ from typing import Any
 
 import pytest
 
-from live import alpaca, notify, positions, store
+from live import alpaca, evening_job, notify, positions, store
 
 
 class _FakeBroker:
-    def __init__(self, holdings: list[tuple[str, float]]) -> None:
+    def __init__(
+        self,
+        holdings: list[tuple[str, float]],
+        equity: str | None = "1234567.89",
+        cash: str | None = "23456.78",
+    ) -> None:
         self.holdings = holdings
+        self.equity = equity
+        self.cash = cash
 
     def get_account(self) -> Any:
+        broker = self
+
         class _Account:
             id = "paper-account"
+            equity = broker.equity
+            cash = broker.cash
 
         return _Account()
 
@@ -120,6 +131,135 @@ def test_a_flat_account_against_a_held_store_is_the_dry_run_state(
     # pretend otherwise.
     live_note = positions.describe(result, dry_run=False)
     assert "Expected in dry run" not in live_note
+
+
+def test_the_run_is_sized_from_the_accounts_own_equity(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The NAV is the account's own equity, read with the positions.
+
+    A book sized from a constant is the same size on an account that has grown and
+    on one that has halved, and the guards are fractions of NAV, so the number the
+    book is sized from and the number the guards divide by have to be the same
+    account's. The read reports the equity and the cash beside the book, and says
+    where the number came from rather than leaving it to be assumed.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([("AAA", 500.0)]))
+
+    result = positions.check(dry_run=True)
+
+    assert result["equity"] == pytest.approx(1_234_567.89)
+    assert result["cash"] == pytest.approx(23_456.78)
+    assert result["nav"] == pytest.approx(1_234_567.89)
+    assert result["nav"] != evening_job.PAPER_NAV
+    assert "the account's own equity" in result["nav_source"]
+
+
+def test_an_account_with_no_equity_states_the_default_it_used(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dry run with no equity read sizes from the paper default and says so.
+
+    The default is a fallback, not a measurement: the sentence names it and says
+    what it means on a live evening, so a book priced from a constant is visible
+    in the row rather than indistinguishable from one priced from the account.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(
+        alpaca,
+        "read_client",
+        lambda: _FakeBroker([("AAA", 500.0)], equity=None),
+    )
+
+    result = positions.check(dry_run=True)
+
+    assert result["equity"] is None
+    assert result["nav"] == pytest.approx(evening_job.PAPER_NAV)
+    assert "the paper default" in result["nav_source"]
+    assert "stops the run" in result["nav_source"]
+
+
+def test_an_account_with_no_equity_stops_a_live_run(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A live evening that cannot size its book must not build one.
+
+    The same rule as an unreadable positions read: the guards are fractions of
+    NAV, so an evening that fell back to a constant would guard the wrong book
+    with the wrong denominator and trade it.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(
+        alpaca,
+        "read_client",
+        lambda: _FakeBroker([("AAA", 500.0)], equity=None),
+    )
+
+    with pytest.raises(RuntimeError, match="equity could not be read"):
+        positions.check(dry_run=False)
+
+
+def test_the_comparison_is_against_the_last_book_before_tonight(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not against tonight's target, which no order has been sent for yet.
+
+    The store holds the book the loop meant to hold tonight, written by the
+    proposal step before any order leaves the process. Comparing the account
+    against it reports every one of tonight's names as missing at the broker on
+    the evening the run is about to buy them, which is what the first live
+    evening would have said about all 150 of them.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    store.upsert(
+        "positions",
+        [
+            {"trade_date": "2026-09-21", "ticker": "AAA", "signed_notional": 500.0},
+            {"trade_date": "2026-09-22", "ticker": "BBB", "signed_notional": 700.0},
+            {"trade_date": "2026-09-22", "ticker": "CCC", "signed_notional": 300.0},
+        ],
+    )
+    monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([("AAA", 500.0)]))
+
+    result = positions.check(dry_run=True, before="2026-09-22")
+
+    assert result["n_store"] == 1
+    assert result["matches"] is True
+    assert result["store_source"] == "the 2026-09-21 position row"
+    # The negative control, on the same store and the same account: without the
+    # date the latest row is tonight's target, and the account "misses" a book
+    # that was never sent.
+    unfiltered = positions.check(dry_run=True)
+    assert unfiltered["n_store"] == 2
+    assert unfiltered["matches"] is False
+    assert unfiltered["missing_at_broker"] == ["BBB", "CCC"]
+    assert unfiltered["store_source"] == "the 2026-09-22 position row"
+
+
+def test_a_store_with_nothing_before_tonight_says_so(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first evening has one row, its own, and the sentence says which.
+
+    An empty book and a book that could not be found are different answers, and
+    the note names the date it looked before rather than leaving an empty account
+    to be read as a flat one.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    store.upsert(
+        "positions",
+        [
+            {"trade_date": "2026-09-22", "ticker": "AAA", "signed_notional": 500.0},
+        ],
+    )
+    monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([]))
+
+    result = positions.check(dry_run=True, before="2026-09-22")
+
+    assert result["store"] == {}
+    assert result["store_source"] == "the store holds no position row before 2026-09-22"
+    assert result["establishment"] is True
 
 
 def test_the_message_carries_the_comparison() -> None:

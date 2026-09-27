@@ -293,8 +293,15 @@ def store_orders(as_of: str, dry_run: bool) -> None:
     store.replace_by_date("orders", as_of, orders)
 
 
-def store_reconciliation(as_of: str, row: dict) -> None:
-    """Write the day's reconciliation and NAV rows to the store."""
+def store_reconciliation(as_of: str, row: dict, *, holdings: dict[str, Any]) -> None:
+    """Write the day's reconciliation and NAV rows to the store.
+
+    The NAV row is the account's own equity and cash, read in the same request
+    that sized the book, rather than the constant 1,000,000 the loop used to
+    write there. The read is a required argument rather than an optional one: a
+    NAV row that nobody measured is what this replaces, and a caller with no
+    account read would have to say so in as many words.
+    """
     from live import store
 
     store.upsert("reconciliation", [row])
@@ -303,15 +310,58 @@ def store_reconciliation(as_of: str, row: dict) -> None:
         [
             {
                 "trade_date": as_of,
-                "nav": 1_000_000.0,
+                "nav": float(holdings["nav"]),
                 "realized_pnl": (
                     0.0 if row.get("dry_run") else float(row.get("realized_pnl") or 0.0)
                 ),
                 "gross_pnl": None,
-                "cash": None,
+                "cash": holdings.get("cash"),
             }
         ],
     )
+
+
+def store_broker_book(as_of: str, holdings: dict[str, Any]) -> None:
+    """The broker's own per-name book for the day, replaced by date.
+
+    The store's `positions` table is the loop's intention, written before any
+    order leaves the process; this table is the account's answer to "what do you
+    hold", read in the same request that sized the book. They are different
+    questions and are stored apart for that reason: a run that reads the book
+    back must be able to tell what the loop meant to hold from what the broker
+    reports holding, and E12's attribution must never count the first as the
+    second.
+
+    A read that failed writes nothing rather than an empty book. "The account
+    holds nothing" and "the account could not be read" are different answers, and
+    writing the second as the first would erase the last thing the broker did
+    say.
+    """
+    from live import store
+
+    if holdings.get("account_read") is not True:
+        logger.warning(
+            "the broker's book is not stored for %s: %s",
+            as_of,
+            holdings.get("broker_source", "the account could not be read"),
+        )
+        return
+    nav = float(holdings.get("nav") or 0.0)
+    quantities = holdings.get("held_quantities") or {}
+    rows = [
+        {
+            "trade_date": as_of,
+            "ticker": ticker,
+            "side": "long" if float(value) >= 0 else "short",
+            "quantity": (
+                float(quantities[ticker]) if ticker in quantities else None
+            ),
+            "market_value": float(value),
+            "weight": (float(value) / nav) if nav else None,
+        }
+        for ticker, value in sorted((holdings.get("broker") or {}).items())
+    ]
+    store.replace_by_date("broker_positions", as_of, rows)
 
 
 def resolve_dry_run(value: str | None) -> bool:
@@ -322,6 +372,24 @@ def resolve_dry_run(value: str | None) -> bool:
     by accident; that is the failure this function guards.
     """
     return value != "false"
+
+
+# The deliberate out-of-hours bypass, the env equivalent of the smoke scripts'
+# `--force-hour`: the window is what keeps an order inside the after-hours session
+# the broker's DAY semantics are defined for, so opening it must be explicit.
+FORCE_HOUR_ENV = "EFB_FORCE_HOUR"
+
+
+def resolve_force_hour(value: str | None) -> bool:
+    """The window override opens only on the exact string "true".
+
+    The opposite default from `resolve_dry_run`, and for the same reason: a
+    missing or mistyped variable must never open the window, so a case difference
+    or a stray space refuses the run rather than trading at the wrong hour. A
+    dry-run flag left unset costs a rehearsal; a window left open costs an order
+    at an hour the broker does not hold a DAY order for.
+    """
+    return value == "true"
 
 
 def _catch_up_sessions(before: pd.Timestamp | None) -> list[str]:
@@ -370,6 +438,7 @@ def finish_run(
     poster: Any = None,
     snapshot_poster: Any = None,
     deferred_reversals: list[dict[str, Any]] | None = None,
+    skipped_minimum: list[dict[str, Any]] | None = None,
 ) -> int:
     """Snapshot the run, notify the owner, record it, and return the exit code.
 
@@ -434,6 +503,12 @@ def finish_run(
         # what the evening cost.
         breakdown = reconcile_module.cost_breakdown(manifest)
         cost_bps = breakdown.get("total")
+        # The traded book's risk figures and the full book's, from the same
+        # manifest the proposal was written from, so the run_status row and the
+        # reconciliation row cannot describe different books.
+        risk = reconcile_module.risk_figures(manifest)
+        row["traded_risk"] = store.json_text(risk["traded"])
+        row["full_risk"] = store.json_text(risk["full"])
     snapshot_detail, snapshot_failed = "", False
     try:
         written = snapshot_module.write_snapshot(
@@ -487,6 +562,7 @@ def finish_run(
         cost_breakdown=breakdown or None,
         poster=poster,
         deferred_reversals=deferred_reversals,
+        skipped_minimum=skipped_minimum,
     )
     delivered = notified["status"] == notify.STATUS_SENT
     store_failed = False
@@ -628,12 +704,38 @@ def main() -> int:
     # re-fire does not send the owner a second message.
     if not staleness.is_session(run_date):
         return market_closed_run(run_date)
+
+    # The window, before anything else. An evening that fires at another hour is
+    # not pricing the close it thinks it is: Alpaca's after-hours session is
+    # 16:00-20:00 New York, an order placed inside it is held for the next open and
+    # one placed outside it is not. The refusal does no work and records nothing,
+    # because it is not a run: the day is still owed its evening, and the in-window
+    # cron later that day must find it un-run. The override is explicit, and it is
+    # the only way past this.
+    stamp = datetime.now(UTC)
+    if not staleness.in_cron_window(stamp) and not resolve_force_hour(
+        os.environ.get(FORCE_HOUR_ENV)
+    ):
+        local = stamp.astimezone(staleness.NEW_YORK)
+        logger.error(
+            "refused: %s is %s in New York, outside the %02d:00-%02d:00 window "
+            "the loop trades in (set %s=true only for a deliberate out-of-hours "
+            "rehearsal)",
+            stamp.isoformat(timespec="seconds"),
+            local.isoformat(timespec="seconds"),
+            staleness.WINDOW_START_HOUR_ET,
+            staleness.WINDOW_END_HOUR_ET,
+            FORCE_HOUR_ENV,
+        )
+        return 1
+
     if already_ran("live_daily", run_date):
         logger.info("already ran for %s, exit 0 (idempotent)", run_date)
         return 0
     dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
     from live import appendix as appendix_mod
     from live import runroot, seed
+    from live import snapshot as snapshot_module
 
     gate: dict[str, Any] | None = None
     catch_up_sessions: list[str] = []
@@ -659,6 +761,15 @@ def main() -> int:
         # decided here and a misconfiguration stops the run as an error.
         logger.info("store: %s", store.store_label())
         store.store_mode()
+        # The page's own settings, read before anything is priced or sent. The
+        # writer reads them again when the evening is over, and that is the wrong
+        # place to discover a missing credential: by then the book has been sized
+        # and the orders have been sent, and the page is where the owner sees the
+        # book. A run that trades and cannot publish traded invisibly, so a
+        # misconfiguration fails here, in the same error path as any other, before
+        # the seed is downloaded and long before a submission.
+        snapshot_mode = snapshot_module.check_snapshot_config(dry_run)
+        logger.info("snapshot: %s", snapshot_mode)
         # The run's own tree, built before anything is read. Every live module's
         # default resolves to it from here, so nothing under the repository's
         # data/ is written even though the run appends sessions and refits
@@ -795,12 +906,46 @@ def main() -> int:
         # impact is the cost of trading to the new book rather than of holding
         # it, and the reason column compares against it: the gate's own target
         # close is tonight's close, so it is the date to ask at.
+        #
+        # What the account holds and what it is worth are read before anything is
+        # sized: the traded leg of every order is the difference between the
+        # target and this book, and the NAV the book is sized from is the
+        # account's own equity rather than a constant. A live evening whose
+        # account cannot be read stops here, with no book and no order. The
+        # comparison is against the last book the loop held, which is the row
+        # strictly before the close being priced: tonight's own target is written
+        # by the proposal step below and has never been traded.
+        holdings = positions.check(
+            dry_run=dry_run, before=str(gate["target_close"])
+        )
+        held = holdings["held"]
+        # The day's kind comes from the account, never from the store: after a
+        # dry-run evening the store names a book the account has never held, and a
+        # store-based answer would miss the real first trading day and measure
+        # every leg against a book that does not exist.
+        establishment = bool(holdings["establishment"])
+        if not holdings["account_read"]:
+            logger.warning(
+                "the account could not be read, so this is not an establishment "
+                "day and the store's book is what the orders are measured against"
+            )
+        logger.info("nav: %s", holdings["nav_source"])
+        logger.info(
+            "positions: %s; held %d name(s) from %s, establishment=%s",
+            holdings["note"],
+            len(held),
+            holdings["source"],
+            establishment,
+        )
         previous = previous_book(str(gate["target_close"]), [])
         previous_weights = (
             previous.set_index("ticker")["weight"] if previous is not None else None
         )
         manifest = evening_job.build_proposal(
-            appendix=appendix_identity, previous=previous_weights
+            appendix=appendix_identity,
+            previous=previous_weights,
+            nav=float(holdings["nav"]),
+            nav_source=str(holdings["nav_source"]),
         )
         as_of = str(manifest["as_of"])
         book = store_proposal(as_of, run_tree, dry_run=dry_run, previous=previous)
@@ -827,31 +972,6 @@ def main() -> int:
                 ),
             )
 
-        # What the account actually holds, read before the orders are built: the
-        # traded leg of every order is the difference between the target and this
-        # book, and a run that starts from nothing is the establishment day. The
-        # store's own book is read beside it and any difference is reported, not
-        # resolved, because the two are different questions.
-        holdings = positions.check(dry_run=dry_run)
-        held = holdings["held"]
-        # The day's kind comes from the account, never from the store: after a
-        # dry-run evening the store names a book the account has never held, and a
-        # store-based answer would miss the real first trading day and measure
-        # every leg against a book that does not exist.
-        establishment = bool(holdings["establishment"])
-        if not holdings["account_read"]:
-            logger.warning(
-                "the account could not be read, so this is not an establishment "
-                "day and the store's book is what the orders are measured against"
-            )
-        logger.info(
-            "positions: %s; held %d name(s) from %s, establishment=%s",
-            holdings["note"],
-            len(held),
-            holdings["source"],
-            establishment,
-        )
-
         # Morning: gate, guard, submit (dry run by default), reconcile.
         morning = morning_job.run_morning(
             as_of,
@@ -863,7 +983,8 @@ def main() -> int:
         store_orders(as_of, dry_run)
 
         row = reconcile.daily_record(as_of, dry_run=dry_run)
-        store_reconciliation(as_of, row)
+        store_reconciliation(as_of, row, holdings=holdings)
+        store_broker_book(as_of, holdings)
         snapshot_inputs = {
             "manifest": manifest,
             "book": book,
@@ -924,6 +1045,10 @@ def main() -> int:
         brake_limit=float(morning.get("brake_limit") or 0.0),
         positions_check=holdings,
         deferred_reversals=morning.get("deferred_reversals") or [],
+        # The kept names the $250 minimum left untraded: legs of the day that went
+        # nowhere, recorded with their reason and named in the message, because a
+        # book quietly short of its own target is a book nobody can check.
+        skipped_minimum=morning.get("skipped_legs") or [],
         **snapshot_inputs,
     )
 

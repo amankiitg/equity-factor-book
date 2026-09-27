@@ -184,22 +184,21 @@ def test_the_book_is_the_drop_then_admit_local_maximum() -> None:
     # drop-only count and the E11-F13 prefix, which keeps far fewer names
     assert (floor_rows["n_kept_prefix"] < floor_rows["n_kept"]).all()
     assert (floor_rows["n_kept_drop_only"] < floor_rows["n_kept"]).all()
-    # the five checks, recorded per row. All of them hold on every floor row
-    # except the $5,000 one, whose own message is pinned instead. That row sat
-    # exactly on the owner's 51-name margin until the hedge started using the
-    # design for the session the book is held over rather than the row dated the
-    # close: the two designs size the book a few names apart, and this variant -
-    # the most aggressive floor on a $1M book - no longer clears the margin. The
-    # construction that trades is `share_only_20shares`, which keeps 158 names.
+    # the five checks, recorded per row. Every floor row now clears them. The
+    # $5,000 one - the most aggressive floor on a $1M book - was the exception
+    # for two rule changes: it sat exactly on the owner's 51-name margin until the
+    # hedge started using the design for the session the book is held over rather
+    # than the row dated the close, and it fell to 45 names below that margin. It
+    # clears again at 53 names under the corrected alpha contract (S1): the old
+    # spelling multiplied the specific variance where the volatility belongs,
+    # which leaned the book on the volatile names and left the thin variants
+    # thinner. The construction that trades is `share_only_20shares`.
     checks = floor_rows.set_index("construction")["floor_book_checks"]
-    assert checks.drop("min_position_5000").eq("ok").all()
-    assert checks["min_position_5000"] == (
-        f"45 kept names, below the {ev.MIN_FLOOR_BOOK_NAMES} name rank margin"
-    )
+    assert checks.eq("ok").all()
     margin = floor_rows.loc[
         floor_rows["construction"] == "min_position_5000", "n_kept"
     ].iloc[0]
-    assert int(margin) < ev.MIN_FLOOR_BOOK_NAMES
+    assert int(margin) >= ev.MIN_FLOOR_BOOK_NAMES
     # the search and its ordering robustness are reported
     for column in (
         "admit_passes",

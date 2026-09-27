@@ -50,6 +50,7 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -147,6 +148,26 @@ def is_session(day: Any) -> bool:
 # read these.
 RUN_SLOT_UTC = (22, 30)
 GRACE_HOURS = 3
+
+# The after-hours window the run is allowed to trade in, in New York time. The
+# close is 16:00 ET and Alpaca's overnight session starts at 20:00 ET, so an order
+# placed inside the window is held for the next open and one placed outside it is
+# not: a run at another hour is not pricing the close it thinks it is. The smoke
+# scripts enforce the same window on their own orders, and they read it from here.
+NEW_YORK = ZoneInfo("America/New_York")
+WINDOW_START_HOUR_ET = 16
+WINDOW_END_HOUR_ET = 20
+
+
+def in_cron_window(stamp: datetime) -> bool:
+    """Whether `stamp` is inside the after-hours window the run trades in.
+
+    New York time, not UTC: the window is defined by the exchange's own clock, so
+    18:30 ET is inside it and 22:30 UTC is inside it only in summer, when the two
+    hours coincide.
+    """
+    local = stamp.astimezone(NEW_YORK)
+    return WINDOW_START_HOUR_ET <= local.hour < WINDOW_END_HOUR_ET
 
 
 def session_close(session: Any) -> pd.Timestamp:
@@ -622,6 +643,8 @@ def run_status_row(
     establishment: bool = False,
     cost_label: str | None = "rebalance",
     positions_check: dict[str, Any] | None = None,
+    traded_risk: str | None = None,
+    full_risk: str | None = None,
 ) -> dict[str, Any]:
     """The `run_status` row for one run: the target close and every date.
 
@@ -681,6 +704,10 @@ def run_status_row(
         # about. The name maps are dropped: the counts and the drift are the
         # evidence, and the row is read on every page load.
         "positions_check": store.json_text(_positions_summary(positions_check)),
+        # The traded book's risk figures and the full book's, each under its own
+        # names. A stopped run that never built a book carries null in both.
+        "traded_risk": traded_risk,
+        "full_risk": full_risk,
     }
 
 

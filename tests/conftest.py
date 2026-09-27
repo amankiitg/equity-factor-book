@@ -23,6 +23,14 @@ os.environ.pop("EFB_INIT_STORE", None)
 # wants the upload path sets EFB_SNAPSHOT=on and a fake poster itself.
 os.environ["EFB_SNAPSHOT"] = "off"
 
+# The evening refuses outside the 16:00-20:00 New York window it trades in, and
+# the suite runs at whatever hour it is run. Every test that drives
+# `run_live_daily.main()` therefore needs the window open, exactly as a rehearsal
+# does; without this the suite's result would depend on the clock, and a test
+# written at 18:00 would fail at 15:00. The refusal itself is tested by deleting
+# this variable for the test, so the guard is still exercised in both directions.
+os.environ["EFB_FORCE_HOUR"] = "true"
+
 
 import pytest  # noqa: E402 - after the environment, which must be set first
 

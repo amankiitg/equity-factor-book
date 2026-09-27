@@ -79,6 +79,15 @@ INCOMPLETE_REASON_CODES = frozenset(
 )
 
 
+# The reason codes that describe a leg the run chose not to send. A skipped leg is
+# normally a leg that was not confirmed, which is what makes a run incomplete;
+# these are the exceptions, where the leg was left out on purpose and the evening
+# did exactly what it should have. A name whose change is under the minimum is the
+# whole of that set: it would be marked incomplete every evening otherwise, and
+# the day would never be filed.
+EXPECTED_SKIP_REASON_CODES = frozenset({alpaca.REASON_BELOW_MIN_NOTIONAL})
+
+
 def _leg_incomplete(status: object, reason_code: object) -> bool:
     """Whether one executed leg was not confirmed.
 
@@ -87,6 +96,8 @@ def _leg_incomplete(status: object, reason_code: object) -> bool:
     """
     value = str(alpaca.enum_value(status) or "").upper()
     code = str(alpaca.enum_value(reason_code) or "")
+    if code in EXPECTED_SKIP_REASON_CODES:
+        return False
     return value in INCOMPLETE_STATUSES or code in INCOMPLETE_REASON_CODES
 
 
@@ -157,11 +168,43 @@ def target_orders(
     A leg whose change is under `DELTA_MIN_NOTIONAL` is not worth an order and is
     left out, so a rerun of an unchanged book sends nothing. The exception is a
     held name absent from the target: it is a close, and it is always emitted so a
-    small leftover cannot survive an evening.
+    small leftover cannot survive an evening. The legs left out are not dropped in
+    silence: `minimum_skips` returns them from the same pass, so the day records a
+    skipped leg with its reason and the email can name it.
 
     `quantities` is the broker's signed share count, carried on each leg so a full
     close can send the exact held quantity.
     """
+    return _target_legs(proposal, nav, current, quantities)[0]
+
+
+def minimum_skips(
+    proposal: pd.DataFrame,
+    nav: float,
+    current: dict[str, float] | None = None,
+    quantities: dict[str, float] | None = None,
+) -> list[dict[str, object]]:
+    """The kept legs the `DELTA_MIN_NOTIONAL` floor left out, as leg records.
+
+    A name in tonight's book whose target and holding differ by less than an order
+    is worth is left untraded, and a book quietly a few names short of its own
+    target is a book nobody can check. These are the records for those legs: they
+    join the day's execution rows with status SKIPPED and the reason code that says
+    a minimum, not a failure, is why, and the message names them.
+
+    This is the same pass `target_orders` makes, so the two cannot disagree about
+    which legs were left out.
+    """
+    return _target_legs(proposal, nav, current, quantities)[1]
+
+
+def _target_legs(
+    proposal: pd.DataFrame,
+    nav: float,
+    current: dict[str, float] | None = None,
+    quantities: dict[str, float] | None = None,
+) -> tuple[list[OrderSpec], list[dict[str, object]]]:
+    """One pass over the union of the two books: the orders, and the skips."""
     held = {str(key): float(value) for key, value in (current or {}).items()}
     held_quantity = {
         str(key): float(value) for key, value in (quantities or {}).items()
@@ -171,6 +214,7 @@ def target_orders(
         for row in proposal.itertuples(index=False)
     }
     orders: list[OrderSpec] = []
+    skipped: list[dict[str, object]] = []
     for name in sorted(set(targets) | set(held)):
         target = targets.get(name, 0.0)
         position = held.get(name, 0.0)
@@ -191,6 +235,27 @@ def target_orders(
         trade = target - position
         closing = name not in targets and position != 0.0
         if not closing and abs(trade) < alpaca.DELTA_MIN_NOTIONAL:
+            # A zero change is not a leg at all: the holding is the target, which
+            # is every name on a rerun of an unchanged book, and recording those
+            # would fill the day's rows with names that had nothing to do. Only a
+            # change the floor actually refused is a skipped leg.
+            if trade != 0.0:
+                skipped.append(
+                    {
+                        "ticker": name,
+                        "intended_notional": trade,
+                        "filled_notional": 0.0,
+                        "status": alpaca.SKIPPED,
+                        "reason": (
+                            f"the change is ${abs(trade):,.2f}, under the "
+                            f"${alpaca.DELTA_MIN_NOTIONAL:,.0f} minimum an order is "
+                            "worth, so no order was sent"
+                        ),
+                        "reason_code": alpaca.REASON_BELOW_MIN_NOTIONAL,
+                        "client_order_id": "",
+                        "position_intent": alpaca.position_intent(position, target),
+                    }
+                )
             continue
         orders.append(
             OrderSpec(
@@ -201,7 +266,7 @@ def target_orders(
                 held_quantity=held_quantity.get(name, 0.0),
             )
         )
-    return orders
+    return orders, skipped
 
 
 def connect(dry_run: bool = True) -> object | None:
@@ -350,6 +415,12 @@ def run_morning(
     # only the change does, and a held name absent from the target is closed. A
     # change that would cross zero is split: closed tonight, opened tomorrow.
     orders = target_orders(proposal, nav, held, held_quantity)
+    # The kept names the minimum left untraded. They are not orders and are not
+    # guarded or submitted, but they are legs of the day: they join the execution
+    # rows with their reason, so the book's own shortfall against its target is on
+    # the record and in the message rather than only in the difference between two
+    # lists.
+    skipped_minimum = minimum_skips(proposal, nav, held, held_quantity)
     brake_limit, brake_basis = guards.traded_notional_limit(
         nav, establishment=is_establishment
     )
@@ -366,6 +437,14 @@ def run_morning(
             client, [order for order in guarded if order.status == guards.PASSED]
         )
     records = submit_orders(guarded, client, dry_run, prices, close=as_of)
+    if skipped_minimum:
+        records = pd.concat(
+            [
+                pd.DataFrame(skipped_minimum, columns=EXECUTION_COLUMNS[1:]),
+                records,
+            ],
+            ignore_index=True,
+        )
     records["trade_date"] = as_of
     # Holdings come from the broker's positions read, never from a fill status:
     # the only book the loop holds is the one the account reports. In dry run
@@ -405,6 +484,11 @@ def run_morning(
         # with the code that says why rather than being dropped in silence.
         "skipped": int((records["status"] == "SKIPPED").sum()),
         "reason_codes": _reason_code_counts(records),
+        # The kept names the $250 minimum left untraded, for the message. They are
+        # a subset of the skipped legs above; the two are stated apart because one
+        # is this evening's book not moving and the other is a leg the broker would
+        # not take.
+        "skipped_legs": skipped_minimum,
         # A leg that was halted, left in an unknown state, refused or rejected
         # makes the run incomplete: the day is not done, and the caller must not
         # file it as ok. `incomplete_legs` names each one and why.

@@ -7,8 +7,11 @@ constructs one on purpose so the harness has to catch it.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import pytest
 
 from efb import alpha, hygiene
 
@@ -99,3 +102,69 @@ def test_every_wide_based_builder_is_point_in_time() -> None:
             signal_perturbed["date"] == signal_perturbed["date"].max()
         ].set_index("ticker")["signal"]
         assert np.allclose(before, after, equal_nan=True), name
+
+
+def test_the_contract_multiplies_the_specific_volatility() -> None:
+    """alpha_i = IC x sqrt(variance_i) x z_i x kappa, to the digit.
+
+    The model publishes a specific variance and the contract multiplies a
+    volatility. A 0.04 variance is a 0.20 volatility, so the answer is
+    IC x 0.20 x z x kappa and not IC x 0.04 x z x kappa: the second number is
+    five times smaller here and, worse, of a different shape across the
+    cross-section.
+    """
+    alpha_vec = alpha.alpha_from_contract(
+        ic=0.05,
+        specific_variance=np.array([0.04, 0.09]),
+        z=np.array([1.0, -2.0]),
+        kappa=0.1,
+    )
+
+    assert alpha_vec[0] == pytest.approx(0.05 * 0.2 * 1.0 * 0.1)
+    assert alpha_vec[1] == pytest.approx(0.05 * 0.3 * -2.0 * 0.1)
+    # the negative control: the spelling this replaced, which the same inputs
+    # would have produced, is a different number
+    old = 0.05 * np.array([0.04, 0.09]) * np.array([1.0, -2.0]) * 0.1
+    assert not np.allclose(alpha_vec, old)
+    # and it is not a rescaling of it: the two disagree about which name is
+    # the better bet, because the ratio alpha_1 / alpha_2 moves
+    assert (alpha_vec[0] / abs(alpha_vec[1])) != pytest.approx(old[0] / abs(old[1]))
+
+
+def test_a_name_with_no_variance_takes_the_cross_sections_median() -> None:
+    """A name the model has no diagonal for is priced as the median name.
+
+    Dropping it silently would change the book rather than the estimate, so the
+    median variance stands in, and it is the median variance whose square root is
+    taken: the stand-in has to be in the same units as the number it replaces.
+    """
+    variance = np.array([0.01, np.nan, 0.04])
+    alpha_vec = alpha.alpha_from_contract(0.05, variance, np.ones(3), 0.1)
+
+    assert np.all(np.isfinite(alpha_vec))
+    assert alpha_vec[1] == pytest.approx(0.05 * np.sqrt(0.025) * 0.1)
+    # a negative variance is impossible, so it earns no alpha rather than an
+    # alpha with the wrong sign or a not-a-number the sizing cannot use
+    negative = alpha.alpha_from_contract(0.05, np.array([-0.04]), np.ones(1), 0.1)
+    assert negative[0] == pytest.approx(0.0)
+
+
+def test_the_three_sites_size_from_the_one_contract() -> None:
+    """One helper, three call sites, and no second spelling left anywhere.
+
+    The evening job, the E8 conversion and the construction table each built
+    their own alpha, and each multiplied the specific variance where the
+    volatility belongs. The contract lives in `efb.alpha` now, and the point of
+    the test is that no site kept a private spelling of it.
+    """
+    root = Path(alpha.__file__).resolve().parents[1]
+    for relative in (
+        "efb/alpha.py",
+        "live/evening_job.py",
+        "live/construction_table.py",
+    ):
+        source = (root / relative).read_text()
+        assert "alpha_from_contract(" in source, relative
+        # the spelling that put the variance under sigma: gone from every site
+        assert "specific * z * kappa" not in source, relative
+        assert "diag_v2 * z * KAPPA" not in source, relative

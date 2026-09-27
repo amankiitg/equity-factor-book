@@ -1028,6 +1028,7 @@ def build_proposal(
     store: bool = True,
     appendix: dict[str, Any] | None = None,
     previous: pd.Series | None = None,
+    nav_source: str | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
@@ -1081,11 +1082,10 @@ def build_proposal(
     raw = day.set_index("ticker")["signal"].reindex(names)
     z = (raw - raw.mean()) / raw.std(ddof=1)
     z = z.fillna(0.0).to_numpy(dtype=float)
-    alpha_vec = np.where(
-        np.isfinite(specific),
-        ic * specific * z * kappa,
-        ic * float(np.nanmedian(specific)) * z * kappa,
-    )
+    # The contract, from the one place it lives: alpha_i = IC x sigma_i x
+    # z_i x kappa, with sigma the specific volatility, the square root of the
+    # specific variance the model stores.
+    alpha_vec = alpha_mod.alpha_from_contract(ic, specific, z, kappa)
 
     # Procedure 6.3: size on D^-1 alpha, then hedge factors with the exact
     # in-model FMPs. The hedge drives every factor exposure, styles and
@@ -1146,6 +1146,24 @@ def build_proposal(
     )
 
     kept_decomposition = _decomposition(weights, design, factor_covariance, specific)
+
+    # The traded book, name by name, with each name's specific variance and its
+    # share of the book's predicted specific variance. S1's alpha-contract
+    # comparison reads these rather than re-deriving the book, and the page's
+    # risk block is built from the same numbers.
+    variance_shares = sizing.variance_shares(weights, specific)
+    kept_indices = np.where(np.abs(weights) > 1e-12)[0]
+    by_share = sorted(
+        ((str(names[index]), float(variance_shares[index])) for index in kept_indices),
+        key=lambda pair: -pair[1],
+    )
+    top_variance_shares = [
+        {"ticker": ticker, "variance_share": share} for ticker, share in by_share[:5]
+    ]
+    max_variance_share = float(variance_shares.max()) if len(names) else 0.0
+    variance_share_cap_binds = bool(
+        max_variance_share >= sizing.VARIANCE_SHARE_CAP - 1e-12
+    )
 
     previous_weights = (
         previous.reindex(names).fillna(0.0).to_numpy(dtype=float)
@@ -1238,6 +1256,23 @@ def build_proposal(
         "kept_idio_share": kept_decomposition["idio_share"],
         "kept_max_abs_exposure": kept_decomposition["max_abs_exposure"],
         "max_kept_weight": float(np.max(np.abs(weights))),
+        # The traded book, name by name, so a reader (or the S1 comparison) does
+        # not have to re-derive it, plus its concentration reading: the cap binds
+        # when a name sits at or above VARIANCE_SHARE_CAP of the book's predicted
+        # specific variance.
+        "kept_book": [
+            {
+                "ticker": str(names[index]),
+                "weight": float(weights[index]),
+                "specific_variance": float(specific[index]),
+                "variance_share": float(variance_shares[index]),
+            }
+            for index in kept_indices
+        ],
+        "variance_share_cap": float(sizing.VARIANCE_SHARE_CAP),
+        "max_variance_share": max_variance_share,
+        "variance_share_cap_binds": variance_share_cap_binds,
+        "top_variance_shares": top_variance_shares,
         "kept_achieved_annual_vol": float(
             math.sqrt(
                 kept_decomposition["idio_variance"]
@@ -1261,6 +1296,12 @@ def build_proposal(
         ),
         "gross_cap_bound": gross_cap_bound,
         "nav": nav,
+        # Which number `nav` is. The evening sizes the book from the account's
+        # own equity now, and the design's paper default stands in only when the
+        # account could not be read at all; the manifest states which of the two
+        # it priced from rather than leaving it to be assumed.
+        "nav_source": nav_source
+        or f"the paper default ${PAPER_NAV:,.0f}, passed in rather than read",
         "expected_establishment_cost_bps": cost["total_bps"],
         "expected_establishment_cost_usd": cost["total_bps"] / 1e4 * nav,
         "cost_breakdown_bps": {

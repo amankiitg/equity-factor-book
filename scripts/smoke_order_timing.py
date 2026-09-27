@@ -41,7 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from live import alpaca  # noqa: E402 - after the path fix above
+from live import alpaca, staleness  # noqa: E402 - after the path fix above
 
 # The after-hours window an order submitted at the cron's slot lands in. The
 # close is 16:00 ET and the overnight session starts at 20:00 ET, from Alpaca's
@@ -59,9 +59,14 @@ REFUSED_STATUSES = frozenset({"rejected", "canceled", "expired", "suspended"})
 
 
 def in_cron_window(stamp: datetime) -> bool:
-    """Whether `stamp` is inside the after-hours window the cron submits in."""
-    local = stamp.astimezone(NEW_YORK)
-    return WINDOW_START_HOUR_ET <= local.hour < WINDOW_END_HOUR_ET
+    """Whether `stamp` is inside the after-hours window the cron submits in.
+
+    The window itself is defined in `live.staleness`, beside the cron slot and
+    the calendar, and the daily run refuses outside it: one definition, so the
+    smoke order and the book cannot disagree about the hour the after-hours
+    semantics hold for.
+    """
+    return staleness.in_cron_window(stamp)
 
 
 def _status_of(order: Any) -> str:

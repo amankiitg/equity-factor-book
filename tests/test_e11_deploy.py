@@ -76,7 +76,7 @@ def test_the_roles_cover_every_verb_the_store_issues() -> None:
     # DELETE is granted on exactly the tables replace_by_date is called on. The
     # set comes from the callers, not from a pinned string.
     callers = _replace_by_date_tables()
-    assert callers == {"positions", "orders"}, callers
+    assert callers == {"positions", "orders", "broker_positions"}, callers
     match = re.search(
         r"(?i)grant\s+delete\s+on\s+([a-z_.\s,]+?)\s+to\s+efb_writer", ROLES
     )

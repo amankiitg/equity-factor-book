@@ -583,6 +583,69 @@ def test_build_proposal_stores_the_share_only_floor_and_breadth() -> None:
     assert manifest["floor_iterated"] is True
     assert isinstance(manifest["code_commit"], str) and manifest["code_commit"]
     assert 0.0 < manifest["kept_gross_before_renorm"] < manifest["kept_gross"]
+    # the traded book name by name, with each name's specific variance and its
+    # share of the book's predicted specific variance, so the comparison and the
+    # page's risk block read the book the run traded rather than re-deriving it
+    kept = manifest["kept_book"]
+    assert len(kept) == manifest["n_effective"] == manifest["n_kept"]
+    assert sum(entry["variance_share"] for entry in kept) == pytest.approx(1.0)
+    for entry in kept:
+        assert set(entry) == {
+            "ticker",
+            "weight",
+            "specific_variance",
+            "variance_share",
+        }
+        # a variance, so its square root is the specific volatility the alpha
+        # contract multiplies by
+        assert entry["specific_variance"] > 0.0
+        assert abs(entry["weight"]) > 1e-12
+    # the concentration reading: the cap binds when a name sits at or above it
+    assert manifest["variance_share_cap"] == pytest.approx(ev.sizing.VARIANCE_SHARE_CAP)
+    assert manifest["max_variance_share"] == pytest.approx(
+        max(entry["variance_share"] for entry in kept)
+    )
+    assert manifest["variance_share_cap_binds"] is (
+        manifest["max_variance_share"] >= ev.sizing.VARIANCE_SHARE_CAP - 1e-12
+    )
+    top = manifest["top_variance_shares"]
+    assert [entry["ticker"] for entry in top] == [
+        entry["ticker"]
+        for entry in sorted(kept, key=lambda row: -row["variance_share"])[:5]
+    ]
+
+
+@pytest.mark.slow
+def test_the_traded_alpha_is_the_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every alpha the evening sizes from is IC x sigma x z x kappa.
+
+    The formula is written out here rather than called: the test's job is to
+    disagree with the code if the code moves the contract, so it may not borrow
+    the function it is checking. On the code before S1 the alpha carries an extra
+    factor of the name's own volatility, so the negative control below fails
+    there.
+    """
+    monkeypatch.setattr(ev, "PROPOSAL_DIR", tmp_path)
+    manifest = ev.build_proposal(store=True)
+    rows = pd.read_parquet(tmp_path / f"proposal_{manifest['as_of']}.parquet")
+    kept = {entry["ticker"]: entry for entry in manifest["kept_book"]}
+    # the traded book is the recorded book, name by name
+    assert set(rows["ticker"]) == set(kept)
+    variance = np.array(
+        [kept[ticker]["specific_variance"] for ticker in rows["ticker"]]
+    )
+    z = rows["z"].to_numpy(dtype=float)
+    ic = float(manifest["ic"])
+    kappa = float(manifest["kappa"])
+
+    expected = ic * np.sqrt(variance) * z * kappa
+
+    assert np.allclose(rows["alpha"].to_numpy(dtype=float), expected, rtol=1e-12)
+    # the negative control: the variance where the volatility belongs
+    old = ic * variance * z * kappa
+    assert not np.allclose(rows["alpha"].to_numpy(dtype=float), old)
 
 
 @pytest.mark.slow

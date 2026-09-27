@@ -162,3 +162,72 @@ def test_a_manifest_without_a_breakdown_keeps_the_total(
 
     assert row["expected_cost_bps"] == pytest.approx(75.3)
     assert row["expected_borrow_bps"] is None
+
+
+def test_the_day_states_both_books_risk_figures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The traded book's risk figures and the full book's, by their own names.
+
+    One set of names for both books would make the page's volatility read as the
+    traded book's when it is the full book's. The manifest is the only source, so
+    the row, the run_status row and the snapshot cannot disagree either.
+    """
+    proposal_dir = tmp_path / "proposals"
+    log_dir = tmp_path / "logs"
+    state_dir = tmp_path / "state"
+    _write_manifest(proposal_dir, "2026-09-22")
+    path = proposal_dir / "proposal_2026-09-22.json"
+    manifest = json.loads(path.read_text())
+    # The two books genuinely differ: the floor dropped names, so the traded
+    # book's gross is below the full book's and the two vols are two numbers.
+    manifest.update(
+        {
+            "kept_achieved_annual_vol": 0.0459,
+            "kept_idio_share": 0.981,
+            "kept_max_abs_exposure": 0.0334,
+            "kept_gross": 0.94,
+            "kept_net": 0.0,
+            "max_kept_weight": 0.033448,
+            "n_eff_full_book": 149.9,
+            "n_names": 158,
+            "variance_share_cap": 0.10,
+            "variance_share_cap_binds": False,
+            "top_variance_shares": [{"ticker": "AAA", "variance_share": 0.031}],
+        }
+    )
+    path.write_text(json.dumps(manifest))
+    _write_execution(log_dir, "2026-09-22")
+    monkeypatch.setattr(reconcile, "PROPOSAL_DIR", proposal_dir)
+    monkeypatch.setattr(reconcile, "EXECUTION_LOG_DIR", log_dir)
+
+    row = reconcile.daily_record("2026-09-22", state_dir=state_dir, dry_run=True)
+
+    traded = json.loads(row["traded_risk"])
+    full = json.loads(row["full_risk"])
+    assert traded["forecast_annual_vol"] == pytest.approx(0.0459)
+    assert full["forecast_annual_vol"] == pytest.approx(0.0423)
+    assert traded["forecast_annual_vol"] != full["forecast_annual_vol"]
+    assert traded["gross"] == pytest.approx(0.94)
+    assert full["gross"] == pytest.approx(1.0)
+    assert traded["n_eff"] == pytest.approx(158.9)
+    assert traded["variance_share_cap_binds"] is False
+    assert traded["top_variance_shares"] == [{"ticker": "AAA", "variance_share": 0.031}]
+    assert full["n_names"] == 158
+    assert "traded_risk" in reconcile.RECONCILIATION_COLUMNS
+    assert "full_risk" in reconcile.RECONCILIATION_COLUMNS
+
+
+def test_a_manifest_without_the_figures_records_none_not_zero() -> None:
+    """A manifest written before a field existed records it as unrecorded.
+
+    A zero would read as a measured volatility of nothing, and a month of zeros
+    would average into the book's history as if the evening had produced one.
+    """
+    risk = reconcile.risk_figures({"achieved_annual_vol": 0.0423})
+
+    assert risk["traded"]["forecast_annual_vol"] is None
+    assert risk["full"]["forecast_annual_vol"] == pytest.approx(0.0423)
+    # and a run with no manifest at all returns nulls rather than raising
+    assert reconcile.risk_figures(None)["traded"]["n_eff"] is None
+    assert reconcile.risk_figures(None)["full"]["gross"] is None

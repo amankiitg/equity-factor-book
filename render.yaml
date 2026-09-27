@@ -12,6 +12,11 @@
 # UTC cron schedule:
 #   "30 22 * * 1-5" = 18:30 EDT / 17:30 EST, after the 16:00 ET close.
 #
+# The run refuses outside 16:00-20:00 New York, the after-hours session Alpaca
+# holds a DAY order for, unless EFB_FORCE_HOUR is exactly "true". The slot above
+# is inside the window in both EDT and EST, so the override is for a rehearsal
+# and never for this cron.
+#
 # Secret isolation:
 #   Cron gets EFB_SUPABASE_DB_URL (the write role's connection string),
 #   EFB_DB_SCHEMA, EFB_ALPACA_PAPER_*, EFB_DRY_RUN, EFB_STORE is deliberately
