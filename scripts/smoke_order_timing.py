@@ -65,7 +65,13 @@ def in_cron_window(stamp: datetime) -> bool:
 
 
 def _status_of(order: Any) -> str:
-    return str(getattr(order, "status", "")).lower()
+    """The broker's status as a plain string, never an enum repr.
+
+    alpaca-py returns `OrderStatus.ACCEPTED`, whose `str()` is "OrderStatus.ACCEPTED"
+    and matches none of the sets above, so the value is read with
+    `getattr(x, "value", x)`.
+    """
+    return str(alpaca.enum_value(getattr(order, "status", ""))).lower()
 
 
 def submit_verify_cancel(

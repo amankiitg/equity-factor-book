@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
 from typing import Any
 from unittest.mock import patch
 
@@ -54,18 +55,53 @@ class BrokerRejection(RuntimeError):
     """The broker evaluated the order and declined it."""
 
 
-class _FakeOrder:
-    def __init__(self, record: dict[str, Any]) -> None:
-        self.id = record["id"]
-        self.status = record["status"]
-        self.qty = record["qty"]
-        self.filled_qty = record.get("filled_qty")
-        self.filled_avg_price = record.get("filled_avg_price")
+SUBMITTED_AT = "2026-09-25T22:30:00Z"
+
+
+def _position_model(symbol: str, shares: float, price: float) -> Any:
+    """A real alpaca-py Position, as `get_all_positions` returns it."""
+    from alpaca.trading.enums import AssetClass, AssetExchange, PositionSide
+    from alpaca.trading.models import Position
+
+    value = abs(shares) * price
+    return Position(
+        asset_id=uuid.uuid5(uuid.NAMESPACE_DNS, symbol),
+        symbol=symbol,
+        exchange=AssetExchange.NASDAQ,
+        asset_class=AssetClass.US_EQUITY,
+        avg_entry_price=str(price),
+        qty=str(shares),
+        side=PositionSide.LONG if shares >= 0 else PositionSide.SHORT,
+        market_value=str(value),
+        cost_basis=str(value),
+    )
+
+
+def _order_model(record: dict[str, Any]) -> Any:
+    """A real alpaca-py Order, as submit and the lookups return it."""
+    from alpaca.trading.models import Order
+
+    return Order(
+        id=str(uuid.uuid5(uuid.NAMESPACE_DNS, record["client_order_id"])),
+        client_order_id=record["client_order_id"],
+        created_at=SUBMITTED_AT,
+        updated_at=SUBMITTED_AT,
+        submitted_at=SUBMITTED_AT,
+        order_class="simple",
+        time_in_force="day",
+        status=record["status"],
+        extended_hours=False,
+        symbol=record["symbol"],
+        side=record["side"],
+        qty=record["qty"],
+        filled_qty=record.get("filled_qty"),
+        filled_avg_price=record.get("filled_avg_price"),
+        position_intent=record["intent"],
+    )
 
 
 def _intent_of(order_data: Any) -> str:
-    value = getattr(order_data, "position_intent", "")
-    return str(getattr(value, "value", value) or "")
+    return str(alpaca.enum_value(getattr(order_data, "position_intent", "")) or "")
 
 
 class FakeBroker:
@@ -100,51 +136,45 @@ class FakeBroker:
         return _Asset()
 
     def get_all_positions(self) -> list[object]:
-        class _Position:
-            def __init__(self, symbol: str, shares: float, price: float) -> None:
-                self.symbol = symbol
-                self.qty = str(abs(shares))
-                self.market_value = str(abs(shares) * price)
-                self.side = "long" if shares >= 0 else "short"
-
         return [
-            _Position(symbol, shares, self.prices[symbol])
+            _position_model(symbol, shares, self.prices[symbol])
             for symbol, shares in sorted(self.holdings.items())
             if abs(shares) > 1e-9
         ]
 
-    def get_order_by_client_id(self, ticket: str) -> _FakeOrder | None:
+    def get_order_by_client_id(self, ticket: str) -> Any | None:
         record = self.orders.get(ticket)
-        return None if record is None else _FakeOrder(record)
+        return None if record is None else _order_model(record)
 
-    def get_order(self, order_id: str) -> _FakeOrder:
+    def get_order(self, order_id: str) -> Any:
         for record in self.orders.values():
-            if record["id"] == order_id:
-                return _FakeOrder(record)
+            if str(uuid.uuid5(uuid.NAMESPACE_DNS, record["client_order_id"])) == str(
+                order_id
+            ):
+                return _order_model(record)
         raise KeyError(order_id)
 
     # --- writes --------------------------------------------------------------
-    def submit_order(self, order_data: Any) -> _FakeOrder:
+    def submit_order(self, order_data: Any) -> Any:
         ticket = str(getattr(order_data, "client_order_id", ""))
         if ticket in self.orders:
             raise BrokerRejection(f"duplicate client_order_id {ticket}")
         symbol = str(order_data.symbol)
         price = self.prices[symbol]
         intent = _intent_of(order_data)
+        # Read the side by value: alpaca-py gives an OrderSide enum, whose str()
+        # is "OrderSide.SELL".
+        side = str(alpaca.enum_value(getattr(order_data, "side", ""))).lower()
         notional = getattr(order_data, "notional", None)
         qty = float(notional) / price if notional is not None else float(order_data.qty)
-        delta = (
-            qty
-            if intent in (alpaca.INTENT_BUY_TO_OPEN, alpaca.INTENT_BUY_TO_CLOSE)
-            else -qty
-        )
+        delta = qty if side == "buy" else -qty
         self._validate(symbol, intent, qty, delta)
         record: dict[str, Any] = {
-            "id": f"fake-{len(self.orders) + 1}",
             "client_order_id": ticket,
             # After the close a DAY order is accepted, not filled.
             "status": "accepted",
             "symbol": symbol,
+            "side": side,
             "intent": intent,
             "qty": qty,
             "delta": delta,
@@ -153,7 +183,7 @@ class FakeBroker:
         self.orders[ticket] = record
         self.pending.append(record)
         self.submitted.append(record)
-        return _FakeOrder(record)
+        return _order_model(record)
 
     def _validate(self, symbol: str, intent: str, qty: float, delta: float) -> None:
         held = self.holdings.get(symbol, 0.0)

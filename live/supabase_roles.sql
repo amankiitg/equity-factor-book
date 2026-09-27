@@ -10,7 +10,7 @@
 -- web service (the live book monitor is a Cloudflare page reading an R2
 -- snapshot), which is one fewer credential to hold. `efb_archiver`, which needs
 -- `delete` on the `e11_*` tables and nothing else, arrives with retention in item
--- 6; until then nothing deletes a row.
+-- 6.
 --
 -- Apply this AFTER live/supabase_schema.sql. A grant on a schema that does not
 -- exist yet fails, which is the order the earlier steps had wrong.
@@ -23,11 +23,16 @@ create role efb_writer login password 'REPLACE_WITH_A_LONG_RANDOM_PASSWORD';
 
 -- The cron writes the live series, the appendix and the run status.
 --
--- No `delete`: live/store.py issues exactly two statements, an INSERT ... ON
--- CONFLICT upsert and a SELECT, so no code path in this repository deletes a row
--- from `efb`. A grant nothing uses is a grant that cannot be traced to a caller.
+-- `live/store.py` issues four verbs: INSERT and UPDATE (the ON CONFLICT upsert),
+-- SELECT (every read), and DELETE (`replace_by_date`, which erases a date before
+-- re-inserting it so a rerun cannot leave the previous run's rows behind). The
+-- broad grant below covers three of them on every table, and DELETE is granted
+-- narrowly on the two tables `replace_by_date` is called on, because that is the
+-- only place a row is ever removed. The grant is traced to its caller and the
+-- runtime cannot discover a missing privilege: the DELETE only runs on a rerun.
 grant usage on schema efb to efb_writer;
 grant select, insert, update on all tables in schema efb to efb_writer;
+grant delete on efb.positions, efb.orders to efb_writer;
 
 -- Future tables inherit those grants. Run this as the role that creates the
 -- tables, which is `postgres` in the SQL editor, because default privileges

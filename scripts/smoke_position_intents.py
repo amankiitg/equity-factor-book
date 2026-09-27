@@ -66,15 +66,17 @@ def in_cron_window(stamp: datetime) -> bool:
 
 
 def _fill_report(fill: Any) -> dict[str, Any]:
+    # Status as a plain value: an alpaca-py `OrderStatus` has no useful `str()`.
+    status = str(alpaca.enum_value(fill.status))
     return {
         "ticker": fill.ticker,
-        "position_intent": fill.intent,
+        "position_intent": str(alpaca.enum_value(fill.intent)),
         "intended_notional": float(fill.intended_notional),
-        "status": fill.status,
-        "reason_code": fill.reason_code,
+        "status": status,
+        "reason_code": str(alpaca.enum_value(fill.reason_code)),
         "detail": fill.detail,
         "client_order_id": fill.client_order_id,
-        "accepted": fill.status.lower() in ACCEPTED_STATUSES,
+        "accepted": status.lower() in ACCEPTED_STATUSES,
     }
 
 

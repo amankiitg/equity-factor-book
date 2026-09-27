@@ -133,8 +133,16 @@ def traded_notional_limit(
 
 
 def establishment_limit(nav: float, gross: float = ESTABLISHMENT_GROSS) -> float:
-    """The most an establishment run may trade: the book itself, in dollars."""
-    return abs(float(gross)) * float(nav)
+    """The most an establishment run may trade: the book itself, in dollars.
+
+    Plus one dollar of tolerance. The ceiling and the traded total are both sums
+    of per-name notionals that have been rounded, so a book that is exactly the
+    gross can sum a cent above `gross * nav` and trip a ceiling it actually
+    equals. One dollar is far below any real leg (the smallest order the loop
+    sends is `DELTA_MIN_NOTIONAL`, 250 dollars), so the tolerance cannot admit a
+    leg, and the ten-times-the-book case still trips it.
+    """
+    return abs(float(gross)) * float(nav) + 1.0
 
 
 def apply_guards(

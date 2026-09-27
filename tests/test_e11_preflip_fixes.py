@@ -411,8 +411,11 @@ class _SmokeBroker(_RecordingClient):
         class _Position:
             def __init__(self, symbol: str, shares: float) -> None:
                 self.symbol = symbol
-                self.qty = str(abs(shares))
-                self.market_value = str(abs(shares) * PRICES[symbol])
+                # A real short Position reports a signed quantity, and the sign is
+                # what `position_book` reads; an unsigned one here would make the
+                # short read as a long.
+                self.qty = str(shares)
+                self.market_value = str(shares * PRICES[symbol])
                 self.side = "long" if shares >= 0 else "short"
 
         return [
