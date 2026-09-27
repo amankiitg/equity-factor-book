@@ -133,20 +133,28 @@ def sizing_nav(equity: float | None) -> tuple[float, str]:
     same size on an account that has grown and on one that has halved, which is
     the hard-coded 1,000,000 this replaces.
 
-    The design's paper default stands in only when the account could not be read
-    at all, which happens in dry run and never live: `account_read` has already
-    raised by then, so a live book is never sized from a constant. The second
-    element says which number was used, so the row and the manifest can state it
-    rather than leave the reader to assume.
+    An equity the account *did* report, but as zero or less, raises. That is a real
+    answer about the account rather than a failed read, and sizing from the paper
+    default on it would buy a million dollars' worth of book against an account
+    with nothing in it. The default stands in only for a read that never happened
+    - no credentials, which a dry run allows - and `account_read` has already
+    raised by then on a live evening, so a live book is never sized from a
+    constant. The second element says which number was used, so the row and the
+    manifest can state it rather than leave the reader to assume.
     """
-    if equity is not None and equity > 0:
-        return float(equity), f"the account's own equity (${equity:,.2f})"
-    from live import evening_job
+    if equity is None:
+        from live import evening_job
 
-    return evening_job.PAPER_NAV, (
-        f"the paper default ${evening_job.PAPER_NAV:,.0f}: the account's equity "
-        "could not be read, which on a live evening stops the run"
-    )
+        return evening_job.PAPER_NAV, (
+            f"the paper default ${evening_job.PAPER_NAV:,.0f}: the account's equity "
+            "could not be read, which on a live evening stops the run"
+        )
+    if equity <= 0:
+        raise RuntimeError(
+            f"the account reports an equity of {equity:,.2f}, so there is nothing "
+            "to size a book from and the run stopped before building one"
+        )
+    return float(equity), f"the account's own equity (${equity:,.2f})"
 
 
 def compare(

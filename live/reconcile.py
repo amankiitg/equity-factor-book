@@ -25,12 +25,20 @@ EXECUTION_LOG_DIR = ROOT / "live" / "logs"
 
 RECONCILIATION_COLUMNS = [
     "trade_date",
+    # The unqualified risk fields on this row describe the book that trades: the
+    # forecast is the traded book's, and so are gross and net. The 499-name book
+    # the model sized before the floor dropped any is beside them under
+    # `full_book_*` names, because a row whose "gross" was the 499-name book read
+    # as the gross of the book the owner holds.
     "forecast_annual_vol",
+    "full_book_forecast_annual_vol",
     "realized_annual_vol",
     "idio_share_after_fmp",
     "max_abs_exposure_after_fmp",
     "gross",
     "net",
+    "full_book_gross",
+    "full_book_net",
     "n_eff_kept",
     "intended_notional",
     "filled_notional",
@@ -49,6 +57,32 @@ RECONCILIATION_COLUMNS = [
     "traded_risk",
     "full_risk",
 ]
+
+# The manifest keys behind each unqualified figure on the row, and the 499-name
+# key beside it: the traded figure is what the column means, and the full book's
+# is used only when the manifest predates the kept set (which `traded_risk` on
+# the same row is then null on, so the row still says which book it holds).
+TRADED_FALLBACK: dict[str, tuple[str, str]] = {
+    "forecast_annual_vol": ("kept_achieved_annual_vol", "achieved_annual_vol"),
+    "gross": ("kept_gross", "gross"),
+    "net": ("kept_net", "net"),
+}
+
+
+def traded_figure(manifest: dict[str, Any], field: str) -> Any:
+    """One unqualified figure from the traded book, or the full book's instead.
+
+    The traded book is the kept set after the hedge: it is what the run holds, so
+    it is what an unqualified `forecast_annual_vol`, `gross` or `net` means. A
+    manifest written before the kept set was recorded carries only the 499-name
+    number, and an older evening's row is still a row; the fallback uses the only
+    number that manifest has, and the traded risk on the same row is null, which
+    is what marks it as the full book's.
+    """
+    kept_key, full_key = TRADED_FALLBACK[field]
+    value = manifest.get(kept_key)
+    return manifest.get(full_key) if value is None else value
+
 
 # The manifest keys behind each risk figure. The traded book is the kept book,
 # and the full book is every name the model sized before the floor dropped any.
@@ -156,12 +190,15 @@ def daily_record(
     filled = float(execution["filled_notional"].abs().sum()) if len(execution) else 0.0
     row = {
         "trade_date": as_of,
-        "forecast_annual_vol": float(manifest["achieved_annual_vol"]),
+        "forecast_annual_vol": float(traded_figure(manifest, "forecast_annual_vol")),
+        "full_book_forecast_annual_vol": float(manifest["achieved_annual_vol"]),
         "realized_annual_vol": float("nan"),
         "idio_share_after_fmp": float(manifest["idio_share_after_fmp"]),
         "max_abs_exposure_after_fmp": float(manifest["max_abs_exposure_after_fmp"]),
-        "gross": float(manifest["gross"]),
-        "net": float(manifest["net"]),
+        "gross": float(traded_figure(manifest, "gross")),
+        "net": float(traded_figure(manifest, "net")),
+        "full_book_gross": float(manifest["gross"]),
+        "full_book_net": float(manifest["net"]),
         "n_eff_kept": float(manifest["n_eff_kept"]),
         "intended_notional": intended,
         "filled_notional": filled,
@@ -190,14 +227,36 @@ def daily_record(
     return row
 
 
+def traded_forecast(row: Any) -> float:
+    """The traded book's forecast vol for one stored row (F11.3's forecast).
+
+    The comparison is against what the run holds, so the forecast it reads is the
+    traded book's. That is what the row's `forecast_annual_vol` now holds; a row
+    written before the unqualified fields were repointed carried the 499-name
+    book's there and the traded book's inside `traded_risk`, so the traded record
+    is read first and the column is the fallback for a row that has neither.
+    """
+    risk = row.get("traded_risk") if hasattr(row, "get") else None
+    if isinstance(risk, str):
+        try:
+            risk = json.loads(risk)
+        except json.JSONDecodeError:
+            risk = None
+    if isinstance(risk, dict) and risk.get("forecast_annual_vol") is not None:
+        return float(risk["forecast_annual_vol"])
+    return float(row["forecast_annual_vol"])
+
+
 def reconcile_forecast_vs_outcome(
     as_of: str, state_dir: Path = state.STATE_DIR
 ) -> dict:
     """Compare the stored forecast to the stored outcome for one date.
 
-    Returns the two numbers and the verdict; in dry run there is no
-    outcome yet, so the comparison is recorded as pending rather than
-    faked.
+    The forecast is the traded book's, not the 499-name book's: the outcome that
+    follows is the traded book's own realized volatility, and comparing it to a
+    book the run never held would make the ratio a number about a different book.
+    The full book's forecast travels beside it for context. In dry run there is no
+    outcome yet, so the comparison is recorded as pending rather than faked.
     """
     path = state_dir / "reconciliation.parquet"
     if not path.exists():
@@ -208,7 +267,13 @@ def reconcile_forecast_vs_outcome(
         raise ValueError(f"no reconciliation record for {as_of}")
     row = rows.iloc[0]
     realized = row["realized_annual_vol"]
-    forecast = row["forecast_annual_vol"]
+    forecast = traded_forecast(row)
+    full_book = row.get("full_book_forecast_annual_vol")
+    context = {
+        "full_book_forecast_annual_vol": (
+            None if full_book is None or pd.isna(full_book) else float(full_book)
+        )
+    }
     if pd.isna(realized):
         return {
             "as_of": as_of,
@@ -216,6 +281,7 @@ def reconcile_forecast_vs_outcome(
             "realized_annual_vol": None,
             "status": "pending",
             "reason": "dry run: no fills, no realized outcome",
+            **context,
         }
     return {
         "as_of": as_of,
@@ -223,6 +289,7 @@ def reconcile_forecast_vs_outcome(
         "realized_annual_vol": float(realized),
         "ratio": float(realized) / float(forecast) if forecast else float("nan"),
         "status": "reconciled",
+        **context,
     }
 
 

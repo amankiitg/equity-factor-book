@@ -200,6 +200,34 @@ def test_an_account_with_no_equity_stops_a_live_run(
         positions.check(dry_run=False)
 
 
+@pytest.mark.parametrize("equity", ["0.00", "-5.00"])
+def test_an_equity_of_zero_or_below_raises_rather_than_sizing_from_the_default(
+    equity: str, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reported equity of nothing is an answer, not a failed read.
+
+    An account that says it is worth zero or less is telling the run something
+    true: there is nothing to size a book from. Falling back to the paper default
+    on it would buy a million dollars' worth of book against an account holding
+    nothing, and the guards - all of them fractions of NAV - would then be
+    guarding the wrong book. The fallback is for a read that never happened, which
+    the negative control at the end pins.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(
+        alpaca, "read_client", lambda: _FakeBroker([("AAA", 500.0)], equity=equity)
+    )
+
+    with pytest.raises(RuntimeError, match="reports an equity of"):
+        positions.check(dry_run=True)
+
+    # the negative control: no read at all is the case the default is for
+    monkeypatch.setattr(alpaca, "read_client", lambda: None)
+    unresolved = positions.check(dry_run=True)
+    assert unresolved["equity"] is None
+    assert unresolved["nav"] == pytest.approx(evening_job.PAPER_NAV)
+
+
 def test_the_comparison_is_against_the_last_book_before_tonight(
     tmp_path: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:

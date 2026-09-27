@@ -165,6 +165,7 @@ def store_proposal(
     already read it (the proposal build needs the same book for its trade impact)
     and read from the store when it has not.
     """
+    from live import reconcile as reconcile_module
     from live import store, trade_reasons
 
     root = Path(data_root) if data_root is not None else ROOT / "data"
@@ -208,12 +209,21 @@ def store_proposal(
                 "as_of": as_of,
                 "n_names": manifest["n_names"],
                 "n_excluded": manifest["n_excluded"],
-                "gross": manifest["gross"],
-                "net": manifest["net"],
+                # The book that trades: the kept set after the hedge. The
+                # 499-name book the model sized before the floor dropped any is
+                # beside them under `full_book_*` names, rather than as "the
+                # gross" of a book the owner does not hold.
+                "gross": reconcile_module.traded_figure(manifest, "gross"),
+                "net": reconcile_module.traded_figure(manifest, "net"),
+                "full_book_gross": manifest["gross"],
+                "full_book_net": manifest["net"],
                 "n_eff_kept": manifest["n_eff_kept"],
                 "n_eff_full_book": manifest["n_eff_full_book"],
                 "target_annual_vol": manifest["target_annual_vol"],
-                "achieved_annual_vol": manifest["achieved_annual_vol"],
+                "achieved_annual_vol": reconcile_module.traded_figure(
+                    manifest, "forecast_annual_vol"
+                ),
+                "full_book_achieved_annual_vol": manifest["achieved_annual_vol"],
                 "idio_share_after_fmp": manifest["idio_share_after_fmp"],
                 "max_abs_exposure_after_fmp": manifest["max_abs_exposure_after_fmp"],
                 "gross_cap_bound": manifest["gross_cap_bound"],
@@ -305,20 +315,48 @@ def store_reconciliation(as_of: str, row: dict, *, holdings: dict[str, Any]) -> 
     from live import store
 
     store.upsert("reconciliation", [row])
+    nav = float(holdings["nav"])
     store.upsert(
         "nav",
         [
             {
                 "trade_date": as_of,
-                "nav": float(holdings["nav"]),
-                "realized_pnl": (
-                    0.0 if row.get("dry_run") else float(row.get("realized_pnl") or 0.0)
-                ),
+                "nav": nav,
+                "realized_pnl": realized_pnl(as_of, nav),
                 "gross_pnl": None,
                 "cash": holdings.get("cash"),
             }
         ],
     )
+
+
+def realized_pnl(as_of: str, nav: float) -> float:
+    """Tonight's P&L: the change in the account's own equity since the last row.
+
+    The account's equity is the only measurement of what the book is worth, so the
+    day's P&L is the change in that number and nothing else. It replaces a zero
+    written every evening in dry run, which said the book had made nothing rather
+    than that nobody had measured it.
+
+    The reading it is measured against is the previous stored NAV row strictly
+    before this close, so a re-run of an evening cannot measure against itself.
+    Zero when the store holds no earlier row: the first evening establishes the
+    book, and against no earlier equity every dollar in the account would read as
+    a day's profit.
+    """
+    from live import store
+
+    frame = store.select("nav")
+    if frame.empty or "trade_date" not in frame.columns:
+        return 0.0
+    earlier = frame.loc[frame["trade_date"].astype(str) < str(as_of)]
+    if earlier.empty:
+        return 0.0
+    previous = earlier.loc[earlier["trade_date"] == earlier["trade_date"].max()]
+    prior = previous["nav"].iloc[0]
+    if pd.isna(prior):
+        return 0.0
+    return float(nav) - float(prior)
 
 
 def store_broker_book(as_of: str, holdings: dict[str, Any]) -> None:
@@ -717,16 +755,23 @@ def main() -> int:
         os.environ.get(FORCE_HOUR_ENV)
     ):
         local = stamp.astimezone(staleness.NEW_YORK)
+        reason = (
+            f"{stamp.isoformat(timespec='seconds')} is "
+            f"{local.isoformat(timespec='seconds')} in New York, outside the "
+            f"{staleness.WINDOW_START_HOUR_ET:02d}:00-"
+            f"{staleness.WINDOW_END_HOUR_ET:02d}:00 window the loop trades in"
+        )
         logger.error(
-            "refused: %s is %s in New York, outside the %02d:00-%02d:00 window "
-            "the loop trades in (set %s=true only for a deliberate out-of-hours "
+            "refused: %s (set %s=true only for a deliberate out-of-hours "
             "rehearsal)",
-            stamp.isoformat(timespec="seconds"),
-            local.isoformat(timespec="seconds"),
-            staleness.WINDOW_START_HOUR_ET,
-            staleness.WINDOW_END_HOUR_ET,
+            reason,
             FORCE_HOUR_ENV,
         )
+        # The refusal does no work and records nothing, so the message is the
+        # only place the owner can learn that the evening did not run at that
+        # hour. It is one line, because there is one thing to say.
+        notified = notify.notify_refusal(reason)
+        logger.info("refusal notified: %s", notified["status"])
         return 1
 
     if already_ran("live_daily", run_date):

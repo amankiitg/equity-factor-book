@@ -131,9 +131,23 @@
           "type": ["number", "null"],
           "description": "The 499-name book's gross after sizing and before the floor - no variance cap, because the cap is applied to the kept set. A different book, shown only as a labelled detail, never as the gross."
         },
-        "net": {"type": ["number", "null"]},
+        "net": {
+          "type": ["number", "null"],
+          "description": "The traded book's net, the kept set after the hedge."
+        },
+        "full_book_net": {
+          "type": ["number", "null"],
+          "description": "The 499-name book's net, beside the traded book's rather than as \"the net\"."
+        },
         "max_kept_weight": {"type": ["number", "null"]},
-        "achieved_annual_vol": {"type": ["number", "null"]},
+        "achieved_annual_vol": {
+          "type": ["number", "null"],
+          "description": "The traded book's forecast annual volatility: the book the owner holds."
+        },
+        "full_book_achieved_annual_vol": {
+          "type": ["number", "null"],
+          "description": "The 499-name book's forecast annual volatility, shown beside the traded book's rather than as the book's forecast."
+        },
         "expected_cost_bps": {"type": ["number", "null"]},
         "names": {
           "type": "array",

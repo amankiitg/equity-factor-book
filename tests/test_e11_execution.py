@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from live import morning_job
+from live import morning_job, state
 
 
 def _write_proposal(proposal_dir: Path, weights: dict[str, float]) -> None:
@@ -32,11 +32,32 @@ def _write_proposal(proposal_dir: Path, weights: dict[str, float]) -> None:
 def test_dry_run_flow_records_every_order(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The run writes its day to the test's own tree, not to the repository's.
+
+    `write_positions` and `_write_execution_log` default to `live/state/` and
+    `live/logs/`, and this test used to leave both unpinned: every suite run
+    rewrote the local execution log and the local positions parquet. Pinning them
+    is what the two assertions at the end check, and without the pins the writes
+    land back in the repository and the test fails rather than the tree being
+    quietly restaged.
+    """
     proposal_dir = tmp_path / "proposals"
     state_dir = tmp_path / "state"
+    log_dir = tmp_path / "logs"
     _write_proposal(proposal_dir, {"AAA": 0.05, "BBB": -0.05})
     monkeypatch.setattr(morning_job, "PROPOSAL_DIR", proposal_dir)
-    monkeypatch.setattr(morning_job.state, "STATE_DIR", state_dir)
+    monkeypatch.setattr(morning_job, "EXECUTION_LOG_DIR", log_dir)
+    # The state writer takes its directory as an argument, and the default is
+    # bound when the function is defined, so `state.STATE_DIR` cannot redirect it:
+    # the call has to carry the directory. The real writer is saved first, because
+    # `morning_job.state` is `live.state` and patching the attribute would
+    # otherwise make this wrapper call itself.
+    write_positions = state.write_positions
+    monkeypatch.setattr(
+        morning_job.state,
+        "write_positions",
+        lambda trade_date, rows: write_positions(trade_date, rows, state_dir=state_dir),
+    )
 
     summary = morning_job.run_morning("2026-09-22", nav=100_000.0)
     assert summary["executed"] is True
@@ -45,6 +66,12 @@ def test_dry_run_flow_records_every_order(
     assert summary["passed"] == 2
     assert summary["filled_notional"] == 0.0
     assert summary["intended_notional"] == pytest.approx(10_000.0)
+    # both writes landed in the test's tree, and the log is the day's own record
+    logged = pd.read_parquet(log_dir / "execution_2026-09-22.parquet")
+    assert sorted(logged["ticker"]) == ["AAA", "BBB"]
+    assert set(logged["status"]) == {"DRY_RUN"}
+    held = pd.read_parquet(state_dir / "positions.parquet")
+    assert sorted(held["ticker"]) == ["AAA", "BBB"]
 
 
 def test_morning_flow_skips_on_reject(

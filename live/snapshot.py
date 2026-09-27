@@ -152,15 +152,20 @@ def _iso(value: Any) -> str | None:
     return pd.Timestamp(value).isoformat()
 
 
-def _kept_gross(proposal: dict[str, Any]) -> Any:
-    """The traded book's gross, or the full book's when the manifest predates it.
+def _kept(proposal: dict[str, Any], key: str, full_key: str | None = None) -> Any:
+    """A figure for the book that trades, or the full book's when there is none.
 
-    A proposal written before `kept_gross` existed carries only the full-book
-    number, which is then what the page has. A stored null is treated as absent
-    for the same reason: the key being present is not a value.
+    `gross`, `net` and the forecast volatility on the page describe the book the
+    owner holds: the kept set after the hedge. The 499-name book is published
+    beside each of them under its own name. A proposal written before the kept
+    figure existed carries only the full-book number, which is then what the page
+    has. A stored null is treated as absent for the same reason: the key being
+    present is not a value.
     """
-    kept = proposal.get("kept_gross")
-    return kept if kept is not None else proposal.get("gross")
+    kept = proposal.get(key)
+    if kept is not None:
+        return kept
+    return proposal.get(full_key) if full_key else None
 
 
 def construction_label(manifest: dict[str, Any] | None) -> str:
@@ -253,19 +258,28 @@ def build(
             "n_kept": _number(proposal.get("n_kept")),
             "n_long": _number(chosen.get("n_long")),
             "n_short": _number(chosen.get("n_short")),
-            # The gross of the book that trades. `kept_gross` is the kept set
-            # after the hedge, renormalized to exactly 1.0, and `notional` is that
-            # book in dollars. The manifest's own `gross` is the *499-name* book
-            # after sizing and before the floor, which is a different book and is
-            # published beside it under its own name rather than as "the gross".
-            # A stored null counts as absent: a manifest row read back from the
-            # store can carry the key with no value.
-            "gross": _number(_kept_gross(proposal)),
+            # These four describe the book that trades and the 499-name book
+            # beside it. `kept_gross` is the kept set after the hedge,
+            # renormalized to exactly 1.0, and `notional` is that book in dollars;
+            # `kept_achieved_annual_vol` is its forecast volatility. The
+            # manifest's own `gross`, `net` and `achieved_annual_vol` are the
+            # *499-name* book after sizing and before the floor, which is a
+            # different book and is published under its own name rather than as
+            # "the gross" of a book the owner does not hold. A stored null counts
+            # as absent: a manifest row read back from the store can carry the key
+            # with no value.
+            "gross": _number(_kept(proposal, "kept_gross", "gross")),
             "gross_notional": _number(proposal.get("notional")),
             "full_book_gross": _number(proposal.get("gross")),
-            "net": _number(proposal.get("net")),
+            "net": _number(_kept(proposal, "kept_net", "net")),
+            "full_book_net": _number(proposal.get("net")),
             "max_kept_weight": _number(proposal.get("max_kept_weight")),
-            "achieved_annual_vol": _number(proposal.get("achieved_annual_vol")),
+            "achieved_annual_vol": _number(
+                _kept(proposal, "kept_achieved_annual_vol", "achieved_annual_vol")
+            ),
+            "full_book_achieved_annual_vol": _number(
+                proposal.get("achieved_annual_vol")
+            ),
             "expected_cost_bps": _number(
                 proposal.get("expected_establishment_cost_bps")
             ),
