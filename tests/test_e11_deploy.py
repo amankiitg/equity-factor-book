@@ -81,10 +81,33 @@ def test_the_live_runtime_issues_no_ddl() -> None:
 
 
 def test_the_store_runs_only_dml_statements() -> None:
+    """DML and SELECT only, never DDL.
+
+    The count of `cursor.execute` calls is deliberately **not** pinned. It was two
+    until `replace_by_date` added the delete-then-insert pair inside its own
+    transaction, at which point this test failed on a correct change: pinning a count
+    says nothing about whether the statements are DML, and the suite did not run
+    between that change and the next sprint close, so the failure sat there. What the
+    test is for is the verb set, and that is what it asserts.
+    """
     source = (ROOT / "live" / "store.py").read_text()
-    statements = re.findall(r"cursor\.(?:execute|executemany)\((.{0,60})", source)
-    assert len(statements) == 2
-    assert "SELECT * FROM" in statements[1]
+    verbs = {
+        verb.upper()
+        for verb in re.findall(
+            r"\b(?:INSERT|SELECT|DELETE|UPDATE|CREATE|DROP|ALTER|TRUNCATE)\b",
+            source,
+            flags=re.IGNORECASE,
+        )
+    }
+    assert verbs <= {
+        "INSERT",
+        "SELECT",
+        "DELETE",
+        "UPDATE",
+    }, f"the store issues a statement that is not DML or SELECT: {sorted(verbs)}"
+    # And it does issue the three the live series needs, so the assertion above
+    # cannot pass by the store having stopped writing anything.
+    assert {"INSERT", "SELECT", "DELETE"} <= verbs, sorted(verbs)
     # the insert statement is built by _upsert_sql, which is DML only
     assert "INSERT INTO" in source
     assert "ON CONFLICT" in source
