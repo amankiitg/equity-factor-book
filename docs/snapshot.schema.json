@@ -20,7 +20,8 @@
     "book",
     "hedge",
     "exposures",
-    "reconciliation"
+    "reconciliation",
+    "attribution"
   ],
   "properties": {
     "schema_version": {"const": 1},
@@ -187,6 +188,110 @@
         "filled_notional": {"type": ["number", "null"]},
         "realized_annual_vol": {"type": ["number", "null"]},
         "expected_cost_bps": {"type": ["number", "null"]}
+      }
+    },
+    "attribution": {
+      "type": "object",
+      "description": "What the book earned, split into factor, idio and cost, with the hedge's own factor P&L and the raw-beta line beside it. Read from the store's attribution table by scripts/run_live_daily.py, which the evening run fills for every day it has not already attributed. The cumulative sums are over every stored day and the daily series is the most recent window.",
+      "required": [
+        "n_days",
+        "first_day",
+        "last_day",
+        "cumulative",
+        "by_factor",
+        "daily",
+        "cost",
+        "note"
+      ],
+      "properties": {
+        "n_days": {
+          "type": "integer",
+          "description": "Attributed days stored, which is the whole history, not the window below."
+        },
+        "first_day": {"type": ["string", "null"]},
+        "last_day": {"type": ["string", "null"]},
+        "cumulative": {
+          "type": "object",
+          "required": [
+            "pnl_total",
+            "pnl_factor",
+            "pnl_idio",
+            "pnl_cost",
+            "max_identity_residual",
+            "n_computed_specific"
+          ],
+          "properties": {
+            "pnl_total": {"type": ["number", "null"]},
+            "pnl_factor": {"type": ["number", "null"]},
+            "pnl_idio": {"type": ["number", "null"]},
+            "pnl_cost": {"type": ["number", "null"]},
+            "max_identity_residual": {
+              "type": ["number", "null"],
+              "description": "The worst single day of total minus (factor + idio + cost). Not a sum: the identity is a per-day statement, and its worst day is what makes the split checkable."
+            },
+            "n_computed_specific": {
+              "type": "integer",
+              "description": "Kept names whose residual was computed as r - X f because the model's own cross-section dropped them that session."
+            }
+          }
+        },
+        "by_factor": {
+          "type": "object",
+          "additionalProperties": {"type": ["number", "null"]},
+          "description": "Cumulative P&L per factor, keyed by the reported factor name."
+        },
+        "daily": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "trade_date",
+              "pnl_total",
+              "pnl_factor",
+              "pnl_idio",
+              "pnl_cost",
+              "pnl_timing",
+              "book_beta",
+              "market_return",
+              "pnl_beta"
+            ],
+            "properties": {
+              "trade_date": {"type": ["string", "null"]},
+              "pnl_total": {"type": ["number", "null"]},
+              "pnl_factor": {"type": ["number", "null"]},
+              "pnl_idio": {"type": ["number", "null"]},
+              "pnl_cost": {"type": ["number", "null"]},
+              "pnl_timing": {
+                "type": ["number", "null"],
+                "description": "The hedge's own factor P&L for the day: the P&L the exposure gap between the two design vintages produced. On a book whose hedge did its job this is the part that should have been zero."
+              },
+              "book_beta": {
+                "type": ["number", "null"],
+                "description": "Raw CAPM beta of the book, from the stored beta history, weighted by the day's holdings."
+              },
+              "market_return": {"type": ["number", "null"]},
+              "pnl_beta": {
+                "type": ["number", "null"],
+                "description": "book_beta times market_return. It explains part of the idio P&L and is never added to the three components."
+              },
+              "realized_vol": {"type": ["number", "null"]},
+              "forecast_vol": {"type": ["number", "null"]}
+            }
+          }
+        },
+        "cost": {
+          "type": "object",
+          "required": ["expected_bps", "realized_bps", "n_realized"],
+          "properties": {
+            "expected_bps": {"type": ["number", "null"]},
+            "realized_bps": {"type": ["number", "null"]},
+            "n_realized": {"type": "integer"}
+          }
+        },
+        "note": {
+          "type": "string",
+          "description": "Why the block is empty, when it is. Empty means the section has something to show."
+        }
       }
     }
   }

@@ -132,6 +132,18 @@ def _iso(value: Any) -> str | None:
     return pd.Timestamp(value).isoformat()
 
 
+def _day(value: Any) -> str | None:
+    """A session as the day it is, never with a midnight time stapled to it.
+
+    The page shows these beside `target_close` and `book_as_of`, which are days for
+    the same reason: a reader comparing two closes must not have to know that one
+    spelling carries a time and the other does not.
+    """
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    return str(pd.Timestamp(value))[:10]
+
+
 def _kept_gross(proposal: dict[str, Any]) -> Any:
     """The traded book's gross, or the full book's when the manifest predates it.
 
@@ -286,6 +298,12 @@ def build(
                 "expected_cost_bps",
             )
         },
+        # E12: what the book earned, split into factor, idio and cost, with the
+        # hedge's own factor P&L and the raw-beta line beside it. The block is
+        # built by `attribution_block` from the store's attribution table and
+        # handed in through `run`, so this function stays a pure assembler and a
+        # page can never be built from a recomputation of the store's numbers.
+        "attribution": _attribution_document(run.get("attribution")),
     }
 
 
@@ -353,6 +371,126 @@ def _numbers(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
     return {str(key): _number(item) for key, item in value.items()}
+
+
+# The page shows a month of days. The attribution itself is stored for every day
+# the loop has traded, and the cumulative sums below are over all of them.
+ATTRIBUTION_DAYS = 30
+
+
+def empty_attribution(note: str) -> dict[str, Any]:
+    """The attribution block for a run with nothing to show, and why."""
+    return {
+        "n_days": 0,
+        "first_day": None,
+        "last_day": None,
+        "cumulative": {
+            "pnl_total": None,
+            "pnl_factor": None,
+            "pnl_idio": None,
+            "pnl_cost": None,
+            "max_identity_residual": None,
+            "n_computed_specific": 0,
+        },
+        "by_factor": {},
+        "daily": [],
+        "cost": {"expected_bps": None, "realized_bps": None, "n_realized": 0},
+        "note": note,
+    }
+
+
+def attribution_block(frame: pd.DataFrame | None = None) -> dict[str, Any]:
+    """The attribution section: what the book earned, split three ways.
+
+    Read from the store's `attribution` table, which the evening run fills for
+    every day it has not already attributed, so the page and the memo cannot
+    disagree about a day. The cumulative sums are over every stored day; the
+    per-day series is the most recent window, because a series that grows without
+    bound is not a panel.
+
+    The residual travels with the sums rather than being assumed away: it is the
+    one number that says whether the three components really are the total, and a
+    page that showed the split without it would be showing a decomposition nobody
+    had checked.
+    """
+    if frame is None:
+        frame = store.select("attribution")
+    if frame.empty or "trade_date" not in frame.columns:
+        return empty_attribution("no attributed day is stored yet")
+    ordered = frame.sort_values("trade_date")
+    days = ordered.tail(ATTRIBUTION_DAYS)
+    by_factor: dict[str, float] = {}
+    for record in ordered.to_dict("records"):
+        split = _numbers(_json_value(record.get("pnl_factor_json"), {}))
+        for name, value in split.items():
+            if value is None:
+                continue
+            by_factor[name] = by_factor.get(name, 0.0) + float(value)
+    expected = [
+        float(value)
+        for value in ordered.get("expected_cost_bps", [])
+        if _number(value) is not None
+    ]
+    realized = [
+        float(value)
+        for value in ordered.get("realized_cost_bps", [])
+        if _number(value) is not None
+    ]
+    return {
+        "n_days": int(len(ordered)),
+        "first_day": _day(ordered["trade_date"].iloc[0]),
+        "last_day": _day(ordered["trade_date"].iloc[-1]),
+        "cumulative": {
+            "pnl_total": _number(ordered["pnl_total"].sum()),
+            "pnl_factor": _number(ordered["pnl_factor"].sum()),
+            "pnl_idio": _number(ordered["pnl_idio"].sum()),
+            "pnl_cost": _number(ordered["pnl_cost"].sum()),
+            # Not a sum: the identity is a per-day statement, and its worst day is
+            # what a reader needs to judge the split.
+            "max_identity_residual": _number(ordered["identity_residual"].abs().max()),
+            "n_computed_specific": int(ordered["n_computed_specific"].sum()),
+        },
+        "by_factor": {
+            name: _number(value) for name, value in sorted(by_factor.items())
+        },
+        "daily": [
+            {
+                "trade_date": _day(record.get("trade_date")),
+                "pnl_total": _number(record.get("pnl_total")),
+                "pnl_factor": _number(record.get("pnl_factor")),
+                "pnl_idio": _number(record.get("pnl_idio")),
+                "pnl_cost": _number(record.get("pnl_cost")),
+                # The hedge's own factor P&L for the day: the P&L the exposure gap
+                # between the two design vintages produced. On a book whose hedge
+                # did its job this is the part that should have been zero.
+                "pnl_timing": _number(record.get("pnl_timing")),
+                "book_beta": _number(record.get("book_beta")),
+                "market_return": _number(record.get("market_return")),
+                "pnl_beta": _number(record.get("pnl_beta")),
+                "realized_vol": _number(record.get("realized_vol")),
+                "forecast_vol": _number(record.get("forecast_vol")),
+            }
+            for record in days.to_dict("records")
+        ],
+        "cost": {
+            "expected_bps": (
+                _number(sum(expected) / len(expected)) if expected else None
+            ),
+            "realized_bps": (
+                _number(sum(realized) / len(realized)) if realized else None
+            ),
+            "n_realized": len(realized),
+        },
+        "note": "",
+    }
+
+
+def _attribution_document(raw: Any) -> dict[str, Any]:
+    """The block the run passed, or an empty one that says it was not read."""
+    value = _json_value(raw, None)
+    if not isinstance(value, dict):
+        return empty_attribution("the run did not read the attribution store")
+    return value
 
 
 def payload_text(payload: dict[str, Any]) -> str:

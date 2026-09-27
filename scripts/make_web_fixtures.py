@@ -45,6 +45,9 @@ STOPPED_CLOSE = "2026-09-25"
 CLOSED_CLOSE = "2026-11-26"
 STORE_LABEL = "local parquet (live/state/supabase)"
 SPECIFIC = ROOT / "data" / "models" / "XS-v1" / "specific_var.parquet"
+# The E12 attribution artifact: the seed book's own stored attribution, which is
+# what the page's section is built from until the live days exist.
+ATTRIBUTION = ROOT / "data" / "attribution" / "daily.parquet"
 
 NAMES: tuple[str, ...] = (
     "snapshot_ok.json",
@@ -88,6 +91,22 @@ def _stamp(when: str) -> datetime:
     return datetime.fromisoformat(when).replace(tzinfo=UTC)
 
 
+def attribution() -> dict[str, Any]:
+    """The page's attribution block, from the sprint's stored artifact.
+
+    Read through the same builder the run uses rather than stubbed by hand, so the
+    fixture that covers the section has real numbers in it and a change to the
+    builder reaches the page's tests. The seed artifact stands in for the live
+    days until the clock has them, which is exactly what the memo and the
+    walkthrough do.
+    """
+    if not ATTRIBUTION.exists():
+        return snapshot.empty_attribution(
+            "the seed attribution artifact has not been built"
+        )
+    return snapshot.attribution_block(pd.read_parquet(ATTRIBUTION))
+
+
 def _run(**over: Any) -> dict[str, Any]:
     """A run row, of the shape `run_live_daily` hands the snapshot writer."""
     base: dict[str, Any] = {
@@ -103,6 +122,9 @@ def _run(**over: Any) -> dict[str, Any]:
         "splits": [],
         "flags": [],
         "failures": [],
+        # Every variant carries the same attribution, because it describes the
+        # book and the book is the same in all of them.
+        "attribution": attribution(),
     }
     base.update(over)
     return base
@@ -205,7 +227,8 @@ def snapshots() -> dict[str, dict[str, Any]]:
             book=rows,
             construction=chosen,
             generated_at=_stamp("2026-11-26T22:41:00"),
-        ),    }
+        ),
+    }
     missing = [name for name in NAMES if name not in built]
     if missing:  # pragma: no cover - a guard against a variant going unwritten
         raise RuntimeError(f"no fixture was built for {', '.join(missing)}")

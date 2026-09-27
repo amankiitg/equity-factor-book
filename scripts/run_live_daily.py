@@ -439,9 +439,23 @@ def finish_run(
         breakdown = reconcile_module.cost_breakdown(manifest)
         cost_bps = breakdown.get("total")
     snapshot_detail, snapshot_failed = "", False
+    # E12: the attribution block, read from the store. Its own handler, because it
+    # is a section of the page: a store that cannot be read is a page without the
+    # section, never a run that failed.
+    try:
+        attribution = snapshot_module.attribution_block()
+    except Exception as exc:  # noqa: BLE001 - a page section, not a step
+        attribution = snapshot_module.empty_attribution(
+            "the attribution store could not be read"
+        )
+        logger.warning(
+            "the snapshot's attribution block could not be built: %s: %s",
+            type(exc).__name__,
+            notify.scrub(str(exc)),
+        )
     try:
         written = snapshot_module.write_snapshot(
-            run={**row, "store": store_name},
+            run={**row, "store": store_name, "attribution": attribution},
             manifest=manifest,
             book=book,
             reconciliation=reconciliation,

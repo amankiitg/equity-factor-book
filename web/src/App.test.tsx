@@ -148,6 +148,52 @@ describe("the page", () => {
     expect(energy?.getAttribute("data-sign")).toBe("negative");
   });
 
+  it("shows the attribution: the three components, the hedge's factor P&L and the beta line", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const cumulative = OK.attribution.cumulative;
+    // The three components, in basis points of the book, each with its sign.
+    const bps = (value: number) => `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)} bp`;
+    expect(screen.getByText(`total: ${bps(cumulative.pnl_total as number)}`)).toBeTruthy();
+    expect(screen.getByText(`factor: ${bps(cumulative.pnl_factor as number)}`)).toBeTruthy();
+    expect(screen.getByText(`idio: ${bps(cumulative.pnl_idio as number)}`)).toBeTruthy();
+    expect(screen.getByText(`cost: ${bps(cumulative.pnl_cost as number)}`)).toBeTruthy();
+    // The worst day's residual travels with the sums rather than being asserted
+    // away: a split nobody checked is not a decomposition.
+    expect(screen.getByText(/worst day's identity residual/)).toBeTruthy();
+    const table = screen.getByRole("table", { name: "attribution by day" });
+    const header = within(table).getAllByRole("columnheader").map((cell) => cell.textContent);
+    expect(header).toEqual([
+      "close",
+      "total",
+      "factor",
+      "idio",
+      "cost",
+      "hedge factor P&L",
+      "raw beta",
+      "beta line",
+    ]);
+    // Newest first, so the top row is the last stored day, and its dates are days.
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows.length).toBe(OK.attribution.daily.length);
+    expect(within(rows[0]).getAllByRole("cell")[0].textContent).toBe(OK.attribution.last_day);
+    expect(within(rows[0]).getAllByRole("cell")[0].textContent).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("says why the attribution is empty instead of showing an empty table", () => {
+    const snapshot = {
+      ...OK,
+      attribution: {
+        ...OK.attribution,
+        n_days: 0,
+        daily: [],
+        note: "no attributed day is stored yet",
+      },
+    } as unknown as Snapshot;
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    expect(screen.getByText("no attributed day is stored yet")).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "attribution by day" })).toBeNull();
+  });
+
   it("shows the traded book's gross as the headline, and the full book as a detail", () => {
     // The manifest's own `gross` is the 499-name book before the floor. Publishing
     // it as "the gross" told the owner their book was 96.85% invested when the book
@@ -160,13 +206,19 @@ describe("the page", () => {
   });
 
   it("breaks the summary into labelled items rather than a pipe run", () => {
-    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const { container } = render(<SnapshotView snapshot={OK} now={NOW} />);
+    // Scoped to the summary itself, because the attribution table below carries
+    // column headers of its own and "cost" is one of them. What this test is
+    // about is that the summary labels each number, not that the word is unique
+    // on the page.
+    const summary = container.querySelector('[aria-label="the book\x27s summary"]');
+    expect(summary).not.toBeNull();
     expect(screen.queryByText(/\|/)).toBeNull();
-    expect(screen.getByText("gross")).toBeTruthy();
-    expect(screen.getByText("net")).toBeTruthy();
-    expect(screen.getByText("n_eff_kept")).toBeTruthy();
-    expect(screen.getByText("n_eff_full_book")).toBeTruthy();
-    expect(screen.getByText("cost")).toBeTruthy();
+    expect(within(summary as HTMLElement).getByText("gross")).toBeTruthy();
+    expect(within(summary as HTMLElement).getByText("net")).toBeTruthy();
+    expect(within(summary as HTMLElement).getByText("n_eff_kept")).toBeTruthy();
+    expect(within(summary as HTMLElement).getByText("n_eff_full_book")).toBeTruthy();
+    expect(within(summary as HTMLElement).getByText("cost")).toBeTruthy();
   });
 
   it("gives the effective breadth to one decimal, and names what each one is", () => {
