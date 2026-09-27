@@ -113,13 +113,16 @@ describe("the page", () => {
 
   it("shows a hedged-to-zero exposure as 0.0000, never as -0.0000", () => {
     // The after column holds values like -2.6e-18, whose four-place form is
-    // "-0.0000": rounding, not a short position in a factor.
+    // "-0.0000": rounding, not a short position in a factor. Only the after
+    // column is held to this: a before value of -0.0001 is a real, tiny pre-hedge
+    // tilt and keeps its sign, which the last check below pins.
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    expect(screen.queryByText("-0.0000")).toBeNull();
-    expect(screen.queryByText("-0.0001")).toBeNull();
     const table = screen.getByRole("table", { name: "factor exposures" });
-    const zeros = within(table).getAllByText("0.0000");
-    expect(zeros.length).toBeGreaterThanOrEqual(17);
+    const after = Array.from(
+      table.querySelectorAll("[data-factor] td:nth-child(3)"),
+    ).map((cell) => cell.textContent ?? "");
+    expect(after.length).toBeGreaterThanOrEqual(17);
+    expect(after.filter((text) => text !== "0.0000")).toEqual([]);
     // A genuinely negative exposure keeps its sign, so the rule is not a clamp:
     // the book's most negative factor renders with its minus sign.
     const negatives = Object.values(OK.exposures_before_hedge).filter(
@@ -151,12 +154,14 @@ describe("the page", () => {
   it("shows the traded book's gross as the headline, and the full book as a detail", () => {
     // The manifest's own `gross` is the 499-name book before the floor. Publishing
     // it as "the gross" told the owner their book was 96.85% invested when the book
-    // that trades is 100% and $1,000,000.
+    // that trades is 100% and $1,000,000. The full book's own number is read from
+    // the fixture rather than typed in, so regenerating it cannot break this.
     render(<SnapshotView snapshot={OK} now={NOW} />);
     expect(OK.book.gross).toBe(1);
     expect(screen.getByText("100.00% ($1,000,000)")).toBeTruthy();
     expect(screen.getByText("full book before the floor")).toBeTruthy();
-    expect(screen.getByText("96.85%")).toBeTruthy();
+    const full = ((OK.book.full_book_gross ?? 0) * 100).toFixed(2);
+    expect(screen.getByText(`${full}%`)).toBeTruthy();
   });
 
   it("breaks the summary into labelled items rather than a pipe run", () => {
