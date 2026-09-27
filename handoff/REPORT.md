@@ -2983,13 +2983,30 @@ across the three (-0.0221 to -0.0233, ranks 1, 7 and 9 by size): it is the
 factor-neutrality correction, not a function of their volatility, and it *reduces*
 each of them by about 28%.
 
+**Correction, 2026-09-27: the rule was working on a number that was wrong.** The
+passage above reads these sized weights as the alpha/variance rule doing its job.
+The mechanism it describes - a name with more alpha getting less weight because
+its variance is higher - is not what produced them. The alpha every call site
+built was `IC x variance x z x kappa` where the contract is
+`IC x variance^0.5 x z x kappa`, and because the sizing rule is `w` proportional
+to `alpha / variance`, the extra factor cancelled the risk term and left `w`
+proportional to `z` alone. MRNA's 14.6x LITE alpha was that extra factor rather
+than the signal, and the weight it ended with relative to LITE was set by the two
+z-scores with no risk term in it at all. S1 corrected the contract; the measured
+before and after on the 2026-09-21 close are in the S1 section above, and this
+branch carries the E7 and E11 numbers the correction moved.
+
 Two things worth the owner's eye, both reported rather than changed:
 
 - **MRNA's specific vol is 18.45% per day, 293% annualized**, the largest in the
-  book by 3.5× (next: SMCI 83.8%, the book's median 2.0%). The input is not
-  obviously broken - MRNA really did move +176.97% on 2026-08-19 - but a 293%
-  number drives both its position size and 0.53 bp of the impact term, and it
-  deserves a look before it is trusted.
+  book by 3.5× (next: SMCI 83.8%, the book's median 2.0%), and it is a real
+  number: MRNA really did move +176.97% on 2026-08-19, and the close was
+  cross-checked against Alpaca's own bars. **Corrected 2026-09-27: what drove
+  MRNA's position size was not that volatility but the alpha formula** (see the
+  correction above). The volatility named the name; the missing square root is
+  why the name was sized as though its volatility did not matter. On the
+  corrected contract, rebuilt on the 2026-09-21 close, MRNA is not in the traded
+  book at all.
 - **The reason column is constant today, and `risk moved` is unreachable.**
   `store_proposal` read the previous book from the run tree's own proposals
   directory, and a fresh run tree holds exactly one proposal (the seed has none),
@@ -3065,7 +3082,8 @@ positions the variance cap produces. `thin_adv` is **empty** for this book: SW's
 own trailing 63-session dollar volume is $204.7M on the rehearsal's panel ($210M
 on the repository's), so nothing needed the median.
 
-**3. MRNA: the move is real, and the variance rule is now enforced.** The close
+**3. MRNA: the move is real, and the cause of its size was the alpha formula.**
+The close
 was cross-checked against Alpaca's own daily bars for the same session
 (`StockHistoricalDataClient`, raw adjustment, IEX feed):
 
@@ -3078,7 +3096,36 @@ Two independent sources agree to within eleven cents on the close and fifteen on
 the high, with a 46× volume spike and an 84% overnight gap. **+176.97% is a real
 repricing, not a bad print or an unadjusted split, so nothing was fixed at the
 source** - and its 293% annualized specific volatility is a real number about a
-real two-day move, which is exactly the kind of risk the owner's rule is for.
+real two-day move.
+
+**Correction, 2026-09-27: the cause was the alpha formula, and the cap no longer
+binds on the book that trades.** Two things below are superseded by S1, and the
+owner should read them before the numbers.
+
+The first is the cause. MRNA's 50.01% share of the predicted specific variance
+was not its volatility correctly weighted and then clamped; it was the alpha
+carrying an extra factor of that volatility. With `alpha = IC x variance x z x
+kappa` and `w` proportional to `alpha / variance`, the sized vector ignored each
+name's risk and sized on `z` alone, so the most volatile names were the largest
+and the cap had to reach for them. Under the corrected contract, in the same
+150-name stored book at the same close, MRNA's pre-cap share is **15.3026%** and
+it is the **second largest behind MU at 20.1876%** (LITE is third at 13.2921%).
+The cap still clamps it there, and MU, not MRNA, is now the name that prompts the
+rule.
+
+The second is whether the cap binds. **On the traded book it does not**: the
+manifest's `variance_share_cap_binds` reads False against a largest share of
+**6.4252%** (SMCI), where the old spelling produced 13.9518% (TER) and the flag
+read True. The cap is not inert, and saying so plainly matters: on the sized
+vector of the kept set it still clamps two names, **WDC at 13.6897% and MRVL at
+11.7579%**, each scaled to exactly 10%. What the correction removed is the size
+of the clamp: the old spelling had **four** names above the limit, the largest of
+them **MU at 25.7119%**. The rule itself is unchanged, it still sits before the
+hedge in `sized_kept_weights`, and it still clamps whatever is above it. The
+tables in this section are the old spelling's numbers and stay as the record of
+what was decided on 2026-09-26; the E11 walkthrough on this branch measures the
+corrected pair (clamped names, and the traded book's largest share) and asserts
+the second against the manifest field.
 
 The rule is now in the sizing, before the hedge, in the one function every caller
 shares (`sized_kept_weights`): size, cap the variance shares, renormalize to gross
@@ -3117,6 +3164,12 @@ largest position **5.35% -> 3.16%**. 40 names joined and 21 left. And **MRNA is
 not in it**: capped to a 10.00% share it no longer clears the 20-share floor, so
 the name that prompted the rule leaves the book. That is the rule working as
 written, and it is the one consequence of it the owner should see plainly.
+Rebuilt again today, off the panel the live loop has extended through
+2026-09-21, the same rule keeps **180 names** with `n_eff_kept` **131.9175** and
+a largest weight of **1.8723%**, and **MRNA, MU and LITE are all outside it**.
+The 169 and 96.37 above are this paragraph's own measurement, taken before the
+panel was extended, and neither number is retracted: they are two closes' worth
+of the same rule.
 
 **What the cap does not do, measured and left as instructed.** The owner's rule
 puts the cap **before the hedge**, and there it binds exactly: zero names over 10%
@@ -3776,3 +3829,197 @@ Before the flip, and in addition to the two files batch 2 named: apply
 `live/supabase_schema.sql` again for the six new `full_book_*` columns on
 `efb.reconciliation` and `efb.proposals`. The `alter table ... add column if not
 exists` statements are in the file's upgrade block for exactly this.
+
+## Alpha refresh: what the contract correction left behind
+
+Branch `alpha-refresh`, off `main` at `d3ba599` and deliberately not merged.
+The instruction: refresh what the alpha formula fix (variance replaced by
+volatility) affects, prove where it did not reach, and leave `main` frozen.
+
+**Housekeeping first.** Every branch fully merged into `main` was deleted, with
+the safe delete, locally and on `origin`: `broker-fixes` (3dd5ad5),
+`hedge-vintage` (d18e909, local only, it never had a remote), `preflip-fixes`
+(a1df3fc), `prelaunch-batch1` (9b8381c), `prelaunch-batch2` (8fb68c0),
+`prelaunch-batch3` (c2e3c56) and `smoke-window` (464ceea). Nothing was forced,
+`e12`, `e13` and `page` were not touched, and what remains is `main`, `e12`,
+`e13` and `page` both locally and on the remote.
+
+**E7: the conversion was rebuilt, and only the conversion.** The stored
+`alpha/{signal}/alpha.parquet` files were written before S1, so F7.4's numbers
+were the variance spelling's. A full `make rebuild-e7` was the wrong tool: the
+ledger is append-only, so `alpha.run` would have appended thirty rows that were
+never executed and moved F7.3 with them. `efb.alpha.rebuild_conversion` is the
+narrow rebuild: it rewrites one artifact per signal, goes through
+`alpha_from_contract`, and touches nothing else. It took 6m14s for the six
+signals.
+
+| signal | F7.4 v1, before | after | ratio | v2, before | after |
+| --- | --- | --- | --- | --- | --- |
+| momentum_12_1 | 3.279770e-07 | 1.670448e-05 | 50.93 | 3.186236e-07 | 1.649569e-05 |
+| short_term_reversal | 2.554530e-07 | 1.325539e-05 | 51.89 | 2.493783e-07 | 1.312150e-05 |
+| idio_momentum | 2.674787e-07 | 1.366783e-05 | 51.10 | 2.597793e-07 | 1.349518e-05 |
+| low_residual_volatility | 3.777317e-08 | 1.649418e-06 | 43.67 | 3.659863e-08 | 1.624202e-06 |
+| short_interest | 3.314843e-08 | 2.122355e-06 | 64.03 | 3.279655e-08 | 2.115800e-06 |
+| post_earnings_drift | 5.867235e-08 | 2.963398e-06 | 50.51 | 5.794739e-08 | 2.952345e-06 |
+
+The level rises by the inverse of the median volatility, which is the name's
+own risk entering the alpha again, and the cross-sectional shape changes with
+it, which is the part that matters: `low_residual_volatility` moves 43.67x and
+`short_interest` 64.03x, so it is not one common rescaling.
+
+The revised numbers carry **two** causes, and both are measured rather than
+asserted. The contract is the first. The second is input drift:
+`_converted_alpha` recomputes the signal's horizon-1 IC, and the live loop has
+extended the returns panel from 2026-09-03 to 2026-09-21 since the last E7
+build, so the IC the conversion multiplies by is measured over the longer
+panel. That part is a scalar per signal, and it is what today's `make
+rebuild-e7` would write; the walkthrough prints both ends of the mismatch now
+rather than tripping over it.
+
+The record: the E7 data hash moves from
+`d530aad43f5d12e7e16433596c6624464c4779013a7b2f5761e6db8f2c7928b7` to
+`afaadd517c9dcb4c94ad82d90460d1c51e87cadc86010fc527478a92a78b0c37`, and
+`revisions` carries both hashes with F7.4's old stored numbers beside its new
+ones and `n_changed` 1. `evaluate.main_e7` records the hash it moved from now,
+which it never did before; the six older history entries carry a null there and
+the entry this branch wrote carries the old hash.
+
+**The IC results and the RG-Signal verdicts never used the conversion, and they
+are untouched.** Three independent lines of evidence. Every one of the 38
+non-conversion E7 artifact files is byte-identical after the rebuild, the six
+converted-alpha files aside: every IC, audit, neutral-IC, quantile and regime
+artifact, the summary, the two audit frames, `sprints/E7/RG_SIGNAL.json` and
+`docs/multiple_testing_ledger.md`. Every criterion but F7.4 re-measured to the
+same numbers and the same verdicts, which is what the revisions block records.
+And the code says so: `compute_e7_from_artifacts` reads the converted alpha for
+F7.4 alone, `write_rg_signal_gate` never names it, and multiplying every stored
+alpha by seven leaves F7.1, F7.1b, F7.1c, F7.2 and F7.3 identical and moves only
+F7.4, which is a test now rather than a claim.
+
+One record is deliberately left alone, and it is better said than discovered.
+`data/VERSION.json` holds the artifact hashes of the last full build, and
+`write_version` keys them by file name, so all six converted-alpha files collapse
+into the single `alpha.parquet` entry it carries (the short-term-reversal one).
+That entry is stale now. Refreshing it means running the E7 build path, which is
+the ledger append this refresh exists to avoid, so it stays for the next real
+rebuild. `make verify-evidence` passes either way, because the conversion is not
+one of the snapshotted inputs.
+
+**E8, E9 and E10 did not touch the variance formula, and their results and
+walkthroughs are unchanged.** The conversion artifact has exactly one reader in
+the repository, `efb/evaluate.py` for F7.4, plus the E7 walkthrough that prints
+its columns; nothing under `efb/`, `live/` or `scripts/` reads it, and none of
+the three sprints' artifact sets contains it. Each built its own alpha and each
+of those was right: `efb/size.py`'s synthetic alpha is built from the forward
+specific *return* (`z = rho x standardized(e) + sqrt(1 - rho^2) x eps`) and its
+sigma is `sqrt(specific)` in `_assembled`; `efb/costs.py` measures sigma as the
+standard deviation of the specific returns and reconstructs alpha as
+`w x sigma^2`, a variance derived from a volatility, which is the opposite
+mistake and not this one; `efb/allocate.py` contains no reference to alpha at
+all. Empirically, the refresh wrote six files under `data/` out of 206, and the
+E8, E9 and E10 results tests and walkthrough tests all pass unchanged.
+
+**E11: the table rebuilt, the winning row, and the walkthrough.** The committed
+table was built before S1, which is the stale artifact the pre-launch batches
+left on purpose. Rebuilt from today's code and today's panel, every row moved,
+and the share-only row moved the way the contract predicts:
+
+| share_only_20shares | committed | rebuilt |
+| --- | --- | --- |
+| names kept | 150 | 180 |
+| n_eff_kept | 70.5921 | 131.9175 |
+| largest weight | 0.0534628 | 0.0187231 |
+| realized market beta | 0.1315765 | 0.0782197 |
+| total gross error / NAV | 0.0068902 | 0.0079290 |
+| p90 quantisation error | 0.0188710 | 0.0185378 |
+
+Share-only is still the row the evening sizes from, and the pre-registered
+re-decide trigger has not fired. Against enforced min $2,000 it keeps both of
+its advantages: total error 0.0079290 against 0.0282470, and p90 0.0185378
+against 0.0760760. No row dominates it on breadth, total error and p90 together.
+It is not the broadest row any more, and the owner should see that plainly: the
+dollar-floor rows are (min $1,500 keeps 277 names at `n_eff_kept` 216.5832,
+min $2,000 keeps 237 at 193.5176, min $3,000 keeps 182 at 154.3288), and they
+are worse on both error measures. The two rows with a lower total error,
+two_part_floor_1500_20shares at 0.0070820 and min_position_5000 at 0.0077600,
+are thinner and worse on p90. **Nothing about the live construction was
+changed**, as instructed, and the table's numbers are the record for a decision
+after week one.
+
+The E11 walkthrough comes onto this branch because it exists only on `e12`, and
+it was written before the correction: it recomputed the alpha by hand with the
+old spelling, so every number downstream of it was the old book's. It now calls
+`alpha_from_contract`, and three cells had to be rewritten rather than re-run.
+The alpha cell asserts which spelling each file holds: the stored alpha
+reproduces the variance spelling to 0.000e+00, it differs from the contract by
+1.265e-03 at worst, and today's alpha multiplied by each name's own volatility
+gives the stored number back to 5.421e-20. The cap cell used to assert that the
+cap binds; it now reports the clamped names and ties the traded book's largest
+share to the manifest field. The stored cross-check says the stored file carries
+both the earlier floor rule and the earlier alpha spelling.
+
+Traced on the current book, one evening end to end: the floor search keeps
+**180 names** where the old spelling kept 158, which is what `build_proposal`
+reports for the same close. The cap clamps **two** names on the sized vector,
+WDC at 13.6897% and MRVL at 11.7579%, where the old spelling had four, the
+largest of them MU at 25.7119%. The book that trades carries no name above the
+limit: its largest share is 6.4252% (SMCI) and `variance_share_cap_binds` reads
+False beside it, which the notebook asserts rather than describes. MRNA is still
+clamped inside the stored book, but it is no longer the largest share even
+there. The clock section is unchanged and reads NOT STARTED: `live/clock.json`
+still holds the voided 2026-09-22 start, day 1 is the flip's fill on the
+2026-10-01 session and day 30 is 2026-11-11 from the NYSE calendar. **The flip
+evening the notebook names is 2026-09-30, the date it was written with; if the
+flip moves, that one line moves with it.**
+
+**The status report.** The MRNA passages in the preflip section now say what
+caused what. The size MRNA ended with was not its volatility correctly weighted
+and then clamped; it was the alpha carrying an extra factor of that volatility,
+which left the sized vector proportional to `z` alone. On the corrected
+contract, in the same stored 150-name book at the same close, MRNA's pre-cap
+share is 15.3026%, second behind MU at 20.1876%, with LITE third at 13.2921%.
+And the cap no longer binds on the book that trades: 6.4252% against 13.9518%,
+with the flag reading False. The passage also says the cap is not inert, because
+it is not: two names are clamped on the sized vector against four before. The
++176.97% move on 2026-08-19 and the Alpaca cross-check behind it are unaffected
+and stay. The status report's own traceability test and the README's are
+untouched by these edits and pass.
+
+## Verification
+
+```text
+$ make lint
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+Success: no issues found in 33 source files
+Success: no issues found in 34 source files
+All done! 196 files would be left unchanged.
+
+$ .venv/bin/python -m pytest -q tests/test_alpha.py tests/test_e7_results.py \
+      tests/test_e7_walkthrough_notebook.py
+28 passed in 61.66s
+
+$ .venv/bin/python -m pytest -q \
+      tests/test_alpha.py::test_the_conversion_rebuild_reproduces_the_stored_artifact
+1 passed in 57.61s
+
+$ .venv/bin/python -m pytest -q tests/test_construction_table.py
+7 passed in 138.81s
+
+$ .venv/bin/python -m pytest -q tests/test_dashboard_d10.py tests/test_e11_variance_cap.py
+20 passed in 0.97s
+
+$ .venv/bin/python -m pytest -q tests/test_e8_results.py tests/test_e9_results.py \
+      tests/test_e10_results.py tests/test_e8_walkthrough_notebook.py \
+      tests/test_e9_walkthrough_notebook.py tests/test_e10_walkthrough_notebook.py
+27 passed in 3.31s
+
+$ .venv/bin/python -m pytest -q tests/test_e11_walkthrough_notebook.py
+5 passed in 0.02s
+```
+
+The refresh's own numbers, read after the fact: 38 of the 44 E7 artifact files
+byte-identical, six changed (`alpha/{name}/alpha.parquet`), and six files
+written under `data/` out of 206. Both walkthroughs were executed through
+nbconvert and rendered (`notebooks/E7_walkthrough.html`,
+`notebooks/E11_walkthrough.html`).

@@ -1,5 +1,35 @@
 # Resume: pre-launch batches 2 and 3
 
+## Alpha refresh: branch `alpha-refresh`, off `main`, NOT merged
+
+`main` is still `d3ba599` and is frozen until the flip. Part A of the owner's
+instruction is on `alpha-refresh`: refresh what the alpha formula fix affected,
+prove where it did not reach, and do not merge.
+
+- **E7** F7.4's stored conversion was rebuilt through
+  `efb.alpha.alpha_from_contract` by `alpha.rebuild_conversion`, which rewrites
+  one artifact per signal and nothing else. `sprints/E7/RESULTS.json` records the
+  revision with both data hashes, the old values beside the new ones, and
+  `n_changed` 1; the E7 walkthrough was rebuilt, executed and rendered. Every IC,
+  audit, neutral-IC, quantile, regime and ledger artifact is byte-identical, and
+  the RG-Signal answers did not move.
+- **E8, E9 and E10** never used the variance spelling. Their results and
+  walkthroughs are unchanged, and the evidence is in `handoff/REPORT.md`.
+- **E11** `live/construction_table.parquet` and
+  `live/construction_weights.parquet` are rebuilt under the corrected alpha.
+  Share-only 20 shares is still the row the evening sizes from and the
+  pre-registered re-decide trigger has not fired; nothing about the live
+  construction was changed. The E11 walkthrough came from `e12` and was
+  rewritten onto the contract, executed and rendered.
+- **The status report**'s MRNA passages now say the cause was the alpha formula
+  and that the variance cap no longer binds on the traded book, with the number
+  of clamped names stated rather than the claim alone.
+
+Part B waits on the owner: rebase and merge `page`, `e13`, `e12`, then
+`alpha-refresh`, regenerate conflicting fixtures, run the full suite once, hand
+over the E12 SQL and the row-level-security block, then delete the merged
+branches leaving `main`.
+
 Written at the close of batch 3, which is on `prelaunch-batch3` and merged to
 `main`. If this file is the first thing you read, the state is:
 
