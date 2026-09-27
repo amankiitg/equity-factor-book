@@ -1,10 +1,12 @@
 """Sprint E11, Part 4: the owner's deploy steps, and what the runtime does.
 
-Two things are pinned here rather than asserted in prose: the roles SQL grants
-nothing outside schema `efb` and covers every verb the store issues, and the live
-runtime issues no DDL, so a DML write role is enough. The provisioning script's
-primary path is the SQL editor, which needs no account-wide token, and the token
-path needs `--apply`.
+Three things are pinned here rather than asserted in prose: the roles SQL grants
+nothing outside schema `efb` and covers every verb the store issues, the live
+runtime issues no DDL, so a DML write role is enough, and applying the schema file
+leaves row level security off on every `efb` table, because a table with it on and
+no policy behind it refuses the writer. The provisioning script's primary path is
+the SQL editor, which needs no account-wide token, and the token path needs
+`--apply`.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import psycopg
 import pytest
 
 from live import store
@@ -263,3 +266,129 @@ def test_apply_without_a_token_sends_nothing(
     assert provision_supabase.main(["--apply"]) == 1
 
     assert "--apply needs EFB_SUPABASE_ACCESS_TOKEN" in capsys.readouterr().out
+
+
+def test_the_schema_file_ends_by_disabling_row_level_security() -> None:
+    """Applying the schema file has to leave RLS off on every table in `efb`.
+
+    Supabase turns row level security on for the tables its SQL editor is asked to
+    create, and an RLS table with no policy refuses everything: re-applying the
+    file left the writer role unable to write and the appendix unreadable. The
+    file now ends with one block that turns the flag off for the whole schema, and
+    the check is that the block is last, that it reads the table names from the
+    catalog rather than listing them (so a table added above it cannot be missed),
+    and that nothing in the file turns the flag on.
+    """
+    tail = SCHEMA.split("do $$")[-1]
+    assert "disable row level security" in tail
+    assert "pg_class" in tail and "pg_namespace" in tail
+    assert "'efb'" in tail, "the block does not name the efb schema"
+    assert "relrowsecurity" in tail, "the block does not test the flag itself"
+    # The block is the last thing the file does, so it runs after every table is
+    # created and no statement can turn the flag back on afterwards.
+    assert SCHEMA.rstrip().endswith("$$;")
+    assert not re.search(r"(?i)\benable\s+row\s+level\s+security", SCHEMA)
+    assert SCHEMA.count("disable row level security") == 1
+
+
+def test_the_schema_block_comes_after_every_table() -> None:
+    """The guarantee is about order, not only presence.
+
+    A block that disables RLS before a table exists leaves that table's flag on,
+    so the block has to follow every `create table` and every `alter table` in the
+    file, which is what "at the end" buys.
+    """
+    block_at = SCHEMA.index("do $$")
+    before, after = SCHEMA[:block_at], SCHEMA[block_at:]
+    assert re.search(r"(?m)^create table", before), "the file creates no tables"
+    assert re.search(r"(?m)^alter table", before)
+    assert not re.search(r"(?m)^(?:create|alter)\s+table", after)
+
+
+class _FakeCursor:
+    """A psycopg cursor that answers one catalog SELECT with these rows."""
+
+    def __init__(self, rows: list[tuple[str, bool]]) -> None:
+        self._rows = rows
+        self.statement = ""
+
+    def execute(self, statement: str) -> None:
+        self.statement = statement
+
+    def fetchall(self) -> list[tuple[str, bool]]:
+        return list(self._rows)
+
+    def __enter__(self) -> _FakeCursor:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+
+class _FakeConnection:
+    """A psycopg connection whose cursor answers with these rows."""
+
+    def __init__(self, rows: list[tuple[str, bool]]) -> None:
+        self.cursor_object = _FakeCursor(rows)
+
+    def cursor(self) -> _FakeCursor:
+        return self.cursor_object
+
+    def __enter__(self) -> _FakeConnection:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+
+def _rls_probe_with(
+    rows: list[tuple[str, bool]], monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[dict[str, object]], list[str]]:
+    """The verify command's RLS probe, answered from these catalog rows."""
+    monkeypatch.setenv(store.URL_ENV, "postgresql://probe/efb")
+    monkeypatch.setattr(psycopg, "connect", lambda url: _FakeConnection(rows))
+    return verify_store_roundtrip.row_level_security_probe()
+
+
+def test_the_rls_probe_passes_when_the_flag_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probes, problems = _rls_probe_with(
+        [("proposals", False), ("orders", False)], monkeypatch
+    )
+    assert problems == []
+    assert [probe["status"] for probe in probes] == ["ok"]
+    assert probes[0]["read_back"] == "2 tables, 0 with RLS on"
+
+
+def test_the_rls_probe_fails_when_one_table_has_it_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One table with the flag on is the failure the writer would hit."""
+    probes, problems = _rls_probe_with(
+        [("proposals", False), ("orders", True)], monkeypatch
+    )
+    assert [probe["status"] for probe in probes] == ["MISMATCH"]
+    assert len(problems) == 1
+    assert "orders" in problems[0]
+    assert "supabase_schema.sql" in problems[0]
+    assert "proposals" not in problems[0]
+
+
+def test_the_rls_probe_fails_on_a_schema_with_no_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pass on an empty catalog would be a pass on nothing."""
+    probes, problems = _rls_probe_with([], monkeypatch)
+    assert [probe["status"] for probe in probes] == ["MISMATCH"]
+    assert probes[0]["read_back"] == "no tables in schema efb"
+    assert "not been provisioned" in problems[0]
+
+
+def test_the_verify_command_runs_the_rls_probe() -> None:
+    """A probe nobody calls is not a check, so the call site is pinned."""
+    source = (ROOT / "scripts" / "verify_store_roundtrip.py").read_text()
+    body = source.split("def main(")[1]
+    assert "row_level_security_probe()" in body
+    assert "probe_problems.extend(rls_problems)" in body
+    assert "row level security is off on every efb table" in source

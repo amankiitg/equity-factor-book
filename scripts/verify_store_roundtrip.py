@@ -22,6 +22,11 @@ cron's box, and it does three things:
    (it is how the day's positions and orders are written), so a missing grant
    fails the first order-writing run; this proves it before a gate evening does.
    The sentinel date is 1900-01-01 and it is cleared before the command returns.
+5. **Checks the row level security flag on every `efb` table**, read from the
+   catalog. A table with RLS on and no policy refuses the writer, which is what
+   re-applying `live/supabase_schema.sql` did before the file's own last
+   statement turned it off for the schema; this is what proves a database that
+   has been re-applied actually has it off, and that no table was missed.
 
 It writes one `run_status` row, plus the sentinel positions rows that are cleared
 again, and it writes no row at all when the store has not been seeded yet:
@@ -234,6 +239,65 @@ def type_probes() -> tuple[list[dict[str, Any]], list[str]]:
     return probes, problems
 
 
+def row_level_security_probe() -> tuple[list[dict[str, Any]], list[str]]:
+    """Every `efb` table's RLS flag, read from the catalog rather than guessed.
+
+    Row level security is a refusal with no policy behind it: a table with the
+    flag on answers the writer with a permission error, which is how applying
+    `live/supabase_schema.sql` through the Supabase SQL editor broke the store.
+    The schema file now ends by turning the flag off for the whole schema, and
+    this probe is what proves a database reflects that, including a table added
+    after the file was last read. The table names come from `pg_class`, so a
+    table nobody thought to list is still checked, and a schema with no tables is
+    a failure rather than a pass, because then nothing was checked at all.
+    """
+    import psycopg
+
+    url = store.os.environ[store.URL_ENV].strip()
+    statement = (
+        "select c.relname, c.relrowsecurity "
+        "from pg_class c join pg_namespace n on n.oid = c.relnamespace "
+        "where n.nspname = 'efb' and c.relkind = 'r' "
+        "and not c.relispartition "
+        "order by c.relname"
+    )
+    with psycopg.connect(url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(statement)
+            rows = cursor.fetchall()
+    enabled = [name for name, flag in rows if flag]
+    checked = len(rows)
+    if not checked:
+        read_back = "no tables in schema efb"
+        status = "MISMATCH"
+        problems = [
+            "schema efb holds no tables, so the RLS flag was not checked: the "
+            "schema has not been provisioned from live/supabase_schema.sql"
+        ]
+    elif enabled:
+        read_back = f"{checked} tables, {len(enabled)} with RLS on: {', '.join(enabled)}"
+        status = "MISMATCH"
+        problems = [
+            "row level security is on for "
+            f"{len(enabled)} of {checked} efb table(s) ({', '.join(enabled)}), so "
+            "the writer role is refused: apply live/supabase_schema.sql again, "
+            "whose last statement turns it off for the whole schema"
+        ]
+    else:
+        read_back = f"{checked} tables, 0 with RLS on"
+        status = "ok"
+        problems = []
+    probes = [
+        {
+            "probe": "row level security is off on every efb table",
+            "expected": "1 or more tables, 0 with RLS on",
+            "read_back": read_back,
+            "status": status,
+        }
+    ]
+    return probes, problems
+
+
 # A date no live session and no build ever writes, so the round trip can write,
 # replace and clear rows without touching a real evening's data.
 ROUNDTRIP_DATE = "1900-01-01"
@@ -418,6 +482,14 @@ def main(argv: list[str] | None = None) -> int:
     probes, probe_problems = type_probes()
     for probe in probes:
         print(f"  {probe['probe']:<48} {probe['status']:<8} {probe['read_back']}")
+
+    # Re-applying the schema file is what turned RLS on, so the flag is checked
+    # on every run rather than trusted.
+    rls_probes, rls_problems = row_level_security_probe()
+    for probe in rls_probes:
+        print(f"  {probe['probe']:<48} {probe['status']:<8} {probe['read_back']}")
+    probes.extend(rls_probes)
+    probe_problems.extend(rls_problems)
 
     # The DELETE runs every evening, so it is proven here, on a sentinel date
     # that is cleared before the command returns.

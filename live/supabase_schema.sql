@@ -415,3 +415,30 @@ alter table efb.proposals
   add column if not exists full_book_net double precision;
 alter table efb.proposals
   add column if not exists full_book_achieved_annual_vol double precision;
+
+-- Row level security, off, last. Supabase enables row level security on the
+-- tables its SQL editor is asked to create, and an RLS table with no policy
+-- refuses everything: re-applying this file left the writer role unable to write
+-- and the appendix unreadable from the dashboard. RLS is not this project's
+-- access control. The credentials are server-side only (the web service holds
+-- none), the reader and writer roles carry no bypassrls, and every table lives in
+-- schema `efb`, away from `public`. The table names are read from the catalog
+-- rather than listed, so a table created anywhere above cannot be missed, and
+-- this block is the last statement in the file, so applying it always leaves RLS
+-- off, including on a database where an earlier apply left it on.
+do $$
+declare
+  target text;
+begin
+  for target in
+    select c.relname
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'efb' and c.relkind = 'r' and c.relrowsecurity
+    order by c.relname
+  loop
+    execute format('alter table efb.%I disable row level security', target);
+    raise notice 'efb.%: row level security disabled', target;
+  end loop;
+end
+$$;
