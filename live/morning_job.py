@@ -80,11 +80,14 @@ INCOMPLETE_REASON_CODES = frozenset(
 
 
 def _leg_incomplete(status: object, reason_code: object) -> bool:
-    """Whether one executed leg was not confirmed."""
-    code = str(reason_code or "")
-    return str(status or "").upper() in INCOMPLETE_STATUSES or code in (
-        INCOMPLETE_REASON_CODES
-    )
+    """Whether one executed leg was not confirmed.
+
+    `status` may be an alpaca-py enum (`OrderStatus.REJECTED`), whose `str()` is
+    "OrderStatus.REJECTED" and would never match, so it is read by value.
+    """
+    value = str(alpaca.enum_value(status) or "").upper()
+    code = str(alpaca.enum_value(reason_code) or "")
+    return value in INCOMPLETE_STATUSES or code in INCOMPLETE_REASON_CODES
 
 
 def incomplete_legs(records: pd.DataFrame) -> list[dict[str, str]]:
@@ -93,8 +96,8 @@ def incomplete_legs(records: pd.DataFrame) -> list[dict[str, str]]:
         return []
     out: list[dict[str, str]] = []
     for row in records.itertuples(index=False):
-        code = str(getattr(row, "reason_code", "") or "")
-        status = str(row.status)
+        code = str(alpaca.enum_value(getattr(row, "reason_code", "")) or "")
+        status = str(alpaca.enum_value(row.status) or "")
         if _leg_incomplete(status, code):
             out.append(
                 {"ticker": str(row.ticker), "status": status, "reason_code": code}

@@ -506,16 +506,30 @@ def _quantization_distribution(frame: pd.DataFrame) -> dict[str, object]:
     }
 
 
+def enum_value(value: Any) -> Any:
+    """The plain value behind an alpaca-py enum, or the value itself.
+
+    alpaca-py returns pydantic enums: `PositionSide.SHORT`, `OrderSide.SELL`,
+    `OrderStatus.ACCEPTED`. Their `str()` is "PositionSide.SHORT", not "short", so
+    a comparison against a string silently fails. Reading `.value` is what makes
+    the comparison work, and a plain string, a number, or None passes through
+    unchanged, which is what the fake clients and the tests hand in.
+    """
+    return getattr(value, "value", value)
+
+
 def position_book(
     client, dry_run: bool = DRY_RUN_DEFAULT
 ) -> tuple[dict[str, float], dict[str, float]]:
     """({ticker: signed notional}, {ticker: signed quantity}) in one read.
 
-    Positive is long, negative is short, absent means flat. The quantity is what a
-    close is sized from: a full close must send the exact held quantity, and the
-    broker's own position is the only place that number comes from. A position
-    object without a `qty` (an older shape, or a test double) contributes zero, and
-    a close then falls back to the trade's own notional over the close price.
+    Positive is long, negative is short, absent means flat. The sign comes from
+    the quantity when the broker reports one, because that number is signed and
+    cannot be misread, and from `side` (`getattr(x, "value", x)`, never `str(x)`)
+    otherwise. The quantity is also what a close is sized from: a full close must
+    send the exact held quantity, and the broker's own position is the only place
+    that number comes from. A position without a `qty` contributes zero, and a
+    close then falls back to the trade's own notional over the close price.
 
     Dry run returns two empty dicts without calling Alpaca.
     """
@@ -525,10 +539,16 @@ def position_book(
     quantity: dict[str, float] = {}
     for pos in client.get_all_positions():
         symbol = str(pos.symbol)
-        sign = -1.0 if str(pos.side).lower() == "short" else 1.0
-        notional[symbol] = sign * abs(float(pos.market_value))
         raw = getattr(pos, "qty", None)
-        quantity[symbol] = sign * abs(float(raw)) if raw is not None else 0.0
+        shares = abs(float(raw)) if raw is not None else 0.0
+        if shares > 0:
+            sign = -1.0 if float(raw) < 0 else 1.0
+        else:
+            side = str(enum_value(getattr(pos, "side", ""))).lower()
+            sign = -1.0 if side == "short" else 1.0
+        market_value = getattr(pos, "market_value", None)
+        notional[symbol] = sign * abs(float(market_value or 0.0))
+        quantity[symbol] = sign * shares if raw is not None else 0.0
     return notional, quantity
 
 
@@ -570,7 +590,9 @@ def _resolved_fill(order: Any, ticket: str, existing: Any, intent: str) -> Fill:
     filled_notional = 0.0
     if getattr(existing, "filled_qty", None) is not None:
         filled_notional = abs(float(existing.filled_qty) * price)
-    status = str(getattr(existing, "status", "") or "").upper() or "ACCEPTED"
+    status = (
+        str(enum_value(getattr(existing, "status", "")) or "").upper() or "ACCEPTED"
+    )
     return Fill(
         ticker=order.ticker,
         order_id=str(getattr(existing, "id", "")),
@@ -781,7 +803,10 @@ def submit_market_orders(
         # The broker's own status is the record. Accepted or new is success: the
         # order is queued for the next open, and there is nothing to poll for. A
         # fill only if the broker filled it on the spot.
-        status = str(getattr(submitted, "status", "") or "").upper() or "ACCEPTED"
+        status = (
+            str(enum_value(getattr(submitted, "status", "")) or "").upper()
+            or "ACCEPTED"
+        )
         fill_price = 0.0
         filled_notional = 0.0
         if status == "FILLED":
