@@ -18,7 +18,7 @@ from typing import Any
 
 import pandas as pd
 
-from live import guards, state
+from live import alpaca, guards, state
 from live.guards import OrderSpec
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +44,57 @@ EXECUTION_COLUMNS = [
     # the side, so a rerun is refused by the broker rather than doubling the book.
     "client_order_id",
 ]
+
+# A leg with one of these statuses, or one of these reason codes, was not
+# confirmed. The run is incomplete: at least one leg was halted, left in an
+# unknown state, refused or rejected, so the day is not done and the next tick
+# must retry it rather than file it as ok. A filled or accepted leg, and every
+# dry-run leg, is complete.
+INCOMPLETE_STATUSES = frozenset(
+    {
+        guards.REJECTED_CAP,
+        guards.REJECTED_TRADED_NOTIONAL,
+        alpaca.SKIPPED,
+        "TIMEOUT",
+        "REJECTED",
+        "CANCELED",
+    }
+)
+INCOMPLETE_REASON_CODES = frozenset(
+    {
+        alpaca.REASON_ALPACA_ERROR,
+        alpaca.REASON_SUBMIT_UNKNOWN,
+        alpaca.REASON_SKIPPED_AFTER_HALT,
+        alpaca.REASON_QTY_ROUNDS_TO_ZERO,
+        alpaca.REASON_SHORT_CHECK_FAILED,
+        alpaca.REASON_NOT_TRADABLE,
+        alpaca.REASON_NOT_SHORTABLE,
+        alpaca.REASON_NOT_EASY_TO_BORROW,
+    }
+)
+
+
+def _leg_incomplete(status: object, reason_code: object) -> bool:
+    """Whether one executed leg was not confirmed."""
+    code = str(reason_code or "")
+    return str(status or "").upper() in INCOMPLETE_STATUSES or code in (
+        INCOMPLETE_REASON_CODES
+    )
+
+
+def incomplete_legs(records: pd.DataFrame) -> list[dict[str, str]]:
+    """Every leg of a run that was not confirmed, with the code that says why."""
+    if records.empty:
+        return []
+    out: list[dict[str, str]] = []
+    for row in records.itertuples(index=False):
+        code = str(getattr(row, "reason_code", "") or "")
+        status = str(row.status)
+        if _leg_incomplete(status, code):
+            out.append(
+                {"ticker": str(row.ticker), "status": status, "reason_code": code}
+            )
+    return out
 
 
 def should_execute(decision: str | None, auto_approve: bool) -> bool:
@@ -78,13 +129,39 @@ def target_orders(
     nav: float,
     current: dict[str, float] | None = None,
 ) -> list[OrderSpec]:
-    """Weights to OrderSpecs: signed target notional and the traded leg."""
-    held = current or {}
+    """The signed change to every name, over the union of the two books.
+
+    An order is the difference between the target book and the book the account
+    holds, not the target itself. The union matters in both directions: a name
+    only in the held book is not in the proposal at all, and it is closed to zero
+    (trade = -held); a name in both is traded by the difference. Sizing an order
+    from the target would, from a held book, buy the whole position again on an
+    increase and send a cut in the same direction as the position on a decrease.
+
+    A leg whose change is under `DELTA_MIN_NOTIONAL` is not worth an order and is
+    left out, so a rerun of an unchanged book sends nothing. The exception is a
+    held name absent from the target: it is a close, and it is always emitted so
+    a small leftover cannot survive an evening.
+    """
+    held = {str(key): float(value) for key, value in (current or {}).items()}
+    targets = {
+        str(row.ticker): float(row.weight) * nav
+        for row in proposal.itertuples(index=False)
+    }
     orders: list[OrderSpec] = []
-    for row in proposal.itertuples(index=False):
-        target = float(row.weight) * nav
-        traded = abs(target - held.get(row.ticker, 0.0))
-        orders.append(OrderSpec(row.ticker, target, traded))
+    for name in sorted(set(targets) | set(held)):
+        target = targets.get(name, 0.0)
+        trade = target - held.get(name, 0.0)
+        closing = name not in targets and held.get(name, 0.0) != 0.0
+        if not closing and abs(trade) < alpaca.DELTA_MIN_NOTIONAL:
+            continue
+        orders.append(
+            OrderSpec(
+                ticker=name,
+                target_notional=target,
+                trade_notional=trade,
+            )
+        )
     return orders
 
 
@@ -124,7 +201,7 @@ def submit_orders(
             records.append(
                 {
                     "ticker": order.ticker,
-                    "intended_notional": order.target_notional,
+                    "intended_notional": order.trade_notional,
                     "filled_notional": 0.0,
                     "status": order.status,
                     "reason": "guard rejected the order",
@@ -137,7 +214,7 @@ def submit_orders(
             records.append(
                 {
                     "ticker": order.ticker,
-                    "intended_notional": order.target_notional,
+                    "intended_notional": order.trade_notional,
                     "filled_notional": 0.0,
                     "status": "DRY_RUN",
                     "reason": "dry run: no order sent",
@@ -149,7 +226,7 @@ def submit_orders(
                         alpaca.client_order_id(
                             close,
                             order.ticker,
-                            "buy" if order.target_notional >= 0 else "sell",
+                            "buy" if order.trade_notional >= 0 else "sell",
                         )
                         if close
                         else ""
@@ -221,9 +298,10 @@ def run_morning(
         from live import alpaca
 
         nav = alpaca.get_nav(client)
-    # From flat, the traded leg is the whole target; from a book, it is the
-    # difference. An establishment run is by definition the former.
-    orders = target_orders(proposal, nav, None if is_establishment else held)
+    # Every leg is the signed difference between the target and the held book,
+    # over the union of the two. From flat the whole target trades; from a book
+    # only the change does, and a held name absent from the target is closed.
+    orders = target_orders(proposal, nav, held)
     brake_limit, brake_basis = guards.traded_notional_limit(
         nav, establishment=is_establishment
     )
@@ -241,9 +319,13 @@ def run_morning(
         )
     records = submit_orders(guarded, client, dry_run, prices, close=as_of)
     records["trade_date"] = as_of
-    positions_frame = _positions_from_records(records, proposal, dry_run)
+    confirmed = _confirmed_tickers(records, dry_run)
+    positions_frame = _positions_from_records(
+        proposal, nav, dry_run=dry_run, confirmed=confirmed
+    )
     state.write_positions(as_of, positions_frame.to_dict("records"))
     _write_execution_log(as_of, records)
+    incomplete = incomplete_legs(records)
     return {
         "as_of": as_of,
         "executed": True,
@@ -272,6 +354,11 @@ def run_morning(
         # with the code that says why rather than being dropped in silence.
         "skipped": int((records["status"] == "SKIPPED").sum()),
         "reason_codes": _reason_code_counts(records),
+        # A leg that was halted, left in an unknown state, refused or rejected
+        # makes the run incomplete: the day is not done, and the caller must not
+        # file it as ok. `incomplete_legs` names each one and why.
+        "complete": not incomplete,
+        "incomplete_legs": incomplete,
         # The day's kind, the limit it was held to, and why: the three things the
         # owner needs to read a first evening's order list correctly.
         "establishment": is_establishment,
@@ -280,6 +367,22 @@ def run_morning(
         "cost_label": "establishment" if is_establishment else "rebalance",
         "n_held": len(held),
         "held_notional": float(sum(abs(value) for value in held.values())),
+    }
+
+
+def _confirmed_tickers(records: pd.DataFrame, dry_run: bool) -> set[str]:
+    """The tickers the broker confirmed it holds, from this run's own execution.
+
+    A leg counts only when the broker reported it filled. An order queued for the
+    next open is not a holding yet, and nothing is a holding before the broker
+    says so; in dry run nothing left the process, so nothing is confirmed.
+    """
+    if dry_run or records.empty or "status" not in records.columns:
+        return set()
+    return {
+        str(row.ticker)
+        for row in records.itertuples(index=False)
+        if str(row.status).upper() == "FILLED"
     }
 
 
@@ -298,27 +401,33 @@ def _reason_code_counts(records: pd.DataFrame) -> dict[str, int]:
 
 
 def _positions_from_records(
-    records: pd.DataFrame, proposal: pd.DataFrame, dry_run: bool = True
+    proposal: pd.DataFrame,
+    nav: float,
+    dry_run: bool = True,
+    confirmed: set[str] | None = None,
 ) -> pd.DataFrame:
-    """The positions the loop records: intended targets, labelled by kind.
+    """The positions the loop records: the target book, labelled by kind.
 
-    In dry run nothing is filled, so the book the loop intends to hold is stored as
-    the position state and the fill gap is the reconciliation. `kind` says which
-    it is: `intention` when no order left the process, `holding` when they did, so
-    a later reader (E12's attribution, or the first live evening) cannot count an
-    intention as a holding.
+    Every row is the proposed target and is signed with the target's weight. A row
+    is a `holding` only when the broker confirmed it after execution, in
+    `confirmed`: no name is labelled held before the broker says so, and in dry
+    run nothing is ever confirmed. Everything else is an `intention`, so a later
+    reader (E12's attribution, or the next evening) cannot count a book that was
+    never created as one the loop holds.
     """
+    held = confirmed or set()
     weights = proposal.set_index("ticker")["weight"]
     rows: list[dict[str, object]] = []
-    for record in records.itertuples(index=False):
-        weight = float(weights.get(record.ticker, 0.0))
+    for row in proposal.itertuples(index=False):
+        ticker = str(row.ticker)
+        weight = float(weights.get(ticker, 0.0))
         rows.append(
             {
-                "ticker": record.ticker,
-                "signed_notional": record.intended_notional,
+                "ticker": ticker,
+                "signed_notional": weight * nav,
                 "weight": weight,
                 "side": "long" if weight >= 0 else "short",
-                "kind": "intention" if dry_run else "holding",
+                "kind": "holding" if ticker in held else "intention",
             }
         )
     return pd.DataFrame(rows)

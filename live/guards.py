@@ -61,16 +61,29 @@ REJECTED_TRADED_NOTIONAL = "REJECTED_TRADED_NOTIONAL"
 
 @dataclass(frozen=True)
 class OrderSpec:
-    """One target position and the notional its trade would move.
+    """One order: the position it targets and the signed change it submits.
 
-    `target_notional` is signed: positive long, negative short. `traded`
-    is the absolute dollar notional the run would trade to reach it.
+    `target_notional` is the signed destination position, which is what guard 1
+    caps; a name being closed has a target of zero. `trade_notional` is the
+    signed change the order submits, `target - held`: positive buys, negative
+    sells, and it is what the broker is actually sent. `traded_notional` is its
+    absolute value, which is what the throughput brake accumulates, kept as a
+    property so the sign and the size can never disagree.
+
+    Both numbers are needed. Sizing the order from the target would, from a held
+    book, buy the whole position again on an increase and turn a cut into a
+    same-direction order on a decrease.
     """
 
     ticker: str
     target_notional: float
-    traded_notional: float
+    trade_notional: float
     status: str = PASSED
+
+    @property
+    def traded_notional(self) -> float:
+        """The absolute dollars this order moves, for the throughput brake."""
+        return abs(self.trade_notional)
 
 
 def position_cap(target_notional: float, nav: float) -> bool:
@@ -147,7 +160,7 @@ def apply_guards(
                 OrderSpec(
                     order.ticker,
                     order.target_notional,
-                    order.traded_notional,
+                    order.trade_notional,
                     REJECTED_CAP,
                 )
             )
@@ -157,7 +170,7 @@ def apply_guards(
                 OrderSpec(
                     order.ticker,
                     order.target_notional,
-                    order.traded_notional,
+                    order.trade_notional,
                     REJECTED_TRADED_NOTIONAL,
                 )
             )

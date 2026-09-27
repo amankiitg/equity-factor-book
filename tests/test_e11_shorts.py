@@ -87,9 +87,9 @@ class _Client:
 def _specs() -> list[guards.OrderSpec]:
     return [
         guards.OrderSpec("AAA", 50_000.0, 50_000.0),
-        guards.OrderSpec("BBB", -50_000.0, 50_000.0),
+        guards.OrderSpec("BBB", -50_000.0, -50_000.0),
         guards.OrderSpec("CCC", 50_000.0, 50_000.0),
-        guards.OrderSpec("DDD", -50_000.0, 50_000.0),
+        guards.OrderSpec("DDD", -50_000.0, -50_000.0),
     ]
 
 
@@ -195,7 +195,7 @@ def test_the_execution_records_carry_the_reason_code() -> None:
         [
             guards.OrderSpec("AAA", 50_000.0, 50_000.0),
             guards.OrderSpec(
-                "BBB", -50_000.0, 50_000.0, guards.REJECTED_TRADED_NOTIONAL
+                "BBB", -50_000.0, -50_000.0, guards.REJECTED_TRADED_NOTIONAL
             ),
         ],
         client=None,

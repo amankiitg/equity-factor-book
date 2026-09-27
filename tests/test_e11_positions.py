@@ -186,22 +186,26 @@ def test_the_first_live_day_is_establishment_even_with_a_dry_run_store(
     assert result["held"] == {}, "the intentions were measured as holdings"
 
 
-def test_an_unreadable_account_is_not_an_empty_one(
+def test_an_unreadable_account_stops_a_live_run_but_not_a_dry_one(
     tmp_path: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The case the store-based answer got wrong.
+    """The store-book fallback is allowed only in dry run.
 
-    `held` falls back to the store's book when the account cannot be read, so
-    asking the run's own book "is it empty" answers "yes" whenever the store is,
-    and the evening would be treated as an establishment day on the strength of a
-    missing credential: the whole book bought against an account whose state is
-    unknown. The store's emptiness is not evidence about the account.
+    The case the store-based answer got wrong: with no account read, `held` fell
+    back to the store's own book, so asking it "is it empty" answered "yes"
+    whenever the store was, and the evening would be treated as an establishment
+    day on the strength of a missing credential. In live mode a failed read must
+    stop the run, not fall back; in dry run it is reported.
     """
     monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
     monkeypatch.setattr(alpaca, "read_client", lambda: None)
 
-    result = positions.check(dry_run=False)
+    with pytest.raises(RuntimeError, match="positions could not be read"):
+        positions.check(dry_run=False)
 
+    # Dry run: the read is still attempted, and its failure is stated rather than
+    # fatal. `establishment` is False and `held` is the (empty) store book.
+    result = positions.check(dry_run=True)
     assert result["account_read"] is False and result["broker"] is None
     assert result["establishment"] is False
     # The negative control, at the level of the old expression: the book the run
@@ -309,30 +313,34 @@ def test_the_run_refuses_to_establish_when_the_account_cannot_be_read(
     assert "not an establishment day" in caplog.text
 
 
-def test_a_dry_run_position_row_is_labelled_an_intention() -> None:
-    """The store must say that a dry-run book was never a book.
+def test_a_position_row_is_a_holding_only_from_confirmed_broker_state() -> None:
+    """A row is a holding only when the broker confirmed it after execution.
 
     Every evening before the flip writes 150 rows into `efb.positions` that no
     order ever created. They are the loop's intention, and the row says so, so
-    E12's attribution cannot attribute P&L to a book that never existed.
+    E12's attribution cannot attribute P&L to a book that never existed. Even on
+    a live evening a row is an intention until the broker confirms that name.
     """
     import pandas as pd
 
     from live import morning_job
 
-    records = pd.DataFrame(
-        {
-            "ticker": ["AAA", "BBB"],
-            "intended_notional": [1000.0, -500.0],
-        }
-    )
     proposal = pd.DataFrame({"ticker": ["AAA", "BBB"], "weight": [0.01, -0.005]})
 
-    dry = morning_job._positions_from_records(records, proposal, dry_run=True)
-    live_rows = morning_job._positions_from_records(records, proposal, dry_run=False)
+    dry = morning_job._positions_from_records(proposal, 100_000.0, dry_run=True)
+    live_unconfirmed = morning_job._positions_from_records(
+        proposal, 100_000.0, dry_run=False
+    )
+    live_confirmed = morning_job._positions_from_records(
+        proposal, 100_000.0, dry_run=False, confirmed={"AAA"}
+    )
 
     assert set(dry["kind"]) == {"intention"}
-    assert set(live_rows["kind"]) == {"holding"}
+    assert set(live_unconfirmed["kind"]) == {"intention"}
+    confirmed_kinds = dict(
+        zip(live_confirmed["ticker"], live_confirmed["kind"], strict=True)
+    )
+    assert confirmed_kinds == {"AAA": "holding", "BBB": "intention"}
 
 
 def test_the_intention_label_survives_the_round_trip(tmp_path: Any) -> None:

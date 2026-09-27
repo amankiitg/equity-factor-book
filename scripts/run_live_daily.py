@@ -63,15 +63,23 @@ COMPLETED_STATUSES = frozenset({"ok", "market_closed"})
 
 
 def already_ran(job: str, run_date: str) -> bool:
-    """Whether this job already completed for this date."""
+    """Whether this job already completed for this date.
+
+    Only a completed status counts. A row left by a failed or incomplete attempt
+    is exactly what the next tick has to retry, so treating any row as "already
+    ran" would file a day nothing was produced on as finished.
+    """
     from live import store
 
     frame = store.select("cron_runs")
-    if frame.empty:
+    if frame.empty or "status" not in frame.columns:
         return False
-    rows = frame.loc[(frame["run_date"] == run_date) & (frame["job"] == job)]
+    rows = frame.loc[
+        (frame["run_date"] == run_date)
+        & (frame["job"] == job)
+        & (frame["status"].isin(COMPLETED_STATUSES))
+    ]
     return bool(len(rows))
-    return rows
 
 
 def record_run(job: str, run_date: str, status: str, detail: str = "") -> None:
@@ -243,11 +251,10 @@ def store_proposal(
                 "previous_weight": previous_weight,
                 "trade": weight - previous_weight,
                 "reason": row.reason,
-                # The book the loop meant to hold, not one it holds. In dry run
-                # nothing is ever sent, so these rows are intentions and are
-                # labelled so: E12 must never count them as holdings, and the
-                # first live evening must not read them as a book.
-                "kind": "intention" if dry_run else "holding",
+                # The proposal is the loop's intention, never a holding: a
+                # holding label needs the broker to confirm a fill after
+                # execution, and nothing has executed when this row is written.
+                "kind": "intention",
             }
         )
     store.replace_by_date("positions", as_of, position_rows)
@@ -308,13 +315,13 @@ def store_reconciliation(as_of: str, row: dict) -> None:
 
 
 def resolve_dry_run(value: str | None) -> bool:
-    """The clock starts only on the literal string "false", any case.
+    """The clock starts only on the exact string "false".
 
-    Unset, empty, unparseable, or any spelling other than an explicit false
-    resolves to dry run. A missing variable must never start the clock by
-    accident; that is the failure this function guards.
+    Unset, empty, a different case, surrounding whitespace, or any other spelling
+    resolves to dry run. A missing or mistyped variable must never start the clock
+    by accident; that is the failure this function guards.
     """
-    return (value or "").strip().lower() != "false"
+    return value != "false"
 
 
 def _catch_up_sessions(before: pd.Timestamp | None) -> list[str]:
@@ -875,11 +882,30 @@ def main() -> int:
             init=first_run,
         )
 
+    # A leg that was halted, left in an unknown state, refused or rejected makes
+    # the run incomplete. The day is not done and must not be filed: the status is
+    # not ok, no `cron_runs` row is written (`finish_run`), and the next tick
+    # retries. The snapshot and the message still go out, so the owner sees which
+    # leg and why.
+    incomplete = morning.get("incomplete_legs") or []
+    if morning.get("complete") is False or incomplete:
+        status = "incomplete"
+        if incomplete:
+            detail = f"{len(incomplete)} leg(s) not confirmed: " + ", ".join(
+                f"{leg.get('ticker')} "
+                f"({leg.get('reason_code') or leg.get('status') or 'unknown'})"
+                for leg in incomplete[:6]
+            )
+        else:
+            detail = "the run reported itself incomplete"
+    else:
+        status, detail = "ok", ""
     return finish_run(
         run_date=run_date,
         result=gate,
-        status="ok",
+        status=status,
         dry_run=dry_run,
+        detail=detail,
         orders=int(morning.get("orders") or 0),
         gross=float(morning.get("intended_notional") or 0.0),
         catch_up_sessions=catch_up_sessions,

@@ -103,6 +103,9 @@ class Fill:
     # order without a second lookup, and a rerun's rejection can be traced to the
     # id it collided with.
     client_order_id: str = ""
+    # True when the broker already held an order under this leg's id and the run
+    # resolved that order instead of submitting a second copy.
+    resolved: bool = False
 
 
 # ---------------------------------------------------------------- rate limiting
@@ -481,6 +484,53 @@ def get_positions(client, dry_run: bool = DRY_RUN_DEFAULT) -> dict[str, float]:
     return result
 
 
+def _side_word(trade_notional: float) -> str:
+    """The side an order's signed change implies: buys positive, sells negative."""
+    return "buy" if trade_notional >= 0 else "sell"
+
+
+def find_existing_order(client: Any, ticket: str) -> Any | None:
+    """The broker's order carrying this deterministic id, or None.
+
+    A rerun must not place a second order for a leg the first attempt already
+    sent. Alpaca would refuse the duplicate id, but that refusal is noise the run
+    then has to explain; looking the id up first turns the rerun into a
+    resolution of the order that already exists. A client that cannot be asked
+    (no such method) answers None, which is the normal first attempt, and a
+    lookup that raises is treated the same way: "not found" is the expected
+    answer, not a failure.
+    """
+    lookup = getattr(client, "get_order_by_client_id", None)
+    if lookup is None:
+        return None
+    try:
+        return lookup(ticket)
+    except Exception:  # noqa: BLE001 - not found is the normal answer
+        return None
+
+
+def _resolved_fill(order: Any, ticket: str, existing: Any) -> Fill:
+    """The record for a leg the broker already held under this id."""
+    price = 0.0
+    if getattr(existing, "filled_avg_price", None) is not None:
+        price = float(existing.filled_avg_price)
+    filled_notional = 0.0
+    if getattr(existing, "filled_qty", None) is not None:
+        filled_notional = abs(float(existing.filled_qty) * price)
+    status = str(getattr(existing, "status", "") or "").upper() or "ACCEPTED"
+    return Fill(
+        ticker=order.ticker,
+        order_id=str(getattr(existing, "id", "")),
+        intended_notional=order.trade_notional,
+        filled_notional=filled_notional,
+        fill_price=price,
+        status=status,
+        detail="already submitted: resolved from the broker by client_order_id",
+        client_order_id=ticket,
+        resolved=True,
+    )
+
+
 def submit_market_orders(
     orders,
     client,
@@ -491,11 +541,13 @@ def submit_market_orders(
 ) -> list[Fill]:
     """Submit market orders and wait for fills, one record per intended leg.
 
-    Longs use notional orders; shorts use whole-share quantities because Alpaca
-    paper rejects fractional sell-to-open orders. `prices` maps each ticker to its
-    last close so a short notional can be quantized to whole shares. Each order is
-    submitted, polled, and recorded as one Fill. A timeout is a recorded fill with
-    status TIMEOUT, never a silently dropped order.
+    Each order submits its signed `trade_notional`, not its target: positive buys,
+    negative sells, and its absolute value is the size. Longs use notional orders;
+    shorts use whole-share quantities because Alpaca paper rejects fractional
+    sell-to-open orders. `prices` maps each ticker to its last close so a short
+    notional can be quantized to whole shares. Each order is submitted, polled,
+    and recorded as one Fill. A timeout is a recorded fill with status TIMEOUT,
+    never a silently dropped order.
 
     Every short is checked against the broker's own `shortable` and
     `easy_to_borrow` flags before it is submitted, and a refused leg is recorded
@@ -509,9 +561,10 @@ def submit_market_orders(
     loop wants. The reasoning and the doc citation are on the constant.
 
     Every order also carries a deterministic `client_order_id` built from the
-    close, the ticker and the side, so a rerun of the same evening is refused by
-    the broker instead of doubling the book, and submissions are spaced by
-    `throttle` to stay under the trading API's rate limit.
+    close, the ticker and the side. A rerun looks every leg's id up first and
+    resolves the orders the broker already holds, before it submits anything, so a
+    crash mid-run cannot double the book. Submissions are spaced by `throttle` to
+    stay under the trading API's rate limit.
     """
     from alpaca.trading.enums import OrderSide, TimeInForce  # type: ignore
     from alpaca.trading.requests import MarketOrderRequest  # type: ignore
@@ -519,29 +572,47 @@ def submit_market_orders(
     time_in_force = TimeInForce(NEXT_OPEN_TIF)
     cache = {} if short_cache is None else short_cache
     pace = throttle if throttle is not None else Throttle()
+
+    # The deterministic ticket for every leg, and the broker's answer for it. All
+    # lookups happen before the first submission: that is what "resolve the rerun
+    # first" buys, a crash after one leg can never lead a later pass to send a
+    # second copy of an earlier one.
+    tickets = {
+        order.ticker: client_order_id(
+            close, order.ticker, _side_word(order.trade_notional)
+        )
+        for order in orders
+    }
+    existing = {
+        order.ticker: find_existing_order(client, tickets[order.ticker])
+        for order in orders
+    }
+
     fills: list[Fill] = []
     halted = False
     for order in orders:
-        notional = abs(order.target_notional)
-        side = OrderSide.BUY if order.target_notional >= 0 else OrderSide.SELL
-        side_word = "buy" if order.target_notional >= 0 else "sell"
-        ticket = client_order_id(close, order.ticker, side_word)
+        trade = order.trade_notional
+        notional = abs(trade)
+        ticket = tickets[order.ticker]
+        if existing[order.ticker] is not None:
+            fills.append(_resolved_fill(order, ticket, existing[order.ticker]))
+            continue
         if halted:
             fills.append(
                 _skipped(
                     order.ticker,
-                    notional,
+                    trade,
                     REASON_SKIPPED_AFTER_HALT,
                     "the run halted on an unknown-state submit failure",
                 )
             )
             continue
-        side = OrderSide.BUY if order.target_notional >= 0 else OrderSide.SELL
-        if order.target_notional < 0:
+        side = OrderSide.BUY if trade >= 0 else OrderSide.SELL
+        if trade < 0:
             refusal = short_refusal(client, order.ticker, cache)
             if refusal is not None:
                 code, detail = refusal
-                fills.append(_skipped(order.ticker, notional, code, detail))
+                fills.append(_skipped(order.ticker, trade, code, detail))
                 continue
             price = prices.get(order.ticker, 0.0)
             qty = int(notional / price) if price > 0 else 0
@@ -549,7 +620,7 @@ def submit_market_orders(
                 fills.append(
                     _skipped(
                         order.ticker,
-                        notional,
+                        trade,
                         REASON_QTY_ROUNDS_TO_ZERO,
                         f"{notional:.2f} at {price:.4f} rounds to zero shares",
                     )
@@ -579,7 +650,7 @@ def submit_market_orders(
                 Fill(
                     ticker=order.ticker,
                     order_id="",
-                    intended_notional=notional,
+                    intended_notional=trade,
                     filled_notional=0.0,
                     fill_price=0.0,
                     status=SKIPPED,
@@ -612,7 +683,7 @@ def submit_market_orders(
             Fill(
                 ticker=order.ticker,
                 order_id=str(submitted.id),
-                intended_notional=notional,
+                intended_notional=trade,
                 filled_notional=filled_notional,
                 fill_price=fill_price,
                 status=status,

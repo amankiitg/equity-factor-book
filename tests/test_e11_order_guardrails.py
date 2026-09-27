@@ -78,7 +78,7 @@ class _Client:
 def _specs() -> list[guards.OrderSpec]:
     return [
         guards.OrderSpec("AAA", 50_000.0, 50_000.0),
-        guards.OrderSpec("BBB", -50_000.0, 50_000.0),
+        guards.OrderSpec("BBB", -50_000.0, -50_000.0),
     ]
 
 
@@ -174,7 +174,7 @@ def test_a_dry_run_records_the_ticket_the_live_evening_will_send(
     records = morning_job.submit_orders(
         [
             guards.OrderSpec("AAA", 50_000.0, 50_000.0),
-            guards.OrderSpec("BBB", -50_000.0, 50_000.0),
+            guards.OrderSpec("BBB", -50_000.0, -50_000.0),
         ],
         client=None,
         dry_run=True,
