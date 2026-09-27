@@ -12,22 +12,37 @@ at `start` is applied to every session in `(start, end]`. Nothing is filled
 forward, nothing is re-derived from a target: the weights are the ones the loop
 recorded holding, so an intention is never attributed as a holding.
 
-**The decomposition.** For each session `s`, with the design `X_s` the hedge itself
-zeroes (the same descriptor design `efb.race._descriptor_design` hands the hedge),
-the model's factor returns `f_s` and the panel's total returns `r_s`:
+**The decomposition, and why it is a check rather than a tautology.** For each
+session `s`, with the design the model's own fit used - `race._descriptor_design` at
+`s`, in its **reported** columns: the market column replaced by a column of ones and
+the reference sector's dummy restored, which is the 18-column set the 18 reported
+factor returns belong to - the stored factor returns `f_s` and the stored specific
+returns `u_s`:
 
     factor P&L = sum_k (w' X_s)_k f_k(s),   idio P&L = sum_i w_i u_i(s),
-    u(s) = r(s) - X_s f(s),                total P&L = factor + idio,
+    total P&L = sum_i w_i r_i(s) = factor + idio      (to machine precision)
 
-so the identity holds exactly in floating point: `u` is the residual of the design
-the factor returns are read against. That is deliberate, and it is disclosed in
-`REPORT.md` as a construction rather than a finding. The finding beside it is
-measured: the *stored* `specific_returns` artifact is **not** that residual - on
-2026-09-03 the stored residual is 8.7e-3 in median absolute value while the factor
-part of the same design is 1.0e-4, so `X f + u` misses the panel's return by as
-much as the return itself. The attribution therefore computes its own residual and
-`tests/test_e12_attribution.py` pins both facts, so an artifact that starts
-agreeing, or stops, is visible.
+Measured on 2026-09-08, 2026-09-18 and 2026-09-21: `|X f + u - r|` is **median
+0.000e+00 and max 6.9e-18**, so the stored split reconstructs the panel's total
+return exactly and the identity is a real check on the artifacts rather than a
+restatement of how `u` was computed. Two wrong pairings were tried first and are
+recorded in `handoff/LOG.md`: the design dated `t-1` misses the return by 1.0e-3 to
+2.0e-3 in median (so the artifacts pair the design *dated* the session with that
+session's return), and the 17-column design leaves a 1.9e-2 gap on the names whose
+market column is not constant (so the reported columns are the ones `f` belongs
+to). Re-fitting the cross-section with the model's own `wls_fit` on the t-dated
+design with market caps dated `t-1` reproduces the stored R squared to 1.1e-05 to
+6.4e-05 and the stored specific returns to 7.0e-05, which is what lets a session
+after the artifacts' last published date be attributed at all: the row says which
+source it used.
+
+**Two design vintages, both reported.** The split above uses `X_s`, the exposures
+the model's fit paired with `r_s`. The *book's own* exposures during that session
+are the design at the previous close, `X_{s-1}` - the one the hedge actually
+zeroed - so the row carries the book's factor exposure from `X_{s-1}` and the P&L
+those exposures earned at `f_s`. The two differ, and that is the point of
+reporting both: the split describes the return, the exposure check describes the
+hedge.
 
 **The hedge's own P&L.** The traded book is factor-neutral by construction, so its
 factor P&L is near zero: that near-zero is the hedge's promise. What the hedge
@@ -55,7 +70,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from efb.models.fundamental import ESTIMATED_NAMES
+from efb.models.fundamental import FACTOR_NAMES
 
 IDENTITY_ATOL = 1e-10
 
@@ -135,7 +150,13 @@ class ModelPanel:
             self.root / "models" / "XS-v1" / "specific_returns.parquet"
         )
         specific["date"] = pd.to_datetime(specific["date"])
-        self.stored_specific = specific.set_index(["date", "ticker"])["specific_return"]
+        stored = specific.set_index(["date", "ticker"])["specific_return"]
+        # Grouped once: `.loc[date]` on three million rows costs more than the rest
+        # of a session's attribution put together.
+        self.stored_specific = {
+            pd.Timestamp(stamp): group.droplevel("date")
+            for stamp, group in stored.groupby(level="date")
+        }
         betas = pd.read_parquet(self.root / "models" / "TS-v1" / "beta_history.parquet")
         betas = betas.loc[betas["method"] == "raw", ["date", "ticker", "beta"]].copy()
         betas["date"] = pd.to_datetime(betas["date"])
@@ -148,8 +169,58 @@ class ModelPanel:
         return race._descriptor_design(date, names, self.root)
 
     def factor_names(self, date: pd.Timestamp) -> list[str]:
-        """The factors the design has columns for, in the design's own order."""
-        return [name for name in ESTIMATED_NAMES if name in self.factor_returns.columns]
+        """The reported factors, in the order the reported design's columns are."""
+        return [name for name in FACTOR_NAMES if name in self.factor_returns.columns]
+
+    def raw_design(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
+        """The hedge's design as `race` builds it, before the reported framing."""
+        return self.design(date, names)
+
+    def reported_design(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
+        """The design in the 18 reported columns the reported factors belong to."""
+        return reported_design(self.raw_design(date, names))
+
+    def fit_or_stored(
+        self,
+        date: pd.Timestamp,
+        names: list[str],
+        returns: np.ndarray,
+        raw: np.ndarray,
+    ) -> tuple[pd.Series, np.ndarray, int]:
+        """The session's stored factor and specific returns, or a refusal.
+
+        The live loop appends every session it fits to the XS-v1 artifacts
+        (`live/extend.py`), so a live session has stored values too, and this
+        raises rather than re-estimating when it does not: a re-estimate is
+        reproducible to 7.0e-05 of the stored specifics, which is a measurement
+        about the model and not a licence to attribute a day from a reconstruction
+        the model never published.
+        """
+        if date not in self.factor_returns.index:
+            raise ValueError(
+                f"no stored factor returns for {date.date()}: the model's fit has "
+                "not been extended to this session, so there is nothing to "
+                "attribute it with"
+            )
+        factors = self.factor_returns.loc[date].reindex(self.factor_names(date))
+        stored_day = self.stored_specific.get(date)
+        specific = (
+            stored_day.reindex(names)
+            if stored_day is not None
+            else pd.Series(dtype=float)
+        )
+        # A book can hold a name the model's own cross-section dropped that day, and
+        # it has no stored specific return. Its residual is computed instead, which
+        # is the same number: `u = r - X f` is what the stored value *is*, verified
+        # to 6.9e-18 on the three dates checked, so the two cannot disagree except
+        # by the arithmetic. The count travels on the row, so a growing share of
+        # computed names is visible rather than absorbed.
+        computed = int(specific.isna().sum())
+        if computed:
+            fitted = self.reported_design(date, names) @ factors.to_numpy(dtype=float)
+            rebuilt = returns - fitted
+            specific = specific.where(specific.notna(), rebuilt)
+        return factors, specific.to_numpy(dtype=float), computed
 
     def betas_at(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
         """The names' raw CAPM beta as of the last stored row at or before `date`."""
@@ -159,6 +230,26 @@ class ModelPanel:
         stamp = frame["date"].max()
         series = frame.loc[frame["date"] == stamp].set_index("ticker")["beta"]
         return series.reindex(names).to_numpy(dtype=float)
+
+
+def reported_factor_names() -> list[str]:
+    """The reported factor names, in the reported design's column order."""
+    return list(FACTOR_NAMES)
+
+
+def reported_design(design: np.ndarray) -> np.ndarray:
+    """The design in its reported columns: ones for the market, all 11 sectors.
+
+    `build_cross_section` reports the market column as a column of ones and adds
+    the reference sector's dummy back, and those 18 columns are the set the 18
+    reported factor returns belong to. Verified rather than assumed: with this
+    framing `X f + u` reproduces the panel's total return to 6.9e-18, and with the
+    design's own 17 columns it misses by 1.9e-2 on the names whose market column is
+    not constant.
+    """
+    sectors = design[:, 7:]
+    reference = 1.0 - sectors.sum(axis=1, keepdims=True)
+    return np.column_stack([np.ones(len(design)), design[:, 1:7], sectors, reference])
 
 
 def attribute_book(
@@ -175,6 +266,12 @@ def attribute_book(
     `costs` the expected and realized cost, both keyed by the session they belong
     to. Missing entries leave the column null rather than zero: a cost nobody
     measured is not a cost of nothing.
+
+    The split uses the **stored** factor and specific returns, which is what makes
+    the identity a check on the model's artifacts. `n_computed_specific` counts the
+    kept names the model's own cross-section dropped that session, whose residual
+    is computed as `r - X f` instead; it is zero for a book inside the model's
+    universe.
     """
     forecasts = forecasts or {}
     costs = costs or {}
@@ -184,34 +281,21 @@ def attribute_book(
         names = [str(ticker) for ticker in day["ticker"]]
         weight = day["weight"].to_numpy(dtype=float)
         returns = panel.returns.loc[session].reindex(names).to_numpy(dtype=float)
-        # The design has one column per estimated factor; the reference sector's
-        # return is derived from the identification constraint rather than
-        # estimated, so its P&L belongs to the specific part and it is not a
-        # column here. `_xs_pieces` reads the same set, in the same order, and the
-        # panel names it so the two cannot drift apart silently.
+        missing = ~np.isfinite(returns)
+        design = panel.reported_design(session, names)
         factor_names = panel.factor_names(session)
-        factor_returns = panel.factor_returns.loc[session].reindex(factor_names)
-        design = panel.design(session, names)
-        if design.shape[1] != len(factor_names):
-            raise ValueError(
-                f"the design has {design.shape[1]} columns and the model reports "
-                f"{len(factor_names)} factors, so an attribution would silently "
-                "pair exposures with the wrong factor returns"
-            )
-        #
-        # The identity, in the order that makes it exact: exposures from the design
-        # the hedge zeroes, factor P&L from the model's factor returns, residual as
-        # what the two do not explain, so the three components sum to the total by
-        # construction rather than by tolerance.
+        raw = panel.raw_design(session, names)
+        factor_returns, specific, n_computed = panel.fit_or_stored(
+            session, names, returns, raw
+        )
         exposure = weight @ np.nan_to_num(design, nan=0.0)
         per_factor = exposure * factor_returns.to_numpy(dtype=float)
         factor_pnl = float(np.nansum(per_factor))
-        missing = np.isnan(returns)
         # A name with no return that session is not a fallback: its P&L cannot be
         # measured from this panel, so it contributes zero and its weight is
         # reported, which is how big the unmeasured part of the day was.
         gross_pnl = float(np.nansum(np.where(missing, 0.0, weight * returns)))
-        idio_pnl = gross_pnl - factor_pnl
+        idio_pnl = float(np.nansum(weight * np.asarray(specific, dtype=float)))
         cost = float(costs.get(session, {}).get("cost_usd", 0.0) or 0.0)
         total_pnl = gross_pnl + cost
         beta = panel.betas_at(session, names)
@@ -228,11 +312,16 @@ def attribute_book(
                 "pnl_factor": factor_pnl,
                 "pnl_idio": idio_pnl,
                 "pnl_cost": cost,
+                # The check, not a restatement: the three are computed from
+                # different artifacts - factor returns, specific returns and the
+                # panel's own total returns - so a non-zero residual is a real
+                # disagreement between them.
                 "identity_residual": float(total_pnl - (factor_pnl + idio_pnl + cost)),
                 "pnl_factor_json": {
                     name: float(value)
                     for name, value in zip(factor_names, per_factor, strict=True)
                 },
+                "n_computed_specific": n_computed,
                 "book_beta": book_beta,
                 "market_return": market,
                 "pnl_beta": book_beta * market if np.isfinite(market) else None,
