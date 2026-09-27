@@ -235,22 +235,27 @@ def _target_legs(
         trade = target - position
         closing = name not in targets and position != 0.0
         if not closing and abs(trade) < alpaca.DELTA_MIN_NOTIONAL:
-            skipped.append(
-                {
-                    "ticker": name,
-                    "intended_notional": trade,
-                    "filled_notional": 0.0,
-                    "status": alpaca.SKIPPED,
-                    "reason": (
-                        f"the change is ${abs(trade):,.2f}, under the "
-                        f"${alpaca.DELTA_MIN_NOTIONAL:,.0f} minimum an order is "
-                        "worth, so no order was sent"
-                    ),
-                    "reason_code": alpaca.REASON_BELOW_MIN_NOTIONAL,
-                    "client_order_id": "",
-                    "position_intent": alpaca.position_intent(position, target),
-                }
-            )
+            # A zero change is not a leg at all: the holding is the target, which
+            # is every name on a rerun of an unchanged book, and recording those
+            # would fill the day's rows with names that had nothing to do. Only a
+            # change the floor actually refused is a skipped leg.
+            if trade != 0.0:
+                skipped.append(
+                    {
+                        "ticker": name,
+                        "intended_notional": trade,
+                        "filled_notional": 0.0,
+                        "status": alpaca.SKIPPED,
+                        "reason": (
+                            f"the change is ${abs(trade):,.2f}, under the "
+                            f"${alpaca.DELTA_MIN_NOTIONAL:,.0f} minimum an order is "
+                            "worth, so no order was sent"
+                        ),
+                        "reason_code": alpaca.REASON_BELOW_MIN_NOTIONAL,
+                        "client_order_id": "",
+                        "position_intent": alpaca.position_intent(position, target),
+                    }
+                )
             continue
         orders.append(
             OrderSpec(

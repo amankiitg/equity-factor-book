@@ -115,6 +115,28 @@ def test_a_leg_under_the_minimum_is_a_recorded_skip_not_a_silent_drop() -> None:
     assert len(orders) + len(skipped) == 2
 
 
+def test_a_name_already_at_its_target_is_not_a_skipped_leg() -> None:
+    """A zero change is not a leg the floor refused, and a rerun has one per name.
+
+    On a rerun of an unchanged book every delta is zero. Recording those as
+    skipped legs would fill the day with names that had nothing to do, and the
+    message would name a dozen of them every evening the book stood still.
+    """
+    nav = 1_000_000.0
+    proposal = pd.DataFrame({"ticker": ["AAA", "BBB"], "weight": [0.10, -0.05]})
+    held = {"AAA": 100_000.0, "BBB": -50_000.0}
+
+    orders = morning_job.target_orders(proposal, nav=nav, current=held)
+    skipped = morning_job.minimum_skips(proposal, nav=nav, current=held)
+
+    assert orders == [] and skipped == []
+    # the negative control: a change the floor really refused, on the same book
+    moved = morning_job.minimum_skips(
+        proposal, nav=nav, current={"AAA": 100_000.0, "BBB": -50_100.0}
+    )
+    assert [row["ticker"] for row in moved] == ["BBB"]
+
+
 def test_a_close_under_the_minimum_is_still_sent() -> None:
     """The floor never leaves a leftover holding behind.
 
