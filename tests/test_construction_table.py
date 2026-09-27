@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 
 from live import construction_table as ct
+from live import evening_job as ev
 
 
 @pytest.mark.slow
@@ -183,12 +184,17 @@ def test_the_book_is_the_drop_then_admit_local_maximum() -> None:
     # drop-only count and the E11-F13 prefix, which keeps far fewer names
     assert (floor_rows["n_kept_prefix"] < floor_rows["n_kept"]).all()
     assert (floor_rows["n_kept_drop_only"] < floor_rows["n_kept"]).all()
-    # the five checks, recorded per row. Four hold everywhere; the fifth, at
-    # least 51 kept names for the rank margin, fails on the $5,000 row alone,
-    # which is the stop Part 1R fired
-    bad = floor_rows.loc[floor_rows["floor_book_checks"] != "ok"]
-    assert list(bad["construction"]) == ["min_position_5000"]
-    assert "rank margin" in str(bad["floor_book_checks"].iloc[0])
+    # the five checks, recorded per row. All of them hold on every floor row.
+    # The $5,000 row was the one exception until the 10% variance-share cap: it
+    # kept 35 names against the 51 the owner's rank margin needs, and capping
+    # the largest variance contributors spreads the book until 51 names clear
+    # their floor. The row now sits exactly on the margin, so it is asserted at
+    # the margin rather than above it - one name lost and the check fires again
+    assert (floor_rows["floor_book_checks"] == "ok").all()
+    margin = floor_rows.loc[
+        floor_rows["construction"] == "min_position_5000", "n_kept"
+    ].iloc[0]
+    assert int(margin) == ev.MIN_FLOOR_BOOK_NAMES
     # the search and its ordering robustness are reported
     for column in (
         "admit_passes",

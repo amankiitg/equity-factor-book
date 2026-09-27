@@ -301,8 +301,14 @@ def sized_kept_weights(
     del nav  # the renorm is to gross 1.0; the share counts take the NAV
     idx = np.where(keep)[0]
     names_sub = [names[i] for i in idx]
+    # Size, cap the variance share, renormalize, then hedge and renormalize: the
+    # cap has to sit before the hedge, because the hedge is a projection of the
+    # sized vector and capping after it would undo the neutrality instead.
+    sized = size.proportional(alpha_vec[idx], specific[idx])
+    sized = sizing.cap_variance_shares(sized, specific[idx])
+    sized = sizing.renormalize(sized, gross=1.0)
     w_sub, pre_hedge = sizing.procedure_6_3_hedged_with_exposures(
-        alpha_vec[idx], design[idx], factor_covariance, specific[idx]
+        alpha_vec[idx], design[idx], factor_covariance, specific[idx], sized=sized
     )
     w_sub = sizing.renormalize(w_sub, gross=1.0)
     prices = usable_prices(names_sub, close)
@@ -789,6 +795,38 @@ def floor_book_violations(
     return violations
 
 
+def _adv_maps(
+    names: list[str], root: Path
+) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]]]:
+    """The ADV to price each name on, and the names whose ADV is not known.
+
+    The trailing quarter's median dollar volume, with a zero or absent value
+    filled from the panel's median - the same treatment for both, because a
+    name with no trade data and a name with no volume are the same missing
+    input, and `np.maximum(adv, 1.0)` used to turn the second into a dollar of
+    ADV, which is the most expensive liquidity a name can have.
+
+    Returns the map, the raw trailing ADV (NaN where unknown), and the kept
+    names whose own liquidity is unknown or thin, so the owner is told which
+    cost in the book is a median rather than a measurement.
+    """
+    prices = pd.read_parquet(root / "raw" / "prices.parquet")
+    raw = costs_mod.trailing_adv(prices).reindex(names)
+    filled = raw.fillna(raw.median()).to_numpy(dtype=float)
+    thin = [
+        {"ticker": name, "adv_usd": None if pd.isna(value) else float(value)}
+        for name, value in raw.items()
+        if pd.isna(value) or float(value) < THIN_ADV_USD
+    ]
+    return filled, raw.to_numpy(dtype=float), thin
+
+
+# A name whose trailing dollar volume is below this is named in the email even
+# when the median stands in for it: a $1M ADV name is not a name this book can
+# trade a 5% position in without moving it.
+THIN_ADV_USD = 1_000_000.0
+
+
 def _expected_establishment_cost(
     weights: np.ndarray,
     names: list[str],
@@ -799,10 +837,9 @@ def _expected_establishment_cost(
     """The E9 transaction cost of building the book from flat, in bps of AUM."""
     prices = pd.read_parquet(root / "raw" / "prices.parquet")
     spread = costs_mod.spread_schedule(prices, root)
-    adv = costs_mod._adv_per_ticker(prices)
+    adv_map, _raw, _thin = _adv_maps(names, root)
     sigma = np.sqrt(np.maximum(specific, 1e-12))
     spread_map = spread.reindex(names).fillna(spread.median()).to_numpy(dtype=float)
-    adv_map = adv.reindex(names).fillna(adv.median()).to_numpy(dtype=float)
     fraction = costs_mod._trade_cost(
         weights, spread_map, sigma, adv_map, aum, costs_mod.IMPACT_K
     )
@@ -888,20 +925,34 @@ def _cost_decomposition(
     specific: np.ndarray,
     nav: float,
     root: Path,
-) -> dict[str, float]:
+    previous: np.ndarray | None = None,
+) -> tuple[dict[str, float], list[dict[str, Any]]]:
     """The establishment cost split into spread, impact, commission and borrow.
 
     Each component is in basis points of the paper NAV. Borrow is the
     annualized rate on the short leg over one rebalance horizon, the same
     horizon E6's per-rebalance number uses.
+
+    The impact is the cost of the *trade*, so its dollar amount is the change in
+    weight - from flat on the establishment day, which is why the number is
+    unchanged there, and the difference from the last book afterwards. The other
+    three components still scale with the book that is held: they are the cost of
+    owning the position for the horizon, not of establishing it, and they are
+    named as such until the owner says otherwise.
+
+    Returns the components and the names whose own ADV is unknown or thin.
     """
     prices = pd.read_parquet(root / "raw" / "prices.parquet")
     spread = costs_mod.spread_schedule(prices, root)
-    adv = costs_mod._adv_per_ticker(prices)
+    adv_map, _raw, thin = _adv_maps(names, root)
     sigma = np.sqrt(np.maximum(specific, 1e-12))
     spread_map = spread.reindex(names).fillna(spread.median()).to_numpy(dtype=float)
-    adv_map = adv.reindex(names).fillna(adv.median()).to_numpy(dtype=float)
-    dollar_trade = np.abs(weights) * nav
+    held = (
+        np.asarray(previous, dtype=float)
+        if previous is not None
+        else np.zeros_like(weights)
+    )
+    dollar_trade = np.abs(weights - held) * nav
     impact = (
         costs_mod.IMPACT_K
         * sigma
@@ -909,24 +960,31 @@ def _cost_decomposition(
     )
     spread_bps = float(np.sum(spread_map * np.abs(weights))) * 1e4
     commission_bps = float(np.sum(costs_mod.COMMISSION * np.abs(weights))) * 1e4
-    impact_bps = float(np.sum(impact * np.abs(weights))) * 1e4
+    impact_bps = float(np.sum(impact * np.abs(weights - held))) * 1e4
     short_gross = float(np.maximum(-weights, 0.0).sum())
     borrow_bps = costs_mod.BORROW_RATE * short_gross * (HORIZON / TRADING_DAYS) * 1e4
     total = spread_bps + commission_bps + impact_bps + borrow_bps
     notional = float(np.abs(weights).sum()) * nav
-    n_traded = int((np.abs(weights) > 1e-12).sum())
-    return {
-        "spread_bps": spread_bps,
-        "impact_bps": impact_bps,
-        "commission_bps": commission_bps,
-        "borrow_bps": borrow_bps,
-        "total_bps": total,
-        "notional": notional,
-        # The average trade size divides by the number of names that actually
-        # trade, not by the full name list: a book with a dropped tail must not
-        # understate the average position (E11-F2).
-        "avg_trade_size": notional / n_traded if n_traded else 0.0,
-    }
+    traded_notional = float(np.abs(weights - held).sum()) * nav
+    n_traded = int((np.abs(weights - held) > 1e-12).sum())
+    return (
+        {
+            "spread_bps": spread_bps,
+            "impact_bps": impact_bps,
+            "commission_bps": commission_bps,
+            "borrow_bps": borrow_bps,
+            "total_bps": total,
+            # The book's own gross notional, which is what the page shows as the
+            # book's size, beside the amount that actually trades.
+            "notional": notional,
+            "traded_notional": traded_notional,
+            # The average trade size divides by the number of names that actually
+            # trade, not by the full name list: a book with a dropped tail must not
+            # understate the average position (E11-F2).
+            "avg_trade_size": traded_notional / n_traded if n_traded else 0.0,
+        },
+        thin,
+    )
 
 
 def build_proposal(
@@ -935,6 +993,7 @@ def build_proposal(
     nav: float = PAPER_NAV,
     store: bool = True,
     appendix: dict[str, Any] | None = None,
+    previous: pd.Series | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
@@ -944,6 +1003,10 @@ def build_proposal(
     E9 cost split, and the hashes of every frozen input. `appendix` is the
     per-input state of the Postgres appendix the run was priced from, so a
     proposal always names the appendix rows behind it (E11-F15).
+
+    `previous` is the last book the loop held, keyed by ticker. The impact term
+    is the cost of trading to this book rather than of owning it, so it needs
+    that book; from flat (the establishment day) every previous weight is zero.
     """
     if nav is None or not math.isfinite(nav) or nav <= 0:
         raise ValueError(
@@ -1050,7 +1113,14 @@ def build_proposal(
 
     kept_decomposition = _decomposition(weights, design, factor_covariance, specific)
 
-    cost = _cost_decomposition(weights, names, specific, nav, root)
+    previous_weights = (
+        previous.reindex(names).fillna(0.0).to_numpy(dtype=float)
+        if previous is not None
+        else None
+    )
+    cost, thin_adv = _cost_decomposition(
+        weights, names, specific, nav, root, previous_weights
+    )
 
     kept_rows = pd.DataFrame({"ticker": names, "weight": weights})
     kept_rows = kept_rows.loc[kept_rows["weight"].abs() > 1e-12].reset_index(drop=True)
@@ -1153,7 +1223,12 @@ def build_proposal(
             "total": cost["total_bps"],
         },
         "notional": cost["notional"],
+        "traded_notional": cost["traded_notional"],
         "avg_trade_size": cost["avg_trade_size"],
+        # The kept names whose own trailing ADV is unknown or below $1M, so the
+        # owner can see which part of the cost above is a median standing in for
+        # a measurement. An empty list is a book whose liquidity was measured.
+        "thin_adv": thin_adv,
         "input_as_of": input_as_of,
         "max_input_staleness_days": staleness,
         "input_hashes": {

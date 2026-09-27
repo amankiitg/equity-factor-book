@@ -12,6 +12,18 @@ Part B). The book runs indefinitely on `idio_momentum` through the full stack,
 paper only. The handoff files live in [`handoff/`](handoff/): the standing
 rules, the current task, the reviewer's log and the implementer report.
 
+## Live book
+
+**https://efb-live-book.nutritrack.workers.dev** — the evening's book, one
+screen. It sits behind Cloudflare Access, and signing in is an email one-time
+PIN to the owner's address: without it, the page and its API answer a redirect to
+the login rather than any content. It updates after each weekday evening run (the
+cron fires at 22:30 UTC, inside the after-hours window) and shows the run's
+status and target close, the book and the orders it produced, the factor
+exposures before and after the hedge, and the run status line. It is served by a
+Worker that reads the snapshot from a private R2 bucket. See
+[`web/README.md`](web/README.md) for the page's own setup and commands.
+
 ## Status
 
 - [x] Repo skeleton and engineering standards (Roadmap Appendix B)

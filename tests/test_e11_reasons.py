@@ -151,3 +151,19 @@ def test_a_previous_book_without_a_score_is_ignored(
     )
 
     assert run_live_daily.previous_book("2026-09-25", []) is None
+
+
+def test_the_previous_close_is_the_books_own_date() -> None:
+    """The close a book was held at, which is where its risk is measured."""
+    book = pd.DataFrame(
+        {"trade_date": ["2026-09-23", "2026-09-24"], "ticker": ["A", "B"]}
+    )
+    fallback = pd.Timestamp("2026-09-25")
+
+    assert run_live_daily.previous_close(book, fallback) == pd.Timestamp("2026-09-24")
+    assert run_live_daily.previous_close(None, fallback) == fallback
+    # A book that cannot date itself does not date the comparison either.
+    assert (
+        run_live_daily.previous_close(pd.DataFrame({"ticker": ["A"]}), fallback)
+        == fallback
+    )

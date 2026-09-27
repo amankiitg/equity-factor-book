@@ -2621,3 +2621,98 @@ flag says. This item leaves the post-deploy list.
   EFB_INIT_STORE".
 - Step 3, the local database check, runs without the flag and does not seed
   the store.
+
+## 2026-09-26 owner decisions implemented: the construction table moved, and the cap holds exactly before the hedge
+
+Both findings are consequences of decision 3 (the 10% variance-share cap) that
+were not visible when it was set. Every number below is measured on the **09-21**
+close, the last close this repository can rebuild from `data/` alone. The
+rehearsal's own close is 09-25, whose signal row comes from the R2 seed, so that
+book is quoted only where the run itself printed it.
+
+**The table moved and a stop cleared.** `tests/test_construction_table.py` failed
+after the cap, on the assertion that the $5,000 floor row is the one row that
+violates the fifth check. It is not a regression: capping the largest variance
+contributors spreads the book, so the same drop-then-admit rule keeps 51 names
+where it kept 35, exactly the owner's rank margin. Every floor row now passes all
+five checks. The comparison is a stored artifact against a fresh build rather than
+a re-run at an old commit: `live/construction_table.parquet` is the pre-cap table
+as stored (its $5,000 row carries `35 kept names, below the 51 name rank margin`),
+and the second column is `build_table(store=False)` at the tip.
+
+| floor row | n_kept before | after | n_eff before | after | max weight before | after |
+| --- | --- | --- | --- | --- | --- | --- |
+| min_position_1500 | 234 | 230 | 110.71 | 139.27 | 4.04% | 2.88% |
+| min_position_2000 | 189 | 186 | 95.55 | 121.55 | 4.37% | 3.00% |
+| min_position_3000 | 94 | 111 | 54.53 | 78.88 | 6.17% | 3.51% |
+| min_position_5000 | 35 | **51** | 19.89 | 34.96 | 11.95% | 5.89% |
+| two_part_floor_1500_20shares | 129 | 151 | 66.22 | 91.16 | 5.45% | 3.39% |
+| share_only_20shares (the rule that trades) | 150 | 169 | 70.59 | 96.37 | 5.35% | 3.16% |
+| top_n_150 / top_n_200 / full_book_499 | 150 / 200 / 499 | same set | 58.53 / 72.84 / 157.33 | 63.28 / 80.65 / 185.68 | 6.22% / 5.43% / 3.37% | 5.94% / 5.19% / 3.13% |
+
+The three no-floor rows are **not** a negative control: their membership cannot
+move (150/200/499 by construction, no floor), but their weights do, because the cap
+sits inside `sized_kept_weights`, the one sizing function every construction shares.
+The negative control is the unit test's own uncapped run.
+
+**The cap binds exactly before the hedge, and the hedge moves shares again.** On
+the 09-21 book the capped sized vector's largest share measures **10.00000000%**,
+with zero names above it. The hedge is a projection of that vector, and
+renormalizing its output moves shares, so in the dispatched 169-name book one name
+is over the cap:
+
+| ticker | sized, pre-hedge | traded book, post-hedge |
+| --- | --- | --- |
+| TER | 10.00% | **11.72%** |
+| MU | 10.00% | 9.58% |
+| WDC | 10.00% | 8.24% |
+| INTC | 10.00% | 5.29% |
+| MRVL | 10.00% | 4.84% |
+
+**And the name that prompted the rule left the book.** The recorded 09-21 book
+carried MRNA at 4.545% of gross and **51.32%** of the predicted specific variance,
+with MU at 11.26% and LITE at 10.04% - three names over the cap. Capped to a
+10.00% share, MRNA no longer clears the 20-share floor, and today's build of the
+same close keeps **169 names where it kept 150**, 40 joined and 21 left. Worth the
+owner's eye before the gate evenings: the rule removes the very position it was
+written about.
+
+Left as set rather than changed: clamping the post-hedge vector breaks the exact
+projection that makes the book dollar-neutral, and re-hedging a clamped vector
+re-violates names the way the per-name rescale did. An iterate between the cap and
+the hedge with its own convergence check is a different rule. Reported for the
+owner's decision.
+
+**One operational check, so it is not mistaken for a change.** The deployed page
+was re-verified closed today: `/` and `/api/snapshot` both answer **302** to
+`https://amankesar.cloudflareaccess.com/cdn-cgi/access/login/...` with the same
+`kid`, which is the Access application's own audience. A plain `urllib` request
+gets **403** for the same URLs with no `Location`, because Cloudflare answers a
+non-browser client before Access does - so a status check that does not send a
+browser `User-Agent` reports "closed" as a 403 and reads like a misconfiguration.
+Send one, or read the 302.
+
+**The suite's red test was a timeout, and it is now timed rather than trusted.** The
+full suite at the tip reported `1 failed, 1009 passed, 1 skipped`, the failure being
+`tests/test_eval_risk.py::test_families_are_deterministic_under_a_fixed_seed` with
+`Failed: Timeout (>120.0s) from pytest-timeout`. Measured rather than assumed: with
+the plugin disabled (`-p no:timeout`) that test takes **138.9 s**, and **145.8 s**
+on a second run, against `timeout = 120` in `pyproject.toml`, while the other
+family-builder, `test_no_portfolio_uses_a_weight_dated_after_its_own_day`, takes
+68.5 s and timed out only in the run that shared the machine with three book
+rebuilds. Both now carry `@pytest.mark.timeout(300)` with the numbers in a comment.
+The global 120 s stays, so a hang is still a failure with a stack dump; what changes
+is that a test whose honest duration is two and a half minutes is no longer reported
+as broken. Nothing under test moved for this: both tests call
+`efb.eval_risk.build_families`, whose module and inputs this phase does not touch,
+and the same test passed in a full run of the same work tree earlier the same day.
+A third test joined them: `tests/test_e4_results.py::test_no_earlier_verdict_moved`
+reported the same timeout in the next full run, measures **86.8 s** on its own with
+the plugin disabled and over 120 s inside the suite, where the earlier tests have
+already spent the machine's memory. It carries the same per-test bound with its own
+number in the comment. Three heavy tests, three measured bounds, and the global
+limit still where the owner put it. The full suite with `--durations=25` afterwards
+is **1010 passed, 1 skipped in 9m51s**, with those three at 141.6 s, 86.8 s and
+67.9 s and the fourth slowest at 48.7 s: the set of tests that need their own bound
+is closed at three, measured rather than assumed.
+

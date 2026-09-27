@@ -156,6 +156,28 @@ def _adv_per_ticker(prices: pd.DataFrame) -> pd.Series:
     return dollar_volume.median().rename("adv")
 
 
+# One quarter of sessions. The research capacity work keeps the full-history
+# median (`_adv_per_ticker`) so its stored numbers do not move; the live path
+# takes the trailing window, because the median over sixteen years is not a
+# statement about today's liquidity.
+ADV_WINDOW = 63
+
+
+def trailing_adv(prices: pd.DataFrame, window: int = ADV_WINDOW) -> pd.Series:
+    """The median daily dollar volume over the last `window` sessions.
+
+    A zero ADV is treated as missing, not as an illiquid name: zero dollar
+    volume over the window means the panel has no trade data for the name, and
+    a name nobody traded is not a name whose cost is 7,575 times its notional.
+    The live cost path fills a missing ADV from the median, and this is what
+    makes a zero reach that path instead of the `np.maximum(..., 1.0)` floor,
+    which turns a missing input into the worst possible one.
+    """
+    dollar_volume = (prices["volume"] * prices["close"]).unstack("ticker")
+    adv = dollar_volume.tail(window).median().rename("adv")
+    return adv.mask(adv <= 0)
+
+
 def size_deciles(prices: pd.DataFrame, root: Path) -> pd.Series:
     """The size decile per ticker, 0 for the smallest market-cap decile."""
     mcap = _market_cap(prices, root)

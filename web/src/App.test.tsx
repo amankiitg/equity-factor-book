@@ -120,8 +120,13 @@ describe("the page", () => {
     const table = screen.getByRole("table", { name: "factor exposures" });
     const zeros = within(table).getAllByText("0.0000");
     expect(zeros.length).toBeGreaterThanOrEqual(17);
-    // A genuinely negative exposure keeps its sign, so the rule is not a clamp.
-    expect(within(table).getByText("-0.0006")).toBeTruthy();
+    // A genuinely negative exposure keeps its sign, so the rule is not a clamp:
+    // the book's most negative factor renders with its minus sign.
+    const negatives = Object.values(OK.exposures_before_hedge).filter(
+      (value) => (value ?? 0) < 0,
+    ) as number[];
+    expect(negatives.length).toBeGreaterThan(0);
+    expect(within(table).getByText(Math.min(...negatives).toFixed(4))).toBeTruthy();
   });
 
   it("draws a before and an after bar per factor, on one scale", () => {
@@ -141,6 +146,17 @@ describe("the page", () => {
     expect(beforeBar.getAttribute("data-sign")).toBe("positive");
     const energy = table.querySelector("[data-factor='sector_10'] [data-bar='before']");
     expect(energy?.getAttribute("data-sign")).toBe("negative");
+  });
+
+  it("shows the traded book's gross as the headline, and the full book as a detail", () => {
+    // The manifest's own `gross` is the 499-name book before the floor. Publishing
+    // it as "the gross" told the owner their book was 96.85% invested when the book
+    // that trades is 100% and $1,000,000.
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    expect(OK.book.gross).toBe(1);
+    expect(screen.getByText("100.00% ($1,000,000)")).toBeTruthy();
+    expect(screen.getByText("full book before the floor")).toBeTruthy();
+    expect(screen.getByText("96.85%")).toBeTruthy();
   });
 
   it("breaks the summary into labelled items rather than a pipe run", () => {

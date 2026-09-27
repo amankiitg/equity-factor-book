@@ -45,7 +45,15 @@ def test_bias_statistic_reads_miscalibration() -> None:
     assert low["coverage"] < 0.05 < high["coverage"]
 
 
+# These two build every risk family in the model, twice in the first one, and
+# that is 138.9 s and 68.5 s on the development machine with the plugin disabled
+# (`-p no:timeout`, 2026-09-26). The global 120 s is set so that a hang is a
+# failure with a stack dump rather than an hour of silence; it sits inside the
+# noise margin of the heavier of these two, so it failed there and passed in
+# another full run of the same code. The override is per test and stays bounded,
+# so a genuine hang still fails.
 @pytest.mark.slow
+@pytest.mark.timeout(300)
 def test_families_are_deterministic_under_a_fixed_seed() -> None:
     first = eval_risk.build_families(seed=11, store=False)
     second = eval_risk.build_families(seed=11, store=False)
@@ -67,6 +75,7 @@ def test_families_are_deterministic_under_a_fixed_seed() -> None:
 
 
 @pytest.mark.slow
+@pytest.mark.timeout(300)
 def test_no_portfolio_uses_a_weight_dated_after_its_own_day() -> None:
     """Replicate the engine's period application and check the weight date.
 

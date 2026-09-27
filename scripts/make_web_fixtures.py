@@ -17,6 +17,12 @@ the page's input fails the suite instead of drifting into the fixtures.
 The book is the 09-21 proposal with the trade reasons the run assigns, and the
 manifest is the one the evening job builds today, so `exposures_before_hedge` and
 `exposures_after_hedge` are the hedge's own numbers rather than a reconstruction.
+Because the recorded parquet is the book the code wrote then and the manifest is
+the book the code builds now, the two can disagree on a rule change: since the 10%
+variance-share cap the fixture's `n_kept` is 169 while its 150 recorded rows are
+what traded before the cap. No fixture is a snapshot the job could produce in the
+one respect that matters to the page's tests - the book rows and the manifest come
+from the same close, but not from the same run.
 """
 
 from __future__ import annotations

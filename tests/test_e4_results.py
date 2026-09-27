@@ -131,8 +131,13 @@ def test_the_data_hash_covers_the_artifacts_read() -> None:
         assert path.exists(), path
 
 
+# The stored verdicts are re-derived here, which is 86.8 s on the development
+# machine with the plugin disabled (2026-09-26) and over the global 120 s inside a
+# full suite, where the earlier tests have already spent the machine's memory. The
+# bound is per test and stays well under a real hang.
 @pytest.mark.integration
 @pytest.mark.slow
+@pytest.mark.timeout(300)
 def test_no_earlier_verdict_moved() -> None:
     """The stop condition that outranks every number in the sprint."""
     check = evaluate.prior_verdict_changes()

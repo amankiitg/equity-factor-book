@@ -126,13 +126,36 @@ def previous_book(as_of: str, proposal_paths: list[Path]) -> pd.DataFrame | None
     return None
 
 
+def previous_close(
+    previous: pd.DataFrame | None, fallback: pd.Timestamp
+) -> pd.Timestamp:
+    """The close the previous book was held at, or the caller's close.
+
+    The previous book's own trade date is the close its risk was measured at. A
+    book without one cannot date the comparison, so the caller's close stands in
+    and the answer degrades to what it was before rather than failing the run.
+    """
+    if previous is not None and len(previous) and "trade_date" in previous.columns:
+        dates = pd.to_datetime(previous["trade_date"])
+        if not dates.isna().all():
+            return pd.Timestamp(dates.max())
+    return fallback
+
+
 def store_proposal(
-    as_of: str, data_root: Path | None = None, dry_run: bool = True
+    as_of: str,
+    data_root: Path | None = None,
+    dry_run: bool = True,
+    previous: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Write the proposal manifest, positions and trade reasons to the store.
 
     Returns the rows it wrote, reasons attached, because the snapshot carries the
     same book the store does and re-deriving it would let the two disagree.
+
+    `previous` is the last book the loop held, passed in when the caller has
+    already read it (the proposal build needs the same book for its trade impact)
+    and read from the store when it has not.
     """
     from live import store, trade_reasons
 
@@ -140,12 +163,22 @@ def store_proposal(
     manifest = json.loads((PROPOSAL_DIR / f"proposal_{as_of}.json").read_text())
     rows = pd.read_parquet(PROPOSAL_DIR / f"proposal_{as_of}.parquet")
     proposal_paths = sorted(PROPOSAL_DIR.glob("proposal_*.parquet"))
-    previous = previous_book(as_of, proposal_paths)
+    if previous is None:
+        previous = previous_book(as_of, proposal_paths)
 
     specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_var.parquet")
     as_of_ts = pd.Timestamp(as_of)
     today_std = trade_reasons.specific_std(specific, as_of=as_of_ts)
-    prev_std = trade_reasons.specific_std(specific, as_of=as_of_ts)
+    # The previous close's own specific standard deviation, which is what makes
+    # the "risk moved" reason reachable: passing today's for both closes made the
+    # comparison `abs(sigma_today - sigma_prev) > RISK_EPS * sigma_prev` false by
+    # construction, so a name whose weight moved while its score did not could only
+    # ever be labelled "the hedge moved". The previous book's own trade date is the
+    # close to take it at, and with no previous book the argument is today's, which
+    # is what an establishment day wants: every row is a new position anyway.
+    prev_std = trade_reasons.specific_std(
+        specific, as_of=previous_close(previous, as_of_ts)
+    )
 
     reasons = trade_reasons.assign_trade_reasons(rows, previous, today_std, prev_std)
     rows = rows.merge(reasons[["ticker", "reason"]], on="ticker", how="left")
@@ -320,6 +353,7 @@ def finish_run(
     reconciliation: dict[str, Any] | None = None,
     init: bool = False,
     no_price: list[str] | None = None,
+    thin_adv: list[dict[str, Any]] | None = None,
     poster: Any = None,
     snapshot_poster: Any = None,
 ) -> int:
@@ -429,6 +463,7 @@ def finish_run(
         snapshot=snapshot_detail,
         cross_checks_capped=cross_checks_capped,
         no_price=no_price,
+        thin_adv=thin_adv,
         init=init,
         establishment=establishment,
         cost_label=cost_label,
@@ -740,10 +775,42 @@ def main() -> int:
                 init=first_run,
             )
 
-        # Evening: propose tomorrow's book from the latest close.
-        manifest = evening_job.build_proposal(appendix=appendix_identity)
+        # Evening: propose tomorrow's book from the latest close. The book the
+        # loop held before tonight is read first, because the proposal's trade
+        # impact is the cost of trading to the new book rather than of holding
+        # it, and the reason column compares against it: the gate's own target
+        # close is tonight's close, so it is the date to ask at.
+        previous = previous_book(str(gate["target_close"]), [])
+        previous_weights = (
+            previous.set_index("ticker")["weight"] if previous is not None else None
+        )
+        manifest = evening_job.build_proposal(
+            appendix=appendix_identity, previous=previous_weights
+        )
         as_of = str(manifest["as_of"])
-        book = store_proposal(as_of, run_tree, dry_run=dry_run)
+        book = store_proposal(as_of, run_tree, dry_run=dry_run, previous=previous)
+        raw_thin = manifest.get("thin_adv")
+        thin_adv: list[dict[str, Any]] = (
+            [dict(entry) for entry in raw_thin] if isinstance(raw_thin, list) else []
+        )
+        if thin_adv:
+            # A kept name whose own ADV is unknown or below $1M has its cost
+            # computed from the panel median, so the day's cost is partly a
+            # stand-in. Naming them is the difference between a number the owner
+            # can read and a number they have to trust.
+            logger.warning(
+                "%d kept name(s) have an unknown or thin trailing ADV: %s",
+                len(thin_adv),
+                ", ".join(
+                    f"{row['ticker']} "
+                    + (
+                        "no ADV"
+                        if row.get("adv_usd") is None
+                        else f"${float(row['adv_usd']):,.0f}"
+                    )
+                    for row in thin_adv
+                ),
+            )
 
         # What the account actually holds, read before the orders are built: the
         # traded leg of every order is the difference between the target and this
@@ -815,6 +882,7 @@ def main() -> int:
         started_at=started_at,
         cross_checks_capped=capped,
         no_price=no_price,
+        thin_adv=thin_adv,
         init=first_run,
         establishment=bool(morning.get("establishment")),
         cost_label=str(morning.get("cost_label") or "rebalance"),

@@ -119,7 +119,18 @@
         "n_kept": {"type": ["integer", "number", "null"]},
         "n_long": {"type": ["integer", "number", "null"]},
         "n_short": {"type": ["integer", "number", "null"]},
-        "gross": {"type": ["number", "null"]},
+        "gross": {
+          "type": ["number", "null"],
+          "description": "The gross of the book that trades: the kept set after the hedge, renormalized to exactly 1.0 (100%)."
+        },
+        "gross_notional": {
+          "type": ["number", "null"],
+          "description": "That book's gross in dollars, so the headline gross is 100% and $1,000,000 rather than a fraction alone."
+        },
+        "full_book_gross": {
+          "type": ["number", "null"],
+          "description": "The 499-name book's gross after sizing and before the floor - no variance cap, because the cap is applied to the kept set. A different book, shown only as a labelled detail, never as the gross."
+        },
         "net": {"type": ["number", "null"]},
         "max_kept_weight": {"type": ["number", "null"]},
         "achieved_annual_vol": {"type": ["number", "null"]},

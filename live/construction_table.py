@@ -492,11 +492,13 @@ def _stamp_admit_columns(
 ) -> None:
     """Record the search behind an installed floor book, and its check result.
 
-    The check result is a string rather than a gate, because one row of the
-    table cannot satisfy the name-count margin (`min_position_5000` keeps 35
-    names against the 51 the owner's rank margin needs) and stopping the
-    build would hide the measurement. The build reports it; the live path
-    raises on it.
+    The check result is a string rather than a gate, because the live path
+    raises on a violation and a build must still be able to record one: until
+    the 10% variance-share cap, the $5,000 row kept 35 names against the 51
+    name rank margin and the table had to report that row rather than refuse
+    to build. Every row now passes, and the string is kept because the next
+    input that costs a comparison row a name has to be visible here, not in a
+    stopped run.
 
     The search's run time is not stored here, because a clock reading would
     make the artifact differ on every build; the proposal manifest carries it.

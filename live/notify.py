@@ -208,6 +208,7 @@ def compose(
     snapshot: str | None = None,
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
+    thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
     cost_label: str | None = "rebalance",
@@ -295,6 +296,12 @@ def compose(
         # smaller than the index is a book nobody can check, so the names are said
         # out loud rather than left to be noticed.
         lines.append(f"Dropped for no price: {', '.join(sorted(no_price))}.")
+    if thin_adv:
+        # The impact term is a function of each name's dollar volume, and a name
+        # whose own ADV is missing or below $1M has that volume filled from the
+        # panel's median. The cost is then partly a stand-in, and where it happens
+        # is the difference between a number to read and a number to trust.
+        lines.append(f"Liquidity: {_thin_adv_list(thin_adv)}")
     # A split is named here because it moves a held position without a decision
     # being made, and an unexplained large move is named because it is the one
     # thing in the appended session a person has to look at.
@@ -378,6 +385,32 @@ def _cost_line(
         parts_bps = sum(value for _, value in parts)
         line += f", which sum to {parts_bps:.2f}, not {total_bps:.2f}"
     return line + "."
+
+
+def _thin_adv_list(rows: list[dict[str, Any]]) -> str:
+    """The kept names whose own liquidity is unknown or thin, and its size.
+
+    A name with no ADV at all is stated as such rather than as a zero: the median
+    stood in for it, and the reader has to know which of the two happened.
+    """
+    named = []
+    for row in sorted(rows, key=lambda item: str(item.get("ticker"))):
+        ticker = str(row.get("ticker", "?"))
+        value = row.get("adv_usd")
+        named.append(
+            f"{ticker} no ADV" if value is None else f"{ticker} ${float(value):,.0f}"
+        )
+    count = len(named)
+    # Mirrors `costs.ADV_WINDOW`, which is the window the run priced the impact
+    # with. Written here rather than imported because this module composes text
+    # from what the run hands it and imports no model code.
+    window = "63"
+    return (
+        f"{count} kept name(s) whose own trailing {window}-session dollar volume is "
+        f"unknown or under $1M, so the panel median stands in: "
+        + "; ".join(named)
+        + "."
+    )
 
 
 def _flag_list(flags: list[dict[str, Any]]) -> str:
@@ -608,6 +641,7 @@ def notify_run(
     snapshot: str | None = None,
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
+    thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
     cost_label: str | None = "rebalance",
@@ -649,6 +683,7 @@ def notify_run(
         splits=splits,
         flags=flags,
         no_price=no_price,
+        thin_adv=thin_adv,
         store=store,
         snapshot=snapshot,
         cross_checks_capped=cross_checks_capped,

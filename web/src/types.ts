@@ -65,6 +65,8 @@ export interface Snapshot {
     n_long: number | null;
     n_short: number | null;
     gross: number | null;
+    gross_notional: number | null;
+    full_book_gross: number | null;
     net: number | null;
     max_kept_weight: number | null;
     achieved_annual_vol: number | null;

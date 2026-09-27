@@ -297,7 +297,18 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
           <dt className="font-medium">construction</dt>
           <dd>{snapshot.construction}</dd>
           <dt className="font-medium">gross</dt>
-          <dd>{percent(snapshot.book.gross)}</dd>
+          <dd>
+            {percent(snapshot.book.gross)}
+            {snapshot.book.gross_notional !== null
+              ? ` (${dollars(snapshot.book.gross_notional)})`
+              : ""}
+          </dd>
+          {snapshot.book.full_book_gross !== null ? (
+            <>
+              <dt className="text-slate-500">full book before the floor</dt>
+              <dd className="text-slate-500">{percent(snapshot.book.full_book_gross)}</dd>
+            </>
+          ) : null}
           <dt className="font-medium">net</dt>
           <dd>{percent(snapshot.book.net)}</dd>
           {snapshot.book.n_kept !== null ? (

@@ -3002,7 +3002,263 @@ Two things worth the owner's eye, both reported rather than changed:
   `today_std`), so `RISK_MOVED` can never trigger from the live path; a name whose
   weight moved while its score did not is labelled "the hedge moved".
 
-### The rehearsal again, after the four fixes
+### The four decisions of 2026-09-26, and what they changed
+
+The owner's answers to Q5, Q6 and Q7, plus two smaller rules. Every number below
+is from the run's own artifacts (`efb-run-9j6t4k5j`) or from the rehearsal at the
+end of this section; the proposal was rebuilt with the new code to read them.
+
+**1. Gross: the book that trades is the headline.** `snapshot.book.gross` is now
+`kept_gross` - the kept book after the hedge, renormalized to exactly 1.0 - and it
+is published beside its dollar value, so the page says **100.00%
+($1,000,000)** rather than 90.08%. The 499-name book's own gross keeps its own
+name: `book.full_book_gross`, shown on the page as the labelled detail "full book
+before the floor". `book.gross_notional` comes from the manifest's `notional`,
+which is that same traded book in dollars ($1,000,000). A manifest written before
+`kept_gross` existed, or a stored row carrying it as null, still states a gross:
+it falls back to the full-book number rather than to nothing.
+
+The page's fixtures are regenerated with the writer itself, and one thing about
+them is worth stating rather than discovering: `snapshot_ok.json` now pairs the
+**recorded** 09-21 book - 150 rows, the book the pre-cap code wrote - with the
+manifest the evening job builds today, whose `n_kept` is 169. The generator has
+always made that split (the recorded rows carry the trade reasons, the manifest
+carries the hedge's own numbers); the cap made it visible, and the docstring now
+says so, so a 150-row book beside a 169-name count reads as what it is rather than
+as an arithmetic error.
+
+**2. Cost: the trailing quarter, no $1 floor, and the trade rather than the book.**
+Three changes, all in the live path:
+
+- `costs.trailing_adv` is the median dollar volume over the **last 63 sessions**.
+  The research capacity work deliberately keeps the full-history median
+  (`_adv_per_ticker`), so E8 and E9's stored numbers do not move; the live cost is
+  about today's liquidity.
+- A **zero ADV is a missing ADV**: it is masked to NaN and filled from the panel
+  median, exactly as an absent value already was. Nothing is floored to $1, which
+  is what turned SW's missing volume into the worst liquidity in the book.
+- The **impact is the trade**: `dollar_trade = |w - w_previous| × NAV`. From flat
+  the two are identical, which is why the establishment number is comparable; on a
+  rebalance the impact is now the cost of the change rather than of the position.
+  The other three components (spread, commission, borrow) still scale with the
+  book that is held, and the report says so rather than pretending otherwise: they
+  are the cost of owning the position for the horizon.
+- Any kept name whose own trailing ADV is **unknown or under $1M** is named in the
+  email, with its ADV or the words "no ADV", because that is a cost that is partly
+  a median standing in for a measurement. The list also travels in the manifest
+  (`thin_adv`) and the run log.
+
+**The establishment cost, rebuilt on the same close:** **15.0945 bp**, against
+53.7338 before.
+
+| component | before | after |
+| --- | --- | --- |
+| spread | 5.3558 | 5.2637 |
+| impact | 39.0447 | **0.4975** |
+| commission | 1.0000 | 1.0000 |
+| borrow | 8.3333 | 8.3333 |
+| **total** | **53.7338** | **15.0945** |
+
+The impact falls by 38.5 bp for two reasons that both matter: 37.2460 bp of it was
+SW's $0 ADV at a $1 floor, and the rest is the trailing window plus the smaller
+positions the variance cap produces. `thin_adv` is **empty** for this book: SW's
+own trailing 63-session dollar volume is $204.7M on the rehearsal's panel ($210M
+on the repository's), so nothing needed the median.
+
+**3. MRNA: the move is real, and the variance rule is now enforced.** The close
+was cross-checked against Alpaca's own daily bars for the same session
+(`StockHistoricalDataClient`, raw adjustment, IEX feed):
+
+| | 2026-08-18 close | 2026-08-19 open | high | low | close | volume |
+| --- | --- | --- | --- | --- | --- | --- |
+| the panel | 62.96 | 116.02 | 176.66 | 114.46 | 174.38 | 199,252,300 |
+| Alpaca IEX | 62.93 | 116.17 | 176.595 | 114.57 | 174.27 | 3,673,339 |
+
+Two independent sources agree to within eleven cents on the close and fifteen on
+the high, with a 46× volume spike and an 84% overnight gap. **+176.97% is a real
+repricing, not a bad print or an unadjusted split, so nothing was fixed at the
+source** - and its 293% annualized specific volatility is a real number about a
+real two-day move, which is exactly the kind of risk the owner's rule is for.
+
+The rule is now in the sizing, before the hedge, in the one function every caller
+shares (`sized_kept_weights`): size, cap the variance shares, renormalize to gross
+1.0, hedge, renormalize. Shares are `w_i^2 s_i^2 / sum(w_j^2 s_j^2)`. The cap is
+solved directly rather than iterated - every clamped name sits at the same level,
+so if the top `m` are clamped the level is `cap*S/(1 - m*cap)` - because rescaling
+violators one at a time re-violates the names just clamped (measured: 100 passes
+and still moving) and a bisection on the level loses its own fixed point when the
+cap is exactly 1/n. A book smaller than 1/cap takes the tightest cap it can meet,
+1/n, so a candidate subset in the floor search is rejected rather than raising.
+
+**The cap on a fixed name set.** So that the cap can be measured on its own, the
+same 150 names - the set the 09-21 book recorded - are sized today with and
+without it. Shares are `w_i^2 s_i^2 / sum_j w_j^2 s_j^2` at the 09-21 close:
+
+| ticker | weight, no cap | share, no cap | weight, capped | share, capped |
+| --- | --- | --- | --- | --- |
+| MRNA | 0.570% | **50.01%** | 0.158% | **10.00%** |
+| LITE | 0.531% | 10.79% | 0.318% | 10.00% |
+| MU | 0.656% | 10.50% | 0.398% | 10.00% |
+| MRVL | 0.381% | 4.65% | 0.347% | 10.00% |
+| WDC | 0.412% | 4.62% | 0.376% | 10.00% |
+
+Three names were over the cap before and **none** is after; the largest share
+falls from 50.01% to exactly 10.00%. Capping MRNA raises everyone else's share, so
+the names below it are clamped too - DELL lands at exactly 10.00% as well - which
+is the water-filling answer, not an accident. The sized vector's own effective
+breadth goes from 47.69 to 62.21.
+
+**And the book that actually trades, on the same close.** The recorded 09-21 book -
+the one that traded before this rule existed - carried MRNA at 4.545% of gross and
+**51.32%** of the predicted specific variance, with MU at 11.26% and LITE at
+10.04%: three names over the cap. Rebuilt today on that close, the rule keeps
+**169 names where it kept 150**, with `n_eff_kept` **70.59 -> 96.37** and the
+largest position **5.35% -> 3.16%**. 40 names joined and 21 left. And **MRNA is
+not in it**: capped to a 10.00% share it no longer clears the 20-share floor, so
+the name that prompted the rule leaves the book. That is the rule working as
+written, and it is the one consequence of it the owner should see plainly.
+
+**What the cap does not do, measured and left as instructed.** The owner's rule
+puts the cap **before the hedge**, and there it binds exactly: zero names over 10%
+on the sized vector, whose maximum share measures 10.00000000%. The hedge is a
+projection of that vector, and renormalizing its output moves shares again. On the
+09-21 close's dispatched 169-name book, the shares of predicted specific variance
+are:
+
+| ticker | sized, pre-hedge | traded book, post-hedge |
+| --- | --- | --- |
+| TER | 10.00% | **11.72%** |
+| MU | 10.00% | 9.58% |
+| WDC | 10.00% | 8.24% |
+| INTC | 10.00% | 5.29% |
+| MRVL | 10.00% | 4.84% |
+
+One name is above the cap in the book the account would hold, so the rule's
+*letter* holds and its *purpose* is met only pre-hedge. Capping after the hedge is
+not a one-line change: clamping the post-hedge vector breaks the exact projection
+that makes the book dollar-neutral and leaves the factor exposure non-zero, and
+re-hedging a clamped vector re-violates names the way the per-name iteration did.
+The honest fix is an iterate between the cap and the hedge with a convergence
+check, which is a different rule from the one set, so it is reported here for the
+owner's decision rather than applied on the eve of the gate evenings.
+
+**Which close each number comes from.** The volatility paragraph above was read at
+the close the rule was set on; read at the repository's own 09-21 close the same
+name is 19.05% a day and 302% annualized, with SMCI at 89% against a book median of
+2.1% a day - the same shape, a close later. Everything after this paragraph is the
+**09-21** close, the last one this repository can rebuild: the rehearsal further
+down runs the **09-25** close, whose signal row comes from the R2 seed rather than
+from `data/`, so the rehearsal's own book is quoted only where its transcript
+printed it.
+
+**The cap also cleared a stop the floor table had recorded against itself.**
+`tests/test_construction_table.py` asserts the fifth floor check - at least 51 kept
+names, three times the design width, so the exact FMP hedge keeps its rank margin
+- and it failed after the cap. The failure is the cap working, not a regression:
+the $5,000 floor row used to keep 35 names against those 51, and capping the
+largest variance contributors spreads the book until the same rule keeps 51. Every
+floor row now passes all five checks, and the row sits *exactly* on the margin, so
+the test asserts the count at the margin rather than above it.
+
+| floor row | n_kept before | n_kept after | n_eff before | n_eff after | max weight before | max weight after |
+| --- | --- | --- | --- | --- | --- | --- |
+| min_position_1500 | 234 | 230 | 110.71 | 139.27 | 4.04% | 2.88% |
+| min_position_2000 | 189 | 186 | 95.55 | 121.55 | 4.37% | 3.00% |
+| min_position_3000 | 94 | 111 | 54.53 | 78.88 | 6.17% | 3.51% |
+| min_position_5000 | 35 | **51** | 19.89 | 34.96 | 11.95% | 5.89% |
+| two_part_floor_1500_20shares | 129 | 151 | 66.22 | 91.16 | 5.45% | 3.39% |
+| share_only_20shares (the rule that trades) | 150 | 169 | 70.59 | 96.37 | 5.35% | 3.16% |
+| top_n_150 / top_n_200 / full_book_499 | 150 / 200 / 499 | same set | 58.53 / 72.84 / 157.33 | **63.28 / 80.65 / 185.68** | 6.22% / 5.43% / 3.37% | **5.94% / 5.19% / 3.13%** |
+
+The three no-floor rows keep their membership by construction - their name count is
+the rule, not a floor - but their weights do move, because the cap sits inside the
+one sizing function every construction shares (`sized_kept_weights`). They are not
+the negative control here; the unit test's own uncapped run is. Both columns come
+from artifacts in the repository rather than from a re-run at an old commit:
+`live/construction_table.parquet` is the pre-cap table as stored, and the second
+column is `build_table(store=False)` at the tip, so the comparison is reproducible
+from `data/` alone. Recorded in `handoff/LOG.md` as the table's own history rather
+than edited into it.
+
+**4. "risk moved" is reachable.** `store_proposal` passed today's specific
+standard deviation for both closes, so `abs(sigma_today - sigma_prev) > RISK_EPS *
+sigma_prev` was false by construction and a name whose weight moved while its
+score did not could only be labelled "the hedge moved". The previous close's own
+standard deviation is now read at the previous book's trade date
+(`previous_close`), so the reason precedence works as documented.
+
+**5. The README says what the page is.** A "Live book" section at the top of the
+root `README.md` and of `web/README.md`: the URL
+(https://efb-live-book.nutritrack.workers.dev), that it sits behind Cloudflare
+Access with an email one-time PIN, that it updates after each weekday evening run,
+and what it shows.
+
+**The suite, measured rather than assumed.** `make test-all` is green - **1010
+passed, 1 skipped in 9m51s** - and `make lint` is clean. Getting there needed one
+test-configuration fix, and the reason is worth stating: three tests sit at or
+beyond the global 120 s on this machine, and nothing else comes close (the fourth
+slowest is 48.7 s). Their in-suite durations are **141.6 s**
+(`test_families_are_deterministic_under_a_fixed_seed`, 138.9 s with the timeout
+plugin disabled), **86.8 s** (`test_no_earlier_verdict_moved`, which re-derives the
+stored verdicts, passes in isolation and crossed 120 s inside the suite) and
+**67.9 s** (`test_no_portfolio_uses_a_weight_dated_after_its_own_day`; 68.5 s
+disabled). Two of the three were reported as `Failed: Timeout (>120.0s) from
+pytest-timeout` in separate full runs of the same files, so all three carry
+`@pytest.mark.timeout(300)` with their own measurement in a comment. The global
+120 s stays, a hang is still a failure with a stack dump, and nothing under test
+moved: the risk-family tests call `efb.eval_risk.build_families` and the e4 test
+reads the stored evaluation artifacts, neither of which this phase touches.
+
+**The rehearsal of all five.** The same local evening as before (real Postgres,
+real R2 seed, real paper-account read, `EFB_DRY_RUN=true`, `EFB_SNAPSHOT=off`,
+the sandbox's Saturday pinned to a session and the day's `cron_runs` row deleted
+so the gate runs):
+
+```text
+20:09:04 store: postgres/efb
+20:09:12 seed allowlist: 19 path(s) allowed
+20:09:12 run tree: /var/folders/.../efb-run-6w3ilsba/data
+20:17:35 positions: mismatch: the account holds 0 name(s) and the store 195: 195
+         name(s) the store holds and the account does not (ABT, ACGL, ADM, AES,
+         AIG, AKAM, ...). Expected in dry run: nothing has been sent to the
+         account, so the store's book is an intention, not a holding; held 0
+         name(s) from alpaca paper account, establishment=True
+20:17:36 run recorded as ok, notification sent
+exit: 0
+
+run_status:     target_close 2026-09-25, status ok, notify_status sent,
+                n_orders 169, gross_notional 1,000,000, establishment True,
+                cost_label establishment, snapshot "snapshot: off (dry run)"
+reconciliation: expected_cost_bps 15.0945
+                expected_spread_bps 5.2637
+                expected_impact_bps 0.4975
+                expected_commission_bps 1.0000
+                expected_borrow_bps 8.3333
+manifest:       kept_gross 1.0 | gross 0.9008172332573943 | notional 1,000,000
+                | traded_notional 1,000,000 | n_kept 169 | n_eff_kept 98.4571
+                | thin_adv []
+```
+
+The four components in the store add to the stored total (5.2637 + 0.4975 +
+1.0000 + 8.3333 = 15.0945), which is the property the report claimed and the store
+now proves on a real evening: the establishment cost is **15.09 bp**, not 53.73.
+`thin_adv` is empty because SW's own trailing dollar volume is $204.7M.
+
+**One thing the rehearsal exposed, reported rather than fixed.**
+`efb.positions` is keyed by (trade_date, ticker), so a re-run of the same close
+upserts its rows and leaves the ones whose names have *left* the book: this
+evening wrote 169 rows over the previous rehearsal's 150 and the table now holds
+**195** for 2026-09-25. The reason column counts them exactly: **169 "new
+position"** from this run and **26 "alpha moved"** left behind by the first, and
+the 26 are the names the cap removed. The
+book the page shows is unaffected (the snapshot is built from the freshly written
+rows, not re-read), and the gate evenings each have their own close, so nothing
+tonight is wrong. What it does affect is anything that re-reads the day - the
+store-versus-account comparison of a later same-day run, and
+`snapshot.previous_proposal()` when a run fails. The fix is to replace the day's
+rows rather than upsert into them, which needs a small store function
+(`delete where trade_date = ...`), so it is the owner's call rather than a silent
+change on the eve of the gate evenings.
 
 Same setup and the same pinning, re-run at the tip of `preflip` (`2bcc8bf`). The
 first attempt printed the day's `cron_runs` row as cleared and then exited

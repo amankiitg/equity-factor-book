@@ -132,6 +132,17 @@ def _iso(value: Any) -> str | None:
     return pd.Timestamp(value).isoformat()
 
 
+def _kept_gross(proposal: dict[str, Any]) -> Any:
+    """The traded book's gross, or the full book's when the manifest predates it.
+
+    A proposal written before `kept_gross` existed carries only the full-book
+    number, which is then what the page has. A stored null is treated as absent
+    for the same reason: the key being present is not a value.
+    """
+    kept = proposal.get("kept_gross")
+    return kept if kept is not None else proposal.get("gross")
+
+
 def construction_label(manifest: dict[str, Any] | None) -> str:
     """The construction, generated only from the artifact's own fields."""
     return construction_table.construction_label(manifest or {})
@@ -222,7 +233,16 @@ def build(
             "n_kept": _number(proposal.get("n_kept")),
             "n_long": _number(chosen.get("n_long")),
             "n_short": _number(chosen.get("n_short")),
-            "gross": _number(proposal.get("gross")),
+            # The gross of the book that trades. `kept_gross` is the kept set
+            # after the hedge, renormalized to exactly 1.0, and `notional` is that
+            # book in dollars. The manifest's own `gross` is the *499-name* book
+            # after sizing and before the floor, which is a different book and is
+            # published beside it under its own name rather than as "the gross".
+            # A stored null counts as absent: a manifest row read back from the
+            # store can carry the key with no value.
+            "gross": _number(_kept_gross(proposal)),
+            "gross_notional": _number(proposal.get("notional")),
+            "full_book_gross": _number(proposal.get("gross")),
             "net": _number(proposal.get("net")),
             "max_kept_weight": _number(proposal.get("max_kept_weight")),
             "achieved_annual_vol": _number(proposal.get("achieved_annual_vol")),

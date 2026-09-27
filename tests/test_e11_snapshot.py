@@ -469,5 +469,37 @@ def test_the_hedge_drives_the_exposures_to_zero() -> None:
     # two names, which is the mistake this asserts against.
     worst_before = max(abs(float(value)) for value in before.values())
     assert worst_before > 1e-3, f"the pre-hedge exposures are only {worst_before:.3e}"
-    # and the book the exposures were taken from is the stored one
-    assert manifest["n_eff_kept"] == pytest.approx(70.5921, abs=1e-3)
+    # and the book the exposures were taken from is the stored one. The breadth
+    # moved from 70.5921 to 96.3664 when the 10% variance-share cap joined the
+    # sizing: levelling the few names that carried most of the residual risk raises
+    # the effective breadth of the book.
+    assert manifest["n_eff_kept"] == pytest.approx(96.3664, abs=1e-3)
+
+
+def test_the_headline_gross_is_the_book_that_trades() -> None:
+    """`gross` is the kept book's, and the 499-name book keeps its own name.
+
+    The manifest's `gross` is the full 499-name book after sizing and the cap,
+    before the floor - 0.9008 on 2026-09-25 while the book that trades was
+    renormalized to exactly 1.0 and $1,000,000. Publishing the first as "the
+    gross" told the owner their book was 90% invested when it was fully invested.
+    """
+    payload = built(
+        manifest={
+            "gross": 0.9008172332573943,
+            "kept_gross": 1.0,
+            "notional": 1_000_000.0,
+        }
+    )
+
+    assert payload["book"]["gross"] == 1.0
+    assert payload["book"]["gross_notional"] == 1_000_000.0
+    assert payload["book"]["full_book_gross"] == 0.9008172332573943
+
+
+def test_a_manifest_without_a_kept_gross_still_states_one() -> None:
+    """An older proposal has only the full-book gross, which is what it gets."""
+    payload = built(manifest={"gross": 0.9712, "kept_gross": None})
+
+    assert payload["book"]["gross"] == 0.9712
+    assert payload["book"]["full_book_gross"] == 0.9712

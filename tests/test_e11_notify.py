@@ -877,3 +877,38 @@ def test_the_cost_line_stands_without_a_breakdown() -> None:
 
     assert "Cost: rebalance, 12.00 bps of NAV." in text
     assert "(" not in text.split("Cost:")[1].split("\n")[0]
+
+
+def test_the_email_names_the_names_whose_liquidity_is_a_median() -> None:
+    """A cost that is partly a stand-in says which part.
+
+    SW's own trailing dollar volume is unknown, so the panel median stood in for
+    it; the owner can only judge the day's cost if they know whose cost was
+    measured and whose was assumed.
+    """
+    from live import notify
+
+    thin = [
+        {"ticker": "SW", "adv_usd": None},
+        {"ticker": "XYZ", "adv_usd": 420_000.0},
+    ]
+    me = notify.compose(
+        status="ok",
+        target_close="2026-09-25",
+        dry_run=True,
+        orders=150,
+        cost_label="establishment",
+        cost_bps=16.49,
+        thin_adv=thin,
+    )
+
+    assert (
+        "Liquidity: 2 kept name(s) whose own trailing 63-session dollar volume is "
+        "unknown or under $1M, so the panel median stands in: SW no ADV; "
+        "XYZ $420,000." in me
+    )
+    # The negative control: a book whose liquidity was measured says nothing.
+    clean = notify.compose(
+        status="ok", target_close="2026-09-25", dry_run=True, orders=150
+    )
+    assert "Liquidity:" not in clean
