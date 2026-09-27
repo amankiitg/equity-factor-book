@@ -3946,6 +3946,15 @@ are thinner and worse on p90. **Nothing about the live construction was
 changed**, as instructed, and the table's numbers are the record for a decision
 after week one.
 
+One consequence had to be followed rather than reported. `web/fixtures/*.json`
+are written by the snapshot writer from the construction table's chosen row, so
+the committed fixtures carried the old row's `n_long`, `n_short` and
+`realized_market_beta` and `tests/test_e11_web_fixtures.py` failed against the
+writer: the page would have shown the pre-refresh construction beside the
+refreshed book. They were regenerated with `python scripts/make_web_fixtures.py`,
+which is the command the failing test names, and the page's and the Worker's 56
+tests pass on the new bytes.
+
 The E11 walkthrough comes onto this branch because it exists only on `e12`, and
 it was written before the correction: it recomputed the alpha by hand with the
 old spelling, so every number downstream of it was the old book's. It now calls
@@ -4016,6 +4025,18 @@ $ .venv/bin/python -m pytest -q tests/test_e8_results.py tests/test_e9_results.p
 
 $ .venv/bin/python -m pytest -q tests/test_e11_walkthrough_notebook.py
 5 passed in 0.02s
+
+$ .venv/bin/python -m pytest -q tests/test_e11_*.py tests/test_run_live_daily.py \
+      tests/test_construction_table.py tests/test_dashboard_*.py \
+      tests/test_build_e*.py tests/test_readme_traceability.py \
+      tests/test_status_report_traceability.py
+# the first run of this selection was 6 failed, 590 passed: the six
+# tests/test_e11_web_fixtures.py cases, which the regenerated fixtures fixed
+596 passed, 1 skipped in 329.43s (0:05:29)
+
+$ cd web && npm run test
+Test Files  4 passed (4)
+      Tests  56 passed (56)
 ```
 
 The refresh's own numbers, read after the fact: 38 of the 44 E7 artifact files
