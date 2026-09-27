@@ -3419,3 +3419,252 @@ from `efb.positions.kind`.
   different instruments: the brake is a throughput limit on a rebalance, and day
   one is not a rebalance. If the owner would rather day one be bounded by the
   brake as well, that is a one-line change and the flag would still be recorded.
+## Pre-launch batch 2: S1 to S8
+
+Eight items the owner listed for the pre-launch batch, in the order asked: S2's
+manifest fields first, so the S1 comparison is a read of the manifest, then S1,
+then S3 to S8. Each is its own commit with its own tests; the batch is
+`prelaunch-batch2`, merged to `main` with `--no-ff`.
+
+**S2, the manifest and the two books.** The proposal manifest now carries the
+traded book name by name: `kept_book` with each kept name's weight, its specific
+variance and its share of the book's predicted specific variance, plus
+`variance_share_cap`, `max_variance_share`, `variance_share_cap_binds` and
+`top_variance_shares`. `reconcile.risk_figures` reads the day's figures from that
+manifest and stores them as JSON on the reconciliation row and the run_status row,
+as `traded_risk` (the kept book) and `full_risk` (every name the model sized), and
+the snapshot publishes the two objects under the same names. A manifest written
+before a field existed records it as absent rather than as a zero that would read
+as a measurement. `efb.reconciliation` and `efb.run_status` gained both columns in
+their create blocks and as `alter table ... add column if not exists`, so the
+database provisioned months ago gets them.
+
+**S1, the alpha contract.** `alpha = IC x sigma x z x kappa`, with `sigma` the
+specific volatility, the square root of the specific variance the model publishes
+on its diagonal. Three places built their own alpha and all three multiplied the
+variance: `live/evening_job.py::build_proposal`, `efb/alpha.py`'s E8 conversion
+and `live/construction_table.py::_raw_pieces`. The contract now lives once, in
+`efb.alpha.alpha_from_contract`, and all three size from it. The bug was invisible
+to every test on the books because the sizing rule is `w` proportional to
+`alpha / sigma^2`: multiplying by the variance rather than its square root
+cancelled the risk term and left `w` proportional to `z` alone, ignoring each
+name's risk. The corrected contract gives `w` proportional to `z / sigma`.
+
+The book on 2026-09-21, before and after, built in one session by the same code
+from the same inputs, with the before case produced by patching the old spelling
+back into the one contract:
+
+| | 2026-09-21 before | 2026-09-21 after |
+| --- | --- | --- |
+| names kept | 158 | 180 |
+| n_eff, traded book | 94.25730950724099 | 131.91751961686217 |
+| largest weight | 0.03344794695096806 | 0.018723078744785904 |
+| traded book's forecast vol | 0.04593972443533518 (4.59397%) | 0.03156807660946643 (3.15681%) |
+| 10% variance-share cap binds | True | False |
+| largest variance share | 0.1395177199354737 | 0.06425237652037011 |
+| top five variance shares | TER .139518, WDC .107920, MU .107863, MRVL .087036, INTC .060151 | SMCI .064252, WDC .060912, COIN .055257, TER .050594, MRVL .048428 |
+| n_eff, full book | 157.96626788906772 | 268.66971601615455 |
+| full book's achieved vol | 0.09999999999999998 | 0.02457111132990971 |
+| full book's gross | 0.9699497354233986 | 1.0000000000000002 |
+| gross cap binds | False | True |
+
+Two readings matter for the owner's decision. The cap that used to bind at 13.95%
+no longer binds, because the book no longer leans on the volatile names - the old
+spelling gave every alpha an extra factor of the name's own volatility. And the
+vol target is not reached afterwards: the full book's gross is capped at 1.0 and
+its vol is 2.46% against the 10% target, so the run caps rather than levers, which
+is what the evening job's own rule says it should do. The traded book, after the
+floor's renormalization, is at 3.16%.
+
+**S3, NAV and the broker's book.** The evening sized the book from the constant
+1,000,000 and wrote that same constant into the `nav` row, while the morning read
+the live account equity for the guards: two halves of one run describing different
+accounts. `live/positions.py::account_read` now returns the equity and the cash
+from the same request that returns the book, `sizing_nav` turns the equity into
+the NAV the book is sized from and says where the number came from, and `main()`
+reads the account before it sizes anything, so a live evening whose account cannot
+be read stops there with no book and no order. A dry run that cannot read it falls
+back to the paper default and says so in the manifest's `nav_source`. Every
+evening also stores what the broker itself reports, in `efb.broker_positions`:
+one row per name with side, share count, market value and the name's weight of the
+account's equity. It is a separate table from `efb.positions` on purpose, because
+that one is the loop's intention, written before any order leaves the process, and
+a run that reads a book back has to be able to tell the two apart. An account that
+could not be read writes nothing rather than an empty book. **One operational
+step**: the new table and the writer's delete grant are in
+`live/supabase_schema.sql` and `live/supabase_roles.sql`, and both must be applied
+to the project before the flip, or the first live evening fails at the write.
+
+**S4, what the check compares against.** The store's position row for the close
+being priced is tonight's target, written by the proposal step before any order is
+sent. Comparing the account against it asks the account to match a book nobody has
+traded: on the first live evening it would have reported all 150 names as missing
+at the broker. `positions.check` now takes the close being priced and
+`store_positions` keeps only the rows strictly before it, so the comparison is
+against the last book the loop actually held, whatever the store happens to hold
+for later dates.
+
+**S5, partial short covers.** A $490 cover of a five-share short sent 4.9 shares,
+which is a size nothing downstream can reason about and which the broker may round
+either way: one share too many closes the position and leaves the book flat in a
+name whose target is still short. A partial cover is now floored to whole shares,
+so it can only leave the position closer to flat and never past it, and a cover
+worth less than one whole share is skipped with `QTY_ROUNDS_TO_ZERO` and the
+arithmetic in the detail rather than rounded up. A full close still sends the
+broker's exact held quantity, fractional included, and a partial *long* decrease
+keeps its fraction: selling part of a share cannot make the position short while
+the target still holds shares, and flooring a trim would round it away.
+
+**S6, the trading window.** The run now refuses outside 16:00-20:00 New York,
+before it does any work and before the day's bookkeeping, and writes nothing: a
+refusal is not a run, so the day is still owed its evening and the in-window cron
+later that day must find it un-run. The window is Alpaca's after-hours session,
+where a DAY order is held for the next open and outside which it is not, so the
+whole DAY semantics the loop relies on are defined by it. The definition lives in
+`live.staleness` beside the cron slot and the calendar, and both smoke scripts now
+read it from there instead of keeping their own copy. The override is
+`EFB_FORCE_HOUR=true`, and only that exact string: it is the opposite default from
+the dry-run flag on purpose, because a missing or mistyped variable must never
+open the window. The slot in `render.yaml` (22:30 UTC) is 17:30 EST and 18:30 EDT,
+both inside the window, so the override is for a rehearsal and not for the cron.
+
+**S7, a name the minimum skips.** `target_orders` dropped any leg under $250 in
+silence: the email read "ok, 149 orders" for a 150-name book and the missing name
+could only be found by diffing the proposal against the execution log.
+`target_orders` and `minimum_skips` are two views of one pass now, so the legs
+left out and the legs returned cannot disagree, and the kept leg joins the day's
+rows with status `SKIPPED`, reason code `BELOW_MIN_NOTIONAL` and a sentence
+carrying the size that made it too small. The email names them with their sizes,
+capped at twelve names with a count for the rest. Two things it deliberately does
+not do: the leg is not an order (the order count and the brake's accounting do not
+move), and it does not make the run incomplete - the trap, because `SKIPPED` on
+its own is in `INCOMPLETE_STATUSES`, so `EXPECTED_SKIP_REASON_CODES` exempts this
+one skip while any other skip on the same rows still makes the day unfiled. A
+close is never skipped for being small: a held name absent from the target is
+always emitted, so a leftover cannot survive an evening.
+
+**S8, the page's settings.** `write_snapshot` reads `EFB_SNAPSHOT` and the four R2
+variables when the evening is over, which is the wrong place to discover a missing
+credential: by then the book is sized and the orders are sent, and the page is the
+only place the owner sees the book. A run that trades and cannot publish traded
+invisibly. `snapshot.check_snapshot_config` is the writer's own check moved to the
+start, called before the seed is downloaded and long before anything is priced;
+its failure takes the run's ordinary error path, so the owner gets the message
+naming the missing variable and no order is built.
+
+### The three-day rehearsal
+
+```text
+=== EFB broker rehearsal: three trading days, strict fake broker ===
+NAV 1,000,000; prices {'AAA': 100.0, 'BBB': 50.0, 'CCC': 200.0, 'DDD': 25.0, 'FFF': 40.0}
+
+--- DAY 1 (2026-09-25): account flat, establishes from zero ---
+  held 0; establishment=True
+    AAA       buy_to_open     +80,000  ACCEPTED
+    BBB       buy_to_open     +80,000  ACCEPTED
+    CCC       buy_to_open     +80,000  ACCEPTED
+    DDD       buy_to_open     +80,000  ACCEPTED
+    FFF      sell_to_open     -80,000  ACCEPTED
+  next open: filled 5: AAA, BBB, CCC, DDD, FFF
+  broker holds (shares): AAA +800, BBB +1600, CCC +400, DDD +3200, FFF -2000
+
+--- DAY 2 (2026-09-28): rebalances; CCC reverses ---
+  held 5; establishment=False
+  held (shares): AAA +800, BBB +1600, CCC +400, DDD +3200, FFF -2000
+  ticker         held       delta          intent  status
+  AAA         +80,000     +20,000     buy_to_open  ACCEPTED
+  BBB         +80,000     -40,000   sell_to_close  ACCEPTED
+  CCC         +80,000     -80,000   sell_to_close  ACCEPTED
+  DDD         +80,000     -80,000   sell_to_close  ACCEPTED
+  FFF         -80,000     +60,000    buy_to_close  ACCEPTED
+  deferred reversal: CCC closed tonight, -60,000 opens next evening
+  next open: filled 5: AAA, BBB, CCC, DDD, FFF
+  broker holds (shares): AAA +1000, BBB +800, FFF -500
+
+--- DAY 3 (2026-09-29): the deferred short opens ---
+  held 3; establishment=False
+  held (shares): AAA +1000, BBB +800, FFF -500
+  ticker         held       delta          intent  status
+  CCC              +0     -60,000    sell_to_open  ACCEPTED
+  next open: filled 1: CCC
+  broker holds (shares): AAA +1000, BBB +800, CCC -300, FFF -500
+
+--- DAY 3 RERUN: the broker holds the day-3 book ---
+  orders 0 (nothing new submitted); complete=True
+
+All checks passed: every leg carried a position intent, the reversal
+closed tonight and opened tomorrow, the removed name was closed, and an
+accepted after-close DAY order changed nothing until the next open.
+```
+
+Two things the rehearsal caught, both of which the per-change tests had missed
+and both of which are now pinned:
+
+- **Day 3's three legs at their target were recorded as skipped legs.** The
+  `DELTA_MIN_NOTIONAL` rule now records the names it leaves out, and a name
+  already at its target has a zero delta, so the run recorded three SKIPPED rows
+  where one order was expected. On a rerun of an unchanged book every name is at
+  its target, so every rerun would have carried a full book of rows for names
+  that had nothing to do and the message would have named a dozen of them. A zero
+  change is not a leg the floor refused, and the branch says so.
+- **The full suite caught the window.** `tests/test_e11_runroot.py` drives
+  `run_live_daily.main()` at whatever hour the suite runs, and S6's refusal
+  stopped it at 15:23 New York. `tests/conftest.py` pins the window open for the
+  suite exactly as it already pins the store, the first-run flag and the snapshot
+  switch, and the refusal keeps its own tests, which delete the variable.
+
+## Verification
+
+The three-day rehearsal and the S1 table are the two things the owner asked for;
+both are above. This is the batch's own verification, run on the final tree.
+
+```text
+$ PYTHONPATH=. .venv/bin/python scripts/rehearse_preflip.py
+All checks passed: every leg carried a position intent, the reversal
+closed tonight and opened tomorrow, the removed name was closed, and an
+accepted after-close DAY order changed nothing until the next open.
+
+$ PYTHONPATH=. .venv/bin/python /tmp/s1_report.py    # patched old contract vs shipped
+after (alpha = IC x sqrt(variance) x z x kappa)
+n_eff_kept                   131.91751961686217
+max_kept_weight              0.018723078744785904
+kept_achieved_annual_vol     0.03156807660946643
+variance_share_cap_binds     False
+achieved_annual_vol          0.02457111132990971
+gross                        1.0000000000000002
+gross_cap_bound              True
+
+$ make lint
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+Success: no issues found in 33 source files
+Success: no issues found in 34 source files
+All done! 196 files would be left unchanged.
+
+$ .venv/bin/python -m pytest -q tests/
+1098 passed, 1 skipped, 18 warnings in 768.05s (0:12:48)
+```
+
+`make lint` covers `ruff`, `mypy efb`, `mypy live scripts` and `black --check`;
+the four lines above are its whole output. The headline numbers for the batch are
+the S1 table's: `kept_achieved_annual_vol` moves from
+`0.04593972443533518` to `0.03156807660946643` (manifest key
+`kept_achieved_annual_vol`), `n_eff_kept` from `94.25730950724099` to
+`131.91751961686217` (manifest key `n_eff_kept`), and
+`variance_share_cap_binds` from `True` to `False` (manifest key
+`variance_share_cap_binds`). Every one of them is read from the manifest the run
+writes, not recomputed for this report.
+
+One operation is outstanding and is the owner's: `live/supabase_schema.sql` and
+`live/supabase_roles.sql` must be applied to the project before the flip, because
+S3 adds `efb.broker_positions` and the writer's delete grant on it. The first live
+evening fails at that write without them.
+
+The batch against `main`, `git diff --stat main...prelaunch-batch2`:
+
+```text
+ 40 files changed, 2031 insertions(+), 141 deletions(-)
+```
+
+The largest single file is `tests/test_e11_notify.py`, which carries the
+run-level harness for every one of these items.

@@ -2766,3 +2766,66 @@ none of the earlier rows; other dates, and an empty replacement clearing a date;
 delete-then-insert order with schema qualification; the transaction pinned in the
 source). The subset selected by usage - every test file that touches `store` or
 `run_live_daily` - is **273 passed, 1 skipped**, and `make lint` is clean.
+
+
+## 2026-09-27 pre-launch batch 2: S1 to S8, and the two things they caught
+
+**Eight items, eight commits, in the owner's order: S2's manifest fields first so
+the S1 comparison is a read of the manifest, then S1, then S3 to S8.** Each is on
+`prelaunch-batch2` with its own tests, and the batch is merged to `main` so the
+gate evenings run it. The section in `handoff/REPORT.md` carries the S1 table, the
+rehearsal transcript and the verification; this is the record of what changed and
+what the change caught.
+
+**The one that mattered is S1.** `alpha = IC x sigma x z x kappa` was spelled
+three times, in the evening job, in the E8 conversion and in the construction
+table, and all three multiplied the specific **variance** where the volatility
+belongs. The sizing rule is `w` proportional to `alpha / sigma^2`, so the mistake
+cancelled the risk term and left `w` proportional to `z` alone: the book ignored
+each name's own risk and leaned on whichever names moved most. Nothing in the
+suite could see it, because every test on the books checks a sign, a ranking or a
+breadth, and all of those are preserved by the wrong spelling. The contract now
+lives once, in `efb.alpha.alpha_from_contract`, and the before/after on 2026-09-21
+is measured in one session with the old spelling patched back into that one
+function: **n_eff 94.2573 to 131.9175, the largest weight 0.033448 to 0.018723,
+the traded book's forecast vol 4.594% to 3.157%, and the 10% variance-share cap
+stops binding** (largest share 0.1395 to 0.0643). The full book's gross is capped
+at 1.0 afterwards and its vol is 2.46% against the 10% target, so the run caps
+rather than levers, which is what its own rule says it should do.
+
+**The rehearsal caught what the tests could not: day 3's three legs at their
+target were recorded as skipped legs.** S7's job is to record the names the $250
+minimum leaves out; a name already at its target has a zero delta, so the run
+wrote three SKIPPED rows where one order was expected. Every rerun of an unchanged
+book has a zero delta on every name, so every rerun would have filed a full book
+of rows for names with nothing to do and named a dozen of them in the email. A
+zero change is not a leg the floor refused, and the branch says so now, with a
+test on both sides.
+
+**The full suite caught the second: the window stopped a test at 15:23 New York.**
+`tests/test_e11_runroot.py` drives `run_live_daily.main()` at whatever hour the
+suite happens to run, and S6 refuses outside 16:00-20:00 New York. The suite is
+now clock-independent: `tests/conftest.py` pins the window open beside the store,
+the first-run flag and the snapshot switch it already pins, and the refusal keeps
+its own tests, which delete the variable. Neither of these was visible to the
+per-change selection, which is the case for running the whole suite once at sprint
+close.
+
+**Two operational facts for the flip.** S3 adds a table, so
+`live/supabase_schema.sql` and `live/supabase_roles.sql` must be applied to the
+project before the first live evening, or that evening fails at the
+`efb.broker_positions` write. S6's override is `EFB_FORCE_HOUR=true` and only that
+exact string; the cron's own slot, 22:30 UTC, is inside the window in both EDT and
+EST, so the cron never needs it.
+
+**One artefact is known-stale and left alone deliberately:**
+`live/construction_table.parquet` is committed and was built before S1, so its
+numbers describe the pre-S1 book. It is not rebuilt by the daily run, and
+regenerating it is a data-artefact change the owner should ask for. The choice it
+records still holds: the evening sizes from the share-only floor row.
+
+**Tests and lint.** 430 in the E11 selection, then the whole suite at sprint
+close, and `make lint` clean, each time the file that changed was the one
+selected. The three follow-ups the owner listed for the first week are untouched:
+the holding versus trading cost labels, rebasing e12, and the static snapshot
+fields.
