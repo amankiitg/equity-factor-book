@@ -60,17 +60,18 @@ SUBMITTED_AT = "2026-09-25T22:30:00Z"
 
 def _position_model(symbol: str, shares: float, price: float) -> Any:
     """A real alpaca-py Position, as `get_all_positions` returns it."""
+    from alpaca.trading.enums import AssetClass, AssetExchange, PositionSide
     from alpaca.trading.models import Position
 
     value = abs(shares) * price
     return Position(
-        asset_id=str(uuid.uuid5(uuid.NAMESPACE_DNS, symbol)),
+        asset_id=uuid.uuid5(uuid.NAMESPACE_DNS, symbol),
         symbol=symbol,
-        exchange="NASDAQ",
-        asset_class="us_equity",
+        exchange=AssetExchange.NASDAQ,
+        asset_class=AssetClass.US_EQUITY,
         avg_entry_price=str(price),
         qty=str(shares),
-        side="long" if shares >= 0 else "short",
+        side=PositionSide.LONG if shares >= 0 else PositionSide.SHORT,
         market_value=str(value),
         cost_basis=str(value),
     )

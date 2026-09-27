@@ -540,15 +540,18 @@ def position_book(
     for pos in client.get_all_positions():
         symbol = str(pos.symbol)
         raw = getattr(pos, "qty", None)
-        shares = abs(float(raw)) if raw is not None else 0.0
-        if shares > 0:
-            sign = -1.0 if float(raw) < 0 else 1.0
-        else:
+        shares = 0.0
+        sign = 0.0
+        if raw is not None:
+            number = float(raw)
+            shares = abs(number)
+            sign = -1.0 if number < 0 else 1.0
+        if shares <= 0:
             side = str(enum_value(getattr(pos, "side", ""))).lower()
             sign = -1.0 if side == "short" else 1.0
         market_value = getattr(pos, "market_value", None)
         notional[symbol] = sign * abs(float(market_value or 0.0))
-        quantity[symbol] = sign * shares if raw is not None else 0.0
+        quantity[symbol] = sign * shares
     return notional, quantity
 
 
