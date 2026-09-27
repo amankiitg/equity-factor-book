@@ -88,6 +88,77 @@ def test_target_orders_converts_weights_to_notional() -> None:
     assert by_ticker["AAA"].traded_notional == pytest.approx(60_000.0)
 
 
+def test_a_leg_under_the_minimum_is_a_recorded_skip_not_a_silent_drop() -> None:
+    """The kept name the floor leaves out is a leg of the day, with a reason.
+
+    A book quietly a few names short of its own target is a book nobody can check,
+    so the leg the $250 minimum leaves untraded is returned from the same pass that
+    leaves it out: never an order, but always a record, with the size that made it
+    too small to send.
+    """
+    from live import alpaca
+
+    nav = 1_000_000.0
+    proposal = pd.DataFrame({"ticker": ["BIG", "SMALL"], "weight": [0.10, 0.0001]})
+
+    orders = morning_job.target_orders(proposal, nav=nav)
+    skipped = morning_job.minimum_skips(proposal, nav=nav)
+
+    assert [order.ticker for order in orders] == ["BIG"]
+    assert [row["ticker"] for row in skipped] == ["SMALL"]
+    leg = skipped[0]
+    assert leg["intended_notional"] == pytest.approx(100.0)
+    assert leg["status"] == alpaca.SKIPPED
+    assert leg["reason_code"] == alpaca.REASON_BELOW_MIN_NOTIONAL
+    assert "under the $250 minimum" in str(leg["reason"])
+    # every name in the union is either an order or a recorded skip
+    assert len(orders) + len(skipped) == 2
+
+
+def test_a_close_under_the_minimum_is_still_sent() -> None:
+    """The floor never leaves a leftover holding behind.
+
+    A held name absent from tonight's target is a close, and a close is emitted
+    whatever its size: a $40 remainder that could not be sold would sit in the
+    account forever, and every later evening would measure against it.
+    """
+    proposal = pd.DataFrame({"ticker": ["BIG"], "weight": [0.10]})
+    nav = 1_000_000.0
+
+    orders = morning_job.target_orders(proposal, nav=nav, current={"LEFTOVER": 40.0})
+    skipped = morning_job.minimum_skips(proposal, nav=nav, current={"LEFTOVER": 40.0})
+
+    assert "LEFTOVER" in [order.ticker for order in orders]
+    assert skipped == []
+
+
+def test_an_expected_skip_does_not_make_the_run_incomplete() -> None:
+    """The two skips differ: one is the book not moving, one is a leg not taken.
+
+    `SKIPPED` on its own means the run could not do what it intended, which is why
+    the status is in the incomplete set. A leg the minimum left untraded is the
+    evening doing exactly what it should, so it must not make the day unfiled; any
+    other skip on the same records still does.
+    """
+    from live import alpaca
+
+    frame = pd.DataFrame(
+        {
+            "ticker": ["SMALL", "AAA"],
+            "status": [alpaca.SKIPPED, "ACCEPTED"],
+            "reason_code": [alpaca.REASON_BELOW_MIN_NOTIONAL, ""],
+        }
+    )
+
+    assert morning_job.incomplete_legs(frame) == []
+
+    # the negative control: the same skip status carrying any other code is a leg
+    # the run failed to place
+    refused = frame.copy()
+    refused.loc[0, "reason_code"] = alpaca.REASON_NOT_SHORTABLE
+    assert [leg["ticker"] for leg in morning_job.incomplete_legs(refused)] == ["SMALL"]
+
+
 class _FakeAccount:
     def __init__(self, equity: float | None, raise_on_read: bool = False) -> None:
         self._equity = equity

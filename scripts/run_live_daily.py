@@ -438,6 +438,7 @@ def finish_run(
     poster: Any = None,
     snapshot_poster: Any = None,
     deferred_reversals: list[dict[str, Any]] | None = None,
+    skipped_minimum: list[dict[str, Any]] | None = None,
 ) -> int:
     """Snapshot the run, notify the owner, record it, and return the exit code.
 
@@ -561,6 +562,7 @@ def finish_run(
         cost_breakdown=breakdown or None,
         poster=poster,
         deferred_reversals=deferred_reversals,
+        skipped_minimum=skipped_minimum,
     )
     delivered = notified["status"] == notify.STATUS_SENT
     store_failed = False
@@ -1033,6 +1035,10 @@ def main() -> int:
         brake_limit=float(morning.get("brake_limit") or 0.0),
         positions_check=holdings,
         deferred_reversals=morning.get("deferred_reversals") or [],
+        # The kept names the $250 minimum left untraded: legs of the day that went
+        # nowhere, recorded with their reason and named in the message, because a
+        # book quietly short of its own target is a book nobody can check.
+        skipped_minimum=morning.get("skipped_legs") or [],
         **snapshot_inputs,
     )
 

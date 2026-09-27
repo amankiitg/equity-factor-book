@@ -221,6 +221,10 @@ REASON_ALPACA_ERROR = "ALPACA_API_ERROR"
 REASON_SUBMIT_UNKNOWN = "SUBMIT_EXCEPTION_UNKNOWN_STATE"
 REASON_SKIPPED_AFTER_HALT = "SKIPPED_AFTER_HALT"
 REASON_QTY_ROUNDS_TO_ZERO = "QTY_ROUNDS_TO_ZERO"
+# A leg whose change is smaller than an order is worth. The run chose not to send
+# it, which is not a failure: it is recorded with this code and named in the
+# email, and it does not make the run incomplete.
+REASON_BELOW_MIN_NOTIONAL = "BELOW_MIN_NOTIONAL"
 REASON_SHORT_CHECK_FAILED = "SHORTABLE_CHECK_FAILED"
 REASON_NOT_TRADABLE = "ASSET_NOT_TRADABLE"
 REASON_NOT_SHORTABLE = "ASSET_NOT_SHORTABLE"

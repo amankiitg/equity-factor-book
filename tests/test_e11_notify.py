@@ -389,6 +389,11 @@ def _patch_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(reconcile, "daily_record", lambda *a, **k: {"dry_run": True})
 
 
+# The real morning job, saved before the harness replaces it: a test that is about
+# the day's own legs puts it back.
+_real_run_morning = morning_job.run_morning
+
+
 def test_a_member_with_no_price_is_named_in_the_message() -> None:
     """A book quietly smaller than the index is a book nobody can check.
 
@@ -1180,3 +1185,116 @@ def test_the_email_names_the_names_whose_liquidity_is_a_median() -> None:
         status="ok", target_close="2026-09-25", dry_run=True, orders=150
     )
     assert "Liquidity:" not in clean
+
+
+def test_the_email_names_the_kept_names_the_minimum_left_untraded() -> None:
+    """A kept name that did not move is named, with the size of its leg.
+
+    The name is in tonight's book and nothing was sent for it: its target and its
+    holding differ by less than an order is worth. Saying which names and by how
+    much is what makes a short trade list read as a book that stood still rather
+    than as a book that lost a name.
+    """
+    from live import notify
+
+    skipped = [
+        {"ticker": "AAA", "intended_notional": 84.0},
+        {"ticker": "BBB", "intended_notional": -121.5},
+    ]
+
+    message = notify.compose(
+        status="ok",
+        target_close="2026-09-25",
+        dry_run=True,
+        orders=150,
+        skipped_minimum=skipped,
+    )
+
+    assert (
+        "Under the $250 minimum, left untraded: 2 name(s) (AAA $84, BBB $122)."
+        in message
+    )
+    # The negative control: a book that moved in full says nothing about the floor.
+    clean = notify.compose(
+        status="ok", target_close="2026-09-25", dry_run=True, orders=150
+    )
+    assert "minimum" not in clean
+
+
+def test_the_email_counts_the_rest_when_many_names_are_under_the_minimum() -> None:
+    """A long list is counted rather than spilled into the message."""
+    from live import notify
+
+    skipped = [
+        {"ticker": f"T{index:03d}", "intended_notional": float(index)}
+        for index in range(20)
+    ]
+
+    message = notify.compose(
+        status="ok",
+        target_close="2026-09-25",
+        dry_run=True,
+        orders=5,
+        skipped_minimum=skipped,
+    )
+
+    assert "20 name(s) (T000 $0, T001 $1, " in message
+    assert ", and 8 more)" in message
+
+
+def test_a_run_with_a_name_under_the_minimum_records_the_skip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The skipped leg reaches the day's leg log and the message, and the day is ok.
+
+    The leg is not an order (the order count does not move), it is on the record
+    with the code that says why, it does not make the run incomplete, and the
+    message names it. A run that quietly traded 149 of its 150 names and said
+    "ok, 149 orders" is the failure this pins.
+    """
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    # This test is about the legs the run writes, so the morning job is the real
+    # one; the harness's stub for it is put back. The day's log is captured
+    # instead of written, because the repository already holds a log for this
+    # session and `store_orders` reads that file, not the run's own frame.
+    monkeypatch.setattr(morning_job, "run_morning", _real_run_morning)
+    proposal = pd.DataFrame({"ticker": ["BIG", "TINY"], "weight": [0.10, 0.0001]})
+    monkeypatch.setattr(morning_job, "load_proposal", lambda *a, **k: proposal)
+    monkeypatch.setattr(
+        morning_job, "_close_prices", lambda *a, **k: {"BIG": 100.0, "TINY": 100.0}
+    )
+    monkeypatch.setattr(morning_job, "connect", lambda dry_run: None)
+    monkeypatch.setattr(morning_job.state, "write_positions", lambda *a, **k: None)
+    logged: dict[str, pd.DataFrame] = {}
+    monkeypatch.setattr(
+        morning_job,
+        "_write_execution_log",
+        lambda as_of, records: logged.update({as_of: records}),
+    )
+    captured: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: captured.append(payload)
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+
+    assert run_live_daily.main() == 0
+
+    frame = logged[SESSION]
+    by_ticker = {row["ticker"]: row for row in frame.to_dict("records")}
+    assert sorted(by_ticker) == ["BIG", "TINY"]
+    assert by_ticker["BIG"]["status"] == "DRY_RUN"
+    assert by_ticker["TINY"]["status"] == "SKIPPED"
+    assert by_ticker["TINY"]["reason_code"] == "BELOW_MIN_NOTIONAL"
+    assert "$100.00" in str(by_ticker["TINY"]["reason"])
+    assert "$250 minimum" in str(by_ticker["TINY"]["reason"])
+    # the day is not unfiled and the order count is the orders, not the legs
+    assert store.select("cron_runs").iloc[0]["status"] == "ok"
+    row = store.select("run_status").iloc[0]
+    assert row["status"] == "ok"
+    assert int(row["n_orders"]) == 1
+    body = str(captured[0]["text"])
+    assert "1 orders proposed" in body
+    assert "left untraded: 1 name(s) (TINY $100)" in body

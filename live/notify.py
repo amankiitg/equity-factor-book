@@ -44,9 +44,16 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
+# The floor a leg has to clear to be worth an order. The message names it beside
+# the legs it left untraded, from the one definition the morning job applies.
+from live import alpaca as alpaca_mod
+
 # The store's own label, so the first line of every message names where the
 # run's writes went, or says why they could not go anywhere.
 from live import store as live_store
+
+# How many skipped names the message spells out before it counts the rest.
+MINIMUM_SKIP_NAMES = 12
 
 # The Resend HTTP API, the owner's three variables, and the sender fallback that
 # needs no verified domain. `onboarding@resend.dev` is Resend's shared sender, and
@@ -220,6 +227,7 @@ def compose(
     brake_limit: float | None = None,
     positions_check: dict[str, Any] | None = None,
     deferred_reversals: list[dict[str, Any]] | None = None,
+    skipped_minimum: list[dict[str, Any]] | None = None,
 ) -> str:
     """The fields, in order, ready for a preview.
 
@@ -360,6 +368,17 @@ def compose(
             )
             + "."
         )
+    if skipped_minimum:
+        # A name in tonight's book that did not move: its target and its holding
+        # differ by less than an order is worth, so nothing was sent for it. A book
+        # quietly a few names short of its own target is a book nobody can check,
+        # so the names and their sizes are stated rather than left to be inferred
+        # from a shorter trade list.
+        floor = _money(alpaca_mod.DELTA_MIN_NOTIONAL)
+        lines.append(
+            f"Under the {floor} minimum, left untraded: "
+            f"{_skipped_minimum_list(skipped_minimum)}."
+        )
     if status == "error":
         reason = scrub(detail).strip() or "no reason recorded"
         prefix = error_type or "Exception"
@@ -403,6 +422,24 @@ def _cost_line(
         parts_bps = sum(value for _, value in parts)
         line += f", which sum to {parts_bps:.2f}, not {total_bps:.2f}"
     return line + "."
+
+
+def _skipped_minimum_list(rows: list[dict[str, Any]]) -> str:
+    """The names the minimum left untraded, each with the size of its leg.
+
+    The size is the point: "the change was $84" is a fact the reader can check
+    against the minimum, where the name alone is not.
+    """
+    named = [
+        f"{str(row.get('ticker'))} "
+        f"{_money(abs(float(row.get('intended_notional') or 0.0)))}"
+        for row in sorted(rows, key=lambda item: str(item.get("ticker")))
+    ]
+    count = len(named)
+    shown = ", ".join(named[:MINIMUM_SKIP_NAMES])
+    if count > MINIMUM_SKIP_NAMES:
+        shown += f", and {count - MINIMUM_SKIP_NAMES} more"
+    return f"{count} name(s) ({shown})"
 
 
 def _thin_adv_list(rows: list[dict[str, Any]]) -> str:
@@ -668,6 +705,7 @@ def notify_run(
     brake_limit: float | None = None,
     positions_check: dict[str, Any] | None = None,
     deferred_reversals: list[dict[str, Any]] | None = None,
+    skipped_minimum: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -714,6 +752,7 @@ def notify_run(
         brake_limit=brake_limit,
         positions_check=positions_check,
         deferred_reversals=deferred_reversals,
+        skipped_minimum=skipped_minimum,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message
