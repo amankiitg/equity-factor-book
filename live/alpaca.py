@@ -524,12 +524,18 @@ def position_book(
     """({ticker: signed notional}, {ticker: signed quantity}) in one read.
 
     Positive is long, negative is short, absent means flat. The sign comes from
-    the quantity when the broker reports one, because that number is signed and
-    cannot be misread, and from `side` (`getattr(x, "value", x)`, never `str(x)`)
-    otherwise. The quantity is also what a close is sized from: a full close must
-    send the exact held quantity, and the broker's own position is the only place
-    that number comes from. A position without a `qty` contributes zero, and a
-    close then falls back to the trade's own notional over the close price.
+    `side`, read by value (`getattr(x, "value", x)`, never `str(x)`), because that
+    is the broker's own statement of the direction. A nonzero quantity that
+    disagrees with the side raises rather than picking one: the two reads of the
+    same position cannot both be right, and a sign taken from the wrong one flips
+    every close. A zero quantity is not a disagreement, so a position reported
+    with qty 0 still takes its sign from the side. A missing `market_value` raises
+    too, because treating it as zero would size a close at nothing.
+
+    The quantity is what a close is sized from: a full close must send the exact
+    held quantity, and the broker's own position is the only place that number
+    comes from. No quantity contributes zero, and a close then falls back to the
+    trade's own notional over the close price.
 
     Dry run returns two empty dicts without calling Alpaca.
     """
@@ -539,19 +545,21 @@ def position_book(
     quantity: dict[str, float] = {}
     for pos in client.get_all_positions():
         symbol = str(pos.symbol)
+        side = str(enum_value(getattr(pos, "side", ""))).lower()
+        if side not in ("long", "short"):
+            raise ValueError(f"{symbol}: unknown position side {side!r}")
+        sign = -1.0 if side == "short" else 1.0
         raw = getattr(pos, "qty", None)
-        shares = 0.0
-        sign = 0.0
-        if raw is not None:
-            number = float(raw)
-            shares = abs(number)
-            sign = -1.0 if number < 0 else 1.0
-        if shares <= 0:
-            side = str(enum_value(getattr(pos, "side", ""))).lower()
-            sign = -1.0 if side == "short" else 1.0
+        number = 0.0 if raw is None else float(raw)
+        if number != 0.0 and (number > 0) != (sign > 0):
+            raise ValueError(
+                f"{symbol}: side {side!r} disagrees with quantity {number!r}"
+            )
         market_value = getattr(pos, "market_value", None)
-        notional[symbol] = sign * abs(float(market_value or 0.0))
-        quantity[symbol] = sign * shares
+        if market_value is None:
+            raise ValueError(f"{symbol}: the position carries no market_value")
+        notional[symbol] = sign * abs(float(market_value))
+        quantity[symbol] = sign * abs(number)
     return notional, quantity
 
 

@@ -99,34 +99,74 @@ class _ModelClient:
         return self._order
 
 
-def test_position_book_reads_real_positions_including_a_short() -> None:
+def test_position_book_takes_the_sign_from_a_real_short_side_enum() -> None:
+    from alpaca.trading.enums import PositionSide
+
     client = _ModelClient(
         positions=[
-            _position("AAA", 10, 1000, "long"),
-            _position("BBB", -5, -500, "short"),
+            _position("AAA", 10, 1000, PositionSide.LONG),
+            _position("BBB", -5, -500, PositionSide.SHORT),
         ]
     )
 
     notional, quantity = alpaca.position_book(client, dry_run=False)
 
     assert notional == {"AAA": 1000.0, "BBB": -500.0}
-    # The sign comes from the signed quantity, so a short is negative even if the
-    # side enum were misread.
+    # The sign is the side's; the quantity only supplies the magnitude.
     assert quantity == {"AAA": 10.0, "BBB": -5.0}
 
 
-def test_position_book_falls_back_to_the_side_enum_for_a_missing_qty() -> None:
+def test_position_book_takes_the_side_sign_when_the_quantity_is_zero() -> None:
+    from alpaca.trading.enums import PositionSide
+
+    client = _ModelClient(positions=[_position("DDD", 0, -250, PositionSide.SHORT)])
+
+    notional, quantity = alpaca.position_book(client, dry_run=False)
+
+    assert notional == {"DDD": -250.0}
+    assert quantity == {"DDD": 0.0}
+
+
+def test_position_book_handles_a_position_without_a_quantity() -> None:
     class _NoQty:
         symbol = "CCC"
         qty = None
         market_value = "250"
         side = "short"
 
-    client = _ModelClient(positions=[_NoQty()])
-    notional, quantity = alpaca.position_book(client, dry_run=False)
+    notional, quantity = alpaca.position_book(
+        _ModelClient(positions=[_NoQty()]), dry_run=False
+    )
 
     assert notional == {"CCC": -250.0}
     assert quantity == {"CCC": 0.0}
+
+
+def test_position_book_raises_when_side_and_quantity_disagree() -> None:
+    from alpaca.trading.enums import PositionSide
+
+    client = _ModelClient(positions=[_position("EEE", -5, 500, PositionSide.LONG)])
+
+    with pytest.raises(ValueError, match="disagrees with quantity"):
+        alpaca.position_book(client, dry_run=False)
+
+
+def test_position_book_raises_on_a_missing_market_value() -> None:
+    from alpaca.trading.enums import PositionSide
+    from alpaca.trading.models import Position
+
+    position = Position(
+        asset_id=uuid.uuid5(uuid.NAMESPACE_DNS, "FFF"),
+        symbol="FFF",
+        exchange="NASDAQ",
+        asset_class="us_equity",
+        avg_entry_price="100",
+        qty="5",
+        side=PositionSide.LONG,
+        cost_basis="500",
+    )
+    with pytest.raises(ValueError, match="no market_value"):
+        alpaca.position_book(_ModelClient(positions=[position]), dry_run=False)
 
 
 def test_a_submitted_real_order_is_recorded_by_its_status_value() -> None:
