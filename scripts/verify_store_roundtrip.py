@@ -18,9 +18,10 @@ cron's box, and it does three things:
 3. **Records the result** in `efb.run_status` with the per-input hashes, so the
    dashboard and the next reader see it without a terminal.
 4. **Proves the `replace_by_date` delete** against the real store: two rows on a
-   sentinel date, replaced by one, then cleared. That DELETE otherwise only runs
-   on a rerun, so a missing grant would surface at the worst time; the sentinel
-   date is 1900-01-01 and it is cleared before the command returns.
+   sentinel date, replaced by one, then cleared. That DELETE runs every evening
+   (it is how the day's positions and orders are written), so a missing grant
+   fails the first order-writing run; this proves it before a gate evening does.
+   The sentinel date is 1900-01-01 and it is cleared before the command returns.
 
 It writes one `run_status` row, plus the sentinel positions rows that are cleared
 again, and it writes no row at all when the store has not been seeded yet:
@@ -272,8 +273,8 @@ def replace_by_date_roundtrip() -> tuple[list[dict[str, Any]], list[str]]:
     It writes two sentinel rows, replaces them with one, reads that row's value
     back (a merge would leave two rows and the old value), and clears the date.
     The DELETE is the point: `replace_by_date` erases a date before re-inserting
-    it, and that statement otherwise only runs on a rerun, where a missing
-    privilege is discovered at the worst possible time. The sentinel date is
+    it, and it runs every evening, so a missing privilege fails the first
+    order-writing run rather than waiting for a rerun. The sentinel date is
     1900-01-01 and it is cleared even when a step raises.
     """
     probes: list[dict[str, Any]] = []
@@ -418,8 +419,8 @@ def main(argv: list[str] | None = None) -> int:
     for probe in probes:
         print(f"  {probe['probe']:<48} {probe['status']:<8} {probe['read_back']}")
 
-    # The DELETE grant is only exercised on a rerun, so it is proven here instead,
-    # on a sentinel date that is cleared before the command returns.
+    # The DELETE runs every evening, so it is proven here, on a sentinel date
+    # that is cleared before the command returns.
     roundtrip_probes, roundtrip_problems = replace_by_date_roundtrip()
     for probe in roundtrip_probes:
         print(f"  {probe['probe']:<48} {probe['status']:<8} {probe['read_back']}")

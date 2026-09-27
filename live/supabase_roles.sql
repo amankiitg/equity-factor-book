@@ -28,8 +28,10 @@ create role efb_writer login password 'REPLACE_WITH_A_LONG_RANDOM_PASSWORD';
 -- re-inserting it so a rerun cannot leave the previous run's rows behind). The
 -- broad grant below covers three of them on every table, and DELETE is granted
 -- narrowly on the two tables `replace_by_date` is called on, because that is the
--- only place a row is ever removed. The grant is traced to its caller and the
--- runtime cannot discover a missing privilege: the DELETE only runs on a rerun.
+-- only place a row is ever removed. The grant is traced to its caller, and the
+-- DELETE runs every evening: `replace_by_date` is how the day's positions and
+-- orders are written, so a missing privilege fails the first order-writing run,
+-- not a rerun.
 grant usage on schema efb to efb_writer;
 grant select, insert, update on all tables in schema efb to efb_writer;
 grant delete on efb.positions, efb.orders to efb_writer;

@@ -31,16 +31,34 @@ DDL = re.compile(
 )
 
 
+def _replace_by_date_tables() -> set[str]:
+    """Every table any `replace_by_date` caller names, read from the source.
+
+    The grant has to follow the callers, so the set is derived rather than
+    pinned: a new `replace_by_date` caller that adds a table fails this until the
+    roles file grants delete on it.
+    """
+    tables: set[str] = set()
+    for folder in ("live", "scripts"):
+        for path in sorted((ROOT / folder).glob("*.py")):
+            for match in re.finditer(
+                r"replace_by_date\(\s*[\"']([a-z_]+)[\"']", path.read_text()
+            ):
+                tables.add(match.group(1))
+    return tables
+
+
 def test_the_roles_cover_every_verb_the_store_issues() -> None:
     """The writer's grants have to cover the store's own verb set.
 
     The store issues INSERT and UPDATE (the upsert), SELECT (every read), and
-    DELETE (`replace_by_date`, which erases a date before re-inserting it). The
-    old test asserted the grant was `select, insert, update` and that `delete`
-    appeared nowhere, while the store's own delete path was exercised elsewhere:
-    a missing DELETE surfaces only on a rerun, which is too late. So the check is
-    the store's verb set, not a hand-copied string, and it fails the day the store
-    issues a verb the role does not hold.
+    DELETE (`replace_by_date`, which erases a date before re-inserting it, every
+    evening). The old test asserted the grant was `select, insert, update` and that
+    `delete` appeared nowhere, while the store's own delete path was exercised
+    elsewhere: the DELETE runs on the first evening that writes a book, so a
+    missing grant fails immediately. The check is the store's verb set, not a
+    hand-copied string, and it fails the day the store issues a verb the role does
+    not hold.
     """
     source = (ROOT / "live" / "store.py").read_text()
     verbs = {
@@ -55,11 +73,16 @@ def test_the_roles_cover_every_verb_the_store_issues() -> None:
         r"(?i)grant\s+select,\s*insert,\s*update\s+on all tables in schema efb",
         ROLES,
     ), "the broad grant does not cover insert, select and update"
-    # DELETE is granted, narrowly, on the two tables replace_by_date touches.
-    assert re.search(
-        r"(?i)grant\s+delete\s+on\s+efb\.positions,\s*efb\.orders\s+to\s+efb_writer",
-        ROLES,
-    ), "delete is not granted on the tables replace_by_date writes"
+    # DELETE is granted on exactly the tables replace_by_date is called on. The
+    # set comes from the callers, not from a pinned string.
+    callers = _replace_by_date_tables()
+    assert callers == {"positions", "orders"}, callers
+    match = re.search(
+        r"(?i)grant\s+delete\s+on\s+([a-z_.\s,]+?)\s+to\s+efb_writer", ROLES
+    )
+    assert match, "the roles file grants no delete"
+    granted = {item.strip().split(".")[-1] for item in match.group(1).split(",")}
+    assert granted == callers, (granted, callers)
     # Still scoped to efb and to one role.
     assert "create role efb_writer login" in ROLES
     assert "create role efb_reader login" not in ROLES
