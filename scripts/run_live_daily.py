@@ -307,6 +307,18 @@ def store_reconciliation(as_of: str, row: dict) -> None:
     )
 
 
+def store_attribution(run_tree: Path) -> dict[str, Any]:
+    """Attribute every stored day without a row, from the run tree's artifacts.
+
+    The run tree is passed rather than read from a module global, because the
+    attribution reads the same extended XS-v1 artifacts the proposal was priced
+    from and a global would be whichever module was adopted last.
+    """
+    from live import attribution_job
+
+    return attribution_job.run(run_tree)
+
+
 def resolve_dry_run(value: str | None) -> bool:
     """The clock starts only on the literal string "false", any case.
 
@@ -854,6 +866,25 @@ def main() -> int:
 
         row = reconcile.daily_record(as_of, dry_run=dry_run)
         store_reconciliation(as_of, row)
+        # E12: attribute every stored day that has no attribution row yet, from the
+        # store's own positions and this run tree's XS-v1 artifacts. It runs after
+        # the reconciliation so the day's cost and forecast are already stored, and
+        # it is wrapped in its own handler because it is a report about the book:
+        # a report that cannot be produced is a bad page, never a reason to leave a
+        # book unheld.
+        try:
+            attributed = store_attribution(run_tree)
+            logger.info(
+                "attribution: %d session(s) stored, %d already attributed",
+                attributed["n_stored"],
+                attributed["n_done"],
+            )
+        except Exception as exc:  # noqa: BLE001 - a report, not a step
+            logger.warning(
+                "attribution failed and the run continues: %s: %s",
+                type(exc).__name__,
+                notify.scrub(str(exc)),
+            )
         snapshot_inputs = {
             "manifest": manifest,
             "book": book,
