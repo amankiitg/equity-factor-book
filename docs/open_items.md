@@ -416,8 +416,15 @@ close `t` hedges the book with the design dated `t`, which carries data through
 `t-1`, but the book earns its return over `t` to `t+1`, and that exposure is
 described by the design dated `t+1`, which needs only `t`'s close and is
 therefore available in the same evening. E12 measured the drift the stale
-vintage leaves: 1.694e-04 of exposure per factor on average, and 2.0 percent of
-cumulative P&L over the seed book.
+vintage leaves. The two vintages differ on 174 of the seed book's 3,645
+sessions, which are the sessions after a rebalance date: the seed's descriptor
+artifact is a monthly snapshot, so on the other 3,471 sessions the two designs
+are the same object. Over the 174 sessions where it bites, the mean per-factor
+exposure gap is 0.01967, the worst single gap is 0.6258 of the reversal
+exposure, and the timing P&L is +0.014142 against +0.052066 of total P&L on
+those sessions, so it is 15.3 percent of the absolute P&L on the sessions where
+it bites. Averaging over all 3,645 sessions divides that by twenty and reads as
+nothing, which is why the number is quoted this way.
 
 The fix is to hedge with the design one session forward. It is deliberately not
 applied before the flip: it moves every stored book, the guard numbers and the

@@ -135,6 +135,39 @@ const TOP_LEVEL = [
   "hedge",
   "exposures",
   "reconciliation",
+  "attribution",
+];
+
+const ATTRIBUTION = [
+  "n_days",
+  "first_day",
+  "last_day",
+  "cumulative",
+  "by_factor",
+  "daily",
+  "cost",
+  "note",
+];
+
+const ATTRIBUTION_CUMULATIVE = [
+  "pnl_total",
+  "pnl_factor",
+  "pnl_idio",
+  "pnl_cost",
+  "max_identity_residual",
+  "n_computed_specific",
+];
+
+const ATTRIBUTION_DAY = [
+  "trade_date",
+  "pnl_total",
+  "pnl_factor",
+  "pnl_idio",
+  "pnl_cost",
+  "pnl_timing",
+  "book_beta",
+  "market_return",
+  "pnl_beta",
 ];
 
 const RUN_STATUS = [
@@ -184,6 +217,21 @@ describe("the fixtures and the page's types", () => {
     }
     for (const key of BOOK) {
       expect(Object.keys(fixture.book), `${name}.book is missing ${key}`).toContain(key);
+    }
+    const attribution = fixture.attribution as Record<string, unknown>;
+    for (const key of ATTRIBUTION) {
+      expect(Object.keys(attribution), `${name}.attribution is missing ${key}`).toContain(key);
+    }
+    const cumulative = attribution.cumulative as Record<string, unknown>;
+    for (const key of ATTRIBUTION_CUMULATIVE) {
+      expect(Object.keys(cumulative), `${name}.attribution.cumulative is missing ${key}`).toContain(
+        key,
+      );
+    }
+    for (const day of attribution.daily as Array<Record<string, unknown>>) {
+      for (const key of ATTRIBUTION_DAY) {
+        expect(Object.keys(day), `${name}.attribution.daily[] is missing ${key}`).toContain(key);
+      }
     }
   });
 
@@ -361,4 +409,20 @@ describe("the fixtures and the page's types", () => {
       }
     },
   );
+  it("carries attributed days in every state, and a day is a day", () => {
+    // The attribution describes the book, and the book is the same object in all
+    // six states, so every fixture has it. A date with a midnight time stapled to
+    // it is the bug this pins: the page shows these beside `target_close`.
+    for (const name of NAMES) {
+      const attribution = load(name).attribution as {
+        n_days: number;
+        daily: Array<{ trade_date: string }>;
+      };
+      expect(attribution.n_days, `${name} has no attributed days`).toBeGreaterThan(0);
+      expect(attribution.daily.length, `${name} has no daily series`).toBeGreaterThan(0);
+      for (const day of attribution.daily) {
+        expect(day.trade_date, `${name} has a date with a time in it`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
+    }
+  });
 });

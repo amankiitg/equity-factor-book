@@ -58,6 +58,9 @@ STORE_LABEL = "local parquet (live/state/supabase)"
 # rather than typed so the page's bridge is the real evening's arithmetic.
 BRIDGE_SESSION = ROOT / "tests" / "fixtures" / "bridge_2026-10-05.json"
 SPECIFIC = ROOT / "data" / "models" / "XS-v1" / "specific_var.parquet"
+# The E12 attribution artifact: the seed book's own stored attribution, which is
+# what the page's section is built from until the live days exist.
+ATTRIBUTION = ROOT / "data" / "attribution" / "daily.parquet"
 
 NAMES: tuple[str, ...] = (
     "snapshot_ok.json",
@@ -302,6 +305,20 @@ def fills_report_rejected() -> dict[str, Any]:
         ],
         "unread": [],
     }
+def attribution() -> dict[str, Any]:
+    """The page's attribution block, from the sprint's stored artifact.
+
+    Read through the same builder the run uses rather than stubbed by hand, so the
+    fixture that covers the section has real numbers in it and a change to the
+    builder reaches the page's tests. The seed artifact stands in for the live
+    days until the clock has them, which is exactly what the memo and the
+    walkthrough do.
+    """
+    if not ATTRIBUTION.exists():
+        return snapshot.empty_attribution(
+            "the seed attribution artifact has not been built"
+        )
+    return snapshot.attribution_block(pd.read_parquet(ATTRIBUTION))
 
 
 def _run(**over: Any) -> dict[str, Any]:
@@ -321,6 +338,9 @@ def _run(**over: Any) -> dict[str, Any]:
         "failures": [],
         "establishment": False,
         "cost_label": "rebalance",
+        # Every variant carries the same attribution, because it describes the
+        # book and the book is the same in all of them.
+        "attribution": attribution(),
     }
     base.update(over)
     return base

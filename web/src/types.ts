@@ -186,6 +186,40 @@ export interface ActualHoldings {
   names: ActualHoldingName[];
   fills: FillsSummary | null;
   exits?: ExitsBlock | null;
+export interface AttributionDay {
+  trade_date: string | null;
+  pnl_total: number | null;
+  pnl_factor: number | null;
+  pnl_idio: number | null;
+  pnl_cost: number | null;
+  pnl_timing: number | null;
+  book_beta: number | null;
+  market_return: number | null;
+  pnl_beta: number | null;
+  realized_vol: number | null;
+  forecast_vol: number | null;
+}
+
+export interface Attribution {
+  n_days: number;
+  first_day: string | null;
+  last_day: string | null;
+  cumulative: {
+    pnl_total: number | null;
+    pnl_factor: number | null;
+    pnl_idio: number | null;
+    pnl_cost: number | null;
+    max_identity_residual: number | null;
+    n_computed_specific: number;
+  };
+  by_factor: Record<string, number | null>;
+  daily: AttributionDay[];
+  cost: {
+    expected_bps: number | null;
+    realized_bps: number | null;
+    n_realized: number;
+  };
+  note: string;
 }
 
 export interface Snapshot {
@@ -267,4 +301,5 @@ export interface SessionMovers {
   session?: string | null;
   by_name?: Array<{ ticker: string; contribution: number }> | null;
   by_sector?: Array<{ sector?: string | null; contribution: number }> | null;
+  attribution: Attribution;
 }

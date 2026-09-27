@@ -26,12 +26,19 @@ verdicts pending. One commit per item.
 - [x] Measure, per seed-book session, the book's factor exposure under the design
       dated the session against the design at the previous close, and the factor
       P&L that gap produces. Measured over the whole seed book, 3,645 sessions from
-      2012-02-01 to 2026-07-31 at (rho 0.02, seed 0): the mean per-factor gap is
-      1.694e-04, the largest single gap is 0.6258 of the reversal exposure, and the
-      timing P&L sums to 0.014142 against a cumulative total P&L of 0.703958, so the
-      two vintages disagree over about 2.0% of the book's P&L. `data/attribution/`
-      carries the per-session `exposure_json`, `book_exposure_json`, `pnl_timing`
-      and `pnl_timing_json` behind those numbers.
+      2012-02-01 to 2026-07-31 at (rho 0.02, seed 0). **The two vintages differ on
+      174 of those sessions**, which are the sessions that follow a rebalance date:
+      the seed's descriptor artifact is a monthly snapshot, so on the other 3,471
+      sessions the design dated the session and the design dated the book's own close
+      are the same object and the gap is identically zero. Over the 174 sessions
+      where it bites, the mean per-factor exposure gap is **0.01967**, the largest
+      single gap is 0.6258 of the reversal exposure, and the timing P&L is +0.014142
+      against +0.052066 of total P&L on those sessions, so it is **15.3 percent of
+      the absolute P&L on the sessions where it bites**. An average taken over all
+      3,645 sessions would divide that by twenty and read as nothing; the earlier
+      note in this file did exactly that and was wrong. `data/attribution/` carries
+      the per-session `exposure_json`, `book_exposure_json`, `pnl_timing` and
+      `pnl_timing_json` behind these numbers.
 - [x] Answer whether the session-dated design is computable at the previous close.
       **It is, and the first answer recorded here was wrong.** Every descriptor on
       row `t` of `descriptors.parquet` is built from data through the previous close:
@@ -50,8 +57,8 @@ verdicts pending. One commit per item.
       is one session stale. The evening of close `t` hedges with the design dated `t`
       (data through `t-1`), while the book earns its return over `t` to `t+1`, whose
       exposure is described by the design dated `t+1`, which needs only `t`'s close and
-      is available in the same evening. The drift this leaves is the 1.694e-04 per
-      factor and 2.0 percent of cumulative P&L measured above. The fix moves every
+      is available in the same evening. The drift this leaves is the 0.01967 per
+      factor and 15.3 percent of the absolute P&L measured above. The fix moves every
       stored book, the guard numbers and the recorded ex-ante risk, so it waits for
       the flip. Written up in `docs/open_items.md`.
 - [x] Reported; the live hedge is unchanged.
