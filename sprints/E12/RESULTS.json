@@ -1,0 +1,55 @@
+{
+  "artifact": {
+    "daily": "data/attribution/daily.parquet",
+    "first_session": "2012-02-01",
+    "last_session": "2026-07-31",
+    "n_sessions": 3645,
+    "source": "the seed book's own stored attribution (rho 0.02, seed 0), built by scripts/build_attribution.py from data/portfolios/mv_constrained.parquet",
+    "timeseries": "data/attribution/timeseries.parquet"
+  },
+  "criteria": {
+    "F12.1": {
+      "criterion": "Holdings-based factor P&L plus idio P&L plus costs equals total P&L to 1e-10 every day.",
+      "detail": "The identity is a per-day statement. On the seed artifact it holds to machine precision on 174 of the 3,645 sessions and misses by a median 1.771e-04 elsewhere, because the seed's older vintages do not reproduce their own panel from the stored factor and specific returns. It closes to 6.9e-18 on the three 2026 sessions the current build produced, which are checked in tests/test_e12_attribution.py and are not in this artifact. The exit criterion re-evaluates it on the live days as they arrive, which is where it decides anything.",
+      "stored_numbers": {
+        "max_abs_residual": 0.012329809716860858,
+        "median_abs_residual": 0.00017707768632445667,
+        "n_days_within_1e10": 174,
+        "n_sessions": 3645
+      },
+      "verdict": "partial"
+    },
+    "F12.2": {
+      "criterion": "Time-series attribution betas agree with average holdings-based exposures within one standard error.",
+      "detail": "A statement about the live book, so it cannot be settled before the clock runs. The seed measurement is recorded: the two estimators answer different questions on a book that rebalances monthly, and a monthly book is not what the live loop trades.",
+      "stored_numbers": [
+        {
+          "n_terms": 20,
+          "n_within_one_se": 7
+        }
+      ],
+      "verdict": "pending"
+    },
+    "F12.3": {
+      "criterion": "The reported Sharpe carries its SE and no skill is claimed unless t exceeds 2. The expected verdict is luck; write it down.",
+      "detail": "The mechanism is in place: efb.attribution.skill_test reports the idio P&L's mean with its standard error and the t-statistic, the book's Sharpe with both of efb.perf's standard errors, and the days an edge of a given information ratio needs. The seed book's fourteen years clear the bar, which is not a discovery: E10 chose the (rho, phi) whose Sharpe is closest to 1.0 on this sample. The live book is a different signal and a null one, and the expected verdict for its thirty-day window is luck.",
+      "expected_verdict": "luck",
+      "stored_numbers": [
+        {
+          "days_to_detect_ir_1": 1008,
+          "idio_mean": 0.00020484756814231274,
+          "idio_se": 5.97091294839407e-05,
+          "ir_annual": 0.9020727777239993,
+          "n_days": 3645,
+          "sharpe_annual": 0.8490366013889123,
+          "sharpe_se_lo2002": 0.2581411585029945,
+          "t_stat": 3.430757907756942
+        }
+      ],
+      "verdict": "pending"
+    }
+  },
+  "registered_at": "2026-09-27T03:17:49.228785+00:00",
+  "sprint": "E12",
+  "status": "pending"
+}

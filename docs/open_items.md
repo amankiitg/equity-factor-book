@@ -421,10 +421,11 @@ sessions, which are the sessions after a rebalance date: the seed's descriptor
 artifact is a monthly snapshot, so on the other 3,471 sessions the two designs
 are the same object. Over the 174 sessions where it bites, the mean per-factor
 exposure gap is 0.01967, the worst single gap is 0.6258 of the reversal
-exposure, and the timing P&L is +0.014142 against +0.052066 of total P&L on
-those sessions, so it is 15.3 percent of the absolute P&L on the sessions where
-it bites. Averaging over all 3,645 sessions divides that by twenty and reads as
-nothing, which is why the number is quoted this way.
+exposure, and the timing P&L is +141.4 bp against a total P&L of +520.7 bp on
+those sessions, so it is 27.2 percent of their net P&L (its absolute size is
+15.3 percent of the absolute daily P&L; the denominator is stated because the
+two readings differ). Averaging over all 3,645 sessions divides that by twenty
+and reads as nothing, which is why the number is quoted this way.
 
 The fix is to hedge with the design one session forward. It is deliberately not
 applied before the flip: it moves every stored book, the guard numbers and the

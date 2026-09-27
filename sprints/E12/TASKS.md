@@ -32,11 +32,13 @@ verdicts pending. One commit per item.
       sessions the design dated the session and the design dated the book's own close
       are the same object and the gap is identically zero. Over the 174 sessions
       where it bites, the mean per-factor exposure gap is **0.01967**, the largest
-      single gap is 0.6258 of the reversal exposure, and the timing P&L is +0.014142
-      against +0.052066 of total P&L on those sessions, so it is **15.3 percent of
-      the absolute P&L on the sessions where it bites**. An average taken over all
-      3,645 sessions would divide that by twenty and read as nothing; the earlier
-      note in this file did exactly that and was wrong. `data/attribution/` carries
+      single gap is 0.6258 of the reversal exposure, and the timing P&L is +141.4 bp
+      against a total P&L of +520.7 bp on those sessions, so it is **27.2 percent of
+      their net P&L** (its absolute size, 660.5 bp, is 15.3 percent of the 4,316.5 bp
+      of absolute daily P&L; the denominator is stated because the two readings
+      differ). An average taken over all 3,645 sessions would divide that by twenty
+      and read as nothing; an earlier note in this file did exactly that and was
+      wrong. `data/attribution/` carries
       the per-session `exposure_json`, `book_exposure_json`, `pnl_timing` and
       `pnl_timing_json` behind these numbers.
 - [x] Answer whether the session-dated design is computable at the previous close.
@@ -58,7 +60,7 @@ verdicts pending. One commit per item.
       (data through `t-1`), while the book earns its return over `t` to `t+1`, whose
       exposure is described by the design dated `t+1`, which needs only `t`'s close and
       is available in the same evening. The drift this leaves is the 0.01967 per
-      factor and 15.3 percent of the absolute P&L measured above. The fix moves every
+      factor and 27.2 percent of the net P&L measured above. The fix moves every
       stored book, the guard numbers and the recorded ex-ante risk, so it waits for
       the flip. Written up in `docs/open_items.md`.
 - [x] Reported; the live hedge is unchanged.
@@ -120,34 +122,76 @@ grant select, insert, update on efb.attribution to efb_writer;
 
 ## 5. Evening wiring
 
-- [ ] After each evening run, attribute every stored day not yet attributed, from
+- [x] After each evening run, attribute every stored day not yet attributed, from
       the stored positions and the XS-v1 artifacts, and store the rows.
-- [ ] A failure is logged and never stops the trading run.
+      `efb.attribution.from_positions` builds the books from the store's own
+      `positions` table (the same point-in-time convention `daily_weights` uses for
+      the seed, so live and historical days go through one implementation) and skips
+      the days the table already holds. `live/attribution_job.py` reads the day's cost,
+      forecast and fill counts from the store's `reconciliation` and `orders` tables,
+      and `scripts/run_live_daily.py` calls it after the reconciliation is stored.
+- [x] A failure is logged and never stops the trading run. The call is inside its own
+      handler that scrubs the reason, logs at warning, and returns; a test pins that
+      there is no re-raise and no `logger.exception` at that call site.
 
 ## 6. Live page
 
-- [ ] Attribution section: cumulative P&L split into factor, idio and cost, the
+- [x] Attribution section: cumulative P&L split into factor, idio and cost, the
       hedge's factor P&L per day, the raw-beta line, realized versus expected cost.
+      `live/snapshot.py::attribution_block` builds it from the store's attribution
+      table, `docs/snapshot.schema.json` declares it (and the builder's keys are
+      checked against the schema), `web/src/types.ts` mirrors it, and `App.tsx`
+      renders it as its own section with the worst day's identity residual beside the
+      sums. The page fixtures carry the seed artifact's real block, so the section is
+      tested with numbers rather than a stub.
 
 ## 7. The skill test
 
-- [ ] Idio P&L mean, t-statistic and information ratio with standard errors.
-- [ ] The days needed to detect a given IR at a stated power.
-- [ ] A plain-English verdict, and the F12.3 rule that no skill is claimed unless
-      the t-statistic exceeds 2.
+- [x] Idio P&L mean, t-statistic and information ratio with standard errors.
+      `efb.attribution.skill_test`: the mean and its standard error, the t, the
+      annualized information ratio with its own error, and the book's Sharpe with
+      **both** of `efb.perf`'s standard errors, i.i.d. and Lo 2002, annualized the
+      same way the Sharpe is.
+- [x] The days needed to detect a given IR at a stated power. `n = (t / IR_daily)^2`,
+      quoted for IRs of 0.25, 0.5, 1.0 and 2.0 at the t of 2.0 the criterion sets:
+      16,128, 4,032, 1,008 and 252 days. The closed form is rounded before the
+      ceiling, because it lands a few ulps above its own integer and 1,009 days would
+      be a float artefact rather than a number.
+- [x] A plain-English verdict, and the F12.3 rule that no skill is claimed unless the
+      t-statistic exceeds 2. The bar is a constant (`DETECTION_T`), the verdict is a
+      sentence, and the seed book's own verdict is recorded with the caveat that its
+      Sharpe was selected on this sample.
 
 ## 8. `scripts/review_week.py`
 
-- [ ] Per day: the P&L split, realized factor P&L against the near-zero the hedge
+- [x] Per day: the P&L split, realized factor P&L against the near-zero the hedge
       promises, cost realized versus expected, fill differences, forecast versus
-      realized volatility, with a plain-English summary.
-- [ ] Works on however many days exist, so it can run after day one.
+      realized volatility, with a plain-English summary. The day's identity residual
+      and the hedge's own timing line are in the row as well, because the row is what
+      makes the summary checkable.
+- [x] Works on however many days exist. Tested at one day, at three, at a window and
+      at nothing: a single day is described as a single day rather than as a
+      distribution, the cost and volatility lines say when they have no data behind
+      them instead of printing a number anyway, and the skill line refuses to read a
+      two-day t-statistic as clearing a bar.
 
 ## 9. Memo and walkthrough
 
-- [ ] `docs/research/E12_attribution_report.md` and
+- [x] `docs/research/E12_attribution_report.md` and
       `notebooks/E12_walkthrough.ipynb`, scaffolded on the seed books with every
-      number read from a stored file, so the live run swaps inputs and not code.
+      number read from a stored file, so the live run swaps inputs and not code. The
+      memo is generated by `sprints/E12/write_memo.py` and the notebook by
+      `sprints/E12/build_walkthrough.py`, executed headlessly and rendered to
+      `notebooks/E12_walkthrough.html`.
+- [x] `sprints/E12/RESULTS.json` registered by `sprints/E12/register_results.py`,
+      with F12.1 to F12.3 read verbatim out of the roadmap. F12.1's verdict is
+      `partial`, which is what the measurement says: it holds on 174 of the 3,645 seed
+      sessions and misses by a median of 1.8 bp elsewhere. F12.2 and F12.3 are
+      `pending`, and F12.3's expected verdict is written down as `luck`.
+- [ ] **Not built, and named as open rather than dropped:** the regime table and the
+      seven-way selection, sizing and timing decomposition, both of which are in the
+      roadmap's E12 scope and neither of which is among this sprint's nine tasks. The
+      memo's coverage section says so.
 
 ## Exit
 
