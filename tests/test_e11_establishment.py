@@ -47,7 +47,8 @@ def _orders(proposal: pd.DataFrame) -> list[guards.OrderSpec]:
 def test_the_establishment_day_is_held_to_the_book_not_the_brake() -> None:
     """Two limits, two bases, and the flag chooses between them."""
     limit, basis = guards.traded_notional_limit(NAV, establishment=True)
-    assert limit == NAV
+    # The book itself, plus the one-dollar rounding tolerance.
+    assert limit == NAV + 1.0
     assert "full book" in basis and "second trading day" in basis
 
     limit, basis = guards.traded_notional_limit(NAV, establishment=False)
@@ -78,6 +79,32 @@ def test_the_establishment_ceiling_still_trips_on_ten_times_the_book() -> None:
     guarded = guards.apply_guards(orders, NAV, establishment=True)
     tripped = [o for o in guarded if o.status == guards.REJECTED_TRADED_NOTIONAL]
     assert tripped, "a book ten times the ceiling was not stopped"
+
+
+def test_the_ceiling_admits_a_real_stored_proposal_with_one_dollar_of_slack() -> None:
+    """The ceiling is the book's own gross, and the tolerance is one dollar.
+
+    The proposal's weights are renormalized to gross 1.0 and the per-name
+    notionals are rounded, so a book that is exactly the gross can sum a cent
+    above `gross * nav`. Summing a real stored proposal is the honest version of
+    the number: it is the book the loop actually built, not a round one.
+    """
+    proposals = sorted(
+        (Path(__file__).resolve().parents[1] / "live" / "proposals").glob(
+            "proposal_*.parquet"
+        )
+    )
+    assert proposals, "no stored proposal to sum"
+    frame = pd.read_parquet(proposals[-1])
+    gross = float(frame["weight"].abs().sum())
+    traded = gross * NAV
+    limit = guards.establishment_limit(NAV, gross=gross)
+
+    # The book's own gross is admitted, and the tolerance is exactly one dollar.
+    assert limit == pytest.approx(traded + 1.0)
+    assert guards.traded_notional_brake(0.0, traded, limit) is False
+    # Ten times the book is still stopped, so the tolerance admits nothing real.
+    assert guards.traded_notional_brake(0.0, 10.0 * traded, limit) is True
 
 
 def _proposal_frame(proposal: pd.DataFrame) -> pd.DataFrame:
