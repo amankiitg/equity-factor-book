@@ -2829,3 +2829,71 @@ close, and `make lint` clean, each time the file that changed was the one
 selected. The three follow-ups the owner listed for the first week are untouched:
 the holding versus trading cost labels, rebasing e12, and the static snapshot
 fields.
+
+
+## 2026-09-27 pre-launch batch 3: the re-review's five items
+
+**The four fixes and the test-hygiene one, each with its own tests, in one commit
+on `prelaunch-batch3` and merged to `main`.**
+
+**The unqualified risk fields now describe the traded book.** The reviewer's
+point, and it was right: `gross`, `net` and the forecast volatility on the
+reconciliation row, the proposal row and the snapshot described the 499-name book
+the model sized before the floor dropped any, while the book the owner holds is the
+kept set after the hedge. Each of those three now means the traded book in all
+three places, and the 499-name figures sit beside them as `full_book_*` columns
+(six new columns across `efb.reconciliation` and `efb.proposals`) and two new keys
+in the snapshot's `book` block. F11.3's comparison reads the traded forecast, from
+the row's own `traded_risk` block when it is there, so an evening stored before
+this change is still compared against the book it held. A manifest older than the
+kept set records its day with the only number it has, and `traded_risk` being null
+on the same row is what says so - the fallback is visible rather than silent. The
+two `_after_fmp` fields were left alone: they are named for the hedge applied to
+the 499-name book, and the reviewer named three fields, not five.
+
+**A cover under one whole share stopped making the run incomplete.** It shared
+`QTY_ROUNDS_TO_ZERO` with a new short whose notional rounds to no whole share, and
+that one is a leg the run wanted and could not place. The cover is a leg the run
+chose not to send, so it has its own code, `COVER_UNDER_ONE_SHARE`, and it sits
+with `BELOW_MIN_NOTIONAL` in the expected-skip set. Both sides of that boundary
+have a test: the cover does not make the day unfiled, and the short open still
+does.
+
+**A refusal now says so.** The window refusal does no work and records nothing -
+that is deliberate, the day is still owed its evening - which left the owner with
+no signal at all that the evening had not run. It sends one line now, with its own
+subject: the instant, the New York hour, and the window it fell outside. No store
+line and no status line, because there is one thing to say and padding it would
+make it read like a run that happened.
+
+**An equity of zero or below raises, and the day's P&L is measured.** Zero or less
+is an answer about the account, not a failed read: falling back to the paper
+default on it would buy a million dollars' worth of book against an account
+holding nothing, with every guard then guarding the wrong book. The fallback is
+now only for a read that never happened. `realized_pnl` on the nav row is the
+change in the account's own equity since the previous stored NAV row, strictly
+before this close, in place of the zero that was written every dry-run evening and
+said the book had made nothing rather than that nobody had measured it.
+
+**The suite had been restaging the repository's runtime state.**
+`tests/test_e11_execution.py` pinned `state.STATE_DIR`, which cannot redirect
+`write_positions` (the directory is a default argument, bound at definition time),
+and left `morning_job.EXECUTION_LOG_DIR` unpinned, so every full run rewrote
+`live/logs/execution_<date>.parquet` and `live/state/positions.parquet`. Both are
+pinned to the test's own tree now, with the write landing there asserted, so
+removing a pin fails the test instead of quietly overwriting local state. Worth
+recording how it was found: an earlier round's test of the skipped-leg record read
+the repository's own `execution_2026-09-22.parquet` and saw `AAA`/`BBB` where the
+run had written `BIG`/`TINY`, which is the same bug seen from the other side.
+
+**Verification.** `make lint` clean; the E11 selection 480 passed and 1 skipped;
+the whole suite at close; the three-day rehearsal passes with every leg carrying
+its intent, the reversal closed then opened, and the day-3 rerun submitting
+nothing. The full-suite line, the fixture numbers and the rehearsal transcript are
+in `handoff/REPORT.md`'s batch 3 section.
+
+**Before the flip, one more operational step on top of batch 2's:**
+`live/supabase_schema.sql` has to be applied again for the six `full_book_*`
+columns. The upgrade block carries the `alter table ... add column if not exists`
+statements for exactly this reason; the `create table` blocks alone reach a fresh
+database only.

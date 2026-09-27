@@ -3668,3 +3668,111 @@ The batch against `main`, `git diff --stat main...prelaunch-batch2`:
 
 The largest single file is `tests/test_e11_notify.py`, which carries the
 run-level harness for every one of these items.
+
+## Pre-launch batch 3: the re-review's five items
+
+The reviewer's list, in their order, each with its own tests. One commit on
+`prelaunch-batch3`, merged to `main` with `--no-ff`.
+
+**The unqualified risk fields describe the traded book.** `gross`, `net` and the
+forecast volatility - `forecast_annual_vol` on the reconciliation row,
+`achieved_annual_vol` on the proposal row and in the snapshot's book block - are
+the kept set after the hedge, which is the book the owner holds. The 499-name book
+the model sized before the floor dropped any is beside each of them under its own
+`full_book_*` name: `full_book_forecast_annual_vol`, `full_book_gross` and
+`full_book_net` on `efb.reconciliation`, `full_book_gross`, `full_book_net` and
+`full_book_achieved_annual_vol` on `efb.proposals`, and `full_book_net` and
+`full_book_achieved_annual_vol` in the snapshot's `book` block beside the
+`full_book_gross` that was already there. A row whose "gross" was the 499-name
+book read as the gross of a book nobody holds, and the same reading applied to a
+forecast volatility put a number about a book the run never held on the front of
+the one it did.
+
+Two edges are handled rather than assumed. A manifest written before the kept set
+existed still records its day: the unqualified fields carry the only number that
+manifest has, and `traded_risk` on the same row is null, which is what marks them
+as the 499-name book's rather than the traded book's. And F11.3's comparison reads
+the traded forecast from the row's own `traded_risk` block when it is there, so a
+row stored before this change is compared against the book it actually held;
+without that block the column is all there is and is used.
+
+The two `_after_fmp` fields are deliberately left as they were. `idio_share_after_fmp`
+and `max_abs_exposure_after_fmp` describe the hedge applied to the 499-name book
+and are named for it; the reviewer's list named three fields, and changing two
+more that no reader has questioned would have moved numbers nothing asked to move.
+
+**A cover under one whole share is recorded like the minimum skip.** It was
+reported as `QTY_ROUNDS_TO_ZERO`, which is also the code for a new short whose
+notional rounds to no whole share - and that one is a leg the run wanted and could
+not place. The cover is a leg the run chose not to send: it has its own code,
+`COVER_UNDER_ONE_SHARE`, it is recorded with its reason and its size like the
+$250-minimum skip, and it no longer makes the run incomplete. The other skip keeps
+its behaviour, and the tests pin both sides of that boundary.
+
+**A refusal outside the window sends a one-line email.** The refusal does no work
+and records nothing, because it is not a run: the day is still owed its evening.
+That left the refusal invisible, so `notify.notify_refusal` sends it now - the
+instant, the New York hour it is, and the window it fell outside, in one line,
+with its own subject and no store line or status line to make it read like a run
+that happened. A refusal with no channel configured still exits nonzero.
+
+**An equity of zero or below raises, and the day's P&L is measured.** A reported
+equity of zero or less is an answer about the account rather than a failed read,
+and sizing from the paper default on it would buy a million dollars' worth of book
+against an account holding nothing - with every guard, all of them fractions of
+NAV, then guarding the wrong book. The fallback now stands only for a read that
+never happened, which a dry run allows. The nav row's `realized_pnl` is the change
+in the account's own equity since the previous stored NAV row, strictly before this
+close so a re-run cannot measure against itself; it replaces a zero written every
+dry-run evening, which said the book had made nothing rather than that nobody had
+measured it. The first evening records zero, because there is no earlier equity to
+measure against.
+
+**The tests stop rewriting the repository's runtime state.**
+`tests/test_e11_execution.py` pinned `state.STATE_DIR`, which cannot redirect
+`write_positions` - the directory is a default argument, bound when the function is
+defined - and left `morning_job.EXECUTION_LOG_DIR` unpinned, so every suite run
+rewrote `live/logs/execution_<date>.parquet` and `live/state/positions.parquet`.
+Both are pinned to the test's own tree now and the test asserts the writes landed
+there, so removing either pin fails the test rather than quietly restaging the
+repository's local state. The other files that drive the morning job were already
+pinned; they were checked one by one.
+
+## Verification
+
+```text
+$ PYTHONPATH=. .venv/bin/python scripts/rehearse_preflip.py
+--- DAY 3 RERUN: the broker holds the day-3 book ---
+  orders 0 (nothing new submitted); complete=True
+
+All checks passed: every leg carried a position intent, the reversal
+closed tonight and opened tomorrow, the removed name was closed, and an
+accepted after-close DAY order changed nothing until the next open.
+
+$ make lint
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+Success: no issues found in 33 source files
+Success: no issues found in 34 source files
+All done! 196 files would be left unchanged.
+
+$ .venv/bin/python -m pytest -q tests/test_e11_*.py tests/test_run_live_daily.py \
+      tests/test_alpha.py tests/test_construction_table.py
+480 passed, 1 skipped in 334.96s (0:05:34)      # before the fixtures were rebuilt
+
+$ .venv/bin/python -m pytest -q tests/
+1109 passed, 1 skipped, 18 warnings in 753.15s (0:12:33)
+```
+
+The headline change of this round is what the unqualified fields hold, and it is
+readable from the committed fixtures: `web/fixtures/snapshot_ok.json`'s `book.gross`
+is `1.0` with `full_book_gross` `1.0000000000000002`, `book.achieved_annual_vol` is
+`0.03156807660946643` with `full_book_achieved_annual_vol`
+`0.02457111132990971`, and `book.net` is `-3.3306690738754696e-16` with
+`full_book_net` `-2.3592239273284576e-16`. The fixtures are written by the snapshot
+writer itself, so those are the numbers the page will read.
+
+Before the flip, and in addition to the two files batch 2 named: apply
+`live/supabase_schema.sql` again for the six new `full_book_*` columns on
+`efb.reconciliation` and `efb.proposals`. The `alter table ... add column if not
+exists` statements are in the file's upgrade block for exactly this.

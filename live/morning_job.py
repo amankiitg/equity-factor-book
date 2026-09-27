@@ -85,7 +85,9 @@ INCOMPLETE_REASON_CODES = frozenset(
 # did exactly what it should have. A name whose change is under the minimum is the
 # whole of that set: it would be marked incomplete every evening otherwise, and
 # the day would never be filed.
-EXPECTED_SKIP_REASON_CODES = frozenset({alpaca.REASON_BELOW_MIN_NOTIONAL})
+EXPECTED_SKIP_REASON_CODES = frozenset(
+    {alpaca.REASON_BELOW_MIN_NOTIONAL, alpaca.REASON_COVER_UNDER_ONE_SHARE}
+)
 
 
 def _leg_incomplete(status: object, reason_code: object) -> bool:

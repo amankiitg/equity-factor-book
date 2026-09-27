@@ -221,6 +221,12 @@ REASON_ALPACA_ERROR = "ALPACA_API_ERROR"
 REASON_SUBMIT_UNKNOWN = "SUBMIT_EXCEPTION_UNKNOWN_STATE"
 REASON_SKIPPED_AFTER_HALT = "SKIPPED_AFTER_HALT"
 REASON_QTY_ROUNDS_TO_ZERO = "QTY_ROUNDS_TO_ZERO"
+# A short cover whose notional is worth less than one whole share. The run sized
+# the cover, the floor to whole shares left nothing to send, and the short stays
+# that much bigger than its target until the next evening. It is recorded like the
+# minimum-notional skip - a leg with its reason, and not a failure of the run -
+# because the alternative is a fractional cover whose rounding is the broker's.
+REASON_COVER_UNDER_ONE_SHARE = "COVER_UNDER_ONE_SHARE"
 # A leg whose change is smaller than an order is worth. The run chose not to send
 # it, which is not a failure: it is recorded with this code and named in the
 # email, and it does not make the run incomplete.
@@ -797,7 +803,7 @@ def submit_market_orders(
                         _skipped(
                             order.ticker,
                             trade,
-                            REASON_QTY_ROUNDS_TO_ZERO,
+                            REASON_COVER_UNDER_ONE_SHARE,
                             f"{notional:.2f} at {price:.4f} is under one whole "
                             "share, so the cover cannot be sent without "
                             "covering more of the short than was sized",

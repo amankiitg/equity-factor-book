@@ -57,21 +57,186 @@ def test_the_window_override_opens_only_on_the_exact_word() -> None:
 def test_the_run_refuses_outside_the_window_and_writes_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An evening at the wrong hour is not the evening.
+    """An evening at the wrong hour is not the evening, and the owner is told.
 
     The refusal is before the day's bookkeeping, so the day stays un-run and the
     in-window cron later that day still has its evening. Writing a row here would
-    either mark the day done or need a status the page then has to explain.
+    either mark the day done or need a status the page then has to explain. Since
+    nothing is recorded and no page changes, the one-line message is the only
+    place the owner can learn the evening did not run at that hour.
     """
+    from live import notify
+
     monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
     monkeypatch.setattr(run_live_daily, "datetime", _clock("2026-09-22T09:00:00+00:00"))
     monkeypatch.setattr(staleness, "is_session", lambda day: True)
     monkeypatch.delenv(run_live_daily.FORCE_HOUR_ENV, raising=False)
+    monkeypatch.setenv(notify.API_KEY_ENV, "re_test_key")
+    monkeypatch.setenv(notify.TO_ENV, "owner@example.com")
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: sent.append(payload)
+    )
 
     assert run_live_daily.main() == 1
 
     assert store.select("cron_runs").empty
     assert store.select("run_status").empty
+    assert len(sent) == 1
+    assert sent[0]["subject"] == (
+        "EFB refused | outside the 16:00-20:00 New York window"
+    )
+    # one line, with the refusal and its reason: the instant, the New York hour
+    # it is, and the window it fell outside
+    body = str(sent[0]["text"])
+    assert body.count("\n") == 0
+    assert body.startswith("EFB live book: refused, ")
+    assert "2026-09-22T09:00:00+00:00" in body
+    assert "05:00:00-04:00 in New York" in body
+    assert "16:00-20:00 window the loop trades in" in body
+
+
+def test_a_refusal_with_no_channel_still_fails_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing to send with is not a reason to report success.
+
+    The refusal exits nonzero either way: the evening did not run, and a run the
+    owner was not told about is the case the exit code exists for.
+    """
+    from live import notify
+
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(run_live_daily, "datetime", _clock("2026-09-22T09:00:00+00:00"))
+    monkeypatch.setattr(staleness, "is_session", lambda day: True)
+    monkeypatch.delenv(run_live_daily.FORCE_HOUR_ENV, raising=False)
+    monkeypatch.delenv(notify.API_KEY_ENV, raising=False)
+    monkeypatch.delenv(notify.TO_ENV, raising=False)
+
+    assert run_live_daily.main() == 1
+
+    assert store.select("run_status").empty
+
+
+def test_realized_pnl_is_the_change_in_the_accounts_equity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tonight's P&L is the move in the account's own equity, measured.
+
+    The previous stored NAV row is the reading it is measured against, taken
+    strictly before this close so a re-run cannot measure against itself, and the
+    first evening records zero because there is no earlier equity to compare with.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+
+    # the establishment evening: no earlier row, so nothing to measure against
+    assert run_live_daily.realized_pnl("2026-09-22", 1_000_000.0) == 0.0
+
+    store.upsert(
+        "nav", [{"trade_date": "2026-09-21", "nav": 999_000.0, "realized_pnl": 0.0}]
+    )
+    assert run_live_daily.realized_pnl("2026-09-22", 1_002_500.0) == pytest.approx(
+        3_500.0
+    )
+
+    # strictly before: tonight's own row is not the baseline
+    store.upsert(
+        "nav",
+        [{"trade_date": "2026-09-22", "nav": 1_002_500.0, "realized_pnl": 3_500.0}],
+    )
+    assert run_live_daily.realized_pnl("2026-09-22", 1_002_500.0) == pytest.approx(
+        3_500.0
+    )
+    assert run_live_daily.realized_pnl("2026-09-23", 1_010_000.0) == pytest.approx(
+        7_500.0
+    )
+    # the latest earlier row is the baseline, so a loss is a negative number
+    # rather than a smaller gain
+    store.upsert(
+        "nav",
+        [{"trade_date": "2026-09-23", "nav": 1_010_000.0, "realized_pnl": 7_500.0}],
+    )
+    assert run_live_daily.realized_pnl("2026-09-24", 1_000_000.0) == pytest.approx(
+        -10_000.0
+    )
+
+
+def test_the_proposals_row_states_the_traded_books_figures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`gross`, `net` and `achieved_annual_vol` on the proposal row are the
+    traded book's, with the 499-name book beside them under `full_book_*`.
+
+    The row is read by the dashboard and by anything asking what the loop holds,
+    and a row whose gross was the 499-name book read as the gross of the book the
+    owner holds. The two pairs are asserted to differ, so a row that quietly kept
+    one book in both would fail here.
+    """
+    import json
+
+    import pandas as pd
+
+    proposals = tmp_path / "proposals"
+    proposals.mkdir()
+    manifest = {
+        "signal": "idio_momentum",
+        "n_names": 499,
+        "n_excluded": 2,
+        "gross": 0.9008,
+        "net": 0.004,
+        "kept_gross": 1.0,
+        "kept_net": -3.3e-16,
+        "n_eff_kept": 131.9,
+        "n_eff_full_book": 268.7,
+        "target_annual_vol": 0.10,
+        "achieved_annual_vol": 0.0246,
+        "kept_achieved_annual_vol": 0.0316,
+        "idio_share_after_fmp": 1.0,
+        "max_abs_exposure_after_fmp": 3.8e-15,
+        "gross_cap_bound": True,
+        "nav": 1_000_000.0,
+        "expected_establishment_cost_bps": 14.5,
+        "cost_breakdown_bps": {"total": 14.5},
+        "notional": 1_000_000.0,
+        "avg_trade_size": 6_666.67,
+        "input_as_of": {},
+        "max_input_staleness_days": 0,
+        "universe_source": "spy_holdings",
+        "universe_as_of": "2026-09-21",
+    }
+    (proposals / "proposal_2026-09-21.json").write_text(json.dumps(manifest))
+    pd.DataFrame(
+        {
+            "ticker": ["AAA"],
+            "weight": [1.0],
+            "side": ["long"],
+            "z": [1.0],
+            "alpha": [1e-06],
+        }
+    ).to_parquet(proposals / "proposal_2026-09-21.parquet", index=False)
+    root = tmp_path / "data"
+    (root / "models" / "XS-v1").mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "date": [pd.Timestamp("2026-09-21")],
+            "ticker": ["AAA"],
+            "specific_var": [0.0004],
+        }
+    ).to_parquet(root / "models" / "XS-v1" / "specific_var.parquet", index=False)
+    monkeypatch.setattr(run_live_daily, "PROPOSAL_DIR", proposals)
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+
+    run_live_daily.store_proposal("2026-09-21", data_root=root, dry_run=True)
+
+    row = store.select("proposals").iloc[0]
+    assert row["gross"] == pytest.approx(1.0)
+    assert row["net"] == pytest.approx(-3.3e-16)
+    assert row["achieved_annual_vol"] == pytest.approx(0.0316)
+    assert row["full_book_gross"] == pytest.approx(0.9008)
+    assert row["full_book_net"] == pytest.approx(0.004)
+    assert row["full_book_achieved_annual_vol"] == pytest.approx(0.0246)
+    assert row["gross"] != row["full_book_gross"]
+    assert row["achieved_annual_vol"] != row["full_book_achieved_annual_vol"]
 
 
 def _clock(instant: str):

@@ -614,6 +614,49 @@ def test_the_evening_stores_the_brokers_book_and_the_accounts_equity(
     assert "the account's own equity" in str(seen["nav_source"])
 
 
+def test_the_evening_records_the_equity_move_as_the_days_pnl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The nav row's P&L is tonight's equity less the last stored equity.
+
+    Read from the account, not asserted: the run writes the difference between the
+    equity it just read and the previous stored NAV row, so the day's P&L is a
+    measurement of the account rather than a zero that says the book made nothing.
+    """
+    real_store_reconciliation = run_live_daily.store_reconciliation
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        run_live_daily, "store_reconciliation", real_store_reconciliation
+    )
+    store.upsert(
+        "nav",
+        [
+            {
+                "trade_date": "2026-09-21",
+                "nav": 1_230_000.0,
+                "realized_pnl": 0.0,
+                "cash": 1_230_000.0,
+            }
+        ],
+    )
+    monkeypatch.setattr(alpaca, "read_client", _AccountBroker)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+
+    assert run_live_daily.main() == 0
+
+    rows = store.select("nav").sort_values("trade_date")
+    tonight = rows.loc[rows["trade_date"].astype(str) == SESSION].iloc[0]
+    assert tonight["nav"] == pytest.approx(1_234_567.89)
+    assert tonight["realized_pnl"] == pytest.approx(1_234_567.89 - 1_230_000.0)
+    # the earlier row is untouched: a P&L is measured, not carried forward
+    earlier = rows.loc[rows["trade_date"].astype(str) == "2026-09-21"].iloc[0]
+    assert earlier["realized_pnl"] == pytest.approx(0.0)
+
+
 def test_the_run_compares_against_the_book_before_tonight(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

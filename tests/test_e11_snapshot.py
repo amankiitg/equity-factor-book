@@ -567,6 +567,31 @@ def test_the_headline_gross_is_the_book_that_trades() -> None:
     assert payload["book"]["full_book_gross"] == 0.9008172332573943
 
 
+def test_the_books_net_and_forecast_vol_are_the_traded_books() -> None:
+    """The page's unqualified net and forecast vol describe the book it holds.
+
+    The same rule as the gross: the 499-name book keeps its own names beside them.
+    A page that showed the 499-name book's forecast volatility as the book's would
+    put a number about a book nobody holds on the front of the one they do.
+    """
+    payload = built(
+        manifest={
+            "kept_net": -3.3e-16,
+            "kept_achieved_annual_vol": 0.0316,
+            "net": 0.004,
+            "achieved_annual_vol": 0.0246,
+        }
+    )
+
+    book = payload["book"]
+    assert book["net"] == pytest.approx(-3.3e-16)
+    assert book["full_book_net"] == pytest.approx(0.004)
+    assert book["achieved_annual_vol"] == pytest.approx(0.0316)
+    assert book["full_book_achieved_annual_vol"] == pytest.approx(0.0246)
+    assert book["achieved_annual_vol"] != book["full_book_achieved_annual_vol"]
+    jsonschema.validate(instance=payload, schema=SCHEMA)
+
+
 def test_a_manifest_without_a_kept_gross_still_states_one() -> None:
     """An older proposal has only the full-book gross, which is what it gets."""
     payload = built(manifest={"gross": 0.9712, "kept_gross": None})

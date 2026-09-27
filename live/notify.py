@@ -676,6 +676,26 @@ def send(
     return {"status": STATUS_SENT, "detail": ""}
 
 
+def notify_refusal(reason: str, *, poster: Callable[..., Any] | None = None) -> dict:
+    """The one-line message a refused run sends.
+
+    A run outside the trading window does no work and records nothing, because it
+    is not a run: the day is still owed its evening. That leaves the message as the
+    only place the owner can learn the evening was refused, so the body is the
+    refusal and its reason and nothing else. No store line, no status line: there
+    is one thing to say, and padding it with the usual fields would make it read
+    like a run that happened.
+    """
+    from live import staleness
+
+    subject = (
+        f"EFB refused | outside the "
+        f"{staleness.WINDOW_START_HOUR_ET:02d}:00-"
+        f"{staleness.WINDOW_END_HOUR_ET:02d}:00 New York window"
+    )
+    return send(subject, f"EFB live book: refused, {scrub(reason)}.", poster=poster)
+
+
 def notify_run(
     *,
     status: str,

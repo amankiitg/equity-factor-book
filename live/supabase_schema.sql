@@ -13,12 +13,20 @@ create table if not exists efb.proposals (
   as_of date not null,
   n_names int not null,
   n_excluded int not null,
+  -- The book that trades: `gross`, `net` and `achieved_annual_vol` are the kept
+  -- set after the hedge. The 499-name book the model sized before the floor
+  -- dropped any is beside them under `full_book_*` names. The three extra
+  -- columns are nullable because rows written before the split hold only the
+  -- unqualified figures, which is what those columns meant then.
   gross double precision not null,
   net double precision not null,
+  full_book_gross double precision,
+  full_book_net double precision,
   n_eff_kept double precision not null,
   n_eff_full_book double precision not null,
   target_annual_vol double precision not null,
   achieved_annual_vol double precision not null,
+  full_book_achieved_annual_vol double precision,
   idio_share_after_fmp double precision not null,
   max_abs_exposure_after_fmp double precision not null,
   gross_cap_bound boolean not null,
@@ -101,7 +109,12 @@ create table if not exists efb.fills (
 
 create table if not exists efb.reconciliation (
   trade_date date primary key,
+  -- The unqualified risk fields on this row describe the book that trades: the
+  -- forecast is the traded book's, and so are gross and net. The 499-name book
+  -- is beside them under `full_book_*` names, because a row whose "gross" was
+  -- the 499-name book read as the gross of the book the owner holds.
   forecast_annual_vol double precision,
+  full_book_forecast_annual_vol double precision,
   realized_annual_vol double precision,
   idio_share_after_fmp double precision,
   -- The hedge's worst residual factor exposure, beside the idio share: the
@@ -110,6 +123,8 @@ create table if not exists efb.reconciliation (
   max_abs_exposure_after_fmp double precision,
   gross double precision,
   net double precision,
+  full_book_gross double precision,
+  full_book_net double precision,
   n_eff_kept double precision,
   intended_notional double precision,
   filled_notional double precision,
@@ -384,3 +399,19 @@ alter table efb.run_status
   add column if not exists traded_risk jsonb;
 alter table efb.run_status
   add column if not exists full_risk jsonb;
+
+-- Pre-launch batch 3: the unqualified risk fields on the day's row and on the
+-- proposal row describe the book that trades, and the 499-name book moves to
+-- `full_book_*` names of its own.
+alter table efb.reconciliation
+  add column if not exists full_book_forecast_annual_vol double precision;
+alter table efb.reconciliation
+  add column if not exists full_book_gross double precision;
+alter table efb.reconciliation
+  add column if not exists full_book_net double precision;
+alter table efb.proposals
+  add column if not exists full_book_gross double precision;
+alter table efb.proposals
+  add column if not exists full_book_net double precision;
+alter table efb.proposals
+  add column if not exists full_book_achieved_annual_vol double precision;

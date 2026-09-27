@@ -286,8 +286,34 @@ def test_a_cover_under_one_whole_share_is_skipped_rather_than_rounded() -> None:
 
     assert client.requests == []
     assert fills[0].status == alpaca.SKIPPED
-    assert fills[0].reason_code == alpaca.REASON_QTY_ROUNDS_TO_ZERO
+    assert fills[0].reason_code == alpaca.REASON_COVER_UNDER_ONE_SHARE
     assert "under one whole share" in fills[0].detail
+
+
+def test_a_cover_under_a_share_does_not_make_the_run_incomplete() -> None:
+    """The cover sits in the same class as a leg the $250 minimum leaves out.
+
+    It is a leg the run chose not to send, not a leg it failed to place: the short
+    stays that much bigger than its target until the next evening, which is
+    reported, but there is nothing for the next tick to retry. The negative
+    controls are the two skips that *are* failures: a short open that rounds to
+    zero whole shares, and the same cover carrying the generic rounds-to-zero code.
+    """
+    cover = pd.DataFrame(
+        {
+            "ticker": ["AAA"],
+            "status": [alpaca.SKIPPED],
+            "reason_code": [alpaca.REASON_COVER_UNDER_ONE_SHARE],
+        }
+    )
+
+    assert morning_job.incomplete_legs(cover) == []
+
+    # a new short whose notional rounds to no whole share is a leg the run wanted
+    # and could not place
+    short_open = cover.copy()
+    short_open.loc[0, "reason_code"] = alpaca.REASON_QTY_ROUNDS_TO_ZERO
+    assert [leg["ticker"] for leg in morning_job.incomplete_legs(short_open)] == ["AAA"]
 
 
 def test_a_partial_long_decrease_keeps_its_fraction() -> None:

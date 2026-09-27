@@ -77,6 +77,122 @@ def test_daily_record_stores_forecast_with_nan_outcome(
     assert len(stored) == 1
 
 
+def test_the_unqualified_fields_are_the_traded_books(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`forecast_annual_vol`, `gross` and `net` describe the book that trades.
+
+    A row whose \"gross\" was the 499-name book reads as the gross of the book the
+    owner holds, and they are not the same number: the floor drops names, so the
+    kept set is a different book. The 499-name figures stay on the row under
+    `full_book_*` names, and the two pairs are asserted to differ so a row that
+    quietly held one book twice would fail here.
+    """
+    proposal_dir = tmp_path / "proposals"
+    log_dir = tmp_path / "logs"
+    state_dir = tmp_path / "state"
+    _write_manifest(proposal_dir, "2026-09-22")
+    path = proposal_dir / "proposal_2026-09-22.json"
+    manifest = json.loads(path.read_text())
+    manifest.update(
+        {
+            "kept_achieved_annual_vol": 0.0316,
+            "kept_gross": 1.0,
+            "kept_net": -3.3e-16,
+        }
+    )
+    path.write_text(json.dumps(manifest))
+    _write_execution(log_dir, "2026-09-22")
+    monkeypatch.setattr(reconcile, "PROPOSAL_DIR", proposal_dir)
+    monkeypatch.setattr(reconcile, "EXECUTION_LOG_DIR", log_dir)
+
+    row = reconcile.daily_record("2026-09-22", state_dir=state_dir, dry_run=True)
+
+    assert row["forecast_annual_vol"] == pytest.approx(0.0316)
+    assert row["gross"] == pytest.approx(1.0)
+    assert row["net"] == pytest.approx(-3.3e-16)
+    assert row["full_book_forecast_annual_vol"] == pytest.approx(0.0423)
+    assert row["full_book_gross"] == pytest.approx(1.0)
+    assert row["full_book_net"] == pytest.approx(0.0)
+    assert row["forecast_annual_vol"] != row["full_book_forecast_annual_vol"]
+    # and the traded pair is also on the row as a json block
+    traded = json.loads(row["traded_risk"])
+    assert traded["forecast_annual_vol"] == pytest.approx(0.0316)
+
+
+def test_a_manifest_written_before_the_split_still_records_its_day(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An older manifest has only the 499-name figures, and the row says so.
+
+    The fallback is not a silent one: the unqualified fields hold the only number
+    that manifest has, and `traded_risk` on the same row is null, which is what
+    marks them as the full book's rather than the traded book's.
+    """
+    proposal_dir = tmp_path / "proposals"
+    log_dir = tmp_path / "logs"
+    state_dir = tmp_path / "state"
+    _write_manifest(proposal_dir, "2026-09-22")
+    _write_execution(log_dir, "2026-09-22")
+    monkeypatch.setattr(reconcile, "PROPOSAL_DIR", proposal_dir)
+    monkeypatch.setattr(reconcile, "EXECUTION_LOG_DIR", log_dir)
+
+    row = reconcile.daily_record("2026-09-22", state_dir=state_dir, dry_run=True)
+
+    assert row["forecast_annual_vol"] == pytest.approx(0.0423)
+    assert row["gross"] == pytest.approx(1.0)
+    assert row["net"] == pytest.approx(0.0)
+    assert json.loads(row["traded_risk"])["forecast_annual_vol"] is None
+
+
+def test_the_comparison_reads_the_traded_forecast(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F11.3's forecast is the traded book's, on an old row as well as a new one.
+
+    The realized outcome is the traded book's own volatility, so the forecast it
+    is compared against has to be the traded book's too: a ratio against a book
+    the run never held is a number about a different book. A row written before the
+    unqualified fields were repointed carries the 499-name forecast in the column
+    and the traded one inside `traded_risk`, so the traded record is read first.
+    """
+    proposal_dir = tmp_path / "proposals"
+    log_dir = tmp_path / "logs"
+    state_dir = tmp_path / "state"
+    _write_manifest(proposal_dir, "2026-09-22")
+    _write_execution(log_dir, "2026-09-22")
+    monkeypatch.setattr(reconcile, "PROPOSAL_DIR", proposal_dir)
+    monkeypatch.setattr(reconcile, "EXECUTION_LOG_DIR", log_dir)
+    reconcile.daily_record("2026-09-22", state_dir=state_dir, dry_run=False)
+
+    # an old row: the column holds the 499-name forecast, the traded one is in the
+    # json block written beside it
+    frame = pd.read_parquet(state_dir / "reconciliation.parquet")
+    frame.loc[frame["trade_date"] == "2026-09-22", "realized_annual_vol"] = 0.05
+    frame.loc[frame["trade_date"] == "2026-09-22", "traded_risk"] = json.dumps(
+        {"forecast_annual_vol": 0.025}
+    )
+    frame.to_parquet(state_dir / "reconciliation.parquet", index=False)
+
+    result = reconcile.reconcile_forecast_vs_outcome("2026-09-22", state_dir=state_dir)
+
+    assert result["status"] == "reconciled"
+    assert result["forecast_annual_vol"] == pytest.approx(0.025)
+    assert result["ratio"] == pytest.approx(0.05 / 0.025)
+    # the 499-name forecast travels beside it rather than being compared
+    assert result["full_book_forecast_annual_vol"] == pytest.approx(0.0423)
+
+    # the negative control: with no traded record the column is all there is, and
+    # the ratio is the other one
+    frame.loc[frame["trade_date"] == "2026-09-22", "traded_risk"] = None
+    frame.to_parquet(state_dir / "reconciliation.parquet", index=False)
+    fallback = reconcile.reconcile_forecast_vs_outcome(
+        "2026-09-22", state_dir=state_dir
+    )
+    assert fallback["forecast_annual_vol"] == pytest.approx(0.0423)
+    assert fallback["ratio"] == pytest.approx(0.05 / 0.0423)
+
+
 def test_reconcile_is_pending_in_dry_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
