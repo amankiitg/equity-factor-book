@@ -510,6 +510,132 @@ def from_positions(
     return attribute_book(holdings, panel, forecasts=forecasts, costs=costs)
 
 
+# The F12.3 rule, in the place that applies it: no skill is claimed unless the
+# t-statistic exceeds two. It is a constant rather than a literal so the memo, the
+# page and this function cannot disagree about the bar.
+DETECTION_T = 2.0
+
+# The information ratios the days-to-detect table is quoted for. One number would
+# beg the question of which edge is being imagined, and the whole point of the
+# table is that a small edge needs years.
+DETECTION_IRS: tuple[float, ...] = (0.25, 0.5, 1.0, 2.0)
+
+
+def skill_test(frame: pd.DataFrame, *, target_t: float = DETECTION_T) -> dict[str, Any]:
+    """Is the book's own P&L distinguishable from zero, and how long would it take?
+
+    Three numbers answer that and they are not interchangeable. The **mean** of the
+    idio P&L is the edge as realized; its **standard error** says how much of that
+    mean is noise at this sample size; the **t-statistic** is the ratio, and it is
+    the only one of the three that can be compared against a bar. The information
+    ratio is the mean over the dispersion, which is the same quantity per unit of
+    risk rather than per unit of time.
+
+    The Sharpe and its two standard errors come from `efb.perf`, the E1 library,
+    rather than being re-derived here: the Lo (2002) correction is what makes the
+    difference between a series whose dispersion is i.i.d. and one whose volatility
+    clusters, and re-implementing it would be a second opinion about the same
+    estimator.
+
+    The days-to-detect table is the number that decides what a thirty-day window
+    can show. For a t-statistic of `target_t`, `t = IR_daily * sqrt(n)`, so
+    `n = (target_t / IR_daily)^2 = (target_t * sqrt(252) / IR_annual)^2`: an
+    annualized information ratio of 1.0 needs four years of daily data before the
+    test reaches the bar, and 0.25 needs sixty-four. That is the honest answer to
+    "is the book good", and it is why the expected verdict is luck.
+    """
+    from efb import perf
+
+    # The days-to-detect table is a property of the bar and the imagined edge, not of
+    # the sample, so it is reported even when there is nothing to test: a one-day
+    # window still needs to say how many days an edge of a given size would need.
+    days = {
+        # Rounded before the ceiling: the closed form lands a few ulps above its own
+        # integer for every round information ratio, so `ceil` alone would report
+        # 1,009 days for an edge that needs 1,008 and read as arithmetic rather than
+        # as the float artefact it is.
+        ir: int(math.ceil(round((target_t * math.sqrt(TRADING_DAYS) / ir) ** 2, 6)))
+        for ir in DETECTION_IRS
+    }
+    if frame.empty or len(frame) < 2:
+        return {
+            "n_days": int(len(frame)),
+            "idio_mean": None,
+            "idio_sd": None,
+            "idio_se": None,
+            "t_stat": None,
+            "ir_annual": None,
+            "ir_se": None,
+            "sharpe_annual": None,
+            "sharpe_se_iid": None,
+            "sharpe_se_lo2002": None,
+            "target_t": target_t,
+            "days_to_detect": days,
+            "skill_claimed": False,
+            "verdict": "too few days to test: nothing is claimed",
+        }
+    idio = frame["pnl_idio"].astype(float).dropna()
+    total = frame["pnl_total"].astype(float).dropna()
+    n = int(len(idio))
+    mean = float(idio.mean())
+    sd = float(idio.std(ddof=1))
+    se = sd / math.sqrt(n) if n and sd > 0 else None
+    t_stat = mean / se if se else None
+    ir_annual = float(mean / sd * math.sqrt(TRADING_DAYS)) if sd > 0 else None
+    # The daily Sharpe's own standard error, annualized. Under i.i.d. it is
+    # sqrt((1 + SR^2/2)/n) at daily frequency, so the annualized form carries the
+    # sqrt(252) the Sharpe itself carries; Lo's version adds the autocorrelation
+    # correction to both the mean and the variance terms.
+    sharpe_annual = float(perf.annualized_sharpe(total)) if len(total) > 1 else None
+    se_iid = (
+        float(perf.sharpe_se_iid(total) * math.sqrt(TRADING_DAYS))
+        if len(total) > 1
+        else None
+    )
+    se_lo = (
+        float(perf.sharpe_se_lo2002(total) * math.sqrt(TRADING_DAYS))
+        if len(total) > 1
+        else None
+    )
+    days = {
+        ir: int(math.ceil(round((target_t * math.sqrt(TRADING_DAYS) / ir) ** 2, 6)))
+        for ir in DETECTION_IRS
+    }
+    claimed = bool(t_stat is not None and abs(t_stat) > target_t)
+    if t_stat is None:
+        verdict = "the idio P&L has no dispersion to test"
+    elif claimed:
+        verdict = (
+            f"t = {t_stat:.2f} over {n} days exceeds {target_t:.1f}, so the number "
+            "clears the bar F12.3 sets"
+        )
+    else:
+        verdict = (
+            f"t = {t_stat:.2f} over {n} days does not exceed {target_t:.1f}, so no "
+            "skill is claimed: the verdict is luck"
+        )
+    return {
+        "n_days": n,
+        "idio_mean": mean,
+        "idio_sd": sd,
+        "idio_se": se,
+        "t_stat": t_stat,
+        "ir_annual": ir_annual,
+        "ir_se": (
+            float(math.sqrt((1.0 + ir_annual**2 / 2.0) / n))
+            if ir_annual is not None
+            else None
+        ),
+        "sharpe_annual": sharpe_annual,
+        "sharpe_se_iid": se_iid,
+        "sharpe_se_lo2002": se_lo,
+        "target_t": target_t,
+        "days_to_detect": days,
+        "skill_claimed": claimed,
+        "verdict": verdict,
+    }
+
+
 def _with_risk_lines(frame: pd.DataFrame) -> pd.DataFrame:
     """The realized volatility, its ratio to the forecast, and the bias statistic.
 
