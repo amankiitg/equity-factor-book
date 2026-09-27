@@ -19,6 +19,28 @@ wait on the live window; E13's credit port design note is written and complete.
 The handoff files live in [`handoff/`](handoff/): the standing rules, the current
 task, the reviewer's log and the implementer report.
 
+## Branch state
+
+`main` carries the live book. Render builds both the dashboard service and the
+daily cron from it (the blueprint names no other branch) and deploys on push, so a
+merge to `main` is a deployment rather than a checkpoint.
+
+Two branches sit unmerged by design, and both merge after the flip.
+
+- `e12` carries the attribution engine, `efb/attribution.py` and
+  `live/attribution_job.py`: the evening attributes every stored day it has not
+  attributed, the page shows the attribution, the skill test is written down, and
+  the weekly review and the attribution build read the result. Its criteria are
+  windowed on the live book, so they cannot be evaluated honestly until the window
+  has thirty trading days behind it. It also carries the E11 and E12 walkthroughs,
+  and the fix to a store guard test that fails on `main`.
+- `e13` carries the credit port design note and the status report rewrite. The
+  note is a document with no code, and it describes the repository with E12 in it,
+  because four of the modules it maps are E12's; that is why the two branches land
+  together rather than one at a time.
+
+Until then `main` is what the cron runs, and neither branch changes that.
+
 ## Live book
 
 **https://efb-live-book.nutritrack.workers.dev**: the evening's book, one screen.
@@ -79,6 +101,64 @@ store never falls back on its own: a local run (the research dashboard, a dry ru
 the test suite) sets `EFB_STORE=local` to use the parquet files under
 `live/state/`, and the cron does not, so a missing connection string there is an
 error rather than a quiet write to a disk the next container never sees.
+
+## Running things by hand
+
+Four commands are run by hand rather than by the cron.
+
+- **The local research console**: `make dashboard`. It first copies the linked
+  sprint documents into the dashboard's static folder (the `publish` target) and
+  then serves the Streamlit app headlessly. This is the research view, one tab per
+  sprint; the live page is the separate Cloudflare Worker linked above.
+- **The order-timing smoke test**: `python scripts/smoke_order_timing.py --symbol
+  SPY --yes`, run between 16:00 and 20:00 New York time. The evening cron fires at
+  22:30 UTC, which is 18:30 New York in summer and 17:30 in winter, inside the
+  after-hours window. The script submits one share with the loop's own
+  time-in-force, confirms the broker accepted it, and cancels it. It refuses to run
+  without `--yes`, refuses outside that window, because an order accepted at 10:00
+  proves nothing about the cron's own hour, and refuses a symbol that is not
+  tradable. `--force-hour` exists for a deliberate out-of-hours probe and says in
+  its output that it was used.
+- **The weekly review**: `PYTHONPATH=. .venv/bin/python scripts/review_week.py`,
+  with `--days 5` for the last five attributed days or `--artifact` for the seed
+  book's own stored attribution. It prints one row per day: the P&L split into
+  factor, idiosyncratic and cost against the total, realized factor P&L against the
+  near zero the hedge promises, and cost realized against expected with turnover.
+  It is built to be read on a Sunday.
+- **The attribution build**, for after the live window:
+  `PYTHONPATH=. .venv/bin/python scripts/build_attribution.py`. It writes
+  `data/attribution/daily.parquet`, `monthly.parquet` and `timeseries.parquet` from
+  a stored book and prints the three measurements the E12 memo quotes: the
+  reconciliation residual per session, the hedge timing gap, and whether the
+  session-dated design is computable a close earlier.
+
+The last two are on branch `e12`, with the engine they read; the first two are on
+`main`.
+
+## Where the main documents are
+
+- **The status report**, [`docs/research/STATUS_REPORT.md`](docs/research/STATUS_REPORT.md):
+  the whole project in prose, written for a reader with a quantitative background
+  and no knowledge of it. Start here.
+- **The sprint walkthroughs**, `notebooks/E1_walkthrough.ipynb` and so on: one per
+  sprint, each reproducing its sprint's numbers and asserting every printed value
+  against the stored artifact it came from. The notebooks are the tracked form,
+  E1 to E10 on `main` and E11 and E12 with the `e12` branch; the `.html` beside
+  each one is rendered locally with `jupyter nbconvert` and is deliberately not
+  committed.
+- **The research deliverables**, under [`docs/research/`](docs/research/): one memo
+  per sprint, the gate documents (`docs/research/RG_OPERATE.md`,
+  `sprints/E7/RG_SIGNAL.json`), and the E12 attribution report,
+  `docs/research/E12_attribution_report.md`, which is on the `e12` branch.
+- **The sprint records**, under `sprints/E<n>/`: the PRD, the task list, the probe
+  log and the criteria verdicts, each stored number in `RESULTS.json`.
+- **The credit port design note**, [`docs/credit_port_design.md`](docs/credit_port_design.md):
+  what transfers to corporate credit unchanged, what has to be re-specified, and
+  the three places where unchanged is the wrong answer.
+- **The handoff folder**, [`handoff/`](handoff/): the standing rules, the current
+  task, the reviewer's log and the implementer's report. This is where work in
+  progress is written down, and it is the first thing to read after the status
+  report.
 
 ## Corporate actions
 
