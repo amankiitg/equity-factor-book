@@ -14,6 +14,9 @@ deterministic `client_order_id` before submitting anything.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 import pytest
 
@@ -22,6 +25,9 @@ from scripts import smoke_position_intents
 
 NAV = 1_000_000.0
 PRICES = {"AAA": 100.0, "BBB": 100.0, "CCC": 200.0, "SPY": 100.0}
+# 18:30 ET, inside the 16:00-20:00 window; 10:00 ET, outside it.
+IN_WINDOW = datetime(2026, 9, 25, 22, 30, tzinfo=UTC)
+OUT_OF_WINDOW = datetime(2026, 9, 25, 14, 0, tzinfo=UTC)
 
 
 def _proposal(weights: dict[str, float]) -> pd.DataFrame:
@@ -478,6 +484,7 @@ def test_the_smoke_reports_whether_every_order_was_accepted(capsys) -> None:
             "--yes",
         ],
         client=broker,
+        now=IN_WINDOW,
     )
     assert code == 0
     assert "every order was accepted" in capsys.readouterr().out
@@ -498,6 +505,7 @@ def test_the_smoke_reports_whether_every_order_was_accepted(capsys) -> None:
             "--yes",
         ],
         client=refusing,
+        now=IN_WINDOW,
     )
     out = capsys.readouterr().out
     assert code == 1
@@ -505,8 +513,75 @@ def test_the_smoke_reports_whether_every_order_was_accepted(capsys) -> None:
     assert alpaca.REASON_NOT_SHORTABLE in out
 
 
+def test_the_smoke_window_is_1600_to_2000_new_york() -> None:
+    """The same hours smoke_order_timing enforces, on New York wall time."""
+    ny = ZoneInfo("America/New_York")
+    assert smoke_position_intents.in_cron_window(
+        datetime(2026, 9, 25, 16, 0, tzinfo=ny)
+    )
+    assert smoke_position_intents.in_cron_window(
+        datetime(2026, 9, 25, 19, 59, tzinfo=ny)
+    )
+    assert not smoke_position_intents.in_cron_window(
+        datetime(2026, 9, 25, 15, 59, tzinfo=ny)
+    )
+    assert not smoke_position_intents.in_cron_window(
+        datetime(2026, 9, 25, 20, 0, tzinfo=ny)
+    )
+
+
+def test_the_smoke_refuses_outside_the_after_close_window(capsys) -> None:
+    """Outside the window it refuses, and --force-hour is the deliberate bypass."""
+    broker = _SmokeBroker()
+    code = smoke_position_intents.main(
+        [
+            "--evening",
+            "one",
+            "--long-symbol",
+            "SPY",
+            "--short-symbol",
+            "AAA",
+            "--price",
+            "100",
+            "--yes",
+        ],
+        client=broker,
+        now=OUT_OF_WINDOW,
+    )
+    assert code == 2
+    assert broker.requests == [], "an order was sent outside the window"
+    err = capsys.readouterr().err
+    assert "refusing to submit at" in err
+    assert "16:00 and 20:00 ET" in err
+
+    # The bypass runs, and says which hour it used.
+    code = smoke_position_intents.main(
+        [
+            "--evening",
+            "one",
+            "--long-symbol",
+            "SPY",
+            "--short-symbol",
+            "AAA",
+            "--price",
+            "100",
+            "--yes",
+            "--force-hour",
+        ],
+        client=broker,
+        now=OUT_OF_WINDOW,
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "--force-hour" in captured.err
+    assert len(broker.requests) == 2
+
+
 def test_the_smoke_refuses_without_yes(capsys) -> None:
     broker = _SmokeBroker()
-    assert smoke_position_intents.main(["--evening", "one"], client=broker) == 2
+    assert (
+        smoke_position_intents.main(["--evening", "one"], client=broker, now=IN_WINDOW)
+        == 2
+    )
     assert broker.requests == []
     assert "refusing to submit without --yes" in capsys.readouterr().err

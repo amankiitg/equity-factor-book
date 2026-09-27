@@ -22,6 +22,11 @@ block, a real leg: the book's ids are `efb-<close>-<ticker>-<side>-<digest>`.
 Each evening prints one JSON line per leg and a final line saying whether every
 order was accepted. Nothing is cancelled: the orders are meant to fill at the open,
 and evening two is what makes the account flat again.
+
+Like `scripts/smoke_order_timing.py`, it refuses to submit outside the 16:00-20:00
+ET window: a DAY order placed after the close is held for the next open, and one
+placed earlier is not, so an acceptance at another hour would prove nothing.
+`--force-hour` is the deliberate out-of-hours bypass.
 """
 
 from __future__ import annotations
@@ -42,12 +47,22 @@ from live import alpaca, guards  # noqa: E402 - after the path fix above
 
 SMOKE_ID_PREFIX = "efb-smoke"
 NEW_YORK = ZoneInfo("America/New_York")
+# The after-hours window the loop submits in, the same one smoke_order_timing
+# enforces: the close is 16:00 ET and the overnight session starts at 20:00 ET.
+WINDOW_START_HOUR_ET = 16
+WINDOW_END_HOUR_ET = 20
 # The statuses that mean the broker took the order. After the close a DAY order is
 # accepted and held for the next open, which is exactly the acceptance this checks.
 ACCEPTED_STATUSES = frozenset(
     {"accepted", "new", "pending_new", "partially_filled", "filled"}
 )
 REFUSED_STATUSES = frozenset({"rejected", "canceled", "expired", "suspended"})
+
+
+def in_cron_window(stamp: datetime) -> bool:
+    """Whether `stamp` is inside the after-hours window the smoke submits in."""
+    local = stamp.astimezone(NEW_YORK)
+    return WINDOW_START_HOUR_ET <= local.hour < WINDOW_END_HOUR_ET
 
 
 def _fill_report(fill: Any) -> dict[str, Any]:
@@ -156,7 +171,11 @@ def _last_close(symbol: str, as_of: date) -> float:
     return float(close.get(symbol, 0.0))
 
 
-def main(argv: list[str] | None = None, client: Any = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    client: Any = None,
+    now: datetime | None = None,
+) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evening", choices=("one", "two"), required=True)
     parser.add_argument("--long-symbol", default="SPY")
@@ -174,6 +193,11 @@ def main(argv: list[str] | None = None, client: Any = None) -> int:
         action="store_true",
         help="required: without it nothing is submitted",
     )
+    parser.add_argument(
+        "--force-hour",
+        action="store_true",
+        help="submit outside the after-close window, for a deliberate probe",
+    )
     parser.add_argument("--json", action="store_true", help="print the report only")
     args = parser.parse_args(argv)
 
@@ -181,24 +205,32 @@ def main(argv: list[str] | None = None, client: Any = None) -> int:
         print("refusing to submit without --yes", file=sys.stderr)
         return 2
 
-    now = datetime.now(UTC)
-    local = now.astimezone(NEW_YORK)
-    if local.hour < 16:
+    stamp = now or datetime.now(UTC)
+    if not in_cron_window(stamp) and not args.force_hour:
         print(
-            f"warning: it is {local:%H:%M} ET, before the 16:00 close. A DAY order "
-            "now may fill the same session rather than at the next open.",
+            f"refusing to submit at {stamp.astimezone(NEW_YORK).isoformat()}: the "
+            f"smoke runs between {WINDOW_START_HOUR_ET}:00 and "
+            f"{WINDOW_END_HOUR_ET}:00 ET, because a DAY order placed after the "
+            "close is held for the next open and one placed earlier is not. Use "
+            "--force-hour for a deliberate probe.",
+            file=sys.stderr,
+        )
+        return 2
+    if not in_cron_window(stamp):
+        print(
+            "warning: --force-hour, so this is not the after-close window",
             file=sys.stderr,
         )
 
     if client is None:
         client = alpaca.connect(dry_run=False)
-    close = now.date().isoformat()
+    close = stamp.date().isoformat()
 
     if args.evening == "one":
         price = (
             args.price
             if args.price is not None
-            else _last_close(args.short_symbol, now.date())
+            else _last_close(args.short_symbol, stamp.date())
         )
         if price <= 0:
             print(
