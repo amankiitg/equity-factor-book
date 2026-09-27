@@ -81,30 +81,50 @@ def test_the_establishment_ceiling_still_trips_on_ten_times_the_book() -> None:
     assert tripped, "a book ten times the ceiling was not stopped"
 
 
-def test_the_ceiling_admits_a_real_stored_proposal_with_one_dollar_of_slack() -> None:
-    """The ceiling is the book's own gross, and the tolerance is one dollar.
+def test_the_ceiling_admits_the_2026_09_18_book_the_old_formula_would_reject() -> None:
+    """The one-dollar tolerance is what keeps a real book from tripping itself.
 
-    The proposal's weights are renormalized to gross 1.0 and the per-name
-    notionals are rounded, so a book that is exactly the gross can sum a cent
-    above `gross * nav`. Summing a real stored proposal is the honest version of
-    the number: it is the book the loop actually built, not a round one.
+    The stored 2026-09-18 book sums to gross 1.0, but `apply_guards`' own running
+    total of the per-name `w * nav` legs lands a hair above 1,000,000.0 (`sum()`
+    is compensated since Python 3.12, a naive accumulation is not). The old
+    `gross * nav` ceiling rejects the last leg, so the book cannot be established;
+    the tolerance admits every leg. This test fails on the old formula.
     """
-    proposals = sorted(
-        (Path(__file__).resolve().parents[1] / "live" / "proposals").glob(
-            "proposal_*.parquet"
-        )
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "live"
+        / "proposals"
+        / "proposal_2026-09-18.parquet"
     )
-    assert proposals, "no stored proposal to sum"
-    frame = pd.read_parquet(proposals[-1])
+    assert path.exists(), f"the stored 2026-09-18 proposal is missing at {path}"
+    frame = pd.read_parquet(path)
     gross = float(frame["weight"].abs().sum())
-    traded = gross * NAV
-    limit = guards.establishment_limit(NAV, gross=gross)
+    assert gross == pytest.approx(1.0)
 
-    # The book's own gross is admitted, and the tolerance is exactly one dollar.
-    assert limit == pytest.approx(traded + 1.0)
-    assert guards.traded_notional_brake(0.0, traded, limit) is False
-    # Ten times the book is still stopped, so the tolerance admits nothing real.
-    assert guards.traded_notional_brake(0.0, 10.0 * traded, limit) is True
+    orders = [
+        guards.OrderSpec(
+            ticker=str(row.ticker),
+            target_notional=float(row.weight) * NAV,
+            trade_notional=float(row.weight) * NAV,
+        )
+        for row in frame.itertuples(index=False)
+    ]
+    # The old ceiling was exactly `gross * nav`, and the book sums above it. The
+    # accumulation is the naive one `apply_guards` uses, not `sum()`, which is
+    # compensated on Python 3.12+ and would hide the rounding that trips it.
+    running = 0.0
+    for order in orders:
+        running += order.traded_notional
+    assert running > gross * NAV
+    assert guards.establishment_limit(NAV, gross=gross) == pytest.approx(
+        gross * NAV + 1.0
+    )
+
+    guarded = guards.apply_guards(orders, NAV, establishment=True)
+    rejected = [
+        order for order in guarded if order.status == guards.REJECTED_TRADED_NOTIONAL
+    ]
+    assert rejected == [], [order.ticker for order in rejected]
 
 
 def _proposal_frame(proposal: pd.DataFrame) -> pd.DataFrame:
