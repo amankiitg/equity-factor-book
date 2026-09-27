@@ -33,17 +33,28 @@ verdicts pending. One commit per item.
       carries the per-session `exposure_json`, `book_exposure_json`, `pnl_timing`
       and `pnl_timing_json` behind those numbers.
 - [x] Answer whether the session-dated design is computable at the previous close.
-      **It is not.** The model's own `shift_test` says so in the code:
-      the size column is the log of market cap at the session, which is the previous
-      cap times one plus the return being explained; and the beta, reversal, residual
-      volatility and liquidity windows all end on the session. Only momentum is
-      unaffected, because its window ends 21 sessions earlier. The script's
-      correlation probe is printed as a negative control rather than as evidence: the
-      same-day and previous-close caps differ by one day of returns, so their
-      correlations agree to three decimals (0.2100 against 0.2093) and the test
-      cannot separate the vintages at all.
-- [x] Reported here; the live hedge is unchanged. The gap is material enough to
-      measure and not material enough to act on before the flip.
+      **It is, and the first answer recorded here was wrong.** Every descriptor on
+      row `t` of `descriptors.parquet` is built from data through the previous close:
+      `efb/models/fundamental.py` writes size as `log(market_cap.shift(1))`, and beta,
+      residual volatility and liquidity each carry `.shift(1)` on their window, with
+      reversal shifting the return series by one; only momentum reaches further back
+      (through `t-21`). Verified on the stored artifact: for 2026-09-21 the size
+      descriptor matches log market cap at the 2026-09-18 close to 0.000e+00 for LITE,
+      MRNA and AAPL, and misses the same-day cap by 8.4e-03 to 1.2e-01. So the design
+      dated a session is previous-close data, and pairing it with that session's
+      returns is correct rather than look-ahead: the stored mean R-squared 0.329586
+      matches the shift test's **lagged** figure 0.329462 to 1.2e-04, where the
+      look-ahead variant is 0.364005. The `shift_test` docstring describes its own
+      "next cross-section" variant and must not be read as the stored fit's vintage.
+- [x] The consequence, recorded as a **post-flip fix** and not applied: the live hedge
+      is one session stale. The evening of close `t` hedges with the design dated `t`
+      (data through `t-1`), while the book earns its return over `t` to `t+1`, whose
+      exposure is described by the design dated `t+1`, which needs only `t`'s close and
+      is available in the same evening. The drift this leaves is the 1.694e-04 per
+      factor and 2.0 percent of cumulative P&L measured above. The fix moves every
+      stored book, the guard numbers and the recorded ex-ante risk, so it waits for
+      the flip. Written up in `docs/open_items.md`.
+- [x] Reported; the live hedge is unchanged.
 - [x] Measured on the whole seed book and reported: the reconciliation closes to
       **median 1.771e-04, max 1.233e-02** over 3,645 sessions, and to 6.9e-18 on the
       three 2026 sessions the current build produced. F12.1's 1e-10 is a statement
