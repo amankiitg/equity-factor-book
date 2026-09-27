@@ -1,7 +1,10 @@
 # Render runtime dependencies for the live book. The research stack comes
 # from pyproject.toml via `pip install -e .`; these are the live-only
 # extras that connect to Alpaca paper and Postgres directly.
-alpaca-py>=0.20
+# Pinned exactly: this is the version the position_intent shape and the enum
+# reads were built and tested against, and a version bump has changed pydantic
+# model fields before.
+alpaca-py==0.44.0
 psycopg[binary]>=3.1
 # the NYSE session calendar the staleness gate and the dashboard both read
 pandas_market_calendars>=4.4

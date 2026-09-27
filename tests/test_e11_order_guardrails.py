@@ -107,6 +107,24 @@ def test_every_submitted_order_carries_its_deterministic_id() -> None:
     assert len(set(tickets)) == 2
 
 
+def test_the_rerun_lookups_are_paced_like_the_submissions() -> None:
+    """A rerun spends its rate budget on lookups, so they are paced too."""
+    waits: list[float] = []
+
+    class _CountingThrottle(alpaca.Throttle):
+        def wait(self) -> float:
+            waits.append(0.0)
+            return 0.0
+
+    client = _Client()
+    alpaca.submit_market_orders(
+        _specs(), client, PRICES, close="2026-09-25", throttle=_CountingThrottle(0)
+    )
+    # `_Client` has no `get_order_by_client_id`, so both lookups miss: two
+    # lookups plus two submissions.
+    assert len(waits) == 4
+
+
 def test_the_throttle_spaces_the_submissions() -> None:
     ticks = iter([10.0, 10.05, 10.4])
     slept: list[float] = []

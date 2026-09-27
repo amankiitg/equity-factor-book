@@ -680,17 +680,19 @@ def submit_market_orders(
     # The deterministic ticket for every leg, and the broker's answer for it. All
     # lookups happen before the first submission: that is what "resolve the rerun
     # first" buys, a crash after one leg can never lead a later pass to send a
-    # second copy of an earlier one.
+    # second copy of an earlier one. The lookups are requests to the same API and
+    # are paced like the submissions, or a large book's rerun would spend its
+    # rate-limit budget before it sent a leg.
     tickets = {
         order.ticker: client_order_id(
             close, order.ticker, _side_word(order.trade_notional), prefix=id_prefix
         )
         for order in orders
     }
-    existing = {
-        order.ticker: find_existing_order(client, tickets[order.ticker])
-        for order in orders
-    }
+    existing: dict[str, Any | None] = {}
+    for order in orders:
+        pace.wait()
+        existing[order.ticker] = find_existing_order(client, tickets[order.ticker])
 
     fills: list[Fill] = []
     halted = False

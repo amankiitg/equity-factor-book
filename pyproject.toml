@@ -36,7 +36,7 @@ dev = [
     "jsonschema>=4.21",
 ]
 live = [
-    "alpaca-py>=0.20",
+    "alpaca-py==0.44.0",
     "psycopg[binary]>=3.1",
     "pandas_market_calendars>=4.4",
     # the same pin as requirements.txt, which is what the cron actually installs
