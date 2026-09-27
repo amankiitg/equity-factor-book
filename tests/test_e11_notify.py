@@ -508,6 +508,51 @@ def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     assert store.select("cron_runs").iloc[0]["status"] == "ok"
 
 
+def test_an_incomplete_run_is_not_ok_and_is_not_marked_done(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refused or rejected leg leaves the day unfinished.
+
+    The run is not ok: at least one leg was not confirmed, so no `cron_runs` row is
+    written and the next tick retries. The run_status row and the message still go
+    out, naming the leg and the code, so the owner can see what happened.
+    """
+    sent: list[dict[str, Any]] = []
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        morning_job,
+        "run_morning",
+        lambda *a, **k: {
+            "orders": 1,
+            "intended_notional": 50_000.0,
+            "complete": False,
+            "incomplete_legs": [
+                {
+                    "ticker": "BBB",
+                    "status": "SKIPPED",
+                    "reason_code": "ASSET_NOT_SHORTABLE",
+                }
+            ],
+        },
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: sent.append(payload)
+    )
+
+    assert run_live_daily.main() == 1
+
+    row = store.select("run_status").iloc[0]
+    assert row["status"] == "incomplete"
+    assert "BBB" in str(row["detail"]) and "ASSET_NOT_SHORTABLE" in str(row["detail"])
+    # the day is not done: the next tick retries it
+    assert store.select("cron_runs").empty
+    assert "incomplete, a leg was not confirmed" in str(sent[0]["text"])
+
+
 def test_a_refused_snapshot_upload_fails_the_run_and_is_named_in_the_email(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

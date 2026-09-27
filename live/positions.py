@@ -47,28 +47,44 @@ def store_positions() -> tuple[dict[str, float], str]:
     )
 
 
-def account_positions() -> tuple[dict[str, float] | None, str]:
+def account_positions(
+    *, raise_on_failure: bool = False
+) -> tuple[dict[str, float] | None, str]:
     """The broker's book, or None with the reason it could not be read.
 
     None is not an empty book. An account that could not be reached and an account
     that holds nothing are different answers, and the message says which one it
     has. Reading is deliberately separate from `alpaca.connect(dry_run=True)`,
     which returns None because it guards submission.
+
+    In live mode (`raise_on_failure`) a read that fails raises instead of
+    answering None. The store-book fallback is allowed only in dry run: without
+    this, a live evening whose account could not be read would measure every
+    traded leg against the loop's own intentions, which is the failure the read
+    exists to prevent.
     """
     from live import alpaca
 
     client = alpaca.read_client()
     if client is None:
-        return None, (
+        reason = (
             "not read: EFB_ALPACA_PAPER_API_KEY and EFB_ALPACA_PAPER_SECRET_KEY "
             "are not both set"
         )
+        if raise_on_failure:
+            raise RuntimeError(
+                f"the account's positions could not be read ({reason}), so the "
+                "run stopped before building any order"
+            )
+        return None, reason
     try:
         account = client.get_account()
         positions = alpaca.get_positions(client, dry_run=False)
-    except Exception as exc:  # noqa: BLE001 - a failed read is stated, not fatal
-        logger.warning("could not read the account's positions: %s", exc)
-        return None, f"not read: {type(exc).__name__}: {exc}"
+    except Exception:
+        if raise_on_failure:
+            raise
+        logger.warning("could not read the account's positions", exc_info=True)
+        return None, "not read: see the log"
     return positions, f"{BROKER_SOURCE} {getattr(account, 'id', '?')}"
 
 
@@ -123,8 +139,10 @@ def check(*, dry_run: bool = True) -> dict[str, Any]:
 
     `held` is the book the orders should be measured against, and it is the
     broker's whenever the broker could be read: that is the point of the exercise.
+    In live mode a failed broker read raises (`account_positions`), so the store
+    book is used only in dry run.
     """
-    broker, broker_source = account_positions()
+    broker, broker_source = account_positions(raise_on_failure=not dry_run)
     believed, believed_source = store_positions()
     result = compare(broker, believed)
     result.update(

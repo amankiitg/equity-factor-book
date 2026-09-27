@@ -42,6 +42,48 @@ def test_record_run_replaces_the_same_date_duplicate(
     assert frame.iloc[0]["detail"] == "boom"
 
 
+def test_a_failed_row_still_allows_a_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a completed status marks the day done.
+
+    A row left by a failed or incomplete attempt is exactly what the next tick has
+    to retry. Counting any row as "already ran" would file a day nothing was
+    produced on as finished; the earlier `already_ran` did exactly that.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path)
+    for status in ("failed", "error", "incomplete", "stale_stopped"):
+        store.upsert(
+            "cron_runs",
+            [
+                {
+                    "run_date": "2026-09-23",
+                    "job": "live_daily",
+                    "status": status,
+                    "detail": "boom",
+                    "started_at": "",
+                    "finished_at": "",
+                }
+            ],
+        )
+        assert run_live_daily.already_ran("live_daily", "2026-09-23") is False, status
+
+    store.upsert(
+        "cron_runs",
+        [
+            {
+                "run_date": "2026-09-23",
+                "job": "live_daily",
+                "status": "ok",
+                "detail": "",
+                "started_at": "",
+                "finished_at": "",
+            }
+        ],
+    )
+    assert run_live_daily.already_ran("live_daily", "2026-09-23") is True
+
+
 def test_the_cron_script_makes_live_importable_from_any_cwd() -> None:
     """Render runs `python scripts/run_live_daily.py`, which puts scripts/ on
     sys.path, not the repo root; the module must add the root itself so the

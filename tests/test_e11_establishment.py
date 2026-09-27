@@ -38,7 +38,7 @@ def _orders(proposal: pd.DataFrame) -> list[guards.OrderSpec]:
         guards.OrderSpec(
             ticker=str(row.ticker),
             target_notional=float(row.weight) * NAV,
-            traded_notional=abs(float(row.weight)) * NAV,
+            trade_notional=float(row.weight) * NAV,
         )
         for row in proposal.itertuples(index=False)
     ]

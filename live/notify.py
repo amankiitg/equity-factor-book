@@ -79,6 +79,9 @@ STATUS_LABELS: dict[str, str] = {
     "ok": "ok, the run completed",
     "stale_stopped": "stale_stopped, the run refused to price a book",
     "error": "error, the run failed",
+    # At least one leg was halted, left in an unknown state, refused or rejected.
+    # The day is not done and will be retried, so it is neither ok nor a failure.
+    "incomplete": "incomplete, a leg was not confirmed",
     # The exchange was shut: there was no close to price, so the run did nothing
     # and said so. Not a failure, and not a silent evening either.
     "market_closed": "market_closed, the exchange was shut",

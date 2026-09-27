@@ -175,9 +175,13 @@ def test_every_reconciliation_upgrade_has_its_alter() -> None:
         ("1", True),
         ("0", True),
         ("garbage", True),
+        # Only the exact string "false" starts the clock. A different case or
+        # stray whitespace is a dry run, not a typo that trades.
+        ("FALSE", True),
+        ("False", True),
+        (" false", True),
+        ("false ", True),
         ("false", False),
-        ("FALSE", False),
-        ("False", False),
     ],
 )
 def test_dry_run_resolves_to_dry_run_unless_false(
