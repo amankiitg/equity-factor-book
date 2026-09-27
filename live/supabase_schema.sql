@@ -54,6 +54,21 @@ create table if not exists efb.positions (
   primary key (trade_date, ticker)
 );
 
+-- What the broker itself reports holding, per name, read in the same request
+-- that sized the evening's book. `positions` above is the loop's intention and
+-- this is the account's own answer: a run that reads a book back has to be able
+-- to tell the two apart, and E12's attribution must never count an intention as
+-- a holding. `weight` is the name's share of the account's own equity.
+create table if not exists efb.broker_positions (
+  trade_date date not null,
+  ticker text not null,
+  side text not null,
+  quantity double precision,
+  market_value double precision not null,
+  weight double precision,
+  primary key (trade_date, ticker)
+);
+
 create table if not exists efb.orders (
   trade_date date not null,
   ticker text not null,

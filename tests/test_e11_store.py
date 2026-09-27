@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -134,6 +135,74 @@ def test_the_schema_declares_every_column_the_live_writers_use(table: str) -> No
     declared = _schema_columns()
     missing = written - declared[table]
     assert not missing, f"efb.{table} does not declare {sorted(missing)}"
+
+
+def test_the_broker_book_writer_and_the_schema_agree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The columns the evening writes for the broker's book are the declared ones.
+
+    The set comes from the writer, run here with the store's write captured, not
+    from a hand-copied list: the point of the check is that the two cannot drift.
+    The rows themselves are checked too, because a broker book that stored the
+    loop's target as a holding would be worse than storing nothing.
+    """
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        store,
+        "replace_by_date",
+        lambda table, on, rows: captured.update(
+            {"table": table, "on": on, "rows": rows}
+        ),
+    )
+    holdings = {
+        "account_read": True,
+        "nav": 1_234_567.89,
+        "cash": 23_456.78,
+        "broker": {"AAA": 500.0, "BBB": -250.0},
+        "held_quantities": {"AAA": 5.0, "BBB": -10.0},
+    }
+
+    run_live_daily.store_broker_book("2026-09-25", holdings)
+
+    assert captured["table"] == "broker_positions"
+    assert captured["on"] == "2026-09-25"
+    rows = {row["ticker"]: row for row in captured["rows"]}
+    assert sorted(rows) == ["AAA", "BBB"]
+    assert rows["AAA"]["side"] == "long" and rows["BBB"]["side"] == "short"
+    assert rows["AAA"]["quantity"] == pytest.approx(5.0)
+    assert rows["BBB"]["quantity"] == pytest.approx(-10.0)
+    assert rows["AAA"]["market_value"] == pytest.approx(500.0)
+    # the weight is the name's share of the account's own equity, not of a
+    # constant
+    assert rows["AAA"]["weight"] == pytest.approx(500.0 / 1_234_567.89)
+    assert rows["BBB"]["weight"] == pytest.approx(-250.0 / 1_234_567.89)
+    declared = _schema_columns()
+    written = set(captured["rows"][0])
+    assert written <= declared["broker_positions"], sorted(
+        written - declared["broker_positions"]
+    )
+
+
+def test_a_broker_book_that_could_not_be_read_is_not_written_as_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unread account writes nothing rather than a book of no names.
+
+    "The account holds nothing" and "the account could not be read" are different
+    answers, and the second written as the first would erase the last thing the
+    broker did say: the page would show an empty account that was never asked.
+    """
+    written: list[Any] = []
+    monkeypatch.setattr(
+        store, "replace_by_date", lambda table, on, rows: written.append(rows)
+    )
+
+    run_live_daily.store_broker_book(
+        "2026-09-25", {"account_read": False, "broker_source": "not read: no keys"}
+    )
+
+    assert written == []
 
 
 def test_every_reconciliation_upgrade_has_its_alter() -> None:

@@ -47,27 +47,35 @@ def store_positions() -> tuple[dict[str, float], str]:
     )
 
 
-def account_positions(
-    *, raise_on_failure: bool = False
-) -> tuple[dict[str, float] | None, dict[str, float], str]:
-    """The broker's book and its quantities, or None with the reason it failed.
+def account_read(*, raise_on_failure: bool = False) -> dict[str, Any]:
+    """The broker's book, its share counts, its equity and cash, or why not.
 
-    None is not an empty book. An account that could not be reached and an account
-    that holds nothing are different answers, and the message says which one it
-    has. Reading is deliberately separate from `alpaca.connect(dry_run=True)`,
-    which returns None because it guards submission.
+    `positions` is None when the read failed, which is not an empty book: an
+    account that could not be reached and an account that holds nothing are
+    different answers, and the caller says which one it has. Reading is
+    deliberately separate from `alpaca.connect(dry_run=True)`, which returns None
+    because it guards submission.
 
     The quantities come back with the notionals from one read, because a full
     close must send the broker's exact held size rather than a re-derived one.
+    The equity comes back with them for the same reason: it is read once, from the
+    same account object, and it is the number the book is sized from.
 
     In live mode (`raise_on_failure`) a read that fails raises instead of
     answering None. The store-book fallback is allowed only in dry run: without
     this, a live evening whose account could not be read would measure every
     traded leg against the loop's own intentions, which is the failure the read
-    exists to prevent.
+    exists to prevent. An equity the account did not report is held to the same
+    rule, because a live run that cannot size its book must not build one.
     """
     from live import alpaca
 
+    nothing: dict[str, Any] = {
+        "positions": None,
+        "quantities": {},
+        "equity": None,
+        "cash": None,
+    }
     client = alpaca.read_client()
     if client is None:
         reason = (
@@ -79,16 +87,51 @@ def account_positions(
                 f"the account's positions could not be read ({reason}), so the "
                 "run stopped before building any order"
             )
-        return None, {}, reason
+        return {**nothing, "source": reason}
     try:
         account = client.get_account()
         positions, quantities = alpaca.position_book(client, dry_run=False)
+        figures = alpaca.account_figures(account)
     except Exception:
         if raise_on_failure:
             raise
         logger.warning("could not read the account's positions", exc_info=True)
-        return None, {}, "not read: see the log"
-    return positions, quantities, f"{BROKER_SOURCE} {getattr(account, 'id', '?')}"
+        return {**nothing, "source": "not read: see the log"}
+    if raise_on_failure and figures["equity"] is None:
+        raise RuntimeError(
+            "the account's equity could not be read, so the run stopped before "
+            "sizing a book or building any order"
+        )
+    return {
+        "positions": positions,
+        "quantities": quantities,
+        "equity": figures["equity"],
+        "cash": figures["cash"],
+        "source": f"{BROKER_SOURCE} {getattr(account, 'id', '?')}",
+    }
+
+
+def sizing_nav(equity: float | None) -> tuple[float, str]:
+    """The NAV the book is sized from, and where that number came from.
+
+    The account's own equity, every evening. A book sized from a constant is the
+    same size on an account that has grown and on one that has halved, which is
+    the hard-coded 1,000,000 this replaces.
+
+    The design's paper default stands in only when the account could not be read
+    at all, which happens in dry run and never live: `account_read` has already
+    raised by then, so a live book is never sized from a constant. The second
+    element says which number was used, so the row and the manifest can state it
+    rather than leave the reader to assume.
+    """
+    if equity is not None and equity > 0:
+        return float(equity), f"the account's own equity (${equity:,.2f})"
+    from live import evening_job
+
+    return evening_job.PAPER_NAV, (
+        f"the paper default ${evening_job.PAPER_NAV:,.0f}: the account's equity "
+        "could not be read, which on a live evening stops the run"
+    )
 
 
 def compare(
@@ -142,12 +185,18 @@ def check(*, dry_run: bool = True) -> dict[str, Any]:
 
     `held` is the book the orders should be measured against, and it is the
     broker's whenever the broker could be read: that is the point of the exercise.
-    In live mode a failed broker read raises (`account_positions`), so the store
+    In live mode a failed broker read raises (`account_read`), so the store
     book is used only in dry run.
+
+    `nav` is the account's equity and `nav_source` says so, because the book is
+    sized from this number: passing it on from here is what keeps the sizing, the
+    guards and the store's own row describing one account.
     """
-    broker, broker_quantities, broker_source = account_positions(
-        raise_on_failure=not dry_run
-    )
+    read = account_read(raise_on_failure=not dry_run)
+    broker = read["positions"]
+    broker_quantities = read["quantities"]
+    broker_source = read["source"]
+    nav, nav_source = sizing_nav(read["equity"])
     believed, believed_source = store_positions()
     result = compare(broker, believed)
     result.update(
@@ -155,6 +204,10 @@ def check(*, dry_run: bool = True) -> dict[str, Any]:
             "broker": broker,
             "broker_source": broker_source,
             "account_read": broker is not None,
+            "equity": read["equity"],
+            "cash": read["cash"],
+            "nav": nav,
+            "nav_source": nav_source,
             "store": believed,
             "store_source": believed_source,
             "source": BROKER_SOURCE if broker is not None else STORE_SOURCE,

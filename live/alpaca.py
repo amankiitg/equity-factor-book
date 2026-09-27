@@ -400,6 +400,33 @@ def get_nav(client) -> float:
     return equity
 
 
+def account_figures(account: Any) -> dict[str, float | None]:
+    """The account's own numbers: its equity and its cash, or None.
+
+    Alpaca sends both as strings. A missing or unparseable figure answers None
+    rather than zero: an account whose equity could not be read is not an account
+    worth nothing, and a zero would size a book of no size at all. Equity is the
+    account's whole value, cash plus positions, and it is the number the book is
+    sized from.
+    """
+    return {
+        "equity": _account_number(account, "equity"),
+        "cash": _account_number(account, "cash"),
+    }
+
+
+def _account_number(account: Any, name: str) -> float | None:
+    """One field of the account, as a finite float, or None."""
+    value = getattr(account, name, None)
+    if value is None:
+        return None
+    try:
+        number = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def verify_account(client) -> dict[str, object]:
     """Read the paper account: its id and whether it holds anything."""
     account = client.get_account()

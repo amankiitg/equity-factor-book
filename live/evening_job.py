@@ -1028,6 +1028,7 @@ def build_proposal(
     store: bool = True,
     appendix: dict[str, Any] | None = None,
     previous: pd.Series | None = None,
+    nav_source: str | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
@@ -1295,6 +1296,12 @@ def build_proposal(
         ),
         "gross_cap_bound": gross_cap_bound,
         "nav": nav,
+        # Which number `nav` is. The evening sizes the book from the account's
+        # own equity now, and the design's paper default stands in only when the
+        # account could not be read at all; the manifest states which of the two
+        # it priced from rather than leaving it to be assumed.
+        "nav_source": nav_source
+        or f"the paper default ${PAPER_NAV:,.0f}, passed in rather than read",
         "expected_establishment_cost_bps": cost["total_bps"],
         "expected_establishment_cost_usd": cost["total_bps"] / 1e4 * nav,
         "cost_breakdown_bps": {

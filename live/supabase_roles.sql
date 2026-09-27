@@ -27,14 +27,14 @@ create role efb_writer login password 'REPLACE_WITH_A_LONG_RANDOM_PASSWORD';
 -- SELECT (every read), and DELETE (`replace_by_date`, which erases a date before
 -- re-inserting it so a rerun cannot leave the previous run's rows behind). The
 -- broad grant below covers three of them on every table, and DELETE is granted
--- narrowly on the two tables `replace_by_date` is called on, because that is the
+-- narrowly on the tables `replace_by_date` is called on, because that is the
 -- only place a row is ever removed. The grant is traced to its caller, and the
--- DELETE runs every evening: `replace_by_date` is how the day's positions and
--- orders are written, so a missing privilege fails the first order-writing run,
--- not a rerun.
+-- DELETE runs every evening: `replace_by_date` is how the day's positions, the
+-- broker's own book and the day's orders are written, so a missing privilege
+-- fails the first order-writing run, not a rerun.
 grant usage on schema efb to efb_writer;
 grant select, insert, update on all tables in schema efb to efb_writer;
-grant delete on efb.positions, efb.orders to efb_writer;
+grant delete on efb.positions, efb.orders, efb.broker_positions to efb_writer;
 
 -- Future tables inherit those grants. Run this as the role that creates the
 -- tables, which is `postgres` in the SQL editor, because default privileges

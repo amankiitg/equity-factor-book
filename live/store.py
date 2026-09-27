@@ -81,6 +81,9 @@ TABLES: tuple[str, ...] = (
     "orders",
     "fills",
     "positions",
+    # What the broker itself reports holding, which is a different question from
+    # what the loop meant to hold and is stored apart for that reason.
+    "broker_positions",
     "reconciliation",
     "nav",
     "decisions",
@@ -97,6 +100,7 @@ TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "orders": ("trade_date", "ticker"),
     "fills": ("trade_date", "ticker", "order_id"),
     "positions": ("trade_date", "ticker"),
+    "broker_positions": ("trade_date", "ticker"),
     "reconciliation": ("trade_date",),
     "nav": ("trade_date",),
     "decisions": ("trade_date",),

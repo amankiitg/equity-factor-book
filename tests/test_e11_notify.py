@@ -15,7 +15,16 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from live import appendix, evening_job, extend, morning_job, notify, staleness, store
+from live import (
+    alpaca,
+    appendix,
+    evening_job,
+    extend,
+    morning_job,
+    notify,
+    staleness,
+    store,
+)
 from scripts import run_live_daily
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -321,8 +330,8 @@ def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     # These tests are about the evening, so the day is declared a session.
     monkeypatch.setattr(staleness, "is_session", lambda day: True)
     monkeypatch.setattr(run_live_daily, "store_proposal", lambda *a, **k: None)
-    monkeypatch.setattr(run_live_daily, "store_orders", lambda as_of, dry: None)
-    monkeypatch.setattr(run_live_daily, "store_reconciliation", lambda as_of, row: None)
+    monkeypatch.setattr(run_live_daily, "store_orders", lambda *a, **k: None)
+    monkeypatch.setattr(run_live_daily, "store_reconciliation", lambda *a, **k: None)
 
 
 def _patch_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -474,6 +483,33 @@ def test_an_errored_run_does_not_mark_the_day_done(
     assert not store.select("run_status").empty
 
 
+class _AccountBroker:
+    """An account read: what it holds and what it is worth, from one request."""
+
+    def get_account(self) -> Any:
+        class _Account:
+            id = "paper-account"
+            equity = "1234567.89"
+            cash = "23456.78"
+
+        return _Account()
+
+    def get_all_positions(self) -> list[Any]:
+        class _Position:
+            def __init__(self, symbol: str, value: float, side: str) -> None:
+                self.symbol = symbol
+                self.market_value = str(abs(value))
+                self.side = side
+                # signed the way the broker signs it, so the read's own check
+                # that the side and the quantity agree has something to check
+                self.qty = str(value / 100.0)
+
+        return [
+            _Position("AAA", 500.0, "long"),
+            _Position("BBB", -250.0, "short"),
+        ]
+
+
 def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -507,6 +543,53 @@ def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     assert row["n_orders"] == 152
     assert row["gross_notional"] == 2_014_000.0
     assert store.select("cron_runs").iloc[0]["status"] == "ok"
+
+
+def test_the_evening_stores_the_brokers_book_and_the_accounts_equity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The day's row carries the account's own equity, and the broker's book.
+
+    The store's own position row is what the loop meant to hold. The account's
+    answer is a different question and is stored apart, so a run that reads a book
+    back can tell the two apart. The NAV the book is sized from and the names the
+    broker reports come from one read of one account.
+    """
+    real_store_reconciliation = run_live_daily.store_reconciliation
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    # The harness stubs the day's rows away; this test is about them.
+    monkeypatch.setattr(
+        run_live_daily, "store_reconciliation", real_store_reconciliation
+    )
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(
+        evening_job,
+        "build_proposal",
+        lambda *a, **k: seen.update(k) or {"as_of": SESSION, "n_kept": 150},
+    )
+    monkeypatch.setattr(alpaca, "read_client", _AccountBroker)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+
+    assert run_live_daily.main() == 0
+
+    nav_row = store.select("nav").iloc[0]
+    assert nav_row["nav"] == pytest.approx(1_234_567.89)
+    assert nav_row["cash"] == pytest.approx(23_456.78)
+    book = store.select("broker_positions")
+    assert sorted(book["ticker"]) == ["AAA", "BBB"]
+    aaa = book.loc[book["ticker"] == "AAA"].iloc[0]
+    assert aaa["side"] == "long"
+    assert aaa["market_value"] == pytest.approx(500.0)
+    # the weight is the name's share of the account's own equity, not of a
+    # constant
+    assert aaa["weight"] == pytest.approx(500.0 / 1_234_567.89)
+    # and the book itself was sized from that same number
+    assert seen["nav"] == pytest.approx(1_234_567.89)
+    assert "the account's own equity" in str(seen["nav_source"])
 
 
 def test_the_recorded_run_states_both_books_risk_figures(
