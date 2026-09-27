@@ -115,6 +115,26 @@ def check_snapshot(dry_run: bool, mode: str | None = None) -> str:
     return resolved
 
 
+def check_snapshot_config(dry_run: bool) -> str:
+    """The switch and the credentials, checked before the run does anything.
+
+    `write_snapshot` reads both when the evening is over, which is the wrong place
+    to discover a missing credential: by then the book has been sized and the
+    orders have been sent, and the page is where the owner sees the book. A run
+    that trades and then cannot publish is a run that traded invisibly. This is the
+    same check the writer makes, moved to the start of the run, so a
+    misconfiguration costs nothing and never reaches a submission.
+
+    Returns the mode, exactly as `check_snapshot` would.
+    """
+    mode = check_snapshot(dry_run)
+    if mode == ON:
+        # The four variables are what an upload needs; naming them here means the
+        # message says which one is missing before anything is priced.
+        r2_settings()
+    return mode
+
+
 def expected_next_by(target_close: Any) -> str:
     """The UTC instant by which the next run's snapshot should exist.
 

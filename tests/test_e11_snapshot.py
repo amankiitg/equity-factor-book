@@ -573,3 +573,38 @@ def test_a_manifest_without_a_kept_gross_still_states_one() -> None:
 
     assert payload["book"]["gross"] == 0.9712
     assert payload["book"]["full_book_gross"] == 0.9712
+
+
+def test_the_settings_are_checked_before_the_run_rather_than_at_the_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The switch and the four R2 variables, as the start of a run reads them.
+
+    `write_snapshot` makes the same check when the evening is over, which is the
+    wrong place to find a missing credential: the book is sized and the orders are
+    sent by then, and the page is where the owner sees the book.
+    """
+    # no switch at all: neither default is safe, so the run cannot start
+    monkeypatch.delenv(snapshot.SNAPSHOT_ENV, raising=False)
+    with pytest.raises(snapshot.SnapshotNotConfigured):
+        snapshot.check_snapshot_config(dry_run=True)
+
+    # off, which a dry run may do, and no credentials are needed for it
+    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "off")
+    assert snapshot.check_snapshot_config(dry_run=True) == "off"
+    # and off on a live run is the flip's own refusal
+    with pytest.raises(snapshot.SnapshotNotAllowed):
+        snapshot.check_snapshot_config(dry_run=False)
+
+    # on, with the credentials unset: the error names the missing variables
+    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "on")
+    for name in snapshot.R2_ENVS:
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(snapshot.SnapshotNotConfigured) as missing:
+        snapshot.check_snapshot_config(dry_run=True)
+    assert all(name in str(missing.value) for name in snapshot.R2_ENVS)
+
+    # on, with them set: the mode the writer will use
+    for name in snapshot.R2_ENVS:
+        monkeypatch.setenv(name, "test-value")
+    assert snapshot.check_snapshot_config(dry_run=False) == "on"

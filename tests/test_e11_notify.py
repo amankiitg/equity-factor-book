@@ -1298,3 +1298,75 @@ def test_a_run_with_a_name_under_the_minimum_records_the_skip(
     body = str(captured[0]["text"])
     assert "1 orders proposed" in body
     assert "left untraded: 1 name(s) (TINY $100)" in body
+
+
+def test_a_snapshot_misconfiguration_stops_the_run_before_any_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The switch is read at the start, so a missing credential costs no trade.
+
+    The writer checks the same settings when the evening is over. By then the book
+    is sized and the orders have been sent, and a run that traded and cannot
+    publish is a run that traded invisibly: the page is the only place the owner
+    sees the book. The morning job must not be reached at all.
+    """
+    from live import snapshot
+
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        morning_job,
+        "run_morning",
+        lambda *a, **k: pytest.fail("an order was built with no page to show it"),
+    )
+    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "on")
+    for name in snapshot.R2_ENVS:
+        monkeypatch.delenv(name, raising=False)
+    sent: list[str] = []
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: sent.append(payload["text"])
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+
+    assert run_live_daily.main() == 1
+
+    assert store.select("orders").empty
+    assert len(sent) == 1
+    assert "EFB_R2_ACCOUNT_ID" in sent[0]
+    row = store.select("run_status").iloc[0]
+    assert row["status"] == "error"
+    assert "EFB_R2_ACCOUNT_ID" in str(row["detail"])
+
+
+def test_a_configured_snapshot_reaches_the_morning_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The negative control: the same run with the four variables set goes on.
+
+    Without this the check above would pass on a build that refused every evening.
+    """
+    from live import snapshot
+
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    reached: list[str] = []
+    monkeypatch.setattr(
+        morning_job,
+        "run_morning",
+        lambda *a, **k: reached.append("called")
+        or {"orders": 152, "intended_notional": 2_014_000.0, "dry_run": True},
+    )
+    monkeypatch.setattr(snapshot, "put_object", lambda *a, **k: None)
+    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "on")
+    for name in snapshot.R2_ENVS:
+        monkeypatch.setenv(name, "test-value")
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+
+    assert run_live_daily.main() == 0
+
+    assert reached == ["called"]

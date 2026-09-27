@@ -735,6 +735,7 @@ def main() -> int:
     dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
     from live import appendix as appendix_mod
     from live import runroot, seed
+    from live import snapshot as snapshot_module
 
     gate: dict[str, Any] | None = None
     catch_up_sessions: list[str] = []
@@ -760,6 +761,15 @@ def main() -> int:
         # decided here and a misconfiguration stops the run as an error.
         logger.info("store: %s", store.store_label())
         store.store_mode()
+        # The page's own settings, read before anything is priced or sent. The
+        # writer reads them again when the evening is over, and that is the wrong
+        # place to discover a missing credential: by then the book has been sized
+        # and the orders have been sent, and the page is where the owner sees the
+        # book. A run that trades and cannot publish traded invisibly, so a
+        # misconfiguration fails here, in the same error path as any other, before
+        # the seed is downloaded and long before a submission.
+        snapshot_mode = snapshot_module.check_snapshot_config(dry_run)
+        logger.info("snapshot: %s", snapshot_mode)
         # The run's own tree, built before anything is read. Every live module's
         # default resolves to it from here, so nothing under the repository's
         # data/ is written even though the run appends sessions and refits
