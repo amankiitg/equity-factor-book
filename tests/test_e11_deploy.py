@@ -1,9 +1,10 @@
 """Sprint E11, Part 4: the owner's deploy steps, and what the runtime does.
 
 Two things are pinned here rather than asserted in prose: the roles SQL grants
-nothing outside schema `efb`, and the live runtime issues no DDL, so a DML-only
-write role is enough. The provisioning script's primary path is the SQL editor,
-which needs no account-wide token, and the token path needs `--apply`.
+nothing outside schema `efb` and covers every verb the store issues, and the live
+runtime issues no DDL, so a DML write role is enough. The provisioning script's
+primary path is the SQL editor, which needs no account-wide token, and the token
+path needs `--apply`.
 """
 
 from __future__ import annotations
@@ -13,7 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts import provision_supabase
+from live import store
+from scripts import provision_supabase, verify_store_roundtrip
 
 ROOT = Path(__file__).resolve().parents[1]
 ROLES = (ROOT / "live" / "supabase_roles.sql").read_text()
@@ -29,30 +31,75 @@ DDL = re.compile(
 )
 
 
-def test_the_roles_file_grants_only_on_efb() -> None:
+def test_the_roles_cover_every_verb_the_store_issues() -> None:
+    """The writer's grants have to cover the store's own verb set.
+
+    The store issues INSERT and UPDATE (the upsert), SELECT (every read), and
+    DELETE (`replace_by_date`, which erases a date before re-inserting it). The
+    old test asserted the grant was `select, insert, update` and that `delete`
+    appeared nowhere, while the store's own delete path was exercised elsewhere:
+    a missing DELETE surfaces only on a rerun, which is too late. So the check is
+    the store's verb set, not a hand-copied string, and it fails the day the store
+    issues a verb the role does not hold.
+    """
+    source = (ROOT / "live" / "store.py").read_text()
+    verbs = {
+        verb.upper()
+        for verb in re.findall(
+            r"\b(?:INSERT|SELECT|DELETE|UPDATE)\b", source, re.IGNORECASE
+        )
+    }
+    assert {"INSERT", "SELECT", "DELETE", "UPDATE"} <= verbs, sorted(verbs)
+    # The broad grant covers insert, select and update on every efb table.
+    assert re.search(
+        r"(?i)grant\s+select,\s*insert,\s*update\s+on all tables in schema efb",
+        ROLES,
+    ), "the broad grant does not cover insert, select and update"
+    # DELETE is granted, narrowly, on the two tables replace_by_date touches.
+    assert re.search(
+        r"(?i)grant\s+delete\s+on\s+efb\.positions,\s*efb\.orders\s+to\s+efb_writer",
+        ROLES,
+    ), "delete is not granted on the tables replace_by_date writes"
+    # Still scoped to efb and to one role.
     assert "create role efb_writer login" in ROLES
-    # One role: the read role went with the Render web service, and the archive
-    # role arrives with retention.
     assert "create role efb_reader login" not in ROLES
     assert "create role efb_archiver login" not in ROLES
-    # One role, so one of each statement rather than two.
     assert ROLES.count("grant usage on schema efb") == 1
     assert ROLES.count("alter default privileges in schema efb") == 1
     assert "schema public" not in ROLES
     assert "on database" not in ROLES
     assert "superuser" not in ROLES
     assert "bypassrls" not in ROLES
-    # DML for the writer, and no delete: no code path deletes a row, so the grant
-    # would have no caller to trace it to.
-    assert "grant select, insert, update on all tables in schema efb" in ROLES
-    assert "insert, update, delete" not in ROLES
-    assert "delete" not in ROLES.split("--")[-1]
     assert "grant select on all tables in schema efb" not in ROLES
 
 
 def test_the_roles_file_carries_placeholders_not_passwords() -> None:
     for password in re.findall(r"password '([^']+)'", ROLES):
         assert password.startswith("REPLACE_WITH_"), password
+
+
+def test_the_replace_by_date_roundtrip_replaces_rather_than_merges(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The verify command's sentinel check, on the local store.
+
+    It must see a replacement (two rows become one, carrying the new value), not a
+    merge (two rows, the old value), and it must clear the sentinel date before it
+    returns. This is the DELETE path the role's new grant exists for.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(store, "get_connection", lambda: None)
+
+    probes, problems = verify_store_roundtrip.replace_by_date_roundtrip()
+
+    assert problems == []
+    assert len(probes) == 1 and probes[0]["status"] == "ok"
+    assert "2, 1, 0 rows" in probes[0]["read_back"]
+    frame = store.select("positions")
+    if not frame.empty:
+        dates = frame["trade_date"].astype(str).str.slice(0, 10)
+        left = frame.loc[dates == verify_store_roundtrip.ROUNDTRIP_DATE]
+        assert left.empty, f"the round trip left {len(left)} sentinel row(s)"
 
 
 def test_the_roles_step_comes_after_the_schema_step() -> None:
