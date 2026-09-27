@@ -156,6 +156,24 @@ LINKS = [
         "Research deliverable: Credit Port Design Note",
         "docs/credit_port_design.md",
     ),
+    ("Sprint E11 PRD", "sprints/E11/PRD.md"),
+    ("Sprint E11 tasks", "sprints/E11/TASKS.md"),
+    ("Sprint E11 results (F criteria)", "sprints/E11/RESULTS.json"),
+    (
+        "Walkthrough notebook E11 (one evening of the book)",
+        "notebooks/E11_walkthrough.html",
+    ),
+    ("Sprint E12 PRD", "sprints/E12/PRD.md"),
+    ("Sprint E12 tasks", "sprints/E12/TASKS.md"),
+    ("Sprint E12 results (F criteria)", "sprints/E12/RESULTS.json"),
+    (
+        "Research deliverable: P&L Attribution Report",
+        "docs/research/E12_attribution_report.md",
+    ),
+    (
+        "Walkthrough notebook E12 (attribution and the skill question)",
+        "notebooks/E12_walkthrough.html",
+    ),
     ("RG-Operate checklist", "docs/research/RG_OPERATE.md"),
 ]
 
