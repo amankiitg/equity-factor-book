@@ -98,8 +98,15 @@ def extend_prices(
 ) -> int:
     """Download the sessions after the last stored price and append them.
 
-    Returns the number of new sessions appended. Nothing is overwritten:
-    rows already present keep their values.
+    `end` is the last session wanted, **inclusive**, and defaults to today: a run
+    prices tonight's close, so tonight is the session it has to be able to fetch.
+    The vendor's own `end` is exclusive, which cost an evening on 2026-09-28: the
+    fetch asked for a window ending on the run's own date, the vendor answered with
+    the previous session alone, nothing was appended, and the gate stopped the run
+    one session behind its own target close.
+
+    Returns the number of new sessions appended. Nothing is overwritten: rows
+    already present keep their values.
     """
     root = Path(data_root) if data_root is not None else DATA_ROOT
     path = root / "raw" / "prices.parquet"
@@ -108,7 +115,12 @@ def extend_prices(
     if tickers is None:
         tickers = _live_tickers(root)
     end = end or pd.Timestamp.now().strftime("%Y-%m-%d")
-    tail = prices.download_prices(tickers, start=str(last_date.date()), end=end)
+    # yfinance's `end` is exclusive, so the run's own close has to be asked for by
+    # naming the day after it. Without this the fetch can never return the session
+    # being priced, and on a weekday evening whose previous close is already stored
+    # it returns nothing new at all.
+    window_end = str((pd.Timestamp(end) + pd.Timedelta(days=1)).date())
+    tail = prices.download_prices(tickers, start=str(last_date.date()), end=window_end)
     if tail is None or len(tail) == 0:
         return 0
     tail = prices.build_prices_artifact(tail, start="2010-01-04")

@@ -416,3 +416,98 @@ def test_store_orders_carries_the_broker_id_and_the_intent(
     # string is the answer rather than a missing column.
     assert rows.loc["BBB", "broker_order_id"] == ""
     assert rows.loc["BBB", "position_intent"] == "sell_to_open"
+
+
+def test_a_stopped_run_does_not_borrow_the_previous_books_cost(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refused evening has no cost of its own, and must not print last night's.
+
+    The reporting path fills the book from the last stored proposal so the page is
+    not blank on the evening the loop refused to price one. That borrowed manifest
+    used to supply the day's cost as well, so a stale stop printed the previous
+    book's establishment cost beside tonight's refusal, which reads as a number
+    about tonight. The cost and the risk figures now come only from the manifest the
+    run itself built, and the control below keeps that from being a change that
+    simply removed the line everywhere.
+    """
+    from live import notify, staleness
+    from live import snapshot as snapshot_module
+
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(
+        snapshot_module,
+        "write_snapshot",
+        lambda **kwargs: {"detail": "snapshot: pinned for the test"},
+    )
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: sent.append(payload)
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, "re_" + "test-key-value")
+    monkeypatch.setenv(notify.TO_ENV, "owner@example.com")
+
+    previous = {
+        "trade_date": "2026-09-25",
+        "expected_establishment_cost_bps": 15.0945,
+        "cost_breakdown_bps": {
+            "spread": 1.0,
+            "impact": 13.5,
+            "commission": 0.5,
+            "borrow": 0.0945,
+        },
+    }
+    book = pd.DataFrame({"ticker": ["AAA"], "weight": [1.0]})
+    monkeypatch.setattr(
+        snapshot_module,
+        "previous_proposal",
+        lambda: (previous, book, "the previous evening's book"),
+    )
+    stopped = {
+        "job": "live_daily",
+        "target_close": "2026-09-28",
+        "status": "stale_stopped",
+        "inputs": {"prices": {"content": "2026-09-25", "sessions_behind": 1}},
+        "failures": [
+            {"input": "prices", "sessions_behind": 1, "content": "2026-09-25"}
+        ],
+        "worst_input": "prices",
+        "worst_sessions_behind": 1,
+    }
+
+    # The real path: `main` stops on the gate and calls `finish_run` with no
+    # manifest of its own and no cost label.
+    code = run_live_daily.finish_run(
+        run_date="2026-09-28",
+        result=stopped,
+        status="stale_stopped",
+        dry_run=True,
+        detail="prices 1 session behind the 2026-09-28 close",
+    )
+
+    assert code == 1
+    text = str(sent[0]["text"])
+    assert "stale_stopped" in text
+    assert "1 session behind" in text
+    assert "Cost:" not in text, "the previous book's cost was printed as tonight's"
+    assert "bps" not in text
+    row = store.select(staleness.TABLE).iloc[0]
+    assert row["status"] == "stale_stopped"
+    # The risk figures are last night's book too, so they stay empty rather than
+    # describing tonight's row with another evening's numbers.
+    assert row["traded_risk"] is None and row["full_risk"] is None
+
+    # The control: the run's own manifest still prints its own cost.
+    own = dict(previous, trade_date="2026-09-28")
+    sent.clear()
+    run_live_daily.finish_run(
+        run_date="2026-09-28",
+        result={**stopped, "status": "ok", "failures": [], "worst_input": None},
+        status="ok",
+        dry_run=True,
+        manifest=own,
+        book=book,
+        cost_label="establishment",
+    )
+    text = str(sent[0]["text"])
+    assert "Cost: establishment, 15.09 bps of NAV" in text

@@ -53,6 +53,11 @@ def download_prices(
 ) -> pd.DataFrame:
     """Download daily prices and actions from yfinance in long format.
 
+    `end` is yfinance's own and is **exclusive**: a caller that wants a session
+    included has to name the day after it. That is not a detail, it is the mistake
+    `live.extend` made with the run's own close, so it is stated here where the
+    parameter is read.
+
     The start date includes a warm-up window before the 2010 universe
     start so that the first return of 2010 is computable. Tickers are
     mapped to yfinance symbols on request and mapped back on return.

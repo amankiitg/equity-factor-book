@@ -125,3 +125,54 @@ def test_the_fetch_is_the_live_universe_and_the_book_not_the_frozen_panel(
 
     # and the frozen panel still exists for the callers that ask for it
     assert extend._frozen_tickers(root) == ["DELISTED", "HELD", "LIVE1", "LIVE2"]
+
+
+def test_the_fetch_asks_for_the_runs_own_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The window has to include the session the run is pricing.
+
+    yfinance's `end` is exclusive, and `extend_prices` passed the run's own date as
+    it, so the same-day close could never come back. On a weekday evening, whose
+    previous close is already stored, the fetch then returned nothing new at all and
+    the gate stopped the run one session behind its own target close, which is what
+    Monday 2026-09-28 did: "prices 1 session behind the 2026-09-28 close". The vendor
+    answered `start='2026-09-25', end='2026-09-28'` with 2026-09-25 alone, and with
+    `end='2026-09-29'` with both, so the data was there and the window was wrong.
+
+    The fake below is the vendor's contract rather than a convenience: it drops the
+    end date, so a window that stops at the run date appends nothing and this test
+    fails on the cause rather than on a mock's opinion.
+    """
+    from efb import prices
+
+    root = tmp_path / "data"
+    _live_tree(root)
+    index = pd.MultiIndex.from_product(
+        [[pd.Timestamp("2026-09-25")], ["LIVE1", "LIVE2"]], names=["date", "ticker"]
+    )
+    pd.DataFrame({"close": [1.0, 2.0]}, index=index).to_parquet(
+        root / "raw" / "prices.parquet"
+    )
+    seen: dict[str, object] = {}
+
+    def _vendor(tickers, start=None, end=None, progress=False):  # noqa: ANN001
+        seen["start"], seen["end"] = start, end
+        days = pd.bdate_range(start, pd.Timestamp(end))
+        frame = pd.DataFrame(
+            {field: 1.0 for field in prices.FIELDS},
+            index=pd.MultiIndex.from_product(
+                [days, list(tickers)], names=["date", "ticker"]
+            ),
+        )
+        # the vendor's own contract: the end date is exclusive
+        return frame[frame.index.get_level_values("date") < pd.Timestamp(end)]
+
+    monkeypatch.setattr(extend.prices, "download_prices", _vendor)
+
+    added = extend.extend_prices(root, end="2026-09-28")
+
+    assert seen == {"start": "2026-09-25", "end": "2026-09-29"}, seen
+    assert added == 1, "the run's own close was not fetched"
+    panel = pd.read_parquet(root / "raw" / "prices.parquet")
+    assert str(panel.index.get_level_values("date").max().date()) == "2026-09-28"

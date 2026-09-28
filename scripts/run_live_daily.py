@@ -588,6 +588,11 @@ def finish_run(
         positions_check=positions_check,
     )
     book_reason: str | None = None
+    # Whether the book in hand is the run's own proposal or the last one the store
+    # holds. It decides whether the day's cost and risk belong to this row: a
+    # manifest read back from the store is last evening's book, and an evening that
+    # refused to price anything has no cost of its own.
+    own_manifest = manifest is not None
     if manifest is None:
         # A stopped run still has a book to show: the last one the loop proposed,
         # read from the store rather than from the deploy image's disk. The page
@@ -600,9 +605,15 @@ def finish_run(
     # The day's cost is the proposal's own establishment cost, which is the cost
     # of building the book from flat. Naming it beside the label keeps the number
     # from reading as a rebalance cost it never was.
+    #
+    # Only the run's own manifest answers this. A manifest read back from the store
+    # is the previous evening's book, so lending its cost to tonight's message
+    # printed last night's establishment cost beside a refusal to price anything,
+    # and lending its risk figures wrote another evening's numbers onto tonight's
+    # row. Both stay empty on a stopped run instead.
     cost_bps: float | None = None
     breakdown: dict[str, float] | None = None
-    if manifest:
+    if own_manifest and manifest:
         from live import reconcile as reconcile_module
 
         # The same four parts the day's reconciliation row carries, from the same
