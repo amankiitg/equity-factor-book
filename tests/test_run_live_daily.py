@@ -11,6 +11,7 @@ import importlib.util
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from live import staleness, store
@@ -305,3 +306,113 @@ def test_the_cron_script_makes_live_importable_from_any_cwd() -> None:
     from live import evening_job  # noqa: PLC0415 - imported after the fix
 
     assert evening_job.DATA_ROOT.name == "data"
+
+
+def test_the_prior_book_is_the_accounts_book_not_the_stores() -> None:
+    """Cost, turnover and the reason column are measured against what was held.
+
+    The store's position row is the loop's intention: on a dry-run evening it names
+    a book the account has never held, so a trade computed from it prices trades
+    that never happened. Weights come from the account over its own equity; the
+    store's row is read for the z-scores the reason classifier compares, because z
+    is a model input rather than a position.
+    """
+    holdings = {
+        "account_read": True,
+        "establishment": False,
+        "nav": 1_000_000.0,
+        "broker": {"AAA": 60_000.0, "BBB": -20_000.0},
+    }
+    intentions = pd.DataFrame(
+        {
+            "trade_date": ["2026-09-25", "2026-09-25"],
+            "ticker": ["AAA", "BBB"],
+            "z": [1.5, -0.5],
+            "weight": [0.9, 0.1],
+        }
+    )
+
+    prior = run_live_daily.prior_book(holdings, intentions)
+
+    assert prior is not None
+    weights = prior.set_index("ticker")["weight"]
+    assert weights["AAA"] == pytest.approx(0.06)
+    assert weights["BBB"] == pytest.approx(-0.02)
+    # the store's own weights never appear: its z does
+    scores = prior.set_index("ticker")["z"]
+    assert scores["AAA"] == pytest.approx(1.5)
+    assert str(prior["trade_date"].iloc[0]) == "2026-09-25"
+
+    # An establishment evening has no previous book at all: from flat every
+    # previous weight is zero, which is what a missing book means to the callers.
+    assert (
+        run_live_daily.prior_book({**holdings, "establishment": True}, intentions)
+        is None
+    )
+    # A name the account holds that the previous proposal never carried scores
+    # zero rather than a missing value.
+    unheld_score = run_live_daily.prior_book(
+        {**holdings, "broker": {"CCC": 10_000.0}}, intentions
+    )
+    assert unheld_score is not None
+    assert float(unheld_score["z"].iloc[0]) == 0.0
+    # With no stored proposal the date is unknown, so the caller's close stands in
+    # and the risk comparison degrades rather than failing the run.
+    assert "trade_date" not in run_live_daily.prior_book(holdings, None).columns
+
+
+def test_store_orders_carries_the_broker_id_and_the_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The evening that reconciles fills needs the broker's own keys on the row.
+
+    A fill arrives as an activity against an order id, and the deterministic ticket
+    is only unique among the orders this loop sends, so the id has to be stored
+    while the broker is answering. The intent says open or close without anyone
+    re-deriving it from the sign of a notional.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    # `store_orders` reads the day's log from the run tree's own `live/logs`, so
+    # the repository root is moved to the temporary tree rather than the path
+    # being passed in: that is the path the cron uses.
+    monkeypatch.setattr(run_live_daily, "ROOT", tmp_path)
+    log_dir = tmp_path / "live" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {
+                "trade_date": "2026-09-30",
+                "ticker": "AAA",
+                "intended_notional": 50_000.0,
+                "filled_notional": 0.0,
+                "status": "ACCEPTED",
+                "reason": "accepted after the close",
+                "reason_code": "",
+                "client_order_id": "efb-2026-09-30-AAA-buy",
+                "position_intent": "buy_to_open",
+                "broker_order_id": "6f1d2c3b-aaaa-bbbb-cccc-1234567890ab",
+            },
+            {
+                "trade_date": "2026-09-30",
+                "ticker": "BBB",
+                "intended_notional": -20_000.0,
+                "filled_notional": 0.0,
+                "status": "REJECTED_CAP",
+                "reason": "guard rejected the order",
+                "reason_code": "REJECTED_CAP",
+                "client_order_id": "",
+                "position_intent": "sell_to_open",
+                "broker_order_id": "",
+            },
+        ]
+    ).to_parquet(log_dir / "execution_2026-09-30.parquet", index=False)
+
+    run_live_daily.store_orders("2026-09-30", dry_run=False)
+
+    rows = store.select("orders").set_index("ticker")
+    assert rows.loc["AAA", "broker_order_id"] == "6f1d2c3b-aaaa-bbbb-cccc-1234567890ab"
+    assert rows.loc["AAA", "position_intent"] == "buy_to_open"
+    # A leg that never became an order has no broker id to record, and an empty
+    # string is the answer rather than a missing column.
+    assert rows.loc["BBB", "broker_order_id"] == ""
+    assert rows.loc["BBB", "position_intent"] == "sell_to_open"

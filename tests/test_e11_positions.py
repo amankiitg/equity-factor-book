@@ -21,6 +21,22 @@ import pytest
 
 from live import alpaca, evening_job, notify, positions, store
 
+# The account number the fakes report. The guard compares this against
+# EFB_ALPACA_ACCOUNT_ID, which every test below sets to it; `_ACCOUNT_BROKER` is
+# the id the fakes keep beside it because the broker's order records carry it.
+ACCOUNT_NUMBER = "PAFAKE0001"
+
+
+@pytest.fixture(autouse=True)
+def _named_account(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Name the account every test here reads.
+
+    A run reads which account the keys reach before it sizes anything, and an
+    unset variable refuses, so a test that fakes the read has to act like the
+    owner who set it. A test that wants the refusal deletes it itself.
+    """
+    monkeypatch.setenv(alpaca.ACCOUNT_ID_ENV, ACCOUNT_NUMBER)
+
 
 class _FakeBroker:
     def __init__(
@@ -28,15 +44,20 @@ class _FakeBroker:
         holdings: list[tuple[str, float]],
         equity: str | None = "1234567.89",
         cash: str | None = "23456.78",
+        number: str = ACCOUNT_NUMBER,
+        working_orders: list[str] | None = None,
     ) -> None:
         self.holdings = holdings
         self.equity = equity
         self.cash = cash
+        self.number = number
+        self.working_orders = list(working_orders or [])
 
     def get_account(self) -> Any:
         broker = self
 
         class _Account:
+            account_number = broker.number
             id = "paper-account"
             equity = broker.equity
             cash = broker.cash
@@ -54,6 +75,17 @@ class _FakeBroker:
             _Position(symbol, value, "long" if value >= 0 else "short")
             for symbol, value in self.holdings
         ]
+
+    def get_orders(self, filter: Any = None) -> list[Any]:
+        """The account's working orders, as Alpaca's list read returns them."""
+        broker = self
+
+        class _Order:
+            def __init__(self, symbol: str) -> None:
+                self.id = f"order-{symbol}"
+                self.symbol = symbol
+
+        return [_Order(symbol) for symbol in broker.working_orders]
 
 
 def test_an_account_that_could_not_be_read_is_not_an_empty_account() -> None:
@@ -389,7 +421,10 @@ def test_the_run_passes_the_accounts_answer_to_the_morning_job(
     The store holds 150 dry-run intentions and the account holds none, which is
     exactly the state the first live evening starts from: the morning job must be
     told to establish, and must be handed the account's (empty) book rather than
-    the store's 150 names to trade the difference from.
+    the store's 150 names to trade the difference from. The 150 names are not used
+    as the prior book for the cost either: on an establishment evening there is no
+    prior book at all, and a fallback to the store would price the whole book as a
+    rebalance.
     """
     from live import morning_job
     from tests.test_e11_notify import _no_work, _patch_gate
@@ -414,6 +449,12 @@ def test_the_run_passes_the_accounts_answer_to_the_morning_job(
     )
     monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([]))
     seen: dict[str, Any] = {}
+    written: dict[str, Any] = {}
+
+    def _capture_proposal(*args: Any, **kwargs: Any) -> None:
+        written.update(kwargs)
+
+    monkeypatch.setattr("scripts.run_live_daily.store_proposal", _capture_proposal)
 
     def _capture(as_of: str, **kwargs: Any) -> dict[str, Any]:
         seen.update(kwargs)
@@ -435,6 +476,15 @@ def test_the_run_passes_the_accounts_answer_to_the_morning_job(
 
     assert seen["establishment"] is True, "the store's 150 names decided the day"
     assert seen["positions"] == {}, "the orders were not measured from the account"
+    # The establishment evening carries no prior book, and the store's 150
+    # intentions are not read to stand in for one: from flat the whole target
+    # trades, so every previous weight is zero.
+    assert written["previous"] is None
+    assert written["prior_settled"] is True
+    # The establishment evening carries no prior book at all, and the store's 150
+    # intentions are not read to stand in for one: the trade is the whole target.
+    assert written["previous"] is None
+    assert written["prior_settled"] is True
 
 
 def test_the_run_refuses_to_establish_when_the_account_cannot_be_read(
@@ -542,6 +592,9 @@ def test_the_row_records_the_check_without_the_name_maps() -> None:
         "store": {"BBB": 1.0},
         "held": {"AAA": 1.0},
         "note": "mismatch",
+        "account_number": ACCOUNT_NUMBER,
+        "account_identity": f"account {ACCOUNT_NUMBER} matches EFB_ALPACA_ACCOUNT_ID",
+        "open_orders": [],
     }
     row = staleness.run_status_row(
         {"target_close": "2026-09-25", "job": "live_daily", "status": "ok"},
@@ -549,7 +602,144 @@ def test_the_row_records_the_check_without_the_name_maps() -> None:
         positions_check=check,
     )
     assert '"missing_at_broker": ["BBB"]' in row["positions_check"].replace("'", '"')
+    # Which account traded, and that it was idle, are evidence the row keeps.
+    assert ACCOUNT_NUMBER in row["positions_check"]
+    assert "open_orders" in row["positions_check"]
     # The maps themselves are dropped: the summary is the evidence and the row is
     # read on every page load.
     assert '"held"' not in row["positions_check"]
     assert '"broker": {' not in row["positions_check"]
+
+
+def test_a_key_that_reaches_another_account_refuses(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The account is named, and the run refuses to trade the wrong one.
+
+    EFB's keys and the credit lab's are both paper accounts under one login, so a
+    key pasted from the wrong project reads a real book and sizes a real order
+    against somebody else's account. The number is the one Alpaca's dashboard
+    shows, which is why the guard is not written on the internal id.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(
+        alpaca, "read_client", lambda: _FakeBroker([], number="PAOTHER0001")
+    )
+    with pytest.raises(alpaca.AccountMismatch, match="PAOTHER0001"):
+        positions.check(dry_run=True)
+
+
+def test_an_unnamed_account_refuses(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset refuses rather than passing: a guard that cannot tell is not a guard.
+
+    The refusal names the number it read, which is all the owner needs to set the
+    variable, and it fires in dry run too, because the question has a real answer
+    before the flip.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.delenv(alpaca.ACCOUNT_ID_ENV, raising=False)
+    monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([]))
+    with pytest.raises(alpaca.AccountMismatch, match="is not set"):
+        positions.check(dry_run=True)
+
+
+def test_a_flat_idle_account_establishes_and_names_itself(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([]))
+
+    result = positions.check(dry_run=True)
+
+    assert result["establishment"] is True
+    assert result["open_orders"] == []
+    assert result["account_number"] == ACCOUNT_NUMBER
+    assert ACCOUNT_NUMBER in str(result["account_identity"])
+
+
+def test_an_establishment_evening_refuses_over_a_working_order(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A flat account with an order working is not flat.
+
+    The order was accepted after yesterday's close, so it holds no position yet
+    and the position read cannot see it; it fills at the next open, and a whole
+    book bought against it lands the loop at twice the size it chose.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(
+        alpaca, "read_client", lambda: _FakeBroker([], working_orders=["AAA", "BBB"])
+    )
+    with pytest.raises(positions.AccountRefused, match="open order"):
+        positions.check(dry_run=True)
+
+
+def test_a_rebalance_holds_its_working_orders_harmlessly(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The refusal is about establishing, not about a book already held.
+
+    A rebalance trades the difference against a book it can read, so an order the
+    broker is still working is a leg it will settle rather than a position nobody
+    counted. The order list is not read either: it is asked for only when the run
+    would establish, so an ordinary evening spends no request on it.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(
+        alpaca,
+        "read_client",
+        lambda: _FakeBroker([("AAA", 500.0)], working_orders=["BBB"]),
+    )
+
+    result = positions.check(dry_run=True)
+
+    assert result["establishment"] is False
+    assert result["open_orders"] == []
+
+
+def test_an_order_read_that_fails_refuses_the_establishment(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An order list that could not be read is not an empty order list."""
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+
+    class _NoOrderRead(_FakeBroker):
+        def get_orders(self, filter: Any = None) -> list[Any]:
+            raise RuntimeError("the broker refused the read")
+
+    monkeypatch.setattr(alpaca, "read_client", lambda: _NoOrderRead([]))
+    with pytest.raises(positions.AccountRefused, match="could not be read"):
+        positions.check(dry_run=True)
+
+
+def test_the_prior_book_is_the_account_and_never_the_store() -> None:
+    """Cost and turnover are measured against what the account held.
+
+    The store holds the loop's intentions, which after a dry-run evening name a
+    book the account has never held; a cost computed from it prices trades that
+    never happened. The account's own holdings over the account's own equity is
+    the book that was held, and an establishment evening has no prior book at all.
+    """
+    holdings = {
+        "account_read": True,
+        "nav": 1_000_000.0,
+        "broker": {"AAA": 50_000.0, "BBB": -25_000.0},
+        "establishment": False,
+    }
+    prior = positions.prior_weights(holdings, establishment=False)
+    assert prior is not None
+    assert float(prior["AAA"]) == pytest.approx(0.05)
+    assert float(prior["BBB"]) == pytest.approx(-0.025)
+
+    assert positions.prior_weights(holdings, establishment=True) is None
+    assert (
+        positions.prior_weights(
+            {**holdings, "account_read": False, "broker": None}, establishment=False
+        )
+        is None
+    )
+    assert (
+        positions.prior_weights({**holdings, "nav": 0.0}, establishment=False) is None
+    )

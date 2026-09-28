@@ -182,17 +182,25 @@ def guards_panel() -> pd.DataFrame:
 
 
 def clock_panel() -> pd.DataFrame:
-    """The continuous clock: open-ended run, a thirty-day reporting window."""
+    """The continuous clock: open-ended run, a thirty-day reporting window.
+
+    Before the flip the clock is not started, so day 1 has no date yet and the
+    panel says so rather than showing an empty cell: day 1 is the first session
+    whose orders filled, and until then there is nothing to show.
+    """
     clock = load_clock()
+    started = bool(clock.get("started", False))
     return _require(
         pd.DataFrame(
             [
                 {
-                    "day 1": clock["day_1"],
-                    "reporting window end": clock["end_date"],
+                    "day 1": clock["day_1"] if started else "not started",
+                    "reporting window end": (
+                        clock["end_date"] if started else "not started"
+                    ),
                     "reporting window days": clock["trading_days"],
                     "run condition": clock.get("run_condition", "open_ended"),
-                    "started": clock.get("started", True),
+                    "started": started,
                 }
             ]
         ),

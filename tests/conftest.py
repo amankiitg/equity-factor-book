@@ -55,6 +55,11 @@ LIVE_CREDENTIALS = (
     # real paper API, and a test must never touch it.
     "EFB_ALPACA_PAPER_API_KEY",
     "EFB_ALPACA_PAPER_SECRET_KEY",
+    # The account the keys have to reach. Every run compares it against the number
+    # the broker reports and refuses when the two disagree or when this is unset,
+    # so a developer's own account number in the shell would decide which fakes
+    # pass. A test that fakes the read names the account itself.
+    "EFB_ALPACA_ACCOUNT_ID",
 )
 
 

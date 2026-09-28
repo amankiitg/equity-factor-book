@@ -93,6 +93,14 @@ create table if not exists efb.orders (
   -- the side, so a rerun of the same evening is refused by the broker rather
   -- than doubling the book.
   client_order_id text,
+  -- The broker's own open-or-close decision on the leg, so a reconciler can tell
+  -- a close from a short without re-deriving it from the sign of a notional.
+  position_intent text,
+  -- The broker's own id for the order, empty for a leg that never became one (a
+  -- guard rejection, a skipped minimum) and empty on a dry run. A fill arrives as
+  -- an activity against an order id, so this is the key the evening that
+  -- reconciles fills has to match on.
+  broker_order_id text,
   primary key (trade_date, ticker)
 );
 
@@ -415,6 +423,14 @@ alter table efb.proposals
   add column if not exists full_book_net double precision;
 alter table efb.proposals
   add column if not exists full_book_achieved_annual_vol double precision;
+
+-- Pre-launch batch 4: the order row carries the intent the leg was sent with and
+-- the broker's own id for it, so the evening that reconciles fills can match a
+-- fill to the order it belongs to instead of to a derived ticket.
+alter table efb.orders
+  add column if not exists position_intent text;
+alter table efb.orders
+  add column if not exists broker_order_id text;
 
 -- Row level security, off, last. Supabase enables row level security on the
 -- tables its SQL editor is asked to create, and an RLS table with no policy

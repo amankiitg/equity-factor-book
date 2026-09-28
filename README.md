@@ -58,8 +58,15 @@ The book is a **documented null book**: `idio_momentum` through the full stack,
 Procedure 6.3 plus the exact FMP hedge, paper only. Its factor-neutral IC is
 -0.0031 (t -0.51) at horizon 21, null rather than negative, against a raw IC of
 0.0121 (t 5.04) at horizon 1, read from data/alpha/summary.parquet. The loop
-runs indefinitely (run_condition open_ended, day 1 2026-09-22) with a
-30-trading-day reporting window. Render runs the daily cron, `efb-live-daily`, which extends,
+runs indefinitely (run_condition open_ended) with a 30-trading-day reporting
+window that starts on day 1, the first session whose orders filled after the flip;
+the clock is not started, `live/clock.json` records the voided earlier start, and
+`sprints/E11/register_results.py` refuses to register a day the stored first live
+run and first proposal do not agree on. Every evening reads the account before it
+sizes anything and refuses unless the number Alpaca reports is the one
+`EFB_ALPACA_ACCOUNT_ID` names, because EFB's paper keys and the credit lab's sit
+under one login; an establishment evening additionally refuses if the account holds
+anything or has an order working. Render runs the daily cron, `efb-live-daily`, which extends,
 proposes, executes and reconciles; the blueprint is `render.yaml`. The live series
 lives in Supabase; research artifacts stay in git and the evidence snapshot. The
 store never falls back on its own: a local run (the research dashboard, a dry run,

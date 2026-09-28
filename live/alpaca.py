@@ -410,6 +410,85 @@ def get_nav(client) -> float:
     return equity
 
 
+class AccountMismatch(RuntimeError):
+    """The keys reach an account other than the one the owner named."""
+
+
+# The account the keys are supposed to reach, as the owner reads it off Alpaca's
+# dashboard: the `account_number` (the PA... value), not the internal `id`, which
+# no dashboard shows and nobody can check by eye.
+ACCOUNT_ID_ENV = "EFB_ALPACA_ACCOUNT_ID"
+
+
+def account_number(account: Any) -> str:
+    """The account's public number, the PA... value Alpaca shows.
+
+    Alpaca calls this `account_number` and it is the identifier a human can read
+    back from the dashboard. The internal `id` is a UUID, so a guard written on it
+    could not be checked by the owner even though it would pass.
+    """
+    return str(getattr(account, "account_number", "") or "").strip()
+
+
+def check_account_identity(number: str, expected: str | None) -> str:
+    """Refuse unless the keys reach the account the owner named, and say so.
+
+    The EFB keys are separate from the credit lab's, and both are paper accounts
+    under one Alpaca login: a key pasted from the wrong project trades the wrong
+    book, and every number after that is about somebody else's account. So the
+    account is named in `EFB_ALPACA_ACCOUNT_ID` and every run compares the number
+    the broker reports against it.
+
+    Unset refuses rather than passes. There is nothing to compare against, and a
+    guard that answers "I could not tell" by continuing is the guard this exists
+    to replace; the refusal names the number it read, which is all the owner needs
+    to set the variable. A read that failed is a different case and is answered by
+    the caller, because an account that was never read cannot be the wrong
+    account.
+    """
+    if not number:
+        raise AccountMismatch(
+            "the account's number could not be read, so the run cannot prove which "
+            "account the keys reach and it stopped"
+        )
+    if not expected:
+        raise AccountMismatch(
+            f"the keys reach account {number}, and {ACCOUNT_ID_ENV} is not set, so "
+            "the run cannot prove it is the account the owner named: set "
+            f"{ACCOUNT_ID_ENV} to {number} on Render and in .env"
+        )
+    if number.strip() != str(expected).strip():
+        raise AccountMismatch(
+            f"the keys reach account {number} but {ACCOUNT_ID_ENV} names "
+            f"{str(expected).strip()}: the run stopped before sizing a book or "
+            "building any order"
+        )
+    return f"account {number} matches {ACCOUNT_ID_ENV}"
+
+
+def open_orders(client) -> list[dict[str, str]]:
+    """The account's working orders, as an id and a symbol each.
+
+    An establishment evening buys the whole book from flat, so an order already
+    working at the broker is a position that has not settled yet: establishing
+    over it would buy names the account is in the middle of buying or selling, and
+    the account's own answers (positions flat, orders busy) are the evidence. The
+    read is made only when the run would establish, so an ordinary evening spends
+    no request on it.
+    """
+    from alpaca.trading.enums import QueryOrderStatus  # type: ignore
+    from alpaca.trading.requests import GetOrdersRequest  # type: ignore
+
+    request = GetOrdersRequest(status=QueryOrderStatus.OPEN)
+    return [
+        {
+            "id": str(getattr(order, "id", "")),
+            "symbol": str(getattr(order, "symbol", "")),
+        }
+        for order in client.get_orders(filter=request)
+    ]
+
+
 def account_figures(account: Any) -> dict[str, float | None]:
     """The account's own numbers: its equity and its cash, or None.
 
@@ -438,12 +517,21 @@ def _account_number(account: Any, name: str) -> float | None:
 
 
 def verify_account(client) -> dict[str, object]:
-    """Read the paper account: its id and whether it holds anything."""
+    """Read the paper account: its number, its internal id and whether it holds.
+
+    The number is printed by `scripts/verify_account.py` for the owner to copy
+    into `EFB_ALPACA_ACCOUNT_ID`; the id is kept beside it because it is what the
+    broker's own order records carry.
+    """
     account = client.get_account()
     account_id = str(getattr(account, "id", ""))
     positions = client.get_all_positions()
     return {
+        "account_number": account_number(account),
         "account_id": account_id,
+        "matches_account_id_env": (
+            account_number(account) == str(os.environ.get(ACCOUNT_ID_ENV, "")).strip()
+        ),
         "n_positions": len(positions),
         "empty": len(positions) == 0,
     }

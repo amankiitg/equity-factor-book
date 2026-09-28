@@ -46,6 +46,12 @@ EXECUTION_COLUMNS = [
     # The Alpaca position intent the leg carried, so the log says open vs close
     # rather than inferring it from the sign of a notional.
     "position_intent",
+    # The broker's own id for the order, empty for a leg that never became one
+    # (a guard rejection, a skipped minimum) and empty on a dry run, where no
+    # order exists. It is the key a fill has to be reconciled against: a fill
+    # arrives as an activity on an order id, and the deterministic ticket is only
+    # unique among the orders this loop sends.
+    "broker_order_id",
 ]
 
 # A leg with one of these statuses, or one of these reason codes, was not
@@ -256,6 +262,7 @@ def _target_legs(
                         "reason_code": alpaca.REASON_BELOW_MIN_NOTIONAL,
                         "client_order_id": "",
                         "position_intent": alpaca.position_intent(position, target),
+                        "broker_order_id": "",
                     }
                 )
             continue
@@ -314,6 +321,7 @@ def submit_orders(
                     "reason_code": order.status,
                     "client_order_id": "",
                     "position_intent": order.intent,
+                    "broker_order_id": "",
                 }
             )
             continue
@@ -339,6 +347,8 @@ def submit_orders(
                         else ""
                     ),
                     "position_intent": order.intent,
+                    # No order exists yet, so there is no broker id to record.
+                    "broker_order_id": "",
                 }
             )
             continue
@@ -357,6 +367,7 @@ def submit_orders(
                     "reason_code": fill.reason_code,
                     "client_order_id": fill.client_order_id,
                     "position_intent": fill.intent,
+                    "broker_order_id": fill.order_id,
                 }
             )
     return pd.DataFrame(records, columns=EXECUTION_COLUMNS[1:])

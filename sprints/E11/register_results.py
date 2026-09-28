@@ -5,6 +5,13 @@ this script reads them out of the roadmap by their IDs. The clock and the
 day-1 proposal numbers are read from their artifacts. The window has not
 closed, so every verdict is `pending`; the stored numbers arrive when the
 thirty days complete.
+
+Registration is refused unless the day-1 date the clock starts on is the date the
+records agree on: the first live run (a run that was not a dry run and that sent
+at least one order) and the first stored proposal. `live/clock.py` owns that check
+and this script only calls it, so the rule lives in one place. The day-1 proposal
+is then read *for that date* out of the store rather than the newest file on disk:
+the newest file is whatever ran last, which before the flip is a rehearsal.
 """
 
 from __future__ import annotations
@@ -12,14 +19,33 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from live import clock as clock_module
 
 ROOT = Path(__file__).resolve().parents[2]
 ROADMAP = ROOT / "docs" / "roadmap_v2.md"
 RESULTS = ROOT / "sprints" / "E11" / "RESULTS.json"
 CLOCK = ROOT / "live" / "clock.json"
-PROPOSALS = ROOT / "live" / "proposals"
 
 CRITERIA_IDS = ("F11.1", "F11.2", "F11.3")
+
+# The manifest fields the day-1 proposal records. The same names the pre-flip
+# registration stored, so the file's shape does not change when the day arrives.
+PROPOSAL_FIELDS = (
+    "signal",
+    "as_of",
+    "universe_source",
+    "n_names",
+    "n_excluded",
+    "idio_share_after_fmp",
+    "gross",
+    "net",
+    "achieved_annual_vol",
+    "target_annual_vol",
+)
 
 
 def _criteria_verbatim() -> dict[str, str]:
@@ -35,22 +61,52 @@ def _criteria_verbatim() -> dict[str, str]:
     return found
 
 
-def _latest_proposal() -> dict:
-    proposals = sorted(PROPOSALS.glob("proposal_*.json"))
-    if not proposals:
-        raise RuntimeError("no proposal manifest to register")
-    return json.loads(proposals[-1].read_text())
+def _day_1_proposal(day_1: str) -> dict[str, Any]:
+    """The stored proposal priced from the day-1 close, or a refusal.
+
+    The store is the source rather than the newest proposal file: a file on disk
+    is whatever ran last, and before the flip that is a rehearsal from a frozen
+    close. The stored row carries the manifest the run priced from, which is what
+    the day-1 numbers have to come from.
+    """
+    from live import store
+
+    frame = store.select("proposals")
+    if frame.empty or "trade_date" not in frame.columns:
+        raise clock_module.RegistrationRefused(
+            f"no proposal is stored, so the proposal priced from {day_1} cannot be "
+            "recorded"
+        )
+    dates = pd.to_datetime(frame["trade_date"], errors="coerce").dt.strftime(
+        "%Y-%m-%d"
+    )
+    rows = frame.loc[dates == day_1]
+    if rows.empty:
+        raise clock_module.RegistrationRefused(
+            f"the store holds no proposal priced from {day_1}"
+        )
+    manifest = json.loads(rows["manifest"].iloc[0])
+    return {field: manifest[field] for field in PROPOSAL_FIELDS}
 
 
-def register() -> dict:
+def register(records: dict[str, list[str]] | None = None) -> dict:
+    """Start the clock on the first live session and register its criteria.
+
+    Every read that can refuse happens before the first write, so a refusal leaves
+    the repository exactly as it found it: no clock started on a day the records do
+    not support, and no results file naming one. The day-1 proposal is read for the
+    date the records agree on rather than the newest file on disk.
+    """
+    resolved = clock_module.records_from_store() if records is None else records
+    day_1 = clock_module.first_day(resolved)
+    proposal = _day_1_proposal(day_1)
+    started = clock_module.start_clock(day_1, path=CLOCK, records=resolved)
     criteria = _criteria_verbatim()
-    clock = json.loads(CLOCK.read_text())
-    proposal = _latest_proposal()
     payload = {
         "sprint": "E11",
         "registered_at": datetime.now(UTC).isoformat(),
         "status": "pending",
-        "clock": clock,
+        "clock": started,
         "criteria": {
             name: {
                 "criterion": text,
@@ -59,18 +115,7 @@ def register() -> dict:
             }
             for name, text in criteria.items()
         },
-        "day_1_proposal": {
-            "signal": proposal["signal"],
-            "as_of": proposal["as_of"],
-            "universe_source": proposal["universe_source"],
-            "n_names": proposal["n_names"],
-            "n_excluded": proposal["n_excluded"],
-            "idio_share_after_fmp": proposal["idio_share_after_fmp"],
-            "gross": proposal["gross"],
-            "net": proposal["net"],
-            "achieved_annual_vol": proposal["achieved_annual_vol"],
-            "target_annual_vol": proposal["target_annual_vol"],
-        },
+        "day_1_proposal": proposal,
     }
     RESULTS.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return payload

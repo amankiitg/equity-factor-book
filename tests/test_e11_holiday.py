@@ -226,3 +226,73 @@ def test_a_closed_day_still_says_so_when_the_store_is_unreachable(
 
     assert len(sent) == 1
     assert "no store configured" in str(sent[0]["text"])
+
+
+def _pin_closed_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[list[dict], dict]:
+    """A closed evening with both reporting seams recorded instead of run.
+
+    The page write and the message both take the run's resolved mode, so both are
+    captured: a closed evening after the flip must not describe itself as a dry run
+    in either place. The message is still sent for real (to a captured poster), so
+    the subject and body under test are the ones the owner would read.
+    """
+    from live import snapshot as snapshot_module
+
+    sent = _pin_closed(monkeypatch, tmp_path)
+    seen: dict = {}
+    monkeypatch.setattr(
+        snapshot_module,
+        "write_snapshot",
+        lambda **kwargs: seen.update(snapshot=kwargs)
+        or {"detail": "snapshot: pinned for the test"},
+    )
+    real_notify_run = notify.notify_run
+
+    def _capture(**kwargs: object) -> dict:
+        seen.update(message=kwargs)
+        return real_notify_run(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(notify, "notify_run", _capture)
+    return sent, seen
+
+
+def test_a_closed_evening_reports_the_mode_the_run_is_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A closed day after the flip is a live evening with nothing to do.
+
+    Nothing is sized and nothing is sent either way, so the flag changes what the
+    message and the page say rather than what the run does, and the one thing the
+    owner reads a closed-day message for is whether the book is trading. A
+    hard-coded dry run would say "dry run" about a live account on the evening the
+    flip happened to land on a holiday.
+    """
+    sent, seen = _pin_closed_mode(monkeypatch, tmp_path)
+    monkeypatch.setenv("EFB_DRY_RUN", "false")
+
+    assert run_live_daily.main() == 0
+
+    assert len(sent) == 1
+    assert seen["message"]["dry_run"] is False
+    assert seen["snapshot"]["dry_run"] is False
+    days = store.select("run_status")
+    assert len(days) == 1
+    assert bool(days.iloc[0]["dry_run"]) is False
+
+
+def test_a_closed_evening_in_dry_run_still_says_dry_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same evening before the flip, which is every closed evening so far."""
+    sent, seen = _pin_closed_mode(monkeypatch, tmp_path)
+    monkeypatch.delenv("EFB_DRY_RUN", raising=False)
+
+    assert run_live_daily.main() == 0
+
+    assert len(sent) == 1
+    assert seen["message"]["dry_run"] is True
+    assert seen["snapshot"]["dry_run"] is True
+    days = store.select("run_status")
+    assert bool(days.iloc[0]["dry_run"]) is True

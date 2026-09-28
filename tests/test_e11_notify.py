@@ -37,6 +37,11 @@ FAKE_DB_URL = (
 FAKE_KEY = "re_" + "AbCdEf123456_ghIJKl7890"
 FAKE_TO = "owner@example.com"
 
+# The account number the fake broker reports. The evening checks the account
+# it is trading before it sizes anything, so a fake read has to name the same
+# account `EFB_ALPACA_ACCOUNT_ID` does.
+ACCOUNT_NUMBER = "PAFAKE0002"
+
 
 def test_the_message_leads_with_the_status_and_the_target_close() -> None:
     message = notify.compose(
@@ -510,6 +515,7 @@ class _AccountBroker:
 
     def get_account(self) -> Any:
         class _Account:
+            account_number = ACCOUNT_NUMBER
             id = "paper-account"
             equity = "1234567.89"
             cash = "23456.78"
@@ -530,6 +536,21 @@ class _AccountBroker:
             _Position("AAA", 500.0, "long"),
             _Position("BBB", -250.0, "short"),
         ]
+
+    def get_orders(self, filter: Any = None) -> list[Any]:
+        """No working orders: this account holds a book, so it is a rebalance."""
+        return []
+
+
+def _read_the_account(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the evening's account read at the fake, under the account it names.
+
+    The run compares the number the broker reports against `EFB_ALPACA_ACCOUNT_ID`
+    before it sizes anything, so a test that fakes the read has to act like the
+    owner who set the variable.
+    """
+    monkeypatch.setenv(alpaca.ACCOUNT_ID_ENV, ACCOUNT_NUMBER)
+    monkeypatch.setattr(alpaca, "read_client", _AccountBroker)
 
 
 def test_a_clean_run_sends_the_message_and_stores_what_it_said(
@@ -591,7 +612,7 @@ def test_the_evening_stores_the_brokers_book_and_the_accounts_equity(
         "build_proposal",
         lambda *a, **k: seen.update(k) or {"as_of": SESSION, "n_kept": 150},
     )
-    monkeypatch.setattr(alpaca, "read_client", _AccountBroker)
+    _read_the_account(monkeypatch)
     monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
     monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
     monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
@@ -641,7 +662,7 @@ def test_the_evening_records_the_equity_move_as_the_days_pnl(
             }
         ],
     )
-    monkeypatch.setattr(alpaca, "read_client", _AccountBroker)
+    _read_the_account(monkeypatch)
     monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
     monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
     monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
@@ -679,7 +700,7 @@ def test_the_run_compares_against_the_book_before_tonight(
             {"trade_date": "2026-09-23", "ticker": "BBB", "signed_notional": 700.0},
         ],
     )
-    monkeypatch.setattr(alpaca, "read_client", _AccountBroker)
+    _read_the_account(monkeypatch)
     monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
     monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
     monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
@@ -1413,3 +1434,97 @@ def test_a_configured_snapshot_reaches_the_morning_job(
     assert run_live_daily.main() == 0
 
     assert reached == ["called"]
+
+
+def test_a_traceback_is_scrubbed_before_it_is_logged() -> None:
+    """The frames stay, the credential inside them does not.
+
+    A traceback reaches the log with whatever the failing frame was reading, and a
+    chain reaches it too: an exception raised while handling another carries the
+    first one with it. Formatting first and scrubbing second is the one order in
+    which every frame, every source line and every chained cause are in the text
+    being scrubbed, which is what this pins.
+    """
+    secret = (
+        "postgresql://postgres.abcdef:sup3rSecret@aws-0-us-east-1.pooler"
+        ".supabase.com:6543/postgres"
+    )
+    try:
+        try:
+            raise RuntimeError(f"could not connect to {secret}")
+        except RuntimeError as cause:
+            raise ValueError("the seed could not be read") from cause
+    except ValueError as exc:
+        text = notify.scrub_traceback(exc)
+
+    assert text.startswith("Traceback (most recent call last)")
+    assert "sup3rSecret" not in text
+    assert "postgresql://" not in text
+    assert notify.REDACTION in text
+    # The frames and both ends of the chain are kept: a trimmed one-line reason
+    # would not say where the failure happened, which is the log's whole job.
+    assert "ValueError: the seed could not be read" in text
+    assert "RuntimeError: could not connect to" in text
+    assert "The above exception was the direct cause" in text
+
+
+def test_a_resend_key_inside_a_traceback_is_scrubbed() -> None:
+    """A key arrives in a message rather than as a header, and the shape is caught."""
+    exc = RuntimeError(f"send failed for key {FAKE_KEY}")
+    text = notify.scrub_traceback(exc)
+    assert FAKE_KEY not in text
+    assert notify.REDACTION in text
+
+
+def test_the_run_logs_a_scrubbed_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The failure's frames are logged and the credential inside them is not.
+
+    The account read is where a connection string lives, and the cause chained
+    beneath the failure carries it too. This drives the run to that failure and
+    reads the log the cron writes, so both paths out of the process are covered:
+    the reason in the message and the row, and the traceback in the log.
+    """
+    from live import positions
+
+    secret = (
+        "postgresql://postgres.abcdef:sup3rSecret@aws-0-us-east-1.pooler"
+        ".supabase.com:6543/postgres"
+    )
+
+    def _leaky(*args: object, **kwargs: object) -> dict[str, object]:
+        try:
+            raise RuntimeError(f"could not connect to {secret}")
+        except RuntimeError as cause:
+            raise ValueError(f"the store was unreachable through {secret}") from cause
+
+    sent: list[dict[str, Any]] = []
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(positions, "check", _leaky)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: sent.append(payload)
+    )
+
+    with caplog.at_level("ERROR"):
+        assert run_live_daily.main() == 1
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "live daily failed" in logged
+    assert "Traceback (most recent call last)" in logged
+    # Both ends of the chain are on the record, with the secret taken out of both.
+    assert "the store was unreachable through" in logged
+    assert "could not connect to" in logged
+    assert "sup3rSecret" not in logged
+    assert "postgresql://" not in logged
+    # The message the owner reads is scrubbed by the same rule.
+    assert sent
+    assert "sup3rSecret" not in str(sent[0]["text"])
+    assert notify.REDACTION in str(sent[0]["text"])

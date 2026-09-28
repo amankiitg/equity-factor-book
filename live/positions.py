@@ -14,12 +14,23 @@ the first time it is asked.
 Where the two disagree, the disagreement is reported rather than resolved. Nothing
 here writes: the broker's book and the store's book are both stated, with the
 names that are only in one of them, and the email carries the sentence.
+
+The account itself is checked before anything is sized. The keys are named: every
+run compares the account number Alpaca reports against `EFB_ALPACA_ACCOUNT_ID`, and
+a run whose keys reach another account refuses, because a key pasted from the
+credit lab's project would trade the wrong book and every number after it would be
+about somebody else's account. An establishment evening is refused unless the
+account is both flat and idle: establishing the whole book over an order that is
+still working at the broker would buy names the account is already buying.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
+
+import pandas as pd
 
 from live import store
 
@@ -32,6 +43,10 @@ TOLERANCE_USD = 1.0
 
 BROKER_SOURCE = "alpaca paper account"
 STORE_SOURCE = "store"
+
+
+class AccountRefused(RuntimeError):
+    """The account is not in the state the run assumes, so the run stopped."""
 
 
 def store_positions(before: str | None = None) -> tuple[dict[str, float], str]:
@@ -59,6 +74,76 @@ def store_positions(before: str | None = None) -> tuple[dict[str, float], str]:
     return (
         {str(row.ticker): float(row.signed_notional) for row in rows.itertuples()},
         f"the {latest} position row",
+    )
+
+
+def check_establishment_state(
+    book: dict[str, float] | None,
+    working_orders: list[dict[str, str]],
+    *,
+    establishment: bool,
+) -> None:
+    """Refuse an establishment evening unless the account is flat and idle.
+
+    Establishing means buying the whole target book from nothing, so both halves
+    of "nothing" are checked rather than assumed. A name in `book` contradicts the
+    claim that this run is establishing, and any working order contradicts it in a
+    way no position read can show: an order accepted after yesterday's close holds
+    no position yet and is not an order tonight, but it will move the account at
+    the next open, and a whole book bought against it lands the loop at twice the
+    size it chose. The refusal names the orders so the owner can see which.
+
+    A rebalance is not checked here: it trades the difference between the target
+    and a book it can see, so a working order is a leg the broker will settle, not
+    a position nobody counted.
+    """
+    if not establishment:
+        return
+    if book:
+        raise AccountRefused(
+            f"this evening would establish the book, and the account holds "
+            f"{len(book)} name(s): the run stopped rather than establishing over a "
+            "book it did not size"
+        )
+    if working_orders:
+        names = ", ".join(
+            sorted({order.get("symbol", "?") for order in working_orders})[:6]
+        )
+        raise AccountRefused(
+            f"this evening would establish the book, and the account has "
+            f"{len(working_orders)} open order(s) ({names}): they will move the "
+            "account at the next open, so the run stopped rather than buying the "
+            "whole book on top of them"
+        )
+
+
+def prior_weights(holdings: dict[str, Any], *, establishment: bool) -> pd.Series | None:
+    """The book the orders are measured against, as weights of the account's NAV.
+
+    Zero on an establishment evening, which every caller reads as `None`: from
+    flat the whole target trades, and every previous weight is zero by definition.
+
+    On a rebalance it is the account's own holdings divided by the account's own
+    equity, never the store's position row. The store holds the loop's intentions,
+    written before any order left the process, so after a dry-run evening it names
+    a book the account has never held: a cost and a turnover computed against it
+    price trades that never happened, and on the first live evening it would price
+    a full book twice. The account's own answer is the only book that was actually
+    held.
+
+    `None` when the account could not be read or reports no equity, which is the
+    same answer as an establishment evening: with no account there is no previous
+    book to measure against, and a zero is what the callers do with `None`.
+    """
+    if establishment or holdings.get("account_read") is not True:
+        return None
+    nav = float(holdings.get("nav") or 0.0)
+    broker = holdings.get("broker") or {}
+    if not broker or nav <= 0:
+        return None
+    return pd.Series(
+        {str(ticker): float(value) / nav for ticker, value in broker.items()},
+        dtype=float,
     )
 
 
@@ -107,11 +192,39 @@ def account_read(*, raise_on_failure: bool = False) -> dict[str, Any]:
         account = client.get_account()
         positions, quantities = alpaca.position_book(client, dry_run=False)
         figures = alpaca.account_figures(account)
-    except Exception:
+        number = alpaca.account_number(account)
+    except Exception as exc:
         if raise_on_failure:
             raise
-        logger.warning("could not read the account's positions", exc_info=True)
+        from live import notify as notify_module
+
+        logger.warning(
+            "could not read the account's positions\n%s",
+            notify_module.scrub_traceback(exc),
+        )
         return {**nothing, "source": "not read: see the log"}
+    # The account the keys reach, before anything is sized and in every run,
+    # including a dry run. A read that failed is answered above; an account that
+    # answered is an account whose number the run is obliged to check.
+    identity = alpaca.check_account_identity(
+        number, os.environ.get(alpaca.ACCOUNT_ID_ENV)
+    )
+    working_orders: list[dict[str, str]] = []
+    if not positions:
+        # Flat, so this evening would establish the whole book, and the second half
+        # of "flat" is that no order is already working: an order accepted after
+        # yesterday's close holds no position yet and would move the account at the
+        # next open. A read that fails here refuses for the same reason.
+        try:
+            working_orders = alpaca.open_orders(client)
+        except Exception as exc:
+            raise AccountRefused(
+                "the account is flat, so this evening would establish the whole "
+                "book, and its open orders could not be read "
+                f"({type(exc).__name__}), so the run stopped rather than "
+                "establishing over an order it cannot see"
+            ) from None
+    check_establishment_state(positions, working_orders, establishment=not positions)
     if raise_on_failure and figures["equity"] is None:
         raise RuntimeError(
             "the account's equity could not be read, so the run stopped before "
@@ -122,7 +235,10 @@ def account_read(*, raise_on_failure: bool = False) -> dict[str, Any]:
         "quantities": quantities,
         "equity": figures["equity"],
         "cash": figures["cash"],
-        "source": f"{BROKER_SOURCE} {getattr(account, 'id', '?')}",
+        "account_number": number,
+        "account_identity": identity,
+        "open_orders": working_orders,
+        "source": f"{BROKER_SOURCE} {number or getattr(account, 'id', '?')}",
     }
 
 
@@ -243,6 +359,14 @@ def check(*, dry_run: bool = True, before: str | None = None) -> dict[str, Any]:
             # from its own notional instead.
             "held_quantities": broker_quantities if broker is not None else {},
             "establishment": establishment(broker),
+            # Which account the keys reached, and the orders it already had
+            # working. Both are recorded rather than only logged: the number is
+            # what makes "the right account traded" checkable after the fact, and
+            # on an establishment evening the open-order list is the evidence the
+            # whole book was bought from a flat, idle account.
+            "account_number": read.get("account_number"),
+            "account_identity": read.get("account_identity"),
+            "open_orders": read.get("open_orders") or [],
         }
     )
     result["note"] = describe(result, dry_run=dry_run)

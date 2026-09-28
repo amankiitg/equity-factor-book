@@ -712,7 +712,13 @@ def run_status_row(
 
 
 def _positions_summary(check: dict[str, Any] | None) -> dict[str, Any]:
-    """The position check without the two name maps, for a stored row."""
+    """The position check without the two name maps, for a stored row.
+
+    The account number and the working-order list stay in. The number is what makes
+    "the right account traded" checkable after the fact, and on an establishment
+    evening the order list is the evidence the whole book was bought from a flat,
+    idle account; both are small beside the two maps this drops.
+    """
     if not check:
         return {}
     keys = (
@@ -728,6 +734,9 @@ def _positions_summary(check: dict[str, Any] | None) -> dict[str, Any]:
         "max_abs_drift",
         "account_read",
         "establishment",
+        "account_number",
+        "account_identity",
+        "open_orders",
     )
     return {key: check.get(key) for key in keys if key in check}
 

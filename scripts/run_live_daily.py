@@ -20,6 +20,15 @@ so the absence of the evening message is the alarm. The message goes out after
 the proposal and the orders, never before, so a failed send cannot block or
 roll back a run; a run whose message was not delivered exits nonzero.
 
+Two guards stand in front of the sizing. The account is read every evening, dry
+run included, and the number Alpaca reports must be the one `EFB_ALPACA_ACCOUNT_ID`
+names, because EFB's paper keys and the credit lab's sit under one login and a key
+pasted from the wrong project would trade the wrong book; an evening that would
+establish the whole book is refused unless the account is flat and has nothing
+working at the broker. And a failure logs its traceback, formatted and scrubbed:
+the frames are what say where it broke, and a credential inside one of them must
+not leave the process.
+
 Nothing executes real money. The morning path is dry run by default and
 the live path needs EFB_ALPACA_PAPER_API_KEY and
 EFB_ALPACA_PAPER_SECRET_KEY, which are never committed.
@@ -150,20 +159,70 @@ def previous_close(
     return fallback
 
 
+def prior_book(
+    holdings: dict[str, Any], intentions: pd.DataFrame | None
+) -> pd.DataFrame | None:
+    """The book the loop actually held, for the cost, the turnover and the reasons.
+
+    The weights are the account's own holdings divided by the account's own equity,
+    and `None` on an establishment evening, where the loop holds nothing: from flat
+    the whole target trades and every previous weight is zero, which is what a
+    missing book means to the callers.
+
+    `intentions` is the store's previous proposal row, and it is read for two things
+    and never for a weight. The first is the z-score each name carried at the
+    previous close: z is a model input rather than a position, and it is what the
+    reason classifier compares to decide whether the score moved. The second is the
+    previous close's own date, which is the close the previous risk is measured at.
+    A name the account holds that the previous proposal did not carry gets a z of
+    zero, which reads as "the score is new here" and is the honest answer for a
+    position the loop has no score for. A name the account holds at a weight the
+    store never recorded is exactly the case this replaces.
+    """
+    from live import positions as positions_module
+
+    prior = positions_module.prior_weights(
+        holdings, establishment=bool(holdings.get("establishment"))
+    )
+    if prior is None or prior.empty:
+        return None
+    frame = pd.DataFrame(
+        {
+            "ticker": [str(ticker) for ticker in prior.index],
+            "weight": prior.to_numpy(dtype=float),
+        }
+    )
+    if intentions is not None and len(intentions) and "z" in intentions.columns:
+        scores = intentions.loc[:, ["ticker", "z"]].drop_duplicates("ticker")
+        frame = frame.merge(scores, on="ticker", how="left")
+        if "trade_date" in intentions.columns and len(intentions["trade_date"]):
+            frame["trade_date"] = str(intentions["trade_date"].max())
+    else:
+        frame["z"] = 0.0
+    frame["z"] = pd.to_numeric(frame["z"], errors="coerce").fillna(0.0)
+    return frame
+
+
 def store_proposal(
     as_of: str,
     data_root: Path | None = None,
     dry_run: bool = True,
     previous: pd.DataFrame | None = None,
+    *,
+    prior_settled: bool = False,
 ) -> pd.DataFrame:
     """Write the proposal manifest, positions and trade reasons to the store.
 
     Returns the rows it wrote, reasons attached, because the snapshot carries the
     same book the store does and re-deriving it would let the two disagree.
 
-    `previous` is the last book the loop held, passed in when the caller has
-    already read it (the proposal build needs the same book for its trade impact)
-    and read from the store when it has not.
+    `previous` is the book the account actually held, passed in by the caller that
+    read the account, because the proposal build needs the same book for its trade
+    impact. `None` with `prior_settled` true means there is no previous book at
+    all, which is an establishment evening: the trade is the whole target, every
+    previous weight is zero, and every row is a new position. `None` without it
+    means the caller has not read a book and the store's own row is the fallback,
+    which is what a caller holding only artifacts wants.
     """
     from live import reconcile as reconcile_module
     from live import store, trade_reasons
@@ -172,7 +231,7 @@ def store_proposal(
     manifest = json.loads((PROPOSAL_DIR / f"proposal_{as_of}.json").read_text())
     rows = pd.read_parquet(PROPOSAL_DIR / f"proposal_{as_of}.parquet")
     proposal_paths = sorted(PROPOSAL_DIR.glob("proposal_*.parquet"))
-    if previous is None:
+    if previous is None and not prior_settled:
         previous = previous_book(as_of, proposal_paths)
 
     specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_var.parquet")
@@ -276,6 +335,14 @@ def store_orders(as_of: str, dry_run: bool) -> None:
     A missing execution log is not a reason to leave the day as it was: the day
     has no orders, so the day's orders are cleared. That is the same replacement
     the rows themselves get.
+
+    Two columns exist for the evening that reconciles fills rather than for this
+    one. `position_intent` is the broker's own open-or-close decision on the leg,
+    so a later reconciler can tell a close from a short without re-deriving it
+    from the sign of a notional. `broker_order_id` is the broker's id for the
+    order, which is what a fill has to be matched against: a fill arrives as an
+    activity against an order id, and without it the only key would be the
+    deterministic ticket, which the broker keeps for accepted orders only.
     """
     from live import store
 
@@ -297,6 +364,8 @@ def store_orders(as_of: str, dry_run: bool) -> None:
             # record that the leg was intended at all.
             "reason_code": getattr(row, "reason_code", ""),
             "client_order_id": getattr(row, "client_order_id", ""),
+            "position_intent": getattr(row, "position_intent", ""),
+            "broker_order_id": getattr(row, "broker_order_id", ""),
         }
         for row in execution.itertuples(index=False)
     ]
@@ -669,8 +738,17 @@ def market_closed_run(run_date: str) -> int:
     send a second message. An evening that sends a message and records nothing is
     an evening with no evidence beyond the message, and the page would have shown
     the closed day as a run that never happened.
+
+    The mode is the run's own resolved mode rather than a hard-coded dry run. A
+    closed evening after the flip is a live evening that had nothing to do, and a
+    message saying "dry run" about it would misstate the one thing the owner reads
+    the message for: whether the book is trading. Nothing is sized or sent either
+    way, so the flag changes what the message and the page say, not what the run
+    does.
     """
     from live import notify, staleness, store
+
+    dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
 
     reason = f"there is no NYSE session on {run_date}"
     try:
@@ -695,7 +773,7 @@ def market_closed_run(run_date: str) -> int:
             run_date=run_date,
             result=staleness.closed_result(run_date),
             status="market_closed",
-            dry_run=True,
+            dry_run=dry_run,
             detail=reason,
             # No book was built, so the day is neither an establishment nor a
             # rebalance: an empty label rather than a claim about a cost.
@@ -706,17 +784,23 @@ def market_closed_run(run_date: str) -> int:
         # told in the plainest way available rather than left with silence, which
         # on a closed evening reads as a broken loop.
         detail = notify.scrub(f"{type(exc).__name__}: {exc}")[:200]
-        logger.exception("the closed day could not be recorded")
+        logger.error(
+            "the closed day could not be recorded\n%s",
+            notify.scrub_traceback(exc),
+        )
         try:
             notified = notify.notify_run(
                 status="market_closed",
                 target_close=run_date,
-                dry_run=True,
+                dry_run=dry_run,
                 detail=f"{reason}; the day could not be recorded: {detail}",
                 store=store_name,
             )
-        except Exception:  # noqa: BLE001 - nothing left to try
-            logger.exception("could not send the closed-day message either")
+        except Exception as exc:  # noqa: BLE001 - nothing left to try
+            logger.error(
+                "could not send the closed-day message either\n%s",
+                notify.scrub_traceback(exc),
+            )
             return 1
         return 0 if notified["status"] == notify.STATUS_SENT else 1
 
@@ -983,17 +1067,30 @@ def main() -> int:
             establishment,
         )
         previous = previous_book(str(gate["target_close"]), [])
-        previous_weights = (
-            previous.set_index("ticker")["weight"] if previous is not None else None
+        prior = prior_book(holdings, previous)
+        prior_weights = (
+            prior.set_index("ticker")["weight"] if prior is not None else None
+        )
+        logger.info(
+            "prior book: %s",
+            (
+                f"none (establishment evening: nothing is held, so the whole target "
+                f"trades)"
+                if prior is None
+                else f"{len(prior)} name(s) from the account's own holdings over "
+                f"${float(holdings['nav']):,.0f} of equity"
+            ),
         )
         manifest = evening_job.build_proposal(
             appendix=appendix_identity,
-            previous=previous_weights,
+            previous=prior_weights,
             nav=float(holdings["nav"]),
             nav_source=str(holdings["nav_source"]),
         )
         as_of = str(manifest["as_of"])
-        book = store_proposal(as_of, run_tree, dry_run=dry_run, previous=previous)
+        book = store_proposal(
+            as_of, run_tree, dry_run=dry_run, previous=prior, prior_settled=True
+        )
         raw_thin = manifest.get("thin_adv")
         thin_adv: list[dict[str, Any]] = (
             [dict(entry) for entry in raw_thin] if isinstance(raw_thin, list) else []
@@ -1037,9 +1134,13 @@ def main() -> int:
         }
     except Exception as exc:  # noqa: BLE001 - recorded, never silent
         # The reason is scrubbed before it goes anywhere: a connection string,
-        # a key or the webhook URL must not reach the message or the store.
+        # a key or the webhook URL must not reach the message or the store. The
+        # traceback is logged, because a failure inside the pricing path and a
+        # failure inside the reporting path read the same without the frames, but
+        # it is formatted and scrubbed first: a traceback carries whatever the
+        # failing frame was reading, and its chained causes carry it too.
         detail = notify.scrub(f"{type(exc).__name__}: {exc}")[:200]
-        logger.exception("live daily failed")
+        logger.error("live daily failed\n%s", notify.scrub_traceback(exc))
         return finish_run(
             run_date=run_date,
             result=gate if gate is not None else staleness.error_result(detail),

@@ -1,8 +1,26 @@
 {
   "clock": {
-    "day_1": "2026-09-22",
-    "end_date": "2026-11-02",
-    "started": true,
+    "day_1": null,
+    "end_date": null,
+    "history": [
+      {
+        "day_1": "2026-09-22",
+        "end_date": "2026-11-02",
+        "reason": "static days: the loop ran on the frozen 2026-09-03 close and would produce thirty identical proposals",
+        "status": "void",
+        "voided_at": "2026-09-22T18:42:18.105380+00:00"
+      },
+      {
+        "day_1": "2026-09-22",
+        "end_date": "2026-11-02",
+        "reason": "day 1 is the first session whose orders filled after the flip, and this start was registered against a dry-run proposal priced from a frozen close, so no order had filled and the window never counted",
+        "status": "void",
+        "voided_at": "2026-09-28T03:51:43.372118+00:00"
+      }
+    ],
+    "reporting_window_days": 30,
+    "run_condition": "open_ended",
+    "started": false,
     "trading_days": 30
   },
   "criteria": {
@@ -22,19 +40,9 @@
       "verdict": "pending"
     }
   },
-  "day_1_proposal": {
-    "achieved_annual_vol": 0.04226921971256746,
-    "as_of": "2026-09-03",
-    "gross": 1.0,
-    "idio_share_after_fmp": 1.0,
-    "n_excluded": 4,
-    "n_names": 499,
-    "net": -1.4710455076283324e-15,
-    "signal": "idio_momentum",
-    "target_annual_vol": 0.1,
-    "universe_source": "raw/spy_holdings/spy_holdings_2026-09-18.parquet"
-  },
-  "registered_at": "2026-09-22T17:59:26.595783+00:00",
+  "day_1_proposal": null,
+  "note": "not started: day 1 is the first session whose orders filled after the flip, and registration reads it from the store records (the first live run and the first stored proposal) and refuses unless they agree",
+  "registered_at": null,
   "sprint": "E11",
   "status": "pending"
 }

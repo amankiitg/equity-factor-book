@@ -7,6 +7,13 @@ opens on day three. The transcript shows the position intent and size of every l
 that each order is the signed change, that the removed name is closed to zero, and
 that a reversal is a close tonight and an open tomorrow.
 
+Every day also goes through the account guard the live evening runs: the number the
+broker reports is checked against `EFB_ALPACA_ACCOUNT_ID`, and an evening that would
+establish the whole book is refused unless the account is flat and has nothing
+working at the broker. The prior book the cost and the turnover are measured against
+is the account's own holdings over its own equity, so the transcript prints it each
+day, and an establishment evening prints that there is none.
+
 The fake broker is deliberately strict, the three ways Alpaca is:
   * an order that would cross zero is rejected;
   * a sell beyond the held quantity is rejected unless it is SELL_TO_OPEN;
@@ -35,9 +42,13 @@ if ROOT not in sys.path:
 # network that is not here.
 os.environ.setdefault("EFB_MIN_SUBMIT_INTERVAL_SECS", "0")
 
-from live import alpaca, morning_job  # noqa: E402 - after the env line above
+from live import alpaca, morning_job, positions  # noqa: E402 - after the env line
 
 NAV = 1_000_000.0
+# The account the fake broker reports, and the number the guard is told to expect:
+# they are the same string, which is what the live run checks before it sizes.
+ACCOUNT_NUMBER = "PA3A50WIU0O0"
+os.environ.setdefault(alpaca.ACCOUNT_ID_ENV, ACCOUNT_NUMBER)
 PRICES = {"AAA": 100.0, "BBB": 50.0, "CCC": 200.0, "DDD": 25.0, "FFF": 40.0}
 
 # Day one: from flat, four long and one short.
@@ -123,9 +134,16 @@ class FakeBroker:
         class _Account:
             equity = broker.equity
             buying_power = broker.buying_power
+            account_number = ACCOUNT_NUMBER
             id = "fake-paper-account"
 
         return _Account()
+
+    def get_orders(self, filter: Any = None) -> list[object]:
+        """The orders the broker is still working, as Alpaca's list read returns."""
+        return [
+            _order_model(record) for record in self.pending if record["status"] == "accepted"
+        ]
 
     def get_asset(self, symbol: str) -> object:
         class _Asset:
@@ -227,6 +245,77 @@ def _proposal(weights: dict[str, float]) -> pd.DataFrame:
     )
 
 
+def _guard_the_account(broker: FakeBroker, *, establishing: bool) -> None:
+    """Run the live evening's account guard against the fake, and print it.
+
+    The guard reads the account, checks the number against `EFB_ALPACA_ACCOUNT_ID`,
+    and then, on an evening that would establish the whole book, reads the account's
+    working orders and refuses if there are any. The store is not consulted: an
+    empty frame stands in for it, which is what the guard needs of it here.
+    """
+    empty = pd.DataFrame()
+    with (
+        patch.object(alpaca, "read_client", lambda: broker),
+        patch.object(positions.store, "select", lambda *a, **k: empty),
+    ):
+        result = positions.check(dry_run=True)
+    assert result["account_number"] == ACCOUNT_NUMBER, result["account_number"]
+    assert result["establishment"] is establishing, (
+        result["establishment"],
+        establishing,
+    )
+    prior = positions.prior_weights(
+        result, establishment=bool(result["establishment"])
+    )
+    if establishing:
+        assert prior is None, "an establishment evening must have no prior book"
+        print(
+            "  account guard: "
+            f"{ACCOUNT_NUMBER} matches, {len(result['open_orders'])} working "
+            "order(s), so the whole book may be established"
+        )
+        print("  prior book: none (the account holds nothing, so zero is the book)")
+        return
+    assert prior is not None
+    gross = float(prior.abs().sum())
+    print(
+        "  account guard: "
+        f"{ACCOUNT_NUMBER} matches, {len(result['broker'])} name(s) held, so this "
+        "is a rebalance"
+    )
+    print(
+        "  prior book: "
+        + ", ".join(
+            f"{name} {value:+.4f}" for name, value in sorted(prior.items())
+        )
+        + f" (gross {gross:.4f} of NAV)"
+    )
+    assert gross > 0.0
+
+
+def _refuse_a_wrong_account(broker: FakeBroker) -> None:
+    """The negative control: another account number refuses before anything else.
+
+    Both are paper accounts under one login, so a key pasted from the other project
+    reads a real book: the guard has to stop the run and say which account it
+    reached.
+    """
+    empty = pd.DataFrame()
+    with (
+        patch.object(alpaca, "read_client", lambda: broker),
+        patch.object(positions.store, "select", lambda *a, **k: empty),
+        patch.dict(os.environ, {alpaca.ACCOUNT_ID_ENV: "PAOTHER0001"}),
+    ):
+        try:
+            positions.check(dry_run=True)
+        except alpaca.AccountMismatch as exc:
+            message = str(exc)
+        else:  # pragma: no cover - the refusal is the result
+            raise AssertionError("a wrong account number did not refuse")
+    assert ACCOUNT_NUMBER in message and "PAOTHER0001" in message, message
+    print("  guard control: a wrong account number refuses, naming both accounts")
+
+
 def run_day(
     as_of: str, weights: dict[str, float], broker: FakeBroker
 ) -> tuple[dict[str, float], dict[str, float], dict, pd.DataFrame]:
@@ -237,6 +326,8 @@ def run_day(
         captured[day] = records
 
     proposal = _proposal(weights)
+    held, quantities = alpaca.position_book(broker, dry_run=False)
+    _guard_the_account(broker, establishing=not held)
     with (
         patch.object(morning_job, "load_proposal", lambda *a, **k: proposal),
         patch.object(morning_job, "connect", lambda dry_run: broker),
@@ -244,7 +335,6 @@ def run_day(
         patch.object(morning_job.state, "write_positions", lambda *a, **k: None),
         patch.object(morning_job, "_write_execution_log", _capture),
     ):
-        held, quantities = alpaca.position_book(broker, dry_run=False)
         summary = morning_job.run_morning(
             as_of,
             nav=NAV,
@@ -279,6 +369,7 @@ def main() -> int:
     print(f"NAV {NAV:,.0f}; prices {PRICES}")
 
     print("\n--- DAY 1 (2026-09-25): account flat, establishes from zero ---")
+    _refuse_a_wrong_account(broker)
     held, quantities, summary, records = run_day("2026-09-25", DAY_ONE, broker)
     print(f"  held {len(held)}; establishment={summary['establishment']}")
     for row in records.itertuples(index=False):
@@ -346,11 +437,31 @@ def main() -> int:
 
     print("\n--- DAY 3 RERUN: the broker holds the day-3 book ---")
     before = len(broker.submitted)
-    _held, _quantities, summary, _records = run_day("2026-09-29", DAY_THREE, broker)
+    _held, _quantities, summary, _rerun_records = run_day(
+        "2026-09-29", DAY_THREE, broker
+    )
     assert summary["orders"] == 0, summary["orders"]
     assert len(broker.submitted) == before, "a rerun submitted an order"
     assert summary["complete"]
     print("  orders 0 (nothing new submitted); complete=True")
+
+    print("\n--- ORDER RECORDS: the broker's id for every leg that became one ---")
+    # The day-3 log, whose one leg was accepted: the rerun above submitted nothing,
+    # so its log is empty by construction.
+    assert _rerun_records.empty, _rerun_records
+    ids = {
+        str(row.ticker): str(row.broker_order_id)
+        for row in records.itertuples(index=False)
+        if str(row.status) == "ACCEPTED"
+    }
+    assert ids and all(value for value in ids.values()), ids
+    print(
+        "  accepted legs carry the broker's order id: "
+        + ", ".join(f"{name} {value[:8]}" for name, value in sorted(ids.items()))
+    )
+    assert str(records.iloc[0]["client_order_id"]).startswith("efb-"), (
+        "the deterministic ticket is still recorded beside the broker id"
+    )
 
     print("\nAll checks passed: every leg carried a position intent, the reversal")
     print("closed tonight and opened tomorrow, the removed name was closed, and an")

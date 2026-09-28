@@ -39,6 +39,7 @@ import json
 import logging
 import os
 import re
+import traceback
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -133,6 +134,25 @@ def scrub(text: str) -> str:
     for pattern, replacement in _SCRUBS:
         cleaned = pattern.sub(replacement, cleaned)
     return cleaned
+
+
+def scrub_traceback(exc: BaseException) -> str:
+    """The exception's whole traceback, formatted, then scrubbed.
+
+    The traceback is kept rather than trimmed to one line: without the frames a
+    failure in the pricing path and a failure in the notification path read the
+    same, and the log's whole purpose during a live window is to say where. What
+    it must not keep is a credential, and a credential reaches a traceback the way
+    it reaches a message: in the exception's own text (`URLError: <urlopen error
+    ... EFB_SUPABASE_DB_URL=postgresql://...>`), in the source line of a frame that
+    was reading it, or in a chained cause raised while handling the first failure.
+
+    So the formatting happens first and the scrub second, which is the one order
+    in which every frame, every local-source line and every chained cause is
+    present in the text being scrubbed. `traceback.format_exception` renders the
+    chain (`__cause__` and `__context__`), so nothing is walked by hand here.
+    """
+    return scrub("".join(traceback.format_exception(exc)).rstrip())
 
 
 def _money(value: float | None) -> str:
