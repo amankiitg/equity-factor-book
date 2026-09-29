@@ -191,3 +191,191 @@ def test_a_process_asks_the_library_once(monkeypatch) -> None:
     assert first.is_dir()
     # the default is a private temporary directory, not the shared default one
     assert "py-yfinance" not in str(first)
+
+
+def _wide_download(symbols, dates) -> pd.DataFrame:
+    """A frame shaped like `yf.download`'s, with every field present."""
+    fields = list(prices.RENAME)
+    return pd.DataFrame(
+        1.0,
+        index=pd.DatetimeIndex(dates),
+        columns=pd.MultiIndex.from_product([symbols, fields]),
+    )
+
+
+class _FakeCache:
+    """The two methods the prewarm uses, with the rows kept where a test can see."""
+
+    def __init__(self) -> None:
+        self.rows: dict[str, str] = {}
+        self.lookups: list[str] = []
+        self.stores: list[tuple[str, str]] = []
+
+    def lookup(self, key: str) -> str | None:
+        self.lookups.append(key)
+        return self.rows.get(key)
+
+    def store(self, key: str, value: str) -> None:
+        self.stores.append((key, value))
+        self.rows[key] = value
+
+
+def test_the_prewarm_writes_a_timezone_row_for_every_ticker(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """One row per ticker, written serially, before any thread can race for it.
+
+    yfinance writes a timezone row per ticker the first time it prices it, so a cold
+    run hands its threaded download 504 writes to one SQLite file and two threads
+    writing at once is `OperationalError('database is locked')`: the symbol that
+    loses comes back with no price and the run does not fail. Measured on
+    2026-09-29: 3 of 12 cold 504-name fetches lost exactly one symbol (EVRG, BA,
+    ACGL), and none of the repeats against a warm cache lost any. The prewarm is
+    what makes the threaded pass read-only.
+
+    The cache is a fake rather than the library's own object, because the library
+    keeps one instance for the process that stays bound to whichever directory it
+    first opened: in a test session that is an earlier test's directory, and its
+    rows would make this test pass without the prewarm doing anything.
+    """
+    from yfinance import cache as yf_cache
+
+    monkeypatch.setattr(prices, "_TZ_CACHE_DIR", None)
+    cache = _FakeCache()
+    monkeypatch.setattr(yf_cache, "get_tz_cache", lambda: cache)
+    state: dict[str, object] = {"inside": False, "order": [], "timeouts": []}
+
+    class FakeTicker:
+        """yfinance's own lookup, minus the network: it stores the row it resolves."""
+
+        def __init__(self, symbol: str) -> None:
+            assert state["inside"] is False, "two tickers were resolved at once"
+            self.symbol = symbol
+
+        def _get_ticker_tz(self, timeout: float | None = None) -> str | None:
+            state["inside"] = True
+            try:
+                state["order"].append(self.symbol)  # type: ignore[union-attr]
+                state["timeouts"].append(timeout)  # type: ignore[union-attr]
+                if self.symbol == "NOPE":
+                    return None
+                cache.store(self.symbol, "America/New_York")
+                return "America/New_York"
+            finally:
+                state["inside"] = False
+
+    monkeypatch.setattr(prices.yf, "Ticker", FakeTicker)
+    # the directory is the run's own, which is where those rows have to land
+    target = prices.use_private_tz_cache(tmp_path / "cache")
+    assert Path(yf_cache._TzDBManager.get_location()) == target
+
+    report = prices.prewarm_tz_cache(["AAPL", "BF.B", "CSGP", "NOPE"])
+
+    # every ticker was asked for, in order, one at a time, and the share class went
+    # as the symbol the vendor uses
+    assert cache.lookups == ["AAPL", "BF-B", "CSGP", "NOPE"]
+    assert state["order"] == ["AAPL", "BF-B", "CSGP", "NOPE"]
+    assert state["timeouts"] == [10.0, 10.0, 10.0, 10.0]
+    # and each resolved row was written, before anything threaded can run
+    assert cache.stores == [
+        ("AAPL", "America/New_York"),
+        ("BF-B", "America/New_York"),
+        ("CSGP", "America/New_York"),
+    ]
+    assert report == {
+        "requested": 4,
+        "resolved": 3,
+        "already_cached": 0,
+        "unresolved": 1,
+    }
+    # a ticker the vendor will not answer for writes nothing, so it cannot be a
+    # second thread's race either
+    assert "NOPE" not in cache.rows
+
+    # a second call over the same list resolves nothing that has a row: the threaded
+    # pass has nothing left to write. The one ticker with no row is asked again,
+    # because a cache miss is the only thing that can be retried safely here.
+    resolved_before = list(state["order"])
+    again = prices.prewarm_tz_cache(["AAPL", "BF.B", "CSGP", "NOPE"])
+    assert again == {
+        "requested": 4,
+        "resolved": 0,
+        "already_cached": 3,
+        "unresolved": 1,
+    }
+    assert state["order"] == resolved_before + ["NOPE"], "a cached ticker was resolved"
+
+
+def test_the_download_asks_for_the_prewarm_before_it_starts_its_threads(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The order is the fix: rows first, threads second, and the retry unthreaded.
+
+    The download's threads only read the cache when every requested row is already
+    written, so the test stands where `yf.download` does and asserts the rows are
+    there at that moment rather than counting calls afterwards.
+    """
+    from yfinance import cache as yf_cache
+
+    monkeypatch.setattr(prices, "_TZ_CACHE_DIR", None)
+    cache = _FakeCache()
+    monkeypatch.setattr(yf_cache, "get_tz_cache", lambda: cache)
+    events: list[str] = []
+
+    def _prewarm(tickers, timeout=10.0):  # noqa: ANN001
+        events.append("prewarm " + ",".join(tickers))
+        for ticker in tickers:
+            cache.store(prices.yf_ticker(ticker), "America/New_York")
+        return {"requested": len(tickers)}
+
+    def _download(symbols, **kwargs):  # noqa: ANN001
+        events.append("download " + ",".join(sorted(symbols)))
+        assert all(
+            cache.lookup(s) for s in symbols
+        ), "a ticker reached the threaded download without its timezone row"
+        events.append(f"threads={kwargs['threads']}")
+        return _wide_download(sorted(symbols), pd.bdate_range("2026-09-28", periods=2))
+
+    monkeypatch.setattr(prices, "prewarm_tz_cache", _prewarm)
+    monkeypatch.setattr(prices.yf, "download", _download)
+
+    # the live fetch asks for the prewarm, and asks for the mapping to happen
+    frame = prices.download_prices(
+        ["BF.B", "AAPL"], start="2026-09-28", end="2026-09-30", prewarm=True
+    )
+    assert events == [
+        "prewarm AAPL,BF.B",
+        "download AAPL,BF-B",
+        "threads=True",
+    ], events
+    assert set(frame.index.get_level_values("ticker")) == {"AAPL", "BF.B"}
+
+    # the retry of a handful of names is the unthreaded pass
+    events.clear()
+    prices.download_prices(
+        ["AAPL"], start="2026-09-28", end="2026-09-30", threads=False
+    )
+    assert events == ["download AAPL", "threads=False"], events
+    # and a caller that did not ask for the prewarm pays for nothing
+    events.clear()
+    prices.download_prices(["AAPL"], start="2026-09-28", end="2026-09-30")
+    assert events == ["download AAPL", "threads=True"], events
+
+
+def test_missing_tickers_is_the_names_the_frame_never_priced() -> None:
+    """A refused symbol and a delisted one look the same, which is the point.
+
+    Both arrive with rows and no close, so both leave the book with nothing to
+    quantize on. The fetch retries the set and the book drops what the retry could
+    not recover, so this helper must not pretend to know which is which.
+    """
+    dates = pd.bdate_range("2026-09-28", periods=2)
+    index = pd.MultiIndex.from_product(
+        [dates, ["AAA", "BBB"]], names=["date", "ticker"]
+    )
+    frame = pd.DataFrame({"adj_close": [1.0, np.nan, 1.0, np.nan]}, index=index)
+    assert prices.missing_tickers(frame, ["AAA", "BBB"]) == ["BBB"]
+    assert prices.missing_tickers(frame, ["AAA"]) == []
+    # nothing came back at all, which is the case the prewarm cannot help with
+    assert prices.missing_tickers(None, ["AAA", "BBB"]) == ["AAA", "BBB"]
+    assert prices.missing_tickers(pd.DataFrame(), ["AAA"]) == ["AAA"]

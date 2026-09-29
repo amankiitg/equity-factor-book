@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from efb import prices
 from live import extend
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -156,7 +157,9 @@ def test_the_fetch_asks_for_the_runs_own_close(
     )
     seen: dict[str, object] = {}
 
-    def _vendor(tickers, start=None, end=None, progress=False):  # noqa: ANN001
+    def _vendor(  # noqa: ANN001
+        tickers, start=None, end=None, progress=False, prewarm=False, threads=True
+    ):
         seen["start"], seen["end"] = start, end
         days = pd.bdate_range(start, pd.Timestamp(end))
         frame = pd.DataFrame(
@@ -176,3 +179,147 @@ def test_the_fetch_asks_for_the_runs_own_close(
     assert added == 1, "the run's own close was not fetched"
     panel = pd.read_parquet(root / "raw" / "prices.parquet")
     assert str(panel.index.get_level_values("date").max().date()) == "2026-09-28"
+
+
+def _long_frame(
+    tickers: list[str], days: pd.DatetimeIndex, blank: list[str] | None = None
+) -> pd.DataFrame:
+    """A vendor-shaped long frame, with the named tickers carrying no prices."""
+    frame = pd.DataFrame(
+        {field: 1.0 for field in prices.FIELDS},
+        index=pd.MultiIndex.from_product(
+            [days, list(tickers)], names=["date", "ticker"]
+        ),
+    )
+    for ticker in blank or []:
+        frame.loc[(slice(None), ticker), ["close", "adj_close"]] = float("nan")
+    return frame
+
+
+def test_a_name_the_bulk_fetch_missed_is_retried_once_single_threaded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The threaded pass can lose a symbol, and a lost symbol is retried.
+
+    yfinance reports a symbol whose price fetch failed as a failed download rather
+    than as an error, so the frame arrives carrying that symbol's rows and no prices
+    and the evening never learns it lost a name: on 2026-09-29 that is how CSGP
+    reached the book with no close. One retry, single-threaded, tells a lost race
+    apart from a name that is genuinely gone: the retry is never repeated, so a
+    vendor that answers for nothing costs one request per missing name and no more,
+    and what it could not recover is what the book's drop rule then sees.
+    """
+    from efb import prices
+
+    days = pd.bdate_range("2026-09-28", periods=2)
+    calls: list[tuple[list[str], bool]] = []
+
+    def _vendor(  # noqa: ANN001
+        tickers, start=None, end=None, progress=False, prewarm=False, threads=True
+    ):
+        calls.append((list(tickers), threads))
+        # the bulk pass loses LIVE2 and DELISTED; the single-threaded retry gets
+        # LIVE2 back and never gets DELISTED, which is a name that is really gone
+        blank = ["LIVE2", "DELISTED"] if threads else ["DELISTED"]
+        return _long_frame(list(tickers), days, blank=blank)
+
+    monkeypatch.setattr(extend.prices, "download_prices", _vendor)
+    frame, report = extend.retry_missing_closes(
+        _long_frame(["LIVE1", "LIVE2", "DELISTED"], days, blank=["LIVE2", "DELISTED"]),
+        ["LIVE1", "LIVE2", "DELISTED"],
+        start="2026-09-28",
+        end="2026-09-30",
+    )
+
+    assert calls == [(["DELISTED", "LIVE2"], False)], calls
+    assert report == {
+        "requested": 3,
+        "missing": ["DELISTED", "LIVE2"],
+        "recovered": ["LIVE2"],
+        "still_missing": ["DELISTED"],
+    }
+    # the recovered name carries a price and the one that is really gone does not,
+    # so the book sees exactly the drop it should
+    assert prices.missing_tickers(frame, ["LIVE1", "LIVE2"]) == []
+    assert prices.missing_tickers(frame, ["DELISTED"]) == ["DELISTED"]
+    closes = frame.xs(pd.Timestamp("2026-09-28"), level="date")["adj_close"]
+    assert not pd.isna(closes["LIVE2"]) and pd.isna(closes["DELISTED"])
+
+
+def test_a_fetch_that_answered_for_everything_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The retry is for a gap, not a habit: a complete fetch makes no second call.
+
+    Every evening would otherwise spend one more request per name on a vendor that
+    was fine, and the second pass is the one that has to be single-threaded, so an
+    unconditional retry would slow the run to buy nothing.
+    """
+    days = pd.bdate_range("2026-09-28", periods=2)
+    calls: list[list[str]] = []
+
+    def _vendor(tickers, **kwargs):  # noqa: ANN001
+        calls.append(list(tickers))
+        return _long_frame(list(tickers), days)
+
+    monkeypatch.setattr(extend.prices, "download_prices", _vendor)
+    frame, report = extend.retry_missing_closes(
+        _long_frame(["LIVE1", "LIVE2"], days),
+        ["LIVE1", "LIVE2"],
+        start="2026-09-28",
+        end="2026-09-30",
+    )
+
+    assert calls == []
+    assert report["missing"] == [] and report["recovered"] == []
+    assert prices.missing_tickers(frame, ["LIVE1", "LIVE2"]) == []
+
+
+def test_the_live_fetch_asks_for_the_prewarm_and_applies_the_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`extend_prices` is where both steps have to happen, on the real panel path.
+
+    The prewarm is the fetch's own first step (`download_prices(prewarm=True)`)
+    rather than a call beside it, so a caller that replaces the fetch cannot leave
+    the prewarm behind and a caller that uses the fetch cannot forget it. What is
+    asserted here is the wiring: the flag reaches the fetch, and the gap the fetch
+    reports is retried single-threaded before the panel is written.
+    """
+    from live import snapshot
+
+    root = tmp_path / "data"
+    _live_tree(root)
+    monkeypatch.setattr(snapshot, "previous_proposal", lambda: (None, None, None))
+    index = pd.MultiIndex.from_product(
+        [[pd.Timestamp("2026-09-25")], ["LIVE1", "LIVE2"]], names=["date", "ticker"]
+    )
+    pd.DataFrame({"close": [1.0, 2.0]}, index=index).to_parquet(
+        root / "raw" / "prices.parquet"
+    )
+    calls: list[tuple[list[str], bool, bool]] = []
+    days = pd.bdate_range("2026-09-25", "2026-09-28")
+
+    def _vendor(  # noqa: ANN001
+        tickers, start=None, end=None, progress=False, prewarm=False, threads=True
+    ):
+        calls.append((list(tickers), threads, prewarm))
+        blank = ["LIVE2"] if threads else []
+        frame = _long_frame(list(tickers), days, blank=blank)
+        # the fake vendor keeps the exclusive-end contract of the real one
+        return frame[frame.index.get_level_values("date") < pd.Timestamp(end)]
+
+    monkeypatch.setattr(extend.prices, "download_prices", _vendor)
+
+    added = extend.extend_prices(root, end="2026-09-28")
+
+    assert calls == [
+        (["LIVE1", "LIVE2"], True, True),
+        (["LIVE2"], False, False),
+    ], calls
+    assert added == 1
+    panel = pd.read_parquet(root / "raw" / "prices.parquet")
+    session = panel.xs(pd.Timestamp("2026-09-28"), level="date")
+    # the name the bulk pass lost is in the panel with a real close, because the
+    # retry's rows replaced the empty ones
+    assert not pd.isna(session.loc["LIVE2", "close"])

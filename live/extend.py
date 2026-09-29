@@ -8,6 +8,7 @@ from yfinance, the same vendor E1 uses.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +16,8 @@ import pandas as pd
 
 from efb import hygiene, prices, probes, returns, spy, universe
 from efb.models import fundamental as fx
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
@@ -91,6 +94,56 @@ def _live_tickers(data_root: Path) -> list[str]:
     return sorted(tickers)
 
 
+def retry_missing_closes(
+    frame: pd.DataFrame,
+    tickers: list[str],
+    start: str,
+    end: str,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Ask the vendor again, one ticker at a time, for the names it skipped.
+
+    The bulk download is threaded, and yfinance reports a symbol whose fetch failed
+    as a failed download rather than as an error, so the frame comes back carrying
+    that symbol's rows and no prices. Those names become the book's "no usable
+    close" set, which is the right answer for a name that genuinely no longer trades
+    and the wrong one for a name the vendor simply did not answer for. One retry,
+    single-threaded, tells the two apart: a name that comes back was a lost race, and
+    a name that does not is unavailable tonight and goes to the book's drop rule.
+
+    The retry happens once and is never retried again, so a vendor that refuses
+    everything costs one request per missing name and no more. The recovered rows
+    replace the empty ones the bulk pass wrote, because the later row wins on the
+    same (date, ticker).
+    """
+    missing = prices.missing_tickers(frame, tickers)
+    report: dict[str, object] = {
+        "requested": len(tickers),
+        "missing": missing,
+        "recovered": [],
+        "still_missing": missing,
+    }
+    if not missing:
+        return frame, report
+    retry = prices.download_prices(missing, start=start, end=end, threads=False)
+    still_missing = prices.missing_tickers(retry, missing)
+    recovered = [ticker for ticker in missing if ticker not in set(still_missing)]
+    report["recovered"] = recovered
+    report["still_missing"] = still_missing
+    if retry is not None and len(retry):
+        combined = pd.concat([frame, retry])
+        frame = combined[~combined.index.duplicated(keep="last")].sort_index()
+    logger.warning(
+        "the price fetch missed %d of %d requested ticker(s); the single-threaded "
+        "retry recovered %d and %d are still without a close: %s",
+        len(missing),
+        len(tickers),
+        len(recovered),
+        len(still_missing),
+        ", ".join(still_missing) or "none",
+    )
+    return frame, report
+
+
 def extend_prices(
     data_root: Path | None = None,
     end: str | None = None,
@@ -104,6 +157,13 @@ def extend_prices(
     fetch asked for a window ending on the run's own date, the vendor answered with
     the previous session alone, nothing was appended, and the gate stopped the run
     one session behind its own target close.
+
+    The fetch is the one the book is priced from, so it is also the one place a
+    silently missing name can be caught: the timezone rows are written serially
+    before the threaded download starts (see `prices.prewarm_tz_cache`, which is
+    what stops the download's own threads from locking the cache), and every
+    requested ticker that came back without a close is asked for once more, single
+    threaded, before the book's drop rule sees it (`retry_missing_closes`).
 
     Returns the number of new sessions appended. Nothing is overwritten: rows
     already present keep their values.
@@ -120,7 +180,11 @@ def extend_prices(
     # being priced, and on a weekday evening whose previous close is already stored
     # it returns nothing new at all.
     window_end = str((pd.Timestamp(end) + pd.Timedelta(days=1)).date())
-    tail = prices.download_prices(tickers, start=str(last_date.date()), end=window_end)
+    start = str(last_date.date())
+    tail = prices.download_prices(tickers, start=start, end=window_end, prewarm=True)
+    tail, _fetch_report = retry_missing_closes(
+        tail, tickers, start=start, end=window_end
+    )
     if tail is None or len(tail) == 0:
         return 0
     tail = prices.build_prices_artifact(tail, start="2010-01-04")

@@ -8,12 +8,17 @@ be measured rather than assumed away).
 
 from __future__ import annotations
 
+import logging
 import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import yfinance.cache as yf_cache
+
+logger = logging.getLogger(__name__)
 
 # The directory yfinance's caches were pointed at, per process. `None` until the
 # first call.
@@ -84,12 +89,86 @@ def use_private_tz_cache(root: Path | None = None) -> Path:
     return target
 
 
+def prewarm_tz_cache(tickers: list[str], timeout: float = 10.0) -> dict[str, int]:
+    """Resolve and store every ticker's exchange timezone once, single-threaded.
+
+    yfinance keeps one timezone row per ticker in `tkr-tz.db`, inside the directory
+    `use_private_tz_cache` gives the run, and it writes that row the first time it
+    prices the ticker. A run whose cache is empty, which is every run now that the
+    directory is created per process, therefore hands the threaded download one
+    write per ticker: 504 of them for the SPY universe, all into a single SQLite
+    file. Two threads writing together is `OperationalError('database is locked')`,
+    and yfinance reports it as a failed download for whichever symbol lost the race
+    rather than failing the run, so the evening is quietly a name short with no
+    error anywhere. Measured on 2026-09-29: a cold 504-name fetch lost exactly one
+    symbol in 3 of 12 runs (EVRG, BA, ACGL), while repeats against a warm cache lost
+    none, which is what this function removes: the rows are written here, one
+    ticker at a time, before any thread starts, so the threaded pass only reads a
+    cache nobody is writing.
+
+    The lookup is yfinance's own (`Ticker._get_ticker_tz`), so no timezone is
+    guessed here and no exchange list is maintained: a ticker the vendor will not
+    answer for counts as unresolved and writes nothing, threaded or not.
+
+    Returns how many were resolved now, how many were already cached, and how many
+    were left unresolved.
+    """
+    cache = yf_cache.get_tz_cache()
+    resolved = already_cached = unresolved = 0
+    started = time.perf_counter()
+    for ticker in tickers:
+        symbol = yf_ticker(ticker)
+        if cache.lookup(symbol):
+            already_cached += 1
+            continue
+        try:
+            tz = yf.Ticker(symbol)._get_ticker_tz(timeout=timeout)
+        except Exception:  # noqa: BLE001 - the download reports what it cannot price
+            tz = None
+        if tz:
+            resolved += 1
+        else:
+            unresolved += 1
+    report = {
+        "requested": len(tickers),
+        "resolved": resolved,
+        "already_cached": already_cached,
+        "unresolved": unresolved,
+    }
+    logger.info(
+        "timezone cache warmed in %.1fs: %d resolved, %d already cached, "
+        "%d unresolved, of %d requested",
+        time.perf_counter() - started,
+        resolved,
+        already_cached,
+        unresolved,
+        len(tickers),
+    )
+    return report
+
+
+def missing_tickers(frame: pd.DataFrame, tickers: list[str]) -> list[str]:
+    """The requested tickers the frame carries no close for at all.
+
+    A symbol the vendor refused and a symbol that no longer trades look the same
+    here, because both come back with rows and no prices. That is deliberate: each
+    leaves the book with no close to quantize on, so the fetch retries the set and
+    the book drops whatever the retry could not recover.
+    """
+    if frame is None or len(frame) == 0:
+        return sorted({yf_ticker(ticker) for ticker in tickers})
+    covered = covered_tickers(frame)
+    return sorted({ticker for ticker in tickers if ticker not in covered})
+
+
 def download_prices(
     tickers: list[str],
     start: str = "2009-12-15",
     end: str | None = None,
     progress: bool = False,
     cache_root: Path | None = None,
+    prewarm: bool = False,
+    threads: bool = True,
 ) -> pd.DataFrame:
     """Download daily prices and actions from yfinance in long format.
 
@@ -102,12 +181,24 @@ def download_prices(
     default (see `use_private_tz_cache`): the shared default is a single file that
     concurrent runs contend for.
 
+    `prewarm` resolves the timezone rows serially before the threaded download
+    starts (see `prewarm_tz_cache`), which is what stops the download's own threads
+    from writing that one file together. The live fetch asks for it; a research
+    build with thousands of tickers does not, because there the serial lookups cost
+    more than the download they protect.
+
+    `threads` is passed through to the vendor. A retry of a handful of names wants
+    one thread: nothing is gained by threading five symbols, and single-threaded is
+    the pass that cannot lose one to a cache write.
+
     The start date includes a warm-up window before the 2010 universe
     start so that the first return of 2010 is computable. Tickers are
     mapped to yfinance symbols on request and mapped back on return.
     """
     use_private_tz_cache(cache_root)
     unique = sorted({t for t in tickers})
+    if prewarm:
+        prewarm_tz_cache(unique)
     symbol_of = {yf_ticker(t): t for t in unique}
     wide = yf.download(
         list(symbol_of),
@@ -116,7 +207,7 @@ def download_prices(
         group_by="ticker",
         auto_adjust=False,
         actions=True,
-        threads=True,
+        threads=threads,
         progress=progress,
     )
     long_df = wide_to_long(wide)

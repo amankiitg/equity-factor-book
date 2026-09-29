@@ -80,5 +80,13 @@ check_untyped_defs = true
 
 [[tool.mypy.overrides]]
 # boto3 ships no type marker; botocore does, so only boto3 needs the exemption.
-module = ["yfinance", "pandas", "requests", "alpaca", "alpaca.trading.*", "boto3"]
+module = [
+    "yfinance",
+    "yfinance.*",
+    "pandas",
+    "requests",
+    "alpaca",
+    "alpaca.trading.*",
+    "boto3",
+]
 ignore_missing_imports = true
