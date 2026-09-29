@@ -8,11 +8,16 @@ be measured rather than assumed away).
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
+
+# The directory yfinance's caches were pointed at, per process. `None` until the
+# first call.
+_TZ_CACHE_DIR: Path | None = None
 
 FIELDS = [
     "open",
@@ -45,11 +50,46 @@ def yf_ticker(ticker: str) -> str:
     return ticker.replace(".", "-")
 
 
+def use_private_tz_cache(root: Path | None = None) -> Path:
+    """Point yfinance's SQLite caches at a directory only this process writes.
+
+    yfinance keeps its timezone, cookie and ISIN caches in one SQLite directory, and
+    the default is shared: `~/.cache/py-yfinance`, or on Render
+    `/opt/render/.cache/py-yfinance`, which every run on an instance opens. Two runs
+    starting together then contend for one SQLite file and it refuses with
+    `OperationalError('database is locked')`, which yfinance reports as a failed
+    download for whichever symbol lost the race. The run is not stopped by that,
+    which is exactly what makes it dangerous: the evening's book is quietly a name
+    short. Its folder creation is not race-safe either (`os.makedirs` without
+    `exist_ok`), which is the `File exists` line that appears beside it.
+
+    So the cache goes somewhere private: `root`, when the caller has a tree of its
+    own, and a fresh temporary directory otherwise. One call per process is
+    remembered, because a run's price download, its share lookups and its
+    corporate-action cross-check have to share one cache rather than each rebuilding
+    it. The directory is created here, atomically, before the library sees it.
+    """
+    global _TZ_CACHE_DIR
+    if root is None and _TZ_CACHE_DIR is not None:
+        return _TZ_CACHE_DIR
+    target = (
+        Path(root) / "yfinance-cache"
+        if root is not None
+        else Path(tempfile.mkdtemp(prefix="efb-yfinance-"))
+    )
+    target.mkdir(parents=True, exist_ok=True)
+    if _TZ_CACHE_DIR != target:
+        yf.set_tz_cache_location(str(target))
+        _TZ_CACHE_DIR = target
+    return target
+
+
 def download_prices(
     tickers: list[str],
     start: str = "2009-12-15",
     end: str | None = None,
     progress: bool = False,
+    cache_root: Path | None = None,
 ) -> pd.DataFrame:
     """Download daily prices and actions from yfinance in long format.
 
@@ -58,10 +98,15 @@ def download_prices(
     `live.extend` made with the run's own close, so it is stated here where the
     parameter is read.
 
+    `cache_root` is where yfinance's SQLite caches go, one directory per run by
+    default (see `use_private_tz_cache`): the shared default is a single file that
+    concurrent runs contend for.
+
     The start date includes a warm-up window before the 2010 universe
     start so that the first return of 2010 is computable. Tickers are
     mapped to yfinance symbols on request and mapped back on return.
     """
+    use_private_tz_cache(cache_root)
     unique = sorted({t for t in tickers})
     symbol_of = {yf_ticker(t): t for t in unique}
     wide = yf.download(

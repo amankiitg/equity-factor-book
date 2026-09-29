@@ -910,6 +910,15 @@ def main() -> int:
         # the seed is downloaded and long before a submission.
         snapshot_mode = snapshot_module.check_snapshot_config(dry_run)
         logger.info("snapshot: %s", snapshot_mode)
+        # yfinance's SQLite caches are private to this run, before the first fetch
+        # can touch the shared one. The default directory is per instance, and two
+        # runs contending for its one database lose a symbol to "database is
+        # locked" without failing the evening: the night's book is quietly a name
+        # short. The price download, the share lookups and the corporate-action
+        # cross-check all run in this process and share this one directory.
+        from efb import prices as prices_module
+
+        logger.info("yfinance cache: %s", prices_module.use_private_tz_cache())
         # The run's own tree, built before anything is read. Every live module's
         # default resolves to it from here, so nothing under the repository's
         # data/ is written even though the run appends sessions and refits
