@@ -667,14 +667,185 @@ def test_build_proposal_stores_every_input_as_of_and_max_staleness() -> None:
     assert manifest["max_input_staleness_days"] >= 0
 
 
-def test_a_nan_close_price_stops_the_run_and_names_the_name() -> None:
-    """Part 5's defect: a NaN close cannot become a whole-share count.
+def test_a_kept_name_with_no_close_is_dropped_and_the_rest_are_priced() -> None:
+    """One name with no usable close is out of the book; the rest still trade.
 
-    `kept_shares` floors `|w| * nav / max(price, 1e-12)`, so a NaN price makes
-    that division undefined and the cast to int silently produces a share count
-    nobody asked for; the rounding report raises a bare `int(NaN)` instead. The
-    real panel has this: APH has no close on 2026-08-28, 09-01, 09-02 and
-    09-03, and its price halves on 09-04.
+    This is the evening of 2026-09-29: the vendor answered for every name but one,
+    the model knew the missing name from its history, and the whole run stopped at
+    quantization on that single name. The rule is the one the universe already
+    follows one step upstream, where a member with no print tonight drops out of
+    the book by construction: the name is dropped, the remaining names are priced
+    and quantized, and the book is renormalized to gross 1.0 without it, exactly as
+    it is after the share floor. Prices are $10 and NAV is $10,000, so every name of
+    this fixture's full book clears the 20-share floor and C is a name the book
+    would have kept.
+    """
+    names, alpha, close = _synthetic_book()
+    design, factor_covariance, specific = _synthetic_pieces(names)
+
+    # the precondition, measured rather than asserted: with its close in hand, C is
+    # in the book, so the drop below is a drop and not something the floor would
+    # have done anyway
+    whole_keep, _whole_finalize, _whole_info = ev.enforce_floor_by_drop_then_admit(
+        names,
+        alpha,
+        design,
+        factor_covariance,
+        specific,
+        dict(close),
+        10_000.0,
+        alpha.copy(),
+        0.0,
+        20,
+    )
+    assert whole_keep[names.index("C")]
+
+    close["C"] = float("nan")
+    priced, dropped = ev.dropped_for_no_price(names, close)
+    assert dropped == ["C"]
+    assert priced.tolist() == [True, True, False, True, True, True]
+
+    # the run's own path: the search starts from the priced names
+    keep, finalize, _info = ev.enforce_floor_by_drop_then_admit(
+        names,
+        alpha,
+        design,
+        factor_covariance,
+        specific,
+        close,
+        10_000.0,
+        alpha.copy(),
+        0.0,
+        20,
+        start=priced,
+    )
+
+    assert "C" not in finalize["names_sub"]
+    assert names.index("C") not in set(np.asarray(finalize["idx"]).tolist())
+    assert int(keep.sum()) == len(finalize["names_sub"])
+    # the rest are priced and quantized: a real close and a whole-share count
+    assert np.isfinite(np.asarray(finalize["prices"], dtype=float)).all()
+    assert (np.asarray(finalize["shares"], dtype=int) > 0).all()
+    # and renormalized to gross 1.0 after the drop
+    assert np.abs(np.asarray(finalize["w_sub"], dtype=float)).sum() == pytest.approx(
+        1.0
+    )
+
+    # the negative control: a set that skipped the drop still refuses, which is
+    # what the evening did before this rule existed
+    with pytest.raises(ValueError, match="no usable close price for C at the"):
+        ev.enforce_floor_by_drop_then_admit(
+            names,
+            alpha,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            10_000.0,
+            alpha.copy(),
+            0.0,
+            20,
+        )
+
+
+def test_the_book_stops_when_too_few_names_are_priced() -> None:
+    """The drop is bounded: a stub of the universe is not a book to trade.
+
+    Every name missing but the first 100 is where the drop stops being the right
+    answer. The refusal names the drops it is refusing over, because "cannot be
+    built" without them is a count nobody can act on.
+    """
+    names = [f"T{index:03d}" for index in range(499)]
+    close = {name: 10.0 for name in names}
+    for name in names[100:]:
+        close.pop(name)
+
+    priced, dropped = ev.priced_names_or_stop(names, close)
+    assert int(priced.sum()) == 100
+    assert dropped == names[100:]
+    assert ev.MIN_PRICED_NAMES == 100
+
+    # one more missing and the book cannot be built
+    close.pop(names[99])
+    with pytest.raises(ValueError, match="below the 100 name floor"):
+        ev.priced_names_or_stop(names, close)
+    # the floor is a parameter, so the boundary is testable rather than asserted
+    priced, dropped = ev.priced_names_or_stop(names, close, min_priced=99)
+    assert int(priced.sum()) == 99
+    assert len(dropped) == 400
+
+
+def test_merged_no_price_names_both_rules_once() -> None:
+    """The email's one line carries the universe's members and the book's drops.
+
+    Both are the same fact about tonight, that the index had no print for the name,
+    so they belong on one line and a name both rules found is said once.
+    """
+    manifest = {"dropped_no_price": ["CSGP", "WBA"]}
+    assert ev.merged_no_price(["WBA", "EA"], manifest) == ["CSGP", "EA", "WBA"]
+    # a manifest from before this rule carries no such list, and neither does a
+    # run whose book lost nothing
+    assert ev.merged_no_price(["EA"], {}) == ["EA"]
+    assert ev.merged_no_price(None, {}) == []
+
+
+@pytest.mark.slow
+def test_build_proposal_drops_a_kept_name_with_no_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The same drop at the book, on the real panel.
+
+    The missing name is taken from the manifest's own kept book rather than pinned,
+    so the test says what it means on any vintage: a name the book would have kept
+    is out of the book, the rest are priced and quantized, and the traded gross is
+    the same 1.0 it would have been.
+
+    Dropping a name is not a mechanical minus one, and the kept count is not
+    asserted to fall: the book is renormalized without the name, so the names
+    admitted afterwards clear their floor against a different vector. Measured on
+    the 2026-09-21 vintage this panel ends at, the kept count goes 180 (nothing
+    missing) to 190 (the book's largest name missing).
+    """
+    baseline = ev.build_proposal(store=False)
+    victim = str(baseline["kept_book"][0]["ticker"])
+    real_close_prices = ev._close_prices
+
+    def without_the_victim(as_of: pd.Timestamp, root: Path) -> dict[str, float]:
+        close = dict(real_close_prices(as_of, root))
+        close.pop(victim)
+        return close
+
+    monkeypatch.setattr(ev, "_close_prices", without_the_victim)
+    manifest = ev.build_proposal(store=False)
+
+    assert manifest["dropped_no_price"] == [victim]
+    assert manifest["n_dropped_no_price"] == 1
+    assert manifest["min_priced_names"] == ev.MIN_PRICED_NAMES
+    assert victim not in {entry["ticker"] for entry in manifest["kept_book"]}
+    assert manifest["n_kept"] + manifest["n_dropped"] == manifest["n_names"]
+    assert manifest["floor_search_converged"] is True
+    # the rest are priced and quantized, and the traded book is renormalized
+    assert sum(abs(entry["weight"]) for entry in manifest["kept_book"]) == (
+        pytest.approx(1.0)
+    )
+    assert manifest["kept_gross"] == pytest.approx(1.0)
+    assert manifest["quantization"]["long_targets_rounding_to_zero"] == 0
+    assert manifest["quantization"]["short_targets_rounding_to_zero"] == 0
+    assert manifest["n_kept"] >= ev.MIN_FLOOR_BOOK_NAMES
+    # the control: with no name missing, the same build drops nothing
+    assert baseline["dropped_no_price"] == []
+    assert baseline["n_dropped_no_price"] == 0
+
+
+def test_the_sizing_still_refuses_a_nan_close_passed_to_it() -> None:
+    """The invariant behind the drop: a NaN close cannot become a share count.
+
+    `kept_shares` floors `|w| * nav / max(price, 1e-12)`, so a NaN price makes that
+    division undefined and the cast to int silently produces a share count nobody
+    asked for. The book drops such a name before it sizes anything, so reaching the
+    sizing with one is a caller that built its own keep set, and it is refused
+    rather than priced. The real panel has this: APH has no close on 2026-08-28,
+    09-01, 09-02 and 09-03, and its price halves on 09-04.
     """
     names, alpha, close = _synthetic_book()
     design, factor_covariance, specific = _synthetic_pieces(names)
@@ -692,8 +863,9 @@ def test_a_nan_close_price_stops_the_run_and_names_the_name() -> None:
         )
 
 
-def test_a_missing_close_price_stops_the_run_too() -> None:
+def test_the_sizing_refuses_a_missing_close_too() -> None:
     """A name absent from the close map defaulted to 0.0, which is just as
+
     unusable as a NaN and produced an astronomically large share count."""
     names, alpha, close = _synthetic_book()
     design, factor_covariance, specific = _synthetic_pieces(names)

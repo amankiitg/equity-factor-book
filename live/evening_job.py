@@ -18,6 +18,7 @@ import json
 import math
 import subprocess
 import time
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,12 @@ REFERENCE_AUM = 1e8  # the capacity-curve reference, kept for the E6 finding
 TRADING_DAYS = 252
 HORIZON = 21  # the rebalance horizon, the E6 and E9 convention
 MIN_NAMES = 50
+# The floor a name with no usable close has to fall through before the run stops.
+# A kept name the vendor did not answer for is dropped from the book and named in
+# the email (`dropped_for_no_price`), because one missing print is not a reason to
+# send no orders at all. Below this many priced names the book cannot be built, and
+# a stub is worse than a stopped evening, so the run refuses instead.
+MIN_PRICED_NAMES = 100
 
 # the frozen model inputs whose content the proposal is pinned to
 INPUT_ARTIFACTS = (
@@ -315,23 +322,103 @@ def sized_kept_weights(
     return idx, names_sub, w_sub, prices, design[idx], specific[idx], pre_hedge
 
 
+def close_prices_for(names: list[str], close: dict[str, float]) -> np.ndarray:
+    """The names' closes at the proposal close, a name the map lacks read as 0.0."""
+    return np.array([close.get(name, 0.0) for name in names], dtype=float)
+
+
+def usable_close_prices(prices: np.ndarray) -> np.ndarray:
+    """Which close prices a whole-share count can be built from.
+
+    A NaN close cannot be divided into anything and a non-positive one makes the
+    floor division in `kept_shares` unbounded, so neither is a price the book can
+    be quantized on. One predicate, so the drop at the book and the refusal in the
+    sizing cannot disagree about what "usable" means.
+    """
+    values = np.asarray(prices, dtype=float)
+    return np.isfinite(values) & (values > 0.0)
+
+
+def dropped_for_no_price(
+    names: list[str], close: dict[str, float]
+) -> tuple[np.ndarray, list[str]]:
+    """The priced mask, and the names the book loses for having no usable close.
+
+    A kept name with no usable close at the proposal close is dropped from the
+    book rather than stopping the run, and the remaining names are priced,
+    quantized and renormalized to gross 1.0 exactly as they are after the share
+    floor. That is the rule the universe already follows one step upstream, where a
+    member with no print tonight drops out of the book by construction: a book
+    quietly smaller than the index is a book nobody can check, so the names travel
+    to the email instead (`merged_no_price`).
+
+    Tonight is why this exists: the price fetch answers for one symbol with a
+    yfinance cache lock instead of a price, the model still knows the name from its
+    history, and the whole evening used to stop on that single name.
+    """
+    priced = usable_close_prices(close_prices_for(names, close))
+    dropped = [name for name, good in zip(names, priced, strict=True) if not good]
+    return priced, dropped
+
+
+def priced_names_or_stop(
+    names: list[str],
+    close: dict[str, float],
+    min_priced: int = MIN_PRICED_NAMES,
+) -> tuple[np.ndarray, list[str]]:
+    """The drop for no price, and the floor that makes it a stop instead.
+
+    The drop alone would build a book out of whatever the vendor answered for, and
+    a stub of the universe is worse than an evening with no orders: the run would
+    trade a book that is not the model's. So the drop is bounded, and falling
+    through the bound names what went missing rather than reporting a count.
+    """
+    priced, dropped = dropped_for_no_price(names, close)
+    n_priced = int(priced.sum())
+    if n_priced < min_priced:
+        shown = ", ".join(sorted(dropped)[:10])
+        rest = "" if len(dropped) <= 10 else f" and {len(dropped) - 10} more"
+        raise ValueError(
+            f"only {n_priced} of {len(names)} names have a usable close at the "
+            f"proposal close, below the {min_priced} name floor the book is built "
+            f"from, so it cannot be built: no usable close price for {shown}{rest}"
+        )
+    return priced, dropped
+
+
+def merged_no_price(
+    reported: list[str] | None, manifest: Mapping[str, Any]
+) -> list[str]:
+    """The "dropped for no price" names: the universe's report plus the book's.
+
+    Two rules reach the same email line and they are the same fact, that the index
+    had no print for the name tonight: `universe_without_prices` finds the archive
+    members the panel does not price, and `build_proposal` drops the kept names it
+    cannot quantize. Naming them once, sorted and deduplicated, is what keeps the
+    line readable as one statement about tonight.
+    """
+    names = {str(name) for name in (reported or [])}
+    dropped = manifest.get("dropped_no_price")
+    if isinstance(dropped, list):
+        names |= {str(name) for name in dropped}
+    return sorted(names)
+
+
 def usable_prices(names_sub: list[str], close: dict[str, float]) -> np.ndarray:
     """The kept names' close prices, refusing any the book cannot be sized on.
 
-    A NaN or non-positive close price cannot be turned into a whole-share
-    count. The arithmetic downstream would either raise deep inside the
-    rounding report or, worse, produce a share count no one asked for, because
-    `kept_shares` floors a division by the price and a NaN price makes that
-    division undefined. A kept name with no usable price is therefore a failed
-    run that names the name, not a book priced on a placeholder.
+    This is an invariant check now, not the run's own answer to a missing price:
+    `build_proposal` drops the names with no usable close before it sizes the book
+    (`dropped_for_no_price`), so a set reaching here with one of them did not come
+    through that path. It still refuses rather than pricing the name on a
+    placeholder, because `kept_shares` floors a division by the price.
     """
-    prices = np.array([close.get(name, 0.0) for name in names_sub], dtype=float)
-    unusable = [
-        name
-        for name, price in zip(names_sub, prices, strict=True)
-        if not math.isfinite(float(price)) or float(price) <= 0.0
-    ]
-    if unusable:
+    prices = close_prices_for(names_sub, close)
+    usable = usable_close_prices(prices)
+    if not usable.all():
+        unusable = [
+            name for name, good in zip(names_sub, usable, strict=True) if not good
+        ]
         shown = ", ".join(sorted(unusable)[:5])
         rest = "" if len(unusable) <= 5 else f" and {len(unusable) - 5} more"
         raise ValueError(
@@ -590,6 +677,33 @@ def floor_order(
     return np.argsort(-(np.abs(full_weights) / thresholds), kind="stable")
 
 
+def floor_order_within(
+    close: dict[str, float],
+    names: list[str],
+    full_weights: np.ndarray,
+    dollar_floor: float,
+    share_floor: int,
+    within: np.ndarray,
+) -> np.ndarray:
+    """`floor_order` over a subset of the book, as indices into the whole book.
+
+    A name outside the subset has no close, so it has no floor of its own: with a
+    zero dollar floor its threshold is zero and `|w_i| / floor_i` is a division by
+    zero rather than a rank. The order this returns is the order the whole-book
+    call gives that same subset, so it is the ordering the floor rule searches,
+    restricted to the names the rule may keep.
+    """
+    subset = np.where(np.asarray(within, dtype=bool))[0]
+    ordered = floor_order(
+        close,
+        [names[index] for index in subset],
+        np.asarray(full_weights, dtype=float)[subset],
+        dollar_floor,
+        share_floor,
+    )
+    return subset[np.asarray(ordered, dtype=int)]
+
+
 def admit_clearing_names(
     keep: np.ndarray,
     names: list[str],
@@ -646,6 +760,7 @@ def enforce_floor_by_drop_then_admit(
     dollar_floor: float,
     share_floor: int,
     order: np.ndarray | None = None,
+    start: np.ndarray | None = None,
     max_cycles: int = 10,
 ) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
     """Drop, then admit, repeated until a full cycle changes nothing (E11-F13R).
@@ -665,10 +780,28 @@ def enforce_floor_by_drop_then_admit(
     and passes run, how many names were admitted, and whether it converged
     inside the cycle cap. At the cap the caller must stop and report rather
     than pick a cycle, which is what `converged` false means.
+
+    `start` is the set the book may be built from: the whole universe by default,
+    and tonight's priced names in the live path. A name outside it is never kept
+    and never admitted, because the run drops a name it cannot quantize before it
+    sizes anything and the search cannot even finalize a set holding one.
     """
+    if start is None:
+        all_names = np.ones(len(names), dtype=bool)
+    else:
+        all_names = np.asarray(start, dtype=bool).copy()
+        if all_names.shape != (len(names),):
+            raise ValueError(
+                f"the start set has {all_names.size} entries and the book "
+                f"{len(names)} names, so they cannot be aligned"
+            )
     if order is None:
-        order = floor_order(close, names, full_weights, dollar_floor, share_floor)
-    all_names = np.ones(len(names), dtype=bool)
+        order = floor_order_within(
+            close, names, full_weights, dollar_floor, share_floor, all_names
+        )
+    else:
+        ordered = np.asarray(order, dtype=int)
+        order = ordered[all_names[ordered]]
     drop_keep, drop_finalize, _drop_passes, _drop_converged = (
         enforce_floor_on_final_weights(
             all_names,
@@ -1106,6 +1239,12 @@ def build_proposal(
     reg = registry.load(root / "models" / "registry.json")
     construction = registry.live_construction(reg, MODEL_VERSION)
     close = _close_prices(as_of_ts, root)
+    # A name the book cannot be quantized on is dropped, not fatal: the rest are
+    # priced, hedged, quantized and renormalized to gross 1.0 without it, and the
+    # names travel to the email on the same "dropped for no price" line as the
+    # universe members with no print tonight. Only a book that cannot be built at
+    # all stops the run, which is the floor below.
+    priced, dropped_no_price = priced_names_or_stop(names, close)
     started = time.perf_counter()
     enforced_keep, finalize, search = enforce_floor_by_drop_then_admit(
         names,
@@ -1118,6 +1257,7 @@ def build_proposal(
         weights,
         dollar_floor=construction["dollar_floor"],
         share_floor=construction["share_floor"],
+        start=priced,
     )
     floor_search_seconds = time.perf_counter() - started
     violations = floor_book_violations(
@@ -1195,6 +1335,14 @@ def build_proposal(
         "n_names": len(names),
         "n_excluded": len(excluded),
         "excluded": excluded,
+        # The names tonight's book lost for having no usable close, and the floor
+        # they would have to fall through to stop the run. They are named in the
+        # email beside the universe members with no print, because both are the
+        # same fact about tonight and a book quietly smaller than the index is a
+        # book nobody can check.
+        "n_dropped_no_price": len(dropped_no_price),
+        "dropped_no_price": dropped_no_price,
+        "min_priced_names": MIN_PRICED_NAMES,
         "ic": ic,
         "kappa": kappa,
         "factor_neutral_ic_h21": neutral_ic["factor_neutral_ic_h21"],

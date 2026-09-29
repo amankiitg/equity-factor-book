@@ -1108,6 +1108,19 @@ def main() -> int:
             nav_source=str(holdings["nav_source"]),
         )
         as_of = str(manifest["as_of"])
+        # The build drops a kept name it cannot quantize, and the day must not pass
+        # without saying so: one name the vendor did not answer for is not a reason
+        # to send no orders, but it is a reason for the book to be one name smaller
+        # than the model's, which the owner reads on the same line as the universe's
+        # own members with no price tonight.
+        merged_dropped = evening_job.merged_no_price(no_price, manifest)
+        if merged_dropped != no_price:
+            logger.warning(
+                "%d kept name(s) had no usable close and are out of the book: %s",
+                len(merged_dropped) - len(no_price),
+                ", ".join(merged_dropped),
+            )
+        no_price = merged_dropped
         book = store_proposal(
             as_of, run_tree, dry_run=dry_run, previous=prior, prior_settled=True
         )
