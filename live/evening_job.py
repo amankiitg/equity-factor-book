@@ -46,12 +46,16 @@ REFERENCE_AUM = 1e8  # the capacity-curve reference, kept for the E6 finding
 TRADING_DAYS = 252
 HORIZON = 21  # the rebalance horizon, the E6 and E9 convention
 MIN_NAMES = 50
-# The floor a name with no usable close has to fall through before the run stops.
-# A kept name the vendor did not answer for is dropped from the book and named in
-# the email (`dropped_for_no_price`), because one missing print is not a reason to
-# send no orders at all. Below this many priced names the book cannot be built, and
-# a stub is worse than a stopped evening, so the run refuses instead.
-MIN_PRICED_NAMES = 100
+# How many names one evening may lose for having no usable close before the run
+# stops and emails instead of pricing the rest. One or a few is normal: a name can
+# halt, delist or be missed by the vendor on the night, and the book drops it and
+# prices the others. Ten at once is not that, it is the fetch having broken, and a
+# book built from whatever the fetch did answer for would be a different, more
+# concentrated book than the model's, not a slightly smaller one. A floor on the
+# priced count would be the wrong instrument: the book targets roughly 180 names
+# and needs its rank margin, so 100 priced names is not a diminished book but
+# another one.
+MAX_PRICE_DROPS = 10
 
 # the frozen model inputs whose content the proposal is pinned to
 INPUT_ARTIFACTS = (
@@ -364,24 +368,24 @@ def dropped_for_no_price(
 def priced_names_or_stop(
     names: list[str],
     close: dict[str, float],
-    min_priced: int = MIN_PRICED_NAMES,
+    max_drops: int = MAX_PRICE_DROPS,
 ) -> tuple[np.ndarray, list[str]]:
-    """The drop for no price, and the floor that makes it a stop instead.
+    """The drop for no price, and the count that makes it a stop instead.
 
-    The drop alone would build a book out of whatever the vendor answered for, and
-    a stub of the universe is worse than an evening with no orders: the run would
-    trade a book that is not the model's. So the drop is bounded, and falling
-    through the bound names what went missing rather than reporting a count.
+    The drop alone would build a book out of whatever the vendor answered for. One
+    name missing is a name the book loses and the email names; ten at once is the
+    fetch having broken, and then the run stops and says so rather than trading a
+    book the model did not ask for. The refusal names the drops it is refusing over,
+    because "too many" without them is a count nobody can act on.
     """
     priced, dropped = dropped_for_no_price(names, close)
-    n_priced = int(priced.sum())
-    if n_priced < min_priced:
+    if len(dropped) > max_drops:
         shown = ", ".join(sorted(dropped)[:10])
         rest = "" if len(dropped) <= 10 else f" and {len(dropped) - 10} more"
         raise ValueError(
-            f"only {n_priced} of {len(names)} names have a usable close at the "
-            f"proposal close, below the {min_priced} name floor the book is built "
-            f"from, so it cannot be built: no usable close price for {shown}{rest}"
+            f"{len(dropped)} of {len(names)} names have no usable close at the "
+            f"proposal close, more than the {max_drops} the evening accepts before "
+            f"it stops: no usable close price for {shown}{rest}"
         )
     return priced, dropped
 
@@ -1242,8 +1246,8 @@ def build_proposal(
     # A name the book cannot be quantized on is dropped, not fatal: the rest are
     # priced, hedged, quantized and renormalized to gross 1.0 without it, and the
     # names travel to the email on the same "dropped for no price" line as the
-    # universe members with no print tonight. Only a book that cannot be built at
-    # all stops the run, which is the floor below.
+    # universe members with no print tonight. Too many of them at once is the fetch
+    # having broken rather than names delisting, and that stops the run.
     priced, dropped_no_price = priced_names_or_stop(names, close)
     started = time.perf_counter()
     enforced_keep, finalize, search = enforce_floor_by_drop_then_admit(
@@ -1335,14 +1339,15 @@ def build_proposal(
         "n_names": len(names),
         "n_excluded": len(excluded),
         "excluded": excluded,
-        # The names tonight's book lost for having no usable close, and the floor
-        # they would have to fall through to stop the run. They are named in the
+        # The names tonight's book lost for having no usable close, and the count
+        # that would have stopped the run: one or a few is a name the vendor did not
+        # answer for, ten at once is the fetch having broken. They are named in the
         # email beside the universe members with no print, because both are the
         # same fact about tonight and a book quietly smaller than the index is a
         # book nobody can check.
         "n_dropped_no_price": len(dropped_no_price),
         "dropped_no_price": dropped_no_price,
-        "min_priced_names": MIN_PRICED_NAMES,
+        "max_price_drops": MAX_PRICE_DROPS,
         "ic": ic,
         "kappa": kappa,
         "factor_neutral_ic_h21": neutral_ic["factor_neutral_ic_h21"],

@@ -748,31 +748,39 @@ def test_a_kept_name_with_no_close_is_dropped_and_the_rest_are_priced() -> None:
         )
 
 
-def test_the_book_stops_when_too_few_names_are_priced() -> None:
-    """The drop is bounded: a stub of the universe is not a book to trade.
+def test_the_book_stops_when_more_than_ten_names_drop_for_no_price() -> None:
+    """The drop is bounded by a count of names, not by a floor on what is left.
 
-    Every name missing but the first 100 is where the drop stops being the right
-    answer. The refusal names the drops it is refusing over, because "cannot be
-    built" without them is a count nobody can act on.
+    One or a few names missing is a halt, a delisting or a single missed symbol on
+    the night, and the book drops them and prices the rest. Ten at once is the fetch
+    having broken, and then the run stops and emails rather than trading a book
+    built from whatever the fetch did answer for: the book targets roughly 180 names
+    and needs its rank margin, so a book of 100 is not a smaller book, it is another
+    one. The refusal names the drops it is refusing over, because "too many" without
+    them is a count nobody can act on.
     """
     names = [f"T{index:03d}" for index in range(499)]
     close = {name: 10.0 for name in names}
-    for name in names[100:]:
+    assert ev.MAX_PRICE_DROPS == 10
+
+    # the boundary: ten names missing prices the book without a refusal
+    for name in names[:10]:
         close.pop(name)
-
     priced, dropped = ev.priced_names_or_stop(names, close)
-    assert int(priced.sum()) == 100
-    assert dropped == names[100:]
-    assert ev.MIN_PRICED_NAMES == 100
+    assert dropped == names[:10]
+    assert int(priced.sum()) == 489
 
-    # one more missing and the book cannot be built
-    close.pop(names[99])
-    with pytest.raises(ValueError, match="below the 100 name floor"):
+    # and the count is the parameter, so the boundary is testable rather than
+    # asserted: eleven drops stop, and a rule that allowed eleven would not
+    priced, dropped = ev.priced_names_or_stop(names, close, max_drops=10)
+    assert len(dropped) == 10
+    close.pop(names[10])
+    with pytest.raises(ValueError, match="more than the 10 the evening accepts"):
         ev.priced_names_or_stop(names, close)
-    # the floor is a parameter, so the boundary is testable rather than asserted
-    priced, dropped = ev.priced_names_or_stop(names, close, min_priced=99)
-    assert int(priced.sum()) == 99
-    assert len(dropped) == 400
+
+    # a fetch that answered for nothing is the case the rule exists for
+    with pytest.raises(ValueError, match="499 of 499 names have no usable close"):
+        ev.priced_names_or_stop(names, {})
 
 
 def test_merged_no_price_names_both_rules_once() -> None:
@@ -820,7 +828,7 @@ def test_build_proposal_drops_a_kept_name_with_no_close(
 
     assert manifest["dropped_no_price"] == [victim]
     assert manifest["n_dropped_no_price"] == 1
-    assert manifest["min_priced_names"] == ev.MIN_PRICED_NAMES
+    assert manifest["max_price_drops"] == ev.MAX_PRICE_DROPS
     assert victim not in {entry["ticker"] for entry in manifest["kept_book"]}
     assert manifest["n_kept"] + manifest["n_dropped"] == manifest["n_names"]
     assert manifest["floor_search_converged"] is True
