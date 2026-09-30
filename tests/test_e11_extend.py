@@ -229,21 +229,78 @@ def test_a_name_the_bulk_fetch_missed_is_retried_once_single_threaded(
         ["LIVE1", "LIVE2", "DELISTED"],
         start="2026-09-28",
         end="2026-09-30",
+        session="2026-09-28",
     )
 
     assert calls == [(["DELISTED", "LIVE2"], False)], calls
     assert report == {
         "requested": 3,
+        "session": "2026-09-28",
         "missing": ["DELISTED", "LIVE2"],
         "recovered": ["LIVE2"],
         "still_missing": ["DELISTED"],
     }
     # the recovered name carries a price and the one that is really gone does not,
     # so the book sees exactly the drop it should
-    assert prices.missing_tickers(frame, ["LIVE1", "LIVE2"]) == []
-    assert prices.missing_tickers(frame, ["DELISTED"]) == ["DELISTED"]
+    assert prices.missing_tickers(frame, ["LIVE1", "LIVE2"], session="2026-09-28") == []
+    assert prices.missing_tickers(frame, ["DELISTED"], session="2026-09-28") == [
+        "DELISTED"
+    ]
     closes = frame.xs(pd.Timestamp("2026-09-28"), level="date")["adj_close"]
     assert not pd.isna(closes["LIVE2"]) and pd.isna(closes["DELISTED"])
+
+
+def test_a_name_that_answered_for_the_earlier_sessions_is_retried_for_the_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The retry has to fire on the close, not on the window, and this is why.
+
+    2026-09-29, in the run that carried the prewarm and the retry: CSGP answered for
+    the earlier sessions of the fetched window and had no bar for the close being
+    priced. The window-wide check called it covered, the retry never ran, and the
+    book dropped the name. The gap is the session the book is priced from, so that is
+    what the retry now asks about, and a name recovered that way keeps its place.
+    """
+    days = pd.bdate_range("2026-09-25", "2026-09-29")
+    calls: list[tuple[list[str], bool]] = []
+
+    def _vendor(  # noqa: ANN001
+        tickers, start=None, end=None, progress=False, prewarm=False, threads=True
+    ):
+        calls.append((list(tickers), threads))
+        frame = _long_frame(list(tickers), days)
+        # the bulk pass answered for the earlier sessions and not for the close; the
+        # single-threaded retry is answered for the close, as the vendor would be.
+        # GONE is not answered for on either pass, which is a name that is really
+        # gone rather than a name that was lost.
+        gone = ("CSGP", "GONE") if threads else ("GONE",)
+        for ticker in gone:
+            if ticker in frame.index.get_level_values("ticker"):
+                frame.loc[
+                    (pd.Timestamp("2026-09-29"), ticker), ["close", "adj_close"]
+                ] = float("nan")
+        return frame
+
+    monkeypatch.setattr(extend.prices, "download_prices", _vendor)
+    frame, report = extend.retry_missing_closes(
+        _vendor(["CSGP", "GONE", "AAPL"], threads=True),
+        ["CSGP", "GONE", "AAPL"],
+        start="2026-09-25",
+        end="2026-09-30",
+        session="2026-09-29",
+    )
+
+    assert calls == [
+        (["CSGP", "GONE", "AAPL"], True),
+        (["CSGP", "GONE"], False),
+    ], calls
+    assert report["session"] == "2026-09-29"
+    assert report["missing"] == ["CSGP", "GONE"]
+    assert report["recovered"] == ["CSGP"]
+    assert report["still_missing"] == ["GONE"]
+    assert prices.missing_tickers(
+        frame, ["CSGP", "GONE", "AAPL"], session="2026-09-29"
+    ) == ["GONE"]
 
 
 def test_a_fetch_that_answered_for_everything_is_not_retried(
@@ -268,11 +325,12 @@ def test_a_fetch_that_answered_for_everything_is_not_retried(
         ["LIVE1", "LIVE2"],
         start="2026-09-28",
         end="2026-09-30",
+        session="2026-09-28",
     )
 
     assert calls == []
     assert report["missing"] == [] and report["recovered"] == []
-    assert prices.missing_tickers(frame, ["LIVE1", "LIVE2"]) == []
+    assert prices.missing_tickers(frame, ["LIVE1", "LIVE2"], session="2026-09-28") == []
 
 
 def test_the_live_fetch_asks_for_the_prewarm_and_applies_the_retry(
@@ -282,9 +340,12 @@ def test_the_live_fetch_asks_for_the_prewarm_and_applies_the_retry(
 
     The prewarm is the fetch's own first step (`download_prices(prewarm=True)`)
     rather than a call beside it, so a caller that replaces the fetch cannot leave
-    the prewarm behind and a caller that uses the fetch cannot forget it. What is
-    asserted here is the wiring: the flag reaches the fetch, and the gap the fetch
-    reports is retried single-threaded before the panel is written.
+    the prewarm behind and a caller that uses the fetch cannot forget it. The gap
+    this test leaves is the one that failed on 2026-09-29: the name answers for the
+    earlier session of the window and has no bar for the close being priced, which is
+    a gap only if the retry is asked about that close. Dropping the session from the
+    call here leaves the panel without the price, so the wiring is pinned by the
+    failing case rather than by a name that is missing everywhere.
     """
     from live import snapshot
 
@@ -304,8 +365,13 @@ def test_the_live_fetch_asks_for_the_prewarm_and_applies_the_retry(
         tickers, start=None, end=None, progress=False, prewarm=False, threads=True
     ):
         calls.append((list(tickers), threads, prewarm))
-        blank = ["LIVE2"] if threads else []
-        frame = _long_frame(list(tickers), days, blank=blank)
+        frame = _long_frame(list(tickers), days)
+        # the bulk pass answered for the earlier session and not for the close; the
+        # single-threaded retry is answered for the close, as the vendor would be
+        if threads:
+            frame.loc[(pd.Timestamp("2026-09-28"), "LIVE2"), ["close", "adj_close"]] = (
+                float("nan")
+            )
         # the fake vendor keeps the exclusive-end contract of the real one
         return frame[frame.index.get_level_values("date") < pd.Timestamp(end)]
 
@@ -320,6 +386,6 @@ def test_the_live_fetch_asks_for_the_prewarm_and_applies_the_retry(
     assert added == 1
     panel = pd.read_parquet(root / "raw" / "prices.parquet")
     session = panel.xs(pd.Timestamp("2026-09-28"), level="date")
-    # the name the bulk pass lost is in the panel with a real close, because the
-    # retry's rows replaced the empty ones
+    # the name the bulk pass missed on the close is in the panel with a real price,
+    # because the retry's row replaced the empty one
     assert not pd.isna(session.loc["LIVE2", "close"])

@@ -147,18 +147,41 @@ def prewarm_tz_cache(tickers: list[str], timeout: float = 10.0) -> dict[str, int
     return report
 
 
-def missing_tickers(frame: pd.DataFrame, tickers: list[str]) -> list[str]:
-    """The requested tickers the frame carries no close for at all.
+def missing_tickers(
+    frame: pd.DataFrame, tickers: list[str], *, session: object
+) -> list[str]:
+    """The requested tickers the frame carries no usable close for on `session`.
 
-    A symbol the vendor refused and a symbol that no longer trades look the same
-    here, because both come back with rows and no prices. That is deliberate: each
-    leaves the book with no close to quantize on, so the fetch retries the set and
-    the book drops whatever the retry could not recover.
+    `session` is the close the caller needs, the last session of the window that was
+    asked for, and it is required rather than optional because the looser question
+    hides the case that matters: a name whose earlier sessions came back and whose own
+    bar did not has nothing to quantize on, and asking whether it has a close anywhere
+    in the frame calls it covered.
+
+    Measured on 2026-09-29, in the run that carried the prewarm and the retry: CSGP
+    answered for the earlier sessions of the fetched window and had no bar for the
+    close being priced, the window-wide check called it covered, the single-threaded
+    retry never ran, and the book dropped the name with nothing in the log to say a
+    retry had been skipped. The session reading is the question the book needs
+    answered.
+
+    A symbol the vendor refused and a symbol that no longer trades still look the same
+    here, because both come back with rows and no close: each leaves the book with
+    nothing to quantize on, so the fetch retries the set and the book drops whatever
+    the retry could not recover. `close` is the column read, not `adj_close`, because
+    `close` is the price the quantization divides by.
     """
+    wanted = sorted(set(tickers))
     if frame is None or len(frame) == 0:
-        return sorted({yf_ticker(ticker) for ticker in tickers})
-    covered = covered_tickers(frame)
-    return sorted({ticker for ticker in tickers if ticker not in covered})
+        return wanted
+    dates = frame.index.get_level_values("date")
+    day = frame.loc[dates == pd.Timestamp(session)]
+    if len(day) == 0:
+        return wanted
+    priced = {
+        str(name) for name in day.index.get_level_values("ticker")[day["close"].notna()]
+    }
+    return [ticker for ticker in wanted if ticker not in priced]
 
 
 def download_prices(

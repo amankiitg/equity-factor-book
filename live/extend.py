@@ -99,6 +99,8 @@ def retry_missing_closes(
     tickers: list[str],
     start: str,
     end: str,
+    *,
+    session: str,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Ask the vendor again, one ticker at a time, for the names it skipped.
 
@@ -110,14 +112,21 @@ def retry_missing_closes(
     single-threaded, tells the two apart: a name that comes back was a lost race, and
     a name that does not is unavailable tonight and goes to the book's drop rule.
 
+    `session` is the close the book will be priced from, and it decides who is
+    missing: a name whose earlier sessions came back and whose own bar did not has no
+    close to quantize on, so it is retried like any other. It is required because
+    this ran without one on 2026-09-29 and skipped exactly that case, which is how
+    CSGP was dropped without a retry attempt in a run that had every fix in it.
+
     The retry happens once and is never retried again, so a vendor that refuses
     everything costs one request per missing name and no more. The recovered rows
     replace the empty ones the bulk pass wrote, because the later row wins on the
     same (date, ticker).
     """
-    missing = prices.missing_tickers(frame, tickers)
+    missing = prices.missing_tickers(frame, tickers, session=session)
     report: dict[str, object] = {
         "requested": len(tickers),
+        "session": session,
         "missing": missing,
         "recovered": [],
         "still_missing": missing,
@@ -125,7 +134,7 @@ def retry_missing_closes(
     if not missing:
         return frame, report
     retry = prices.download_prices(missing, start=start, end=end, threads=False)
-    still_missing = prices.missing_tickers(retry, missing)
+    still_missing = prices.missing_tickers(retry, missing, session=session)
     recovered = [ticker for ticker in missing if ticker not in set(still_missing)]
     report["recovered"] = recovered
     report["still_missing"] = still_missing
@@ -133,10 +142,11 @@ def retry_missing_closes(
         combined = pd.concat([frame, retry])
         frame = combined[~combined.index.duplicated(keep="last")].sort_index()
     logger.warning(
-        "the price fetch missed %d of %d requested ticker(s); the single-threaded "
-        "retry recovered %d and %d are still without a close: %s",
+        "the price fetch missed %d of %d requested ticker(s) on %s; the "
+        "single-threaded retry recovered %d and %d are still without a close: %s",
         len(missing),
         len(tickers),
+        session,
         len(recovered),
         len(still_missing),
         ", ".join(still_missing) or "none",
@@ -162,8 +172,11 @@ def extend_prices(
     silently missing name can be caught: the timezone rows are written serially
     before the threaded download starts (see `prices.prewarm_tz_cache`, which is
     what stops the download's own threads from locking the cache), and every
-    requested ticker that came back without a close is asked for once more, single
-    threaded, before the book's drop rule sees it (`retry_missing_closes`).
+    requested ticker without a close on the session being priced is asked for once
+    more, single threaded, before the book's drop rule sees it
+    (`retry_missing_closes`). That session is `end`, the close the book is priced
+    from, and not the rest of the window: a name whose earlier sessions came back and
+    whose own bar did not is exactly the name the retry is for.
 
     Returns the number of new sessions appended. Nothing is overwritten: rows
     already present keep their values.
@@ -183,7 +196,7 @@ def extend_prices(
     start = str(last_date.date())
     tail = prices.download_prices(tickers, start=start, end=window_end, prewarm=True)
     tail, _fetch_report = retry_missing_closes(
-        tail, tickers, start=start, end=window_end
+        tail, tickers, start=start, end=window_end, session=end
     )
     if tail is None or len(tail) == 0:
         return 0

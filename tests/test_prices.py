@@ -373,9 +373,45 @@ def test_missing_tickers_is_the_names_the_frame_never_priced() -> None:
     index = pd.MultiIndex.from_product(
         [dates, ["AAA", "BBB"]], names=["date", "ticker"]
     )
-    frame = pd.DataFrame({"adj_close": [1.0, np.nan, 1.0, np.nan]}, index=index)
-    assert prices.missing_tickers(frame, ["AAA", "BBB"]) == ["BBB"]
-    assert prices.missing_tickers(frame, ["AAA"]) == []
+    frame = pd.DataFrame({"close": [1.0, np.nan, 1.0, np.nan]}, index=index)
+    session = "2026-09-28"
+    assert prices.missing_tickers(frame, ["AAA", "BBB"], session=session) == ["BBB"]
+    assert prices.missing_tickers(frame, ["AAA"], session=session) == []
     # nothing came back at all, which is the case the prewarm cannot help with
-    assert prices.missing_tickers(None, ["AAA", "BBB"]) == ["AAA", "BBB"]
-    assert prices.missing_tickers(pd.DataFrame(), ["AAA"]) == ["AAA"]
+    assert prices.missing_tickers(None, ["AAA", "BBB"], session=session) == [
+        "AAA",
+        "BBB",
+    ]
+    assert prices.missing_tickers(pd.DataFrame(), ["AAA"], session=session) == ["AAA"]
+    # a frame that does not carry the session at all is missing everything on it
+    assert prices.missing_tickers(frame, ["AAA"], session="2026-09-30") == ["AAA"]
+    # and a name that is priced on that session is not missing, whatever the rest of
+    # the window looks like
+    assert prices.missing_tickers(frame, ["AAA"], session="2026-09-29") == []
+
+
+def test_missing_tickers_reads_the_session_the_book_is_priced_from() -> None:
+    """A name priced on the earlier sessions and not on the close is missing.
+
+    This is CSGP on 2026-09-29, in the run that had every fix in it: the fetched
+    window came back for the name on the earlier sessions and had no bar for the
+    close being priced. The window-wide check called that covered, so the
+    single-threaded retry never ran and the book dropped the name without the log
+    saying a retry had been skipped. The session reading is the question the book
+    needs answered, and the window reading is not a substitute for it.
+    """
+    days = pd.bdate_range("2026-09-25", "2026-09-29")
+    index = pd.MultiIndex.from_product(
+        [days, ["CSGP", "AAPL"]], names=["date", "ticker"]
+    )
+    frame = pd.DataFrame({"close": 1.0}, index=index)
+    frame.loc[(pd.Timestamp("2026-09-29"), "CSGP"), "close"] = float("nan")
+
+    # the name answered for the earlier sessions of the window
+    closes = frame.index.get_level_values("date")
+    earlier = frame.loc[closes < pd.Timestamp("2026-09-29")]
+    assert prices.missing_tickers(earlier, ["CSGP"], session="2026-09-28") == []
+    # and has nothing on the close the book is priced from
+    assert prices.missing_tickers(frame, ["CSGP", "AAPL"], session="2026-09-29") == [
+        "CSGP"
+    ]
