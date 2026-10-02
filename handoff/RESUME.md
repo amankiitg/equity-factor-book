@@ -38,6 +38,10 @@ Left for the first week, unchanged by these batches: the holding versus trading
 cost labels, rebasing e12, the static snapshot fields, and the documentation
 corrections.
 
+- Spinoff detection: check whether Alpaca's corporate-action announcements cover
+  spinoffs like CTVA/Vylor 2026-10-01; if so, cross-check large moves against them
+  before they reach the fit.
+
 - `pd.DataFrame` is `Any` to mypy here, so a function declared to return one can
   return nothing with `make lint` green: `pandas` ships no `py.typed` in this
   environment and sits in the `ignore_missing_imports` override (a probe declared
