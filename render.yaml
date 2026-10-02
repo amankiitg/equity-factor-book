@@ -20,10 +20,16 @@
 #
 # UTC cron schedules:
 #   "30 22 * * 1-5" = 18:30 EDT / 17:30 EST, after the 16:00 ET close.
-#   "0 14 * * 1-5"  = 10:00 EDT / 9:00 EST, the next morning: a DAY order placed
-#                     the evening before has expired or filled by then, and the
-#                     account is read before that day's open, so the fills of the
-#                     previous close cannot be confused with the next one's.
+#   "0 15 * * 1-5"  = 11:00 EDT / 10:00 EST, the next morning: a DAY order placed
+#                     the evening before has filled at the 09:30 ET open or been
+#                     cancelled, and the book is read before that day's evening.
+#                     14:00 UTC was the first choice and is wrong for half the
+#                     year: it is 10:00 EDT (after the open) but 09:00 EST, half
+#                     an hour BEFORE the open, when every leg is still working and
+#                     the reconciliation would record the whole book as unfilled.
+#                     15:00 UTC is after the open in both halves of the year, and
+#                     `tests/test_week1_fills_cron.py` pins that against the
+#                     exchange's own calendar on both sides of the DST change.
 #
 # The run refuses outside 16:00-20:00 New York, the after-hours session Alpaca
 # holds a DAY order for, unless EFB_FORCE_HOUR is exactly "true". The slot above
@@ -31,16 +37,32 @@
 # and never for this cron.
 #
 # Secret isolation:
-#   Cron 1 gets EFB_SUPABASE_DB_URL (the write role's connection string),
-#   EFB_DB_SCHEMA, EFB_ALPACA_PAPER_*, EFB_ALPACA_ACCOUNT_ID, EFB_DRY_RUN,
-#   EFB_STORE is deliberately absent, the notification credentials and the R2
-#   credentials. The R2 token is scoped to the one bucket with object read and
-#   write.
-#   Cron 2 gets the same database, broker, notification and R2 names, and
-#   deliberately none of EFB_DRY_RUN, EFB_INIT_STORE or the EFB_SEED_R2_* four:
-#   it has no switch that could make it trade, no seed bucket to read and nothing
-#   to initialize. It holds no credential cron 1 does not already hold.
-#   Env var VALUES are set manually in the Render dashboard (sync: false).
+#   Both crons take the same one environment group, `efb-live`, so each shared
+#   key exists once in the workspace and two services cannot drift apart on it.
+#   The group holds exactly these thirteen keys, no more:
+#     EFB_SUPABASE_DB_URL      the write role's connection string
+#     EFB_DB_SCHEMA            `efb`
+#     EFB_ALPACA_PAPER_API_KEY / EFB_ALPACA_PAPER_SECRET_KEY  the paper keys
+#     EFB_ALPACA_ACCOUNT_ID    the account those keys must reach, checked every run
+#     EFB_RESEND_API_KEY / EFB_NOTIFY_EMAIL_FROM / EFB_NOTIFY_EMAIL_TO
+#     EFB_SNAPSHOT             the switch the writer requires
+#     EFB_R2_ACCOUNT_ID / EFB_R2_BUCKET / EFB_R2_ACCESS_KEY_ID /
+#     EFB_R2_SECRET_ACCESS_KEY the snapshot bucket, scoped to that one bucket
+#   The evening cron adds four keys of its own, and they stay on it so cron 2
+#   cannot get them: EFB_DRY_RUN (the switch that makes a run trade), EFB_INIT_STORE
+#   (the one-time seed request) and the EFB_SEED_R2_* four (history it must not
+#   read, let alone write). EFB_STORE is deliberately absent everywhere.
+#
+#   The group's VALUES are not in this file and are not `sync: false` either:
+#   Render ignores `sync: false` inside an environment group, so a group declared
+#   here would come out empty and every key would be missing. The group is created
+#   in the dashboard (Env Groups -> New Environment Group, named `efb-live`) and
+#   referenced by name from both services. See the merge-day checklist in
+#   `docs/week1_orders_runbook.md` for the exact order of the steps: the group
+#   must exist and carry the values before this file is synced, and the moved keys
+#   must then be deleted from each service's own Environment page, because a
+#   service-level value always beats a linked group's.
+#
 #   This file commits the KEY names only; no credentials appear here.
 
 services:
@@ -59,10 +81,7 @@ services:
     schedule: "30 22 * * 1-5"
     startCommand: python scripts/run_live_daily.py
     envVars:
-      - key: EFB_SUPABASE_DB_URL
-        sync: false
-      - key: EFB_DB_SCHEMA
-        sync: false
+      - fromGroup: efb-live
       # The explicit first-run request, set for the first run only. Unset or
       # "false" is a normal run, "true" seeds the store from the git artifacts and
       # writes its marker, and any other value is an error that names it. The
@@ -70,45 +89,16 @@ services:
       # flag left set on a seeded store fails the run loudly.
       - key: EFB_INIT_STORE
         sync: false
-      - key: EFB_ALPACA_PAPER_API_KEY
-        sync: false
-      - key: EFB_ALPACA_PAPER_SECRET_KEY
-        sync: false
-      # The account the keys have to reach, which is the account number Alpaca
-      # shows in its dashboard (the PA... value), not the internal id: the point
-      # of naming it is that the owner can read it back and check it. Every run
-      # compares the number the broker reports against this one and refuses when
-      # they differ, because EFB's keys and the credit lab's are both paper
-      # accounts under one login and a key pasted from the wrong project trades
-      # the wrong book. Unset refuses as well: a guard that cannot say which
-      # account the keys reach is not a guard. `python scripts/verify_account.py`
-      # prints the number to copy from.
-      - key: EFB_ALPACA_ACCOUNT_ID
-        sync: false
       - key: EFB_DRY_RUN
         sync: false
-      # The notification credentials belong to the cron alone: nothing else
-      # sends a message. The key is EFB's own Resend key with sending access
-      # only, and the two addresses are the owner's own. Values go in the Render
-      # dashboard, never here, and never in git.
-      - key: EFB_RESEND_API_KEY
-        sync: false
-      - key: EFB_NOTIFY_EMAIL_FROM
-        sync: false
-      - key: EFB_NOTIFY_EMAIL_TO
-        sync: false
-      # The report's surface: one JSON object per run, uploaded to R2. The switch
-      # is required, so neither default is assumed: `off` is allowed only while
-      # EFB_DRY_RUN is true, and with dry_run false it is an error.
-      - key: EFB_SNAPSHOT
-        sync: false
-      # The seed bucket, read-only here. The frozen history lives in `efb-seed`, a
-      # private bucket of its own, separate from the snapshot bucket: every parquet
-      # under data/ is gitignored, so the deploy image holds no artifacts at all,
-      # and a run downloads the seed and verifies every hash before it reads
-      # anything. The local .env holds a write token under these same names for
-      # scripts/push_seed.py, which refuses to run where RENDER is set, so the cron
-      # has no write path into history. The bucket name defaults to efb-seed.
+      # The seed bucket, read-only here, and absent from cron 2. The frozen
+      # history lives in `efb-seed`, a private bucket of its own, separate from the
+      # snapshot bucket: every parquet under data/ is gitignored, so the deploy
+      # image holds no artifacts at all, and a run downloads the seed and verifies
+      # every hash before it reads anything. The local .env holds a write token
+      # under these same names for scripts/push_seed.py, which refuses to run where
+      # RENDER is set, so the cron has no write path into history. The bucket name
+      # defaults to efb-seed.
       - key: EFB_SEED_R2_ACCOUNT_ID
         sync: false
       - key: EFB_SEED_R2_BUCKET
@@ -117,25 +107,22 @@ services:
         sync: false
       - key: EFB_SEED_R2_SECRET_ACCESS_KEY
         sync: false
-      - key: EFB_R2_ACCOUNT_ID
-        sync: false
-      # The snapshot bucket is `efb-snapshots`: private, and read by the Cloudflare
-      # Worker through an R2 binding, so the browser never reaches it and no key
-      # reaches the browser either. The token here is scoped to that one bucket.
-      - key: EFB_R2_BUCKET
-        sync: false
-      - key: EFB_R2_ACCESS_KEY_ID
-        sync: false
-      - key: EFB_R2_SECRET_ACCESS_KEY
-        sync: false
 
   # The morning after: what the broker actually did with the previous evening's
   # orders, and what the account holds as a result. Read-only by construction --
   # `scripts/reconcile_fills.py` has no sizing and no submit path, and the test
-  # for it walks the module's own imports and calls to prove it -- so it is
-  # separate from the evening's run rather than a step inside it: the evening's
-  # job is the one that trades, and a failure to read a fill back should not be
-  # able to stop it, nor be silently swallowed by it.
+  # for it walks the module's own syntax tree to prove it -- so it is separate
+  # from the evening's run rather than a step inside it: the evening's job is the
+  # one that trades, and a failure to read a fill back should not be able to stop
+  # it, nor be silently swallowed by it.
+  #
+  # The group above is its whole environment: it reads the account, the store and
+  # the published snapshot, writes `efb.fills` and the section, and emails. Every
+  # variable it opens is one of `efb-live`'s thirteen, which is asserted at run
+  # time rather than assumed (`tests/test_week1_fills_cron.py` watches the job's
+  # own `os.environ` reads and fails if it grows a key the group does not have).
+  # `EFB_DRY_RUN`, `EFB_INIT_STORE` and the seed bucket's four stay off this
+  # service: this job never trades, has nothing to seed and reads no history.
   #
   # It is also the only job that reads the published snapshot back, adds the one
   # section describing the account, and writes it again. That is what makes the
@@ -149,45 +136,7 @@ services:
     # 2.14 GiB of work, and an unmeasured job is not the place to save on memory.
     plan: 2c-4g
     buildCommand: pip install -r requirements.txt && pip install -e .
-    schedule: "0 14 * * 1-5"
+    schedule: "0 15 * * 1-5"
     startCommand: python scripts/reconcile_fills.py
     envVars:
-      - key: EFB_SUPABASE_DB_URL
-        sync: false
-      - key: EFB_DB_SCHEMA
-        sync: false
-      - key: EFB_ALPACA_PAPER_API_KEY
-        sync: false
-      - key: EFB_ALPACA_PAPER_SECRET_KEY
-        sync: false
-      # The account the keys have to reach. It has to be here for the same reason
-      # it is on the evening cron: this job's whole output is a claim about what
-      # that account holds, and a read of the wrong account would be written down
-      # as the owner's.
-      - key: EFB_ALPACA_ACCOUNT_ID
-        sync: false
-      - key: EFB_RESEND_API_KEY
-        sync: false
-      - key: EFB_NOTIFY_EMAIL_FROM
-        sync: false
-      - key: EFB_NOTIFY_EMAIL_TO
-        sync: false
-      # The switch is required by the writer, and `off` is allowed only while
-      # EFB_DRY_RUN is true. It must be on here: the section this job adds is the
-      # only thing that tells the page what the account holds.
-      - key: EFB_SNAPSHOT
-        sync: false
-      - key: EFB_R2_ACCOUNT_ID
-        sync: false
-      - key: EFB_R2_BUCKET
-        sync: false
-      - key: EFB_R2_ACCESS_KEY_ID
-        sync: false
-      # Read for the published `expected_cost_bps`, and write for the section:
-      # the same bucket-scoped token the evening cron holds.
-      - key: EFB_R2_SECRET_ACCESS_KEY
-        sync: false
-      # Absent on purpose, and worth naming so nobody adds them:
-      #   EFB_DRY_RUN     this job never trades, so it has no switch to flip
-      #   EFB_INIT_STORE  there is nothing here to seed
-      #   EFB_SEED_R2_*   it reads no history, so it needs no history bucket
+      - fromGroup: efb-live

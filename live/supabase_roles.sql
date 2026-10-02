@@ -33,7 +33,7 @@ create role efb_writer login password 'REPLACE_WITH_A_LONG_RANDOM_PASSWORD';
 -- DELETE runs every evening: `replace_by_date` is how the day's positions, the
 -- broker's own book and the day's orders are written, so a missing privilege
 -- fails the first order-writing run, not a rerun. `efb.fills` is the fourth: the
--- 14:00 UTC cron replaces the date it reconciles, so it needs DELETE there too
+-- 15:00 UTC cron replaces the date it reconciles, so it needs DELETE there too
 -- even though the evening's own run never touches it.
 grant usage on schema efb to efb_writer;
 grant select, insert, update on all tables in schema efb to efb_writer;

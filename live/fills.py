@@ -31,9 +31,13 @@ import pandas as pd
 
 from live import alpaca
 
-# The statuses an order can be in when it is still working at the broker. A DAY
-# order from the previous evening is out of this set by the next afternoon,
-# which is what makes 14:00 UTC the right hour to ask.
+# The statuses an order can be in when it is still working at the broker, which is
+# what the reconciler must not mistake for a miss: a DAY order from the previous
+# evening is out of this set by the next morning because it fills at the 09:30 New
+# York open, which is why the job runs at 15:00 UTC (after that open in EST and
+# EDT alike) rather than at 14:00 UTC (after it only in EDT). A leg still in this
+# set is reported with its status word, and its `cancel_time` is null because it
+# has not been cancelled.
 WORKING = (
     "NEW",
     "ACCEPTED",

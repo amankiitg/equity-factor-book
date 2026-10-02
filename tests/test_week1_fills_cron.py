@@ -414,3 +414,172 @@ def test_the_job_has_no_sizing_and_no_submit_path_in_its_own_source() -> None:
     # and the two entry points it does use are the read-only pair
     assert "run_live_daily.already_ran" in source
     assert "run_live_daily.record_run" in source
+
+
+def test_the_slot_is_after_the_open_on_both_sides_of_the_dst_change() -> None:
+    """15:00 UTC, and the reason it is not 14:00: the open moves, the slot cannot.
+
+    A market DAY order from the previous evening fills at the 09:30 New York open,
+    and until then the reconciler counts the leg as working rather than filled. So
+    the slot has to be after that open in EST and in EDT, and 14:00 UTC is after it
+    in only one of the two (10:00 EDT, but 09:00 EST, half an hour early). The open
+    comes from the exchange's own calendar rather than from an assumed offset, so a
+    holiday or a half day is the calendar's answer and not this test's.
+    """
+    hour, minute = reconcile_fills.RUN_SLOT_UTC
+    for day in ("2026-10-05", "2026-11-02", "2026-12-01", "2027-03-08", "2027-03-15"):
+        session = pd.Timestamp(day)
+        assert staleness.is_session(session), f"{day} is not a session to test"
+        opened = (
+            staleness.calendar()
+            .schedule(start_date=day, end_date=day, tz="UTC")["market_open"]
+            .iloc[0]
+        )
+        at = pd.Timestamp(day, tz="UTC") + pd.Timedelta(hours=hour, minutes=minute)
+        assert at > opened, f"{day}: {hour:02d}:{minute:02d} UTC is before the open"
+
+        # the wrong slot, and the change of daylight time that makes it wrong
+        early = pd.Timestamp(day, tz="UTC") + pd.Timedelta(hours=14)
+        on_dst = at.tz_convert("America/New_York").dst() != pd.Timedelta(0)
+        assert (early > opened) is on_dst, (
+            f"{day}: 14:00 UTC is after the open only while New York is on daylight "
+            f"time, and this day is {'EDT' if on_dst else 'EST'}"
+        )
+
+
+def test_the_environment_group_holds_every_variable_the_job_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The job's environment, from three sides: the run, the source, the module names.
+
+    The group is where its keys come from, and Render ignores `sync: false` inside
+    a group, so the group's list cannot be machine-read from the blueprint: it is
+    written in `render.yaml`'s header and mirrored in `tests/test_e11_render.py`.
+    This is the other half of that check, from the code side, so that a new
+    credential cannot be added to the path and be quietly missing in the deployment.
+
+    1. The run, watched: every `EFB_*` key the job opens while it reconciles a real
+       (fake-broker) morning is one the group must hold.
+    2. The source, scanned: every `os.environ` name in the files this job reads
+       through is either in the group or in the list below of things read but not
+       needed, with the reason.
+    3. The declared names: the four modules' own constants for the credentials
+       they need are exactly the group's list, so the two cannot drift.
+    """
+    import os
+    import re
+
+    from live import notify, snapshot, store
+    from tests.test_e11_render import SHARED_KEYS
+
+    class _Watched:
+        """`os.environ`, recording the name of every key read through it."""
+
+        def __init__(self, real: Any) -> None:
+            self._real = real
+            self.read: set[str] = set()
+
+        def __getitem__(self, key: str) -> str:
+            self.read.add(str(key))
+            return self._real[key]
+
+        def get(self, key: str, default: Any = None) -> Any:
+            self.read.add(str(key))
+            return self._real.get(key, default)
+
+        def __contains__(self, key: object) -> bool:
+            self.read.add(str(key))
+            return key in self._real
+
+        def setdefault(self, key: str, default: Any = None) -> Any:
+            self.read.add(str(key))
+            return self._real.setdefault(key, default)
+
+        def __setitem__(self, key: str, value: str) -> None:
+            self._real[key] = value
+
+        def keys(self) -> Any:
+            return self._real.keys()
+
+    # Read somewhere along this path but deliberately NOT in the group, unset in
+    # production, or not a credential at all.
+    read_but_not_required = {
+        # The local-store override, read by `store.store_label` for the message.
+        # Unset on Render: a job that could be pointed at a local parquet on the
+        # deployment box would report a reconciliation of a store nobody reads.
+        "EFB_STORE",
+        # Read by `store.init_store_flag()`, which only the first run's seeding path
+        # calls. This job never calls it.
+        "EFB_INIT_STORE",
+        # Read at import by the broker module for its rate limit, default 0.35s.
+        "EFB_MIN_SUBMIT_INTERVAL_SECS",
+        # Read by `run_live_daily.main` (the evening run), which this job does not
+        # call: it imports two functions from that module and neither reads it.
+        "EFB_DRY_RUN",
+        "EFB_FORCE_HOUR",
+    }
+    files = (
+        "scripts/reconcile_fills.py",
+        "live/fills.py",
+        "live/alpaca.py",
+        "live/positions.py",
+        "live/store.py",
+        "live/snapshot.py",
+        "live/notify.py",
+        "scripts/run_live_daily.py",
+    )
+
+    # 2. the source scan
+    pattern = re.compile(
+        """os\\.environ(?:\\.get\\(|\\[|\\.setdefault\\()\\s*["']([A-Z_]+)["']"""
+    )
+    found: set[str] = set()
+    for name in files:
+        source = (ROOT / name).read_text()
+        found.update(match.group(1) for match in pattern.finditer(source))
+    missing = sorted(
+        key
+        for key in found
+        if key.startswith("EFB_")
+        and key not in set(SHARED_KEYS)
+        and key not in read_but_not_required
+    )
+    assert not missing, f"the job reads {missing}, which the group does not hold"
+
+    # 3. the declared names, built from the modules' own constants
+    declared = {
+        store.URL_ENV,  # EFB_SUPABASE_DB_URL
+        "EFB_DB_SCHEMA",  # store.schema(), read as a literal
+        "EFB_ALPACA_PAPER_API_KEY",  # alpaca.connect(), read as literals
+        "EFB_ALPACA_PAPER_SECRET_KEY",
+        alpaca.ACCOUNT_ID_ENV,
+        notify.API_KEY_ENV,
+        notify.FROM_ENV,
+        notify.TO_ENV,
+        snapshot.SNAPSHOT_ENV,
+        *snapshot.R2_ENVS,
+    }
+    assert declared == set(SHARED_KEYS)
+
+    # 1. the run, watched
+    harness = _install(
+        monkeypatch, tmp_path, broker_orders={"oid-dg": _order("filled")}
+    )
+    watched = _Watched(os.environ)
+    # Installed through monkeypatch rather than by assignment: `os.environ = x` is a
+    # known trap (the real environment stays behind it), and here the stand-in does
+    # delegate every read and write to the real one.
+    monkeypatch.setattr(os, "environ", watched)
+    code = reconcile_fills.main([])
+
+    assert code == 0, harness.recorded
+    unexplained = sorted(
+        name
+        for name in watched.read
+        if name.startswith("EFB_")
+        and name not in set(SHARED_KEYS)
+        and name not in read_but_not_required
+    )
+    assert not unexplained, f"the run read {unexplained}, which the group does not hold"
+    # the store's own key was read, so the watch was watching the right run
+    assert "EFB_SUPABASE_DB_URL" in watched.read
