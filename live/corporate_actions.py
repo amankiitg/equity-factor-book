@@ -268,24 +268,44 @@ SPINOFF_SOURCE = "alpaca.corporate_actions"
 
 @dataclass(frozen=True)
 class Spinoff:
-    """One vendor spin-off record: the parent, the child and the share ratio."""
+    """One vendor spin-off record: the parent, the child and the share ratio.
+
+    `child_per_parent` is None when the record cannot be used at all, and
+    `unusable_reason` then says in one phrase what is missing. A record like that is
+    kept rather than dropped: the parent's cell still has to be nulled and the owner
+    still has to be told the name, which is the same shape as a child whose close
+    cannot be read.
+    """
 
     parent: str
     child: str
     ex_date: pd.Timestamp
-    child_per_parent: float
+    child_per_parent: float | None
     source_rate: float = 1.0
     new_rate: float = 1.0
     source: str = SPINOFF_SOURCE
+    unusable_reason: str | None = None
+
+    @property
+    def applicable(self) -> bool:
+        """Whether the record carries a ratio the rule can apply."""
+        return self.unusable_reason is None
 
     @property
     def ratio_label(self) -> str:
         """`1:1` style, for a message."""
+        if self.child_per_parent is None:
+            return "no ratio"
         return f"{self.child_per_parent:g}:1"
 
     @property
     def label(self) -> str:
         """`spinoff: CTVA -> VYLR 1:1 applied`, in the split line's own shape."""
+        if not self.applicable:
+            return (
+                f"spinoff: {self.parent} -> {self.child or '?'} not applied: "
+                f"{self.unusable_reason}"
+            )
         return f"spinoff: {self.parent} -> {self.child} {self.ratio_label} applied"
 
 
@@ -295,8 +315,10 @@ class SpinoffOutcome:
 
     `raw_return` is the print the artifact carried before the rule touched it: it is
     what the 40% flag reads and what a person has to be able to find afterwards.
-    `adjusted_return` is what the row now holds, or None when the child's close
-    could not be read and the cell was nulled instead.
+    `adjusted_return` is what the row now holds, or None when the cell was nulled
+    instead, which happens for two reasons that have to stay apart: the child's close
+    could not be read (`missing_child`), or the vendor's own record could not be used
+    at all (`unusable_record`).
     """
 
     spinoff: Spinoff
@@ -306,8 +328,13 @@ class SpinoffOutcome:
     child_close: float | None
 
     @property
+    def unusable_record(self) -> bool:
+        """Whether the vendor's record itself carried no usable ratio."""
+        return not self.spinoff.applicable
+
+    @property
     def missing_child(self) -> bool:
-        return self.child_close is None
+        return self.child_close is None and not self.unusable_record
 
     @property
     def raises_flag(self) -> bool:
@@ -317,7 +344,7 @@ class SpinoffOutcome:
         for, and a nulled cell is always worth saying: the one thing that must not
         happen is a row that changed for a reason nothing records.
         """
-        if self.missing_child:
+        if self.missing_child or self.unusable_record:
             return True
         raw = self.raw_return
         return raw is not None and abs(raw) > LARGE_MOVE
@@ -332,9 +359,15 @@ def vendor_spinoffs(
 
     Asked for the universe and filtered to the day, because the action is only
     relevant when its ex-date is the session being appended. A record for a name
-    the book does not hold is dropped; a record for one it does hold that cannot be
-    used raises, for the same reason the split rule raises: a raw print left in the
-    fit because a vendor field was empty is a number nobody can explain.
+    the book does not hold is dropped.
+
+    A record for one it does hold that cannot be used, whether because it names no
+    child symbol or because its rates cannot form a share ratio, is kept with
+    `child_per_parent` None rather than raising. The evening goes on, that one cell
+    is nulled so the raw print cannot be read as a return, and the phrase in
+    `unusable_reason` is what the message names. Stopping the run would be worse than
+    the hole: the orders are sent before this rule runs, and a vendor field coming
+    back empty is not the book's problem to solve by refusing to price it.
     """
     names = sorted({str(ticker) for ticker in universe if str(ticker)})
     if not names:
@@ -349,29 +382,32 @@ def vendor_spinoffs(
         child = str(record.get("child") or "").strip()
         source_rate = float(record.get("source_rate") or 0.0)
         new_rate = float(record.get("new_rate") or 0.0)
-        if (
-            not child
-            or not math.isfinite(source_rate)
+        when = record.get("ex_date")
+        ex_date = _normalized(session if when is None else when)
+        unusable: str | None = None
+        if not child:
+            unusable = "no child symbol"
+        elif (
+            not math.isfinite(source_rate)
             or not math.isfinite(new_rate)
             or source_rate <= 0
             or new_rate <= 0
         ):
-            raise ValueError(
-                f"{parent}: the vendor reports a spin-off on "
-                f"{_normalized(session).date()} with source_rate {source_rate!r} "
-                f"and new_rate {new_rate!r}, which cannot be turned into a share "
-                f"ratio, so the run stops rather than guessing what the return was"
+            unusable = (
+                f"source_rate {source_rate!r} and new_rate {new_rate!r} cannot "
+                f"form a share ratio"
             )
-        when = record.get("ex_date")
-        ex_date = _normalized(session if when is None else when)
         out.append(
             Spinoff(
                 parent=parent,
                 child=child,
                 ex_date=ex_date,
-                child_per_parent=new_rate / source_rate,
+                child_per_parent=(
+                    None if unusable is not None else new_rate / source_rate
+                ),
                 source_rate=source_rate,
                 new_rate=new_rate,
+                unusable_reason=unusable,
             )
         )
     return sorted(out, key=lambda spinoff: (spinoff.parent, spinoff.child))
@@ -447,9 +483,11 @@ def _apply_spinoff(
     """Correct the parent's appended return, or null the one cell.
 
     Returns None when there is no row to correct, which is the ordinary case for a
-    parent outside tonight's panel. A child whose close cannot be read nulls the
-    parent's return rather than leaving the raw print in the fit: a null is a hole
-    the hygiene layer reports, and the raw print is a number that is wrong.
+    parent outside tonight's panel. Two things null the cell rather than leaving the
+    raw print in the fit, because a null is a hole the hygiene layer reports and the
+    raw print is a number that is wrong: a child whose close cannot be read, and a
+    record the rule cannot use at all (no ratio to apply). The second is checked
+    before a single price is looked up, because there is nothing to compute with.
     """
     session = spinoff.ex_date
     parent = spinoff.parent
@@ -457,6 +495,12 @@ def _apply_spinoff(
         return None
     raw = frame.loc[(session, parent), "r"]
     raw_value = None if pd.isna(raw) else float(raw)
+    ratio = spinoff.child_per_parent
+    if ratio is None:
+        # The vendor's own record carried no usable ratio, so there is nothing to
+        # compute with: the cell is nulled before a single price is looked up.
+        _set_return(frame, session, parent, float("nan"))
+        return SpinoffOutcome(spinoff, session, raw_value, None, None)
     previous = _close_before(prices_frame, parent, session)
     parent_close = _close_on(prices_frame, parent, session)
     child = _close_on(prices_frame, spinoff.child, session)
@@ -468,7 +512,7 @@ def _apply_spinoff(
     value = spinoff_return(
         parent_close=parent_close,
         child_close=float(child),
-        child_per_parent=spinoff.child_per_parent,
+        child_per_parent=float(ratio),
         parent_previous_close=previous,
     )
     _set_return(frame, session, parent, value)
@@ -490,7 +534,9 @@ def spinoff_flags(
         if event.session != session or not event.raises_flag:
             continue
         label = event.spinoff.label
-        if event.missing_child:
+        if event.unusable_record:
+            label = f"{label}, so the return was nulled"
+        elif event.missing_child:
             label = (
                 f"{label}, the {event.spinoff.child} close is missing so the "
                 f"return was nulled"
@@ -518,28 +564,38 @@ def spinoff_rows(
     occupies, and `explained_by` says which of the two the row is. The
     cross-check ratio is null: a spin-off is not a back-adjustment, so there is
     nothing to cross-check it against.
+
+    Only records that were applied get a row: a record whose rates cannot form a
+    ratio has no factor to write, and nothing was applied with it. It is not
+    silent - the flag carries it and the message names the parent - but it does not
+    belong in a table of corporate actions the rule used.
     """
     stamp = pd.Timestamp(trade_date).date().isoformat()
-    return [
-        {
-            "trade_date": stamp,
-            "ticker": event.spinoff.parent,
-            "effective_date": event.spinoff.ex_date.date().isoformat(),
-            "factor": float(event.spinoff.child_per_parent),
-            "source": event.spinoff.source,
-            "cross_check_ratio": None,
-            "explained_by": "spinoff",
-            "new_ticker": event.spinoff.child,
-            "source_rate": float(event.spinoff.source_rate),
-            "new_rate": float(event.spinoff.new_rate),
-        }
-        for event in events
-    ]
+    rows: list[dict[str, Any]] = []
+    for event in events:
+        ratio = event.spinoff.child_per_parent
+        if ratio is None:
+            continue
+        rows.append(
+            {
+                "trade_date": stamp,
+                "ticker": event.spinoff.parent,
+                "effective_date": event.spinoff.ex_date.date().isoformat(),
+                "factor": float(ratio),
+                "source": event.spinoff.source,
+                "cross_check_ratio": None,
+                "explained_by": "spinoff",
+                "new_ticker": event.spinoff.child,
+                "source_rate": float(event.spinoff.source_rate),
+                "new_rate": float(event.spinoff.new_rate),
+            }
+        )
+    return rows
 
 
 def describe_spinoffs(events: list[SpinoffOutcome]) -> list[str]:
-    """`spinoff: CTVA -> VYLR 1:1 applied` per event, for the message."""
-    return [event.spinoff.label for event in events]
+    """`spinoff: CTVA -> VYLR 1:1 applied` per applied spin-off, for the message."""
+    return [event.spinoff.label for event in events if event.spinoff.applicable]
 
 
 def missing_child_notes(events: list[SpinoffOutcome]) -> list[str]:
@@ -548,6 +604,20 @@ def missing_child_notes(events: list[SpinoffOutcome]) -> list[str]:
         f"{event.spinoff.child} ({event.spinoff.parent})"
         for event in events
         if event.missing_child
+    ]
+
+
+def unusable_spinoff_notes(events: list[SpinoffOutcome]) -> list[str]:
+    """`CTVA (no child symbol)` per record whose own fields could not be used.
+
+    The parent is named because the parent is the row that was nulled, and the
+    reason is named because "we could not use it" is not something the owner can
+    take to the vendor.
+    """
+    return [
+        f"{event.spinoff.parent} ({event.spinoff.unusable_reason})"
+        for event in events
+        if event.unusable_record
     ]
 
 
@@ -873,8 +943,9 @@ def apply_to_append(
     the frame at all, they are handed in per session as the vendor's own records,
     and the parent's return is computed from the parent's and the child's raw closes
     plus the share ratio. `child_close` is where a child the panel does not price is
-    read from, and the one case that is not an error is a missing child close: that
-    single cell is nulled and the run goes on.
+    read from. Neither of the two things that can go wrong here stops the run: a
+    child close that cannot be read, and a record the rule cannot use at all, each
+    null that one cell, and the message names the name and the reason.
     """
     sessions = appended_sessions(returns_frame, since)
     if not sessions:
@@ -930,7 +1001,7 @@ def apply_to_append(
         {
             event.spinoff.parent: event.spinoff.label
             for event in events
-            if event.session == last
+            if event.session == last and event.spinoff.applicable
         }
     )
     flags = flag_large_moves(tail, explained=explained)

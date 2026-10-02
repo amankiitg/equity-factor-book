@@ -392,12 +392,19 @@ def test_a_record_for_another_day_or_another_name_is_dropped():
     assert ca.vendor_spinoffs(SESSION, [], fetcher=lambda s, d: records) == []
 
 
-def test_a_record_we_cannot_use_stops_the_run_naming_the_name():
-    """A vendor field we cannot turn into a ratio is not guessed at.
+def test_a_record_we_cannot_use_nulls_that_one_cell_and_names_it():
+    """A vendor field that cannot become a ratio is neither guessed at nor fatal.
 
-    The alternative is a -84% print left in the fit because a rate came back empty,
-    which is a number nobody can explain and no flag would catch. The refusal names
-    the parent and both rates.
+    Leaving the print is the one thing that must not happen: a -84% in the fit
+    because a rate came back empty is a number nobody can explain and no flag would
+    catch. Stopping the run is the other thing that must not happen, and it is the
+    worse of the two: the evening's orders are sent before this rule runs, so an
+    empty vendor field would turn a bad record into a lost evening. So the parent's
+    cell is nulled, the record is named in the message with its own reason, and the
+    run goes on - the same shape as the missing-child rule beside it.
+
+    The control is in the same test: the same frames with a usable record still get
+    the corrected cell, so the two paths are not one path wearing two names.
     """
     bad = [
         {
@@ -408,8 +415,97 @@ def test_a_record_we_cannot_use_stops_the_run_naming_the_name():
             "new_rate": 0.0,
         }
     ]
-    with pytest.raises(ValueError, match="CTVA"):
-        ca.vendor_spinoffs(SESSION, ["CTVA"], fetcher=lambda s, d: bad)
+    found = ca.vendor_spinoffs(SESSION, ["CTVA"], fetcher=lambda s, d: bad)
+
+    assert len(found) == 1
+    assert not found[0].applicable
+    assert found[0].child_per_parent is None
+    assert found[0].ratio_label == "no ratio"
+    assert found[0].unusable_reason == (
+        "source_rate 0.0 and new_rate 0.0 cannot form a share ratio"
+    )
+
+    frame, prices = ctva_frames()
+    outcome = ca.apply_to_append(
+        frame,
+        prices,
+        since=PRIOR,
+        spinoffs={SESSION: found},
+        child_close=lambda ticker, session: VYLR_CLOSE,
+    )
+
+    assert pd.isna(frame.loc[(SESSION, "CTVA"), "r"])
+    assert float(frame.loc[(SESSION, "AAA"), "r"]) == 0.02
+    assert float(frame.loc[(PRIOR, "CTVA"), "r"]) == 0.001
+    # Named with the rate and not with the child: a close is not what is wrong here,
+    # and the note has to be specific enough to act on.
+    assert ca.unusable_spinoff_notes(outcome.spinoffs) == [
+        "CTVA (source_rate 0.0 and new_rate 0.0 cannot form a share ratio)"
+    ]
+    assert ca.missing_child_notes(outcome.spinoffs) == []
+    # Nothing was applied with it, so there is no action to record and no line
+    # claiming one was.
+    assert ca.describe_spinoffs(outcome.spinoffs) == []
+    assert ca.spinoff_rows(outcome.spinoffs, SESSION) == []
+    assert (
+        notify.compose(
+            status="ok",
+            target_close="2026-10-01",
+            spinoff_unusable=ca.unusable_spinoff_notes(outcome.spinoffs),
+        ).count(
+            "Spin-off record unusable, so the parent's return was nulled: CTVA "
+            "(source_rate 0.0 and new_rate 0.0 cannot form a share ratio)."
+        )
+        == 1
+    )
+    flag = outcome.flags[0]
+    assert flag["ticker"] == "CTVA"
+    assert flag["adjusted_return"] is None
+    assert flag["explained_by"] == "spinoff"
+    assert "not applied" in flag["flag"] and "nulled" in flag["flag"]
+
+    # A record that names no child is unusable for its own reason and takes the same
+    # path: nulled, named, and not fatal.
+    no_child = ca.vendor_spinoffs(
+        SESSION,
+        ["CTVA"],
+        fetcher=lambda s, d: [
+            {
+                "parent": "CTVA",
+                "child": "",
+                "ex_date": "2026-10-01",
+                "source_rate": 1.0,
+                "new_rate": 1.0,
+            }
+        ],
+    )
+    assert no_child[0].unusable_reason == "no child symbol"
+    assert no_child[0].label == "spinoff: CTVA -> ? not applied: no child symbol"
+    quiet, quiet_prices = ctva_frames()
+    quiet_outcome = ca.apply_to_append(
+        quiet,
+        quiet_prices,
+        since=PRIOR,
+        spinoffs={SESSION: no_child},
+        child_close=lambda ticker, session: VYLR_CLOSE,
+    )
+    assert pd.isna(quiet.loc[(SESSION, "CTVA"), "r"])
+    assert ca.unusable_spinoff_notes(quiet_outcome.spinoffs) == [
+        "CTVA (no child symbol)"
+    ]
+
+    # The control: usable rates in the same frames still correct the cell.
+    good, good_prices = ctva_frames()
+    ca.apply_to_append(
+        good,
+        good_prices,
+        since=PRIOR,
+        spinoffs={SESSION: [a_spinoff()]},
+        child_close=lambda ticker, session: VYLR_CLOSE,
+    )
+    assert float(good.loc[(SESSION, "CTVA"), "r"]) == pytest.approx(
+        TARGET_RETURN, abs=1e-6
+    )
 
 
 class _ActionsClient:
@@ -771,13 +867,17 @@ def test_the_next_evening_closes_a_spun_off_child_long_and_short(
 
 
 def test_the_evening_runner_passes_the_labels_through():
-    """The runner's own wiring, from the source: the message gets both lists."""
+    """The runner's own wiring, from the source: the message gets all three lists."""
     source = (ROOT / "scripts" / "run_live_daily.py").read_text()
     assert "corporate_actions.spinoff_rows(" in source
     assert "corporate_actions.describe_spinoffs(" in source
     assert "corporate_actions.missing_child_notes(" in source
+    assert "corporate_actions.unusable_spinoff_notes(" in source
     assert "spinoff_missing=spinoff_missing," in source
+    assert "spinoff_unusable=spinoff_unusable," in source
     import inspect
 
-    assert "spinoffs" in inspect.signature(run_live_daily.finish_run).parameters
-    assert "spinoff_missing" in inspect.signature(run_live_daily.finish_run).parameters
+    for name in ("spinoffs", "spinoff_missing", "spinoff_unusable"):
+        assert name in inspect.signature(run_live_daily.finish_run).parameters
+        assert name in inspect.signature(notify.notify_run).parameters
+        assert name in inspect.signature(notify.compose).parameters

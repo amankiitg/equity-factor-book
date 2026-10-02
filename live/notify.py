@@ -289,6 +289,7 @@ def compose(
     splits: list[str] | None = None,
     spinoffs: list[str] | None = None,
     spinoff_missing: list[str] | None = None,
+    spinoff_unusable: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
     snapshot: str | None = None,
@@ -442,6 +443,15 @@ def compose(
         lines.append(
             "Spin-off close missing, so the parent's return was nulled: "
             f"{', '.join(spinoff_missing)}."
+        )
+    if spinoff_unusable:
+        # The same hole for the other reason: the vendor's own record had no ratio
+        # the rule could apply. Named with the reason, because "we could not use the
+        # record" is not something the owner can take back to the vendor, and named
+        # at all because the cell is null in a panel they will read tomorrow.
+        lines.append(
+            "Spin-off record unusable, so the parent's return was nulled: "
+            f"{', '.join(spinoff_unusable)}."
         )
     if flags:
         lines.append(f"Large moves: {_flag_list(flags)}.")
@@ -859,6 +869,7 @@ def notify_run(
     splits: list[str] | None = None,
     spinoffs: list[str] | None = None,
     spinoff_missing: list[str] | None = None,
+    spinoff_unusable: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
     snapshot: str | None = None,
@@ -911,6 +922,7 @@ def notify_run(
         splits=splits,
         spinoffs=spinoffs,
         spinoff_missing=spinoff_missing,
+        spinoff_unusable=spinoff_unusable,
         flags=flags,
         no_price=no_price,
         thin_adv=thin_adv,

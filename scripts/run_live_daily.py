@@ -556,6 +556,7 @@ def finish_run(
     splits: list[str] | None = None,
     spinoffs: list[str] | None = None,
     spinoff_missing: list[str] | None = None,
+    spinoff_unusable: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
     started_at: str | None = None,
     cross_checks_capped: str | None = None,
@@ -717,6 +718,7 @@ def finish_run(
         splits=splits,
         spinoffs=spinoffs,
         spinoff_missing=spinoff_missing,
+        spinoff_unusable=spinoff_unusable,
         flags=flags,
         store=store_name,
         snapshot=snapshot_detail,
@@ -939,6 +941,11 @@ def main() -> int:
     # nulled instead of corrected. Named in the message: a hole the owner did not
     # ask for is a hole the owner has to be told about.
     spinoff_missing: list[str] = []
+    # The spin-offs whose own vendor record could not be used, which nulls the same
+    # cell for a different reason. Kept apart from the line above because the two say
+    # different things to whoever has to look the action up: a close to refetch, or a
+    # record whose rates came back empty.
+    spinoff_unusable: list[str] = []
     flags: list[dict[str, Any]] = []
     capped: str = ""
     # Whether this run seeded the store. False on every path that is not the
@@ -1045,6 +1052,9 @@ def main() -> int:
                 spinoff_missing = corporate_actions.missing_child_notes(
                     outcome.spinoffs
                 )
+                spinoff_unusable = corporate_actions.unusable_spinoff_notes(
+                    outcome.spinoffs
+                )
                 rows.extend(corporate_actions.spinoff_rows(outcome.spinoffs, close))
             store.upsert(corporate_actions.TABLE, rows)
             logger.info(
@@ -1058,6 +1068,14 @@ def main() -> int:
             logger.warning(
                 "spin-off close missing, parent return nulled: %s",
                 ", ".join(spinoff_missing),
+            )
+        if spinoff_unusable:
+            # The other reason a spin-off cell is null, logged beside the first so a
+            # reader of the run's own output does not have to open the message to
+            # find out which of the two it was.
+            logger.warning(
+                "spin-off record unusable, parent return nulled: %s",
+                ", ".join(spinoff_unusable),
             )
         capped = corporate_actions.cap_note(outcome.unchecked)
         if capped:
@@ -1296,6 +1314,7 @@ def main() -> int:
         splits=splits,
         spinoffs=spinoffs,
         spinoff_missing=spinoff_missing,
+        spinoff_unusable=spinoff_unusable,
         flags=flags,
         started_at=started_at,
         cross_checks_capped=capped,
