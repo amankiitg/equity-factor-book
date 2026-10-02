@@ -355,6 +355,14 @@ create table if not exists efb.store_seed (
 -- of from the vendor's back-adjusted history, so no stored price row is ever
 -- restated, and the cross-check ratio is kept beside the factor so a later
 -- reader can see the two agreed.
+--
+-- The same table carries spin-offs, which are the other action that moves one
+-- session's return. `explained_by` says which of the two a row is ('split' or
+-- 'spinoff'), and for a spin-off `factor` is the child's shares per parent share
+-- (`new_rate / source_rate`) with the child named in `new_ticker`. The parent is
+-- the row's ticker either way, because the parent is the name whose return the
+-- rule replaced. A row written before this column existed has it null, and it is
+-- a split: spin-offs are what the column was added for.
 create table if not exists efb.e11_corporate_actions (
   trade_date date not null,
   ticker text not null,
@@ -362,6 +370,10 @@ create table if not exists efb.e11_corporate_actions (
   factor double precision not null,
   source text,
   cross_check_ratio double precision,
+  explained_by text,
+  new_ticker text,
+  source_rate double precision,
+  new_rate double precision,
   primary key (trade_date, ticker)
 );
 
@@ -407,6 +419,18 @@ alter table efb.run_status
 alter table efb.orders
   add column if not exists reason_code text;
 
+-- Spin-offs: `e11_corporate_actions` was created for splits, so a provisioned
+-- database needs the four columns the spin-off rows are written into. The writer
+-- names every column it inserts, so without these the first morning after a
+-- spin-off fails on a column the table does not have.
+alter table efb.e11_corporate_actions
+  add column if not exists explained_by text;
+alter table efb.e11_corporate_actions
+  add column if not exists new_ticker text;
+alter table efb.e11_corporate_actions
+  add column if not exists source_rate double precision;
+alter table efb.e11_corporate_actions
+  add column if not exists new_rate double precision;
 -- Pre-flip: the rerun-proof ticket for each leg.
 alter table efb.orders
   add column if not exists client_order_id text;

@@ -23,6 +23,7 @@ import math
 import os
 import time
 from dataclasses import dataclass
+from datetime import UTC
 from typing import Any
 
 import pandas as pd
@@ -1018,3 +1019,168 @@ def submit_market_orders(
             )
         )
     return fills
+
+
+# --- corporate actions and a close, from the market-data API -----------------
+#
+# The same paper keys reach the market-data endpoints, so the corporate-actions
+# read and the one-session close read authenticate exactly as the trading client
+# does and never from a file. Both are reads, so neither is behind the dry-run
+# guard that protects *submission*: an evening that is not trading still has to
+# know a spin-off happened, because it decides what the appended session's return
+# is.
+
+
+def data_credentials() -> tuple[str, str]:
+    """The paper key and secret, or a named error when one is missing."""
+    key = os.environ.get("EFB_ALPACA_PAPER_API_KEY", "").strip()
+    secret = os.environ.get("EFB_ALPACA_PAPER_SECRET_KEY", "").strip()
+    if not key or not secret:
+        raise RuntimeError(
+            "the Alpaca market-data read needs EFB_ALPACA_PAPER_API_KEY and "
+            "EFB_ALPACA_PAPER_SECRET_KEY"
+        )
+    return key, secret
+
+
+def corporate_actions_client():
+    """The corporate-actions read client, from the paper keys."""
+    key, secret = data_credentials()
+    try:
+        from alpaca.data.historical.corporate_actions import CorporateActionsClient
+    except ImportError as exc:  # pragma: no cover - depends on the environment
+        raise RuntimeError(
+            "the corporate-actions read needs alpaca-py; install it"
+        ) from exc
+    return CorporateActionsClient(api_key=key, secret_key=secret)
+
+
+def bars_client():
+    """The historical-bars read client, from the paper keys."""
+    key, secret = data_credentials()
+    try:
+        from alpaca.data.historical import StockHistoricalDataClient
+    except ImportError as exc:  # pragma: no cover - depends on the environment
+        raise RuntimeError("the bars read needs alpaca-py; install it") from exc
+    return StockHistoricalDataClient(api_key=key, secret_key=secret)
+
+
+def spin_offs(
+    symbols: list[str],
+    session: Any,
+    client: Any | None = None,
+    window_days: int = 1,
+) -> list[dict[str, Any]]:
+    """Every spin-off the vendor reports with `session` as its ex-date.
+
+    One request for the whole list, then filtered here to the exact day: the
+    endpoint takes a window, and the ex-date is what decides whether the action has
+    happened to tonight's session. Each record is a plain dict, so nothing outside
+    this module has to know the vendor's object shapes.
+
+    A record whose ex-date is not the session is dropped rather than returned: a
+    window that catches a neighbouring day must not be applied to this one.
+    """
+    names = sorted({str(name) for name in symbols if str(name)})
+    if not names:
+        return []
+    from datetime import timedelta
+
+    day = _as_date(session)
+    request_data = {
+        "symbols": names,
+        "start": day - timedelta(days=window_days),
+        "end": day + timedelta(days=window_days),
+    }
+    try:
+        from alpaca.data.requests import (  # type: ignore[import-not-found]
+            CorporateActionsRequest,
+        )
+    except ImportError as exc:  # pragma: no cover - depends on the environment
+        raise RuntimeError(
+            "the corporate-actions read needs alpaca-py; install it"
+        ) from exc
+    response = (client or corporate_actions_client()).get_corporate_actions(
+        CorporateActionsRequest(**request_data)
+    )
+    records: list[dict[str, Any]] = []
+    for item in (getattr(response, "data", None) or {}).get("spin_offs") or []:
+        ex_date = _as_date(getattr(item, "ex_date", None))
+        if ex_date != day:
+            continue
+        records.append(
+            {
+                "parent": str(getattr(item, "source_symbol", "") or ""),
+                "child": str(getattr(item, "new_symbol", "") or ""),
+                "ex_date": ex_date,
+                "source_rate": float(getattr(item, "source_rate", 0.0) or 0.0),
+                "new_rate": float(getattr(item, "new_rate", 0.0) or 0.0),
+            }
+        )
+    return sorted(records, key=lambda record: (record["parent"], record["child"]))
+
+
+def closes_on(
+    symbols: list[str], session: Any, client: Any | None = None
+) -> dict[str, float]:
+    """The close each symbol printed on one session, from the bars endpoint.
+
+    One request for the whole list. The adjustment is RAW and the feed is SIP: a
+    spun-off ticker's first session has no history to adjust, and the consolidated
+    close is the official one (measured against the price vendor's own official
+    closes on 99.9% of name-days, while the IEX feed differs by 2.2 bp at the
+    median). A symbol the vendor does not answer for is simply absent, which the
+    caller reads as a missing close rather than as a zero.
+    """
+    names = sorted({str(name) for name in symbols if str(name)})
+    if not names:
+        return {}
+    from datetime import datetime, timedelta
+
+    try:
+        from alpaca.data.enums import Adjustment, DataFeed  # type: ignore[import]
+        from alpaca.data.requests import (  # type: ignore[import-not-found]
+            StockBarsRequest,
+        )
+        from alpaca.data.timeframe import TimeFrame  # type: ignore[import-not-found]
+    except ImportError as exc:  # pragma: no cover - depends on the environment
+        raise RuntimeError("the bars read needs alpaca-py; install it") from exc
+    day = _as_date(session)
+    response = (client or bars_client()).get_stock_bars(
+        StockBarsRequest(
+            symbol_or_symbols=names,
+            timeframe=TimeFrame.Day,
+            start=datetime.combine(day, datetime.min.time(), tzinfo=UTC),
+            # Exclusive, as measured: the session being asked for needs the day
+            # after it, or it is the one session missing from the answer.
+            end=datetime.combine(
+                day + timedelta(days=1), datetime.min.time(), tzinfo=UTC
+            ),
+            feed=DataFeed.SIP,
+            adjustment=Adjustment.RAW,
+        )
+    )
+    out: dict[str, float] = {}
+    for symbol, bars in (getattr(response, "data", None) or {}).items():
+        for bar in bars or []:
+            stamp = getattr(bar, "timestamp", None)
+            if stamp is None or _as_date(stamp) != day:
+                continue
+            close = float(bar.close)
+            if math.isfinite(close) and close > 0:
+                out[str(symbol)] = close
+    return out
+
+
+def _as_date(value: Any) -> Any:
+    """`datetime.date` from a date, a datetime or an ISO string."""
+    from datetime import date, datetime
+
+    if value is None:
+        raise ValueError("no date given")
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).date() if value.tzinfo else value.date()
+    if isinstance(value, date):
+        return value
+    stamp = pd.Timestamp(str(value))
+    return stamp.date()

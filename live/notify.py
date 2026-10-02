@@ -287,6 +287,8 @@ def compose(
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
+    spinoffs: list[str] | None = None,
+    spinoff_missing: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
     snapshot: str | None = None,
@@ -426,6 +428,21 @@ def compose(
         lines.append(line)
     if splits:
         lines.append(f"Corporate actions: {', '.join(splits)}.")
+    if spinoffs:
+        # A spin-off changes the book without a decision: the parent keeps trading
+        # and the account is handed the child, so the next evening's delta has one
+        # more name to close than the proposal has. Named here for the same reason
+        # a split is.
+        lines.append(f"Spin-offs: {', '.join(spinoffs)}.")
+    if spinoff_missing:
+        # The one cell the rule could not correct was nulled rather than left as a
+        # print that is not a return, and that is a hole in the panel tonight: the
+        # owner has to know which name, or the next surprising number has no
+        # explanation.
+        lines.append(
+            "Spin-off close missing, so the parent's return was nulled: "
+            f"{', '.join(spinoff_missing)}."
+        )
     if flags:
         lines.append(f"Large moves: {_flag_list(flags)}.")
     # The day's kind, in the owner's own terms. An establishment day creates the
@@ -840,6 +857,8 @@ def notify_run(
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
+    spinoffs: list[str] | None = None,
+    spinoff_missing: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
     snapshot: str | None = None,
@@ -890,6 +909,8 @@ def notify_run(
         error_type=error_type,
         catch_up_sessions=catch_up_sessions,
         splits=splits,
+        spinoffs=spinoffs,
+        spinoff_missing=spinoff_missing,
         flags=flags,
         no_price=no_price,
         thin_adv=thin_adv,

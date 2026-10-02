@@ -114,13 +114,14 @@ def _all_at(session: str, fetch: str | None = None) -> dict[str, str]:
 
 
 class _NoCorporateActions:
-    """The stub outcome of the corporate-actions step: no split, no flags."""
+    """The corporate-actions stub: no split, no flags, no spin-off."""
 
     splits: list = []
     sessions: list = []
     ratios: dict = {}
     flags: list = []
     unchecked = 0
+    spinoffs: list = []
 
 
 def _patch_no_work(monkeypatch: pytest.MonkeyPatch) -> None:

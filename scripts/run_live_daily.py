@@ -554,6 +554,8 @@ def finish_run(
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
+    spinoffs: list[str] | None = None,
+    spinoff_missing: list[str] | None = None,
     flags: list[dict[str, Any]] | None = None,
     started_at: str | None = None,
     cross_checks_capped: str | None = None,
@@ -713,6 +715,8 @@ def finish_run(
         error_type=error_type,
         catch_up_sessions=catch_up_sessions,
         splits=splits,
+        spinoffs=spinoffs,
+        spinoff_missing=spinoff_missing,
         flags=flags,
         store=store_name,
         snapshot=snapshot_detail,
@@ -930,6 +934,11 @@ def main() -> int:
     gate: dict[str, Any] | None = None
     catch_up_sessions: list[str] = []
     splits: list[str] = []
+    spinoffs: list[str] = []
+    # The spin-offs whose child close could not be read, so the parent's return was
+    # nulled instead of corrected. Named in the message: a hole the owner did not
+    # ask for is a hole the owner has to be told about.
+    spinoff_missing: list[str] = []
     flags: list[dict[str, Any]] = []
     capped: str = ""
     # Whether this run seeded the store. False on every path that is not the
@@ -1017,17 +1026,39 @@ def main() -> int:
         # factor, so no stored row is restated. A back-adjustment no record
         # explains raises here, before the gate and before any sizing.
         outcome = corporate_actions.apply_to_artifact(run_tree, since=before_last)
-        if outcome.splits:
-            splits = [corporate_actions.describe([split]) for split in outcome.splits]
-            store.upsert(
-                corporate_actions.TABLE,
-                corporate_actions.rows(
-                    outcome.splits,
-                    outcome.sessions[-1] if outcome.sessions else before_last,
-                    outcome.ratios,
-                ),
+        if outcome.splits or outcome.spinoffs:
+            close = outcome.sessions[-1] if outcome.sessions else before_last
+            rows: list[dict[str, Any]] = []
+            if outcome.splits:
+                splits = [
+                    corporate_actions.describe([split]) for split in outcome.splits
+                ]
+                rows.extend(
+                    corporate_actions.rows(outcome.splits, close, outcome.ratios)
+                )
+            if outcome.spinoffs:
+                # A spin-off is a corporate action like a split and it is recorded
+                # in the same table, with `explained_by` saying which of the two the
+                # row is. The parent is the row's ticker because the parent is the
+                # name whose return the rule replaced.
+                spinoffs = corporate_actions.describe_spinoffs(outcome.spinoffs)
+                spinoff_missing = corporate_actions.missing_child_notes(
+                    outcome.spinoffs
+                )
+                rows.extend(corporate_actions.spinoff_rows(outcome.spinoffs, close))
+            store.upsert(corporate_actions.TABLE, rows)
+            logger.info(
+                "corporate actions applied: %s",
+                "; ".join([*splits, *spinoffs]),
             )
-            logger.info("corporate actions applied: %s", "; ".join(splits))
+        if spinoff_missing:
+            # Named in the log as well as the message: the cell was nulled rather
+            # than left as a print that is not a return, and a hole in the panel
+            # tonight is the reason for whatever it shows next.
+            logger.warning(
+                "spin-off close missing, parent return nulled: %s",
+                ", ".join(spinoff_missing),
+            )
         capped = corporate_actions.cap_note(outcome.unchecked)
         if capped:
             logger.warning("%s", capped)
@@ -1263,6 +1294,8 @@ def main() -> int:
         gross=float(morning.get("intended_notional") or 0.0),
         catch_up_sessions=catch_up_sessions,
         splits=splits,
+        spinoffs=spinoffs,
+        spinoff_missing=spinoff_missing,
         flags=flags,
         started_at=started_at,
         cross_checks_capped=capped,

@@ -57,6 +57,14 @@ DAY_ONE = {"AAA": 0.08, "BBB": 0.08, "CCC": 0.08, "DDD": 0.08, "FFF": -0.08}
 DAY_TWO = {"AAA": 0.10, "BBB": 0.04, "CCC": -0.06, "FFF": -0.02}
 # Day three: the same targets, so CCC's deferred short opens in the normal delta.
 DAY_THREE = dict(DAY_TWO)
+# Day four: what a spin-off leaves in the book. BBB (held long) and FFF (held short)
+# each spin out a child, one child share per parent share, and the proposal for the
+# next evening names neither child: the model has no history for a ticker that began
+# trading this session. Both children are in the account all the same, so the delta
+# has to close them, and the short parent's child is a short that has to be bought
+# back rather than sold.
+DAY_FOUR = {"AAA": 0.10}
+SPINOFFS_OF_DAY_THREE = (("BBB", "ZZB", 10.0), ("FFF", "ZZF", 5.0))
 
 _OPEN_INTENTS = frozenset({alpaca.INTENT_BUY_TO_OPEN, alpaca.INTENT_SELL_TO_OPEN})
 _CLOSE_INTENTS = frozenset({alpaca.INTENT_BUY_TO_CLOSE, alpaca.INTENT_SELL_TO_CLOSE})
@@ -233,6 +241,24 @@ class FakeBroker:
             filled.append(symbol)
         self.pending = []
         return filled
+
+    def spinoff(
+        self, parent: str, child: str, child_per_parent: float, child_price: float
+    ) -> None:
+        """Apply a spin-off the way the broker does between sessions.
+
+        The holder of the parent is given `child_per_parent` child shares for each
+        parent share, and the parent's price drops by the child's value: the money is
+        the same, and the book has one more name in it than the proposal does. A
+        short parent produces a **short** child, which is the case the next evening's
+        delta has to close without crossing zero.
+        """
+        shares = self.holdings.get(parent, 0.0)
+        if abs(shares) > 1e-9:
+            given = shares * child_per_parent
+            self.holdings[child] = self.holdings.get(child, 0.0) + given
+        self.prices[child] = float(child_price)
+        self.prices[parent] = self.prices[parent] - child_per_parent * float(child_price)
 
 
 def _proposal(weights: dict[str, float]) -> pd.DataFrame:
@@ -445,6 +471,51 @@ def main() -> int:
     assert summary["complete"]
     print("  orders 0 (nothing new submitted); complete=True")
 
+    print("\n--- DAY 4 (2026-09-30): two parents spin out, and the children close ---")
+    for parent, child, child_price in SPINOFFS_OF_DAY_THREE:
+        broker.spinoff(parent, child, 1.0, child_price)
+        print(
+            f"  overnight: {parent} spun out {child} 1:1 at {child_price:,.2f}, so "
+            f"{parent} repriced to {broker.prices[parent]:,.2f}"
+        )
+    print(
+        "  broker holds (shares): "
+        f"{_shares(alpaca.position_book(broker, dry_run=False)[1])}"
+    )
+    held, quantities, summary, records = run_day("2026-09-30", DAY_FOUR, broker)
+    print(f"  held {len(held)}; establishment={summary['establishment']}")
+    _show(records, held)
+    assert summary["complete"], summary["incomplete_legs"]
+    intents = {
+        str(row.ticker): str(row.position_intent)
+        for row in records.itertuples(index=False)
+    }
+    # The children the proposal never mentions, one long and one short: each has to
+    # be closed in its own direction. Closing a short by selling it would cross zero
+    # and the fake broker refuses that, so this assertion is the broker's own rule.
+    assert intents.get("ZZB") == "sell_to_close", intents
+    assert intents.get("ZZF") == "buy_to_close", intents
+    assert intents.get("BBB") == "sell_to_close", intents
+    assert intents.get("FFF") == "buy_to_close", intents
+    applied = broker.settle_open()
+    print(f"  next open: filled {len(applied)}: {', '.join(sorted(applied))}")
+    print(
+        "  broker holds (shares): "
+        f"{_shares(alpaca.position_book(broker, dry_run=False)[1])}"
+    )
+    survivors = {
+        name: shares
+        for name, shares in broker.holdings.items()
+        if name in {"ZZB", "ZZF"} and abs(shares) > 1e-9
+    }
+    assert not survivors, f"a spun-off child survived the evening: {survivors}"
+    print(
+        "  the spun-off children were closed: "
+        + ", ".join(
+            f"{name} {intents[name]}" for name in ("ZZB", "ZZF") if name in intents
+        )
+    )
+
     print("\n--- ORDER RECORDS: the broker's id for every leg that became one ---")
     # The day-3 log, whose one leg was accepted: the rerun above submitted nothing,
     # so its log is empty by construction.
@@ -464,8 +535,9 @@ def main() -> int:
     )
 
     print("\nAll checks passed: every leg carried a position intent, the reversal")
-    print("closed tonight and opened tomorrow, the removed name was closed, and an")
-    print("accepted after-close DAY order changed nothing until the next open.")
+    print("closed tonight and opened tomorrow, the removed name was closed, a")
+    print("spin-off's children were closed long and short, and an accepted")
+    print("after-close DAY order changed nothing until the next open.")
     return 0
 
 
