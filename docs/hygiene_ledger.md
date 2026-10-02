@@ -1922,3 +1922,75 @@ enters the
 risk model, and the 20-share floor with its renormalization turns a change in one
 name's variance into a step function over the whole kept set, which is the same
 effect a panel-level exclusion showed when it was measured and rejected.
+
+## 2026-10-02: the 2026-10-01 snapshot republished with the book it never carried
+
+Decision. The two objects the page reads for the 2026-10-01 close,
+`efb-snapshots/latest.json` and `efb-snapshots/snapshots/2026-10-01.json`, were
+replaced by hand with the payload the fixed writer produces for that close, so
+the page shows the book today rather than after the next evening's run. Both now
+carry 188 names, the same 188 the close's own manifest recorded as `n_kept`. No
+order was sent, no store row was written, and no trading input was touched: the
+whole operation was a read of `run_status`, `proposals`, `reconciliation` and
+`positions` for 2026-10-01, followed by two object puts.
+
+Reason. The published `latest.json` was generated
+2026-10-01T22:49:53.322476Z, the 22:30 UTC cron slot, by commit
+`c76631122f57f4383d6c7f3855a314a7fdb99514`, which is the commit that close's own
+manifest recorded. Its `book.n_names` was 0 and its `book.names` empty, beside a
+gross of 100.00 percent on a notional of 998580.38, an `n_eff_kept` of
+139.84852065067278, a correct hedge and the day's 188 orders. The per-name list
+is the only field the page draws from a frame rather than from the manifest, and
+`store_proposal` returned nothing while its docstring promised the rows. The fix,
+730c2c4, was committed 2026-10-01 22:07:26 -0400, three hours and seventeen
+minutes after this object was published, so the object predates the fix by
+construction and no amount of reading it would have found a book. This is not one
+evening's accident: every evening the loop priced its own proposal since 4a9d5c4
+introduced the writer published an empty book, and the two that did not, 2026-09-26
+and 2026-09-28, are the two whose runs had no manifest of their own and fell back
+to the store's position rows, which carry names.
+
+Evidence. The payload was rebuilt from the store with the fixed writer
+(`live.snapshot.build` over the close's `run_status` row, its manifest, that
+close's position rows and its reconciliation row), with `generated_at` pinned to
+2026-10-01T22:49:53.322476Z so that nothing but the book could move. The control
+is that same rebuild with no book frame, which reproduces the object that was in
+the bucket: the only differences are two numbers that round-trip through
+Postgres double precision, `expected_cost_bps` 14.152251800443096 against
+14.1522518004431 and `intended_notional` 391004.5792823313 against
+391004.579282331, and the two fields the run writes after the upload,
+`notify_status` (sent in the stored row, pending in the published object) and
+`snapshot` (the stored detail against a published null). Those four belong to the
+reconstruction rather than to the writer, so the published file is the object as
+it stood with only its book replaced, not the rebuilt one. Against the object
+that was there, the difference is exactly two paths: `book.n_names` 0 to 188 and
+`book.names` `[]` to 188 entries, weight-sorted largest first, beginning KO, STT,
+WDC, TGT, BG. Everything else, `generated_at`, `target_close`, `book_as_of`,
+`breadth`, `hedge`, `exposures_before_hedge`, `exposures_after_hedge`,
+`positions`, `reconciliation` and `run_status`, is the same text the run
+published.
+
+Where the write came from. `EFB_R2_*` exists on Render only and this machine's
+`EFB_SEED_R2_*` token is scoped to `efb-seed`, where a read of `efb-snapshots` is
+`AccessDenied`, and the Worker sits behind Cloudflare Access, so the objects were
+written and read back with `npx wrangler r2 object put` and
+`npx wrangler r2 object get` from `web/`. By whom and when: by hand, on the
+owner's instruction, in the 2026-10-02 session, at about 14:45 UTC, so this
+carries no `cron_runs` and no `run_status` row of its own and the store has no
+record of the republish. Verified three ways after the write: both objects read
+back from the bucket and parsed, 188 names in each; the page built and served
+locally against those exact bytes, reading "The book: 188 name(s)" over 188 rows;
+and the owner's signed-in page against the deployed Worker, which reads the same.
+
+Status. Written. The page shows the 2026-10-01 book. It is a one-off and not a
+mechanism: the 2026-10-02 evening's cron publishes its own book with the fixed
+writer, and two things landed in the same session so that an empty book cannot go
+out again, in a63d201. The writer now reads its own `latest.json` back after the
+upload and compares the list with the run's own `n_kept`
+(`live.snapshot.check_published_book`, with the evening's message carrying a
+`Page book:` line when the list is empty, short, or unreadable, and with the
+check unable to fail a run whose orders are already sent). And the fixtures the
+page is tested against now take their book from the manifest's own `kept_book`,
+so a test can require the list to be the run's own count rather than the 150-name
+vintage the committed proposal parquet holds, which is what the fixture's
+`n_kept` of 180 disagreed with until this session.
