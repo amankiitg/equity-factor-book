@@ -1,7 +1,7 @@
 {
   "sprint": "E7",
-  "evaluated_at": "2026-09-21T23:09:26+00:00",
-  "data_hash": "d530aad43f5d12e7e16433596c6624464c4779013a7b2f5761e6db8f2c7928b7",
+  "evaluated_at": "2026-09-27T21:51:58+00:00",
+  "data_hash": "afaadd517c9dcb4c94ad82d90460d1c51e87cadc86010fc527478a92a78b0c37",
   "criteria": {
     "F7.1": {
       "criterion": "Shift audit: moving every signal forward by one day flips or kills its IC. This proves the absence of leakage.",
@@ -116,34 +116,34 @@
       "threshold": "stored per signal under both models with the difference",
       "stored_numbers": {
         "idio_momentum": {
-          "mean_alpha_xs_v1": 2.6747869891522153e-07,
-          "mean_alpha_xs_v2": 2.597792584670079e-07,
-          "difference_v1_minus_v2": 7.699440448213664e-09
+          "mean_alpha_xs_v1": 1.3667834525654947e-05,
+          "mean_alpha_xs_v2": 1.3495176967236935e-05,
+          "difference_v1_minus_v2": 1.72657558418013e-07
         },
         "low_residual_volatility": {
-          "mean_alpha_xs_v1": 3.77731705910478e-08,
-          "mean_alpha_xs_v2": 3.659863207988229e-08,
-          "difference_v1_minus_v2": 1.17453851116551e-09
+          "mean_alpha_xs_v1": 1.649417603774254e-06,
+          "mean_alpha_xs_v2": 1.6242017363938083e-06,
+          "difference_v1_minus_v2": 2.521586738044598e-08
         },
         "momentum_12_1": {
-          "mean_alpha_xs_v1": 3.279769876726583e-07,
-          "mean_alpha_xs_v2": 3.1862359490475617e-07,
-          "difference_v1_minus_v2": 9.353392767902102e-09
+          "mean_alpha_xs_v1": 1.6704484334327034e-05,
+          "mean_alpha_xs_v2": 1.6495687283171523e-05,
+          "difference_v1_minus_v2": 2.087970511555126e-07
         },
         "post_earnings_drift": {
-          "mean_alpha_xs_v1": 5.867234511635e-08,
-          "mean_alpha_xs_v2": 5.7947385846110253e-08,
-          "difference_v1_minus_v2": 7.249592702397493e-10
+          "mean_alpha_xs_v1": 2.9633982829566426e-06,
+          "mean_alpha_xs_v2": 2.9523450578412985e-06,
+          "difference_v1_minus_v2": 1.1053225115344245e-08
         },
         "short_interest": {
-          "mean_alpha_xs_v1": 3.3148434238578e-08,
-          "mean_alpha_xs_v2": 3.2796545093439655e-08,
-          "difference_v1_minus_v2": 3.5188914513834376e-10
+          "mean_alpha_xs_v1": 2.1223551356624926e-06,
+          "mean_alpha_xs_v2": 2.115799926218874e-06,
+          "difference_v1_minus_v2": 6.555209443618529e-09
         },
         "short_term_reversal": {
-          "mean_alpha_xs_v1": 2.5545298502223975e-07,
-          "mean_alpha_xs_v2": 2.493783492836331e-07,
-          "difference_v1_minus_v2": 6.07463573860678e-09
+          "mean_alpha_xs_v1": 1.3255391162294419e-05,
+          "mean_alpha_xs_v2": 1.3121503227651658e-05,
+          "difference_v1_minus_v2": 1.3388793464276324e-07
         }
       },
       "verdict": "pass",
@@ -275,16 +275,20 @@
     }
   },
   "revisions": {
-    "previous_data_hash": null,
-    "data_hash": "d530aad43f5d12e7e16433596c6624464c4779013a7b2f5761e6db8f2c7928b7",
-    "n_changed": 0,
-    "changed_tickers_or_criteria": [],
+    "previous_data_hash": "d530aad43f5d12e7e16433596c6624464c4779013a7b2f5761e6db8f2c7928b7",
+    "data_hash": "afaadd517c9dcb4c94ad82d90460d1c51e87cadc86010fc527478a92a78b0c37",
+    "n_changed": 1,
+    "changed_tickers_or_criteria": [
+      "F7.4"
+    ],
     "cross_sprint_criteria": [],
     "changed": {
       "F7.1": {
         "changed": false,
         "old": {
           "verdict": "pass",
+          "criterion": "Shift audit: moving every signal forward by one day flips or kills its IC. This proves the absence of leakage.",
+          "threshold": "no admitted signal flags leakage in the shift audit",
           "stored_numbers": {
             "idio_momentum": {
               "t_now": 5.0435495844141,
@@ -344,6 +348,8 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "Shift audit: moving every signal forward by one day flips or kills its IC. This proves the absence of leakage.",
+          "threshold": "no admitted signal flags leakage in the shift audit",
           "stored_numbers": {
             "idio_momentum": {
               "t_now": 5.0435495844141,
@@ -406,6 +412,8 @@
         "changed": false,
         "old": {
           "verdict": "fail",
+          "criterion": "Factor-neutral momentum IC mean above 0.02 with t above 2, reported separately in-sample 2010 to 2020 and out-of-sample 2021 to 2026.",
+          "threshold": "neutral momentum IC mean > 0.02 and t > 2, both periods stored",
           "stored_numbers": {
             "mean": -0.010683646861635072,
             "t": -1.5490014973675446,
@@ -423,6 +431,8 @@
         },
         "new": {
           "verdict": "fail",
+          "criterion": "Factor-neutral momentum IC mean above 0.02 with t above 2, reported separately in-sample 2010 to 2020 and out-of-sample 2021 to 2026.",
+          "threshold": "neutral momentum IC mean > 0.02 and t > 2, both periods stored",
           "stored_numbers": {
             "mean": -0.010683646861635072,
             "t": -1.5490014973675446,
@@ -443,6 +453,8 @@
         "changed": false,
         "old": {
           "verdict": "pass",
+          "criterion": "Any signal failing the out-of-sample deflated-Sharpe hurdle is labeled NULL in the ledger, and the ledger contains at least as many rows as signal runs executed.",
+          "threshold": "below-hurdle signals labeled NULL; ledger rows >= runs",
           "stored_numbers": {
             "ledger_rows": 111,
             "runs_executed": 111,
@@ -466,6 +478,8 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "Any signal failing the out-of-sample deflated-Sharpe hurdle is labeled NULL in the ledger, and the ledger contains at least as many rows as signal runs executed.",
+          "threshold": "below-hurdle signals labeled NULL; ledger rows >= runs",
           "stored_numbers": {
             "ledger_rows": 111,
             "runs_executed": 111,
@@ -489,9 +503,11 @@
         }
       },
       "F7.4": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
+          "criterion": "New in E7: every signal's IC under the champion's idio volatility and under the alternative's, with the difference stored.",
+          "threshold": "stored per signal under both models with the difference",
           "stored_numbers": {
             "idio_momentum": {
               "mean_alpha_xs_v1": 2.6747869891522153e-07,
@@ -527,36 +543,38 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "New in E7: every signal's IC under the champion's idio volatility and under the alternative's, with the difference stored.",
+          "threshold": "stored per signal under both models with the difference",
           "stored_numbers": {
             "idio_momentum": {
-              "mean_alpha_xs_v1": 2.6747869891522153e-07,
-              "mean_alpha_xs_v2": 2.597792584670079e-07,
-              "difference_v1_minus_v2": 7.699440448213664e-09
+              "mean_alpha_xs_v1": 1.3667834525654947e-05,
+              "mean_alpha_xs_v2": 1.3495176967236935e-05,
+              "difference_v1_minus_v2": 1.72657558418013e-07
             },
             "low_residual_volatility": {
-              "mean_alpha_xs_v1": 3.77731705910478e-08,
-              "mean_alpha_xs_v2": 3.659863207988229e-08,
-              "difference_v1_minus_v2": 1.17453851116551e-09
+              "mean_alpha_xs_v1": 1.649417603774254e-06,
+              "mean_alpha_xs_v2": 1.6242017363938083e-06,
+              "difference_v1_minus_v2": 2.521586738044598e-08
             },
             "momentum_12_1": {
-              "mean_alpha_xs_v1": 3.279769876726583e-07,
-              "mean_alpha_xs_v2": 3.1862359490475617e-07,
-              "difference_v1_minus_v2": 9.353392767902102e-09
+              "mean_alpha_xs_v1": 1.6704484334327034e-05,
+              "mean_alpha_xs_v2": 1.6495687283171523e-05,
+              "difference_v1_minus_v2": 2.087970511555126e-07
             },
             "post_earnings_drift": {
-              "mean_alpha_xs_v1": 5.867234511635e-08,
-              "mean_alpha_xs_v2": 5.7947385846110253e-08,
-              "difference_v1_minus_v2": 7.249592702397493e-10
+              "mean_alpha_xs_v1": 2.9633982829566426e-06,
+              "mean_alpha_xs_v2": 2.9523450578412985e-06,
+              "difference_v1_minus_v2": 1.1053225115344245e-08
             },
             "short_interest": {
-              "mean_alpha_xs_v1": 3.3148434238578e-08,
-              "mean_alpha_xs_v2": 3.2796545093439655e-08,
-              "difference_v1_minus_v2": 3.5188914513834376e-10
+              "mean_alpha_xs_v1": 2.1223551356624926e-06,
+              "mean_alpha_xs_v2": 2.115799926218874e-06,
+              "difference_v1_minus_v2": 6.555209443618529e-09
             },
             "short_term_reversal": {
-              "mean_alpha_xs_v1": 2.5545298502223975e-07,
-              "mean_alpha_xs_v2": 2.493783492836331e-07,
-              "difference_v1_minus_v2": 6.07463573860678e-09
+              "mean_alpha_xs_v1": 1.3255391162294419e-05,
+              "mean_alpha_xs_v2": 1.3121503227651658e-05,
+              "difference_v1_minus_v2": 1.3388793464276324e-07
             }
           }
         }
@@ -565,6 +583,8 @@
         "changed": false,
         "old": {
           "verdict": "fail",
+          "criterion": "Registered in E8 Task 0a, not pre-registered: the empirical shift audit. Each signal is rebuilt with every input advanced one day and its IC is recomputed against the same-day return; a signal whose IC survives the shift is leaking. The IC before and after the shift is stored per signal.",
+          "threshold": "every signal's after-shift IC flips or loses significance",
           "stored_numbers": {
             "momentum_12_1": {
               "ic_before_mean": 0.015076440675165859,
@@ -624,6 +644,8 @@
         },
         "new": {
           "verdict": "fail",
+          "criterion": "Registered in E8 Task 0a, not pre-registered: the empirical shift audit. Each signal is rebuilt with every input advanced one day and its IC is recomputed against the same-day return; a signal whose IC survives the shift is leaking. The IC before and after the shift is stored per signal.",
+          "threshold": "every signal's after-shift IC flips or loses significance",
           "stored_numbers": {
             "momentum_12_1": {
               "ic_before_mean": 0.015076440675165859,
@@ -684,9 +706,71 @@
       },
       "F7.1c": {
         "changed": false,
-        "old": null,
+        "old": {
+          "verdict": "pass",
+          "criterion": "Registered in E10, not pre-registered: the discriminating extra-day lag audit. Each signal is rebuilt with every input moved one extra day back and its IC is recomputed against the same-day return; a persistent clean signal barely moves and a leaking one collapses. The IC before and after the extra lag is stored per signal.",
+          "threshold": "the extra-lag IC stored per signal, the collapse recorded",
+          "stored_numbers": {
+            "momentum_12_1": {
+              "ic_before_mean": 0.015076440675165859,
+              "t_before": 4.461372051995127,
+              "ic_after_mean": 0.015225195336530778,
+              "t_after": 4.5177000659039885,
+              "flipped": false,
+              "killed": false,
+              "survives": true
+            },
+            "short_term_reversal": {
+              "ic_before_mean": 0.012030688919115224,
+              "t_before": 4.708956513908862,
+              "ic_after_mean": 0.007683782407155117,
+              "t_after": 2.941253458735498,
+              "flipped": false,
+              "killed": false,
+              "survives": true
+            },
+            "idio_momentum": {
+              "ic_before_mean": 0.01210198660523347,
+              "t_before": 5.0435495844141,
+              "ic_after_mean": 0.012331942920499005,
+              "t_after": 5.141445172653162,
+              "flipped": false,
+              "killed": false,
+              "survives": true
+            },
+            "low_residual_volatility": {
+              "ic_before_mean": -0.0013998078824058564,
+              "t_before": -0.46447772002990256,
+              "ic_after_mean": -0.0015605152237034698,
+              "t_after": -0.5174751197042713,
+              "flipped": false,
+              "killed": true,
+              "survives": false
+            },
+            "short_interest": {
+              "ic_before_mean": 0.002677266803264082,
+              "t_before": 1.420239046579605,
+              "ic_after_mean": 0.0025415421462427383,
+              "t_after": 1.351739601144357,
+              "flipped": false,
+              "killed": true,
+              "survives": false
+            },
+            "post_earnings_drift": {
+              "ic_before_mean": 0.12398597114864914,
+              "t_before": 14.045656753281332,
+              "ic_after_mean": 0.007270437430339785,
+              "t_after": 0.7661938499616245,
+              "flipped": false,
+              "killed": true,
+              "survives": false
+            }
+          }
+        },
         "new": {
           "verdict": "pass",
+          "criterion": "Registered in E10, not pre-registered: the discriminating extra-day lag audit. Each signal is rebuilt with every input moved one extra day back and its IC is recomputed against the same-day return; a persistent clean signal barely moves and a leaking one collapses. The IC before and after the extra lag is stored per signal.",
+          "threshold": "the extra-lag IC stored per signal, the collapse recorded",
           "stored_numbers": {
             "momentum_12_1": {
               "ic_before_mean": 0.015076440675165859,
@@ -2568,11 +2652,568 @@
             }
           }
         }
+      },
+      {
+        "previous_data_hash": "d530aad43f5d12e7e16433596c6624464c4779013a7b2f5761e6db8f2c7928b7",
+        "data_hash": "afaadd517c9dcb4c94ad82d90460d1c51e87cadc86010fc527478a92a78b0c37",
+        "n_changed": 1,
+        "changed_tickers_or_criteria": [
+          "F7.4"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F7.1": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Shift audit: moving every signal forward by one day flips or kills its IC. This proves the absence of leakage.",
+              "threshold": "no admitted signal flags leakage in the shift audit",
+              "stored_numbers": {
+                "idio_momentum": {
+                  "t_now": 5.0435495844141,
+                  "t_lagged": 5.141445172653162,
+                  "t_next": 5.141445172653162,
+                  "flipped": false,
+                  "killed": false,
+                  "leak_flag": false,
+                  "pit_by_construction": true
+                },
+                "low_residual_volatility": {
+                  "t_now": -0.46447772002990256,
+                  "t_lagged": -0.5174751197042713,
+                  "t_next": -0.5174751197042713,
+                  "flipped": false,
+                  "killed": true,
+                  "leak_flag": false,
+                  "pit_by_construction": true
+                },
+                "momentum_12_1": {
+                  "t_now": 4.461372051995127,
+                  "t_lagged": 4.5177000659039885,
+                  "t_next": 4.5177000659039885,
+                  "flipped": false,
+                  "killed": false,
+                  "leak_flag": false,
+                  "pit_by_construction": true
+                },
+                "post_earnings_drift": {
+                  "t_now": 14.045656753281332,
+                  "t_lagged": 0.7661938499616245,
+                  "t_next": 0.7661938499616245,
+                  "flipped": false,
+                  "killed": true,
+                  "leak_flag": true,
+                  "pit_by_construction": true
+                },
+                "short_interest": {
+                  "t_now": 1.420239046579605,
+                  "t_lagged": 1.351739601144357,
+                  "t_next": 1.351739601144357,
+                  "flipped": false,
+                  "killed": true,
+                  "leak_flag": false,
+                  "pit_by_construction": true
+                },
+                "short_term_reversal": {
+                  "t_now": 4.708956513908862,
+                  "t_lagged": 2.941253458735498,
+                  "t_next": 2.941253458735498,
+                  "flipped": false,
+                  "killed": false,
+                  "leak_flag": false,
+                  "pit_by_construction": true
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Shift audit: moving every signal forward by one day flips or kills its IC. This proves the absence of leakage.",
+              "threshold": "no admitted signal flags leakage in the shift audit",
+              "stored_numbers": {
+                "idio_momentum": {
+                  "t_now": 5.0435495844141,
+                  "t_lagged": 5.141445172653162,
+                  "t_next": 5.141445172653162,
+                  "flipped": false,
+                  "killed": false,
+                  "leak_flag": false,
+                  "pit_by_construction": true
+                },
+                "low_residual_volatility": {
+                  "t_now": -0.46447772002990256,
+                  "t_lagged": -0.5174751197042713,
+                  "t_next": -0.5174751197042713,
+                  "flipped": false,
+                  "killed": true,
+                  "leak_flag": false,
+                  "pit_by_construction": true
+                },
+                "momentum_12_1": {
+                  "t_now": 4.461372051995127,
+                  "t_lagged": 4.5177000659039885,
+                  "t_next": 4.5177000659039885,
+                  "flipped": false,
+                  "killed": false,
+                  "leak_flag": false,
+                  "pit_by_construction": true
+                },
+                "post_earnings_drift": {
+                  "t_now": 14.045656753281332,
+                  "t_lagged": 0.7661938499616245,
+                  "t_next": 0.7661938499616245,
+                  "flipped": false,
+                  "killed": true,
+                  "leak_flag": true,
+                  "pit_by_construction": true
+                },
+                "short_interest": {
+                  "t_now": 1.420239046579605,
+                  "t_lagged": 1.351739601144357,
+                  "t_next": 1.351739601144357,
+                  "flipped": false,
+                  "killed": true,
+                  "leak_flag": false,
+                  "pit_by_construction": true
+                },
+                "short_term_reversal": {
+                  "t_now": 4.708956513908862,
+                  "t_lagged": 2.941253458735498,
+                  "t_next": 2.941253458735498,
+                  "flipped": false,
+                  "killed": false,
+                  "leak_flag": false,
+                  "pit_by_construction": true
+                }
+              }
+            }
+          },
+          "F7.2": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Factor-neutral momentum IC mean above 0.02 with t above 2, reported separately in-sample 2010 to 2020 and out-of-sample 2021 to 2026.",
+              "threshold": "neutral momentum IC mean > 0.02 and t > 2, both periods stored",
+              "stored_numbers": {
+                "mean": -0.010683646861635072,
+                "t": -1.5490014973675446,
+                "in_sample": {
+                  "mean": -0.006059038694501872,
+                  "t": -0.7074147838845868,
+                  "n": 108
+                },
+                "out_of_sample": {
+                  "mean": -0.01813823913104381,
+                  "t": -1.6387118619136074,
+                  "n": 67
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Factor-neutral momentum IC mean above 0.02 with t above 2, reported separately in-sample 2010 to 2020 and out-of-sample 2021 to 2026.",
+              "threshold": "neutral momentum IC mean > 0.02 and t > 2, both periods stored",
+              "stored_numbers": {
+                "mean": -0.010683646861635072,
+                "t": -1.5490014973675446,
+                "in_sample": {
+                  "mean": -0.006059038694501872,
+                  "t": -0.7074147838845868,
+                  "n": 108
+                },
+                "out_of_sample": {
+                  "mean": -0.01813823913104381,
+                  "t": -1.6387118619136074,
+                  "n": 67
+                }
+              }
+            }
+          },
+          "F7.3": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Any signal failing the out-of-sample deflated-Sharpe hurdle is labeled NULL in the ledger, and the ledger contains at least as many rows as signal runs executed.",
+              "threshold": "below-hurdle signals labeled NULL; ledger rows >= runs",
+              "stored_numbers": {
+                "ledger_rows": 111,
+                "runs_executed": 111,
+                "null_labels_in_ledger": 70,
+                "verdict_by_signal": {
+                  "---": "---",
+                  "momentum_12_1": "PASS",
+                  "short_term_reversal": "NULL",
+                  "idio_momentum": "PASS",
+                  "low_residual_volatility": "NULL",
+                  "short_interest": "NULL",
+                  "post_earnings_drift": "NULL"
+                },
+                "below_hurdle_signals": {
+                  "short_term_reversal": "NULL",
+                  "low_residual_volatility": "NULL",
+                  "short_interest": "NULL",
+                  "post_earnings_drift": "NULL"
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Any signal failing the out-of-sample deflated-Sharpe hurdle is labeled NULL in the ledger, and the ledger contains at least as many rows as signal runs executed.",
+              "threshold": "below-hurdle signals labeled NULL; ledger rows >= runs",
+              "stored_numbers": {
+                "ledger_rows": 111,
+                "runs_executed": 111,
+                "null_labels_in_ledger": 70,
+                "verdict_by_signal": {
+                  "---": "---",
+                  "momentum_12_1": "PASS",
+                  "short_term_reversal": "NULL",
+                  "idio_momentum": "PASS",
+                  "low_residual_volatility": "NULL",
+                  "short_interest": "NULL",
+                  "post_earnings_drift": "NULL"
+                },
+                "below_hurdle_signals": {
+                  "short_term_reversal": "NULL",
+                  "low_residual_volatility": "NULL",
+                  "short_interest": "NULL",
+                  "post_earnings_drift": "NULL"
+                }
+              }
+            }
+          },
+          "F7.4": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "New in E7: every signal's IC under the champion's idio volatility and under the alternative's, with the difference stored.",
+              "threshold": "stored per signal under both models with the difference",
+              "stored_numbers": {
+                "idio_momentum": {
+                  "mean_alpha_xs_v1": 2.6747869891522153e-07,
+                  "mean_alpha_xs_v2": 2.597792584670079e-07,
+                  "difference_v1_minus_v2": 7.699440448213664e-09
+                },
+                "low_residual_volatility": {
+                  "mean_alpha_xs_v1": 3.77731705910478e-08,
+                  "mean_alpha_xs_v2": 3.659863207988229e-08,
+                  "difference_v1_minus_v2": 1.17453851116551e-09
+                },
+                "momentum_12_1": {
+                  "mean_alpha_xs_v1": 3.279769876726583e-07,
+                  "mean_alpha_xs_v2": 3.1862359490475617e-07,
+                  "difference_v1_minus_v2": 9.353392767902102e-09
+                },
+                "post_earnings_drift": {
+                  "mean_alpha_xs_v1": 5.867234511635e-08,
+                  "mean_alpha_xs_v2": 5.7947385846110253e-08,
+                  "difference_v1_minus_v2": 7.249592702397493e-10
+                },
+                "short_interest": {
+                  "mean_alpha_xs_v1": 3.3148434238578e-08,
+                  "mean_alpha_xs_v2": 3.2796545093439655e-08,
+                  "difference_v1_minus_v2": 3.5188914513834376e-10
+                },
+                "short_term_reversal": {
+                  "mean_alpha_xs_v1": 2.5545298502223975e-07,
+                  "mean_alpha_xs_v2": 2.493783492836331e-07,
+                  "difference_v1_minus_v2": 6.07463573860678e-09
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "New in E7: every signal's IC under the champion's idio volatility and under the alternative's, with the difference stored.",
+              "threshold": "stored per signal under both models with the difference",
+              "stored_numbers": {
+                "idio_momentum": {
+                  "mean_alpha_xs_v1": 1.3667834525654947e-05,
+                  "mean_alpha_xs_v2": 1.3495176967236935e-05,
+                  "difference_v1_minus_v2": 1.72657558418013e-07
+                },
+                "low_residual_volatility": {
+                  "mean_alpha_xs_v1": 1.649417603774254e-06,
+                  "mean_alpha_xs_v2": 1.6242017363938083e-06,
+                  "difference_v1_minus_v2": 2.521586738044598e-08
+                },
+                "momentum_12_1": {
+                  "mean_alpha_xs_v1": 1.6704484334327034e-05,
+                  "mean_alpha_xs_v2": 1.6495687283171523e-05,
+                  "difference_v1_minus_v2": 2.087970511555126e-07
+                },
+                "post_earnings_drift": {
+                  "mean_alpha_xs_v1": 2.9633982829566426e-06,
+                  "mean_alpha_xs_v2": 2.9523450578412985e-06,
+                  "difference_v1_minus_v2": 1.1053225115344245e-08
+                },
+                "short_interest": {
+                  "mean_alpha_xs_v1": 2.1223551356624926e-06,
+                  "mean_alpha_xs_v2": 2.115799926218874e-06,
+                  "difference_v1_minus_v2": 6.555209443618529e-09
+                },
+                "short_term_reversal": {
+                  "mean_alpha_xs_v1": 1.3255391162294419e-05,
+                  "mean_alpha_xs_v2": 1.3121503227651658e-05,
+                  "difference_v1_minus_v2": 1.3388793464276324e-07
+                }
+              }
+            }
+          },
+          "F7.1b": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Registered in E8 Task 0a, not pre-registered: the empirical shift audit. Each signal is rebuilt with every input advanced one day and its IC is recomputed against the same-day return; a signal whose IC survives the shift is leaking. The IC before and after the shift is stored per signal.",
+              "threshold": "every signal's after-shift IC flips or loses significance",
+              "stored_numbers": {
+                "momentum_12_1": {
+                  "ic_before_mean": 0.015076440675165859,
+                  "t_before": 4.461372051995127,
+                  "ic_after_mean": 0.014892062936871446,
+                  "t_after": 4.386290749842757,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                },
+                "short_term_reversal": {
+                  "ic_before_mean": 0.012030688919115224,
+                  "t_before": 4.708956513908862,
+                  "ic_after_mean": -0.3949626275031914,
+                  "t_after": -184.71883697624892,
+                  "flipped": true,
+                  "killed": false,
+                  "survives": false
+                },
+                "idio_momentum": {
+                  "ic_before_mean": 0.01210198660523347,
+                  "t_before": 5.0435495844141,
+                  "ic_after_mean": 0.01210472114275361,
+                  "t_after": 5.028779739875748,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                },
+                "low_residual_volatility": {
+                  "ic_before_mean": -0.0013998078824058564,
+                  "t_before": -0.46447772002990256,
+                  "ic_after_mean": -0.0016056663977247186,
+                  "t_after": -0.5323972469867809,
+                  "flipped": false,
+                  "killed": true,
+                  "survives": false
+                },
+                "short_interest": {
+                  "ic_before_mean": 0.002677266803264082,
+                  "t_before": 1.420239046579605,
+                  "ic_after_mean": 0.002411383246073039,
+                  "t_after": 1.2726086677806925,
+                  "flipped": false,
+                  "killed": true,
+                  "survives": false
+                },
+                "post_earnings_drift": {
+                  "ic_before_mean": 0.12398597114864914,
+                  "t_before": 14.045656753281332,
+                  "ic_after_mean": 0.20149756689922005,
+                  "t_after": 21.146019103567788,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Registered in E8 Task 0a, not pre-registered: the empirical shift audit. Each signal is rebuilt with every input advanced one day and its IC is recomputed against the same-day return; a signal whose IC survives the shift is leaking. The IC before and after the shift is stored per signal.",
+              "threshold": "every signal's after-shift IC flips or loses significance",
+              "stored_numbers": {
+                "momentum_12_1": {
+                  "ic_before_mean": 0.015076440675165859,
+                  "t_before": 4.461372051995127,
+                  "ic_after_mean": 0.014892062936871446,
+                  "t_after": 4.386290749842757,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                },
+                "short_term_reversal": {
+                  "ic_before_mean": 0.012030688919115224,
+                  "t_before": 4.708956513908862,
+                  "ic_after_mean": -0.3949626275031914,
+                  "t_after": -184.71883697624892,
+                  "flipped": true,
+                  "killed": false,
+                  "survives": false
+                },
+                "idio_momentum": {
+                  "ic_before_mean": 0.01210198660523347,
+                  "t_before": 5.0435495844141,
+                  "ic_after_mean": 0.01210472114275361,
+                  "t_after": 5.028779739875748,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                },
+                "low_residual_volatility": {
+                  "ic_before_mean": -0.0013998078824058564,
+                  "t_before": -0.46447772002990256,
+                  "ic_after_mean": -0.0016056663977247186,
+                  "t_after": -0.5323972469867809,
+                  "flipped": false,
+                  "killed": true,
+                  "survives": false
+                },
+                "short_interest": {
+                  "ic_before_mean": 0.002677266803264082,
+                  "t_before": 1.420239046579605,
+                  "ic_after_mean": 0.002411383246073039,
+                  "t_after": 1.2726086677806925,
+                  "flipped": false,
+                  "killed": true,
+                  "survives": false
+                },
+                "post_earnings_drift": {
+                  "ic_before_mean": 0.12398597114864914,
+                  "t_before": 14.045656753281332,
+                  "ic_after_mean": 0.20149756689922005,
+                  "t_after": 21.146019103567788,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                }
+              }
+            }
+          },
+          "F7.1c": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Registered in E10, not pre-registered: the discriminating extra-day lag audit. Each signal is rebuilt with every input moved one extra day back and its IC is recomputed against the same-day return; a persistent clean signal barely moves and a leaking one collapses. The IC before and after the extra lag is stored per signal.",
+              "threshold": "the extra-lag IC stored per signal, the collapse recorded",
+              "stored_numbers": {
+                "momentum_12_1": {
+                  "ic_before_mean": 0.015076440675165859,
+                  "t_before": 4.461372051995127,
+                  "ic_after_mean": 0.015225195336530778,
+                  "t_after": 4.5177000659039885,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                },
+                "short_term_reversal": {
+                  "ic_before_mean": 0.012030688919115224,
+                  "t_before": 4.708956513908862,
+                  "ic_after_mean": 0.007683782407155117,
+                  "t_after": 2.941253458735498,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                },
+                "idio_momentum": {
+                  "ic_before_mean": 0.01210198660523347,
+                  "t_before": 5.0435495844141,
+                  "ic_after_mean": 0.012331942920499005,
+                  "t_after": 5.141445172653162,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                },
+                "low_residual_volatility": {
+                  "ic_before_mean": -0.0013998078824058564,
+                  "t_before": -0.46447772002990256,
+                  "ic_after_mean": -0.0015605152237034698,
+                  "t_after": -0.5174751197042713,
+                  "flipped": false,
+                  "killed": true,
+                  "survives": false
+                },
+                "short_interest": {
+                  "ic_before_mean": 0.002677266803264082,
+                  "t_before": 1.420239046579605,
+                  "ic_after_mean": 0.0025415421462427383,
+                  "t_after": 1.351739601144357,
+                  "flipped": false,
+                  "killed": true,
+                  "survives": false
+                },
+                "post_earnings_drift": {
+                  "ic_before_mean": 0.12398597114864914,
+                  "t_before": 14.045656753281332,
+                  "ic_after_mean": 0.007270437430339785,
+                  "t_after": 0.7661938499616245,
+                  "flipped": false,
+                  "killed": true,
+                  "survives": false
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Registered in E10, not pre-registered: the discriminating extra-day lag audit. Each signal is rebuilt with every input moved one extra day back and its IC is recomputed against the same-day return; a persistent clean signal barely moves and a leaking one collapses. The IC before and after the extra lag is stored per signal.",
+              "threshold": "the extra-lag IC stored per signal, the collapse recorded",
+              "stored_numbers": {
+                "momentum_12_1": {
+                  "ic_before_mean": 0.015076440675165859,
+                  "t_before": 4.461372051995127,
+                  "ic_after_mean": 0.015225195336530778,
+                  "t_after": 4.5177000659039885,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                },
+                "short_term_reversal": {
+                  "ic_before_mean": 0.012030688919115224,
+                  "t_before": 4.708956513908862,
+                  "ic_after_mean": 0.007683782407155117,
+                  "t_after": 2.941253458735498,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                },
+                "idio_momentum": {
+                  "ic_before_mean": 0.01210198660523347,
+                  "t_before": 5.0435495844141,
+                  "ic_after_mean": 0.012331942920499005,
+                  "t_after": 5.141445172653162,
+                  "flipped": false,
+                  "killed": false,
+                  "survives": true
+                },
+                "low_residual_volatility": {
+                  "ic_before_mean": -0.0013998078824058564,
+                  "t_before": -0.46447772002990256,
+                  "ic_after_mean": -0.0015605152237034698,
+                  "t_after": -0.5174751197042713,
+                  "flipped": false,
+                  "killed": true,
+                  "survives": false
+                },
+                "short_interest": {
+                  "ic_before_mean": 0.002677266803264082,
+                  "t_before": 1.420239046579605,
+                  "ic_after_mean": 0.0025415421462427383,
+                  "t_after": 1.351739601144357,
+                  "flipped": false,
+                  "killed": true,
+                  "survives": false
+                },
+                "post_earnings_drift": {
+                  "ic_before_mean": 0.12398597114864914,
+                  "t_before": 14.045656753281332,
+                  "ic_after_mean": 0.007270437430339785,
+                  "t_after": 0.7661938499616245,
+                  "flipped": false,
+                  "killed": true,
+                  "survives": false
+                }
+              }
+            }
+          }
+        }
       }
     ]
   },
   "reference_values": {
-    "data_hash": "d530aad43f5d12e7e16433596c6624464c4779013a7b2f5761e6db8f2c7928b7",
+    "data_hash": "afaadd517c9dcb4c94ad82d90460d1c51e87cadc86010fc527478a92a78b0c37",
     "verdicts": {
       "F7.1": "pass",
       "F7.2": "fail",
@@ -2674,34 +3315,34 @@
       },
       "F7.4": {
         "idio_momentum": {
-          "mean_alpha_xs_v1": 2.6747869891522153e-07,
-          "mean_alpha_xs_v2": 2.597792584670079e-07,
-          "difference_v1_minus_v2": 7.699440448213664e-09
+          "mean_alpha_xs_v1": 1.3667834525654947e-05,
+          "mean_alpha_xs_v2": 1.3495176967236935e-05,
+          "difference_v1_minus_v2": 1.72657558418013e-07
         },
         "low_residual_volatility": {
-          "mean_alpha_xs_v1": 3.77731705910478e-08,
-          "mean_alpha_xs_v2": 3.659863207988229e-08,
-          "difference_v1_minus_v2": 1.17453851116551e-09
+          "mean_alpha_xs_v1": 1.649417603774254e-06,
+          "mean_alpha_xs_v2": 1.6242017363938083e-06,
+          "difference_v1_minus_v2": 2.521586738044598e-08
         },
         "momentum_12_1": {
-          "mean_alpha_xs_v1": 3.279769876726583e-07,
-          "mean_alpha_xs_v2": 3.1862359490475617e-07,
-          "difference_v1_minus_v2": 9.353392767902102e-09
+          "mean_alpha_xs_v1": 1.6704484334327034e-05,
+          "mean_alpha_xs_v2": 1.6495687283171523e-05,
+          "difference_v1_minus_v2": 2.087970511555126e-07
         },
         "post_earnings_drift": {
-          "mean_alpha_xs_v1": 5.867234511635e-08,
-          "mean_alpha_xs_v2": 5.7947385846110253e-08,
-          "difference_v1_minus_v2": 7.249592702397493e-10
+          "mean_alpha_xs_v1": 2.9633982829566426e-06,
+          "mean_alpha_xs_v2": 2.9523450578412985e-06,
+          "difference_v1_minus_v2": 1.1053225115344245e-08
         },
         "short_interest": {
-          "mean_alpha_xs_v1": 3.3148434238578e-08,
-          "mean_alpha_xs_v2": 3.2796545093439655e-08,
-          "difference_v1_minus_v2": 3.5188914513834376e-10
+          "mean_alpha_xs_v1": 2.1223551356624926e-06,
+          "mean_alpha_xs_v2": 2.115799926218874e-06,
+          "difference_v1_minus_v2": 6.555209443618529e-09
         },
         "short_term_reversal": {
-          "mean_alpha_xs_v1": 2.5545298502223975e-07,
-          "mean_alpha_xs_v2": 2.493783492836331e-07,
-          "difference_v1_minus_v2": 6.07463573860678e-09
+          "mean_alpha_xs_v1": 1.3255391162294419e-05,
+          "mean_alpha_xs_v2": 1.3121503227651658e-05,
+          "difference_v1_minus_v2": 1.3388793464276324e-07
         }
       },
       "F7.1b": {

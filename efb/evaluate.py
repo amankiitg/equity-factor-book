@@ -3425,15 +3425,44 @@ def main_e7(data_root: Path = ROOT / "data") -> None:
         )
         if block.get("changed"):
             print(f"  STOP CONDITION: earlier verdicts moved: {block['changed']}")
+    results_path = ROOT / "sprints" / "E7" / "RESULTS.json"
+    data_hash = e7_data_hash(data_root)
     write_results(
         criteria,
-        ROOT / "sprints" / "E7" / "RESULTS.json",
+        results_path,
         sprint="E7",
-        data_hash=e7_data_hash(data_root),
+        data_hash=data_hash,
+        previous_data_hash=_previous_data_hash(results_path, data_hash),
         reference_values=e7_reference_values(data_root),
     )
     if any(block.get("n_changed") for block in check.values()):
         raise SystemExit(3)
+
+
+def _previous_data_hash(path: Path, data_hash: str | None) -> str | None:
+    """The hash the superseded numbers were read from, when the data moved.
+
+    A revision is the record of a correction: the old hash beside the new one
+    and the old value beside the new one, which is what makes a moved number
+    auditable rather than merely different. When a rebuild reads the same
+    artifacts it read last time there is no correction to record, so the
+    transition the file already carries is carried forward rather than
+    replaced by the hash nothing moved from.
+    """
+    if not path.exists():
+        return None
+    try:
+        stored = json.loads(path.read_text())
+    except json.JSONDecodeError:  # pragma: no cover - corrupt file
+        return None
+    if stored.get("data_hash") != data_hash:
+        recorded = stored.get("data_hash")
+        return recorded if isinstance(recorded, str) else None
+    revisions = stored.get("revisions")
+    if isinstance(revisions, dict):
+        previous = revisions.get("previous_data_hash")
+        return previous if isinstance(previous, str) else None
+    return None
 
 
 RG_SIGNAL_QUESTIONS = [

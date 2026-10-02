@@ -828,3 +828,63 @@ def _converted_alpha(
             ]
         )
     return pd.concat(rows, ignore_index=True)
+
+
+def rebuild_conversion(
+    data_root: Path = DATA_ROOT,
+    store: bool = True,
+    signals: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
+    """Rewrite the stored E8 alpha contract through `alpha_from_contract`.
+
+    The narrow rebuild. `run` is the whole E7 pipeline and recomputes the IC,
+    the audits and the ledger rows with it; this rewrites one artifact per
+    signal, `alpha/{name}/alpha.parquet`, and touches nothing else. It exists
+    because the contract can be corrected without the signal engine changing:
+    when it is, the IC of every signal is the same number as before, the
+    multiple-testing ledger is owed no new row, and re-running `run` for the
+    conversion alone would append thirty rows that were never executed.
+
+    The returned frame is one row per signal: the rows written, the dates
+    covered, and the mean absolute converted alpha under each model, with the
+    same two numbers read from the artifact that was there before, so the
+    movement the correction caused is on the record rather than only in the
+    file it moved. A signal whose artifact is missing carries NaN in the
+    previous columns rather than a zero that would read as a measurement.
+    """
+    root = Path(data_root)
+    wide, _counts = eval_risk.load_clean_wide(root)
+    wanted = tuple(signals) if signals is not None else tuple(SIGNAL_BUILDERS)
+    rows: list[dict[str, object]] = []
+    for name in wanted:
+        if name not in SIGNAL_BUILDERS:
+            continue
+        signal = _signal_for(name, wide, root)
+        if signal.empty:
+            continue
+        converted = _converted_alpha(name, signal, wide, root)
+        path = root / "alpha" / name / "alpha.parquet"
+        previous = pd.read_parquet(path) if path.exists() else None
+        if store:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            converted.to_parquet(path, index=False)
+        rows.append(
+            {
+                "signal": name,
+                "n_rows": int(len(converted)),
+                "n_dates": int(converted["date"].nunique()),
+                "mean_abs_alpha": float(converted["alpha"].abs().mean()),
+                "mean_abs_alpha_xs_v2": float(converted["alpha_xs_v2"].abs().mean()),
+                "previous_mean_abs_alpha": (
+                    float(previous["alpha"].abs().mean())
+                    if previous is not None
+                    else float("nan")
+                ),
+                "previous_mean_abs_alpha_xs_v2": (
+                    float(previous["alpha_xs_v2"].abs().mean())
+                    if previous is not None
+                    else float("nan")
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
