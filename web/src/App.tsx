@@ -9,6 +9,12 @@
 
 import { useEffect, useState } from "react";
 
+import { Reasons, SummaryCards, TopNames } from "./BookSections";
+import { bookFacts } from "./book";
+import { dateOnly, dollars, exposure, oneDecimal, percent } from "./format";
+import { Movers, RiskConcentration } from "./FutureSections";
+import { HoldingsSection } from "./HoldingsSection";
+import { SectorSection } from "./SectorSection";
 import type { Snapshot } from "./types";
 
 export interface Health {
@@ -79,37 +85,6 @@ export function health(snapshot: Snapshot, now: Date): Health {
       : "",
   };
 }
-
-const percent = (value: number | null): string =>
-  value === null || value === undefined ? "n/a" : `${(value * 100).toFixed(2)}%`;
-
-const dollars = (value: number | null): string =>
-  value === null || value === undefined ? "n/a" : `$${Math.round(value).toLocaleString()}`;
-
-const exposures = (value: number | null): string =>
-  value === null || value === undefined ? "n/a" : value.toFixed(4);
-
-/** A date as the day it is, never with a midnight time stapled to it. */
-const dateOnly = (value: string | null | undefined): string | null =>
-  value === null || value === undefined || value === "" ? null : value.slice(0, 10);
-
-/** One decimal place: an effective breadth of 70.59213 is 70.6 names, not 70.59. */
-const oneDecimal = (value: number | null): string =>
-  value === null || value === undefined ? "n/a" : value.toFixed(1);
-
-/**
- * A factor exposure to four places, with negative zero shown as zero.
- *
- * The hedge drives every factor to zero to machine precision, so the "after"
- * column holds values like -2.6e-18 whose four-place form is "-0.0000". That is
- * not a negative exposure, it is rounding, and a table of minus-zeroes reads as
- * though the hedge had missed.
- */
-const exposure = (value: number | null | undefined): string => {
-  if (value === null || value === undefined || Number.isNaN(value)) return "n/a";
-  const rounded = Number(value.toFixed(4));
-  return (Object.is(rounded, -0) ? 0 : rounded).toFixed(4);
-};
 
 /** A human age, so the reader does not have to subtract two timestamps. */
 function ageText(generated: Date, now: Date): string {
@@ -248,9 +223,12 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
     ...[...Object.values(before), ...Object.values(after)].map((value) => Math.abs(value ?? 0)),
     0.0001,
   );
+  // Two sections the snapshot cannot feed yet render only when it can.
+  const hasExposures = Object.keys(before).length > 0 || Object.keys(after).length > 0;
+  const facts = bookFacts(snapshot);
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-4 p-6">
+    <main className="mx-auto flex max-w-5xl flex-col gap-4 p-3 sm:p-6">
       <h1 className="text-xl font-bold">EFB live book</h1>
 
       {snapshot.dry_run ? (
@@ -286,14 +264,15 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
         />
       ) : null}
 
-      <section>
+      <section data-section="book">
         <h2 className="text-lg font-semibold">
           The book: {snapshot.book.n_names} name(s)
           {dated ? ` (as of ${bookAsof})` : ""}
         </h2>
+        {facts.hasBook ? <SummaryCards snapshot={snapshot} facts={facts} /> : null}
         {/* One labelled item per number, rather than a pipe-separated run of
             text: a reader looking for the cost should not have to count fields. */}
-        <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-4 text-sm text-slate-600">
+        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 text-sm text-slate-600">
           <dt className="font-medium">construction</dt>
           <dd>{snapshot.construction}</dd>
           <dt className="font-medium">gross</dt>
@@ -334,30 +313,17 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
         {snapshot.book.reason ? (
           <p className="text-sm text-amber-800">no book: {snapshot.book.reason}</p>
         ) : null}
-        <table aria-label="the book" className="mt-2 w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-slate-300 text-left">
-              <th className="py-1">ticker</th>
-              <th className="py-1">side</th>
-              <th className="py-1">weight</th>
-              <th className="py-1">reason</th>
-            </tr>
-          </thead>
-          <tbody>
-            {snapshot.book.names.map((name) => (
-              <tr key={name.ticker} className="border-b border-slate-100">
-                <td className="py-1 font-mono">{name.ticker}</td>
-                <td className="py-1">{name.side}</td>
-                <td className="py-1">{percent(name.weight)}</td>
-                <td className="py-1 text-slate-600">{name.reason ?? ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </section>
 
-      <section>
+      <SectorSection sectors={facts.sectors} />
+      <TopNames facts={facts} />
+      <Reasons facts={facts} />
+      <RiskConcentration snapshot={snapshot} />
+
+      {hasExposures ? (
+      <section data-section="exposures">
         <h2 className="text-lg font-semibold">Factor exposures, before and after the hedge</h2>
+        <div className="overflow-x-auto">
         <table className="mt-2 w-full border-collapse text-sm" aria-label="factor exposures">
           <thead>
             <tr className="border-b border-slate-300 text-left">
@@ -394,6 +360,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
             })}
           </tbody>
         </table>
+        </div>
         <p className="mt-1 text-xs text-slate-500">
           The hedge is exact, so every factor's after value is zero to machine precision. The bars are
           on one scale, the largest exposure on the page: a bar that is not there is a factor the
@@ -402,11 +369,15 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
         </p>
         <dl className="mt-3 text-sm">
           <dt className="font-medium">the hedge</dt>
-          <dd>idio share after FMP: {exposures(snapshot.hedge?.idio_share_after_fmp)}</dd>
-          <dd>worst residual exposure: {exposures(snapshot.hedge?.max_abs_exposure_after_fmp)}</dd>
+          <dd>idio share after FMP: {exposure(snapshot.hedge?.idio_share_after_fmp)}</dd>
+          <dd>worst residual exposure: {exposure(snapshot.hedge?.max_abs_exposure_after_fmp)}</dd>
           <dd>reconciliation intended: {dollars(snapshot.reconciliation?.intended_notional)}</dd>
         </dl>
       </section>
+      ) : null}
+
+      <HoldingsSection names={snapshot.book.names} nav={facts.nav} />
+      <Movers snapshot={snapshot} />
     </main>
   );
 }
