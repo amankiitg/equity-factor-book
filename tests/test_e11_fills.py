@@ -9,6 +9,7 @@ because they are the three the owner's message has to tell apart.
 
 from __future__ import annotations
 
+import re
 import uuid
 from pathlib import Path
 
@@ -305,14 +306,36 @@ def test_the_realized_cost_is_the_slippage_in_dollars_over_the_nav() -> None:
 
 
 def test_the_frames_columns_are_the_tables_columns() -> None:
-    """What is written must fit the table, including the columns added for this."""
+    """What is written must fit the table, including the columns added for this.
+
+    Read from the table's OWN definition rather than from the file: searching the
+    whole schema for a column name passes on a column that only `efb.orders` has,
+    which is exactly how `position_intent` went missing from `efb.fills` while
+    this test was green -- and the writer's INSERT names every column in
+    `FILL_COLUMNS`, so the live table would have refused the first morning.
+    """
     keys = store.TABLE_KEYS["fills"]
     assert keys == ("trade_date", "ticker", "order_id")
     for column in ("filled_quantity", "fill_price", "cancel_time", "slippage_bps"):
         assert column in fills.FILL_COLUMNS
+
     schema = SCHEMA.read_text()
+    create = schema.split("create table if not exists efb.fills (")[1].split("\n);")[0]
+    added = set(
+        re.findall(r"alter table efb\.fills\s+add column if not exists (\w+)", schema)
+    )
+    # The seven columns the table was created with, which the live table already
+    # has: only the rest need an additive statement for a table that exists.
+    original = keys + (
+        "intended_notional",
+        "filled_notional",
+        "fill_price",
+        "status",
+    )
     for column in fills.FILL_COLUMNS:
-        assert f"{column} " in schema, f"{column} is not in the table's own definition"
+        assert f"{column} " in create, f"{column} is not in efb.fills' create block"
+        if column not in original:
+            assert column in added, f"{column} has no additive statement for efb.fills"
 
 
 def test_the_module_cannot_be_asked_for_an_order_to_send() -> None:

@@ -30,7 +30,14 @@ rewritten, and nothing is read before it is written.
    alter table efb.fills add column if not exists updated_at timestamptz;
    alter table efb.fills add column if not exists close_price double precision;
    alter table efb.fills add column if not exists slippage_bps double precision;
+   alter table efb.fills add column if not exists position_intent text;
    ```
+
+   `position_intent` is the seventh and the one that is easy to miss: the writer
+   names every column it writes, and without it the first morning fails on a column
+   the table does not have. The column-fit test reads these statements out of the
+   file for `efb.fills` alone (a search over the whole schema passed on a column
+   only `efb.orders` had, which is how this one was found).
 
    (The file also adds `position_intent` to `efb.orders`, which is batch 4's column
    and already exists on the live table: the writer has been sending position

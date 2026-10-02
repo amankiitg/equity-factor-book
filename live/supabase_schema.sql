@@ -126,6 +126,10 @@ create table if not exists efb.fills (
   -- against the legs that produced it instead of taken on trust.
   close_price double precision,
   slippage_bps double precision,
+  -- The broker's own open-or-close decision on the leg, as `efb.orders` carries
+  -- it: the message's did-not-fill line quotes it, and a reconciler that had to
+  -- re-derive it from the sign of a notional would get a reversal wrong.
+  position_intent text,
   primary key (trade_date, ticker, order_id)
 );
 
@@ -463,6 +467,12 @@ alter table efb.fills
   add column if not exists close_price double precision;
 alter table efb.fills
   add column if not exists slippage_bps double precision;
+-- The intent the broker was given, which the message's did-not-fill line quotes
+-- (`DG sell_to_open 41 canceled 12:15 UTC`). The create block above carries it,
+-- and a table that already existed needs it by name: without this the writer's
+-- INSERT names a column the live table does not have and the first morning fails.
+alter table efb.fills
+  add column if not exists position_intent text;
 
 -- Row level security, off, last. Supabase enables row level security on the
 -- tables its SQL editor is asked to create, and an RLS table with no policy
