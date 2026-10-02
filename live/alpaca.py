@@ -83,7 +83,7 @@ def position_intent(held: float, target: float) -> str:
 # cron's own hour.
 #
 # The evening cron fires at 22:30 UTC (render.yaml, `efb-live-daily`'s
-# "30 22 * * 1-5"), which is 18:30 ET
+# "30 15,22 * * 1-5"), which is 18:30 ET
 # in summer and 17:30 ET in winter: after the 16:00 ET close and inside the
 # 16:00-20:00 ET after-hours window. Alpaca's Time in Force table
 # (https://docs.alpaca.markets/docs/orders-at-alpaca#time-in-force) says of `opg`:

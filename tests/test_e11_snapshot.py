@@ -235,7 +235,7 @@ def test_the_actual_holdings_are_written_only_when_the_account_was_read() -> Non
     """The evening's own document is not the reconciler's: no key, not a null one.
 
     The evening job writes the target book and never reads the account, so its
-    document must be the same bytes it always was; the 15:00 job adds this one
+    document must be the same bytes it always was; the 15:30 job adds this one
     section to the document already published. A key holding null would tell the
     page the account holds nothing, which is a stronger and false claim.
     """

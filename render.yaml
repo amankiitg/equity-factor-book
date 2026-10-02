@@ -1,45 +1,58 @@
 # Render deployment blueprint -- EFB live book (Sprint E11, Part B).
 #
-# Two cron services, both jobs over one image. The live book monitor runs on
-# Cloudflare (a Worker or Pages project reading the snapshot through an R2 binding
-# behind Access), so there is no Render web service and no read role: one fewer
-# credential and one fewer box to fall over. `live/dashboard_app.py` stays
-# runnable locally as a research view until the Cloudflare page is proven.
+# One cron service. The live book monitor runs on Cloudflare (a Worker reading the
+# snapshot through an R2 binding behind Access), so there is no Render web service
+# and no read role: one fewer credential and one fewer box to fall over.
+# `live/dashboard_app.py` stays runnable locally as a research view until the
+# Cloudflare page is proven.
 #
-# Cron 1, `efb-live-daily`: extends the data and model, proposes the book, runs the
-# morning execution, reconciles, and writes one JSON snapshot per run to R2.
+# The one service, `efb-live-daily`, starts `scripts/run_cron.py` twice a weekday
+# and the New York clock picks the job:
+#   "30 15,22 * * 1-5" = 15:30 and 22:30 UTC, Monday to Friday.
+#   * 15:30 UTC is 11:30 EDT / 10:30 EST, before noon in New York, so it is the
+#     fills reconciliation: the morning after, reads the previous evening's orders
+#     from the broker by `broker_order_id` -- filled quantity, average fill price,
+#     final status and cancel time -- writes them to `efb.fills`, adds an "actual
+#     holdings" section to the snapshot beside the target book, and emails only
+#     when an order did not fill. It never sizes a book and never sends an order.
+#     A market DAY order from the previous evening fills at the next 09:30 New York
+#     open, so the slot has to be after that open in EST and in EDT; 14:00 UTC is
+#     after it in only one of the two (10:00 EDT, but 09:00 EST, half an hour early,
+#     when every leg is still working and the reconciliation would record the whole
+#     book as unfilled). 15:30 UTC satisfies both, and
+#     `tests/test_week1_fills_cron.py` pins that against the exchange's own calendar
+#     on both sides of the daylight-time change.
+#   * 22:30 UTC is 18:30 EDT / 17:30 EST, after the 16:00 ET close: the evening run
+#     extends the data and model, proposes the book, runs the morning execution,
+#     reconciles, and writes one JSON snapshot per run to R2, exactly as the old
+#     start command ran it.
+#   * Any other hour does nothing, logs, and exits 0.
 #
-# Cron 2, `efb-fills-reconcile`: the morning after, reads the previous evening's
-# orders from the broker by `broker_order_id` -- filled quantity, average fill
-# price, final status and cancel time -- writes them to `efb.fills`, adds an
-# "actual holdings" section to the snapshot beside the target book, and emails
-# only when an order did not fill. It never sizes a book and never sends an order,
-# and it is deliberately not part of cron 1: a job that only reads must not be able
-# to make the evening's run fail, and the evening's run must not be able to make
-# this one report nothing.
+# A comma list in the hour field is a standard cron expression, which is what
+# Render's cron documentation specifies for `schedule` ("The schedule to use for the
+# cron job, defined as a cron expression", linking the five-field syntax). Render
+# also guarantees at most one run of a given cron job at a time, and delays the next
+# scheduled run while one is active, so the 15:30 start cannot overlap the 22:30 one
+# even if a morning ran long. Both jobs are idempotent against their own `run_status`
+# key (`fills_reconcile` and `live_daily`), so a duplicate start reconciles the same
+# close again or exits 0 without trading.
 #
-# UTC cron schedules:
-#   "30 22 * * 1-5" = 18:30 EDT / 17:30 EST, after the 16:00 ET close.
-#   "0 15 * * 1-5"  = 11:00 EDT / 10:00 EST, the next morning: a DAY order placed
-#                     the evening before has filled at the 09:30 ET open or been
-#                     cancelled, and the book is read before that day's evening.
-#                     14:00 UTC was the first choice and is wrong for half the
-#                     year: it is 10:00 EDT (after the open) but 09:00 EST, half
-#                     an hour BEFORE the open, when every leg is still working and
-#                     the reconciliation would record the whole book as unfilled.
-#                     15:00 UTC is after the open in both halves of the year, and
-#                     `tests/test_week1_fills_cron.py` pins that against the
-#                     exchange's own calendar on both sides of the DST change.
+# One service instead of two, and no environment group. The two crons used to take a
+# shared group so each key existed once in the workspace; with one service the keys
+# exist once on the service, which is the same property without the second copy.
+# Render ignores `sync: false` inside an environment group, so a group could not be
+# declared here anyway, and a group created in the dashboard is a copy that can
+# drift.
 #
-# The run refuses outside 16:00-20:00 New York, the after-hours session Alpaca
-# holds a DAY order for, unless EFB_FORCE_HOUR is exactly "true". The slot above
-# is inside the window in both EDT and EST, so the override is for a rehearsal
-# and never for this cron.
+# The run refuses outside 16:00-20:00 New York, the after-hours session Alpaca holds
+# a DAY order for, unless EFB_FORCE_HOUR is exactly "true". The 22:30 UTC slot is
+# inside the window in both EDT and EST, so the override is for a rehearsal and
+# never for this cron. `scripts/run_cron.py` routes on the same New York clock.
 #
-# Secret isolation:
-#   Both crons take the same one environment group, `efb-live`, so each shared
-#   key exists once in the workspace and two services cannot drift apart on it.
-#   The group holds exactly these thirteen keys, no more:
+# Secret isolation, as it stands now:
+#   Every key the service reads is declared below with `sync: false`: no value is in
+#   this file, and Render preserves the values already on the service when the
+#   blueprint is synced. The nineteen keys are:
 #     EFB_SUPABASE_DB_URL      the write role's connection string
 #     EFB_DB_SCHEMA            `efb`
 #     EFB_ALPACA_PAPER_API_KEY / EFB_ALPACA_PAPER_SECRET_KEY  the paper keys
@@ -48,25 +61,27 @@
 #     EFB_SNAPSHOT             the switch the writer requires
 #     EFB_R2_ACCOUNT_ID / EFB_R2_BUCKET / EFB_R2_ACCESS_KEY_ID /
 #     EFB_R2_SECRET_ACCESS_KEY the snapshot bucket, scoped to that one bucket
-#   The evening cron adds four keys of its own, and they stay on it so cron 2
-#   cannot get them: EFB_DRY_RUN (the switch that makes a run trade), EFB_INIT_STORE
-#   (the one-time seed request) and the EFB_SEED_R2_* four (history it must not
-#   read, let alone write). EFB_STORE is deliberately absent everywhere.
+#     EFB_INIT_STORE           the one-time seed request (evening path only)
+#     EFB_DRY_RUN              the switch that makes a run trade (evening only)
+#     EFB_SEED_R2_ACCOUNT_ID / EFB_SEED_R2_BUCKET / EFB_SEED_R2_ACCESS_KEY_ID /
+#     EFB_SEED_R2_SECRET_ACCESS_KEY  the seed bucket, read-only, evening path only
+#   EFB_STORE is deliberately absent: a run that could be pointed at a local parquet
+#   on the deployment box would report a book nobody reads. EFB_FORCE_HOUR is
+#   deliberately absent for the reason above.
 #
-#   The group's VALUES are not in this file and are not `sync: false` either:
-#   Render ignores `sync: false` inside an environment group, so a group declared
-#   here would come out empty and every key would be missing. The group is created
-#   in the dashboard (Env Groups -> New Environment Group, named `efb-live`) and
-#   referenced by name from both services. See the merge-day checklist in
-#   `docs/week1_orders_runbook.md` for the exact order of the steps: the group must
-#   exist and carry the values before this file is synced, and the evening
-#   service's own copies of these keys are deleted only AFTER the first fills run
-#   has succeeded. That run is what proves the group's values, because it is a new
-#   service with no copies of its own to fall back on; while the evening service's
-#   copies exist they win over the group, so nothing about that service proves
-#   anything about the group.
+#   The six evening-only keys now sit on the same service as the morning job, which
+#   is a change from the two-service layout and is safe because the morning path
+#   never reads them: it calls `scripts/reconcile_fills.py`, which has no seeding, no
+#   sizing and no submit path at all (checked over that module's own syntax tree),
+#   and it never calls `scripts/run_live_daily.py`. `scripts/run_cron.py` picks the
+#   job by the New York hour, and `tests/test_week1_run_cron.py` runs the morning
+#   route with EFB_DRY_RUN=false and every seed key set, and shows the run is
+#   unchanged.
 #
 #   This file commits the KEY names only; no credentials appear here.
+#
+# `docs/week1_orders_runbook.md` is the merge-day order and the checks that confirm
+# the first morning run.
 
 services:
   - type: cron
@@ -78,13 +93,56 @@ services:
     # peak. The same page, on omitting the field: "Render uses `0.5c-512mb` for a
     # new web service, private service, background worker, or cron job", so
     # without this line the cron would be created on 512 MB and fall over on the
-    # first evening.
+    # first evening. One service runs both jobs now, and the morning one is lighter
+    # than the evening one, so the plan is the evening's measurement.
     plan: 2c-4g
     buildCommand: pip install -r requirements.txt && pip install -e .
-    schedule: "30 22 * * 1-5"
-    startCommand: python scripts/run_live_daily.py
+    # Both slots in one hour field. 15:30 UTC is the morning's reconciliation (a
+    # DAY order from last evening has filled at the 09:30 ET open or been
+    # cancelled) and 22:30 UTC is the evening's run; `scripts/run_cron.py` decides
+    # which by the New York hour, and any other hour does nothing and exits 0.
+    schedule: "30 15,22 * * 1-5"
+    startCommand: python scripts/run_cron.py
     envVars:
-      - fromGroup: efb-live
+      # The keys both jobs read. Declared here rather than taken from an
+      # environment group: Render ignores `sync: false` inside a group, so a group
+      # in this file would come out empty and every key would be missing, and a
+      # group created in the dashboard is a second copy of nineteen values that can
+      # drift from this one. See the header. `sync: false` means Render prompts for
+      # a value only when it creates the service: the service exists already, and
+      # Render preserves the values it holds.
+      - key: EFB_SUPABASE_DB_URL
+        sync: false
+      - key: EFB_DB_SCHEMA
+        sync: false
+      - key: EFB_ALPACA_PAPER_API_KEY
+        sync: false
+      - key: EFB_ALPACA_PAPER_SECRET_KEY
+        sync: false
+      - key: EFB_ALPACA_ACCOUNT_ID
+        sync: false
+      - key: EFB_RESEND_API_KEY
+        sync: false
+      - key: EFB_NOTIFY_EMAIL_FROM
+        sync: false
+      - key: EFB_NOTIFY_EMAIL_TO
+        sync: false
+      - key: EFB_SNAPSHOT
+        sync: false
+      - key: EFB_R2_ACCOUNT_ID
+        sync: false
+      - key: EFB_R2_BUCKET
+        sync: false
+      - key: EFB_R2_ACCESS_KEY_ID
+        sync: false
+      - key: EFB_R2_SECRET_ACCESS_KEY
+        sync: false
+      # The evening path's own six, and the morning path never reads one of them:
+      # it calls `scripts/reconcile_fills.py`, which seeds nothing, sizes nothing
+      # and sends nothing. `tests/test_week1_run_cron.py` runs the morning route
+      # with every one of these set to its evening value and shows the run is
+      # unchanged.
+      #
       # The explicit first-run request, set for the first run only. Unset or
       # "false" is a normal run, "true" seeds the store from the git artifacts and
       # writes its marker, and any other value is an error that names it. The
@@ -94,14 +152,13 @@ services:
         sync: false
       - key: EFB_DRY_RUN
         sync: false
-      # The seed bucket, read-only here, and absent from cron 2. The frozen
-      # history lives in `efb-seed`, a private bucket of its own, separate from the
-      # snapshot bucket: every parquet under data/ is gitignored, so the deploy
-      # image holds no artifacts at all, and a run downloads the seed and verifies
-      # every hash before it reads anything. The local .env holds a write token
-      # under these same names for scripts/push_seed.py, which refuses to run where
-      # RENDER is set, so the cron has no write path into history. The bucket name
-      # defaults to efb-seed.
+      # The seed bucket, read-only here. The frozen history lives in `efb-seed`, a
+      # private bucket of its own, separate from the snapshot bucket: every parquet
+      # under data/ is gitignored, so the deploy image holds no artifacts at all,
+      # and a run downloads the seed and verifies every hash before it reads
+      # anything. The local .env holds a write token under these same names for
+      # scripts/push_seed.py, which refuses to run where RENDER is set, so the cron
+      # has no write path into history. The bucket name defaults to efb-seed.
       - key: EFB_SEED_R2_ACCOUNT_ID
         sync: false
       - key: EFB_SEED_R2_BUCKET
@@ -110,36 +167,3 @@ services:
         sync: false
       - key: EFB_SEED_R2_SECRET_ACCESS_KEY
         sync: false
-
-  # The morning after: what the broker actually did with the previous evening's
-  # orders, and what the account holds as a result. Read-only by construction --
-  # `scripts/reconcile_fills.py` has no sizing and no submit path, and the test
-  # for it walks the module's own syntax tree to prove it -- so it is separate
-  # from the evening's run rather than a step inside it: the evening's job is the
-  # one that trades, and a failure to read a fill back should not be able to stop
-  # it, nor be silently swallowed by it.
-  #
-  # The group above is its whole environment: it reads the account, the store and
-  # the published snapshot, writes `efb.fills` and the section, and emails. Every
-  # variable it opens is one of `efb-live`'s thirteen, which is asserted at run
-  # time rather than assumed (`tests/test_week1_fills_cron.py` watches the job's
-  # own `os.environ` reads and fails if it grows a key the group does not have).
-  # `EFB_DRY_RUN`, `EFB_INIT_STORE` and the seed bucket's four stay off this
-  # service: this job never trades, has nothing to seed and reads no history.
-  #
-  # It is also the only job that reads the published snapshot back, adds the one
-  # section describing the account, and writes it again. That is what makes the
-  # page able to show the target book beside the book the account holds.
-  - type: cron
-    name: efb-fills-reconcile
-    runtime: python
-    # Same plan as the evening cron: this job runs the same image and the same
-    # price downloader over one evening's tickers, and its own peak has not been
-    # measured. The 2x-headroom rule is satisfied by a plan that is known to hold
-    # 2.14 GiB of work, and an unmeasured job is not the place to save on memory.
-    plan: 2c-4g
-    buildCommand: pip install -r requirements.txt && pip install -e .
-    schedule: "0 15 * * 1-5"
-    startCommand: python scripts/reconcile_fills.py
-    envVars:
-      - fromGroup: efb-live

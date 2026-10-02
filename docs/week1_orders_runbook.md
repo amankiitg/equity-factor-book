@@ -1,33 +1,42 @@
 # Week one, order path: the merge-day runbook
 
-Three changes are on branch `week1-orders`: the fills reconciliation as its own
-15:00 UTC cron, the easy-to-borrow gate that skips rather than fails, and the
-reason classifier's two thresholds and two new labels. This file is the order to
+Three changes are on branch `week1-orders`: the fills reconciliation as the morning
+half of the one daily cron, the easy-to-borrow gate that skips rather than fails, and
+the reason classifier's two thresholds and two new labels. This file is the order to
 put them on `main` in, and how to know each step worked.
 
-Nothing here is safe to do in a different order. The two SQL steps come before the
-merge, because the deployment runs the new code as soon as `main` moves. The
-environment group is created before the merge, because the blueprint references it
-by name and a sync that names a group the workspace does not have fails. And the
-evening service's own copies of the shared keys are deleted **after** the first
-fills run, not before: while those copies exist they win over the group, so the
-fills run is the only thing that proves the group carries the right values.
+The order, in one line: **the SQL (already applied), merge, confirm the new schedule,
+the first 15:30 UTC run.**
 
-The order, in one line: **SQL, create the group, merge, the first 15:00 UTC run as
-proof, delete the evening service's copies, the evening run.**
+There is one Render service now. `efb-live-daily` runs both jobs: it starts
+`scripts/run_cron.py` at `"30 15,22 * * 1-5"` (15:30 and 22:30 UTC, Monday to
+Friday), and the router picks the job by the New York hour -- before noon is the
+fills reconciliation, from 16:00 is the evening run, and any other hour does nothing
+and exits 0. The separate `efb-fills-reconcile` service is gone, and so is the
+`efb-live` environment group: with one service there is no group to create and no
+copies to retire, and every key both jobs read is declared on the one service. A
+comma list in a cron hour field is standard cron syntax, which is what Render's
+cron documentation specifies for `schedule` ("defined as a cron expression"), and
+Render guarantees at most one run of a given job at a time, delaying the next
+scheduled run while one is active.
 
-## 1. SQL, against the live Supabase project
+Nothing here is safe to do in a different order, for one reason: the deployment runs
+the new code as soon as `main` moves, so the schema the new writer names has to be in
+place **before** the merge. Step 1 is therefore done already.
+
+## 1. SQL, against the live Supabase project (applied 2026-10-02)
 
 Both steps are idempotent, and both are additive: no table is dropped, no row is
-rewritten, and nothing is read before it is written.
+rewritten, and nothing is read before it is written. They are recorded here as the
+check to run against the live project, not as work still to do.
 
-1. Apply the `efb.fills` additive block. The live table holds seven of the fourteen
-   columns the writer needs today (`trade_date`, `ticker`, `order_id`,
-   `intended_notional`, `filled_notional`, `fill_price`, `status`, zero rows), so
-   the seven it lacks must exist before the first run or its INSERT fails. The
-   statements are the block in `live/supabase_schema.sql` headed "Week one:
-   `efb.fills` was created before anything wrote it" -- copy them from the file
-   rather than from here, so there is one copy of the SQL and not two:
+1. The `efb.fills` additive block. The live table held seven of the fourteen columns
+the writer needs (`trade_date`, `ticker`, `order_id`, `intended_notional`,
+`filled_notional`, `fill_price`, `status`, zero rows), so the seven it lacked had to
+exist before the first run or its INSERT would fail. The statements are the block in
+`live/supabase_schema.sql` headed "Week one: `efb.fills` was created before anything
+wrote it" -- copy them from the file rather than from here, so there is one copy of
+the SQL and not two:
 
    ```sql
    alter table efb.fills add column if not exists filled_quantity double precision;
@@ -71,50 +80,7 @@ rewritten, and nothing is read before it is written.
    (`select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'efb' and c.relkind = 'r' and c.relrowsecurity` returns 0).
 
-## 2. Render: the shared environment group
-
-The group exists once and both crons take it. The blueprint cannot carry the
-group's secrets (`sync: false` is ignored inside an environment group, so a group
-declared in `render.yaml` would come out empty and every key would be missing), so
-the group is created by hand and referenced by name from both services.
-
-**The order below is the correction that matters.** A service-level value always
-beats a linked group's value, and Render keeps environment variables that the
-blueprint omits. So while the evening service still holds its own copies of these
-keys, nothing about that service proves the group holds the right values: the
-copies are what it reads. The proof is the **first fills run**, which has no
-service-level copies at all and therefore reads the group and only the group.
-
-1. In the Render Dashboard, click **Environment Groups** in the left pane, then
-   **+ New Environment Group**. Name it exactly `efb-live`.
-2. Add these thirteen keys, with the values the evening service already uses
-   (Environment page of `efb-live-daily`; Render shows each value to the owner):
-
-   | key | what it is |
-   | --- | --- |
-   | `EFB_SUPABASE_DB_URL` | the write role's connection string |
-   | `EFB_DB_SCHEMA` | `efb` |
-   | `EFB_ALPACA_PAPER_API_KEY` | the paper key |
-   | `EFB_ALPACA_PAPER_SECRET_KEY` | the paper secret |
-   | `EFB_ALPACA_ACCOUNT_ID` | `PA3A50WIU0O0`, checked on every run |
-   | `EFB_RESEND_API_KEY` | the sending key |
-   | `EFB_NOTIFY_EMAIL_FROM` | the sender |
-   | `EFB_NOTIFY_EMAIL_TO` | the owner |
-   | `EFB_SNAPSHOT` | `on` |
-   | `EFB_R2_ACCOUNT_ID` | the Cloudflare account |
-   | `EFB_R2_BUCKET` | `efb-snapshots` |
-   | `EFB_R2_ACCESS_KEY_ID` | the bucket-scoped token |
-   | `EFB_R2_SECRET_ACCESS_KEY` | the same token's secret |
-
-   Do not add `EFB_DRY_RUN`, `EFB_INIT_STORE`, `EFB_SEED_R2_*` or `EFB_STORE`:
-   those stay on the evening service, so the fills job cannot inherit the switch
-   that trades, the seed request or the history bucket.
-3. Click **Create Environment Group**. Do not link it by hand: the blueprint's
-   `fromGroup: efb-live` on each service is what links it, at the sync after the
-   merge. Linking it by hand before that would prove nothing, for the reason
-   above, and would redeploy the evening service for no reason.
-
-## 3. Merge
+## 2. Merge
 
 ```bash
 git checkout main
@@ -122,22 +88,43 @@ git merge --no-ff week1-orders
 git push origin main
 ```
 
-Then watch the Blueprint sync in the Render dashboard. The evening job's next run
-is unaffected by this merge: `scripts/run_live_daily.py` changed only in the
-`skipped_borrow` pass-through and the NAV argument to the reason classifier.
+Then watch the Blueprint sync in the Render dashboard. The evening job's next run is
+unaffected by this merge: `scripts/run_live_daily.py` changed only in the
+`skipped_borrow` pass-through and the NAV argument to the reason classifier, and the
+one service runs it through `scripts/run_cron.py` with no argument the old start
+command did not pass.
 
-## 4. The first 15:00 UTC run: the proof that the group carries the values
+## 3. Confirm Render shows the new schedule
 
-The first weekday after the merge, at 15:00 UTC (11:00 EDT / 10:00 EST). This run
-is also the only thing that proves the group holds the right values: it is a new
-service with no environment variables of its own, so every key it reads comes from
-`efb-live`. If it succeeds, the group is right; if it fails on a credential, that
-credential in the group is wrong.
+One visit to the dashboard, four things to see. Until they are all true the merge is
+not finished, even though the code is on `main`.
 
-1. **The job ran.** In the Render dashboard, `efb-fills-reconcile` shows a
-   successful run, and `select * from efb.run_status where job = 'fills_reconcile'`
-   has a row for the previous close with status `ok`. The row is keyed by the close
-   it reconciled, not by the morning it ran.
+1. **The schedule.** `efb-live-daily`'s Settings page shows Schedule
+   `30 15,22 * * 1-5` and Start Command `python scripts/run_cron.py`.
+2. **The second service is gone.** There is no `efb-fills-reconcile` in the
+   dashboard. A service dropped from the blueprint is **not** deleted in the
+   account, so delete it by hand if it is still there: it would otherwise keep
+   waking up on its own old schedule and reconciling nothing.
+3. **The keys are on the service.** `efb-live-daily`'s Environment page still lists
+   the nineteen keys with their values (Render preserves variables a Blueprint
+   omits, and a service-level value always beats a linked group's).
+4. **The group is unlinked, then deleted.** If `efb-live` still appears under
+   Linked Environment Groups, unlink it, and then delete the group from
+   Environment Groups. Nothing breaks while it exists -- a service-level value wins
+   over a group's -- but it is a second copy of the same nineteen values, which is
+exactly the drift the one-service layout is meant to remove.
+
+## 4. The first 15:30 UTC run
+
+The first weekday after the merge, at 15:30 UTC (11:30 EDT / 10:30 EST), the same
+service that ran the evening before wakes again and the router sends it to the fills
+reconciliation. This is the run that has to be checked carefully, because it is the
+one that reads the account.
+
+1. **The morning job ran.** In the Render dashboard, the service's Runs page shows a
+   15:30 UTC run that exited 0, and `select * from efb.run_status where job =
+   'fills_reconcile'` has a row for the previous close with status `ok`. The row is
+   keyed by the close it reconciled, not by the morning it ran.
 2. **The fills are there.** `select count(*), min(trade_date), max(trade_date) from
    efb.fills` shows the previous close's legs, and
    `select ticker, filled_quantity, fill_price, status, cancel_time from efb.fills
@@ -155,41 +142,35 @@ credential in the group is wrong.
    line. If nothing did not fill, there is no email at all, which is the designed
    silence.
 5. **It did not trade.** `select * from efb.orders where trade_date = '<the
-   close>'` is unchanged since the evening, and no new order appears at the broker
-   for either account. The job has no submit path, and this is the check that says
-   so in the account rather than in the code.
+   close>'` is unchanged since the evening, and no new order appears at the broker.
+   The morning path has no submit path, and the run's own test drives it against a
+   broker whose `submit_order` raises; this is the check that says so in the
+   account.
+6. **That evening still ran.** The 22:30 UTC run the same day has its own
+   `run_status` row keyed `live_daily` reading `ok`, and its email still names
+   `store: postgres/efb`. This is the one thing the merge newly puts in reach: both
+   jobs are the same service now, so an evening that did not run could be visible
+   only as a morning that did.
 
-If it failed on a missing or wrong value: fix that key in the group and wait for the
-next weekday run. Nothing else is affected, because the evening service is still
-reading its own copies of the same keys, which win.
-
-## 5. After that run succeeds: retire the evening service's copies
-
-Do this only once step 4 has passed, because it is the point at which the group
-becomes the single source for the evening job too.
-
-1. On `efb-live-daily`, click **Environment** and delete the thirteen keys listed
-   in step 2 above from its own **Environment Variables** list. (They are still
-   supplied by the linked group; deleting the copies is what stops them overriding
-   it.) Keep `EFB_INIT_STORE`, `EFB_DRY_RUN` and the four `EFB_SEED_R2_*` entries.
-2. Confirm the next evening run: its `run_status` row keyed `live_daily` reads
-   `ok`, the email's first line still names `store: postgres/efb`, and its reason
-   column now mixes labels (`new name`, `no trade`, `the hedge moved`,
-   `alpha moved`, and `risk moved` where the specific volatility moved by more than
-   1%) instead of one label on every row.
-3. If that evening run fails on a missing variable, the group is short a key: add
-   it and re-run. That failure is the check working, not a surprise.
+If the morning run failed on a missing or wrong value, fix that key on the service
+and wait for the next weekday run. If it failed on a date -- no session, no orders to
+reconcile -- the log says which, and that is the job working rather than a
+misconfiguration.
 
 ## What to watch after the first week
 
+- **Both slots, both days.** A missing morning is easy to miss, because nothing
+  emails when the job does not run. The Runs page and `run_status` are where a
+  skipped 15:30 start shows up, and `job = 'fills_reconcile'` is the row to look
+  for.
 - The reason mix: if `new name` is a large share of a rebalance every evening, the
   previous book and the target differ structurally and the prior book is worth a
   look (on 2026-10-01 it was 35 of 188).
 - `n_unfilled` against the evening's declared `expected_cost_bps`: the realized
   cost line is the first measurement of what the after-hours execution actually
   costs, and it is now recorded beside what was expected.
-- The slot itself: 15:00 UTC is 10:00 EST, half an hour after the open. A morning
-  when the exchange opens late (a closure or a delay) would be read before the
-  open; `live/fills.py` counts a working order as not filled, so that morning's
-  email would name legs that had not had their chance yet. The fix, if it happens,
-  is to have the job check the calendar's own open before it reads.
+- The slot itself: 15:30 UTC is 10:30 EST, an hour after the open. A morning when
+  the exchange opens late (a closure or a delay) would be read before the open;
+  `live/fills.py` counts a working order as not filled, so that morning's email
+  would name legs that had not had their chance yet. The fix, if it happens, is to
+  have the job check the calendar's own open before it reads.

@@ -1,7 +1,8 @@
 """Prove, once, that Alpaca accepts the loop's orders at the loop's own hour.
 
-The evening cron fires at 22:30 UTC (render.yaml, `efb-live-daily`'s "30 22 * *
-1-5"), which is
+The evening cron fires at 22:30 UTC (render.yaml, the 22:30 half of one service's
+"30 15,22 * * 1-5" schedule, which `scripts/run_cron.py` routes to the evening run),
+which is
 18:30 ET in summer and 17:30 ET in winter: after the 16:00 ET close and inside the
 16:00-20:00 ET after-hours window. The orders the loop builds have to be accepted
 at that hour and held for the next session, and `live.alpaca.NEXT_OPEN_TIF`

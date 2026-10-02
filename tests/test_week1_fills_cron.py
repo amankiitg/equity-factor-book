@@ -575,7 +575,7 @@ def test_the_job_has_no_sizing_and_no_submit_path_in_its_own_source() -> None:
 
 
 def test_the_slot_is_after_the_open_on_both_sides_of_the_dst_change() -> None:
-    """15:00 UTC, and the reason it is not 14:00: the open moves, the slot cannot.
+    """15:30 UTC, and the reason it is not 14:00: the open moves, the slot cannot.
 
     A market DAY order from the previous evening fills at the 09:30 New York open,
     and until then the reconciler counts the leg as working rather than filled. So
@@ -605,24 +605,31 @@ def test_the_slot_is_after_the_open_on_both_sides_of_the_dst_change() -> None:
         )
 
 
-def test_the_environment_group_holds_every_variable_the_job_reads(
+def test_the_service_declares_every_variable_the_job_reads(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The job's environment, from three sides: the run, the source, the module names.
 
-    The group is where its keys come from, and Render ignores `sync: false` inside
-    a group, so the group's list cannot be machine-read from the blueprint: it is
-    written in `render.yaml`'s header and mirrored in `tests/test_e11_render.py`.
-    This is the other half of that check, from the code side, so that a new
-    credential cannot be added to the path and be quietly missing in the deployment.
+    The keys are declared on the one cron service, which now carries both jobs; the
+    list is written in `render.yaml`'s header and mirrored in
+    `tests/test_e11_render.py` (which also reads the declarations out of the
+    blueprint's `services` block). This is the other half of that check, from the
+    code side, so that a new credential cannot be added to the path and be quietly
+    missing in the deployment.
 
     1. The run, watched: every `EFB_*` key the job opens while it reconciles a real
-       (fake-broker) morning is one the group must hold.
+       (fake-broker) morning is one the service must hold.
     2. The source, scanned: every `os.environ` name in the files this job reads
-       through is either in the group or in the list below of things read but not
+       through is either in that list or in the list below of things read but not
        needed, with the reason.
     3. The declared names: the four modules' own constants for the credentials
-       they need are exactly the group's list, so the two cannot drift.
+       they need are exactly the shared list, so the two cannot drift.
+
+    The six keys the evening path owns (`EFB_DRY_RUN`, `EFB_INIT_STORE` and the seed
+    bucket's four) are on the same service and are deliberately absent from both
+    lists: this job must not read them at all. `tests/test_week1_run_cron.py` runs
+    the morning route with all six set and shows the run is unchanged, which is the
+    stronger statement of the same thing.
     """
     import os
     import re
@@ -702,7 +709,7 @@ def test_the_environment_group_holds_every_variable_the_job_reads(
         and key not in set(SHARED_KEYS)
         and key not in read_but_not_required
     )
-    assert not missing, f"the job reads {missing}, which the group does not hold"
+    assert not missing, f"the job reads {missing}, which the service does not declare"
 
     # 3. the declared names, built from the modules' own constants
     declared = {
@@ -738,6 +745,8 @@ def test_the_environment_group_holds_every_variable_the_job_reads(
         and name not in set(SHARED_KEYS)
         and name not in read_but_not_required
     )
-    assert not unexplained, f"the run read {unexplained}, which the group does not hold"
+    assert (
+        not unexplained
+    ), f"the run read {unexplained}, which the service does not declare"
     # the store's own key was read, so the watch was watching the right run
     assert "EFB_SUPABASE_DB_URL" in watched.read

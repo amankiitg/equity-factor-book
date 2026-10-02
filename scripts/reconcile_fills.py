@@ -9,24 +9,24 @@ the evening recorded, writes `efb.fills`, republishes the snapshot with an
 "actual holdings" section beside the target book, and sends a message only when
 an order did not fill.
 
-It runs as its own cron at 15:00 UTC on weekdays, after the open the orders fill
-at, and deliberately not inside the evening job. It cannot size a book and it
-cannot send an order: it reads the broker through `live.fills`, which has no
-submit path, and its own test drives this script against a client whose
+It runs as the morning half of the one cron service, at 15:30 UTC on weekdays, after
+the open the orders fill at, and deliberately not inside the evening run. It cannot
+size a book and it cannot send an order: it reads the broker through `live.fills`,
+which has no submit path, and its own test drives this script against a client whose
 `submit_order` raises and against a morning job patched to raise as well. A
 reconciliation that could trade would be one more thing that can trade.
 
-**Why 15:00 UTC and not 14:00.** The order of the morning matters: a market DAY
+**Why 15:30 UTC and not 14:00.** The order of the morning matters: a market DAY
 order from the previous evening fills at the 09:30 New York open, and until then
 `live.fills` counts it as working rather than filled, so a run before the open
 would write `filled_quantity = 0` for the whole book and email a did-not-fill line
 for every leg. 14:00 UTC is after that open in the half of the year when New York
 is on daylight time (10:00 EDT) and half an hour before it when it is not (09:00
-EST), so it is wrong for four months of the year. 15:00 UTC is 11:00 EDT or 10:00
-EST, after the open on both sides of the change, and still seven and a half hours
-before that evening's run. `RUN_SLOT_UTC` below is the slot the blueprint
-schedules, and the test holds the two together and against the exchange's
-calendar.
+EST), so it is wrong for four months of the year. 15:30 UTC is 11:30 EDT or 10:30
+EST, after the open on both sides of the change, before noon in New York (which is
+how `scripts/run_cron.py` routes a start to this job), and still seven hours before
+that evening's run. `RUN_SLOT_UTC` below is the slot the blueprint schedules, and
+the test holds the two together and against the exchange's calendar.
 
 It writes exactly one table, `efb.fills`, replacing the date it reconciles rather
 than merging into it, so a re-run of the same morning converges instead of
@@ -66,9 +66,11 @@ logger = logging.getLogger("reconcile_fills")
 JOB = "fills_reconcile"
 # The hour and minute the blueprint schedules this job for, UTC, in code so the
 # arithmetic can be tested rather than described: after the 09:30 New York open in
-# both EST and EDT, and before the evening run. `weekdays` is the blueprint's
-# `1-5`. See the module docstring for why 14:00 was wrong.
-RUN_SLOT_UTC = (15, 0)
+# both EST and EDT, and before the evening run. It is one slot in the one service's
+# schedule (`scripts/run_cron.py::SCHEDULE`), whose hour field lists both hours and
+# whose router decides between them on the New York clock; `weekdays` is the
+# blueprint's `1-5`. See the module docstring for why 14:00 was wrong.
+RUN_SLOT_UTC = (15, 30)
 COMPLETED_STATUSES = frozenset({"ok"})
 
 

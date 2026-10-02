@@ -213,7 +213,7 @@
     },
     "actual_holdings": {
       "type": "object",
-      "description": "The account's own book beside the target book above, added by the 15:00 UTC fills reconciliation. The key is absent, not null, until that job has read the account: a null key would read as an account holding nothing, which is a different statement from an account nobody read.",
+      "description": "The account's own book beside the target book above, added by the 15:30 UTC fills reconciliation. The key is absent, not null, until that job has read the account: a null key would read as an account holding nothing, which is a different statement from an account nobody read.",
       "required": ["as_of", "close", "n_names", "gross_notional", "net_notional", "names"],
       "properties": {
         "as_of": {

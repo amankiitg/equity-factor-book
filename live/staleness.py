@@ -142,8 +142,9 @@ def is_session(day: Any) -> bool:
     return bool(sessions(stamp, stamp))
 
 
-# The evening cron's own slot, from render.yaml's `efb-live-daily` schedule
-# ("30 22 * * 1-5"), and the
+# The evening run's own slot: the 22:30 half of the one service's schedule
+# (`scripts/run_cron.py::SCHEDULE`, "30 15,22 * * 1-5"), which the router sends to
+# the evening job. And the
 # grace before a missing snapshot counts as a failure on the page. One source: the
 # gate's late window, the snapshot's expectation and the browser's countdown all
 # read these.
