@@ -13,20 +13,19 @@ Percentages: the artifacts store fractions (0.0643), while the note reads
 "6.43 percent". The stored set therefore also carries each value times 100,
 so a percentage reads back to the fraction it came from.
 
-One bridge is declared and temporary. The note's two sections on the
-pre-launch review rounds and the alpha correction quote figures whose source
-record is `handoff/LOG.md` and `handoff/REPORT.md`. This branch's copies of
-those two files stop on the day before that work, so the figures are read
-from the same two files as they stand on the main line, through `git show`.
-The note says so in its own closing section. Once this branch is rebased
-onto main the working-tree copies carry the same text and the two extra
-sources are redundant.
+The note's two sections on the pre-launch review rounds and the alpha
+correction quote figures whose source record is `handoff/LOG.md` and
+`handoff/REPORT.md`. Those two files are on this branch, with the same text
+main carries, so the pool reads them from the working tree like every other
+source. There was a bridge here once, reading them through `git show main:`
+while this branch's copies stopped the day before that work; the folded
+branches brought the newer copies with them and the bridge is gone rather
+than left in place as a second source that could drift.
 """
 
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -40,24 +39,6 @@ _FLOAT = r"-?\d+\.\d+(?:e-?\d+)?"
 
 WORD_FLOOR = 5_000
 WORD_CEILING = 7_000
-
-_BRIDGE_REFS = ("main:handoff/LOG.md", "main:handoff/REPORT.md")
-
-
-def _git_show(ref: str) -> str:
-    """A file as it stands on another ref, or an empty string.
-
-    The working-tree copies of the handoff records are already in the pool;
-    these two are the copies that carry the last day of pre-launch work.
-    """
-    result = subprocess.run(
-        ["git", "show", ref],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.stdout if result.returncode == 0 else ""
 
 
 def _artifact_texts() -> list[str]:
@@ -84,10 +65,6 @@ def _artifact_texts() -> list[str]:
         texts.append(memo.read_text())
     for record in sorted((ROOT / "handoff").glob("*.md")):
         texts.append(record.read_text())
-    for ref in _BRIDGE_REFS:
-        bridged = _git_show(ref)
-        if bridged:
-            texts.append(bridged)
     texts.append((ROOT / "docs" / "credit_port_design.md").read_text())
     texts.append((ROOT / "docs" / "open_items.md").read_text())
     texts.append((ROOT / "docs" / "roadmap_v2.md").read_text())
@@ -215,10 +192,13 @@ def test_the_note_opens_with_the_incident() -> None:
 
 
 @pytest.mark.integration
-def test_the_note_names_its_sources_and_its_bridge() -> None:
-    """A traceable document says where its numbers came from, including the
-    one place where the source is read from the main line rather than from
-    this branch's copy.
+def test_the_note_names_its_sources() -> None:
+    """A traceable document says where its numbers came from.
+
+    Every source named here is a file in this tree, and the test above reads
+    the same files. The bridge that once read two of them from the main line
+    is gone: the note says so, and this asserts that no source is described as
+    living somewhere other than the working tree.
     """
     text = " ".join(NOTE.read_text().split())
     for phrase in (
@@ -230,7 +210,7 @@ def test_the_note_names_its_sources_and_its_bridge() -> None:
         "RESULTS.json",
         "web/fixtures/",
         "live/clock.json",
-        "main line",
+        "There is no bridge and no second copy",
     ):
         assert phrase in text, phrase
 

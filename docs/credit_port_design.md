@@ -687,6 +687,7 @@ criterion is a test rather than a claim.
 | live/dashboard_app.py | unchanged | the live view |
 | live/evening_job.py | re-specified | the same evening shape, with credit inputs, a per-bond staleness gate and the vintage recorded |
 | live/extend.py | unchanged | the append-only extension discipline, including the split guard, is the same problem in credit |
+| live/fills.py | unchanged | the morning reconciliation reads the broker's own order and fill records and is asset-class-agnostic; the close it prices a fill against comes from the credit feed |
 | live/guards.py | unchanged | the two fail-safe guards port, and their sizing lesson is on record |
 | live/morning_job.py | unchanged | submit, poll and reconcile the intent |
 | live/notify.py | unchanged | run notification |
@@ -727,15 +728,30 @@ criterion is a test rather than a claim.
 | module | status | reason |
 | --- | --- | --- |
 | scripts/__init__.py | unchanged | package marker |
+| scripts/make_sector_map.py | re-specified | the page's sector map becomes a credit map: rating bucket, sector and issuer parentage rather than one equity sector code per ticker |
 | scripts/make_web_fixtures.py | unchanged | the fixture writer, once the snapshot it writes is a credit snapshot |
+| scripts/probe_cache_race.py | re-specified | the probe is the shape to keep, and the vendor whose cache race it measures is TRACE rather than the equity price vendor |
 | scripts/provision_supabase.py | unchanged | schema provisioning |
 | scripts/push_seed.py | unchanged | seed publication |
+| scripts/reconcile_fills.py | unchanged | the morning entry point for that reconciliation, and the job name that keeps its store rows apart from the evening's |
+| scripts/rehearse_preflip.py | unchanged | rehearsing the order path against a strict fake broker is a safety net a credit desk needs more, not less |
+| scripts/repair_session.py | unchanged | repairing one name-day by appending rather than restating is the same discipline, and credit marks are revised more often |
+| scripts/run_cron.py | unchanged | the one-service router, where the New York hour decides the job; the hours become the credit market's |
 | scripts/run_live_daily.py | unchanged | the daily entry point, and the place a credit run would be wired |
 | scripts/smoke_order_timing.py | re-specified | the order timing window becomes the credit market's session, which closes at a different hour |
+| scripts/smoke_position_intents.py | unchanged | the two-evening intent smoke test, with the window of the credit session |
 | scripts/verify_account.py | unchanged | account reconciliation |
 | scripts/verify_store_roundtrip.py | unchanged | store round-trip verification |
 | web/src/App.tsx | unchanged | the page renders a snapshot document and does not know the asset class |
+| web/src/BookSections.tsx | re-specified | a book row becomes an issue with a spread, a rating and a maturity rather than a ticker with a weight |
+| web/src/FutureSections.tsx | unchanged | the placeholder for the sections the snapshot does not carry yet |
+| web/src/HoldingsSection.tsx | re-specified | the account's own book becomes bond positions, sized in notional rather than shares |
+| web/src/SectorSection.tsx | re-specified | the split becomes the credit split the snapshot carries: rating bucket, sector and DTS |
+| web/src/book.ts | unchanged | deriving a book in dollars from gross and gross_notional does not depend on the asset class |
+| web/src/format.ts | unchanged | number and date formatting |
 | web/src/main.tsx | unchanged | the mount point |
+| web/src/sections.test.tsx | unchanged | the section tests follow the fixtures, as the page tests do |
+| web/src/sectors.ts | re-specified | the sector code table becomes the credit taxonomy's, which has more than one dimension |
 | web/src/types.ts | re-specified | the snapshot's factor names and labels become credit labels |
 | web/src/App.test.tsx | unchanged | the page tests follow the fixtures |
 | web/src/bundle.test.ts | unchanged | the bundle check |

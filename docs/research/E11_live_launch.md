@@ -572,9 +572,7 @@ are `handoff/REPORT.md`; the decisions are `handoff/PROJECT_CONTEXT.md`; the ope
 items are `docs/open_items.md`; the signal gate's answers are
 `sprints/E7/RG_SIGNAL.json`; the sprint verdicts are the `RESULTS.json` files under
 `sprints/`; the live page's data is `web/fixtures/`; and the clock is
-`live/clock.json`. One acknowledgment
-belongs here rather than hidden: this branch's copy of the two handoff documents
-stops before the last day of pre-launch work, so the figures from that day, the
-alpha correction above all, are read from the same two files as they stand on the
-main line, and a test in this repository checks every number here against those
-sources.
+`live/clock.json`. There is no bridge and no second copy: the two handoff documents
+on this branch carry the whole record, the pre-launch review rounds and the alpha
+correction included, and a test in this repository checks every number here against
+those sources as they stand in the tree.

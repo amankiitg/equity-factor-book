@@ -5,20 +5,20 @@
       "stored_numbers": [
         {
           "source": "docs/credit_port_design.md section 13",
-          "value": 90,
+          "value": 106,
           "what": "modules in the map"
         },
         {
           "source": "tests/test_e13_design_note.py::test_every_module_in_the_repository_appears_in_the_map",
-          "value": 86,
+          "value": 102,
           "what": "modules in the repository"
         },
         {
-          "source": "docs/credit_port_design.md section 13, counted over the 100 mapped rows (86 modules in this tree, 4 that arrive with e12, and 10 repository items)",
+          "source": "docs/credit_port_design.md section 13, counted over the 116 mapped rows (102 modules in this tree, 4 that arrive with e12, and 10 repository items)",
           "value": {
             "dropped": 0,
-            "re-specified": 34,
-            "unchanged": 66
+            "re-specified": 40,
+            "unchanged": 76
           },
           "what": "statuses assigned in the map"
         },
@@ -61,7 +61,8 @@
   "notes": [
     "Document-only sprint: no model code, no new panel, no new live data, and no change to any E1 to E12 artifact, criterion or stored number.",
     "The design note cites no credit data, because none was available. Its credit statements are design statements or predictions, and the note says so where the distinction matters.",
-    "F13.1 is a statement about the repository and the document together, so it is checked by a test that enumerates the repository rather than claimed: 86 modules found, 86 in the map.",
+    "F13.1 is a statement about the repository and the document together, so it is checked by a test that enumerates the repository rather than claimed: 86 modules found, 86 in the map when the sprint closed.",
+    "The module counts were re-measured on 2026-10-02, after page, e13 and alpha-refresh were folded into week1-orders: 102 modules in the tree against 86 at registration, 106 in the map against 90, and the statuses 76 unchanged and 40 re-specified against 66 and 34. The sixteen additions are the modules the folded branches carried, listed in the map with their own status and reason. The criterion, its threshold and its verdict are unchanged; only the sample the count is taken over moved, and the old values are recorded beside the new ones here rather than overwriting the note's history.",
     "One module was missing from the map when the test first ran (efb/models/__init__.py). It is recorded here because the test, not a reviewer, found it.",
     "Four further modules are mapped by name rather than found in the tree (efb/attribution.py, live/attribution_job.py, scripts/build_attribution.py, scripts/review_week.py): they are E12's attribution engine, which lands with the unmerged e12 branch. The map would be incomplete for E1 to E12 without them, and the suite fails if they are missing."
   ],
