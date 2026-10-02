@@ -58,10 +58,13 @@
 #   here would come out empty and every key would be missing. The group is created
 #   in the dashboard (Env Groups -> New Environment Group, named `efb-live`) and
 #   referenced by name from both services. See the merge-day checklist in
-#   `docs/week1_orders_runbook.md` for the exact order of the steps: the group
-#   must exist and carry the values before this file is synced, and the moved keys
-#   must then be deleted from each service's own Environment page, because a
-#   service-level value always beats a linked group's.
+#   `docs/week1_orders_runbook.md` for the exact order of the steps: the group must
+#   exist and carry the values before this file is synced, and the evening
+#   service's own copies of these keys are deleted only AFTER the first fills run
+#   has succeeded. That run is what proves the group's values, because it is a new
+#   service with no copies of its own to fall back on; while the evening service's
+#   copies exist they win over the group, so nothing about that service proves
+#   anything about the group.
 #
 #   This file commits the KEY names only; no credentials appear here.
 

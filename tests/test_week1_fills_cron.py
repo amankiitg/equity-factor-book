@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -133,35 +134,54 @@ def _install(
     broker_orders: dict[str, object],
     orders: pd.DataFrame | None = None,
     published: dict[str, Any] | None = None,
+    real_calendar: bool = False,
+    now: str | None = None,
 ) -> _Harness:
-    """Pin every edge of the job: store, broker, vendor, R2 and the message."""
+    """Pin every edge of the job: store, broker, vendor, R2 and the message.
+
+    `real_calendar` leaves two things alone, for the tests about dates: whether
+    today is a session (`staleness.is_session`, the exchange's calendar) and which
+    evening's orders are the ones to reconcile (`reconcile_fills.previous_orders`,
+    which reads the store). `now` pins the clock the job reads, so a Monday morning
+    can be tested on a Thursday.
+    """
     monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
-    monkeypatch.setattr(staleness, "is_session", lambda day: True)
-    monkeypatch.setattr(
-        reconcile_fills,
-        "previous_orders",
-        lambda as_of=None: (
-            CLOSE,
-            (
-                orders
-                if orders is not None
-                else pd.DataFrame(
-                    [
-                        {
-                            "trade_date": CLOSE,
-                            "ticker": "DG",
-                            "intended_notional": 512.42,
-                            "status": "ACCEPTED",
-                            "reason_code": "",
-                            "client_order_id": "efb-2026-10-01-DG-S-deadbeef",
-                            "position_intent": "sell_to_open",
-                            "broker_order_id": "oid-dg",
-                        }
-                    ]
-                )
+    if now is not None:
+        fixed = datetime.fromisoformat(now)
+
+        class _Clock(datetime):
+            @classmethod
+            def now(cls, tz: Any = None) -> datetime:  # noqa: ANN206 - stdlib shape
+                return fixed.astimezone(tz) if tz is not None else fixed
+
+        monkeypatch.setattr(reconcile_fills, "datetime", _Clock)
+    if not real_calendar:
+        monkeypatch.setattr(staleness, "is_session", lambda day: True)
+        monkeypatch.setattr(
+            reconcile_fills,
+            "previous_orders",
+            lambda as_of=None: (
+                CLOSE,
+                (
+                    orders
+                    if orders is not None
+                    else pd.DataFrame(
+                        [
+                            {
+                                "trade_date": CLOSE,
+                                "ticker": "DG",
+                                "intended_notional": 512.42,
+                                "status": "ACCEPTED",
+                                "reason_code": "",
+                                "client_order_id": "efb-2026-10-01-DG-S-deadbeef",
+                                "position_intent": "sell_to_open",
+                                "broker_order_id": "oid-dg",
+                            }
+                        ]
+                    )
+                ),
             ),
-        ),
-    )
+        )
     monkeypatch.setattr(
         reconcile_fills,
         "closes_for",
@@ -359,6 +379,144 @@ def test_a_closed_morning_reconciles_nothing_and_says_nothing(
 
     assert code == 0
     assert harness.broker.asked == [] and harness.sent == []
+    assert store.select("fills").empty
+
+
+def _seed_orders(tmp_path: Path, rows: list[tuple[str, str]]) -> None:
+    """The evening's order rows, in the store the job reads them from."""
+    store.replace_by_date(
+        "orders",
+        rows[0][0],
+        [
+            {
+                "trade_date": day,
+                "ticker": ticker,
+                "intended_notional": -512.42,
+                "filled_notional": 0.0,
+                "status": "ACCEPTED",
+                "reason": "",
+                "reason_code": "",
+                "client_order_id": f"efb-{day}-{ticker}-S-deadbeef",
+                "position_intent": "sell_to_open",
+                "broker_order_id": f"oid-{ticker.lower()}-{day}",
+            }
+            for day, ticker in rows
+        ],
+    )
+
+
+def test_a_monday_reconciles_fridays_orders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The morning after a weekend reconciles the last evening that traded.
+
+    Nothing about this is a special case in the code: `previous_orders` takes the
+    last stored order date strictly before today, so Monday finds Friday's. That is
+    the property this test holds, with the real calendar and the real store lookup
+    rather than a patched answer: the Monday is a session, the Friday close is the
+    one reconciled, and the row the job records is keyed to the Monday it ran.
+    """
+    monday, friday, thursday = "2026-10-05", "2026-10-02", "2026-10-01"
+    harness = _install(
+        monkeypatch,
+        tmp_path,
+        broker_orders={
+            f"oid-dg-{friday}": _order(
+                "filled", order_id=f"oid-dg-{friday}", updated_at=f"{friday}T13:31:00Z"
+            )
+        },
+        real_calendar=True,
+        now=f"{monday}T15:00:00+00:00",
+    )
+    _seed_orders(tmp_path, [(thursday, "AAA"), (friday, "DG")])
+    assert staleness.is_session(pd.Timestamp(monday)), "the test's Monday is a session"
+
+    code = reconcile_fills.main([])
+
+    assert code == 0
+    stored = store.select("fills")
+    assert set(stored["trade_date"].astype(str).str.slice(0, 10)) == {friday}
+    assert list(stored["ticker"]) == ["DG"]
+    assert harness.recorded == [(reconcile_fills.JOB, monday, "ok")]
+    assert harness.sent == []
+
+
+def test_the_morning_after_a_holiday_reconciles_the_last_trading_evening(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Labor Day is not a session, so Tuesday's morning looks back to Friday.
+
+    The holiday Monday has no close to reconcile and the exchange was shut, so the
+    last trading evening is the Friday before it. Same code path as the weekend
+    case, and the dates here are the calendar's own (asserted) rather than assumed.
+    """
+    tuesday, friday = "2026-09-08", "2026-09-04"
+    labor_day = pd.Timestamp("2026-09-07")
+    assert not staleness.is_session(labor_day), "2026-09-07 is Labor Day"
+    assert staleness.is_session(pd.Timestamp(tuesday))
+
+    harness = _install(
+        monkeypatch,
+        tmp_path,
+        broker_orders={
+            f"oid-dg-{friday}": _order(
+                "canceled",
+                order_id=f"oid-dg-{friday}",
+                canceled_at=f"{friday}T13:31:00Z",
+                updated_at=f"{friday}T13:31:00Z",
+            )
+        },
+        real_calendar=True,
+        now=f"{tuesday}T15:00:00+00:00",
+    )
+    _seed_orders(tmp_path, [("2026-09-03", "AAA"), (friday, "DG")])
+
+    code = reconcile_fills.main([])
+
+    assert code == 0
+    stored = store.select("fills")
+    assert set(stored["trade_date"].astype(str).str.slice(0, 10)) == {friday}
+    assert list(stored["status"]) == ["CANCELED"]
+    assert harness.recorded == [(reconcile_fills.JOB, tuesday, "ok")]
+    # and the miss is named in the message, because a holiday is no reason to
+    # swallow one
+    assert len(harness.sent) == 1
+    assert "Did not fill: DG sell_to_open 41 canceled 13:31 UTC." in str(
+        harness.sent[0]["text"]
+    )
+
+
+def test_the_holiday_itself_exits_quietly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On a holiday there is nothing to reconcile, and nothing is touched.
+
+    The orders from the previous evening are still working at the broker, so a run
+    that read them would report a whole book unfilled because the exchange was
+    shut. The exit is silent in the sense that matters: no broker read, no write to
+    any table, no message, and an exit code of zero, since nothing went wrong.
+    """
+    harness = _install(
+        monkeypatch,
+        tmp_path,
+        broker_orders={},
+        real_calendar=True,
+        now="2026-09-07T15:00:00+00:00",
+    )
+    _seed_orders(tmp_path, [("2026-09-04", "DG")])
+    assert not staleness.is_session(pd.Timestamp("2026-09-07"))
+    # the seeding above went through the recorder, so the baseline is what the
+    # job is judged against: it may add nothing
+    before = list(harness.written)
+
+    code = reconcile_fills.main([])
+
+    assert code == 0
+    assert harness.broker.asked == []
+    assert harness.sent == []
+    assert harness.published == []
+    assert harness.recorded == []
+    assert harness.written == before
     assert store.select("fills").empty
 
 
