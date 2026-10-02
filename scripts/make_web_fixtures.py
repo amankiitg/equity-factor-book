@@ -107,9 +107,11 @@ def book(proposal: dict[str, Any], *, establishment: bool = False) -> pd.DataFra
             if len(paths) > 1 and paths[-1].stem == f"proposal_{CLOSE}"
             else None
         )
-        reasons = trade_reasons.assign_trade_reasons(rows, previous, today_std, today_std)
+        reasons = trade_reasons.assign_trade_reasons(
+            rows, previous, today_std, today_std, nav=float(proposal.get("nav") or 0.0)
+        )
     merged = rows.merge(reasons[["ticker", "reason"]], on="ticker", how="left")
-    merged["reason"] = merged["reason"].fillna("alpha moved")
+    merged["reason"] = merged["reason"].fillna(trade_reasons.ALPHA_MOVED)
     return merged
 
 

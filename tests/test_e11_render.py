@@ -79,7 +79,7 @@ def test_trade_reasons_classify_each_bucket() -> None:
 
 
 def test_trade_reasons_new_name_is_alpha() -> None:
-    """A name new to a book that exists entered on its score.
+    """A name new to a book that exists entered on its score: a new name.
 
     With no earlier book at all it is the establishment day instead, and every
     row says "new position": nothing moved, because nothing was there to move.
@@ -90,7 +90,7 @@ def test_trade_reasons_new_name_is_alpha() -> None:
     reasons = trade_reasons.assign_trade_reasons(
         today, existing_book, pd.Series(dtype=float), None
     )
-    assert reasons["reason"].iloc[0] == "alpha moved"
+    assert reasons["reason"].iloc[0] == "new name"
 
     established = trade_reasons.assign_trade_reasons(
         today, None, pd.Series(dtype=float), None
@@ -254,6 +254,27 @@ def _declared(service: str, name: str) -> bool:
     return f"      - key: {name}\n" in service
 
 
+# The one environment group both crons take, and the thirteen keys it holds. The
+# same list is in `render.yaml`'s header (the reviewable copy) and this is the copy
+# the tests compare against, so a key cannot be added to one without the other.
+GROUP = "efb-live"
+SHARED_KEYS = (
+    "EFB_SUPABASE_DB_URL",
+    "EFB_DB_SCHEMA",
+    "EFB_ALPACA_PAPER_API_KEY",
+    "EFB_ALPACA_PAPER_SECRET_KEY",
+    "EFB_ALPACA_ACCOUNT_ID",
+    "EFB_RESEND_API_KEY",
+    "EFB_NOTIFY_EMAIL_FROM",
+    "EFB_NOTIFY_EMAIL_TO",
+    "EFB_SNAPSHOT",
+    "EFB_R2_ACCOUNT_ID",
+    "EFB_R2_BUCKET",
+    "EFB_R2_ACCESS_KEY_ID",
+    "EFB_R2_SECRET_ACCESS_KEY",
+)
+
+
 def test_render_yaml_runs_two_crons_and_only_the_evening_one_can_trade() -> None:
     """Two cron jobs, one that trades and one that only reads.
 
@@ -267,40 +288,22 @@ def test_render_yaml_runs_two_crons_and_only_the_evening_one_can_trade() -> None
     assert "efb-live-dashboard" not in render
     assert render.count("- type: cron") == 2
     evening, morning = render.split("    name: efb-fills-reconcile")
+    # The shared keys live in one environment group now, so neither service
+    # declares them and the filling job's environment is the group's.
+    assert "      - fromGroup: efb-live\n" in evening
+    assert "      - fromGroup: efb-live\n" in morning
+    for name in SHARED_KEYS:
+        assert not _declared(evening, name), f"{name} is the group's, not the cron's"
+        assert not _declared(morning, name), f"{name} is the group's, not the cron's"
     for name in (
         "EFB_INIT_STORE",
-        "EFB_SEED_R2_ACCOUNT_ID",
-        "EFB_SEED_R2_ACCESS_KEY_ID",
-        "EFB_SEED_R2_SECRET_ACCESS_KEY",
-        "EFB_RESEND_API_KEY",
-        "EFB_NOTIFY_EMAIL_FROM",
-        "EFB_NOTIFY_EMAIL_TO",
-        "EFB_SNAPSHOT",
-        "EFB_R2_ACCOUNT_ID",
-        "EFB_R2_BUCKET",
-        "EFB_R2_ACCESS_KEY_ID",
-        "EFB_R2_SECRET_ACCESS_KEY",
-    ):
-        assert _declared(evening, name), f"{name} missing from the evening cron"
-    # the reconciliation holds the same credentials it needs and none it does not
-    for name in (
-        "EFB_SUPABASE_DB_URL",
-        "EFB_ALPACA_PAPER_API_KEY",
-        "EFB_ALPACA_ACCOUNT_ID",
-        "EFB_RESEND_API_KEY",
-        "EFB_NOTIFY_EMAIL_TO",
-        "EFB_R2_ACCESS_KEY_ID",
-        "EFB_R2_SECRET_ACCESS_KEY",
-    ):
-        assert _declared(morning, name), f"{name} missing from the fills cron"
-    for name in (
         "EFB_DRY_RUN",
-        "EFB_INIT_STORE",
         "EFB_SEED_R2_ACCOUNT_ID",
         "EFB_SEED_R2_BUCKET",
         "EFB_SEED_R2_ACCESS_KEY_ID",
         "EFB_SEED_R2_SECRET_ACCESS_KEY",
     ):
+        assert _declared(evening, name), f"{name} missing from the evening cron"
         assert not _declared(morning, name), f"{name} is not the fills cron's to hold"
     # names only: no key material, no address, no endpoint prose
     assert "re_" not in render
@@ -310,16 +313,56 @@ def test_render_yaml_runs_two_crons_and_only_the_evening_one_can_trade() -> None
     assert "EFB_NOTIFY_SLACK_WEBHOOK_URL" not in render
 
 
-def test_the_fills_reconciliation_is_its_own_weekday_morning_cron() -> None:
-    """14:00 UTC on weekdays, the morning after the close it reconciles.
+def test_the_environment_group_is_documented_with_exactly_the_keys_it_holds() -> None:
+    """One list, in the file, that the group and the tests both answer to.
 
-    Alpaca holds a DAY order for the after-hours session, so it is final by the
-    next morning; 14:00 UTC is 10:00 EDT and 09:00 EST, both before that day's
-    open, so the fills of one close cannot be read as the next one's.
+    Render ignores `sync: false` inside an environment group, so the group cannot
+    be declared here with placeholder values: it would come out empty and every
+    key would be missing. It is created in the dashboard instead, and this file
+    carries the key NAMES so that what the group must hold is reviewable and
+    testable rather than remembered. `tests/test_week1_fills_cron.py` checks the
+    job's own runtime reads against the same list.
     """
     render = (ROOT / "render.yaml").read_text()
+    header, _ = render.split("services:")
+    for name in SHARED_KEYS:
+        assert name in header, f"{name} is not documented in the blueprint header"
+    # the keys the group must NOT hold, so cron 2 cannot inherit them
+    for name in (
+        "EFB_DRY_RUN",
+        "EFB_INIT_STORE",
+        "EFB_SEED_R2_ACCOUNT_ID",
+        "EFB_SEED_R2_BUCKET",
+        "EFB_SEED_R2_ACCESS_KEY_ID",
+        "EFB_SEED_R2_SECRET_ACCESS_KEY",
+        "EFB_STORE",
+    ):
+        assert (
+            name
+            not in header.split("The group holds exactly these")[1].split(
+                "The evening cron adds"
+            )[0]
+        ), f"{name} must not be in the shared group"
+    # and the file says why the group is not declared here
+    assert "sync: false` inside an environment group" in header
+
+
+def test_the_fills_reconciliation_is_its_own_weekday_morning_cron() -> None:
+    """15:00 UTC on weekdays, the morning after the close it reconciles.
+
+    Alpaca holds a DAY order for the after-hours session, so it fills at the next
+    09:30 New York open; 15:00 UTC is 11:00 EDT and 10:00 EST, after that open on
+    both sides of the daylight-time change, so the fills of one close cannot be
+    read as the next one's and no leg is read while it is still working. The
+    arithmetic against the exchange's own calendar is in
+    `tests/test_week1_fills_cron.py`; this pins the file to the slot in code.
+    """
+    from scripts import reconcile_fills
+
+    render = (ROOT / "render.yaml").read_text()
     _, morning = render.split("    name: efb-fills-reconcile")
-    assert 'schedule: "0 14 * * 1-5"' in morning
+    hour, minute = reconcile_fills.RUN_SLOT_UTC
+    assert f'schedule: "{minute} {hour} * * 1-5"' in morning
     assert "startCommand: python scripts/reconcile_fills.py" in morning
     assert "plan: 2c-4g" in morning
     # the evening job's own slot is untouched
