@@ -14,15 +14,18 @@ Refresh them with:
 committed bytes are what this produces, so a change to the writer that would move
 the page's input fails the suite instead of drifting into the fixtures.
 
-The book is the 09-21 proposal with the trade reasons the run assigns, and the
-manifest is the one the evening job builds today, so `exposures_before_hedge` and
-`exposures_after_hedge` are the hedge's own numbers rather than a reconstruction.
-Because the recorded parquet is the book the code wrote then and the manifest is
-the book the code builds now, the two can disagree on a rule change: since the 10%
-variance-share cap the fixture's `n_kept` is 169 while its 150 recorded rows are
-what traded before the cap. No fixture is a snapshot the job could produce in the
-one respect that matters to the page's tests - the book rows and the manifest come
-from the same close, but not from the same run.
+The manifest is the one the evening job builds today, so `exposures_before_hedge`
+and `exposures_after_hedge` are the hedge's own numbers rather than a
+reconstruction, and the book's rows are that same manifest's own `kept_book`, so
+the list the page draws, its count and `n_kept` are one run's answer and a test
+can require them to agree. The committed `proposal_<close>.parquet` is a vintage
+of an older rule, so it is read only for the two columns the manifest does not
+carry, `z` and the contract alpha.
+
+One fixture per evening type: an establishment evening, an ordinary rebalance, a
+stopped run (on staleness and on an error), a run whose own deadline has passed, a
+catch-up, and a closed day. The stopped and closed ones keep the last book the
+loop did propose, which is the state the page has to show rather than a blank.
 """
 
 from __future__ import annotations
@@ -53,6 +56,7 @@ NAMES: tuple[str, ...] = (
     "snapshot_expired.json",
     "snapshot_catch_up.json",
     "snapshot_market_closed.json",
+    "snapshot_establishment.json",
 )
 
 
@@ -61,24 +65,49 @@ def manifest() -> dict[str, Any]:
     return evening_job.build_proposal(store=False)
 
 
-def book() -> pd.DataFrame:
-    """The same close's rows, carrying the reasons the run assigns them.
+def book(proposal: dict[str, Any], *, establishment: bool = False) -> pd.DataFrame:
+    """The run's own book, name by name, carrying the reasons the run assigns.
+
+    The rows come from the manifest the run published rather than from the
+    committed `proposal_<close>.parquet`: that file is a vintage of an older rule,
+    so its 150 rows and today's `n_kept` of 180 disagree at 09-21, and the page
+    would list a book that is not the one its own heading counts. `kept_book` is
+    the traded book the run carried into its manifest, so the list, its count and
+    `n_kept` are one run's answer.
 
     The reasons come from `trade_reasons.assign_trade_reasons`, the function the
     run itself calls, so the page's reason column is the trade's reason and not a
     second opinion about it.
     """
-    rows = pd.read_parquet(PROPOSAL_DIR / f"proposal_{CLOSE}.parquet")
-    paths = sorted(PROPOSAL_DIR.glob("proposal_*.parquet"))
-    previous = (
-        pd.read_parquet(paths[-2])
-        if len(paths) > 1 and paths[-1].stem == f"proposal_{CLOSE}"
-        else None
+    kept = pd.DataFrame(proposal.get("kept_book") or [])
+    if kept.empty:
+        raise RuntimeError("the manifest carries no kept book for the page")
+    rows = pd.DataFrame(
+        {
+            "ticker": kept["ticker"].astype(str),
+            "weight": kept["weight"].astype(float),
+        }
     )
+    rows["side"] = ["short" if weight < 0 else "long" for weight in rows["weight"]]
+    # z and alpha are the page's two per-name columns that no manifest field
+    # carries, so they come from the stored proposal's own rows where that vintage
+    # has the name. A name the vintage lacks keeps a null rather than a guess.
+    stored = pd.read_parquet(PROPOSAL_DIR / f"proposal_{CLOSE}.parquet")
+    rows = rows.merge(stored[["ticker", "z", "alpha"]], on="ticker", how="left")
     specific = pd.read_parquet(SPECIFIC)
     as_of = pd.Timestamp(CLOSE)
     today_std = trade_reasons.specific_std(specific, as_of=as_of)
-    reasons = trade_reasons.assign_trade_reasons(rows, previous, today_std, today_std)
+    if establishment:
+        # The establishment evening, with no earlier book at all.
+        reasons = trade_reasons.assign_trade_reasons(rows, None, today_std, None)
+    else:
+        paths = sorted(PROPOSAL_DIR.glob("proposal_*.parquet"))
+        previous = (
+            pd.read_parquet(paths[-2])
+            if len(paths) > 1 and paths[-1].stem == f"proposal_{CLOSE}"
+            else None
+        )
+        reasons = trade_reasons.assign_trade_reasons(rows, previous, today_std, today_std)
     merged = rows.merge(reasons[["ticker", "reason"]], on="ticker", how="left")
     merged["reason"] = merged["reason"].fillna("alpha moved")
     return merged
@@ -103,6 +132,8 @@ def _run(**over: Any) -> dict[str, Any]:
         "splits": [],
         "flags": [],
         "failures": [],
+        "establishment": False,
+        "cost_label": "rebalance",
     }
     base.update(over)
     return base
@@ -117,7 +148,7 @@ def snapshots() -> dict[str, dict[str, Any]]:
     `book_as_of` naming its close instead of the close it could not reach.
     """
     proposal = manifest()
-    rows = book()
+    rows = book(proposal)
     chosen = snapshot.chosen_row(proposal)
     built: dict[str, dict[str, Any]] = {
         NAMES[0]: snapshot.build(
@@ -205,7 +236,24 @@ def snapshots() -> dict[str, dict[str, Any]]:
             book=rows,
             construction=chosen,
             generated_at=_stamp("2026-11-26T22:41:00"),
-        ),    }
+        ),
+        # The establishment evening: the account is flat, the whole book is
+        # opened, and every row's reason is a new position rather than a move.
+        NAMES[6]: snapshot.build(
+            run=_run(
+                establishment=True,
+                cost_label="establishment",
+                detail=(
+                    "the first live evening: the account is flat and the whole "
+                    "book is established"
+                ),
+            ),
+            manifest=proposal,
+            book=book(proposal, establishment=True),
+            construction=chosen,
+            generated_at=_stamp("2026-09-21T22:41:00"),
+        ),
+    }
     missing = [name for name in NAMES if name not in built]
     if missing:  # pragma: no cover - a guard against a variant going unwritten
         raise RuntimeError(f"no fixture was built for {', '.join(missing)}")

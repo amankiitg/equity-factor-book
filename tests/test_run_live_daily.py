@@ -626,3 +626,107 @@ def test_a_stopped_run_does_not_borrow_the_previous_books_cost(
     )
     text = str(sent[0]["text"])
     assert "Cost: establishment, 15.09 bps of NAV" in text
+
+
+class _Published:
+    """A get callable answering one published document, as boto3 does."""
+
+    def __init__(self, names: int) -> None:
+        self.names = names
+        self.asked: list[dict] = []
+
+    def __call__(self, **kwargs):
+        import json
+
+        entries = [
+            {"ticker": f"N{index}", "weight": 0.1} for index in range(self.names)
+        ]
+        text = json.dumps(
+            {"book": {"n_names": len(entries), "names": entries}}
+        ).encode()
+        self.asked.append(kwargs)
+        return {"Body": type("Body", (), {"read": lambda _self: text})()}
+
+
+def test_the_evening_says_so_when_the_published_book_is_not_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page's list is read back, and named in the message when it is missing.
+
+    `book.names` is the only field the page draws that comes from a frame rather
+    than from the manifest, and on 2026-10-01 it was empty beside a gross of 100%,
+    a correct hedge and 188 orders. The writer now reads its own object back and
+    compares the list with the run's own `n_kept`, and the evening's message says
+    so. Nothing here may fail the run: the orders are already sent by this point,
+    and the control shows the same evening silent when the list is the run's own.
+    """
+    from live import notify
+    from live import snapshot as snapshot_module
+
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    monkeypatch.setattr(
+        snapshot_module,
+        "write_snapshot",
+        lambda **kwargs: {
+            "detail": f"snapshot: on ({snapshot_module.LATEST_KEY})",
+            "written": [snapshot_module.LATEST_KEY],
+            "payload": {},
+        },
+    )
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: sent.append(payload)
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, "re_" + "test-key-value")
+    monkeypatch.setenv(notify.TO_ENV, "owner@example.com")
+    # The same four the writer needs to read its own object back. They name the
+    # bucket; the read itself goes through the injected getter below.
+    for name in snapshot_module.R2_ENVS:
+        monkeypatch.setenv(name, "test-value")
+
+    manifest = {"as_of": "2026-09-21", "n_kept": 3, "kept_gross": 1.0}
+    book = pd.DataFrame(
+        {
+            "ticker": ["AAA", "BBB", "CCC"],
+            "weight": [0.5, 0.3, 0.2],
+            "side": ["long"] * 3,
+        }
+    )
+    result = {
+        "job": "live_daily",
+        "target_close": "2026-09-21",
+        "status": "ok",
+        "failures": [],
+        "inputs": {},
+    }
+
+    # The failure shape: the object is there and carries no names.
+    empty = _Published(0)
+    code = run_live_daily.finish_run(
+        run_date="2026-09-21",
+        result=result,
+        status="ok",
+        dry_run=True,
+        manifest=manifest,
+        book=book,
+        snapshot_getter=empty,
+    )
+    assert code == 0, "the page's book cannot fail a run that has already traded"
+    assert empty.asked and empty.asked[0]["Key"] == snapshot_module.LATEST_KEY
+    text = str(sent[0]["text"])
+    assert "Page book: empty (0 of the 3 kept names are in latest.json)" in text
+
+    # The control: the run's own names, and the line is not there at all.
+    sent.clear()
+    good = _Published(3)
+    code = run_live_daily.finish_run(
+        run_date="2026-09-21",
+        result=result,
+        status="ok",
+        dry_run=True,
+        manifest=manifest,
+        book=book,
+        snapshot_getter=good,
+    )
+    assert code == 0
+    assert "Page book" not in str(sent[0]["text"])

@@ -633,3 +633,120 @@ def test_the_settings_are_checked_before_the_run_rather_than_at_the_end(
     for name in snapshot.R2_ENVS:
         monkeypatch.setenv(name, "test-value")
     assert snapshot.check_snapshot_config(dry_run=False) == "on"
+
+
+class _Body:
+    """A get_object body, as boto3 hands one back."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def read(self) -> bytes:
+        return self._text.encode()
+
+
+def _reader(text: str, seen: list[dict[str, Any]] | None = None) -> Any:
+    """A get callable answering one object, and recording what it was asked."""
+
+    def get(**kwargs: Any) -> dict[str, Any]:
+        if seen is not None:
+            seen.append(kwargs)
+        return {"Body": _Body(text)}
+
+    return get
+
+
+def _document(names: list[dict[str, Any]], **book: Any) -> str:
+    return json.dumps({"book": {"n_names": len(names), "names": names, **book}})
+
+
+NAMES_THREE = [{"ticker": ticker, "weight": 0.1} for ticker in ("AAA", "BBB", "CCC")]
+
+
+def test_the_writer_reads_its_own_object_back_and_counts_the_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The check asks the bucket for the key the page fetches, and counts it."""
+    values = _settings(monkeypatch)
+    seen: list[dict[str, Any]] = []
+    verdict, line = snapshot.check_published_book(
+        expected=3, getter=_reader(_document(NAMES_THREE), seen)
+    )
+    assert verdict == snapshot.PAGE_BOOK_MATCH
+    assert line == "", "a book that carries the run's names says nothing"
+    assert seen == [{"Bucket": values["EFB_R2_BUCKET"], "Key": snapshot.LATEST_KEY}]
+
+
+def test_an_empty_published_book_is_reported_against_the_kept_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 2026-10-01 shape: every number right and the list empty."""
+    _settings(monkeypatch)
+    verdict, line = snapshot.check_published_book(
+        expected=188, getter=_reader(_document([]))
+    )
+    assert verdict == snapshot.PAGE_BOOK_EMPTY
+    assert "empty" in line
+    assert "188" in line and snapshot.LATEST_KEY in line
+
+
+def test_a_short_published_book_is_not_called_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A list of the wrong length is its own fact, stated as itself."""
+    _settings(monkeypatch)
+    verdict, line = snapshot.check_published_book(
+        expected=188, getter=_reader(_document(NAMES_THREE[:2]))
+    )
+    assert verdict == snapshot.PAGE_BOOK_SHORT
+    assert "2 of the 188 kept names" in line
+
+
+def test_a_read_that_cannot_be_made_is_unread_not_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bucket this run cannot read is a bucket to check, not an empty book.
+
+    The line names the exception's type and not its message: a bucket error's text
+    can carry the request that was signed, and the document and the message are
+    both read by people.
+    """
+
+    def refused(**kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError("AccessDenied for bucket efb-snapshots")
+
+    _settings(monkeypatch)
+    verdict, line = snapshot.check_published_book(expected=3, getter=refused)
+    assert verdict == snapshot.PAGE_BOOK_UNREAD
+    assert "RuntimeError" in line
+    assert "empty" not in line
+    assert "AccessDenied" not in line
+
+
+def test_the_check_never_raises_on_a_body_that_is_not_a_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A truncated or foreign object is reported, and cannot fail a run."""
+    _settings(monkeypatch)
+    verdict, line = snapshot.check_published_book(
+        expected=3, getter=_reader("<html>sign in</html>")
+    )
+    assert verdict == snapshot.PAGE_BOOK_UNREAD
+    assert line
+
+
+def test_a_manifest_with_no_kept_count_still_reports_an_empty_book(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An older manifest cannot say what the list should be, but says empty."""
+    _settings(monkeypatch)
+    empty, empty_line = snapshot.check_published_book(
+        expected=None, getter=_reader(_document([]))
+    )
+    assert empty == snapshot.PAGE_BOOK_EMPTY
+    assert empty_line
+    carried, carried_line = snapshot.check_published_book(
+        expected=None, getter=_reader(_document(NAMES_THREE))
+    )
+    assert carried == snapshot.PAGE_BOOK_MATCH
+    assert carried_line == ""

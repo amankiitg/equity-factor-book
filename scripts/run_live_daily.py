@@ -551,6 +551,7 @@ def finish_run(
     thin_adv: list[dict[str, Any]] | None = None,
     poster: Any = None,
     snapshot_poster: Any = None,
+    snapshot_getter: Any = None,
     deferred_reversals: list[dict[str, Any]] | None = None,
     skipped_minimum: list[dict[str, Any]] | None = None,
 ) -> int:
@@ -635,6 +636,7 @@ def finish_run(
         row["traded_risk"] = store.json_text(risk["traded"])
         row["full_risk"] = store.json_text(risk["full"])
     snapshot_detail, snapshot_failed = "", False
+    written: dict[str, Any] | None = None
     try:
         written = snapshot_module.write_snapshot(
             run={**row, "store": store_name},
@@ -658,6 +660,26 @@ def finish_run(
             # of the run, exactly as a message that cannot be sent is.
             status, detail = "error", snapshot_detail
             row["status"], row["detail"] = status, detail
+    # The per-name list is the one thing the page carries that is not a number out
+    # of the manifest, so it is the one thing that can go missing while the page
+    # still looks right: the 2026-10-01 evening published an empty book beside a
+    # gross of 100%, a correct hedge and 188 orders. The writer reads its own
+    # object back and this says so in the message when the list is not the run's
+    # own. It cannot fail the run: the orders are already sent, and an unreadable
+    # object is named as unreadable rather than as an empty book.
+    page_book = ""
+    if written is not None and written.get("written"):
+        try:
+            verdict, page_book = snapshot_module.check_published_book(
+                expected=(manifest or {}).get("n_kept"),
+                getter=snapshot_getter,
+            )
+        except Exception as exc:  # noqa: BLE001 - the check never fails the run
+            verdict = snapshot_module.PAGE_BOOK_UNREAD
+            page_book = f"could not be read back ({type(exc).__name__})"
+        logger.info(
+            "page book: %s%s", verdict, f" ({page_book})" if page_book else ""
+        )
     notified = notify.notify_run(
         status=status,
         target_close=result.get("target_close"),
@@ -675,6 +697,7 @@ def finish_run(
         flags=flags,
         store=store_name,
         snapshot=snapshot_detail,
+        page_book=page_book,
         cross_checks_capped=cross_checks_capped,
         no_price=no_price,
         thin_adv=thin_adv,

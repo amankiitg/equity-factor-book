@@ -470,6 +470,75 @@ def put_object(
     )
 
 
+def get_object_text(
+    key: str,
+    *,
+    settings: dict[str, str] | None = None,
+    getter: Callable[..., Any] | None = None,
+) -> str:
+    """One single-object GET, so what the page reads can be read back.
+
+    The only way to say that the page has the document the run published is to
+    read the object the page fetches. `getter` is the get callable, so a test
+    drives the read without a network.
+    """
+    values = settings or r2_settings()
+    get = getter or r2_client(values).get_object
+    response = get(Bucket=values["EFB_R2_BUCKET"], Key=key)
+    body = response["Body"].read()
+    return body.decode() if isinstance(body, (bytes, bytearray)) else str(body)
+
+
+PAGE_BOOK_MATCH = "match"
+PAGE_BOOK_EMPTY = "empty"
+PAGE_BOOK_SHORT = "short"
+PAGE_BOOK_UNREAD = "unread"
+
+
+def check_published_book(
+    *,
+    expected: Any,
+    key: str = LATEST_KEY,
+    settings: dict[str, str] | None = None,
+    getter: Callable[..., Any] | None = None,
+) -> tuple[str, str]:
+    """Read the published document back and compare its book to the kept set.
+
+    The per-name list is the one thing on the page that comes from a frame rather
+    than from the manifest, so it is the one thing that can go missing while every
+    number around it stays right: the 2026-10-01 evening published an empty
+    `book.names` beside a gross of 100%, a correct hedge and 188 orders. `expected`
+    is the run's own `n_kept`, read from the same manifest the document was built
+    from, so this compares the page with the run's own statement about the book
+    rather than with a second file that could drift away from it.
+
+    Returns `(verdict, line)`. The line is written for the evening's message and is
+    empty when there is nothing to say. It never raises: the snapshot is written
+    after the orders, so nothing here may fail a run that has already traded, and a
+    read that cannot be made is `unread`, which names the bucket as the thing to
+    check rather than calling the book empty.
+    """
+    try:
+        payload = json.loads(get_object_text(key, settings=settings, getter=getter))
+    except Exception as exc:  # noqa: BLE001 - the verdict is the report
+        return PAGE_BOOK_UNREAD, f"could not be read back ({type(exc).__name__})"
+    book = payload.get("book") if isinstance(payload, dict) else None
+    entries = book.get("names") if isinstance(book, dict) else None
+    published = len(entries) if isinstance(entries, list) else 0
+    kept = _number(expected)
+    if kept is None or kept <= 0:
+        # A manifest that names no kept count cannot say what the list should be,
+        # so an empty list is still reported and a non-empty one is not judged.
+        if published:
+            return PAGE_BOOK_MATCH, ""
+        return PAGE_BOOK_EMPTY, f"empty (0 names are in {key})"
+    if published == kept:
+        return PAGE_BOOK_MATCH, ""
+    if not published:
+        return PAGE_BOOK_EMPTY, f"empty (0 of the {kept:.0f} kept names are in {key})"
+    return PAGE_BOOK_SHORT, f"{published} of the {kept:.0f} kept names are in {key}"
+
+
 def keys_for(close: Any) -> list[str]:
     """`latest.json` and the dated copy, in that order."""
     stamp = pd.Timestamp(close).date().isoformat() if close else "unknown"

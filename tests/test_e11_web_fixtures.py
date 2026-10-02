@@ -135,3 +135,91 @@ def test_the_fixture_set_is_exactly_the_states_the_page_tests(
     assert committed == sorted(
         fixtures.NAMES
     ), "the fixtures directory holds exactly the set the writer produces"
+
+
+def test_every_evening_that_priced_a_book_publishes_its_names(
+    written: dict[str, dict[str, object]],
+) -> None:
+    """The page's list against the run's own count, on every kind of evening.
+
+    `book.names` is the only field the page draws that comes from a frame rather
+    than from the manifest, so it is the only one that can go missing while every
+    number around it stays right. On 2026-10-01 it did: the page read "The book: 0
+    name(s)" over an empty table beside a gross of 100%, a correct hedge and 188
+    orders, because `store_proposal` returned nothing while its docstring promised
+    the rows. Every fixture carries the book its own manifest counted, so a writer
+    that hands the page an empty list fails here instead of in a browser.
+    """
+    for name in fixtures.NAMES:
+        payload = written[name]
+        book = payload["book"]
+        assert isinstance(book, dict), name
+        names = book["names"]
+        kept = book["n_kept"]
+        assert isinstance(names, list) and names, f"{name} published no book at all"
+        assert isinstance(kept, int | float), f"{name} states no kept count"
+        assert len(names) == book["n_names"] == int(kept), (
+            f"{name}: the page lists {len(names)} name(s) and n_names "
+            f"{book['n_names']} against n_kept {kept}, so the list is not the "
+            "book the run kept"
+        )
+        assert all(str(entry["ticker"]) for entry in names), name
+        assert {entry["side"] for entry in names} <= {
+            "long",
+            "short",
+        }, f"{name} has a row with no side"
+
+
+def test_the_fixture_set_covers_every_evening_type(
+    written: dict[str, dict[str, object]],
+) -> None:
+    """One fixture per kind of evening, rather than one edited into shapes.
+
+    The four the page must render differently: an establishment evening, an
+    ordinary rebalance, a stopped run and a closed day, plus the late and
+    catch-up states the owner has to be able to tell apart.
+    """
+    statuses: dict[str, dict[str, object]] = {}
+    for name in fixtures.NAMES:
+        status = written[name]["run_status"]
+        assert isinstance(status, dict), name
+        statuses[name] = status
+    assert [status["status"] for status in statuses.values()].count(
+        "market_closed"
+    ) == 1, "expected exactly one closed-day fixture"
+    assert [
+        name
+        for name, status in statuses.items()
+        if status["status"] in {"stale_stopped", "error"}
+    ], "no fixture is a stopped run"
+    opened = [name for name, status in statuses.items() if status["establishment"]]
+    assert len(opened) == 1, "expected exactly one establishment fixture"
+    assert statuses[opened[0]]["cost_label"] == "establishment"
+    ordinary = [
+        name
+        for name, status in statuses.items()
+        if status["status"] == "ok"
+        and not status["establishment"]
+        and not status["catch_up"]
+    ]
+    assert ordinary, "no fixture is an ordinary rebalance"
+    assert all(statuses[name]["cost_label"] == "rebalance" for name in ordinary)
+
+
+def test_the_establishment_snapshot_opens_the_book_from_flat(
+    written: dict[str, dict[str, object]],
+) -> None:
+    """The first evening: every row is a position opened, not a move."""
+    name = "snapshot_establishment.json"
+    assert name in written
+    status = written[name]["run_status"]
+    assert isinstance(status, dict)
+    assert status["establishment"] is True
+    assert status["cost_label"] == "establishment"
+    book = written[name]["book"]
+    assert isinstance(book, dict)
+    names = book["names"]
+    assert isinstance(names, list) and names
+    assert {entry["reason"] for entry in names} == {
+        "new position"
+    }, "an establishment evening has no earlier book, so nothing moved"

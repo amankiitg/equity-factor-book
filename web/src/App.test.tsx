@@ -220,6 +220,25 @@ describe("the page", () => {
     }
   });
 
+  it("draws one row per kept name and counts them in the heading", () => {
+    // The 2026-10-01 shape: the page drew "The book: 0 name(s)" over an empty
+    // table while every number around it was right, because the writer was
+    // handed no frame for the names. The fixture is the writer's own output, so
+    // the table has to draw one row per kept name and the heading has to count
+    // the same book.
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const kept = OK.book.n_kept;
+    expect(kept).toBeGreaterThan(0);
+    const rows = within(screen.getByRole("table", { name: "the book" })).getAllByRole("row");
+    const dataRows = rows.slice(1);
+    expect(dataRows.length).toBe(kept);
+    expect(dataRows.length).toBe(OK.book.n_names);
+    for (const row of dataRows) {
+      expect(row.querySelector("td")?.textContent).toBeTruthy();
+    }
+    expect(screen.getByText(new RegExp(`The book: ${kept} name\\(s\\)`))).toBeTruthy();
+  });
+
   it("takes the top of the screen when the run stopped", () => {
     render(<SnapshotView snapshot={stale as unknown as Snapshot} now={NOW} />);
     const alert = screen.getByRole("alert");

@@ -236,6 +236,7 @@ def compose(
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
     snapshot: str | None = None,
+    page_book: str | None = None,
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
@@ -345,6 +346,12 @@ def compose(
         # Whether the page has this run is as much a part of "did it run" as the
         # status is, so a deliberate `off` says so rather than going unmentioned.
         lines.append(f"Snapshot: {snapshot}.")
+    if page_book:
+        # The list on the page is the one thing there that is not a number out of
+        # the manifest, so it is the one thing that can go missing while every
+        # number around it still reads right. The writer reads the object back
+        # and this is where it says so out loud.
+        lines.append(f"Page book: {page_book}.")
     if splits:
         lines.append(f"Corporate actions: {', '.join(splits)}.")
     if flags:
@@ -734,6 +741,7 @@ def notify_run(
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
     snapshot: str | None = None,
+    page_book: str | None = None,
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
@@ -783,6 +791,7 @@ def notify_run(
         thin_adv=thin_adv,
         store=store,
         snapshot=snapshot,
+        page_book=page_book,
         cross_checks_capped=cross_checks_capped,
         init=init,
         establishment=establishment,
