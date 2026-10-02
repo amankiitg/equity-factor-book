@@ -240,6 +240,121 @@ def test_the_proposals_row_states_the_traded_books_figures(
     assert row["achieved_annual_vol"] != row["full_book_achieved_annual_vol"]
 
 
+def test_a_rebalance_snapshot_carries_its_per_name_book(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The names the page lists are the rows the proposal wrote.
+
+    The snapshot's per-name list is built from the frame `store_proposal` returns,
+    and that function returned nothing while its docstring promised the rows. So on
+    every evening the loop priced its own proposal the page read "The book: 0
+    name(s)" beside a gross of 100%, a correct hedge and the day's orders: those
+    numbers come from the manifest, and only the names come from the frame. The
+    control is the same payload built with no frame, which is what the page showed.
+    """
+    import json
+
+    import pandas as pd
+
+    from live import snapshot as snapshot_module
+
+    proposals = tmp_path / "proposals"
+    proposals.mkdir()
+    manifest = {
+        "signal": "idio_momentum",
+        "as_of": "2026-09-21",
+        "n_names": 4,
+        "n_excluded": 1,
+        "n_kept": 3,
+        "gross": 0.9008,
+        "net": 0.004,
+        "kept_gross": 1.0,
+        "kept_net": -3.3e-16,
+        "n_eff_kept": 2.9,
+        "n_eff_full_book": 3.8,
+        "target_annual_vol": 0.10,
+        "achieved_annual_vol": 0.0246,
+        "kept_achieved_annual_vol": 0.0316,
+        "idio_share_after_fmp": 1.0,
+        "max_abs_exposure_after_fmp": 3.8e-15,
+        "gross_cap_bound": True,
+        "nav": 1_000_000.0,
+        "expected_establishment_cost_bps": 14.5,
+        "cost_breakdown_bps": {"total": 14.5},
+        "notional": 1_000_000.0,
+        "avg_trade_size": 333_333.33,
+        "input_as_of": {},
+        "max_input_staleness_days": 0,
+        "universe_source": "spy_holdings",
+        "universe_as_of": "2026-09-21",
+    }
+    (proposals / "proposal_2026-09-21.json").write_text(json.dumps(manifest))
+    # A rebalance's book: two longs and a short, and the page lists them largest
+    # absolute weight first.
+    pd.DataFrame(
+        {
+            "ticker": ["AAA", "BBB", "CCC"],
+            "weight": [0.6, 0.35, -0.05],
+            "side": ["long", "long", "short"],
+            "z": [1.2, 0.4, -0.3],
+            "alpha": [3e-06, 1e-06, -2e-06],
+        }
+    ).to_parquet(proposals / "proposal_2026-09-21.parquet", index=False)
+    root = tmp_path / "data"
+    (root / "models" / "XS-v1").mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "date": [pd.Timestamp("2026-09-21")] * 3,
+            "ticker": ["AAA", "BBB", "CCC"],
+            "specific_var": [0.0004, 0.0009, 0.0001],
+        }
+    ).to_parquet(root / "models" / "XS-v1" / "specific_var.parquet", index=False)
+    monkeypatch.setattr(run_live_daily, "PROPOSAL_DIR", proposals)
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+
+    # A rebalance evening: the account already holds a book, so the reasons are
+    # classified against it.
+    previous = pd.DataFrame(
+        {"ticker": ["AAA", "BBB"], "weight": [0.5, 0.4], "z": [1.0, 0.3]}
+    )
+    rows = run_live_daily.store_proposal(
+        "2026-09-21",
+        data_root=root,
+        dry_run=False,
+        previous=previous,
+        prior_settled=True,
+    )
+
+    assert rows is not None, "the snapshot was handed no book and listed no names"
+    assert list(rows["ticker"]) == ["AAA", "BBB", "CCC"]
+    assert set(rows["ticker"]) == set(store.select("positions")["ticker"])
+    assert "reason" in rows.columns
+
+    run = {
+        "job": "live_daily",
+        "target_close": "2026-09-21",
+        "status": "ok",
+        "dry_run": False,
+    }
+    payload = snapshot_module.build(run=run, manifest=manifest, book=rows)
+    assert payload["book"]["n_names"] == manifest["n_kept"] == 3
+    assert [entry["ticker"] for entry in payload["book"]["names"]] == [
+        "AAA",
+        "BBB",
+        "CCC",
+    ]
+    assert payload["book"]["names"][2]["side"] == "short"
+    assert all(entry["reason"] for entry in payload["book"]["names"])
+
+    # The control: with no frame, the same payload has the same numbers and no
+    # names, which is what the page showed.
+    empty = snapshot_module.build(run=run, manifest=manifest, book=None)
+    assert empty["book"]["n_names"] == 0
+    assert empty["book"]["names"] == []
+    assert empty["book"]["gross"] == pytest.approx(1.0)
+    assert empty["book"]["n_kept"] == manifest["n_kept"]
+
+
 def _clock(instant: str):
     """A `datetime` pinned to one instant, for the run's own window check."""
 

@@ -36,7 +36,16 @@ Written at the close of batch 3, which is on `prelaunch-batch3` and merged to
 
 Left for the first week, unchanged by these batches: the holding versus trading
 cost labels, rebasing e12, the static snapshot fields, and the documentation
-corrections. One artefact is known-stale: `live/construction_table.parquet` is the
+corrections.
+
+- `pd.DataFrame` is `Any` to mypy here, so a function declared to return one can
+  return nothing with `make lint` green: `pandas` ships no `py.typed` in this
+  environment and sits in the `ignore_missing_imports` override (a probe declared
+  `-> int` is flagged, the same probe declared `-> pd.DataFrame` is not). The
+  snapshot published an empty per-name book on that silence on every evening the
+  loop priced its own proposal.
+
+One artefact is known-stale: `live/construction_table.parquet` is the
 committed decision table built before S1, so its numbers describe the pre-S1 book.
 Rebuild it with `python -m live.construction_table` when the owner wants it
 current, and check the choice of construction still holds (it does: the share-only

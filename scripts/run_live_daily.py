@@ -327,6 +327,13 @@ def store_proposal(
             }
         )
     store.replace_by_date("positions", as_of, position_rows)
+    # The rows, back to the caller, because the snapshot publishes the same book
+    # and re-deriving it would let the page and the store disagree. The return was
+    # missing while the docstring promised it, so the caller's `book` was None and
+    # the page listed no names on every evening the loop priced its own proposal:
+    # the manifest supplied the counts, the gross and the hedge, and only the
+    # per-name list was empty.
+    return rows
 
 
 def store_orders(as_of: str, dry_run: bool) -> None:
