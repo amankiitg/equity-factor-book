@@ -181,6 +181,7 @@ def build(
     reconciliation: dict[str, Any] | None = None,
     construction: dict[str, Any] | None = None,
     book_reason: str | None = None,
+    actual: dict[str, Any] | None = None,
     generated_at: datetime | None = None,
 ) -> dict[str, Any]:
     """The document the page reads, assembled from what the run already knows.
@@ -326,6 +327,54 @@ def build(
             "traded_risk": _json_value((reconciliation or {}).get("traded_risk"), None),
             "full_risk": _json_value((reconciliation or {}).get("full_risk"), None),
         },
+        # The account's own book beside the target, and the fills behind it. Only
+        # present when the caller has read the account: a key that said null would
+        # read as an account holding nothing, which is a different statement from
+        # an account nobody read.
+        **({"actual_holdings": _actual_block(actual)} if actual else {}),
+    }
+
+
+def _actual_block(raw: dict[str, Any] | None) -> dict[str, Any]:
+    """The account's book as the page's own object, with the non-finite nulled.
+
+    Formatted here and measured by the caller, like every other block: the fills
+    reconciler reads the account and this writes down what it read, so the two
+    cannot disagree about the book the owner holds.
+    """
+    block = raw or {}
+    names = [
+        {
+            "ticker": str(entry.get("ticker")),
+            "side": entry.get("side"),
+            "notional": _number(entry.get("notional")),
+            "weight": _number(entry.get("weight")),
+        }
+        for entry in (block.get("names") or [])
+    ]
+    fills_block = block.get("fills")
+    return {
+        "as_of": _iso(block.get("as_of")),
+        "close": _iso(block.get("close")),
+        "n_names": _number(block.get("n_names")) if names else 0,
+        "gross_notional": _number(block.get("gross_notional")),
+        "net_notional": _number(block.get("net_notional")),
+        "names": names,
+        "fills": (
+            {
+                "trade_date": _iso(fills_block.get("trade_date")),
+                "n_orders": _number(fills_block.get("n_orders")),
+                "n_filled": _number(fills_block.get("n_filled")),
+                "n_unfilled": _number(fills_block.get("n_unfilled")),
+                "not_sent": _number(fills_block.get("not_sent")),
+                "realized_cost_bps": _number(fills_block.get("realized_cost_bps")),
+                "expected_cost_bps": _number(fills_block.get("expected_cost_bps")),
+                "unfilled": list(fills_block.get("unfilled") or []),
+                "unread": list(fills_block.get("unread") or []),
+            }
+            if isinstance(fills_block, dict)
+            else None
+        ),
     }
 
 
@@ -553,6 +602,7 @@ def write_snapshot(
     reconciliation: dict[str, Any] | None = None,
     construction: dict[str, Any] | None = None,
     book_reason: str | None = None,
+    actual: dict[str, Any] | None = None,
     dry_run: bool = True,
     mode: str | None = None,
     poster: Callable[..., Any] | None = None,
@@ -571,6 +621,7 @@ def write_snapshot(
         reconciliation=reconciliation,
         construction=construction,
         book_reason=book_reason,
+        actual=actual,
         generated_at=generated_at,
     )
     if resolved == OFF:

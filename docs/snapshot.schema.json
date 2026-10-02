@@ -210,6 +210,170 @@
           "description": "The full book's risk figures under their own names: forecast_annual_vol, idio_share, max_abs_exposure, gross, net, n_eff, n_names."
         }
       }
+    },
+    "actual_holdings": {
+      "type": "object",
+      "description": "The account's own book beside the target book above, added by the 15:30 UTC fills reconciliation. The key is absent, not null, until that job has read the account: a null key would read as an account holding nothing, which is a different statement from an account nobody read.",
+      "required": ["as_of", "close", "n_names", "gross_notional", "net_notional", "names"],
+      "properties": {
+        "as_of": {
+          "type": ["string", "null"],
+          "description": "The morning the account was read, YYYY-MM-DD."
+        },
+        "close": {
+          "type": ["string", "null"],
+          "description": "The evening whose orders settled into this book, YYYY-MM-DD."
+        },
+        "n_names": {
+          "type": "integer",
+          "description": "The number of names below, so the count and the list cannot disagree."
+        },
+        "gross_notional": {
+          "type": ["number", "null"],
+          "description": "The sum of absolute notionals: what the account holds, both sides."
+        },
+        "net_notional": {
+          "type": ["number", "null"],
+          "description": "Longs minus shorts."
+        },
+        "names": {
+          "type": "array",
+          "description": "The held names, largest absolute notional first.",
+          "items": {
+            "type": "object",
+            "required": ["ticker", "side", "notional", "weight"],
+            "properties": {
+              "ticker": {
+                "type": "string"
+              },
+              "side": {
+                "type": ["string", "null"],
+                "enum": ["long", "short", null]
+              },
+              "notional": {
+                "type": ["number", "null"],
+                "description": "Signed dollars, positive for a long."
+              },
+              "weight": {
+                "type": ["number", "null"],
+                "description": "That notional over the account's equity, so it is comparable with the weights above."
+              }
+            }
+          }
+        },
+        "fills": {
+          "type": ["object", "null"],
+          "description": "The evening's orders that produced this book, as the broker answered a read by id. Null when the book was written without a reconciliation.",
+          "required": [
+            "trade_date",
+            "n_orders",
+            "n_filled",
+            "n_unfilled",
+            "not_sent",
+            "realized_cost_bps",
+            "expected_cost_bps",
+            "unfilled",
+            "unread"
+          ],
+          "properties": {
+            "trade_date": {
+              "type": ["string", "null"],
+              "description": "The close whose orders settled, which is the evening the notional belongs to."
+            },
+            "n_orders": {
+              "type": ["integer", "number", "null"],
+              "description": "The legs the evening tried to have executed."
+            },
+            "n_filled": {
+              "type": ["integer", "number", "null"],
+              "description": "Those the broker reports as filled."
+            },
+            "n_unfilled": {
+              "type": ["integer", "number", "null"],
+              "description": "Those it reports as canceled, expired or rejected, or as only partly filled."
+            },
+            "not_sent": {
+              "type": ["integer", "number", "null"],
+              "description": "Legs the evening decided against, so there is nothing at the broker to read."
+            },
+            "realized_cost_bps": {
+              "type": ["number", "null"],
+              "description": "Signed slippage of the fill prices against the close, in basis points of NAV: positive is a cost. Null when no fill could be priced."
+            },
+            "expected_cost_bps": {
+              "type": ["number", "null"],
+              "description": "The evening's own expectation for the same trade, from the reconciled row."
+            },
+            "unfilled": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "One line per miss, as the email carries it: \"DG sell_to_open 41 canceled 12:15 UTC\"."
+            },
+            "unread": {
+              "type": "array",
+              "description": "Orders the broker would not answer about, with the error. Distinct from a miss: the broker may have filled it.",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "risk": {
+      "type": ["object", "null"],
+      "description": "Per-name share of the book's predicted specific variance, for the page's concentration panel. Not written today: the sizing step caps that share at a fixed fraction, so the numbers exist inside the evening job's sizing call but the manifest does not carry them. The page hides the panel until this block is present rather than drawing it empty. `variance_share_cap` is the cap as a fraction, so 0.10 is the ten percent cap the sizing applies.",
+      "properties": {
+        "variance_share_cap": {"type": ["number", "null"]},
+        "concentration": {
+          "type": ["array", "null"],
+          "description": "One entry per name, largest share first. Shares are fractions of the same total and add to one.",
+          "items": {
+            "type": "object",
+            "required": ["ticker", "share"],
+            "properties": {
+              "ticker": {"type": "string"},
+              "share": {"type": "number"}
+            }
+          }
+        }
+      }
+    },
+    "movers": {
+      "type": ["object", "null"],
+      "description": "What moved the book in the latest session, in dollars, for the page's movers panel. Not written today: the evening step that attributes a stored day lives on the E12 branch, and its per-name contributions are not in the manifest. The page hides the panel until this block is present.",
+      "properties": {
+        "session": {
+          "type": ["string", "null"],
+          "description": "The session the contributions belong to."
+        },
+        "by_name": {
+          "type": ["array", "null"],
+          "description": "Per-name contribution to the session's P&L, in dollars, signed. The page shows the five best and the five worst.",
+          "items": {
+            "type": "object",
+            "required": ["ticker", "contribution"],
+            "properties": {
+              "ticker": {"type": "string"},
+              "contribution": {"type": "number"}
+            }
+          }
+        },
+        "by_sector": {
+          "type": ["array", "null"],
+          "description": "The same contributions summed by GICS sector, in dollars, signed. The sector names are the model's own, so they match the bundled map's labels.",
+          "items": {
+            "type": "object",
+            "required": ["sector", "contribution"],
+            "properties": {
+              "sector": {"type": ["string", "null"]},
+              "contribution": {"type": "number"}
+            }
+          }
+        }
+      }
     }
   }
 }

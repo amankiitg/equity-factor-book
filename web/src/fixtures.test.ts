@@ -24,6 +24,7 @@ const NAMES = [
   "snapshot_catch_up.json",
   "snapshot_market_closed.json",
   "snapshot_establishment.json",
+  "snapshot_no_book.json",
 ];
 
 const TOP_LEVEL = [

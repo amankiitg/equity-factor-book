@@ -251,8 +251,9 @@ else:
     ]
     st.markdown(
         f"{len(day)} positions as of {latest_date}. Every row carries a "
-        f"stated reason: alpha moved, risk moved, the hedge moved, or "
-        f"drifted past a band. A trade with no stated reason is a bug."
+        f"stated reason: a new name entering, an exit, alpha moved, risk moved, "
+        f"a hedge that moved, or a position that did not move at all. A trade "
+        f"with no stated reason is a bug."
     )
     st.dataframe(shown, use_container_width=True, height=480)
 

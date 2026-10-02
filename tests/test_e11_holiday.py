@@ -1,6 +1,6 @@
 """Sprint E11 pre-flip, item 2: a shut exchange is a message, not a run.
 
-The cron schedule is "30 22 * * 1-5", so it fires on weekday holidays. There is
+The cron schedule is "30 15,22 * * 1-5", so it fires on weekday holidays. There is
 no close to price on those days, so the run does nothing at all: no seed
 download, no extension, no gate, no book. The owner is told, because silence is
 the alarm for a run that never started, and the day is recorded so a re-fire does

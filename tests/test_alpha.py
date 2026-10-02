@@ -7,6 +7,8 @@ constructs one on purpose so the harness has to catch it.
 
 from __future__ import annotations
 
+import hashlib
+import inspect
 from pathlib import Path
 
 import numpy as np
@@ -168,3 +170,58 @@ def test_the_three_sites_size_from_the_one_contract() -> None:
         # the spelling that put the variance under sigma: gone from every site
         assert "specific * z * kappa" not in source, relative
         assert "diag_v2 * z * KAPPA" not in source, relative
+
+
+def test_the_conversion_rebuild_touches_only_the_conversion() -> None:
+    """The narrow rebuild is one artifact per signal, and nothing else.
+
+    The IC, the shift audits, the neutralized IC, the quantile portfolios and
+    the multiple-testing ledger are all written by `run`, and the reason this
+    function exists is that none of them is owed a second measurement when the
+    contract is corrected: re-running `run` would append thirty ledger rows
+    that were never executed and move F7.3 with them.
+    """
+    source = inspect.getsource(alpha.rebuild_conversion)
+    assert "alpha.parquet" in source
+    for forbidden in (
+        "ic.parquet",
+        "audit.parquet",
+        "neutral_ic.parquet",
+        "quantiles.parquet",
+        "regime_ic.parquet",
+        "summary.parquet",
+        "write_ledger",
+    ):
+        assert forbidden not in source, forbidden
+
+
+@pytest.mark.slow
+@pytest.mark.integration
+def test_the_conversion_rebuild_reproduces_the_stored_artifact() -> None:
+    """The rebuilt conversion is the one on disk, for the signal's own inputs.
+
+    One signal is enough: every signal goes through the same
+    `_converted_alpha`. The comparison is against the stored artifact rather
+    than against a number written here, so a refresh that wrote some other
+    spelling fails. `store=False` keeps the test from rewriting an artifact,
+    and the hash either side of the call is what says it did not.
+    """
+    path = Path(alpha.DATA_ROOT) / "alpha" / "momentum_12_1" / "alpha.parquet"
+    if not path.exists():
+        pytest.skip("the E7 conversion has not been written yet")
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    summary = alpha.rebuild_conversion(store=False, signals=("momentum_12_1",))
+    assert list(summary["signal"]) == ["momentum_12_1"]
+    row = summary.iloc[0]
+    stored = pd.read_parquet(path)
+    assert int(row["n_rows"]) == len(stored)
+    assert float(row["mean_abs_alpha"]) == pytest.approx(
+        float(stored["alpha"].abs().mean()), rel=1e-12
+    )
+    assert float(row["mean_abs_alpha_xs_v2"]) == pytest.approx(
+        float(stored["alpha_xs_v2"].abs().mean()), rel=1e-12
+    )
+    assert float(row["previous_mean_abs_alpha"]) == pytest.approx(
+        float(stored["alpha"].abs().mean()), rel=1e-12
+    )
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before

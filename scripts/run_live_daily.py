@@ -248,9 +248,27 @@ def store_proposal(
         specific, as_of=previous_close(previous, as_of_ts)
     )
 
-    reasons = trade_reasons.assign_trade_reasons(rows, previous, today_std, prev_std)
+    reasons = trade_reasons.assign_trade_reasons(
+        rows,
+        previous,
+        today_std,
+        prev_std,
+        # The weight materiality threshold is a dollar figure, and this is the
+        # equity the book was sized on, so `$250` is the same $250 the order path
+        # refuses a leg under rather than a fraction of some other book.
+        nav=float(manifest.get("nav") or 0.0) or None,
+    )
+    # Only tonight's own rows are given a reason: the classifier's frame also
+    # accounts for the names the book leaves tonight (they are a trade, and their
+    # reason is "exited"), and a left join on tonight's rows is what keeps them out
+    # of the stored book. Nothing here touches a weight: the reason column is the
+    # only thing this merge adds, which is why the book, its hedge and its orders
+    # cannot move with it.
     rows = rows.merge(reasons[["ticker", "reason"]], on="ticker", how="left")
-    rows["reason"] = rows["reason"].fillna("alpha moved")
+    # Unreachable (the classifier returns a row per name in `rows`), kept because a
+    # blank reason is forbidden and this column is presentation: it must not be the
+    # thing that fails an evening whose orders are already sent.
+    rows["reason"] = rows["reason"].fillna(trade_reasons.ALPHA_MOVED)
 
     previous_weights = (
         previous.set_index("ticker")["weight"]
@@ -554,6 +572,7 @@ def finish_run(
     snapshot_getter: Any = None,
     deferred_reversals: list[dict[str, Any]] | None = None,
     skipped_minimum: list[dict[str, Any]] | None = None,
+    skipped_borrow: list[dict[str, Any]] | None = None,
 ) -> int:
     """Snapshot the run, notify the owner, record it, and return the exit code.
 
@@ -711,6 +730,7 @@ def finish_run(
         poster=poster,
         deferred_reversals=deferred_reversals,
         skipped_minimum=skipped_minimum,
+        skipped_borrow=skipped_borrow,
     )
     delivered = notified["status"] == notify.STATUS_SENT
     store_failed = False
@@ -1258,6 +1278,10 @@ def main() -> int:
         # nowhere, recorded with their reason and named in the message, because a
         # book quietly short of its own target is a book nobody can check.
         skipped_minimum=morning.get("skipped_legs") or [],
+        # The shorts the borrow left unopened. Skipped, not incomplete, and named
+        # for the same reason: the run did what it should have and the book is one
+        # leg short of its own target, which the message has to say.
+        skipped_borrow=morning.get("skipped_borrow") or [],
         **snapshot_inputs,
     )
 

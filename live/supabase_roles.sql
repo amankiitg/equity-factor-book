@@ -21,7 +21,8 @@
 
 create role efb_writer login password 'REPLACE_WITH_A_LONG_RANDOM_PASSWORD';
 
--- The cron writes the live series, the appendix and the run status.
+-- The cron writes the live series, the appendix and the run status, and the
+-- morning fills job writes one more table.
 --
 -- `live/store.py` issues four verbs: INSERT and UPDATE (the ON CONFLICT upsert),
 -- SELECT (every read), and DELETE (`replace_by_date`, which erases a date before
@@ -31,10 +32,12 @@ create role efb_writer login password 'REPLACE_WITH_A_LONG_RANDOM_PASSWORD';
 -- only place a row is ever removed. The grant is traced to its caller, and the
 -- DELETE runs every evening: `replace_by_date` is how the day's positions, the
 -- broker's own book and the day's orders are written, so a missing privilege
--- fails the first order-writing run, not a rerun.
+-- fails the first order-writing run, not a rerun. `efb.fills` is the fourth: the
+-- 15:30 UTC cron replaces the date it reconciles, so it needs DELETE there too
+-- even though the evening's own run never touches it.
 grant usage on schema efb to efb_writer;
 grant select, insert, update on all tables in schema efb to efb_writer;
-grant delete on efb.positions, efb.orders, efb.broker_positions to efb_writer;
+grant delete on efb.positions, efb.orders, efb.broker_positions, efb.fills to efb_writer;
 
 -- Future tables inherit those grants. Run this as the role that creates the
 -- tables, which is `postgres` in the SQL editor, because default privileges

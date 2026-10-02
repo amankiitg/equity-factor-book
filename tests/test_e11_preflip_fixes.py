@@ -7,9 +7,10 @@ quantity, exact for a full close), a new or larger short is SELL_TO_OPEN (whole
 shares, shortable-checked), and a short cover is BUY_TO_CLOSE (a quantity). A
 change that would cross zero is split: closed tonight, opened next evening, and the
 deferred target is named in the email. Submitted after the close, an accepted DAY
-order is success and nothing polls for a fill; a refusal or rejection still makes
-the run incomplete. A rerun resolves the orders the broker already holds by their
-deterministic `client_order_id` before submitting anything.
+order is success and nothing polls for a fill; a refused or rejected leg still makes
+the run incomplete, except a short the borrow refused, which is skipped, named in the
+message and does not stop the day being filed. A rerun resolves the orders the broker
+already holds by their deterministic `client_order_id` before submitting anything.
 """
 
 from __future__ import annotations
@@ -448,10 +449,18 @@ def test_a_rerun_resolves_existing_orders_before_submitting_anything() -> None:
     assert [request.symbol for request in client.requests] == ["BBB"]
 
 
-def test_a_live_run_with_a_refused_short_is_incomplete(
+def test_a_live_run_with_a_refused_short_skips_it_and_names_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """End to end: the summary says the run is not done, with the leg named."""
+    """End to end: the day is complete, the leg is skipped, the message says which.
+
+    The rule is `shortable` **and** `easy_to_borrow`, and a name that fails the
+    second is skipped rather than filed as an incomplete run: the borrow's answer
+    will be the same at every tick, so an incomplete day would be retried to the
+    same answer and the evening would never be recorded as done. That is exactly
+    why the name has to be in the message -- nothing else in it would say that
+    tonight's book is a short leg short of its own target.
+    """
     proposal = pd.DataFrame(
         {"ticker": ["AAA", "BBB"], "weight": [0.05, -0.05], "alpha": [0.0, 0.0]}
     )
@@ -464,11 +473,48 @@ def test_a_live_run_with_a_refused_short_is_incomplete(
 
     summary = morning_job.run_morning("2026-09-25", nav=NAV, dry_run=False)
 
+    assert summary["complete"] is True
+    assert summary["incomplete_legs"] == []
+    borrow = summary["skipped_borrow"]
+    assert [row["ticker"] for row in borrow] == ["BBB"]
+    assert borrow[0]["reason_code"] == alpaca.REASON_NOT_EASY_TO_BORROW
+    assert float(borrow[0]["intended_notional"]) == pytest.approx(-0.05 * NAV)
+
+    text = notify.compose(
+        status="ok",
+        target_close="2026-09-25",
+        dry_run=False,
+        orders=summary["orders"],
+        gross=summary["intended_notional"],
+        skipped_borrow=borrow,
+    )
+    assert "Not easy to borrow, so not opened: BBB $50,000" in text
+
+
+def test_a_live_run_with_a_not_shortable_leg_is_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The negative control: a data problem still stops the day being filed.
+
+    A name the universe should never have priced as a short is not the borrow
+    answering a question, so it stays an incomplete run with the leg named.
+    """
+    proposal = pd.DataFrame(
+        {"ticker": ["AAA", "BBB"], "weight": [0.05, -0.05], "alpha": [0.0, 0.0]}
+    )
+    client = _RecordingClient({"BBB": _Asset(shortable=False, easy_to_borrow=True)})
+    monkeypatch.setattr(morning_job, "load_proposal", lambda *a, **k: proposal)
+    monkeypatch.setattr(morning_job, "connect", lambda dry_run: client)
+    monkeypatch.setattr(morning_job, "_close_prices", lambda *a, **k: PRICES)
+    monkeypatch.setattr(morning_job.state, "write_positions", lambda *a, **k: None)
+    monkeypatch.setattr(morning_job, "_write_execution_log", lambda *a, **k: None)
+
+    summary = morning_job.run_morning("2026-09-25", nav=NAV, dry_run=False)
+
     assert summary["complete"] is False
     assert [leg["ticker"] for leg in summary["incomplete_legs"]] == ["BBB"]
-    assert (
-        summary["incomplete_legs"][0]["reason_code"] == alpaca.REASON_NOT_EASY_TO_BORROW
-    )
+    assert summary["incomplete_legs"][0]["reason_code"] == alpaca.REASON_NOT_SHORTABLE
+    assert summary["skipped_borrow"] == []
 
 
 def test_a_reversal_is_reported_as_deferred_and_named_in_the_email(

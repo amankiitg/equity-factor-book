@@ -77,15 +77,21 @@ def test_the_roles_cover_every_verb_the_store_issues() -> None:
         ROLES,
     ), "the broad grant does not cover insert, select and update"
     # DELETE is granted on exactly the tables replace_by_date is called on. The
-    # set comes from the callers, not from a pinned string.
+    # set comes from the callers and is compared to the file, not to a pinned
+    # list: a pinned list fails on a correct new caller (it did, when the fills
+    # job became the fourth) while telling the reader nothing the derived set
+    # does not already say.
     callers = _replace_by_date_tables()
-    assert callers == {"positions", "orders", "broker_positions"}, callers
+    assert callers, "no replace_by_date caller was found to trace"
     match = re.search(
         r"(?i)grant\s+delete\s+on\s+([a-z_.\s,]+?)\s+to\s+efb_writer", ROLES
     )
     assert match, "the roles file grants no delete"
     granted = {item.strip().split(".")[-1] for item in match.group(1).split(",")}
     assert granted == callers, (granted, callers)
+    # the fills date is the morning cron's, and it is not optional: the delete in
+    # `replace_by_date` is what makes a re-run of the same morning converge
+    assert "fills" in granted
     # Still scoped to efb and to one role.
     assert "create role efb_writer login" in ROLES
     assert "create role efb_reader login" not in ROLES

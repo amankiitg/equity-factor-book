@@ -6,6 +6,9 @@ than "alpha moved" - a reason that says something moved when nothing had ever be
 there. The second is where the earlier book comes from: a fresh run tree holds no
 earlier proposal file, so the reason column used to be constant, and the store's
 own record of the last book is what it now compares against.
+
+The vocabulary itself, and the two thresholds that decide between its words, live
+in `tests/test_week1_reasons.py`.
 """
 
 from __future__ import annotations
@@ -56,13 +59,10 @@ def test_the_previous_book_still_answers_the_moved_question() -> None:
     """The negative control: with a real earlier book nothing is a new position.
 
     AAA keeps its weight and its score, so nothing traded and the reason says so.
-    CCC is new to a book that exists, which stays "alpha moved" - the first score
-    of a name entering an existing book is what put it there. BBB's weight moved
+    CCC is new to a book that exists, which is a "new name" rather than an alpha
+    move: nothing had a score to move, the name simply entered. BBB's weight moved
     while its score and its risk did not, so under the documented precedence the
-    only thing left that can have moved is the hedge. (The run passes the same
-    specific standard deviation for both closes, so "risk moved" cannot be reached
-    from `run_live_daily` as it stands; that is a finding for the owner, not
-    something this test should paper over.)
+    only thing left that can have moved is the hedge.
     """
     previous = pd.DataFrame(
         {
@@ -79,7 +79,7 @@ def test_the_previous_book_still_answers_the_moved_question() -> None:
     assert reasons == {
         "AAA": "no trade",
         "BBB": "the hedge moved",
-        "CCC": "alpha moved",
+        "CCC": "new name",
     }
     assert "new position" not in set(frame["reason"])
 

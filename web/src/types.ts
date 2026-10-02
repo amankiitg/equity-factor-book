@@ -83,4 +83,24 @@ export interface Snapshot {
   };
   exposures: Record<string, number | null>;
   reconciliation: Record<string, number | null>;
+  // Both blocks are absent until the cron writes them, and the page hides the
+  // section that needs one rather than drawing an empty one: a snapshot carrying
+  // neither is the state every run is in today (see docs/snapshot.schema.json for
+  // the shape each section expects, and the page's own notes for why).
+  risk?: RiskConcentration | null;
+  movers?: SessionMovers | null;
+}
+
+export interface RiskConcentration {
+  /** The share of predicted specific variance one name is capped at, as a fraction. */
+  variance_share_cap?: number | null;
+  /** Per-name share of the book's predicted specific variance, largest first. */
+  concentration?: Array<{ ticker: string; share: number }> | null;
+}
+
+export interface SessionMovers {
+  /** The session the contributions belong to. */
+  session?: string | null;
+  by_name?: Array<{ ticker: string; contribution: number }> | null;
+  by_sector?: Array<{ sector?: string | null; contribution: number }> | null;
 }

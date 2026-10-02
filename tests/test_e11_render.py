@@ -79,7 +79,7 @@ def test_trade_reasons_classify_each_bucket() -> None:
 
 
 def test_trade_reasons_new_name_is_alpha() -> None:
-    """A name new to a book that exists entered on its score.
+    """A name new to a book that exists entered on its score: a new name.
 
     With no earlier book at all it is the establishment day instead, and every
     row says "new position": nothing moved, because nothing was there to move.
@@ -90,7 +90,7 @@ def test_trade_reasons_new_name_is_alpha() -> None:
     reasons = trade_reasons.assign_trade_reasons(
         today, existing_book, pd.Series(dtype=float), None
     )
-    assert reasons["reason"].iloc[0] == "alpha moved"
+    assert reasons["reason"].iloc[0] == "new name"
 
     established = trade_reasons.assign_trade_reasons(
         today, None, pd.Series(dtype=float), None
@@ -245,28 +245,75 @@ def test_render_yaml_commits_key_names_not_values() -> None:
     assert "-----BEGIN" not in render
 
 
-def test_render_yaml_runs_one_service_and_it_holds_the_credentials() -> None:
-    """One cron. No web service, so no read role and one fewer box to fall over."""
+def _declared(service: str, name: str) -> bool:
+    """Whether the blueprint declares this env var for a service.
+
+    Matched on the declaration line rather than on the name, so the prose that
+    explains why a variable is absent cannot read as a declaration.
+    """
+    return f"      - key: {name}\n" in service
+
+
+# The keys both jobs read, and the six the evening path reads on its own. The list
+# is in `render.yaml`'s header (the reviewable copy) and this is the copy the tests
+# compare against, so a key cannot be added to one without the other. There is one
+# service now and no environment group: the keys exist once, on the service.
+SHARED_KEYS = (
+    "EFB_SUPABASE_DB_URL",
+    "EFB_DB_SCHEMA",
+    "EFB_ALPACA_PAPER_API_KEY",
+    "EFB_ALPACA_PAPER_SECRET_KEY",
+    "EFB_ALPACA_ACCOUNT_ID",
+    "EFB_RESEND_API_KEY",
+    "EFB_NOTIFY_EMAIL_FROM",
+    "EFB_NOTIFY_EMAIL_TO",
+    "EFB_SNAPSHOT",
+    "EFB_R2_ACCOUNT_ID",
+    "EFB_R2_BUCKET",
+    "EFB_R2_ACCESS_KEY_ID",
+    "EFB_R2_SECRET_ACCESS_KEY",
+)
+
+# The evening path's own six, which now sit on the same service as the morning job
+# because there is only one service. The morning path must never read one of them,
+# which is a property of the code (`tests/test_week1_run_cron.py` runs the morning
+# route with every one of these set to its evening value) rather than of the layout.
+EVENING_ONLY_KEYS = (
+    "EFB_INIT_STORE",
+    "EFB_DRY_RUN",
+    "EFB_SEED_R2_ACCOUNT_ID",
+    "EFB_SEED_R2_BUCKET",
+    "EFB_SEED_R2_ACCESS_KEY_ID",
+    "EFB_SEED_R2_SECRET_ACCESS_KEY",
+)
+
+
+def test_render_yaml_runs_one_cron_that_carries_both_jobs() -> None:
+    """One service, one key list, two slots, and no environment group.
+
+    The two jobs used to be two services, so that a morning read that failed could
+    not fail the evening run that trades. They are one service now, and the router
+    is what keeps them apart: `scripts/run_cron.py` decides by the New York hour and
+    the morning route never calls the evening entry point, which
+    `tests/test_week1_run_cron.py` proves by patching that entry point to fail and
+    installing a broker that refuses to be sent anything. One service also means one
+    copy of every value: the environment group is gone, because a group is a second
+    copy of the same keys and Render ignores `sync: false` inside one anyway.
+    """
     render = (ROOT / "render.yaml").read_text()
     assert "- type: web" not in render
     assert "efb-live-dashboard" not in render
     assert render.count("- type: cron") == 1
-    _, cron = render.split("- type: cron")
-    for name in (
-        "EFB_INIT_STORE",
-        "EFB_SEED_R2_ACCOUNT_ID",
-        "EFB_SEED_R2_ACCESS_KEY_ID",
-        "EFB_SEED_R2_SECRET_ACCESS_KEY",
-        "EFB_RESEND_API_KEY",
-        "EFB_NOTIFY_EMAIL_FROM",
-        "EFB_NOTIFY_EMAIL_TO",
-        "EFB_SNAPSHOT",
-        "EFB_R2_ACCOUNT_ID",
-        "EFB_R2_BUCKET",
-        "EFB_R2_ACCESS_KEY_ID",
-        "EFB_R2_SECRET_ACCESS_KEY",
-    ):
-        assert name in cron, f"{name} missing from the cron service"
+    assert "efb-fills-reconcile" not in render, "the second service is still there"
+    assert "fromGroup" not in render, "the blueprint still references a group"
+    assert "envVarGroups:" not in render
+    service = render.split("- type: cron")[1]
+    for name in (*SHARED_KEYS, *EVENING_ONLY_KEYS):
+        assert _declared(service, name), f"{name} is not declared on the service"
+    declared = [
+        line for line in service.splitlines() if line.startswith("      - key: ")
+    ]
+    assert len(declared) == len(SHARED_KEYS) + len(EVENING_ONLY_KEYS), declared
     # names only: no key material, no address, no endpoint prose
     assert "re_" not in render
     assert "@" not in render
@@ -275,16 +322,73 @@ def test_render_yaml_runs_one_service_and_it_holds_the_credentials() -> None:
     assert "EFB_NOTIFY_SLACK_WEBHOOK_URL" not in render
 
 
+def test_the_blueprint_documents_exactly_the_keys_the_service_holds() -> None:
+    """One list, in the file, that the service and the tests both answer to.
+
+    Render ignores `sync: false` inside an environment group, so the keys cannot be
+    carried by a group declared here: every key is declared on the one service with
+    `sync: false`, which prompts for a value only when Render creates the service,
+    and the service exists already. This file carries the key NAMES so that what the
+    service must hold is reviewable and testable rather than remembered.
+    `tests/test_week1_fills_cron.py` checks the job's own runtime reads against the
+    same list.
+    """
+    render = (ROOT / "render.yaml").read_text()
+    header, body = render.split("services:")
+    for name in (*SHARED_KEYS, *EVENING_ONLY_KEYS):
+        assert name in header, f"{name} is not documented in the blueprint header"
+    # the two keys that must never reach the service, and why
+    assert "EFB_STORE is deliberately absent" in header
+    assert "EFB_FORCE_HOUR" in header
+    assert "EFB_STORE" not in body and "EFB_FORCE_HOUR" not in body
+    # and the file says why there is no environment group
+    assert "sync: false` inside an environment group" in header
+
+
+def test_the_one_schedule_carries_both_slots() -> None:
+    """One start command, two starts a weekday, and the router decides between them.
+
+    15:30 UTC is the morning's reconciliation (after the 09:30 New York open in EST
+    and in EDT, which `tests/test_week1_fills_cron.py` checks against the exchange's
+    own calendar) and 22:30 UTC is the evening's run, inside the after-hours window
+    the run trades in. Render's cron documentation defines `schedule` as a cron
+    expression, which is what makes the hour field's list valid, and guarantees at
+    most one run of a job at a time. `tests/test_week1_run_cron.py` holds the same
+    string to the two jobs' own slot constants.
+    """
+    from live import staleness
+    from scripts import reconcile_fills, run_cron
+
+    render = (ROOT / "render.yaml").read_text()
+    assert f'schedule: "{run_cron.SCHEDULE}"' in render
+    assert "startCommand: python scripts/run_cron.py" in render
+    minute, hour_field, day_of_month, month, weekday = run_cron.SCHEDULE.split()
+    assert minute == "30"
+    assert hour_field == "15,22"
+    assert day_of_month == "*" and month == "*"
+    assert weekday == "1-5"
+    assert reconcile_fills.RUN_SLOT_UTC == (15, 30)
+    assert staleness.RUN_SLOT_UTC == (22, 30)
+    assert run_cron.MORNING_BEFORE_HOUR_ET == 12
+    assert staleness.WINDOW_START_HOUR_ET == 16
+    # the second service's own slot and start command are gone from the file
+    assert "startCommand: python scripts/reconcile_fills.py" not in render
+    assert "startCommand: python scripts/run_live_daily.py" not in render
+
+
 def test_the_cron_is_created_on_the_four_gigabyte_plan() -> None:
     """Without `plan`, Render creates a cron on 0.5c-512mb and the peak kills it.
 
     The measured peak is 1.07 GiB, so the plan has to be at least 4 GB to keep the
     2x headroom rule. From Render's Blueprint reference, the `plan` field's Cron
     Job table: `2c-4g` is 2 CPU and 4 GB, and the same page says an omitted field
-    gives a new cron job `0.5c-512mb`.
+    gives a new cron job `0.5c-512mb`. One service runs both jobs now, and the
+    morning one is lighter than the evening one, so the plan is the evening's own
+    measurement.
     """
     render = (ROOT / "render.yaml").read_text()
-    _, cron = render.split("- type: cron")
-    assert "plan: 2c-4g" in cron
+    services = render.split("- type: cron")[1:]
+    assert len(services) == 1
+    assert "plan: 2c-4g" in services[0]
     assert "plan: 0.5c-512mb" not in render
     assert "plan: 1c-2g" not in render

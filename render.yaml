@@ -1,30 +1,87 @@
 # Render deployment blueprint -- EFB live book (Sprint E11, Part B).
 #
-# One service: the daily cron. The live book monitor runs on Cloudflare (a Worker
-# or Pages project reading the snapshot through an R2 binding behind Access), so
-# there is no Render web service and no read role: one fewer credential and one
-# fewer box to fall over. `live/dashboard_app.py` stays runnable locally as a
-# research view until the Cloudflare page is proven.
+# One cron service. The live book monitor runs on Cloudflare (a Worker reading the
+# snapshot through an R2 binding behind Access), so there is no Render web service
+# and no read role: one fewer credential and one fewer box to fall over.
+# `live/dashboard_app.py` stays runnable locally as a research view until the
+# Cloudflare page is proven.
 #
-# The cron: extends the data and model, proposes the book, runs the morning
-# execution, reconciles, and writes one JSON snapshot per run to R2.
+# The one service, `efb-live-daily`, starts `scripts/run_cron.py` twice a weekday
+# and the New York clock picks the job:
+#   "30 15,22 * * 1-5" = 15:30 and 22:30 UTC, Monday to Friday.
+#   * 15:30 UTC is 11:30 EDT / 10:30 EST, before noon in New York, so it is the
+#     fills reconciliation: the morning after, reads the previous evening's orders
+#     from the broker by `broker_order_id` -- filled quantity, average fill price,
+#     final status and cancel time -- writes them to `efb.fills`, adds an "actual
+#     holdings" section to the snapshot beside the target book, and emails only
+#     when an order did not fill. It never sizes a book and never sends an order.
+#     A market DAY order from the previous evening fills at the next 09:30 New York
+#     open, so the slot has to be after that open in EST and in EDT; 14:00 UTC is
+#     after it in only one of the two (10:00 EDT, but 09:00 EST, half an hour early,
+#     when every leg is still working and the reconciliation would record the whole
+#     book as unfilled). 15:30 UTC satisfies both, and
+#     `tests/test_week1_fills_cron.py` pins that against the exchange's own calendar
+#     on both sides of the daylight-time change.
+#   * 22:30 UTC is 18:30 EDT / 17:30 EST, after the 16:00 ET close: the evening run
+#     extends the data and model, proposes the book, runs the morning execution,
+#     reconciles, and writes one JSON snapshot per run to R2, exactly as the old
+#     start command ran it.
+#   * Any other hour does nothing, logs, and exits 0.
 #
-# UTC cron schedule:
-#   "30 22 * * 1-5" = 18:30 EDT / 17:30 EST, after the 16:00 ET close.
+# A comma list in the hour field is a standard cron expression, which is what
+# Render's cron documentation specifies for `schedule` ("The schedule to use for the
+# cron job, defined as a cron expression", linking the five-field syntax). Render
+# also guarantees at most one run of a given cron job at a time, and delays the next
+# scheduled run while one is active, so the 15:30 start cannot overlap the 22:30 one
+# even if a morning ran long. Both jobs are idempotent against their own `run_status`
+# key (`fills_reconcile` and `live_daily`), so a duplicate start reconciles the same
+# close again or exits 0 without trading.
 #
-# The run refuses outside 16:00-20:00 New York, the after-hours session Alpaca
-# holds a DAY order for, unless EFB_FORCE_HOUR is exactly "true". The slot above
-# is inside the window in both EDT and EST, so the override is for a rehearsal
-# and never for this cron.
+# One service instead of two, and no environment group. The two crons used to take a
+# shared group so each key existed once in the workspace; with one service the keys
+# exist once on the service, which is the same property without the second copy.
+# Render ignores `sync: false` inside an environment group, so a group could not be
+# declared here anyway, and a group created in the dashboard is a copy that can
+# drift.
 #
-# Secret isolation:
-#   Cron gets EFB_SUPABASE_DB_URL (the write role's connection string),
-#   EFB_DB_SCHEMA, EFB_ALPACA_PAPER_*, EFB_ALPACA_ACCOUNT_ID, EFB_DRY_RUN,
-#   EFB_STORE is deliberately absent, the notification credentials and the R2
-#   credentials. The R2 token is scoped to the one bucket with object read and
-#   write.
-#   Env var VALUES are set manually in the Render dashboard (sync: false).
+# The run refuses outside 16:00-20:00 New York, the after-hours session Alpaca holds
+# a DAY order for, unless EFB_FORCE_HOUR is exactly "true". The 22:30 UTC slot is
+# inside the window in both EDT and EST, so the override is for a rehearsal and
+# never for this cron. `scripts/run_cron.py` routes on the same New York clock.
+#
+# Secret isolation, as it stands now:
+#   Every key the service reads is declared below with `sync: false`: no value is in
+#   this file, and Render preserves the values already on the service when the
+#   blueprint is synced. The nineteen keys are:
+#     EFB_SUPABASE_DB_URL      the write role's connection string
+#     EFB_DB_SCHEMA            `efb`
+#     EFB_ALPACA_PAPER_API_KEY / EFB_ALPACA_PAPER_SECRET_KEY  the paper keys
+#     EFB_ALPACA_ACCOUNT_ID    the account those keys must reach, checked every run
+#     EFB_RESEND_API_KEY / EFB_NOTIFY_EMAIL_FROM / EFB_NOTIFY_EMAIL_TO
+#     EFB_SNAPSHOT             the switch the writer requires
+#     EFB_R2_ACCOUNT_ID / EFB_R2_BUCKET / EFB_R2_ACCESS_KEY_ID /
+#     EFB_R2_SECRET_ACCESS_KEY the snapshot bucket, scoped to that one bucket
+#     EFB_INIT_STORE           the one-time seed request (evening path only)
+#     EFB_DRY_RUN              the switch that makes a run trade (evening only)
+#     EFB_SEED_R2_ACCOUNT_ID / EFB_SEED_R2_BUCKET / EFB_SEED_R2_ACCESS_KEY_ID /
+#     EFB_SEED_R2_SECRET_ACCESS_KEY  the seed bucket, read-only, evening path only
+#   EFB_STORE is deliberately absent: a run that could be pointed at a local parquet
+#   on the deployment box would report a book nobody reads. EFB_FORCE_HOUR is
+#   deliberately absent for the reason above.
+#
+#   The six evening-only keys now sit on the same service as the morning job, which
+#   is a change from the two-service layout and is safe because the morning path
+#   never reads them: it calls `scripts/reconcile_fills.py`, which has no seeding, no
+#   sizing and no submit path at all (checked over that module's own syntax tree),
+#   and it never calls `scripts/run_live_daily.py`. `scripts/run_cron.py` picks the
+#   job by the New York hour, and `tests/test_week1_run_cron.py` runs the morning
+#   route with EFB_DRY_RUN=false and every seed key set, and shows the run is
+#   unchanged.
+#
 #   This file commits the KEY names only; no credentials appear here.
+#
+# `docs/week1_orders_runbook.md` is the merge-day order and the checks that confirm
+# the first morning run.
 
 services:
   - type: cron
@@ -36,16 +93,56 @@ services:
     # peak. The same page, on omitting the field: "Render uses `0.5c-512mb` for a
     # new web service, private service, background worker, or cron job", so
     # without this line the cron would be created on 512 MB and fall over on the
-    # first evening.
+    # first evening. One service runs both jobs now, and the morning one is lighter
+    # than the evening one, so the plan is the evening's measurement.
     plan: 2c-4g
     buildCommand: pip install -r requirements.txt && pip install -e .
-    schedule: "30 22 * * 1-5"
-    startCommand: python scripts/run_live_daily.py
+    # Both slots in one hour field. 15:30 UTC is the morning's reconciliation (a
+    # DAY order from last evening has filled at the 09:30 ET open or been
+    # cancelled) and 22:30 UTC is the evening's run; `scripts/run_cron.py` decides
+    # which by the New York hour, and any other hour does nothing and exits 0.
+    schedule: "30 15,22 * * 1-5"
+    startCommand: python scripts/run_cron.py
     envVars:
+      # The keys both jobs read. Declared here rather than taken from an
+      # environment group: Render ignores `sync: false` inside a group, so a group
+      # in this file would come out empty and every key would be missing, and a
+      # group created in the dashboard is a second copy of nineteen values that can
+      # drift from this one. See the header. `sync: false` means Render prompts for
+      # a value only when it creates the service: the service exists already, and
+      # Render preserves the values it holds.
       - key: EFB_SUPABASE_DB_URL
         sync: false
       - key: EFB_DB_SCHEMA
         sync: false
+      - key: EFB_ALPACA_PAPER_API_KEY
+        sync: false
+      - key: EFB_ALPACA_PAPER_SECRET_KEY
+        sync: false
+      - key: EFB_ALPACA_ACCOUNT_ID
+        sync: false
+      - key: EFB_RESEND_API_KEY
+        sync: false
+      - key: EFB_NOTIFY_EMAIL_FROM
+        sync: false
+      - key: EFB_NOTIFY_EMAIL_TO
+        sync: false
+      - key: EFB_SNAPSHOT
+        sync: false
+      - key: EFB_R2_ACCOUNT_ID
+        sync: false
+      - key: EFB_R2_BUCKET
+        sync: false
+      - key: EFB_R2_ACCESS_KEY_ID
+        sync: false
+      - key: EFB_R2_SECRET_ACCESS_KEY
+        sync: false
+      # The evening path's own six, and the morning path never reads one of them:
+      # it calls `scripts/reconcile_fills.py`, which seeds nothing, sizes nothing
+      # and sends nothing. `tests/test_week1_run_cron.py` runs the morning route
+      # with every one of these set to its evening value and shows the run is
+      # unchanged.
+      #
       # The explicit first-run request, set for the first run only. Unset or
       # "false" is a normal run, "true" seeds the store from the git artifacts and
       # writes its marker, and any other value is an error that names it. The
@@ -53,37 +150,7 @@ services:
       # flag left set on a seeded store fails the run loudly.
       - key: EFB_INIT_STORE
         sync: false
-      - key: EFB_ALPACA_PAPER_API_KEY
-        sync: false
-      - key: EFB_ALPACA_PAPER_SECRET_KEY
-        sync: false
-      # The account the keys have to reach, which is the account number Alpaca
-      # shows in its dashboard (the PA... value), not the internal id: the point
-      # of naming it is that the owner can read it back and check it. Every run
-      # compares the number the broker reports against this one and refuses when
-      # they differ, because EFB's keys and the credit lab's are both paper
-      # accounts under one login and a key pasted from the wrong project trades
-      # the wrong book. Unset refuses as well: a guard that cannot say which
-      # account the keys reach is not a guard. `python scripts/verify_account.py`
-      # prints the number to copy from.
-      - key: EFB_ALPACA_ACCOUNT_ID
-        sync: false
       - key: EFB_DRY_RUN
-        sync: false
-      # The notification credentials belong to the cron alone: nothing else
-      # sends a message. The key is EFB's own Resend key with sending access
-      # only, and the two addresses are the owner's own. Values go in the Render
-      # dashboard, never here, and never in git.
-      - key: EFB_RESEND_API_KEY
-        sync: false
-      - key: EFB_NOTIFY_EMAIL_FROM
-        sync: false
-      - key: EFB_NOTIFY_EMAIL_TO
-        sync: false
-      # The report's surface: one JSON object per run, uploaded to R2. The switch
-      # is required, so neither default is assumed: `off` is allowed only while
-      # EFB_DRY_RUN is true, and with dry_run false it is an error.
-      - key: EFB_SNAPSHOT
         sync: false
       # The seed bucket, read-only here. The frozen history lives in `efb-seed`, a
       # private bucket of its own, separate from the snapshot bucket: every parquet
@@ -99,15 +166,4 @@ services:
       - key: EFB_SEED_R2_ACCESS_KEY_ID
         sync: false
       - key: EFB_SEED_R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: EFB_R2_ACCOUNT_ID
-        sync: false
-      # The snapshot bucket is `efb-snapshots`: private, and read by the Cloudflare
-      # Worker through an R2 binding, so the browser never reaches it and no key
-      # reaches the browser either. The token here is scoped to that one bucket.
-      - key: EFB_R2_BUCKET
-        sync: false
-      - key: EFB_R2_ACCESS_KEY_ID
-        sync: false
-      - key: EFB_R2_SECRET_ACCESS_KEY
         sync: false

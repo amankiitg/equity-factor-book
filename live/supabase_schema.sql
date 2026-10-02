@@ -112,6 +112,24 @@ create table if not exists efb.fills (
   filled_notional double precision not null,
   fill_price double precision not null,
   status text not null,
+  -- The reconciler's own columns, added after the table was created. `filled_qty`
+  -- and `filled_avg_price` arrive from the broker, and the share count is what
+  -- makes a partial fill visible at all: a filled notional alone cannot say
+  -- whether the whole leg traded. `cancel_time` is the instant the broker
+  -- cancelled the order, which is what the message quotes beside the status.
+  filled_quantity double precision,
+  cancel_time timestamptz,
+  submitted_at timestamptz,
+  updated_at timestamptz,
+  -- The close the leg was sized from, and what the fill cost against it. Stored
+  -- per leg rather than only summed, so the day's realized cost can be checked
+  -- against the legs that produced it instead of taken on trust.
+  close_price double precision,
+  slippage_bps double precision,
+  -- The broker's own open-or-close decision on the leg, as `efb.orders` carries
+  -- it: the message's did-not-fill line quotes it, and a reconciler that had to
+  -- re-derive it from the sign of a notional would get a reversal wrong.
+  position_intent text,
   primary key (trade_date, ticker, order_id)
 );
 
@@ -431,6 +449,30 @@ alter table efb.orders
   add column if not exists position_intent text;
 alter table efb.orders
   add column if not exists broker_order_id text;
+
+-- Week one: `efb.fills` was created before anything wrote it, and it carried the
+-- notional, the average price and the status only. The reconciler records what
+-- the broker says about the leg as well, and the two prices the realized cost is
+-- the difference of. A create block reaches a fresh database only, so a table
+-- that already exists needs the columns added by name as well.
+alter table efb.fills
+  add column if not exists filled_quantity double precision;
+alter table efb.fills
+  add column if not exists cancel_time timestamptz;
+alter table efb.fills
+  add column if not exists submitted_at timestamptz;
+alter table efb.fills
+  add column if not exists updated_at timestamptz;
+alter table efb.fills
+  add column if not exists close_price double precision;
+alter table efb.fills
+  add column if not exists slippage_bps double precision;
+-- The intent the broker was given, which the message's did-not-fill line quotes
+-- (`DG sell_to_open 41 canceled 12:15 UTC`). The create block above carries it,
+-- and a table that already existed needs it by name: without this the writer's
+-- INSERT names a column the live table does not have and the first morning fails.
+alter table efb.fills
+  add column if not exists position_intent text;
 
 -- Row level security, off, last. Supabase enables row level security on the
 -- tables its SQL editor is asked to create, and an RLS table with no policy
