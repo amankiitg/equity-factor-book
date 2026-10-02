@@ -147,10 +147,27 @@ def test_every_evening_that_priced_a_book_publishes_its_names(
     number around it stays right. On 2026-10-01 it did: the page read "The book: 0
     name(s)" over an empty table beside a gross of 100%, a correct hedge and 188
     orders, because `store_proposal` returned nothing while its docstring promised
-    the rows. Every fixture carries the book its own manifest counted, so a writer
-    that hands the page an empty list fails here instead of in a browser.
+    the rows. Every evening that priced a book carries the book its own manifest
+    counted, so a writer that hands the page an empty list fails here instead of in
+    a browser.
+
+    The no-book evening is the one exception, and it is checked rather than
+    skipped: its book is empty because the store held nothing for the close it
+    asked for, which is the state that fixture exists to render. Asserting the
+    emptiness here is what stops the exception from quietly widening to cover a
+    fixture that should have rows.
     """
+    without_book = "snapshot_no_book.json"
+    empty = written[without_book]["book"]
+    assert isinstance(empty, dict), without_book
+    assert empty["names"] == [] and empty["n_names"] == 0, (
+        f"{without_book} is the fixture for an evening whose store held no book, "
+        "so an empty list and a zero count are its state; it has rows now, which "
+        "means the exemption above it no longer applies"
+    )
     for name in fixtures.NAMES:
+        if name == without_book:
+            continue
         payload = written[name]
         book = payload["book"]
         assert isinstance(book, dict), name
