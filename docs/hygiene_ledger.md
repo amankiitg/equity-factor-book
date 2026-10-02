@@ -1789,3 +1789,136 @@ replaces a wider frame with a narrower one. Restoring from the snapshots puts th
 artifacts back to the state every earlier report was written against; the defect
 itself is open and recorded in `handoff/REPORT.md`, because it belongs in the
 append path and a fix deserves its own commit and test.
+
+## 2026-10-02: CTVA's 2026-10-01 print excised from the fitted session
+
+Decision. The 2026-10-01 session was refitted for `models/XS-v1/` with CTVA's own
+row masked out of the panel, and CTVA's specific return for that session is left
+null, in the repaired artifact and in the appendix tables
+`e11_descriptors`, `e11_factor_returns`, `e11_specific_returns`,
+`e11_specific_var` and `e11_factor_cov`, one date at a time, by
+`scripts/repair_session.py`. The raw print stays in
+`processed/returns.parquet` with its `outlier` flag: the vendor served the Vylor
+spinoff distribution as a price, 77.65 to 12.57, a fall of 83.81 percent, with
+no split record and no restated adjusted close, and the corporate-actions ledger
+shows `explained_by: None` for it.
+
+Reason. Fitted, the print gave CTVA a specific return of -0.79152944603552
+against a cross-section centred near zero, and a specific variance of
+0.0102099036820174 on a day when the name's own variance on 2026-09-30 was
+0.0002766918728444124. The alpha contract is `IC x sigma x z x kappa` and the
+weight scales like `z / sigma`, so the printed row moves the name twice over:
+it supplies a false specific return and it inflates the variance that the sizing
+divides by. Masking the one cell and refitting the session recomputes the
+variance at 0.000276691654906663, the volatility 0.10104406801993573 falling to
+0.016634051067213395, and leaves the session's specific return null, which is
+what makes the day inert rather than merely smaller: `idio_momentum` is a
+product over a 231-session window ending 21 sessions back, so from 2026-10-30,
+the first signal date whose window reaches the print, the window is null rather
+than crashed and `build_proposal` reads a null as a zero score rather than a
+short.
+
+Evidence. Per artifact, this session's own hash, before and after: `descriptors`
+9a09cd608a23e502870abf3c2365037197ddb91dee40e39ef3e67f8fb498ec3a to
+d6bcf46e8d76048bf39aa1d1c816318445ba5a97f4680c22c3a1abdd08ff98f6,
+`factor_returns` a009a27c307d3f867a2dc6d421a03db199d7e5c1583181537fef369a99a46afa to
+493ac96f71b292a9294ee17a6c788d633c6134861d1b6a3627af96670116ff70,
+`specific_returns` ccfb31564db9394d20e5bebab39c131ffaf55c92b2e73b86e55afa83c98d8cb3
+to 5d7e1af81ce7eb595912b71136a4d2db27ca1db8b207eb182cacfdfd949956da,
+`xs_r2` 541af48d3deb94f4945ce48eb779865553c94948daf5b90f8c4b68c05150ae75 to
+3e94928768c8b8405bef5db509f0e3ca384134d5218025b2a32fdd1bb3f67e91, and
+`specific_var` e917dbea930c1668efb757a553c3c7d8931bf4eb4aa3d4f30cab7f747ac66e14 to
+e1551d415f3b4537a08f0f159a6539dedaa0d5686a04892189d8e466231866f2. Every
+artifact's history before the session hashes to the same value it hashed to
+before the repair (`specific_returns` 835f99771a9500f4f90843cffd14872185b34200ffb6abeaba028a54735fdb65,
+`descriptors` 4938d5601df6cccfcbe8e612370354a2bc81f07458b7372cc9051b82b6796740,
+`factor_returns` bd085e6b5035119603011fceb3fb12784d64bd6bbe009c03693c2866921036f9,
+`xs_r2` 4bbfe474ec1c416b4fffab49e02623500a5be5960ed60a6e05f39a35b6aa27c6,
+`specific_var` 11e148001826042c003db51683b1efaf78ea41a8cd87c8059fcf8bf3a18f2156) and
+`processed/returns.parquet` is byte-identical, so the print is still on record
+and the flag still says what it is. The seed's own `data/VERSION.json` `data_hash`
+is unchanged at c3e0db6f92209ebce7bd46180b35845f3b75a98dbbcf359634dedcbd0da1aea8,
+because the fix belongs in the appendix, which is authoritative for every date
+after the 2026-09-03 cutoff, and the committed seed, whose artifacts end
+2026-09-21, never carried the row at all.
+
+Status. Written on 2026-10-02 with the loop's own writer credential
+(`efb_writer`, which holds select, insert and delete on all five tables), one
+date at a time, each table's rows for 2026-10-01 deleted and re-inserted inside
+one transaction. CTVA's rows for that date carry the repaired values: the
+specific return is null, the specific variance is 0.000276691654906663 against
+0.0102099036820174, the volatility 0.016634051067213395 against 0.10104406801993573,
+and its seven descriptor rows are null. The date holds the rows it held before
+the write, table for table: descriptors 3514, factor returns 18, specific returns
+493, specific variance 499, with the appendix totals it started from (66766,
+342, 9416, 9481). `e11_factor_cov` is still empty, as it is for every date, and
+the repair deliberately leaves it so. Its emptiness is the publish path's own: the
+covariance artifact carries no date, `artifact_rows` stamps it 1970-01-01, and
+`persist_new_sessions` reads it with `cutoff=SEED_CUTOFF`, which drops all 324 rows
+before `_factor_cov_with_session` can restamp them, so no run has ever put a
+session in that table. Writing one date from here would invent the first rows of a
+table the loop does not populate, and the covariance the book hedges with is
+recomputed from the factor returns by `efb.eval_risk._xs_pieces`, not read from
+it. The empty table is an open defect of the publish path, not of this repair.
+Appendix hashes after the write: `specific_returns`
+61f7effe537e7b9a6f26c89908463bba60d413c5488cfc535fe0e7326b11dbd0 and
+`specific_var` 8f6b21c3749e548c0f7105e81db8322e488e44ac774147b9e87bf9a83e56d825.
+
+Two defects in the write itself had to be fixed before it could land. The first
+is the delete scope and the insert scope disagreeing, which is where the
+UniqueViolation comes from. `replace_by_date` deletes one date and then inserts
+without an upsert, so the payload has to be that date's rows with one row per
+key, and it was not: `_descriptor_rows_for_dates` emits a row for every ticker in
+the cross-section, valued or not, so the masked name came back as seven fitted
+descriptor rows and the explicit null rows were appended on top of them, fourteen
+rows for seven keys, refused on the key after the delete had landed. The masked
+name's rows are now replaced rather than appended to, and every payload is
+checked before any statement runs for reaching a date other than the session, for
+a duplicated key, or for being empty.
+
+The second is the mask reaching past the repair. It cleaned the frame with
+`efb.hygiene.clean_returns`, which is the loader-parity fix parked on
+`ctva-null-outlier`: that nulls every flagged cell in the history, so MRNA, which
+carries a flag on 2026-10-01, dropped out of that session's cross-section and the
+appendix lost a row it had, specific returns 9416 to 9415. `extend_model` fits
+`probes.load_panel` as it stands, so a session cleaned here and left alone
+everywhere else is fitted under different rules from its neighbours. The mask
+removes the one cell it was asked about and nothing else, and the totals are back
+to 9416 and 9481.
+
+What a re-fit cannot leave alone: every other name's rows for the date move,
+because the printed day was dragging that day's factor returns and re-fitting the
+cross-section without it moves the factor and every residual under it. Against
+the rows the date held: factor returns `f` by up to 0.036134808221401901 (median
+0.0012132193640578953, all 18 rows), `n_names` by one, the other 492 specific
+returns by a median of 0.001322843954236902 and at most 0.043553575325375904,
+the descriptors' `value_z` by a median of 0.0010224732336125142 and at most
+0.02243276134456007 while `value_raw` is unchanged to 2.3037127760971998e-15, and
+the specific variances by a median of 2.9509325270301407e-07 and at most
+7.3535613595013998e-05 with no row above 1e-04. The dates before the session are
+byte-identical, which is the part of "untouched" that can hold.
+
+Rerun. Run again on the date it had just repaired, the repair is a no-op:
+`row_set_changed` is empty, the payload holds the same rows for the same four
+inputs, the same variance to the last digit, and the appendix's four hashes come
+back identical (descriptors
+62316e57822970d6fd5f74e72b27e339f6a18759a4786f3ecd1e3fc351a31627, factor returns
+cb593704644cb791a09aa357722ffd59a2a583ea3b06e7c289c06173abe4f2bf, specific returns
+61f7effe537e7b9a6f26c89908463bba60d413c5488cfc535fe0e7326b11dbd0, specific variance
+8f6b21c3749e548c0f7105e81db8322e488e44ac774147b9e87bf9a83e56d825), so a rerun
+after a partial failure converges on the same rows rather than compounding one.
+
+Blast radius. Measured as a pair on one tree build with one code path, one
+previous book and one NAV, the repair is not confined to the name it repairs:
+CTVA's own target moves from -0.0030428833757520472 to +0.00025197002868040816,
+its alpha from 2.8588615696828632e-05 to 4.70630787893617e-06, the 6.074 ratio of
+the two volatilities, and its z-score is identical at 0.23378984134719707 because
+the printed day sits outside the 21-session lag. Across the book, 194 of the 202
+compared names move, the largest by 0.014321780594588078, 17 are dropped and 10
+admitted, `n_eff_kept` goes from 138.0171130347875 to 134.12373711185737, and the
+one-way turnover is 0.08520010398335393 against the 0.03272 that rebuilding the
+same book against the unrepaired tree moves on its own. The variance change
+enters the
+risk model, and the 20-share floor with its renormalization turns a change in one
+name's variance into a step function over the whole kept set, which is the same
+effect a panel-level exclusion showed when it was measured and rejected.
