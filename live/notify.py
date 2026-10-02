@@ -70,6 +70,10 @@ logger = logging.getLogger(__name__)
 API_KEY_ENV = "EFB_RESEND_API_KEY"
 FROM_ENV = "EFB_NOTIFY_EMAIL_FROM"
 TO_ENV = "EFB_NOTIFY_EMAIL_TO"
+# How many legs that did not fill are named before the line counts instead: the
+# list is the evidence, and a capped list that does not say it is capped reads as
+# the whole list.
+UNFILLED_LINES = 6
 DEFAULT_SENDER = "equity-factor-book <onboarding@resend.dev>"
 RESEND_KEY_SHAPE = r"\bre_[A-Za-z0-9_-]{8,}\b"
 # boto3 raises with the service's own error text inside it, and an S3-compatible
@@ -218,6 +222,56 @@ def _failure_list(
     return "; ".join(parts)
 
 
+def _fills_lines(fills: dict[str, Any] | None, cost_bps: float | None) -> list[str]:
+    """The lines the fills reconciliation adds, or none when there is nothing to say.
+
+    Three statements, in the order a reader asks them: which legs did not fill,
+    which orders the broker would not answer about, and what the fills cost
+    against the close beside the cost that was expected. A leg that filled says
+    nothing here: the count of orders is on the evening's line, and this message
+    is sent only when there is something the reader has to do something about.
+
+    The misses are capped and counted rather than truncated: a line that shows
+    six of nine legs reads as if three legs are fine.
+    """
+    if not fills:
+        return []
+    out: list[str] = []
+    misses = [str(line) for line in (fills.get("unfilled") or [])]
+    if misses:
+        shown = "; ".join(misses[:UNFILLED_LINES])
+        if len(misses) > UNFILLED_LINES:
+            shown += f"; and {len(misses) - UNFILLED_LINES} more"
+        out.append(f"Did not fill: {shown}.")
+    unread = [
+        f"{item.get('ticker', '?')} ({item.get('error', 'unknown')})"
+        for item in (fills.get("unread") or [])
+    ]
+    if unread:
+        out.append(f"Could not be read back: {', '.join(unread)}.")
+    realized = fills.get("realized_cost_bps")
+    filled_of = f"({fills.get('n_filled')} of {fills.get('n_orders')} orders filled)"
+    expected = fills.get("expected_cost_bps", cost_bps)
+    against = (
+        f" against {float(expected):.2f} bps expected" if expected is not None else ""
+    )
+    if realized is not None:
+        out.append(
+            f"Realized cost: {float(realized):.2f} bps of NAV{against} {filled_of}."
+        )
+    elif expected is not None:
+        # There is nothing to price, so there is no realized cost. "0.00 bps" would
+        # read as a trade that cost nothing rather than as a trade that did not
+        # happen, and the expectation is still what the reader compares against.
+        what = (
+            "no fill to price"
+            if not fills.get("n_filled")
+            else "no fill could be priced"
+        )
+        out.append(f"Realized cost: {what}{against} {filled_of}.")
+    return out
+
+
 def compose(
     *,
     status: str,
@@ -237,6 +291,7 @@ def compose(
     store: str | None = None,
     snapshot: str | None = None,
     page_book: str | None = None,
+    fills: dict[str, Any] | None = None,
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
@@ -249,6 +304,7 @@ def compose(
     positions_check: dict[str, Any] | None = None,
     deferred_reversals: list[dict[str, Any]] | None = None,
     skipped_minimum: list[dict[str, Any]] | None = None,
+    skipped_borrow: list[dict[str, Any]] | None = None,
 ) -> str:
     """The fields, in order, ready for a preview.
 
@@ -300,10 +356,24 @@ def compose(
             "Orders: none. The exchange was shut, so there was no close to price "
             "and no book was built."
         )
+    elif status == "incomplete":
+        # An incomplete day is not a day that did not trade. The book was priced
+        # and the legs went out; one of them was not confirmed. "Orders: none"
+        # beside a booked day is the message's own false statement, and the owner
+        # reading it would look for a failure before sizing that never happened.
+        lines.append(
+            f"Orders: {int(orders or 0)} orders sent, {_money(gross)} gross, at "
+            "least one leg not confirmed"
+        )
     else:
         lines.append(
             "Orders: none. The run failed before sizing, so no book was priced."
         )
+    if status == "incomplete" and scrub(detail).strip():
+        # Which leg and why: the count alone leaves the owner to open the store to
+        # find out what to do about it, and the detail the run recorded already
+        # says it.
+        lines.append(f"{scrub(detail).strip().rstrip('.')}.")
 
     if worst_input is None and inputs:
         # A run that passed still has inputs behind the close: the universe sits
@@ -352,6 +422,8 @@ def compose(
         # number around it still reads right. The writer reads the object back
         # and this is where it says so out loud.
         lines.append(f"Page book: {page_book}.")
+    for line in _fills_lines(fills, cost_bps):
+        lines.append(line)
     if splits:
         lines.append(f"Corporate actions: {', '.join(splits)}.")
     if flags:
@@ -406,6 +478,15 @@ def compose(
             f"Under the {floor} minimum, left untraded: "
             f"{_skipped_minimum_list(skipped_minimum)}."
         )
+    if skipped_borrow:
+        # The short legs the borrow refused. The run called them skipped, so it did
+        # not fail and the day is complete; that is exactly why the names have to
+        # be here, because nothing else in the message would say that tonight's
+        # book is a short leg short of its own target.
+        lines.append(
+            f"Not easy to borrow, so not opened: "
+            f"{_borrow_skip_list(skipped_borrow)}."
+        )
     if status == "error":
         reason = scrub(detail).strip() or "no reason recorded"
         prefix = error_type or "Exception"
@@ -449,6 +530,27 @@ def _cost_line(
         parts_bps = sum(value for _, value in parts)
         line += f", which sum to {parts_bps:.2f}, not {total_bps:.2f}"
     return line + "."
+
+
+def _borrow_skip_list(rows: list[dict[str, Any]]) -> str:
+    """The shorts the borrow refused, each with the size of the leg it was.
+
+    The size is what makes the line checkable: the reader knows the book's target
+    for that name and can see how much of it went unopened. The broker's own
+    sentence travels with the name when it is there, because "not easy to borrow"
+    and "not shortable" are two different things to go and look at.
+    """
+    named = [
+        f"{str(row.get('ticker'))} "
+        f"{_money(abs(float(row.get('intended_notional') or 0.0)))}"
+        + (f" ({str(row.get('reason'))})" if row.get("reason") else "")
+        for row in sorted(rows, key=lambda item: str(item.get("ticker")))
+    ]
+    count = len(named)
+    shown = "; ".join(named[:MINIMUM_SKIP_NAMES])
+    if count > MINIMUM_SKIP_NAMES:
+        shown += f"; and {count - MINIMUM_SKIP_NAMES} more"
+    return shown
 
 
 def _skipped_minimum_list(rows: list[dict[str, Any]]) -> str:
@@ -742,6 +844,7 @@ def notify_run(
     store: str | None = None,
     snapshot: str | None = None,
     page_book: str | None = None,
+    fills: dict[str, Any] | None = None,
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
@@ -754,6 +857,7 @@ def notify_run(
     positions_check: dict[str, Any] | None = None,
     deferred_reversals: list[dict[str, Any]] | None = None,
     skipped_minimum: list[dict[str, Any]] | None = None,
+    skipped_borrow: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -792,6 +896,7 @@ def notify_run(
         store=store,
         snapshot=snapshot,
         page_book=page_book,
+        fills=fills,
         cross_checks_capped=cross_checks_capped,
         init=init,
         establishment=establishment,
@@ -802,6 +907,7 @@ def notify_run(
         positions_check=positions_check,
         deferred_reversals=deferred_reversals,
         skipped_minimum=skipped_minimum,
+        skipped_borrow=skipped_borrow,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message

@@ -1,16 +1,29 @@
 # Render deployment blueprint -- EFB live book (Sprint E11, Part B).
 #
-# One service: the daily cron. The live book monitor runs on Cloudflare (a Worker
-# or Pages project reading the snapshot through an R2 binding behind Access), so
-# there is no Render web service and no read role: one fewer credential and one
-# fewer box to fall over. `live/dashboard_app.py` stays runnable locally as a
-# research view until the Cloudflare page is proven.
+# Two cron services, both jobs over one image. The live book monitor runs on
+# Cloudflare (a Worker or Pages project reading the snapshot through an R2 binding
+# behind Access), so there is no Render web service and no read role: one fewer
+# credential and one fewer box to fall over. `live/dashboard_app.py` stays
+# runnable locally as a research view until the Cloudflare page is proven.
 #
-# The cron: extends the data and model, proposes the book, runs the morning
-# execution, reconciles, and writes one JSON snapshot per run to R2.
+# Cron 1, `efb-live-daily`: extends the data and model, proposes the book, runs the
+# morning execution, reconciles, and writes one JSON snapshot per run to R2.
 #
-# UTC cron schedule:
+# Cron 2, `efb-fills-reconcile`: the morning after, reads the previous evening's
+# orders from the broker by `broker_order_id` -- filled quantity, average fill
+# price, final status and cancel time -- writes them to `efb.fills`, adds an
+# "actual holdings" section to the snapshot beside the target book, and emails
+# only when an order did not fill. It never sizes a book and never sends an order,
+# and it is deliberately not part of cron 1: a job that only reads must not be able
+# to make the evening's run fail, and the evening's run must not be able to make
+# this one report nothing.
+#
+# UTC cron schedules:
 #   "30 22 * * 1-5" = 18:30 EDT / 17:30 EST, after the 16:00 ET close.
+#   "0 14 * * 1-5"  = 10:00 EDT / 9:00 EST, the next morning: a DAY order placed
+#                     the evening before has expired or filled by then, and the
+#                     account is read before that day's open, so the fills of the
+#                     previous close cannot be confused with the next one's.
 #
 # The run refuses outside 16:00-20:00 New York, the after-hours session Alpaca
 # holds a DAY order for, unless EFB_FORCE_HOUR is exactly "true". The slot above
@@ -18,11 +31,15 @@
 # and never for this cron.
 #
 # Secret isolation:
-#   Cron gets EFB_SUPABASE_DB_URL (the write role's connection string),
+#   Cron 1 gets EFB_SUPABASE_DB_URL (the write role's connection string),
 #   EFB_DB_SCHEMA, EFB_ALPACA_PAPER_*, EFB_ALPACA_ACCOUNT_ID, EFB_DRY_RUN,
 #   EFB_STORE is deliberately absent, the notification credentials and the R2
 #   credentials. The R2 token is scoped to the one bucket with object read and
 #   write.
+#   Cron 2 gets the same database, broker, notification and R2 names, and
+#   deliberately none of EFB_DRY_RUN, EFB_INIT_STORE or the EFB_SEED_R2_* four:
+#   it has no switch that could make it trade, no seed bucket to read and nothing
+#   to initialize. It holds no credential cron 1 does not already hold.
 #   Env var VALUES are set manually in the Render dashboard (sync: false).
 #   This file commits the KEY names only; no credentials appear here.
 
@@ -111,3 +128,66 @@ services:
         sync: false
       - key: EFB_R2_SECRET_ACCESS_KEY
         sync: false
+
+  # The morning after: what the broker actually did with the previous evening's
+  # orders, and what the account holds as a result. Read-only by construction --
+  # `scripts/reconcile_fills.py` has no sizing and no submit path, and the test
+  # for it walks the module's own imports and calls to prove it -- so it is
+  # separate from the evening's run rather than a step inside it: the evening's
+  # job is the one that trades, and a failure to read a fill back should not be
+  # able to stop it, nor be silently swallowed by it.
+  #
+  # It is also the only job that reads the published snapshot back, adds the one
+  # section describing the account, and writes it again. That is what makes the
+  # page able to show the target book beside the book the account holds.
+  - type: cron
+    name: efb-fills-reconcile
+    runtime: python
+    # Same plan as the evening cron: this job runs the same image and the same
+    # price downloader over one evening's tickers, and its own peak has not been
+    # measured. The 2x-headroom rule is satisfied by a plan that is known to hold
+    # 2.14 GiB of work, and an unmeasured job is not the place to save on memory.
+    plan: 2c-4g
+    buildCommand: pip install -r requirements.txt && pip install -e .
+    schedule: "0 14 * * 1-5"
+    startCommand: python scripts/reconcile_fills.py
+    envVars:
+      - key: EFB_SUPABASE_DB_URL
+        sync: false
+      - key: EFB_DB_SCHEMA
+        sync: false
+      - key: EFB_ALPACA_PAPER_API_KEY
+        sync: false
+      - key: EFB_ALPACA_PAPER_SECRET_KEY
+        sync: false
+      # The account the keys have to reach. It has to be here for the same reason
+      # it is on the evening cron: this job's whole output is a claim about what
+      # that account holds, and a read of the wrong account would be written down
+      # as the owner's.
+      - key: EFB_ALPACA_ACCOUNT_ID
+        sync: false
+      - key: EFB_RESEND_API_KEY
+        sync: false
+      - key: EFB_NOTIFY_EMAIL_FROM
+        sync: false
+      - key: EFB_NOTIFY_EMAIL_TO
+        sync: false
+      # The switch is required by the writer, and `off` is allowed only while
+      # EFB_DRY_RUN is true. It must be on here: the section this job adds is the
+      # only thing that tells the page what the account holds.
+      - key: EFB_SNAPSHOT
+        sync: false
+      - key: EFB_R2_ACCOUNT_ID
+        sync: false
+      - key: EFB_R2_BUCKET
+        sync: false
+      - key: EFB_R2_ACCESS_KEY_ID
+        sync: false
+      # Read for the published `expected_cost_bps`, and write for the section:
+      # the same bucket-scoped token the evening cron holds.
+      - key: EFB_R2_SECRET_ACCESS_KEY
+        sync: false
+      # Absent on purpose, and worth naming so nobody adds them:
+      #   EFB_DRY_RUN     this job never trades, so it has no switch to flip
+      #   EFB_INIT_STORE  there is nothing here to seed
+      #   EFB_SEED_R2_*   it reads no history, so it needs no history bucket

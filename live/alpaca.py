@@ -82,7 +82,8 @@ def position_intent(held: float, target: float) -> str:
 # The time-in-force every order carries. `day`, not `opg`, and the reason is the
 # cron's own hour.
 #
-# The cron fires at 22:30 UTC (render.yaml, "30 22 * * 1-5"), which is 18:30 ET
+# The evening cron fires at 22:30 UTC (render.yaml, `efb-live-daily`'s
+# "30 22 * * 1-5"), which is 18:30 ET
 # in summer and 17:30 ET in winter: after the 16:00 ET close and inside the
 # 16:00-20:00 ET after-hours window. Alpaca's Time in Force table
 # (https://docs.alpaca.markets/docs/orders-at-alpaca#time-in-force) says of `opg`:
@@ -716,6 +717,27 @@ def find_existing_order(client: Any, ticket: str) -> Any | None:
         return lookup(ticket)
     except Exception:  # noqa: BLE001 - not found is the normal answer
         return None
+
+
+def read_order(client: Any, order_id: str) -> Any:
+    """The broker's own record of one order, by the id the evening recorded.
+
+    Read by `broker_order_id` rather than by the client ticket, because the two
+    answer different questions: the ticket is the loop's name for a leg it meant
+    to send, and the broker keeps it for the orders it accepted, while the id is
+    the broker's own record of the order that arrived. A leg the loop refused at
+    a guard or never sent has no id, and is not looked up at all.
+
+    Unlike `find_existing_order` this raises, and the caller decides: a lookup
+    for a rerun expects "not found", while an order whose fate cannot be read is
+    a question to answer rather than an order that did not fill.
+    """
+    reader = getattr(client, "get_order_by_id", None)
+    if reader is None:
+        raise LookupError(f"the client cannot read an order by id ({order_id!r})")
+    if not order_id:
+        raise LookupError("no order id to read")
+    return reader(order_id)
 
 
 def _resolved_fill(order: Any, ticket: str, existing: Any, intent: str) -> Fill:

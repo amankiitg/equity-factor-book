@@ -245,13 +245,28 @@ def test_render_yaml_commits_key_names_not_values() -> None:
     assert "-----BEGIN" not in render
 
 
-def test_render_yaml_runs_one_service_and_it_holds_the_credentials() -> None:
-    """One cron. No web service, so no read role and one fewer box to fall over."""
+def _declared(service: str, name: str) -> bool:
+    """Whether the blueprint declares this env var for a service.
+
+    Matched on the declaration line rather than on the name, so the prose that
+    explains why a variable is absent cannot read as a declaration.
+    """
+    return f"      - key: {name}\n" in service
+
+
+def test_render_yaml_runs_two_crons_and_only_the_evening_one_can_trade() -> None:
+    """Two cron jobs, one that trades and one that only reads.
+
+    No web service, so no read role and one fewer box to fall over. The
+    reconciliation has to be its own job: it is the one that reports what the
+    broker did with the evening's orders, and a read that fails must not be able
+    to fail the run that prices the close, nor be hidden by it.
+    """
     render = (ROOT / "render.yaml").read_text()
     assert "- type: web" not in render
     assert "efb-live-dashboard" not in render
-    assert render.count("- type: cron") == 1
-    _, cron = render.split("- type: cron")
+    assert render.count("- type: cron") == 2
+    evening, morning = render.split("    name: efb-fills-reconcile")
     for name in (
         "EFB_INIT_STORE",
         "EFB_SEED_R2_ACCOUNT_ID",
@@ -266,7 +281,27 @@ def test_render_yaml_runs_one_service_and_it_holds_the_credentials() -> None:
         "EFB_R2_ACCESS_KEY_ID",
         "EFB_R2_SECRET_ACCESS_KEY",
     ):
-        assert name in cron, f"{name} missing from the cron service"
+        assert _declared(evening, name), f"{name} missing from the evening cron"
+    # the reconciliation holds the same credentials it needs and none it does not
+    for name in (
+        "EFB_SUPABASE_DB_URL",
+        "EFB_ALPACA_PAPER_API_KEY",
+        "EFB_ALPACA_ACCOUNT_ID",
+        "EFB_RESEND_API_KEY",
+        "EFB_NOTIFY_EMAIL_TO",
+        "EFB_R2_ACCESS_KEY_ID",
+        "EFB_R2_SECRET_ACCESS_KEY",
+    ):
+        assert _declared(morning, name), f"{name} missing from the fills cron"
+    for name in (
+        "EFB_DRY_RUN",
+        "EFB_INIT_STORE",
+        "EFB_SEED_R2_ACCOUNT_ID",
+        "EFB_SEED_R2_BUCKET",
+        "EFB_SEED_R2_ACCESS_KEY_ID",
+        "EFB_SEED_R2_SECRET_ACCESS_KEY",
+    ):
+        assert not _declared(morning, name), f"{name} is not the fills cron's to hold"
     # names only: no key material, no address, no endpoint prose
     assert "re_" not in render
     assert "@" not in render
@@ -275,16 +310,38 @@ def test_render_yaml_runs_one_service_and_it_holds_the_credentials() -> None:
     assert "EFB_NOTIFY_SLACK_WEBHOOK_URL" not in render
 
 
+def test_the_fills_reconciliation_is_its_own_weekday_morning_cron() -> None:
+    """14:00 UTC on weekdays, the morning after the close it reconciles.
+
+    Alpaca holds a DAY order for the after-hours session, so it is final by the
+    next morning; 14:00 UTC is 10:00 EDT and 09:00 EST, both before that day's
+    open, so the fills of one close cannot be read as the next one's.
+    """
+    render = (ROOT / "render.yaml").read_text()
+    _, morning = render.split("    name: efb-fills-reconcile")
+    assert 'schedule: "0 14 * * 1-5"' in morning
+    assert "startCommand: python scripts/reconcile_fills.py" in morning
+    assert "plan: 2c-4g" in morning
+    # the evening job's own slot is untouched
+    evening = render.split("    name: efb-fills-reconcile")[0]
+    assert 'schedule: "30 22 * * 1-5"' in evening
+    assert "startCommand: python scripts/run_live_daily.py" in evening
+
+
 def test_the_cron_is_created_on_the_four_gigabyte_plan() -> None:
     """Without `plan`, Render creates a cron on 0.5c-512mb and the peak kills it.
 
     The measured peak is 1.07 GiB, so the plan has to be at least 4 GB to keep the
     2x headroom rule. From Render's Blueprint reference, the `plan` field's Cron
     Job table: `2c-4g` is 2 CPU and 4 GB, and the same page says an omitted field
-    gives a new cron job `0.5c-512mb`.
+    gives a new cron job `0.5c-512mb`. The fills cron has no measurement of its
+    own, so it is created on the plan whose measurement exists rather than on a
+    smaller one that reads as a saving until it falls over.
     """
     render = (ROOT / "render.yaml").read_text()
-    _, cron = render.split("- type: cron")
-    assert "plan: 2c-4g" in cron
+    services = render.split("- type: cron")[1:]
+    assert len(services) == 2
+    for service in services:
+        assert "plan: 2c-4g" in service
     assert "plan: 0.5c-512mb" not in render
     assert "plan: 1c-2g" not in render

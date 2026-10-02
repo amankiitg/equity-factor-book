@@ -231,6 +231,102 @@ def test_a_run_with_no_book_publishes_null_figures_not_missing_keys() -> None:
     assert json.loads(snapshot.payload_text(payload))["reconciliation"] == block
 
 
+def test_the_actual_holdings_are_written_only_when_the_account_was_read() -> None:
+    """The evening's own document is not the reconciler's: no key, not a null one.
+
+    The evening job writes the target book and never reads the account, so its
+    document must be the same bytes it always was; the 14:00 job adds this one
+    section to the document already published. A key holding null would tell the
+    page the account holds nothing, which is a stronger and false claim.
+    """
+    actual = {
+        "as_of": "2026-09-26",
+        "close": "2026-09-25",
+        "n_names": 2,
+        "gross_notional": 30200.0,
+        "net_notional": 19400.0,
+        "names": [
+            {"ticker": "AAA", "side": "long", "notional": 24800.0, "weight": 0.0248},
+            {"ticker": "DG", "side": "short", "notional": -5400.0, "weight": -0.0054},
+        ],
+        "fills": None,
+    }
+
+    without = built()
+    assert "actual_holdings" not in without
+
+    with_actual = built(actual=actual)
+    block = with_actual["actual_holdings"]
+    # the dates go in as the document's own ISO timestamps, like target_close
+    assert str(block["close"]).startswith("2026-09-25")
+    assert str(block["as_of"]).startswith("2026-09-26")
+    assert block["names"] == actual["names"]
+    assert block["gross_notional"] == actual["gross_notional"]
+    assert block["net_notional"] == actual["net_notional"]
+    assert block["n_names"] == 2
+    assert block["fills"] is None
+    # the target book is untouched, and the only difference is the new section
+    assert with_actual["book"] == without["book"]
+    assert with_actual["reconciliation"] == without["reconciliation"]
+    stripped = {
+        key: value for key, value in with_actual.items() if key != "actual_holdings"
+    }
+    assert stripped == without
+
+    jsonschema.validate(instance=without, schema=SCHEMA)
+    jsonschema.validate(instance=with_actual, schema=SCHEMA)
+
+
+def test_the_actual_holdings_carry_the_fills_and_never_a_non_finite() -> None:
+    """The section is read from the published text, so NaN and infinity are null.
+
+    JSON cannot carry either, so a document that held one would either fail to
+    serialize or disagree with its own text, and the page would read a weight of
+    null as a name that had one.
+    """
+    actual = {
+        "as_of": "2026-09-26",
+        "close": "2026-09-25",
+        "n_names": 1,
+        "gross_notional": float("nan"),
+        "net_notional": None,
+        "names": [
+            {
+                "ticker": "DG",
+                "side": "short",
+                "notional": float("nan"),
+                "weight": float("inf"),
+            }
+        ],
+        "fills": {
+            "trade_date": "2026-09-25",
+            "n_orders": 1,
+            "n_filled": 0,
+            "n_unfilled": 1,
+            "not_sent": 0,
+            "realized_cost_bps": None,
+            "expected_cost_bps": 8.4,
+            "unfilled": ["DG sell_to_open 41 canceled 12:15 UTC"],
+            "unread": [],
+        },
+    }
+    payload = built(actual=actual)
+    block = payload["actual_holdings"]
+
+    assert block["names"][0]["notional"] is None
+    assert block["names"][0]["weight"] is None
+    assert block["gross_notional"] is None
+    assert block["net_notional"] is None
+    assert block["n_names"] == 1
+    assert block["fills"]["unfilled"] == ["DG sell_to_open 41 canceled 12:15 UTC"]
+    assert block["fills"]["n_filled"] == 0
+    assert str(block["fills"]["trade_date"]).startswith("2026-09-25")
+    assert "NaN" not in snapshot.payload_text(payload)
+    assert "Infinity" not in snapshot.payload_text(payload)
+    assert json.loads(snapshot.payload_text(payload))["actual_holdings"] == block
+    jsonschema.validate(instance=payload, schema=SCHEMA)
+
+
 def test_expected_next_by_comes_from_the_nyse_calendar() -> None:
     # Friday 2026-09-25: the next session is Monday 09-28, whose cron slot is
     # 22:30 UTC, plus the three-hour grace.
