@@ -34,7 +34,11 @@ def _artifact_texts() -> list[str]:
     answers, the registry carries the model metadata, the probe records and
     the data ledger carry the data-layer measurements, the research memos
     carry each sprint's headline numbers, and the allocation parquets carry
-    the risk-allocation figures.
+    the risk-allocation figures. The handoff records carry the live book's
+    measurements (the establishment cost, the corrected volume floor, the
+    largest single-name concentration), the credit design note carries the
+    reworked figures the E13 section quotes, and the remaining files are
+    the smaller sources named in the prose.
     """
     texts: list[str] = []
     for results in sorted((ROOT / "sprints").glob("*/RESULTS.json")):
@@ -48,6 +52,17 @@ def _artifact_texts() -> list[str]:
         if memo.name == "STATUS_REPORT.md":
             continue
         texts.append(memo.read_text())
+    for record in sorted((ROOT / "handoff").glob("*.md")):
+        texts.append(record.read_text())
+    texts.append((ROOT / "docs" / "credit_port_design.md").read_text())
+    texts.append((ROOT / "docs" / "open_items.md").read_text())
+    texts.append((ROOT / "docs" / "roadmap_v2.md").read_text())
+    texts.append((ROOT / "data" / "VERSION.json").read_text())
+    texts.append((ROOT / "live" / "cost_reconciliation.json").read_text())
+    texts.append((ROOT / "live" / "clock.json").read_text())
+    for fixture in sorted((ROOT / "web" / "fixtures").glob("*.json")):
+        texts.append(fixture.read_text())
+    texts.append((ROOT / "tests" / "test_hedge_vintage.py").read_text())
     for frame_path in sorted((ROOT / "data" / "allocation").glob("*.parquet")):
         frame = pd.read_parquet(frame_path)
         texts.append(frame.select_dtypes(include="number").to_string())
@@ -109,7 +124,7 @@ def test_the_report_names_the_three_gates_and_their_answers() -> None:
 
 
 @pytest.mark.integration
-def test_the_report_is_current_through_e11() -> None:
+def test_the_report_is_current_through_e13() -> None:
     text = " ".join(REPORT.read_text().split())
     for phrase in (
         "E11",
@@ -117,5 +132,39 @@ def test_the_report_is_current_through_e11() -> None:
         "paper",
         "dry run",
         "1,000,000",
+        "E12",
+        "E13",
+        "credit port",
+        "the flip",
+        "thirty trading days",
     ):
         assert phrase in text, phrase
+
+
+@pytest.mark.integration
+def test_the_report_opens_with_a_finding_rather_than_a_sprint_number() -> None:
+    """The listener has no knowledge of the project, so the sprint
+    numbering cannot be the first thing they meet. The first two
+    paragraphs must carry a concrete stored number and must not name a
+    sprint or a gate.
+    """
+    paragraphs = [
+        block.strip()
+        for block in REPORT.read_text().split("\n\n")
+        if block.strip() and not block.startswith("#")
+    ]
+    lead = " ".join(paragraphs[:2])
+    assert re.search(_FLOAT, lead), lead[:200]
+    for phrase in ("Sprint", "E1", "E2", "RG-", "G1", "G3"):
+        assert phrase not in lead, phrase
+
+
+@pytest.mark.integration
+def test_the_report_stays_readable_aloud() -> None:
+    """It is fed to a reader that hears it: prose only, no tables, no
+    long bullet runs, and no em or en dashes.
+    """
+    lines = REPORT.read_text().splitlines()
+    assert not [line for line in lines if line.startswith("|")]
+    assert not [line for line in lines if line.startswith(("- ", "* "))]
+    assert not [line for line in lines if "\u2014" in line or "\u2013" in line]
