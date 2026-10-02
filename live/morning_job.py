@@ -80,7 +80,6 @@ INCOMPLETE_REASON_CODES = frozenset(
         alpaca.REASON_SHORT_CHECK_FAILED,
         alpaca.REASON_NOT_TRADABLE,
         alpaca.REASON_NOT_SHORTABLE,
-        alpaca.REASON_NOT_EASY_TO_BORROW,
     }
 )
 
@@ -88,12 +87,50 @@ INCOMPLETE_REASON_CODES = frozenset(
 # The reason codes that describe a leg the run chose not to send. A skipped leg is
 # normally a leg that was not confirmed, which is what makes a run incomplete;
 # these are the exceptions, where the leg was left out on purpose and the evening
-# did exactly what it should have. A name whose change is under the minimum is the
-# whole of that set: it would be marked incomplete every evening otherwise, and
-# the day would never be filed.
+# did exactly what it should have. A name whose change is under the minimum is one
+# of them: it would be marked incomplete every evening otherwise, and the day would
+# never be filed. A name that is not easy to borrow is the other: the book's
+# short leg cannot be opened tonight, which is a fact about the borrow, not a
+# failure of the run -- and a run that retried it at the next tick would find the
+# same answer. Both are named in the message, so a book quietly short of its own
+# target is never left to be inferred from a shorter trade list.
 EXPECTED_SKIP_REASON_CODES = frozenset(
-    {alpaca.REASON_BELOW_MIN_NOTIONAL, alpaca.REASON_COVER_UNDER_ONE_SHARE}
+    {
+        alpaca.REASON_BELOW_MIN_NOTIONAL,
+        alpaca.REASON_COVER_UNDER_ONE_SHARE,
+        alpaca.REASON_NOT_EASY_TO_BORROW,
+    }
 )
+
+
+def borrow_skips(records: pd.DataFrame) -> list[dict[str, object]]:
+    """The shorts the borrow left unopened, for the message.
+
+    A `sell_to_open` whose asset is not easy to borrow is skipped with the code
+    that says so, and the leg is not retried into the night: the name stays in the
+    target book and the next evening's delta tries it again. That is a skip rather
+    than an incomplete run, so it has to be *said*, not merely not-failed: the
+    owner reads a shorter trade list otherwise, and a short book quietly missing a
+    leg is a book nobody can check.
+    """
+    if records.empty:
+        return []
+    codes = records.get("reason_code")
+    if codes is None:
+        return []
+    out: list[dict[str, object]] = []
+    for row in records.loc[codes == alpaca.REASON_NOT_EASY_TO_BORROW].itertuples(
+        index=False
+    ):
+        out.append(
+            {
+                "ticker": str(row.ticker),
+                "intended_notional": float(row.intended_notional),
+                "reason": str(getattr(row, "reason", "")),
+                "reason_code": str(row.reason_code),
+            }
+        )
+    return out
 
 
 def _leg_incomplete(status: object, reason_code: object) -> bool:
@@ -502,6 +539,10 @@ def run_morning(
         # is this evening's book not moving and the other is a leg the broker would
         # not take.
         "skipped_legs": skipped_minimum,
+        # The shorts the borrow left unopened: named in the message rather than
+        # counted among the day's skipped legs alone, and not a reason to retry the
+        # day. The names are the same ones the book above is missing.
+        "skipped_borrow": borrow_skips(records),
         # A leg that was halted, left in an unknown state, refused or rejected
         # makes the run incomplete: the day is not done, and the caller must not
         # file it as ok. `incomplete_legs` names each one and why.

@@ -554,6 +554,7 @@ def finish_run(
     snapshot_getter: Any = None,
     deferred_reversals: list[dict[str, Any]] | None = None,
     skipped_minimum: list[dict[str, Any]] | None = None,
+    skipped_borrow: list[dict[str, Any]] | None = None,
 ) -> int:
     """Snapshot the run, notify the owner, record it, and return the exit code.
 
@@ -711,6 +712,7 @@ def finish_run(
         poster=poster,
         deferred_reversals=deferred_reversals,
         skipped_minimum=skipped_minimum,
+        skipped_borrow=skipped_borrow,
     )
     delivered = notified["status"] == notify.STATUS_SENT
     store_failed = False
@@ -1258,6 +1260,10 @@ def main() -> int:
         # nowhere, recorded with their reason and named in the message, because a
         # book quietly short of its own target is a book nobody can check.
         skipped_minimum=morning.get("skipped_legs") or [],
+        # The shorts the borrow left unopened. Skipped, not incomplete, and named
+        # for the same reason: the run did what it should have and the book is one
+        # leg short of its own target, which the message has to say.
+        skipped_borrow=morning.get("skipped_borrow") or [],
         **snapshot_inputs,
     )
 
