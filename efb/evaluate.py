@@ -1481,8 +1481,43 @@ E2_EXPOSURE_REFERENCE = {
 }
 
 
+# The sample the E3 criteria are scored over, fixed when the sprint's numbers were
+# measured. It is the model's first descriptor day to the last session of the panel
+# the sprint was scored on, and it does not move when the panel does.
+E3_SAMPLE_START = pd.Timestamp("2011-01-03")
+E3_SAMPLE_END = pd.Timestamp("2026-09-03")
+
+
+def _e3_in_sample(frame: pd.DataFrame) -> pd.DataFrame:
+    """One frame restricted to the E3 scoring window.
+
+    A criterion computed over whatever the artifact happens to hold is not a
+    statement about the model: it moves when the panel grows, which changes the
+    sample and nothing else. Measured: the stored F3.1 read 0.3294502 over 3,941
+    days and the same code over a panel eleven sessions longer read 0.3295861, with
+    no line of the model touched. The window below is the sprint's own - the range
+    the numbers on the record were measured over - and it is stored with the
+    criterion so a reader can see which sample a number belongs to.
+    """
+    if frame is None or len(frame) == 0:
+        return frame
+    if isinstance(frame.index, pd.DatetimeIndex):
+        keep = (frame.index >= E3_SAMPLE_START) & (frame.index <= E3_SAMPLE_END)
+        return frame.loc[keep]
+    if "date" in frame.columns:
+        dates = pd.to_datetime(frame["date"])
+        keep = (dates >= E3_SAMPLE_START) & (dates <= E3_SAMPLE_END)
+        return frame.loc[keep]
+    return frame
+
+
 def compute_e3_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
-    """Read every number the E3 criteria need from the artifacts."""
+    """Read every number the E3 criteria need from the artifacts.
+
+    The date-indexed frames come back restricted to `E3_SAMPLE_START` to
+    `E3_SAMPLE_END`, which is the sprint's own window, so the criteria do not move
+    when the panel behind them grows.
+    """
 
     def read(rel: str) -> pd.DataFrame:
         return pd.read_parquet(data_root / rel)
@@ -1490,14 +1525,14 @@ def compute_e3_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     registry = json.loads((data_root / "models" / "registry.json").read_text())
     entry = registry["models"]["XS-v1"]
     parameters = entry["parameters"]
-    xs_r2 = read("models/XS-v1/xs_r2.parquet")
+    xs_r2 = _e3_in_sample(read("models/XS-v1/xs_r2.parquet"))
     fmp = read("models/XS-v1/fmp_weights.parquet")
-    factor_returns = read("models/XS-v1/factor_returns.parquet")
-    decomposition = read("eval/xs_risk_decomposition.parquet")
-    bias = read("eval/xs_bias.parquet")
+    factor_returns = _e3_in_sample(read("models/XS-v1/factor_returns.parquet"))
+    decomposition = _e3_in_sample(read("eval/xs_risk_decomposition.parquet"))
+    bias = _e3_in_sample(read("eval/xs_bias.parquet"))
     premia = read("eval/xs_fm_premia.parquet")
     residual = read("eval/xs_residual_covariance.parquet")
-    exposure = read("eval/xs_exposure_timeseries.parquet")
+    exposure = _e3_in_sample(read("eval/xs_exposure_timeseries.parquet"))
     factors_frame = read("raw/factors_ff.parquet")
     return {
         "parameters": parameters,
@@ -2075,6 +2110,7 @@ def evaluate_e4_criteria(
             "ratio_to_sample": ratios,
             "worst_ratio": float(max(ratios.values())),
             "estimators_missing": missing,
+            "estimators_required": list(wanted),
             "windows": int(race["date"].nunique()),
             "n_names": int(race["n_names"].max()),
             "windows_won": {
@@ -2082,19 +2118,24 @@ def evaluate_e4_criteria(
                 for name, count in (pivot.rank(axis=1, method="min") == 1).sum().items()
             },
         },
-        "verdict": _verdict(all(ratio <= 0.9 for ratio in ratios.values())),
+        "verdict": _verdict(
+            not missing and all(ratio <= 0.9 for ratio in ratios.values())
+        ),
         "note": (
-            "Every shrinkage estimator and every factor estimator has a median "
-            "out-of-sample minimum-variance volatility at least 10 percent below "
-            "the sample covariance's, so the estimation-error result holds in the "
-            "direction theory predicts. The sample covariance won no window and "
-            "EWMA none either; EWMA is a weighting scheme rather than a shrinkage "
-            "or factor estimator and is reported beside them, not scored. E5 "
-            "rebuilt this race from a derived grid and could not reproduce the "
-            "XS-v1 row, which is stored as F5.0b; the estimators missing from "
-            "this read are listed in the stored numbers and the verdict is "
-            "unchanged because the missing row is the strongest performer among "
-            "those scored, not the weakest."
+            "Every shrinkage estimator and every factor estimator that the race "
+            "produced has a median out-of-sample minimum-variance volatility at "
+            "least 10 percent below the sample covariance's, so the estimation-error "
+            "result holds in the direction theory predicts. The sample covariance "
+            "won no window and EWMA none either; EWMA is a weighting scheme rather "
+            "than a shrinkage or factor estimator and is reported beside them, not "
+            "scored. **A missing estimator now fails the criterion**: a race that "
+            "silently drops a requested row is scoring a shorter list, and the "
+            "stored record shows exactly that - XS-v1, the strongest performer "
+            "among those scored, was absent and the verdict passed anyway. "
+            "`estimators_missing` names what was not produced and "
+            "`estimators_required` names what was asked for; the row comes back by "
+            "rebuilding the race on the derived grid, which supplies the model's "
+            "own design and diagonal."
         ),
     }
 
@@ -3075,8 +3116,15 @@ def main_e6(data_root: Path = ROOT / "data") -> None:
 
 E7_CRITERIA_TEXT = {
     "F7.1": (
-        "Shift audit: moving every signal forward by one day flips or kills "
-        "its IC. This proves the absence of leakage."
+        "Shift audit: every signal that reaches the audit is rebuilt with its "
+        "inputs moved forward by one day and its IC recomputed against the "
+        "same-day return, and the before and after numbers are stored per "
+        "signal. The criterion is that no *admitted* signal survives the shift; "
+        "a signal the multiple-testing gate labels NULL is not admitted and "
+        'therefore says nothing either way. Read it as "the audit ran and '
+        'nothing it admitted leaks", never as evidence about the signals '
+        "themselves: with every signal NULL the criterion holds vacuously, and "
+        "the verdict on the signals is F7.3's, not this one's."
     ),
     "F7.2": (
         "Factor-neutral momentum IC mean above 0.02 with t above 2, "
@@ -3110,7 +3158,10 @@ E7_CRITERIA_TEXT = {
 }
 
 E7_THRESHOLDS = {
-    "F7.1": "no admitted signal flags leakage in the shift audit",
+    "F7.1": (
+        "the audit ran for every signal it tested and no admitted signal flags "
+        "leakage; a NULL signal is not evidence either way"
+    ),
     "F7.2": "neutral momentum IC mean > 0.02 and t > 2, both periods stored",
     "F7.3": "below-hurdle signals labeled NULL; ledger rows >= runs",
     "F7.4": "stored per signal under both models with the difference",
@@ -3278,7 +3329,7 @@ def evaluate_e7_criteria(
     for line in ledger.splitlines():
         if line.startswith("| ") and not line.startswith("| run_id"):
             cells = [cell.strip() for cell in line.strip("|").split("|")]
-            if len(cells) >= 10:
+            if len(cells) >= 10 and not all(set(cell) <= set("-: ") for cell in cells):
                 n_runs += 1
                 signal_name = cells[1]
                 verdict = cells[9]

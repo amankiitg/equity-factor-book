@@ -2044,3 +2044,163 @@ while the other four artifacts' session hashes differ, because those hashes are
 taken over the in-memory frame and so are not a byte comparison across a run
 boundary. The rerun's guarantee is therefore "the same numbers to floating-point
 precision", not byte equality.
+
+## 2026-10-03: a spin-off is corrected in the research panel from a recorded vendor row
+
+Decision. The research returns build now corrects a spin-off from a record rather
+than from the price vendor's arithmetic. The vendor's records and the three closes
+each one needs - the child, the parent on the ex-date, the parent the session before
+- are collected once into `processed/corporate_actions.parquet` by
+`scripts/collect_corporate_actions.py`, and `efb.build` puts them back between the
+arithmetic and every reader of it, through
+`live.corporate_actions.apply_recorded` rather than through a second
+implementation of the rule. The hygiene flags are computed first, on the vendor's
+own numbers, and a new `corrected` column marks the cells the rule rewrote, so
+`hygiene.clean_returns` does not throw away a cell that was just repaired.
+
+Reason. E11 found that a spin-off moves one session's return and that neither price
+vendor adjusts its history for it. The research panel had the same flaw and no
+record of it: measured over the panel's whole life, the vendor reports 28 spin-offs
+for its 858 names, the outlier filter caught none of them, and the largest error was
+APTV's 2026-04-01 session at **13.4 percentage points** (-10.58 percent stored
+against +2.78 percent paid), which is the same shape as the CTVA print that started
+this. The record also had to hold the parents' *raw* closes, and that is the part
+that is easy to get wrong: a research panel is delivered back-adjusted, so its close
+for the session before the ex-date already has the child's value taken out of it.
+Measured on GE's 2024-04-02 GE Vernova spin-off, the panel's prior close is 139.95
+against the vendor's raw 175.36, and the rule run on the panel's own numbers reports
+**+22.5 percent** for a session the stock fell in. Both closes are therefore read from
+the vendor and written into the table beside the child's.
+
+Evidence. 28 records, 2019-02-25 to 2026-10-01, 25 of them applied, 2 kept with no
+child to price (the `BBBY.WS` and `GME.WS` warrant distributions, which are not
+child shares and would double-count the parent if the suffix were stripped), and 1
+whose parent the identity layer has already dropped. 25 cells corrected and 2 nulled
+in `processed/returns.parquet`; `raw/prices.parquet` byte-identical before and after
+and the panel held fixed at its own last session, so the movement is the change and
+not a data refresh. Each corrected cell matches the phase-1 hand computation to
+2e-7, which is the rounding of the closes those numbers were read from.
+
+One finding belongs on the record rather than in a footnote: **the vendor's spin-off
+table is incomplete and unstable.** The same per-year read returned 30 records in the
+morning and 28 in the afternoon, a single wide window over 2018-2026 returned 2, and
+two real spin-offs that appeared in the first read - `FTI -> THNPF` (2021-02-16,
+Technip Energies) and `EXC -> CEG` (2022-02-02, Constellation Energy) - are in none
+of the later ones, including a read that asks for those two symbols alone. The table
+is a dated snapshot, `recorded_at` says when it was taken, and `summary` reports where
+it starts and stops so a gap is visible rather than read as "no spin-offs then".
+
+Status. On the `backport` branch. `tests/test_corporate_actions.py`: 8 passed.
+
+## 2026-10-03: a stale cell is not a return (the E3 contract revised)
+
+Decision. The XS-v1 fit reads `probes.load_panel()["returns_clean"]` - the panel with
+`hygiene.clean_returns` applied - instead of the raw panel. The row keeps its value
+and its `stale` flag in `returns.parquet`; it takes no part in the design, the
+descriptors, the factor returns or the specific returns. The contract is stated in
+`efb/models/fundamental.py`: a stale cell is not a return, a real move is kept, a
+corporate action is corrected at the source.
+
+Reason. The evaluation layers already excluded flagged rows - `efb/eval_risk.py` for
+E5's bias engine, `efb/race.py` and `efb/survivor.py` for the race and the
+survivorship measurement, and E5's own build log prints *"exclusions: stale 6186,
+outlier 62"* - but the model layer did not, so the same cells that E5 refused to
+measure were the ones XS-v1 estimated its descriptors and its betas on. A run of
+exact-zero returns is a price that did not move, not a session that paid nothing.
+
+Evidence. 6,186 stale cells over 502 mapped names. With the panel held fixed and the
+window pinned, the E3 rebuild moves the mean cross-sectional R squared from
+**0.3294502 to 0.3312071** (+0.49 percent), F3.4's momentum correlation from 0.7555482
+to 0.7556393, F3.5's seed_mom_ls factor share from 0.8156731 to 0.8161420, F3.6's
+seed_ew mean bias from 0.9583526 to 0.9598426, and F3.9's exposure mean from 0.7220975
+to 0.7196540. No verdict flips: F3.1 to F3.5 and F3.7 to F3.9 pass before and after,
+F3.6 fails before and after.
+
+Status. On the `backport` branch. `tests/test_e3_contract.py`: 7 passed.
+
+## 2026-10-03: E3 is scored over its own fixed window
+
+Decision. `compute_e3_from_artifacts` restricts every date-indexed frame to
+`E3_SAMPLE_START` (2011-01-03) and `E3_SAMPLE_END` (2026-09-03) before the criteria
+are computed, and the window is stored with F3.1's numbers.
+
+Reason. A criterion computed over whatever the artifact happens to hold is not a
+statement about the model: it moves when the panel grows, which changes the sample
+and nothing else. Nothing reworded the criterion and no line of the model changed
+between the two readings below.
+
+Evidence. The stored F3.1 read **0.3294501878861149 over 3,941 days**; the same code
+over a panel eleven sessions longer read 0.3295861 over 3,952 days. With the window
+pinned, the rebuild reproduces the stored numbers exactly - 0.3294501878861149 and
+3,941 days - which is what makes the before/after immediately above the effect of the
+change and nothing else.
+
+Status. On the `backport` branch.
+
+## 2026-10-03: a missing estimator fails F4.3, and F7.1 says what it measures
+
+Decision. F4.3's verdict is `not missing and every scored ratio below 0.9`, and
+`estimators_required` is stored beside `estimators_missing`. F7.1's criterion text no
+longer claims the audit "proves the absence of leakage": it says the audit ran for
+every signal it tested, that no *admitted* signal survived the shift, and that a
+signal the gate labels NULL is not evidence either way. The multiple-testing ledger
+parser no longer counts the markdown separator row as a run.
+
+Reason. Both were tests that could not fail and a criterion that could not see its own
+defect. F4.3 was computed over the estimators the race happened to produce, so the
+missing XS-v1 row - the strongest performer among those scored, as the old note said
+in as many words - made the criterion *more* likely to pass, and
+`tests/test_e4_results.py` pinned `estimators_missing == ["xs_v1"]`, so the test
+failed the moment the row came back. F7.1 passed vacuously with all six signals NULL
+while reading as a positive result about them, and `verdict_by_signal` carried the
+separator row as if it were a run: `ledger_rows: 111` is 110 runs plus that row.
+
+Evidence. Four tests were shown passing on a mutated record rather than on the real
+one: the E4 verdict test passes with every stored number replaced by
+`{"everything": "wrong"}` and with F4.1's failing number moved to a value that would
+flip its verdict; the E5 presence test passes with every stored number replaced by
+`{"wrong": 1.0}`; the E4 F4.3 test *fails* when the missing estimator is restored; and
+`tests/test_cov.py`'s symmetry and positive-definiteness property skipped `xs_v1`, the
+one estimator the race was missing, so that defect had no coverage anywhere. All four
+now assert the arithmetic: the verdicts are re-derived from the artifacts, a missing
+estimator is asserted to fail, the E5 numbers are read and required to be finite, and
+the covariance property runs on XS-v1 with its three inputs supplied.
+
+Status. On the `backport` branch. `tests/test_cov.py` and `tests/test_e5_results.py`:
+11 passed.
+
+## 2026-10-03: a month-end row has its own cross-section, and it changes the hedge
+
+Decision. Recorded as an input to the E6 re-scoring, not as a defect to fix: the
+row built for the session after a month end is not the row the model publishes,
+and the difference is far larger than on an ordinary session. On 2026-07-30 to
+2026-07-31 the built row sits **2.291** from the published row, and the hedged
+book is left with **3.82e-03** of exposure. On the ordinary pair 2026-09-17 to
+2026-09-18 the two rows agree to 7e-14. The E6 re-scoring (item 3) has to be read
+against the pairs the tree actually publishes, not against a grid of sessions.
+
+Reason. `race.next_descriptor_design` builds the missing row with the
+cross-section taken as the names priced at the close, which is exact whenever the
+priced set does not move between the two sessions - every ordinary session - and
+cannot be exact when it does move. A month end moves it for a second reason: the
+seed's published rows exist *only* at month ends, so at a month-end close the
+built row's cross-section is the names priced on the month end while the model's
+row for the next session is the names priced on the next session, after the
+month-end rebalance of the universe. The two rows then differ by far more than
+the cross-sectional statistics of a holiday gap explain.
+
+Evidence. Measured on `/tmp/efb-repair/data` (a live tree as of 2026-10-02, 209
+descriptor dates): the pair 2026-07-30 to 2026-07-31 gives a row distance of
+2.291 and a realized exposure of 3.82e-03, against 1e-15 and 3e-14 for
+2026-09-17 to 2026-09-18 and a 4.1e-03 control for the row dated the close on the
+holiday pair. The same measurement is what makes the hedge-vintage tests
+live-tree-only: `make rebuild-e3` publishes descriptors at month ends plus the
+final session, so a research tree cannot exercise the ordinary case at all.
+
+Consequence for the tests. `tests/test_hedge_vintage.py` reads a live-shaped run
+root from `EFB_RUN_ROOT` and fails rather than skips when there is none; it is
+deselected, and reported as deselected, by the default suite. See
+`docs/backport_runbook.md` §2.
+
+Status. On the `backport` branch, reported to the E6 re-scoring; no live data
+touched.
