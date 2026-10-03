@@ -7,6 +7,13 @@ RUFF ?= $(if $(VENV_BIN),$(VENV_BIN)/ruff,ruff)
 MYPY ?= $(if $(VENV_BIN),$(VENV_BIN)/mypy,mypy)
 BLACK ?= $(if $(VENV_BIN),$(VENV_BIN)/black,black)
 
+# The panel pin. Every rebuild takes an explicit end date; left unset it is the
+# stored panel's own last session, so re-running a rebuild cannot extend the panel
+# by re-reading sources. Set END to say you mean to move it:
+#   make rebuild-e1 END=2026-11-11
+END ?=
+PIN = $(if $(END),--end $(END))
+
 .PHONY: help test test-fast test-all test-live-tree test-merge-guard lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild-e4 rebuild-e5 rebuild-e6 rebuild-e7 rebuild-e8 rebuild-e9 rebuild-e10 rebuild evidence verify-evidence web-install web-test web-build clean
 
 help: ## List targets
@@ -61,37 +68,37 @@ publish: ## Copy the linked sprint documents into the dashboard static folder
 	$(PYTHON) -m dashboard.publish
 
 rebuild-e1: ## Rebuilds the E1 data layer end to end (Sprint E1)
-	$(PYTHON) -m efb.build
+	$(PYTHON) -m efb.build $(PIN)
 
 rebuild-e2: ## Rebuilds E1 and E2 artifacts end to end (Sprint E2)
-	$(PYTHON) -m efb.build --e2
+	$(PYTHON) -m efb.build --e2 $(PIN)
 
 rebuild-e3: ## Rebuilds the XS-v1 artifacts from the E1 and E2 artifacts (Sprint E3)
-	$(PYTHON) -m efb.build --e3
+	$(PYTHON) -m efb.build --e3 $(PIN)
 
 rebuild-e4: ## Rebuilds the E4 statistical and covariance artifacts (Sprint E4)
-	$(PYTHON) -m efb.build --e4
+	$(PYTHON) -m efb.build --e4 $(PIN)
 
 rebuild-e5: ## Rebuilds the E5 risk evaluation and the champion decision (Sprint E5)
-	$(PYTHON) -m efb.build --e5
+	$(PYTHON) -m efb.build --e5 $(PIN)
 
 rebuild-e6: ## Rebuilds the E6 hedging toolkit over the seed books (Sprint E6)
-	$(PYTHON) -m efb.build --e6
+	$(PYTHON) -m efb.build --e6 $(PIN)
 
 rebuild-e7: ## Rebuilds the E7 alpha lab and the hygiene ledger (Sprint E7)
-	$(PYTHON) -m efb.build --e7
+	$(PYTHON) -m efb.build --e7 $(PIN)
 
 rebuild-e8: ## Rebuilds the E8 construction run on synthetic alpha (Sprint E8)
-	$(PYTHON) -m efb.build --e8
+	$(PYTHON) -m efb.build --e8 $(PIN)
 
 rebuild-e9: ## Rebuilds the E9 cost model and capacity curve (Sprint E9)
-	$(PYTHON) -m efb.build --e9
+	$(PYTHON) -m efb.build --e9 $(PIN)
 
 rebuild-e10: ## Rebuilds the E10 risk allocation and loss management (Sprint E10)
-	$(PYTHON) -m efb.build --e10
+	$(PYTHON) -m efb.build --e10 $(PIN)
 
 rebuild: ## Rebuilds E1 through E10 end to end, the gate G1 one-command path
-	$(PYTHON) -m efb.build --all
+	$(PYTHON) -m efb.build --all $(PIN)
 
 evidence: ## Refresh the tracked evidence snapshot (E5 R1)
 	$(PYTHON) -c "from efb import evidence; m = evidence.snapshot(); print(f\"snapshotted {m['n_artifacts']} artifacts, {m['total_snapshot_bytes'] / 1e6:.2f} MB\")"

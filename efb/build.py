@@ -325,6 +325,58 @@ def write_version(artifact_paths: list[Path], out_path: Path, note: str) -> dict
     return payload
 
 
+def stored_panel_end(data_root: Path = DATA_ROOT) -> pd.Timestamp | None:
+    """The last session in the stored panel, or None when there is none.
+
+    The panel is `processed/returns.parquet`, the frame every stored sprint
+    record was measured on. The date index is read on its own, so this stays off
+    the panel load and cannot be confused by the columns.
+    """
+    path = data_root / "processed" / "returns.parquet"
+    if not path.exists():
+        return None
+    index = pd.read_parquet(path, columns=[]).index
+    # the panel is long (date, ticker) today; a date index is accepted too, so the
+    # reader cannot be the thing that breaks if the artifact's shape is revisited
+    if isinstance(index, pd.MultiIndex):
+        index = index.get_level_values("date")
+    dates = pd.DatetimeIndex(index)
+    return pd.Timestamp(dates.max()) if len(dates) else None
+
+
+def pinned_panel_end(
+    end: str | None = None,
+    data_root: Path = DATA_ROOT,
+    reading: bool = True,
+) -> str:
+    """The session a rebuild may reach, and the check that it does not read past it.
+
+    Explicit when given, otherwise the stored panel's own last session - so the
+    default is the record's end, not today, and a rebuild that re-reads sources
+    cannot extend the panel by accident. With no panel on disk, which is a first
+    build, there is nothing to freeze and today is the only answer.
+
+    `reading=False` is the E1 leg's flag: that leg *makes* the panel, so an
+    earlier pin re-cuts it. Every leg that reads the panel instead has to be
+    given a pin at or after the panel's end, because it cannot un-read rows it
+    has already been handed.
+    """
+    stored = stored_panel_end(data_root)
+    if end:
+        pin = pd.Timestamp(end)
+    elif stored is not None:
+        pin = stored
+    else:
+        return datetime.now(UTC).strftime("%Y-%m-%d")
+    if reading and stored is not None and pin < stored:
+        raise ValueError(
+            f"the panel ends {stored.date()} and the pin is {pin.date()}: this "
+            "leg reads the panel and cannot be pinned earlier than it. Rebuild "
+            "or copy the panel at that end (make rebuild-e1 END=...) instead."
+        )
+    return str(pin.date())
+
+
 def rebuild(
     data_root: Path = DATA_ROOT,
     start: str = START,
@@ -334,11 +386,15 @@ def rebuild(
 ) -> dict[str, object]:
     """Rebuild all E1 artifacts from sources and version them.
 
+    `end` is the session the source read is allowed to reach. Left unset it is
+    the stored panel's own last session, so re-reading sources cannot extend the
+    panel; a run that means to extend it says so (`END=2026-11-11`).
+
     When results_path is given (the real sprints/E1/RESULTS.json), the F1
     criteria are recomputed from the fresh artifacts and stored there.
     """
     as_of = as_of or datetime.now(UTC).strftime("%Y-%m-%d")
-    end = end or datetime.now(UTC).strftime("%Y-%m-%d")
+    end = pinned_panel_end(end, data_root, reading=False)
     raw_dir = data_root / "raw"
     processed_dir = data_root / "processed"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -354,7 +410,7 @@ def rebuild(
     raw_prices = prices.load_or_download(
         tickers, cache_path, start=WARMUP_START, end=end
     )
-    prices_artifact = prices.build_prices_artifact(raw_prices, start=start)
+    prices_artifact = prices.build_prices_artifact(raw_prices, start=start, end=end)
     prices.save_prices(prices_artifact, raw_dir / "prices.parquet")
 
     # 3. Universe membership and sectors
@@ -369,7 +425,7 @@ def rebuild(
 
     # 4. Factors
     frames = factors.load_french_factors()
-    factors_artifact = factors.build_factors_artifact(frames, start=start)
+    factors_artifact = factors.build_factors_artifact(frames, start=start, end=end)
     factors_artifact.to_parquet(raw_dir / "factors_ff.parquet")
 
     # 5. Ticker identity, before returns are used by anything (C1, F2.6b)
@@ -452,6 +508,7 @@ def rebuild(
         "version": payload,
         "n_tickers": len(tickers),
         "identity_dropped": identity_drops,
+        "panel_end": end,
     }
 
 
@@ -884,9 +941,14 @@ def rebuild_e2(
     data_root: Path = DATA_ROOT,
     results_path: Path | None = None,
     start: int = MODEL_START,
+    end: str | None = None,
 ) -> dict[str, object]:
-    """Run the E1 rebuild, then the E2 artifacts, and version everything."""
-    e1 = rebuild(data_root=data_root, start="2010-01-04", results_path=None)
+    """Run the E1 rebuild, then the E2 artifacts, and version everything.
+
+    `end` pins the E1 leg's source read (see `pinned_panel_end`).
+    """
+    end = pinned_panel_end(end, data_root, reading=False)
+    e1 = rebuild(data_root=data_root, start="2010-01-04", results_path=None, end=end)
     e2 = build_e2_artifacts(data_root=data_root, start=start)
     artifact_paths = [data_root / rel for rel in ARTIFACTS + E2_ARTIFACTS]
     version_path = data_root / "VERSION.json"
@@ -914,7 +976,13 @@ def rebuild_e2(
             data_hash=payload["data_hash"],
             previous_data_hash=old_hash,
         )
-    return {"n_steps": 8, "e1_tickers": e1["n_tickers"], "e2": e2, "version": payload}
+    return {
+        "n_steps": 8,
+        "e1_tickers": e1["n_tickers"],
+        "e2": e2,
+        "panel_end": e1["panel_end"],
+        "version": payload,
+    }
 
 
 SUBPERIODS = [
@@ -1500,6 +1568,7 @@ def rebuild_e3(
     data_root: Path = DATA_ROOT,
     results_path: Path | None = None,
     full: bool = False,
+    end: str | None = None,
 ) -> dict[str, object]:
     """Run the E3 build and version everything.
 
@@ -1509,10 +1578,13 @@ def rebuild_e3(
     artifacts are read from disk and only XS-v1 is rebuilt, which is the path
     the sprint iterates on.
     """
+    end = pinned_panel_end(end, data_root)
     e1: dict[str, object] | None = None
     e2: dict[str, object] | None = None
     if full:
-        e1 = rebuild(data_root=data_root, start="2010-01-04", results_path=None)
+        e1 = rebuild(
+            data_root=data_root, start="2010-01-04", results_path=None, end=end
+        )
         e2 = build_e2_artifacts(data_root=data_root, start=MODEL_START)
     e3 = build_e3_artifacts(data_root=data_root)
     artifact_paths = [
@@ -1546,6 +1618,7 @@ def rebuild_e3(
         "e1_tickers": (e1 or {}).get("n_tickers"),
         "e2": e2,
         "e3": e3,
+        "panel_end": end,
         "version": payload,
     }
 
@@ -1925,6 +1998,7 @@ def rebuild_e4(
     data_root: Path = DATA_ROOT,
     results_path: Path | None = None,
     full: bool = False,
+    end: str | None = None,
 ) -> dict[str, object]:
     """Run the E4 build and version everything.
 
@@ -1937,9 +2011,10 @@ def rebuild_e4(
     """
     from efb import evaluate, pca_eval, survivor, tercile
 
+    end = pinned_panel_end(end, data_root)
     e3: dict[str, object] | None = None
     if full:
-        e3 = rebuild_e3(data_root=data_root, results_path=None, full=True)
+        e3 = rebuild_e3(data_root=data_root, results_path=None, full=True, end=end)
     model = build_pca_v1(data_root=data_root, store=True)
     covariance = pca_eval.run(str(data_root))
     task3 = tercile.run(data_root)
@@ -1979,6 +2054,7 @@ def rebuild_e4(
         "factors_above_covariance_edge": covariance["covariance_factors_above_edge"],
         "task3_rows": int(len(task3["decomposition"])),
         "task4_min_style_correlation": task4["min_style_correlation"],
+        "panel_end": end,
         "version": payload,
         "previous_data_hash": old_hash,
     }
@@ -1988,6 +2064,7 @@ def rebuild_e5(
     data_root: Path = DATA_ROOT,
     results_path: Path | None = None,
     full: bool = False,
+    end: str | None = None,
 ) -> dict[str, object]:
     """Run the E5 build: XS-v2, the evaluation engine, the champion, the record.
 
@@ -1999,9 +2076,10 @@ def rebuild_e5(
     """
     from efb import eval_risk, evaluate
 
+    end = pinned_panel_end(end, data_root)
     e4: dict[str, object] | None = None
     if full:
-        e4 = rebuild_e4(data_root=data_root, results_path=None, full=True)
+        e4 = rebuild_e4(data_root=data_root, results_path=None, full=True, end=end)
     xs_v2 = build_xs_v2(data_root=data_root, store=True)
     engine = eval_risk.run(data_root=data_root, store=True)
     horizon = eval_risk.horizon_table(data_root=data_root, store=True)
@@ -2038,6 +2116,7 @@ def rebuild_e5(
         "regimes": regimes,
         "decision": decision,
         "haircut": haircut,
+        "panel_end": end,
         "version": payload,
         "previous_data_hash": old_hash,
     }
@@ -2047,6 +2126,7 @@ def rebuild_e6(
     data_root: Path = DATA_ROOT,
     results_path: Path | None = None,
     full: bool = False,
+    end: str | None = None,
 ) -> dict[str, object]:
     """Run the E6 build: the hedging toolkit over the E5 seed books.
 
@@ -2057,9 +2137,10 @@ def rebuild_e6(
     """
     from efb import evaluate, hedge
 
+    end = pinned_panel_end(end, data_root)
     e5: dict[str, object] | None = None
     if full:
-        e5 = rebuild_e5(data_root=data_root, results_path=None, full=True)
+        e5 = rebuild_e5(data_root=data_root, results_path=None, full=True, end=end)
     engine = hedge.run(data_root=data_root, store=True)
     artifact_paths = [
         data_root / rel
@@ -2093,6 +2174,7 @@ def rebuild_e6(
         "full": full,
         "e5": e5,
         "engine": engine_shape,
+        "panel_end": end,
         "version": payload,
         "previous_data_hash": old_hash,
     }
@@ -2102,6 +2184,7 @@ def rebuild_e7(
     data_root: Path = DATA_ROOT,
     results_path: Path | None = None,
     full: bool = False,
+    end: str | None = None,
 ) -> dict[str, object]:
     """Run the E7 build: the alpha lab and the backtest hygiene ledger.
 
@@ -2113,9 +2196,10 @@ def rebuild_e7(
     """
     from efb import alpha, evaluate
 
+    end = pinned_panel_end(end, data_root)
     e6: dict[str, object] | None = None
     if full:
-        e6 = rebuild_e6(data_root=data_root, results_path=None, full=True)
+        e6 = rebuild_e6(data_root=data_root, results_path=None, full=True, end=end)
     engine = alpha.run(data_root=data_root, store=True)
     artifact_paths = [
         data_root / rel
@@ -2153,6 +2237,7 @@ def rebuild_e7(
         "e6": e6,
         "engine": engine_shape,
         "ledger_rows": engine.get("ledger_rows"),
+        "panel_end": end,
         "version": payload,
         "previous_data_hash": old_hash,
     }
@@ -2162,6 +2247,7 @@ def rebuild_e8(
     data_root: Path = DATA_ROOT,
     results_path: Path | None = None,
     full: bool = False,
+    end: str | None = None,
 ) -> dict[str, object]:
     """Run the E8 build: the construction run on synthetic alpha.
 
@@ -2172,9 +2258,10 @@ def rebuild_e8(
     """
     from efb import evaluate, size
 
+    end = pinned_panel_end(end, data_root)
     e7: dict[str, object] | None = None
     if full:
-        e7 = rebuild_e7(data_root=data_root, results_path=None, full=True)
+        e7 = rebuild_e7(data_root=data_root, results_path=None, full=True, end=end)
     engine = size.run(data_root=data_root, store=True)
     size.f84_resampling(data_root=data_root, store=True)
     size.f81b_gls_identity(data_root=data_root, store=True)
@@ -2212,6 +2299,7 @@ def rebuild_e8(
         "full": full,
         "e7": e7,
         "engine": summary.shape if isinstance(summary, pd.DataFrame) else None,
+        "panel_end": end,
         "version": payload,
         "previous_data_hash": old_hash,
     }
@@ -2221,6 +2309,7 @@ def rebuild_e9(
     data_root: Path = DATA_ROOT,
     results_path: Path | None = None,
     full: bool = False,
+    end: str | None = None,
 ) -> dict[str, object]:
     """Run the E9 build: the cost model and the capacity curve.
 
@@ -2229,9 +2318,10 @@ def rebuild_e9(
     """
     from efb import costs, evaluate
 
+    end = pinned_panel_end(end, data_root)
     e8: dict[str, object] | None = None
     if full:
-        e8 = rebuild_e8(data_root=data_root, results_path=None, full=True)
+        e8 = rebuild_e8(data_root=data_root, results_path=None, full=True, end=end)
     engine = costs.run(data_root=data_root, store=True)
     artifact_paths = [
         data_root / rel
@@ -2265,6 +2355,7 @@ def rebuild_e9(
         "full": full,
         "e8": e8,
         "engine": {key: value.shape for key, value in engine.items()},
+        "panel_end": end,
         "version": payload,
         "previous_data_hash": old_hash,
     }
@@ -2274,6 +2365,7 @@ def rebuild_e10(
     data_root: Path = DATA_ROOT,
     results_path: Path | None = None,
     full: bool = False,
+    end: str | None = None,
 ) -> dict[str, object]:
     """Run the E10 build: risk allocation and loss management.
 
@@ -2282,9 +2374,10 @@ def rebuild_e10(
     """
     from efb import allocate, evaluate
 
+    end = pinned_panel_end(end, data_root)
     e9: dict[str, object] | None = None
     if full:
-        e9 = rebuild_e9(data_root=data_root, results_path=None, full=True)
+        e9 = rebuild_e9(data_root=data_root, results_path=None, full=True, end=end)
     engine = allocate.run(data_root=data_root, store=True)
     artifact_paths = [
         data_root / rel
@@ -2322,37 +2415,78 @@ def rebuild_e10(
         "full": full,
         "e9": e9,
         "engine": engine_summary,
+        "panel_end": end,
         "version": payload,
         "previous_data_hash": old_hash,
     }
 
 
 def main() -> None:
-    if "--all" in sys.argv:
+    """One entry point per sprint leg, each with a panel end date.
+
+    `--end YYYY-MM-DD` sets the session the rebuild may reach. Left off, the pin
+    is the stored panel's own last session, so a rebuild that re-reads sources
+    cannot extend the panel by accident; `make rebuild-e1 END=2026-11-11` is how a
+    run says it means to extend it.
+    """
+    argv = sys.argv[1:]
+    end: str | None = None
+    if "--end" in argv:
+        position = argv.index("--end")
+        if position + 1 >= len(argv):
+            raise SystemExit("--end needs a date, e.g. --end 2026-10-02")
+        end = argv[position + 1]
+        argv = argv[:position] + argv[position + 2 :]
+    if "--all" in argv:
         summary = rebuild_e10(
-            results_path=ROOT / "sprints" / "E10" / "RESULTS.json", full=True
+            results_path=ROOT / "sprints" / "E10" / "RESULTS.json", full=True, end=end
         )
-    elif "--e10" in sys.argv:
-        summary = rebuild_e10(results_path=ROOT / "sprints" / "E10" / "RESULTS.json")
-    elif "--e9" in sys.argv:
-        summary = rebuild_e9(results_path=ROOT / "sprints" / "E9" / "RESULTS.json")
-    elif "--e8" in sys.argv:
-        summary = rebuild_e8(results_path=ROOT / "sprints" / "E8" / "RESULTS.json")
-    elif "--e7" in sys.argv:
-        summary = rebuild_e7(results_path=ROOT / "sprints" / "E7" / "RESULTS.json")
-    elif "--e6" in sys.argv:
-        summary = rebuild_e6(results_path=ROOT / "sprints" / "E6" / "RESULTS.json")
-    elif "--e5" in sys.argv:
-        summary = rebuild_e5(results_path=ROOT / "sprints" / "E5" / "RESULTS.json")
-    elif "--e4" in sys.argv:
-        summary = rebuild_e4(results_path=ROOT / "sprints" / "E4" / "RESULTS.json")
-    elif "--e3" in sys.argv:
-        summary = rebuild_e3(results_path=ROOT / "sprints" / "E3" / "RESULTS.json")
-    elif "--e2" in sys.argv:
-        summary = rebuild_e2(results_path=ROOT / "sprints" / "E2" / "RESULTS.json")
+    elif "--e10" in argv:
+        summary = rebuild_e10(
+            results_path=ROOT / "sprints" / "E10" / "RESULTS.json", end=end
+        )
+    elif "--e9" in argv:
+        summary = rebuild_e9(
+            results_path=ROOT / "sprints" / "E9" / "RESULTS.json", end=end
+        )
+    elif "--e8" in argv:
+        summary = rebuild_e8(
+            results_path=ROOT / "sprints" / "E8" / "RESULTS.json", end=end
+        )
+    elif "--e7" in argv:
+        summary = rebuild_e7(
+            results_path=ROOT / "sprints" / "E7" / "RESULTS.json", end=end
+        )
+    elif "--e6" in argv:
+        summary = rebuild_e6(
+            results_path=ROOT / "sprints" / "E6" / "RESULTS.json", end=end
+        )
+    elif "--e5" in argv:
+        summary = rebuild_e5(
+            results_path=ROOT / "sprints" / "E5" / "RESULTS.json", end=end
+        )
+    elif "--e4" in argv:
+        summary = rebuild_e4(
+            results_path=ROOT / "sprints" / "E4" / "RESULTS.json", end=end
+        )
+    elif "--e3" in argv:
+        summary = rebuild_e3(
+            results_path=ROOT / "sprints" / "E3" / "RESULTS.json", end=end
+        )
+    elif "--e2" in argv:
+        summary = rebuild_e2(
+            results_path=ROOT / "sprints" / "E2" / "RESULTS.json", end=end
+        )
     else:
-        summary = rebuild(results_path=ROOT / "sprints" / "E1" / "RESULTS.json")
-    print(json.dumps({"n_steps": summary["n_steps"]}, indent=2))
+        summary = rebuild(
+            results_path=ROOT / "sprints" / "E1" / "RESULTS.json", end=end
+        )
+    print(
+        json.dumps(
+            {"n_steps": summary["n_steps"], "panel_end": summary.get("panel_end")},
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

@@ -2297,3 +2297,46 @@ of the same date in `docs/open_items.md` is withdrawn: its hypothesis (that the
 harness could not line the held-out window up with the artifact) was tested and
 refuted - the binding constraint was the completeness rule on names, not the
 window.
+
+## 2026-10-03: every rebuild is pinned to a panel end date
+
+Decision. `make rebuild-e1` … `make rebuild-e10` take `END=YYYY-MM-DD`, and the
+entry point behind them takes `--end`. Left unset the pin is the **stored panel's
+own last session**, read from the date index of `data/processed/returns.parquet`,
+so a rebuild that re-reads sources cannot extend the panel during a run. A leg that
+**reads** the panel (E2 … E10) refuses a pin earlier than the panel's own end,
+because it cannot un-read rows it has already been handed; `rebuild-e1`, which
+*makes* the panel, may re-cut it. The date every rebuild in this pass used, stated
+once: **2026-10-02**.
+
+Reason. Two reads could grow the panel and neither was bounded by anything a record
+names:
+
+- `prices.load_or_download` returns the cache as it stands once every ticker is
+  present, so a cache refreshed by the live loop carried sessions past the panel's
+  end, and `build_prices_artifact` clipped only the *start* of the window;
+- `universe.build_membership` defaulted its own `end` to **today**, so the
+  membership grid ran to the day of the rebuild.
+
+Both take the pin now, and so do the factor artifact
+(`factors.build_factors_artifact`, the other side of the excess return) and
+`rebuild`, whose `end` defaulted to today. `rebuild_e2` always ran the E1 leg
+(`rebuild(...)` with no end at all), which is why `make rebuild-e2` could move the
+panel on its own; it passes the pin now, and the `--all` chain threads it from the
+top.
+
+Evidence. The stored panel ends 2026-10-02 (4,213 sessions from 2010-01-04, last
+`universe_membership` row 2026-10-02). `tests/test_panel_freeze.py` drives the real
+E1 leg offline on a price cache that carries sessions past the pin: pinned to
+2015-01-08, `raw/prices.parquet`, `processed/returns.parquet` and
+`processed/universe_membership.parquet` all stop there; the same fixture with the pin
+at 2015-01-14 reaches 2015-01-14 — the control that the newer source rows are really
+in the fixture rather than absent from it; and a cache refreshed to fifteen sessions
+before a rebuild with **no** pin still reproduces the 2015-01-08 panel, which is the
+guarantee the item asks for. A pin before the panel raises (`rebuild_e4(end=...)`
+raises before touching an artifact; the helper is asserted directly), and the E1 leg
+is asserted to be the exception that may re-cut it.
+
+Status. On the `backport` branch. `docs/backport_runbook.md` §4 states the date and
+the two rules, `docs/engineering_standards.md` carries the one-line contract, and
+every rebuild in the rest of this pass uses `END=2026-10-02`.

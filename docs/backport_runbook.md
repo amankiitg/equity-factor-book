@@ -78,6 +78,39 @@ the vintage property at all.
    merged commit, with the seed in place.
 6. **Re-score E6 with the month-end finding folded in** (item 3 of the back-port):
    see the entry in `docs/hygiene_ledger.md` dated 2026-10-03.
+7. **Regenerate with the end date stated.** Every rebuild is pinned (§4). At the
+   merge, state the session the seed means to reach —
+   `make rebuild END=<last session before the merge>` — rather than taking the
+   default, which deliberately reproduces the stored panel.
+
+## 4. The panel pin — every rebuild takes an end date
+
+`make rebuild-e1` … `make rebuild-e10` all take `END=YYYY-MM-DD`, and the entry
+point behind them takes `--end`. Left unset the pin is the **stored panel's own last
+session** (`efb.build.pinned_panel_end`, read from the date index of
+`data/processed/returns.parquet`), not the clock, so a rebuild that re-reads sources
+cannot extend the panel by accident. A first build, with no panel on disk, still
+falls back to today, because there is nothing to freeze yet.
+
+**`END=2026-10-02` is the date every rebuild in this pass used**: the stored panel's
+last session (4,213 sessions from 2010-01-04, `data/processed/returns.parquet`),
+which is the panel every re-scored record here was measured on. State that date when
+re-running any of these rebuilds.
+
+Two rules come with it:
+
+- a leg that **reads** the panel (E2 … E10) refuses a pin earlier than the panel's
+owned end, because it cannot un-read rows it has already been handed;
+- `rebuild-e1` is the exception: it *makes* the panel, so an earlier pin re-cuts it,
+  and an `END` past the stored end is how a run says it means to extend the panel.
+
+The price and factor artifacts are clipped at the pin
+(`efb.prices.build_prices_artifact`, `efb.factors.build_factors_artifact`) and the
+membership grid is built to it (`efb.universe.build_membership`). Those are the two
+ways the panel used to grow on an ordinary `make rebuild`: a price cache refreshed by
+a live run, and a membership grid that ran to today. `tests/test_panel_freeze.py`
+holds both directions, together with the control that the newer source rows really
+are in the fixture.
 
 ## 4. What could not be verified on this branch
 

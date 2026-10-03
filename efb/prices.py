@@ -275,16 +275,23 @@ def save_prices(frame: pd.DataFrame, path: Path) -> None:
 
 
 def build_prices_artifact(
-    frame: pd.DataFrame, start: str = "2010-01-04"
+    frame: pd.DataFrame, start: str = "2010-01-04", end: str | None = None
 ) -> pd.DataFrame:
     """Clip the long price frame to the universe window and clean it.
 
     Prices before start are the warm-up window for the first return; they
     stay in the cache but are excluded from data/raw/prices.parquet.
+
+    `end` bounds the other side, and is the panel pin: the cache is served as it
+    stands when every ticker is present, so a cache refreshed by a live run can
+    hold sessions newer than the panel a research rebuild means to reproduce.
     """
     cleaned = clean_prices(frame, start=start)
     dates = cleaned.index.get_level_values("date")
-    return cleaned.loc[dates >= pd.Timestamp(start)].sort_index()
+    keep = dates >= pd.Timestamp(start)
+    if end is not None:
+        keep &= dates <= pd.Timestamp(end)
+    return cleaned.loc[keep].sort_index()
 
 
 def covered_tickers(frame: pd.DataFrame) -> set[str]:

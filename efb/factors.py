@@ -193,8 +193,16 @@ def cross_check_rf(rf: pd.Series, dtb3: pd.Series) -> dict[str, float] | None:
 
 
 def build_factors_artifact(
-    frames: dict[str, pd.DataFrame], start: str = "2010-01-04"
+    frames: dict[str, pd.DataFrame], start: str = "2010-01-04", end: str | None = None
 ) -> pd.DataFrame:
-    """Clip the merged factors to the universe window."""
+    """Clip the merged factors to the universe window.
+
+    `end` is the panel pin, the same one the prices artifact is cut to, so the
+    two sides of the excess return cannot disagree about the panel's last
+    session.
+    """
     merged = merge_factors(frames)
-    return merged.loc[merged.index >= pd.Timestamp(start)]
+    keep = merged.index >= pd.Timestamp(start)
+    if end is not None:
+        keep &= merged.index <= pd.Timestamp(end)
+    return merged.loc[keep]
