@@ -266,7 +266,15 @@ def next_descriptor_design(
         )
 
     panel = probes.load_panel(root)
-    frame = panel["returns"]
+    # The *cleaned* panel, because that is what the published rows were built from.
+    # A row built here from the raw file would disagree with the row the model
+    # publishes for the same session, and the hedge would then be solving for a
+    # cross-section that does not exist: measured, every hedge-vintage comparison
+    # failed once the published descriptors started coming from the cleaned panel
+    # and this builder had not been changed to match. The priced set is read off the
+    # same frame the model reads it off, so the two agree on who is in the
+    # cross-section as well as on the numbers.
+    frame = panel["returns_clean"]
     close = panel["close"]
     volume = panel["volume"]
     shares = panel["shares"]

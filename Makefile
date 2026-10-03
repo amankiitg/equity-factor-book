@@ -7,19 +7,33 @@ RUFF ?= $(if $(VENV_BIN),$(VENV_BIN)/ruff,ruff)
 MYPY ?= $(if $(VENV_BIN),$(VENV_BIN)/mypy,mypy)
 BLACK ?= $(if $(VENV_BIN),$(VENV_BIN)/black,black)
 
-.PHONY: help test test-fast test-all lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild-e4 rebuild-e5 rebuild-e6 rebuild-e7 rebuild-e8 rebuild-e9 rebuild-e10 rebuild evidence verify-evidence web-install web-test web-build clean
+.PHONY: help test test-fast test-all test-live-tree test-merge-guard lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild-e4 rebuild-e5 rebuild-e6 rebuild-e7 rebuild-e8 rebuild-e9 rebuild-e10 rebuild evidence verify-evidence web-install web-test web-build clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-15s %s\n", $$1, $$2}'
 
 test: ## Run the fast subset: no network, no full evening job, no notebook
-	$(PYTEST) tests/ -q -m "not slow"
+	$(PYTEST) tests/ -q -m "not slow and not requires_live_tree and not merge_guard"
 
 test-fast: ## The same as test; kept because the standards name it
-	$(PYTEST) tests/ -q -m "not slow"
+	$(PYTEST) tests/ -q -m "not slow and not requires_live_tree and not merge_guard"
 
 test-all: ## Run everything, slow included; the phase-end evidence, in the background
-	$(PYTEST) tests/ -q
+	$(PYTEST) tests/ -q -m "not requires_live_tree and not merge_guard"
+
+# The live-tree tests are deselected, never skipped, so the summary reports them as
+# "N deselected". Run them deliberately, against a materialised run root, with:
+#   EFB_RUN_ROOT=<run root> $(PYTEST) tests/ -q -m requires_live_tree
+# This is required by the 2026-11-11 pre-merge check on the regenerated seed:
+# see docs/backport_runbook.md.
+test-live-tree: ## Run only the tests that need a live-shaped run root (EFB_RUN_ROOT)
+	@test -n "$$EFB_RUN_ROOT" || { echo "EFB_RUN_ROOT must point at a materialised run root"; exit 2; }
+	$(PYTEST) tests/ -q -m requires_live_tree
+
+# One test, one merge step: live/extend.py must read returns_clean in the same commit
+# that lands this branch. It fails on the branch as pushed, by design.
+test-merge-guard: ## Run the merge guard that the merge commit must turn green
+	$(PYTEST) tests/ -q -m merge_guard
 
 lint: ## Static checks: ruff, mypy, black
 	$(RUFF) check efb dashboard live tests

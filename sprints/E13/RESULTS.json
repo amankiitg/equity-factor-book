@@ -5,19 +5,19 @@
       "stored_numbers": [
         {
           "source": "docs/credit_port_design.md section 13",
-          "value": 107,
+          "value": 109,
           "what": "modules in the map"
         },
         {
           "source": "tests/test_e13_design_note.py::test_every_module_in_the_repository_appears_in_the_map",
-          "value": 103,
+          "value": 105,
           "what": "modules in the repository"
         },
         {
-          "source": "docs/credit_port_design.md section 13, counted over the 117 mapped rows (103 modules in this tree, 4 that arrive with e12, and 10 repository items)",
+          "source": "docs/credit_port_design.md section 13, counted over the 119 mapped rows (105 modules in this tree, 4 that arrive with e12, and 10 repository items)",
           "value": {
             "dropped": 0,
-            "re-specified": 41,
+            "re-specified": 43,
             "unchanged": 76
           },
           "what": "statuses assigned in the map"
@@ -41,8 +41,92 @@
       "verdict": "pass"
     }
   },
+  "revisions": {
+    "revised_at": "2026-10-03",
+    "reason": "On the backport branch two modules were added to the repository and to the map: efb/corporate_actions.py, the record of vendor corporate actions the returns build corrects a print from, and scripts/collect_corporate_actions.py, its collector. The criterion, its threshold and its verdict are unchanged. Only the sample the counts are taken over moved, so the old values are recorded beside the new ones rather than overwritten.",
+    "n_changed": 1,
+    "changed_tickers_or_criteria": [
+      "F13.1"
+    ],
+    "cross_sprint_criteria": [],
+    "changed": {
+      "F13.1": {
+        "changed": true,
+        "old": {
+          "verdict": "pass",
+          "modules_in_the_repository": 103,
+          "modules_in_the_map": 107,
+          "statuses": {
+            "unchanged": 76,
+            "re-specified": 41,
+            "dropped": 0
+          },
+          "deliverable_lines": 1007
+        },
+        "new": {
+          "verdict": "pass",
+          "modules_in_the_repository": 105,
+          "modules_in_the_map": 109,
+          "statuses": {
+            "unchanged": 76,
+            "re-specified": 43,
+            "dropped": 0
+          },
+          "deliverable_lines": 1026
+        }
+      }
+    },
+    "history": [
+      {
+        "revised_at": "2026-09-27",
+        "what": "the values the sprint closed with",
+        "modules_in_the_repository": 86,
+        "modules_in_the_map": 90,
+        "statuses": {
+          "unchanged": 66,
+          "re-specified": 34,
+          "dropped": 0
+        }
+      },
+      {
+        "revised_at": "2026-10-02",
+        "what": "re-measured after page, e13 and alpha-refresh were folded into week1-orders; the sixteen additions are the modules those branches carried, and this measurement is the one recorded in the notes below",
+        "modules_in_the_repository": 102,
+        "modules_in_the_map": 106,
+        "statuses": {
+          "unchanged": 76,
+          "re-specified": 40,
+          "dropped": 0
+        }
+      },
+      {
+        "revised_at": "2026-10-03",
+        "what": "the values stored until this edit, which were one module above the 2026-10-02 measurement and one below this one; the module that moved between 2026-10-02 and this edit is on main and was not recorded here",
+        "modules_in_the_repository": 103,
+        "modules_in_the_map": 107,
+        "statuses": {
+          "unchanged": 76,
+          "re-specified": 41,
+          "dropped": 0
+        },
+        "deliverable_lines": 1007
+      },
+      {
+        "revised_at": "2026-10-03",
+        "what": "this edit: efb/corporate_actions.py and scripts/collect_corporate_actions.py, both added by the backport branch and both mapped as re-specified",
+        "modules_in_the_repository": 105,
+        "modules_in_the_map": 109,
+        "statuses": {
+          "unchanged": 76,
+          "re-specified": 43,
+          "dropped": 0
+        },
+        "deliverable_lines": 1026
+      }
+    ]
+  },
   "deliverable": {
-    "lines": 1007,
+    "lines": 1026,
     "path": "docs/credit_port_design.md",
     "required_sections_present": 13,
     "required_sections_required": 13
@@ -64,7 +148,9 @@
     "F13.1 is a statement about the repository and the document together, so it is checked by a test that enumerates the repository rather than claimed: 86 modules found, 86 in the map when the sprint closed.",
     "The module counts were re-measured on 2026-10-02, after page, e13 and alpha-refresh were folded into week1-orders: 102 modules in the tree against 86 at registration, 106 in the map against 90, and the statuses 76 unchanged and 40 re-specified against 66 and 34. The sixteen additions are the modules the folded branches carried, listed in the map with their own status and reason. The criterion, its threshold and its verdict are unchanged; only the sample the count is taken over moved, and the old values are recorded beside the new ones here rather than overwriting the note's history.",
     "One module was missing from the map when the test first ran (efb/models/__init__.py). It is recorded here because the test, not a reviewer, found it.",
-    "Four further modules are mapped by name rather than found in the tree (efb/attribution.py, live/attribution_job.py, scripts/build_attribution.py, scripts/review_week.py): they are E12's attribution engine, which lands with the unmerged e12 branch. The map would be incomplete for E1 to E12 without them, and the suite fails if they are missing."
+    "Four further modules are mapped by name rather than found in the tree (efb/attribution.py, live/attribution_job.py, scripts/build_attribution.py, scripts/review_week.py): they are E12's attribution engine, which lands with the unmerged e12 branch. The map would be incomplete for E1 to E12 without them, and the suite fails if they are missing.",
+    "The module counts moved once more on 2026-10-03, on the backport branch: two modules were added to the repository and to the map, efb/corporate_actions.py and scripts/collect_corporate_actions.py, so the tree count is 105 and the map 109. The stored values before this edit were 103 and 107, and the 2026-10-02 re-measurement recorded 102 and 106; every value in that sequence is in the revisions block rather than overwritten here. The criterion, its threshold and its verdict are unchanged.",
+    "The deliverable's line count is stored as 1026, which is the measured value. The stored 1007 had already been left behind by the committed document: it was 1024 lines before this branch added two, so the move records a stale number as well as this branch's two lines, and it is in the revisions block for that reason."
   ],
   "registered_at": "2026-09-27T12:27:14+00:00",
   "sprint": "E13",

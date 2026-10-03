@@ -60,6 +60,8 @@ timeout_method = "signal"
 markers = [
     "integration: reads the built artifacts or an executed notebook instead of a fixture",
     "slow: over about two seconds, or it touches the network, runs the whole evening job or executes a notebook; `make test` skips it and `make test-all` does not",
+    "requires_live_tree: needs a live-shaped run root (one descriptor row per session), supplied by EFB_RUN_ROOT; the test fails, never skips, when it is missing",
+    "merge_guard: fails on this branch by design and passes only after the 2026-11-11 merge commit; deselected by default, run by the merge checklist in docs/backport_runbook.md",
 ]
 
 [tool.black]
