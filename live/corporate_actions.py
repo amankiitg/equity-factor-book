@@ -593,6 +593,96 @@ def spinoff_rows(
     return rows
 
 
+# The rate columns arrived after the table did, so a record written before them - or
+# one read from a store that has not been migrated - carries a null where a rate
+# belongs. The rates are informational: `factor` is what the rule applies.
+DEFAULT_RATE = 1.0
+
+
+def _rate(value: Any) -> float:
+    """A stored rate, or the 1:1 default when the column is absent or null."""
+    if value is None or pd.isna(value):
+        return DEFAULT_RATE
+    number = float(value)
+    return number if math.isfinite(number) and number > 0 else DEFAULT_RATE
+
+
+def spinoffs_from_rows(rows: pd.DataFrame) -> list[Spinoff]:
+    """The spin-offs an appendix table records, read back as the rule's records.
+
+    `spinoff_rows` is what writes them, so this is its reader and the two agree by
+    construction: `factor` is the child's shares per parent share, `new_ticker` is the
+    child and `effective_date` is the ex-date. A row `explained_by` something else is
+    a split and is not a spin-off here, and a frame without the column at all reads as
+    no records rather than as a table of splits: a rebuild that guessed would move
+    returns nobody recorded.
+
+    A row that names no child, or carries no usable factor, is kept with
+    `unusable_reason` set rather than dropped. The parent's cell is then nulled by the
+    rule that applies it, which is the point: a record that cannot be applied must not
+    leave the raw print standing as if it were a return.
+    """
+    if rows is None or len(rows) == 0 or "explained_by" not in rows.columns:
+        return []
+    wanted = rows.loc[rows["explained_by"].astype(str) == "spinoff"]
+    out: list[Spinoff] = []
+    for row in wanted.to_dict("records"):
+        parent = str(row.get("ticker") or "").strip()
+        when = row.get("effective_date")
+        if not parent or when is None or pd.isna(when):
+            continue
+        child = str(row.get("new_ticker") or "").strip()
+        factor = row.get("factor")
+        usable = (
+            factor is not None
+            and not pd.isna(factor)
+            and math.isfinite(float(factor))
+            and float(factor) > 0
+        )
+        unusable: str | None = None
+        if not child:
+            unusable = "no child symbol"
+        elif not usable:
+            unusable = f"factor {factor!r} cannot form a share ratio"
+        out.append(
+            Spinoff(
+                parent=parent,
+                child=child,
+                ex_date=_normalized(when),
+                child_per_parent=None if unusable else float(factor),
+                source_rate=_rate(row.get("source_rate")),
+                new_rate=_rate(row.get("new_rate")),
+                source=str(row.get("source") or SPINOFF_SOURCE),
+                unusable_reason=unusable,
+            )
+        )
+    return sorted(out, key=lambda spinoff: (spinoff.parent, spinoff.child))
+
+
+def apply_recorded(
+    frame: pd.DataFrame, prices_frame: pd.DataFrame, spinoffs: list[Spinoff]
+) -> list[SpinoffOutcome]:
+    """Re-apply recorded spin-offs to a frame the rebuild has just recomputed.
+
+    The append path corrects the session it appends. `extend_returns` recomputes every
+    session from the stored prices, and neither vendor adjusts history for a spin-off,
+    so the correction is gone the next evening unless it is re-applied from its record.
+    That is what this is for.
+
+    Nothing is read back from the frame, so calling it twice writes the same number:
+    the record's factor and the stored closes are the whole input. An event whose child
+    close cannot be read nulls that one cell, exactly as the append path does, because
+    the raw print is the number the correction exists to remove - a hole is reported by
+    the hygiene layer and a wrong return is not.
+    """
+    out: list[SpinoffOutcome] = []
+    for spinoff in spinoffs:
+        outcome = _apply_spinoff(frame, prices_frame, spinoff, None)
+        if outcome is not None:
+            out.append(outcome)
+    return out
+
+
 def describe_spinoffs(events: list[SpinoffOutcome]) -> list[str]:
     """`spinoff: CTVA -> VYLR 1:1 applied` per applied spin-off, for the message."""
     return [event.spinoff.label for event in events if event.spinoff.applicable]
@@ -820,10 +910,14 @@ def _stored_pair(
 def _close_on(
     prices_frame: pd.DataFrame, ticker: str, session: pd.Timestamp
 ) -> float | None:
-    tickers = prices_frame.index.get_level_values("ticker")
-    if ticker not in set(tickers) or session not in set(
-        prices_frame.index.get_level_values("date")
-    ):
+    """One session's raw close for one ticker, or None when that row is not there.
+
+    The ticker and the session are asked for together. Asked for apart, a name the
+    panel prices on other sessions and not on this one passes both checks and then
+    raises on the lookup, which is the difference between a nulled cell and a stopped
+    run - the case the missing-close rule exists for.
+    """
+    if (session, ticker) not in prices_frame.index:
         return None
     value = prices_frame.loc[(session, ticker), "close"]
     if value is None or pd.isna(value):

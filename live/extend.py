@@ -16,6 +16,7 @@ import pandas as pd
 
 from efb import hygiene, prices, probes, returns, spy, universe
 from efb.models import fundamental as fx
+from live import corporate_actions, store
 
 logger = logging.getLogger(__name__)
 
@@ -210,12 +211,41 @@ def extend_prices(
     return int(tail.index.get_level_values("date").nunique())
 
 
+def recorded_spinoffs() -> list[corporate_actions.Spinoff]:
+    """Every spin-off the appendix records, for the rebuild to re-apply.
+
+    A spin-off moves one session's return and neither price vendor adjusts the history
+    for it, so the stored prices alone can never produce the right number: the
+    correction is a recorded fact rather than a derived one. `extend_returns`
+    recomputes every session from those prices, which is why the correction has to be
+    re-applied from its record every evening instead of being kept in the returns file
+    it writes. Without this, the cell reverts to the raw print - CTVA on 2026-10-01,
+    -83.81%, the 77.65 close becoming 12.57 with a VYLR share paid alongside it - and
+    the fit reads that print as a return. Measured on the 2026-10-01 run: the cell was
+    flagged as an unexplained large move and the whole 2026-10-02 cross-section was
+    built from it.
+
+    The store is asked and never written to. A tree with no store behind it - a test, a
+    fresh container - reads as no records, and a store that cannot answer is a warning
+    rather than a stopped evening: the run's own prices are not the store's problem.
+    """
+    try:
+        rows = store.select(corporate_actions.TABLE)
+    except Exception:  # noqa: BLE001 - the run goes on without its own record
+        logger.warning("corporate actions could not be read", exc_info=True)
+        return []
+    return corporate_actions.spinoffs_from_rows(rows)
+
+
 def extend_returns(data_root: Path | None = None) -> int:
     """Recompute returns and flags over the extended price frame.
 
     Identity drops and truncations are applied exactly as the E1 build
     applies them, so a reused symbol does not reappear with another
     company's history. Returns the number of new sessions.
+
+    Recorded spin-offs are re-applied before the flags are built, because this
+    recomputes every session from the stored prices and the correction is not in them.
     """
     from efb import identity
 
@@ -225,6 +255,20 @@ def extend_returns(data_root: Path | None = None) -> int:
     prices_frame = pd.read_parquet(root / "raw" / "prices.parquet")
     factors_frame = pd.read_parquet(root / "raw" / "factors_ff.parquet")
     returns_frame = returns.compute_returns(prices_frame, factors_frame["rf"])
+    # A spin-off is put back from its record here, between the arithmetic and every
+    # reader of it. Nothing is read back from `returns_frame`, so the value is the one
+    # the append path wrote last evening and re-running changes nothing.
+    for outcome in corporate_actions.apply_recorded(
+        returns_frame, prices_frame, recorded_spinoffs()
+    ):
+        logger.info(
+            "re-applied %s: the %s return on %s is %s where the prices alone give %s",
+            outcome.spinoff.label,
+            outcome.spinoff.parent,
+            outcome.session.date(),
+            outcome.adjusted_return,
+            outcome.raw_return,
+        )
     identity_table = pd.read_parquet(root / "processed" / "ticker_identity.parquet")
     readded_path = root / "processed" / "ticker_identity_readded.parquet"
     readded = pd.read_parquet(readded_path) if readded_path.exists() else None

@@ -239,6 +239,33 @@ def test_a_missing_child_close_nulls_that_one_cell_and_names_it():
     assert "missing" in flag["flag"] and "nulled" in flag["flag"]
 
 
+def test_a_child_the_panel_prices_only_on_another_session_is_unreadable():
+    """The child's close is asked for as a pair, not as a ticker and a date apart.
+
+    VYLR starts trading after the ex-date, so a panel that carries the name and
+    carries the session but not that one pair passed both of the separate checks and
+    then raised on the lookup: a stopped run in the one case the rule promises a
+    nulled cell. The pair is asked for together, so an absent row reads as a close
+    that cannot be read, which is what the message then names.
+    """
+    frame, prices = ctva_frames()
+    panel = pd.concat(
+        [prices, prices_frame([("2026-10-02", "VYLR", 67.26, 67.26, 0.0)])]
+    )
+    # the shape of the bug: the name is in the panel and so is the session, and the
+    # pair of them is not
+    assert "VYLR" in set(panel.index.get_level_values("ticker"))
+    assert SESSION in set(panel.index.get_level_values("date"))
+    assert (SESSION, "VYLR") not in panel.index
+
+    outcome = ca.apply_to_append(
+        frame, panel, since=PRIOR, spinoffs={SESSION: [a_spinoff()]}
+    )
+
+    assert pd.isna(frame.loc[(SESSION, "CTVA"), "r"])
+    assert ca.missing_child_notes(outcome.spinoffs) == ["VYLR (CTVA)"]
+
+
 def test_a_child_the_panel_already_prices_costs_no_request():
     """The common case: the spun-off ticker is in tonight's universe.
 
