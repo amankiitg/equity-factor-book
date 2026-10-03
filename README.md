@@ -8,20 +8,16 @@
 - **Live:** a daily paper-traded book on Alpaca, factor-hedged with an exact
   factor-mimicking-portfolio hedge, running on a cron with automated
   reconciliation.
-- **How it is built:** an implementer and a reviewer work through handoff files,
-  every falsification criterion is pre-registered before the numbers exist, and
+- **How it is built:** two AI agents, one implementing and one reviewing and
+  planning, coordinate through handoff files under pre-registered criteria, and
   every headline number is checked against a stored result by a traceability
   test.
 - **Where to start:** [`docs/research/STATUS_REPORT.md`](docs/research/STATUS_REPORT.md).
+- **What it is not:** a measurement instrument, not a search for an edge. No
+  signal here is claimed to have one, and a documented negative result counts as
+  a finished piece of work if it prevents a bad decision later.
 
-Paleologo's risk and portfolio framework, rebuilt end to end on free equity
-data: every component of *Advanced Portfolio Management* and *The Elements of
-Quantitative Investing*, one sprint per component, each with pre-registered
-pass/fail criteria written down before the numbers existed, and the whole stack
-then taken live as a hedged long/short paper book that trades unattended every
-evening. It is a measurement instrument, not a search for an edge. No signal
-here is claimed to have one, and a documented negative result counts as a
-finished piece of work if it prevents a bad decision later.
+![The live page, as published after an evening run](docs/img/live_dashboard.png)
 
 ## What it found, honestly
 
@@ -29,9 +25,12 @@ finished piece of work if it prevents a bad decision later.
   they were always members earns **365.10 bp a year** more than a point-in-time
   universe (E1, F1.5), because only 44.79 percent of deleted members have
   recoverable history against a 70 percent bar.
-- **Every candidate signal is NULL against the known factors.** All six signals
-  failed the RG-Signal gate. The live book's factor-neutral IC is **-0.0031**
-  (t -0.51) at horizon 21, against a raw IC of 0.0121 (t 5.04) at horizon 1.
+- **The risk machinery catches a false positive.** The raw idio-momentum
+  signal looks significant, with an IC of 0.0121 (t 5.04) at horizon 1, but
+  neutralized against the risk model's own factors it is a factor bet in
+  disguise: the factor-neutral IC is **-0.0031** (t -0.51) at horizon 21. All
+  six candidate signals are NULL once the factors are removed, and the gate said
+  so before any of them traded.
 - **The champion model is provisional.** XS-v1 wins the pre-registered champion
   rule, but F5.1 failed: no version is calibrated across all portfolio families,
   and the stress haircut is 1.8471.
@@ -77,7 +76,7 @@ flowchart LR
 
 ## The live book
 
-The book is a **paper** hedged long/short equity book at a final NAV of
+The book is a **paper** hedged long/short equity book at a starting NAV of
 $1,000,000. It holds the construction row the owner chose, the share-only floor
 at 20 whole shares renormalized to gross 1.0, and hedges with the exact
 factor-mimicking-portfolio hedge built on the next session's row. It runs
@@ -169,7 +168,7 @@ Cloudflare Worker behind Cloudflare Access, described in `web/README.md`.
 ## Setup
 
 ```bash
-python3.11 -m venv .venv
+python3.14 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 pre-commit install
