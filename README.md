@@ -1,5 +1,19 @@
 # Equity Factor Book (EFB)
 
+## At a glance
+
+- **What:** a full systematic long/short equity stack built from scratch on free
+  data, following Paleologo's APM and EQI: risk models, hedging, sizing,
+  transaction costs and ex-post attribution, across thirteen sprints.
+- **Live:** a daily paper-traded book on Alpaca, factor-hedged with an exact
+  factor-mimicking-portfolio hedge, running on a cron with automated
+  reconciliation.
+- **How it is built:** an implementer and a reviewer work through handoff files,
+  every falsification criterion is pre-registered before the numbers exist, and
+  every headline number is checked against a stored result by a traceability
+  test.
+- **Where to start:** [`docs/research/STATUS_REPORT.md`](docs/research/STATUS_REPORT.md).
+
 Paleologo's risk and portfolio framework, rebuilt end to end on free equity
 data: every component of *Advanced Portfolio Management* and *The Elements of
 Quantitative Investing*, one sprint per component, each with pre-registered
