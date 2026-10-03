@@ -78,6 +78,41 @@ def test_write_registry_preserves_rules_and_upserts(tmp_path: Path) -> None:
     assert reloaded["models"]["TS-v1"]["parameters"] == {"window": 252}
 
 
+def test_write_registry_keeps_the_live_construction(tmp_path: Path) -> None:
+    """A rebuild upserts its own fields and must not drop the live decision.
+
+    Measured on the backport branch: `efb.build.rebuild_e3` replaced the whole
+    XS-v1 entry, dropped `live`, and every rebuild after that sized the book
+    with no floor, so the "kept" book came back as all 502 names.
+    """
+    path = tmp_path / "registry.json"
+    universe, data_paths = _inputs(tmp_path)
+    entry = registry.model_entry(
+        "XS-v1", "statistical", {}, universe, data_paths, "w", "d", "r"
+    )
+    entry["live"] = {
+        "construction": "share_only",
+        "share_floor": 20,
+        "dollar_floor": 0,
+        "floor_iterated": True,
+    }
+    registry.write_registry(path, entry)
+    assert registry.live_construction(registry.load(path), "XS-v1")["share_floor"] == 20
+    # the rebuild registers the same version again and does not set `live`
+    rebuilt = registry.model_entry(
+        "XS-v1", "statistical", {"window": 504}, universe, data_paths, "w", "d", "r"
+    )
+    assert "live" not in rebuilt
+    registry.write_registry(path, rebuilt)
+    reloaded = registry.load(path)
+    assert (
+        registry.live_construction(reloaded, "XS-v1")["share_floor"] == 20
+    ), "a rebuild dropped the owner's construction and would size with no floor"
+    # the rebuild's own fields still win
+    assert reloaded["models"]["XS-v1"]["parameters"] == {"window": 504}
+    assert reloaded["models"]["XS-v1"]["champion"] is False
+
+
 def test_min_position_dollars_reads_the_registry_and_defaults_to_zero() -> None:
     payload = {
         "models": {

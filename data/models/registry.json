@@ -377,7 +377,14 @@
       "eligible_for_champion": true,
       "walkthrough": "notebooks/E3_walkthrough.html",
       "deliverable": "docs/research/E3_factor_model_note.md",
-      "results": "sprints/E3/RESULTS.json"
+      "results": "sprints/E3/RESULTS.json",
+      "live": {
+        "construction": "share_only",
+        "share_floor": 20,
+        "dollar_floor": 0,
+        "floor_iterated": true,
+        "construction_note": "E11 owner decision 2026-09-24: minimum 20 whole shares per name, no dollar floor, enforced on the final weights to a fixed point. Replaces min_position_dollars (E11 Addition 4), which is withdrawn."
+      }
     },
     "PCA-v1": {
       "version": "PCA-v1",

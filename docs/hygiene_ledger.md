@@ -2448,3 +2448,48 @@ offender list whose series does overlap its stint is left alone.
 Status. On the `backport` branch. `tests/test_identity.py` gains the rule and its
 control; the removal is logged in `events.parquet`, which is where a reader looks
 for a panel change that has no other trace.
+
+## 2026-10-03: a rebuild dropped the live construction, so the floor enforced nothing
+
+Decision. `efb.registry.write_registry` now upserts only the fields the rebuild
+owns and carries the rest of the entry over, and the `live` construction block
+(the owner's 2026-09-24 share-only choice) is restored on XS-v1 in
+`data/models/registry.json`. A rebuild of the research artifacts may not change
+how the book is sized.
+
+Reason. `write_registry` did `models[entry["version"]] = entry`, replacing the
+whole entry, so the E3 rebuild on this branch wrote a fresh XS-v1 entry with no
+`live` key. `registry.live_construction` then defaulted `share_floor` to 0, and
+with both floors zero `below_floor` returns all-False, so the drop-then-admit
+search kept every name. The "kept" book silently became the full model book. It
+is the same defect class as the missing champion flag the runbook already
+records: a rebuild replacing an entry loses the keys the research path does not
+own. Measured 2026-10-03: `tests/test_e11_evening.py` was failing on the branch
+before the restore and passes after it (37 passed).
+
+Evidence, `live.evening_job.build_proposal` on the frozen panel, one tree per
+cell, `n_eff_kept` / `n_kept`:
+
+| tree | floor off (registry as the rebuild left it) | floor on (`live` restored) |
+|---|---|---|
+| corrected panel (2026-10-02) | **282.2521 / 502** | **143.2554 / 188** |
+| panel before the back-port (2026-09-21) | 275.7918 / 499 | 128.6541 / 173 |
+
+So the unexplained +142.5 in the 131.9175 to 281.41 decomposition is the disabled
+floor: on one tree, turning it off moves `n_eff_kept` by **+138.997** (corrected)
+and **+147.138** (pre-back-port), and it moves `n_kept` from 188 to 502. The
+three corrections together are the small term: on the corrected panel they move
+`n_eff_kept` from 144.9386 (cleaning and spin-offs reverted, floor on) to
+143.2554, and with the floor off, from 275.7918 to 282.2521 (+6.46). A 502-name
+book cannot meet a 20-share floor at $1mn NAV and gross 1.0 (502 x 20 shares at
+about $150 is about $1.5mn), which is what made the number suspect.
+
+Test. `tests/test_registry.py::test_write_registry_keeps_the_live_construction`
+upserts an entry that has `live` with one that does not, and requires the floor
+to survive; it fails on the version before this commit (`assert 0 == 20`) and
+passes after.
+
+Status. On the `backport` branch. **This would have changed the live book at the
+merge**: the regenerated seed would have carried a registry with no floor, and
+the evening would have sized all 502 names. The rest of the +142.5 question is
+closed; there is no further unexplained term.

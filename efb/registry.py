@@ -78,7 +78,15 @@ def _combined_hash(paths: list[Path]) -> str:
 
 
 def write_registry(path: Path, entry: dict[str, Any]) -> dict[str, Any]:
-    """Upsert one model entry, preserving the pre-registered rule and notes."""
+    """Upsert one model entry, preserving the pre-registered rule and notes.
+
+    A rebuild upserts the fields it owns and leaves the rest of the entry
+    alone. `live` records the owner's construction decision (E11), and a
+    research rebuild that silently replaced the whole entry dropped it, which
+    sized the book with no floor at all: measured 2026-10-03, `n_kept` came back
+    as the full 502-name book against the 180 the floor keeps. The champion flag
+    is not carried over: `model_entry` always sets it, and E5 re-elects it.
+    """
     if path.exists():
         payload = json.loads(path.read_text())
     else:
@@ -87,7 +95,8 @@ def write_registry(path: Path, entry: dict[str, Any]) -> dict[str, Any]:
     payload.setdefault("champion_rule", DEFAULT_CHAMPION_RULE)
     payload.setdefault("family_notes", DEFAULT_FAMILY_NOTES)
     models = payload.setdefault("models", {})
-    models[entry["version"]] = entry
+    merged = {**models.get(entry["version"], {}), **entry}
+    models[entry["version"]] = merged
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n")
     return payload
