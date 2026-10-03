@@ -1994,3 +1994,53 @@ page is tested against now take their book from the manifest's own `kept_book`,
 so a test can require the list to be the run's own count rather than the 150-name
 vintage the committed proposal parquet holds, which is what the fixture's
 `n_kept` of 180 disagreed with until this session.
+
+## 2026-10-02: 2026-10-01 and 2026-10-02 refit from the corrected panel, with CTVA kept
+
+Decision. The recorded CTVA/VYLR spinoff puts the session's true total return
+(+4.0953 percent, 0.04095299733015434) into the panel where the vendor's -83.81
+percent print was, and both sessions were then re-derived from that panel **with
+every name kept**, CTVA included, by `scripts/repair_session.py --refit`. This
+supersedes the entry above, `2026-10-02: CTVA's 2026-10-01 print excised from the
+fitted session`, and does not contradict it: that one refit the session *without*
+CTVA and left its row null, which was right while the cell held a print nothing
+could price, and is wrong now that the cell holds a real return, because masking it
+would delete an observation instead of correcting one. `--refit` is that same
+script's second mode: one session only, the same payload and unique-key checks
+before any write, the same guarantee that every other session's rows are left as
+they were, and a dry run by default.
+
+Reason. The alpha contract is `IC x sigma x z x kappa` and the weight scales like
+`z / sigma`, so a name's own row is a signal input and a risk input at once. The
+recorded return gives CTVA a specific return of **0.043641624336258365** on
+2026-10-01 where the emergency repair had left a null, and a specific variance of
+**0.00030250698902862356** in place of the print's 0.0102099036820174. On
+2026-10-02, whose stored rows had been fitted from a window holding the print, the
+refit moves CTVA's specific return from -0.0381447197045448 to
+**-0.044170591723988614** and its variance from 0.000301702272011716 to
+**0.0003345864384888789**; the session's other names move with it, by up to
+6.026e-03 in specific-return units, which is the print leaving the fit rather than
+sitting inside it. Its row at 2026-10-02 is kept, not removed.
+
+Evidence. The panel carries 0.04095299733015434 on 2026-10-01 and
+-0.051710392546623796 on 2026-10-02 before and after the refit, and
+`processed/returns.parquet` is not written by this script at all, so the print's
+own record is untouched (`returns_untouched: true` in all four runs). Per session
+the appendix row counts are identical before and after, `descriptors` 3514,
+`factor_returns` 18, `specific_returns` 493, `specific_var` 499, and
+`row_set_changed` is empty, so no key was gained or lost. `history_hash_before ==
+history_hash_after` in every run, so no session before the one being refit moved.
+Nothing was written before the dry runs showed the two values above, and the store
+was read back afterwards: CTVA's specific return and variance are those values on
+both dates, and `efb.e11_corporate_actions` holds the record
+(2026-10-01, CTVA, `spinoff`, VYLR, factor 1.0).
+
+Status. Written, in commit 50456f3, which also adds the mode and its two tests
+(`tests/test_repair_session.py`: 8 passed; the refit keeps the name's row, and a
+second refit on a corrected panel changes nothing). One limit is recorded rather
+than smoothed over: rerunning `--refit` reproduces CTVA's specific return and
+variance to one or two units in the last place and leaves `xs_r2` byte-identical,
+while the other four artifacts' session hashes differ, because those hashes are
+taken over the in-memory frame and so are not a byte comparison across a run
+boundary. The rerun's guarantee is therefore "the same numbers to floating-point
+precision", not byte equality.
