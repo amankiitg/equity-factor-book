@@ -1,7 +1,7 @@
 {
   "sprint": "E9",
-  "evaluated_at": "2026-09-21T23:25:35+00:00",
-  "data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
+  "evaluated_at": "2026-10-03T20:31:56+00:00",
+  "data_hash": "e4b8f9ca4a21de8606abd0f55dba90c047f1ec6d7994ecc2d7569615ee8eb4a2",
   "criteria": {
     "F9.1": {
       "criterion": "Net Sharpe declines monotonically with AUM; the halving AUM is stored.",
@@ -20,6 +20,25 @@
           "0.1_0.25": 2154434690.031878,
           "0.1_0.5": 464158883.3612773,
           "0.1_1.0": 100000000.0
+        },
+        "e11_constraints": {
+          "reference_ir": 0.3968816556102802,
+          "reference_cost": 0.27345553226728436,
+          "short_gross": 0.49964075306984623,
+          "borrow_cost_share": 0.0031052383851164446,
+          "tested_aum": 1000000.0,
+          "min_notional_skipped_legs_share": 0.06036540864165461,
+          "min_notional_skipped_turnover_share": 0.002461210203322223,
+          "min_notional_ir_ratio": 0.9992040649304437,
+          "reversal_legs_share": 0.3322175628703257,
+          "reversal_turnover_share": 0.5204448395904581,
+          "reversal_ir_upper_bound_ratio": 0.7691270378938796,
+          "size_proxy_ir_ratio": 0.9619510376786984,
+          "borrow_rate": 0.02,
+          "min_notional": 250.0,
+          "borrow_availability_history": 0.0,
+          "borrow_availability_proxy": 1.0,
+          "seeds": 5.0
         }
       },
       "verdict": "fail",
@@ -161,15 +180,19 @@
   },
   "revisions": {
     "previous_data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
-    "data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
-    "n_changed": 0,
-    "changed_tickers_or_criteria": [],
+    "data_hash": "e4b8f9ca4a21de8606abd0f55dba90c047f1ec6d7994ecc2d7569615ee8eb4a2",
+    "n_changed": 1,
+    "changed_tickers_or_criteria": [
+      "F9.1"
+    ],
     "cross_sprint_criteria": [],
     "changed": {
       "F9.1": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "fail",
+          "criterion": "Net Sharpe declines monotonically with AUM; the halving AUM is stored.",
+          "threshold": "net Sharpe monotone in AUM; halving AUM stored",
           "stored_numbers": {
             "n_monotonicity_violations_net_sharpe": 0,
             "n_monotonicity_violations_net_mean": 0,
@@ -189,6 +212,8 @@
         },
         "new": {
           "verdict": "fail",
+          "criterion": "Net Sharpe declines monotonically with AUM; the halving AUM is stored.",
+          "threshold": "net Sharpe monotone in AUM; halving AUM stored",
           "stored_numbers": {
             "n_monotonicity_violations_net_sharpe": 0,
             "n_monotonicity_violations_net_mean": 0,
@@ -203,6 +228,25 @@
               "0.1_0.25": 2154434690.031878,
               "0.1_0.5": 464158883.3612773,
               "0.1_1.0": 100000000.0
+            },
+            "e11_constraints": {
+              "reference_ir": 0.3968816556102802,
+              "reference_cost": 0.27345553226728436,
+              "short_gross": 0.49964075306984623,
+              "borrow_cost_share": 0.0031052383851164446,
+              "tested_aum": 1000000.0,
+              "min_notional_skipped_legs_share": 0.06036540864165461,
+              "min_notional_skipped_turnover_share": 0.002461210203322223,
+              "min_notional_ir_ratio": 0.9992040649304437,
+              "reversal_legs_share": 0.3322175628703257,
+              "reversal_turnover_share": 0.5204448395904581,
+              "reversal_ir_upper_bound_ratio": 0.7691270378938796,
+              "size_proxy_ir_ratio": 0.9619510376786984,
+              "borrow_rate": 0.02,
+              "min_notional": 250.0,
+              "borrow_availability_history": 0.0,
+              "borrow_availability_proxy": 1.0,
+              "seeds": 5.0
             }
           }
         }
@@ -211,6 +255,8 @@
         "changed": false,
         "old": {
           "verdict": "fail",
+          "criterion": "The turnover-penalized optimizer cuts turnover by more than 50% with less than 20% loss of ex-ante IR.",
+          "threshold": "turnover cut above 50%, IR loss below 20%",
           "stored_numbers": {
             "0.02": {
               "turnover_cut": 0.37549626103844624,
@@ -228,6 +274,8 @@
         },
         "new": {
           "verdict": "fail",
+          "criterion": "The turnover-penalized optimizer cuts turnover by more than 50% with less than 20% loss of ex-ante IR.",
+          "threshold": "turnover cut above 50%, IR loss below 20%",
           "stored_numbers": {
             "0.02": {
               "turnover_cut": 0.37549626103844624,
@@ -248,6 +296,8 @@
         "changed": false,
         "old": {
           "verdict": "not evaluable",
+          "criterion": "Corwin-Schultz spread estimates correlate above 0.5 with size rank (smaller names wider).",
+          "threshold": "spread-size-rank correlation above 0.5",
           "stored_numbers": {
             "spread_size_rank_correlation": NaN,
             "raw_cs_size_rank_correlation": -0.47129396780020943,
@@ -257,6 +307,8 @@
         },
         "new": {
           "verdict": "not evaluable",
+          "criterion": "Corwin-Schultz spread estimates correlate above 0.5 with size rank (smaller names wider).",
+          "threshold": "spread-size-rank correlation above 0.5",
           "stored_numbers": {
             "spread_size_rank_correlation": NaN,
             "raw_cs_size_rank_correlation": -0.47129396780020943,
@@ -269,6 +321,8 @@
         "changed": false,
         "old": {
           "verdict": "pass",
+          "criterion": "New in E9: the halving AUM stored per rho with its sensitivity to the impact coefficient k.",
+          "threshold": "halving AUM stored per rho, sensitivity to k stored",
           "stored_numbers": {
             "0.02": {
               "k_0.25": NaN,
@@ -289,6 +343,8 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "New in E9: the halving AUM stored per rho with its sensitivity to the impact coefficient k.",
+          "threshold": "halving AUM stored per rho, sensitivity to k stored",
           "stored_numbers": {
             "0.02": {
               "k_0.25": NaN,
@@ -312,6 +368,8 @@
         "changed": false,
         "old": {
           "verdict": "pass",
+          "criterion": "New in E9: the chosen spread estimator's median half-spread by size decile stored beside the anchor, with the half and double sensitivity stated.",
+          "threshold": "median half-spread by decile stored, the anchor stored",
           "stored_numbers": {
             "chosen_estimator": "size-decile schedule, 10 bp (smallest) to 1 bp (largest) half-spread, stated as an assumption",
             "median_half_spread_by_decile": {
@@ -387,6 +445,8 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "New in E9: the chosen spread estimator's median half-spread by size decile stored beside the anchor, with the half and double sensitivity stated.",
+          "threshold": "median half-spread by decile stored, the anchor stored",
           "stored_numbers": {
             "chosen_estimator": "size-decile schedule, 10 bp (smallest) to 1 bp (largest) half-spread, stated as an assumption",
             "median_half_spread_by_decile": {
@@ -1354,11 +1414,356 @@
             }
           }
         }
+      },
+      {
+        "previous_data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
+        "data_hash": "e4b8f9ca4a21de8606abd0f55dba90c047f1ec6d7994ecc2d7569615ee8eb4a2",
+        "n_changed": 1,
+        "changed_tickers_or_criteria": [
+          "F9.1"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F9.1": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Net Sharpe declines monotonically with AUM; the halving AUM is stored.",
+              "threshold": "net Sharpe monotone in AUM; halving AUM stored",
+              "stored_numbers": {
+                "n_monotonicity_violations_net_sharpe": 0,
+                "n_monotonicity_violations_net_mean": 0,
+                "n_curves": 9,
+                "halving_aum_by_rho_k": {
+                  "0.02_0.25": NaN,
+                  "0.02_0.5": NaN,
+                  "0.02_1.0": NaN,
+                  "0.05_0.25": 464158883.3612773,
+                  "0.05_0.5": 100000000.0,
+                  "0.05_1.0": 31622776.60168379,
+                  "0.1_0.25": 2154434690.031878,
+                  "0.1_0.5": 464158883.3612773,
+                  "0.1_1.0": 100000000.0
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Net Sharpe declines monotonically with AUM; the halving AUM is stored.",
+              "threshold": "net Sharpe monotone in AUM; halving AUM stored",
+              "stored_numbers": {
+                "n_monotonicity_violations_net_sharpe": 0,
+                "n_monotonicity_violations_net_mean": 0,
+                "n_curves": 9,
+                "halving_aum_by_rho_k": {
+                  "0.02_0.25": NaN,
+                  "0.02_0.5": NaN,
+                  "0.02_1.0": NaN,
+                  "0.05_0.25": 464158883.3612773,
+                  "0.05_0.5": 100000000.0,
+                  "0.05_1.0": 31622776.60168379,
+                  "0.1_0.25": 2154434690.031878,
+                  "0.1_0.5": 464158883.3612773,
+                  "0.1_1.0": 100000000.0
+                },
+                "e11_constraints": {
+                  "reference_ir": 0.3968816556102802,
+                  "reference_cost": 0.27345553226728436,
+                  "short_gross": 0.49964075306984623,
+                  "borrow_cost_share": 0.0031052383851164446,
+                  "tested_aum": 1000000.0,
+                  "min_notional_skipped_legs_share": 0.06036540864165461,
+                  "min_notional_skipped_turnover_share": 0.002461210203322223,
+                  "min_notional_ir_ratio": 0.9992040649304437,
+                  "reversal_legs_share": 0.3322175628703257,
+                  "reversal_turnover_share": 0.5204448395904581,
+                  "reversal_ir_upper_bound_ratio": 0.7691270378938796,
+                  "size_proxy_ir_ratio": 0.9619510376786984,
+                  "borrow_rate": 0.02,
+                  "min_notional": 250.0,
+                  "borrow_availability_history": 0.0,
+                  "borrow_availability_proxy": 1.0,
+                  "seeds": 5.0
+                }
+              }
+            }
+          },
+          "F9.2": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "criterion": "The turnover-penalized optimizer cuts turnover by more than 50% with less than 20% loss of ex-ante IR.",
+              "threshold": "turnover cut above 50%, IR loss below 20%",
+              "stored_numbers": {
+                "0.02": {
+                  "turnover_cut": 0.37549626103844624,
+                  "ex_ante_ir_loss": 0.06485377957194484
+                },
+                "0.05": {
+                  "turnover_cut": 0.3750665373197515,
+                  "ex_ante_ir_loss": 0.06475345564061231
+                },
+                "0.1": {
+                  "turnover_cut": 0.37538716626074037,
+                  "ex_ante_ir_loss": 0.0647444942254279
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "The turnover-penalized optimizer cuts turnover by more than 50% with less than 20% loss of ex-ante IR.",
+              "threshold": "turnover cut above 50%, IR loss below 20%",
+              "stored_numbers": {
+                "0.02": {
+                  "turnover_cut": 0.37549626103844624,
+                  "ex_ante_ir_loss": 0.06485377957194484
+                },
+                "0.05": {
+                  "turnover_cut": 0.3750665373197515,
+                  "ex_ante_ir_loss": 0.06475345564061231
+                },
+                "0.1": {
+                  "turnover_cut": 0.37538716626074037,
+                  "ex_ante_ir_loss": 0.0647444942254279
+                }
+              }
+            }
+          },
+          "F9.3": {
+            "changed": false,
+            "old": {
+              "verdict": "not evaluable",
+              "criterion": "Corwin-Schultz spread estimates correlate above 0.5 with size rank (smaller names wider).",
+              "threshold": "spread-size-rank correlation above 0.5",
+              "stored_numbers": {
+                "spread_size_rank_correlation": NaN,
+                "raw_cs_size_rank_correlation": -0.47129396780020943,
+                "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906,
+                "cost_input": "size-decile schedule, an assumption not a measurement"
+              }
+            },
+            "new": {
+              "verdict": "not evaluable",
+              "criterion": "Corwin-Schultz spread estimates correlate above 0.5 with size rank (smaller names wider).",
+              "threshold": "spread-size-rank correlation above 0.5",
+              "stored_numbers": {
+                "spread_size_rank_correlation": NaN,
+                "raw_cs_size_rank_correlation": -0.47129396780020943,
+                "abdi_ranaldo_size_rank_correlation": 0.0031859126253798906,
+                "cost_input": "size-decile schedule, an assumption not a measurement"
+              }
+            }
+          },
+          "F9.4": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "New in E9: the halving AUM stored per rho with its sensitivity to the impact coefficient k.",
+              "threshold": "halving AUM stored per rho, sensitivity to k stored",
+              "stored_numbers": {
+                "0.02": {
+                  "k_0.25": NaN,
+                  "k_0.5": NaN,
+                  "k_1.0": NaN
+                },
+                "0.05": {
+                  "k_0.25": 464158883.3612773,
+                  "k_0.5": 100000000.0,
+                  "k_1.0": 31622776.60168379
+                },
+                "0.1": {
+                  "k_0.25": 2154434690.031878,
+                  "k_0.5": 464158883.3612773,
+                  "k_1.0": 100000000.0
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "New in E9: the halving AUM stored per rho with its sensitivity to the impact coefficient k.",
+              "threshold": "halving AUM stored per rho, sensitivity to k stored",
+              "stored_numbers": {
+                "0.02": {
+                  "k_0.25": NaN,
+                  "k_0.5": NaN,
+                  "k_1.0": NaN
+                },
+                "0.05": {
+                  "k_0.25": 464158883.3612773,
+                  "k_0.5": 100000000.0,
+                  "k_1.0": 31622776.60168379
+                },
+                "0.1": {
+                  "k_0.25": 2154434690.031878,
+                  "k_0.5": 464158883.3612773,
+                  "k_1.0": 100000000.0
+                }
+              }
+            }
+          },
+          "F9.5": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "New in E9: the chosen spread estimator's median half-spread by size decile stored beside the anchor, with the half and double sensitivity stated.",
+              "threshold": "median half-spread by decile stored, the anchor stored",
+              "stored_numbers": {
+                "chosen_estimator": "size-decile schedule, 10 bp (smallest) to 1 bp (largest) half-spread, stated as an assumption",
+                "median_half_spread_by_decile": {
+                  "0": 0.001,
+                  "1": 0.0009,
+                  "2": 0.0008,
+                  "3": 0.0007,
+                  "4": 0.0006,
+                  "5": 0.0005,
+                  "6": 0.0004,
+                  "7": 0.0003,
+                  "8": 0.0002,
+                  "9": 0.0001
+                },
+                "anchor_raw_cs_median_by_decile": {
+                  "0": 0.04179835381802475,
+                  "1": 0.03657041670210323,
+                  "2": 0.03118363285983258,
+                  "3": 0.029519852185802296,
+                  "4": 0.02758196777184469,
+                  "5": 0.02684116765567754,
+                  "6": 0.02734163518091963,
+                  "7": 0.027167384688644894,
+                  "8": 0.025121840600573517,
+                  "9": 0.023684706298427873
+                },
+                "anchor_adjusted_cs_median_by_decile": {
+                  "0": 0.0,
+                  "1": 0.0,
+                  "2": 0.0,
+                  "3": 0.0,
+                  "4": 0.0,
+                  "5": 0.0,
+                  "6": 0.0,
+                  "7": 0.0,
+                  "8": 0.0,
+                  "9": 0.0
+                },
+                "anchor_abdi_ranaldo_median_by_decile": {
+                  "0": 0.0007122485457996931,
+                  "1": 0.0011131925669964908,
+                  "2": 0.0008567000438683264,
+                  "3": 0.0006785821688685737,
+                  "4": 0.0009248584838501589,
+                  "5": 0.0007080699003095254,
+                  "6": 0.0005219726494477424,
+                  "7": 0.000840936862718969,
+                  "8": 0.0010519294736646835,
+                  "9": 0.0009126175127999234
+                },
+                "sensitivity_multipliers": {
+                  "half": 0.5,
+                  "double": 2.0
+                },
+                "halving_aum_by_spread_multiplier": {
+                  "0.02": {
+                    "mult_0.5": 14677992.676220676,
+                    "mult_1.0": NaN,
+                    "mult_2.0": NaN
+                  },
+                  "0.05": {
+                    "mult_0.5": 146779926.76220676,
+                    "mult_1.0": 100000000.0,
+                    "mult_2.0": 21544346.900318824
+                  },
+                  "0.1": {
+                    "mult_0.5": 681292069.0579594,
+                    "mult_1.0": 464158883.3612773,
+                    "mult_2.0": 316227766.01683795
+                  }
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "New in E9: the chosen spread estimator's median half-spread by size decile stored beside the anchor, with the half and double sensitivity stated.",
+              "threshold": "median half-spread by decile stored, the anchor stored",
+              "stored_numbers": {
+                "chosen_estimator": "size-decile schedule, 10 bp (smallest) to 1 bp (largest) half-spread, stated as an assumption",
+                "median_half_spread_by_decile": {
+                  "0": 0.001,
+                  "1": 0.0009,
+                  "2": 0.0008,
+                  "3": 0.0007,
+                  "4": 0.0006,
+                  "5": 0.0005,
+                  "6": 0.0004,
+                  "7": 0.0003,
+                  "8": 0.0002,
+                  "9": 0.0001
+                },
+                "anchor_raw_cs_median_by_decile": {
+                  "0": 0.04179835381802475,
+                  "1": 0.03657041670210323,
+                  "2": 0.03118363285983258,
+                  "3": 0.029519852185802296,
+                  "4": 0.02758196777184469,
+                  "5": 0.02684116765567754,
+                  "6": 0.02734163518091963,
+                  "7": 0.027167384688644894,
+                  "8": 0.025121840600573517,
+                  "9": 0.023684706298427873
+                },
+                "anchor_adjusted_cs_median_by_decile": {
+                  "0": 0.0,
+                  "1": 0.0,
+                  "2": 0.0,
+                  "3": 0.0,
+                  "4": 0.0,
+                  "5": 0.0,
+                  "6": 0.0,
+                  "7": 0.0,
+                  "8": 0.0,
+                  "9": 0.0
+                },
+                "anchor_abdi_ranaldo_median_by_decile": {
+                  "0": 0.0007122485457996931,
+                  "1": 0.0011131925669964908,
+                  "2": 0.0008567000438683264,
+                  "3": 0.0006785821688685737,
+                  "4": 0.0009248584838501589,
+                  "5": 0.0007080699003095254,
+                  "6": 0.0005219726494477424,
+                  "7": 0.000840936862718969,
+                  "8": 0.0010519294736646835,
+                  "9": 0.0009126175127999234
+                },
+                "sensitivity_multipliers": {
+                  "half": 0.5,
+                  "double": 2.0
+                },
+                "halving_aum_by_spread_multiplier": {
+                  "0.02": {
+                    "mult_0.5": 14677992.676220676,
+                    "mult_1.0": NaN,
+                    "mult_2.0": NaN
+                  },
+                  "0.05": {
+                    "mult_0.5": 146779926.76220676,
+                    "mult_1.0": 100000000.0,
+                    "mult_2.0": 21544346.900318824
+                  },
+                  "0.1": {
+                    "mult_0.5": 681292069.0579594,
+                    "mult_1.0": 464158883.3612773,
+                    "mult_2.0": 316227766.01683795
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     ]
   },
   "reference_values": {
-    "data_hash": "9840953f472713c67d4e747928c6e0b5ef97b8cb1ebd7da433d2f4f4deb3ca98",
+    "data_hash": "e4b8f9ca4a21de8606abd0f55dba90c047f1ec6d7994ecc2d7569615ee8eb4a2",
     "verdicts": {
       "F9.1": "fail",
       "F9.2": "fail",
@@ -1381,6 +1786,25 @@
           "0.1_0.25": 2154434690.031878,
           "0.1_0.5": 464158883.3612773,
           "0.1_1.0": 100000000.0
+        },
+        "e11_constraints": {
+          "reference_ir": 0.3968816556102802,
+          "reference_cost": 0.27345553226728436,
+          "short_gross": 0.49964075306984623,
+          "borrow_cost_share": 0.0031052383851164446,
+          "tested_aum": 1000000.0,
+          "min_notional_skipped_legs_share": 0.06036540864165461,
+          "min_notional_skipped_turnover_share": 0.002461210203322223,
+          "min_notional_ir_ratio": 0.9992040649304437,
+          "reversal_legs_share": 0.3322175628703257,
+          "reversal_turnover_share": 0.5204448395904581,
+          "reversal_ir_upper_bound_ratio": 0.7691270378938796,
+          "size_proxy_ir_ratio": 0.9619510376786984,
+          "borrow_rate": 0.02,
+          "min_notional": 250.0,
+          "borrow_availability_history": 0.0,
+          "borrow_availability_proxy": 1.0,
+          "seeds": 5.0
         }
       },
       "F9.2": {

@@ -4382,6 +4382,7 @@ E9_ARTIFACTS = [
     "costs/capacity_phi.parquet",
     "costs/capacity_phi_halving.parquet",
     "costs/turnover_tradeoff.parquet",
+    "costs/e11_constraints.parquet",
 ]
 
 
@@ -4415,6 +4416,11 @@ def compute_e9_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
             )
         ),
         "tradeoff": pd.read_parquet(root / "costs" / "turnover_tradeoff.parquet"),
+        "e11_constraints": (
+            pd.read_parquet(root / "costs" / "e11_constraints.parquet")
+            if (root / "costs" / "e11_constraints.parquet").exists()
+            else pd.DataFrame()
+        ),
     }
 
 
@@ -4437,6 +4443,7 @@ def evaluate_e9_criteria(
     halving: pd.DataFrame,
     sensitivity: pd.DataFrame,
     tradeoff: pd.DataFrame,
+    e11_constraints: pd.DataFrame | None = None,
 ) -> dict[str, dict[str, Any]]:
     """F9.1 to F9.5, each with a stored number and a verdict."""
     criteria: dict[str, dict[str, Any]] = {}
@@ -4468,6 +4475,11 @@ def evaluate_e9_criteria(
             "n_monotonicity_violations_net_mean": mean_violations,
             "n_curves": n_curves,
             "halving_aum_by_rho_k": halving_numbers,
+            "e11_constraints": (
+                {key: float(value) for key, value in e11_constraints.iloc[0].items()}
+                if e11_constraints is not None and not e11_constraints.empty
+                else {}
+            ),
         },
         "verdict": _verdict(
             sharpe_violations == 0

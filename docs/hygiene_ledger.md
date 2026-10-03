@@ -2529,3 +2529,49 @@ Tests. `tests/test_allocate.py`: the quantizer's floor behaviour on a hand-built
 book, and that the stored row is what the function computes now.
 
 Status. On the `backport` branch. Stored, not scored: no verdict moves.
+
+## 2026-10-03: E9 under E11's trading constraints, and what borrow can be measured
+
+Decision. The E9 book is now measured under the three constraints the live loop
+actually trades with, and the measurement is stored beside E9's own numbers under
+F9.1's `e11_constraints`. It is a measurement, not a criterion: no threshold is
+attached (STANDARDS 2b) and no criterion is reworded.
+
+- **Borrow is charged on the short leg at E11's rate.** `efb.costs._trade_cost`
+  charges spread, commission and impact only; the live evening adds
+  `BORROW_RATE * short_gross * HORIZON / ANNUAL` (`live/evening_job.py:1102`), so
+  the research curves never charged it. Both read the same `costs.BORROW_RATE`,
+  and the measurement now carries the term explicitly.
+- **A reversal is two cost events.** E11 closes a name whose sign flips tonight
+  and opens it the next evening rather than crossing zero in one order. The upper
+  bound below holds the name flat for the whole horizon.
+- **The $250 floor at the tested AUM.** `costs.ALPACA_MIN_NOTIONAL` is E11's
+  `live/alpaca.py::DELTA_MIN_NOTIONAL`, applied at the tested AUM ($1mn, the paper
+  NAV), where a leg that small is a real share of the book.
+- **Borrow availability has no history.** The vendor's `easy_to_borrow` flag is
+  read live and is not archived, so it cannot be replayed for a research panel.
+  The only available proxy is size, and it is recorded as a proxy
+  (`borrow_availability_history` 0, `borrow_availability_proxy` 1), never as a
+  measurement.
+
+Evidence. `efb.costs.e11_constraint_effects` on the frozen panel
+(`END=2026-10-02`), the proportional book at rho 0.02 over seeds 0 to 4, means:
+`reference_ir` **0.396882** and `reference_cost` **0.273456** of AUM per
+rebalance; `short_gross` **0.499641**, so borrow at the 2 percent annual rate over
+a 21-session hold is **0.31 percent of the transaction cost**
+(`borrow_cost_share` **0.003105**), which is why the earlier note called the
+effect small. The $250 floor skips **6.04 percent** of legs and **0.25 percent**
+of turnover at $1mn for an IR ratio of **0.999204**; at the reference AUM it is
+negligible. Reversals are **33.22 percent** of legs and **52.04 percent** of
+turnover, and holding a reversal name flat for the horizon (the two-cost-event
+upper bound) costs **23 percent** of the IR (`reversal_ir_upper_bound_ratio`
+**0.769127**), so the split matters through what the book holds, not through the
+extra impact charge. Excluding the smallest size decile from the short leg as a
+borrow proxy leaves the IR at **0.961951** of the unconstrained book.
+
+Tests. `tests/test_costs.py`: the artifact charges borrow at `costs.BORROW_RATE`
+and the floor at `ALPACA_MIN_NOTIONAL` and the tested AUM, and E9 stores the
+block beside its own scored numbers.
+
+Status. On the `backport` branch. F9.1 to F9.5 are unchanged: `n_changed` 1 is
+the added block, no verdict moved. E9 `data_hash` -> e4b8f9ca.

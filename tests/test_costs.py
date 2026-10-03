@@ -94,3 +94,46 @@ def test_the_capacity_artifacts_are_written() -> None:
         DATA / "costs" / "capacity_spread_sensitivity.parquet"
     )
     assert {"rho", "spread_multiplier", "halving_aum"} <= set(sensitivity.columns)
+
+
+@pytest.mark.integration
+def test_the_e11_constraints_charge_borrow_at_e11s_rate() -> None:
+    """The four constraints are measured on the E9 book and stored in E9.
+
+    Borrow is charged on the short leg at the constant the live path reads, the
+    $250 floor is applied at the tested AUM, a reversal costs two events, and
+    borrow availability is recorded as having no history.
+    """
+    path = DATA / "costs" / "e11_constraints.parquet"
+    if not path.exists():
+        pytest.skip("the E9 run has not completed")
+    row = pd.read_parquet(path).iloc[0]
+    assert row["borrow_rate"] == costs.BORROW_RATE
+    assert row["min_notional"] == costs.ALPACA_MIN_NOTIONAL
+    assert row["tested_aum"] == 1_000_000.0
+    # borrow is charged on the short leg: a real, small share of the cost
+    assert row["short_gross"] > 0.0
+    assert 0.0 < row["borrow_cost_share"] < 0.05
+    # the $250 floor skips legs but barely moves the book at any AUM
+    assert 0.0 < row["min_notional_skipped_legs_share"] < 0.2
+    assert 0.99 < row["min_notional_ir_ratio"] <= 1.0
+    # a reversal is two cost events, and a third of the legs are reversals
+    assert 0.2 < row["reversal_legs_share"] < 0.5
+    assert 0.0 < row["reversal_ir_upper_bound_ratio"] < 1.0
+    # borrow availability has no history: recorded, with size as a labelled proxy
+    assert row["borrow_availability_history"] == 0.0
+    assert row["borrow_availability_proxy"] == 1.0
+
+
+@pytest.mark.integration
+def test_e9_stores_the_e11_constraints_beside_its_own_numbers() -> None:
+    import json
+
+    payload = json.loads((ROOT / "sprints" / "E9" / "RESULTS.json").read_text())
+    numbers = payload["criteria"]["F9.1"]["stored_numbers"]
+    stored = numbers.get("e11_constraints")
+    assert stored, "E9 stores no E11 constraint measurement"
+    assert {"borrow_rate", "min_notional", "borrow_availability_history"} <= set(stored)
+    # the scored numbers are still there beside it
+    assert "n_monotonicity_violations_net_sharpe" in numbers
+    assert "halving_aum_by_rho_k" in numbers
