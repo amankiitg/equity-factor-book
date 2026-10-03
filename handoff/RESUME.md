@@ -1,5 +1,79 @@
 # Resume
 
+## 2026-10-03 (continued): items 0 and 1 done on `backport`, items 2 to 6 not started
+
+Stopped at an item boundary. Nothing is part-committed.
+
+**Item 0 (rebase) done.** `backport` was rebased onto `origin/main` (`db4d39c`)
+and force-pushed with `--force-with-lease`. One conflict, in
+`tests/test_e4_results.py` (main's H4 test fixes against backport's fuller H4
+set); resolved to backport's version, which is a superset. main's README
+structure, the "What E11 taught us" sections and the test fixes are all present.
+Head after the rebase: `adc09fb`.
+
+**Item 1 (n_eff_kept) done in `3a5c2b1`.** The culprit was not a research
+finding. `efb.registry.write_registry` did `models[version] = entry`, so the E3
+rebuild replaced the whole XS-v1 registry entry and dropped the `live` block (the
+owner's 2026-09-24 share-only choice). `live_construction` then defaulted
+`share_floor` to 0, both floors were zero, `below_floor` returned all-False, and
+the drop-then-admit search kept every name: the "kept" book silently became the
+full model book. Measured with `live.evening_job.build_proposal`, `n_eff_kept` /
+`n_kept`, floor off against floor on: corrected panel (2026-10-02) **282.2521 /
+502** to **143.2554 / 188**; pre-back-port panel (2026-09-21) **275.7918 / 499**
+to **128.6541 / 173**. So the unexplained +142.5 is the disabled floor. Fix:
+`write_registry` upserts only the fields a rebuild owns and carries the rest
+over; the `live` block is restored on XS-v1.
+`tests/test_registry.py::test_write_registry_keeps_the_live_construction` fails
+on the version before the commit (`assert 0 == 20`) and passes after;
+`tests/test_e11_evening.py` was failing on the branch before the fix and is 37
+passed after. **This would have changed the live book at the merge**: the
+regenerated seed would have carried no floor and the evening would have sized all
+502 names. Ledger: `docs/hygiene_ledger.md`, 2026-10-03.
+
+**Working tree state.** The gitignored `data/**/*.parquet` artifacts were
+restored to this branch's own frozen-panel build (`/tmp/efb-neff/data`, panel
+ends **2026-10-02**), excluding every path `git ls-files data` reports, so the
+tracked `data/VERSION.json` and `data/models/registry.json` are untouched and
+`git status` is clean. A copy with the `live` block re-injected is at
+`/tmp/efb-neff/withfloor`, and the pre-back-port tree with it at
+`/tmp/efb-neff/base-withfloor`.
+
+**Items 2 to 6, not started. Next steps, in order:**
+
+2. **E8 and E10 traded-book figures.** The scratch measurement is
+   `/tmp/efb-backport/item56_quantize.py` (`quantize` + `net_returns`, read-only).
+   It reads `data/portfolios/persistent_proportional.parquet` (the E10 design
+   book, rho=0.02, phi=0.95, seed=1) and quantizes to the E11 construction:
+   whole shares, 20-share floor, $1mn NAV, gross cap 1.0. Store `kept_*` and
+   `full_book_*` beside the existing numbers (additive; do not replace) and
+   confirm or correct the Phase 1 figures (Sharpe 0.98 to 0.73, about half the
+   names dropped). A measurement taken after the numbers exist is not a
+   criterion (STANDARDS 2b): record it as a stored block, not a new F ID, and
+   put the narrative in the ledger and the memo.
+3. **E9 costs.** Charge borrow on the short leg at E11's rate, split reversals
+   into two cost events, apply the $250 floor at the tested AUM, record that
+   borrow availability has no history to replay. Scratch: `/tmp/efb-backport/item7_constraints.py`.
+   Rebuild E9 and re-score.
+4. **Frozen-panel propagation, once, at `END=2026-10-02`.** Rebuild E1 to E10 in
+   order (`make rebuild END=2026-10-02`); fix the stored-hash inconsistencies
+   (`data/VERSION.json` against the registry for E2 to E4, and E5's stale
+   `data_hash`, which is now also moved by item 1's registry edit); re-execute
+   and render every E1-E10 walkthrough; update each "What E11 taught us" section
+   from "measured on backport" to "applied" with the stored numbers, and add the
+   item 2 figures; update the memos, `make evidence`, the status report and the
+   README numbers. Note that E2, E3, E4 and E5 walkthroughs cannot re-execute on
+   `main` today (E2 asserts `VERSION.json`'s hash equals the registry's TS-v1
+   hash and the two differ in the tree); this item is where that is fixed.
+5. Full suite once. Expected red: the two `requires_live_tree` hedge-vintage
+   tests and the `merge_guard` parity test (both need a live-shaped tree, item
+   6). List any other failure with its cause.
+6. **Merge-day dry run, prepare only.** Regenerate the live seed into a
+   temporary directory (do not upload), materialise a run root, run the
+   hedge-vintage tests and the parity guard with `live/extend.py` switched to
+   `returns_clean`, build the evening book at the current account NAV and
+   compare it against tonight's live book, then finish `docs/backport_runbook.md`
+   as the ordered 2026-11-11 checklist.
+
 ## Parked: branch `backport` (do not merge, rebase or delete)
 
 `backport` (head `8b1bbe9`) holds the E11-to-research back-ports: the recorded
