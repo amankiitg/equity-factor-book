@@ -282,8 +282,15 @@ def previous_data_hash(path: Path, restrict: list[str] | None = None) -> str | N
     return combined_hash(artifacts)
 
 
-def write_version(artifact_paths: list[Path], out_path: Path, note: str) -> dict:
-    """Write data/VERSION.json with a content hash of every artifact."""
+def version_artifacts(
+    artifact_paths: list[Path], out_path: Path
+) -> dict[str, dict[str, object]]:
+    """The artifact table `write_version` records.
+
+    The build products, plus the fetched inputs no rebuild target writes: the
+    dated SPY holdings and Wikipedia archives, and the recorded corporate-action
+    table, join the versioned set beside them.
+    """
     artifacts: dict[str, dict[str, object]] = {}
     for path in sorted(artifact_paths):
         artifacts[path.name] = {
@@ -314,6 +321,23 @@ def write_version(artifact_paths: list[Path], out_path: Path, note: str) -> dict
             "sha256": hash_file(recorded),
             "bytes": recorded.stat().st_size,
         }
+    return artifacts
+
+
+def version_data_hash(artifact_paths: list[Path], out_path: Path) -> str:
+    """The data hash `write_version` would record for this artifact set.
+
+    A walkthrough reads it to re-derive the hash its own sprint stored, without
+    depending on which leg wrote `VERSION.json` last: a later leg's manifest
+    covers later artifacts and is a different number, so comparing the stored
+    per-sprint hash against the live manifest only holds at that sprint's leg.
+    """
+    return combined_hash(version_artifacts(artifact_paths, out_path))
+
+
+def write_version(artifact_paths: list[Path], out_path: Path, note: str) -> dict:
+    """Write data/VERSION.json with a content hash of every artifact."""
+    artifacts = version_artifacts(artifact_paths, out_path)
     payload = {
         "note": note,
         "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
