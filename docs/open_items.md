@@ -420,24 +420,3 @@ happened to line up. On this branch the cache was moved aside
 could be rebuilt against the current panel. A later sprint should key the cache to
 the panel's own hash, or validate its date coverage, instead of trusting its
 existence.
-
-
-## 2026-10-03: three of E4's held-out variants read NaN after the panel grew
-
-`make rebuild-e4` on the current tree stores NaN for
-`xs_v1_descriptors_frozen`, `xs_v1_plus_top3_residual_pcs` and
-`xs_v1_plus_top5_residual_pcs` under F4.4. The criterion still fails on the
-comparison it names, and that comparison is finite
-(`pca_rolling_refit` 0.3133371280521622 against `xs_v1_daily_refit`
-0.3862775815247674 over 523 held-out days), so no verdict is affected. The three
-NaN variants are the ones that read the frozen XS-v1 descriptors over the held-out
-window, which suggests the held-out harness cannot line that window up with the
-artifact once the panel reaches 2026-10-02.
-
-Not this branch's change: it appeared when the panel was extended, not when the
-spin-off correction or the hygiene contract landed. `tests/test_e4_results.py`
-pins the NaN set by name so a new one fails the suite, and
-`docs/hygiene_ledger.md` carries the same note. A later sprint should either make
-the frozen variants measurable on the current panel or drop them from the stored
-record with the reason; a stored criterion that is a NaN is a record a reader
-cannot use.

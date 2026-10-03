@@ -102,24 +102,22 @@ def test_the_failing_criteria_store_the_numbers_that_failed(payload: dict) -> No
     # the comparison the criterion names, both sides finite
     assert f44["pca_rolling_refit"] < f44["xs_v1_daily_refit"]
     assert f44["held_out_days"] > 0
-    for name in ("pca_frozen_k_mp", "pca_frozen_k_17", "xs_v1_daily_refit"):
-        assert math.isfinite(f44[name]), name
-    # Three held-out variants read NaN after the panel was extended to 2026-10-02
-    # (they need the frozen XS-v1 descriptors over the held-out window). That is a
-    # defect of the E4 held-out harness, not of this branch, so it is pinned by
-    # name here and recorded in docs/open_items.md: a NEW NaN, or the set clearing,
-    # has to fail this test rather than pass unnoticed.
-    known_nan = {
-        "xs_v1_descriptors_frozen",
-        "xs_v1_plus_top3_residual_pcs",
-        "xs_v1_plus_top5_residual_pcs",
-    }
-    nan = {
-        name
-        for name, value in f44.items()
-        if isinstance(value, float) and math.isnan(value)
-    }
-    assert nan == known_nan, f"the NaN set moved: {nan} (see docs/open_items.md)"
+    # Every held-out row is a measurement, not an absence. Rows (ii) and (v) read
+    # NaN until 2026-10-03 with `days == 0`, because the harness required a
+    # complete frozen descriptor row and so refused every held-out day once
+    # twelve recent listings and spin-offs joined the cross-section. A NaN is a
+    # failure here now, named or not, and so is a row measured on fewer days than
+    # the window.
+    for name, value in f44.items():
+        assert not (isinstance(value, float) and math.isnan(value)), (
+            f"{name} is NaN: the held-out harness measured nothing, which is a "
+            "defect, not a result"
+        )
+    assert (
+        f44["held_out_days_min"] == f44["held_out_days"]
+    ), "a held-out row was measured on fewer days than the window"
+    # and the imputation the frozen rows need is disclosed rather than silent
+    assert f44["frozen_names_filled_mean"] > 0
 
 
 @pytest.mark.integration

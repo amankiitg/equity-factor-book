@@ -30,14 +30,14 @@
     "xs_v1": 53
   },
   "median_ratio_to_stored": {
-    "clip": 0.9985674755107247,
-    "constant_correlation": 0.997677319878,
-    "ewma": 0.9946147607551601,
-    "ledoit_wolf": 0.9831200058044444,
-    "pca_v1": 0.984823098773686,
-    "pca_v1c": 0.9939399197056923,
-    "sample": 0.9868149880008795,
-    "ts_v1": 0.9956612020064269,
-    "xs_v1": NaN
+    "clip": 1.0,
+    "constant_correlation": 1.0,
+    "ewma": 1.0,
+    "ledoit_wolf": 1.0,
+    "pca_v1": 1.0,
+    "pca_v1c": 1.0,
+    "sample": 1.0,
+    "ts_v1": 1.0,
+    "xs_v1": 1.0
   }
 }

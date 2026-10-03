@@ -2170,16 +2170,34 @@ def evaluate_e4_criteria(
                 held_out["(v) XS-v1 plus top 5 residual PCs"]
             ),
             "held_out_days": int(f44["days"].max()),
+            # the smallest row's day count: `held_out_days` is a maximum, so on
+            # its own it cannot tell a row measured on the whole window from a
+            # row measured on none of it
+            "held_out_days_min": int(f44["days"].min()),
+            # how many frozen descriptor cells a held-out day filled, averaged:
+            # rows (ii) and (v) read the frozen design, which is only complete
+            # for names with enough history at the frozen stamp
+            "frozen_names_filled_mean": float(f44["frozen_names_filled_mean"].max()),
         },
         "verdict": _verdict(pca_rolling >= xs_daily),
         "note": (
-            "Fails by 7.2 points on the comparison the criterion names, PCA "
-            "rolling against XS-v1 refitted daily, both measured on the same 503 "
-            "held-out days with sqrt(market cap) weights and exposures dated t "
-            "minus one. The useful reading is the opposite one: adding the top "
-            "three residual principal components to a frozen XS-v1 raises held "
-            "out R squared from 0.253997 to 0.292699, which is where the missing "
-            "factor structure shows up. Scored as measured."
+            "Fails by 7.3 points on the comparison the criterion names, PCA "
+            "rolling against XS-v1 refitted daily, both measured on the same "
+            "523 held-out days with sqrt(market cap) weights and exposures "
+            "dated t minus one. The useful reading is the opposite one: adding "
+            "the top three residual principal components to a frozen XS-v1 "
+            "raises held out R squared from 0.249958 to 0.287751, and the top "
+            "five to 0.306384, which is where the missing factor structure "
+            "shows up. Those two rows read NaN until 2026-10-03, with "
+            "`days = 0`: the harness required every name's frozen descriptor "
+            "row to be complete and returned nothing for the whole day when one "
+            "name was short, so the twelve names with no 12-month momentum or "
+            "no 252-day beta at the frozen stamp (BE, FDXF, HONA, P, Q, SNDK, "
+            "GEV, RDDT, SOLV, SW and the rest of the recent listings and "
+            "spin-offs) emptied every held-out day. A missing frozen "
+            "descriptor is now a zero row, which is the rule the published "
+            "design uses, and `frozen_names_filled_mean` records what that "
+            "cost per day. Scored as measured."
         ),
     }
 

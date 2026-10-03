@@ -2245,5 +2245,55 @@ required list of seven. The sample covariance still wins no window and EWMA is
 still worse than it (0.296886 against 0.276707 by median).
 
 Status. On the `backport` branch. The five held-out variants of F4.4 are untouched
-by this entry: three of them read NaN for a separate reason, recorded in
-`docs/open_items.md`.
+by this entry: the three that read NaN did so for a separate reason, fixed in the
+entry below.
+
+## 2026-10-03: a missing frozen descriptor is a zero row, so F4.4's frozen rows are measured
+
+Decision. `efb.pca_eval.held_out_comparison` fills a name's missing frozen
+descriptor with zero and measures the day, instead of refusing the day. The three
+rows that read the frozen design - (ii) descriptors frozen and (v) with the top
+three and top five residual PCs - now report **0.249958**, **0.287751** and
+**0.306384** on all **523** held-out days, against NaN with `days = 0` before. The
+artifact carries `frozen_names_filled_mean` (**11.9885** cells per day) and F4.4's
+stored numbers carry it and `held_out_days_min` (**523**, equal to
+`held_out_days`), so the imputation and the day count are both disclosed rather
+than silent. F4.4's verdict does not move: **fail**, on the comparison the
+criterion names (PCA rolling 0.313337 against XS-v1 refitted daily 0.386278).
+
+Reason. The harness required every name's frozen descriptor row to be complete
+(`if frame.isna().to_numpy().any(): return None`) and returned nothing for the
+whole day when a single name was short. Twelve names have no 12-month momentum or
+no 252-day beta at the frozen stamp of 2024-08-30 - BE, FDXF, HONA, P, Q, SNDK,
+GEV, RDDT, SOLV, SW and the rest of the recent listings and spin-offs, all of
+which joined the cross-section with the panel extension and the spin-off
+corrections - so *every* held-out day was refused, the rows kept their
+`mean_r_squared` as NaN, and the record said "not measured" where a reader expects
+a measurement. Zero-filling is the rule the published design already uses
+(`efb.race._design_from_styles`: "a name the cross-section drops is a zero row
+rather than a missing one"), and it keeps the held-out cross-section identical
+across all seven rows of the one protocol the criterion claims to run.
+
+Evidence. Frozen stamp 2024-08-30: 502 names, of which 12 hold at least one NaN
+among the 7 style columns (size 6, beta 9, momentum 12, reversal 6, resid_vol 10,
+liquidity 6 - momentum and beta are the short-history cells), which is
+**11.9885 cells per day** once averaged over the window. Before the fix rows
+(i)/(iii)/(iv) were finite on 523 days while (ii)/(v) reported `days = 0`; after
+it all seven rows report 523 days. The reading the note draws is unchanged in
+size: (ii) to (v) top 3 gains **0.0378** now against 0.0387 on the
+pre-extension panel, so the missing factor structure is still worth about 3.8
+points of held-out R squared. The failure mode was silent, which is the part
+worth recording: `held_out_days` is a **maximum** over rows and read 523 while the
+frozen rows had none.
+
+Test. `tests/test_e4_results.py` no longer pins the NaN set by name. It asserts
+that no stored F4.4 number is NaN, that `held_out_days_min == held_out_days`, and
+that the fill count is positive - so a NaN, or a row measured on fewer days than
+the window, fails rather than passing unnoticed.
+
+Status. On the `backport` branch. Rebuilt with `make rebuild-e4` and re-scored
+through `efb.evaluate.main_e4`; no earlier sprint's verdict moved. The open item
+of the same date in `docs/open_items.md` is withdrawn: its hypothesis (that the
+harness could not line the held-out window up with the artifact) was tested and
+refuted - the binding constraint was the completeness rule on names, not the
+window.
