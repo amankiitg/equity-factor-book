@@ -22,6 +22,7 @@ from efb import (
     hygiene,
     identity,
     prices,
+    race,
     returns,
     universe,
 )
@@ -111,13 +112,18 @@ E4_ARTIFACTS = [
     "eval/xs_survivor_excluded_names.parquet",
     "eval/xs_survivor_universe_summary.parquet",
     "eval/cov_horse_race.parquet",
+    "eval/cov_horse_race_derived_grid.parquet",
+    "eval/e5_race_grid.json",
 ]
 
-# The covariance horse race is stored and versioned but is not rebuilt by
-# `rebuild_e4`: its rebalance grid was chosen interactively in Task 2 and is
-# not yet derived from an artifact, so rebuilding it would produce a second
-# race rather than reproduce the stored one. F4.3 is scored from the stored
-# artifact and the grid is the one open engineering item this sprint leaves.
+# The covariance horse race is rebuilt by `rebuild_e4` as of 2026-10-03. It used
+# not to be, on the grounds that its rebalance grid was chosen interactively in
+# Task 2 - and the cost of leaving it out was measured: the stored artifact was
+# written on 2026-09-20, ended 2026-07-31 while the panel reached 2026-10-02, and
+# carried no `xs_v1` row at all, so F4.3 was scoring a race from another data
+# vintage. The grid is derived now (`efb.race.race_grid` reads the descriptor and
+# specific-variance artifacts and the panel's own sessions), so the race is
+# reproducible and the build owns the artifact its criterion reads.
 E4_RACE_ARTIFACT = "eval/cov_horse_race.parquet"
 
 E5_ARTIFACTS = [
@@ -1938,6 +1944,17 @@ def rebuild_e4(
     covariance = pca_eval.run(str(data_root))
     task3 = tercile.run(data_root)
     task4 = survivor.run(data_root)
+    # The race F4.3 is scored on, built here so the criterion cannot read a race
+    # from another data vintage. `race.run` also refreshes the derived-grid artifact
+    # and the F5.0b record (`eval/e5_race_grid.json`), both versioned below.
+    race_result = race.run(data_root=data_root, store=True)
+    if race_result["moved"]:
+        # the race's own stop condition, reported by the build rather than only by
+        # the tool: a derived grid that moves F4.3's verdict is a decision point.
+        print(
+            "STOP CONDITION 1: the derived race grid moved F4.3's verdict, "
+            f"worst ratio {race_result['worst_ratio']}"
+        )
     artifact_paths = [
         data_root / rel
         for rel in ARTIFACTS + E2_ARTIFACTS + E3_ARTIFACTS + E4_ARTIFACTS

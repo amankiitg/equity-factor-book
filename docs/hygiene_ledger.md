@@ -2204,3 +2204,46 @@ deselected, and reported as deselected, by the default suite. See
 
 Status. On the `backport` branch, reported to the E6 re-scoring; no live data
 touched.
+
+## 2026-10-03: F4.3 is scored on every estimator it requires, because the row exists
+
+Decision. `efb.race.xs_supplier` reads `fx.ewma_factor_cov`'s output as the K x K
+covariance block it is, and `efb.build.rebuild_e4` now rebuilds the race itself, so
+the artifact F4.3 is scored on is one the build owns. F4.3's stored verdict is
+**pass**, and it comes from scoring rather than from a short list: every one of the
+seven required estimators is present and every ratio to the sample covariance is
+below the 0.9 bound. A missing estimator still fails the criterion; that rule and
+its test are unchanged.
+
+Reason. Two defects kept XS-v1's row out of the race, and together they made the
+criterion's record read as a fact about the model when it was a fact about the
+harness:
+
+- The supplier treated the EWMA helper's return as a date-indexed stack of
+  matrices, took `index.max()` (one row of the matrix) and reindexed that into
+  (17, 17). Measured on 2026-08-31: the block held **272 NaN of 289 cells**, the
+  finiteness check failed, and the window was skipped - on every date, so the row
+  never existed at all. This is the F5.0b record's "single-level-index extraction
+  branch drops every window", now fixed rather than described.
+- `rebuild_e4` never ran the race, on the stated grounds that the grid was chosen
+  interactively. The stored artifact was written **2026-09-20** and ended
+  **2026-07-31** while the panel reached 2026-10-02, so F4.3 was scoring a race
+  from a data vintage that predates every correction this branch makes. The grid is
+  derived now (`efb.race.race_grid` reads the descriptor and specific-variance
+  artifacts and the panel's own sessions), so the race is reproducible and belongs
+  in the build.
+
+Evidence. After the fix, on the current panel: 176 rebalance dates (was 175), first
+2012-01-31, last 2026-08-31; nine estimators. XS-v1's median realized volatility
+**0.089532** against the sample covariance's **0.276707**, a ratio of **0.323563**,
+which is the fourth best of the nine and beats every shrinkage estimator except
+`clip`. The other ratios: `clip` 0.310504, `pca_v1` 0.308480, `pca_v1c` 0.313647,
+`ledoit_wolf` 0.334337, `ts_v1` 0.543148, `constant_correlation` 0.577803 (the
+worst, and the reason the criterion's own bound is what it is). Stored verdict fail
+-> pass, one designed flip, and `estimators_missing` is now empty against a
+required list of seven. The sample covariance still wins no window and EWMA is
+still worse than it (0.296886 against 0.276707 by median).
+
+Status. On the `backport` branch. The five held-out variants of F4.4 are untouched
+by this entry: three of them read NaN for a separate reason, recorded in
+`docs/open_items.md`.

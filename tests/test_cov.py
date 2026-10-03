@@ -130,21 +130,18 @@ def test_the_stored_horse_race_puts_the_sample_covariance_last() -> None:
     if not RACE.exists():
         pytest.skip("the horse race has not been run yet")
     race = pd.read_parquet(RACE)
-    # E5 rebuilt this artifact from a derived grid and could not reproduce the
-    # XS-v1 row, recorded as F5.0b. This set is what the artifact carries.
-    assert set(race["estimator"]) == set(cov.ESTIMATORS) - {"xs_v1"}
+    # The artifact carries every estimator, XS-v1 included. E5's rebuild could not
+    # reproduce the XS-v1 row (recorded as F5.0b): `efb.race.xs_supplier` read
+    # `fx.ewma_factor_cov`'s K x K block as a date-indexed stack and took one row of
+    # it, so 272 of 289 cells were NaN, every window failed the finiteness check and
+    # the row never existed. Fixed 2026-10-03, so the set is the full one and the
+    # ordering below is measured with the model's own estimator in the field.
+    assert set(race["estimator"]) == set(cov.ESTIMATORS)
     table = cov.summarize(race)
-    # With the XS-v1 row absent (F5.0b) the ordering is unchanged: the sample
-    # covariance is still the worst mean realized volatility, which is the
-    # estimation-error result the sprint exists to confirm.
     assert table.index[-1] == "sample", "a sample covariance win is an estimation bug"
-    assert table.loc["sample", "mean_realized_vol"] == pytest.approx(0.409593, abs=1e-5)
-    # the XS-v1 row is absent from the rebuilt artifact (F5.0b), so only
-    # the survivors are held to the bar
-    for name in ("pca_v1", "clip", "ledoit_wolf"):
+    assert table.loc["sample", "ratio_to_sample"] == pytest.approx(1.0)
+    for name in ("pca_v1", "clip", "ledoit_wolf", "xs_v1"):
         assert table.loc[name, "beat_sample_by"] > 0.10, name
-    # the XS-v1 row is not reproducible in this sprint: F5.0b
-    assert "xs_v1" not in table.index
     assert (
         table.loc["sample", "mean_gross_exposure"] > 100
     ), "the unconstrained optimizer is the reason the sample loses"

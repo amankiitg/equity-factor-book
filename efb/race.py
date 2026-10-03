@@ -462,18 +462,22 @@ def xs_supplier(
     factor_covariance = fx.ewma_factor_cov(
         history.loc[:, ordered], half_life=fx.F_HALF_LIFE
     )
-    # `ewma_factor_cov` returns a date indexed stack of matrices; taking the
-    # last date and reindexing both axes is what turns it into the (k, k) block
-    # the design is multiplied by. Reshaping defensively here rather than
-    # trusting the layout is what caught a one by seventeen block.
-    if isinstance(factor_covariance.index, pd.MultiIndex):
-        latest = factor_covariance.index.get_level_values(0).max()
-        block = factor_covariance.xs(latest, level=0)
-    else:
-        block = factor_covariance.loc[factor_covariance.index.max()]
-    block = pd.DataFrame(block).reindex(index=ordered, columns=ordered)
+    # `ewma_factor_cov` returns the K x K block itself, labelled by factor, not a
+    # date-indexed stack of blocks: its index IS the factor list. Reading it as a
+    # stack and taking `index.max()` picked one row of the matrix and reindexed
+    # that into (K, K), which is 272 of 289 cells NaN, so every window failed the
+    # finiteness check below and the XS-v1 row was absent from the race on every
+    # date. Measured 2026-10-03 on 2026-08-31: block (17, 17) with 272 NaN; with
+    # the block read as the matrix it is (17, 17), 0 NaN, finite.
+    block = pd.DataFrame(factor_covariance).reindex(index=ordered, columns=ordered)
     if block.shape != (len(ordered), len(ordered)):
         raise RuntimeError(f"the factor covariance block is {block.shape}")
+    if not np.isfinite(block.to_numpy(dtype=float)).all():
+        # a non-finite covariance is a real reason to skip the window, and it is
+        # reported rather than silently flattened: the whole point of the
+        # finiteness check is that the row says what it was built from.
+        _SKIPPED.append(date)
+        return None
     design = _design_for(date, names, data_root)
     specific, missing = _specific_for(date, names, data_root)
     # A name the model cannot price on this date gets no factor exposure and the

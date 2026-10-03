@@ -2122,20 +2122,29 @@ def evaluate_e4_criteria(
             not missing and all(ratio <= 0.9 for ratio in ratios.values())
         ),
         "note": (
-            "Every shrinkage estimator and every factor estimator that the race "
+            "Every shrinkage estimator and every factor estimator the race "
             "produced has a median out-of-sample minimum-variance volatility at "
             "least 10 percent below the sample covariance's, so the estimation-error "
             "result holds in the direction theory predicts. The sample covariance "
             "won no window and EWMA none either; EWMA is a weighting scheme rather "
             "than a shrinkage or factor estimator and is reported beside them, not "
-            "scored. **A missing estimator now fails the criterion**: a race that "
-            "silently drops a requested row is scoring a shorter list, and the "
-            "stored record shows exactly that - XS-v1, the strongest performer "
-            "among those scored, was absent and the verdict passed anyway. "
-            "`estimators_missing` names what was not produced and "
-            "`estimators_required` names what was asked for; the row comes back by "
-            "rebuilding the race on the derived grid, which supplies the model's "
-            "own design and diagonal."
+            "scored. **A missing estimator fails the criterion**: a race that "
+            "silently drops a requested row is scoring a shorter list. The row that "
+            "was missing - XS-v1, which the old record showed as absent while the "
+            "verdict passed on the strength of a shorter list - came back on "
+            "2026-10-03. Two defects kept it out: "
+            "`efb.race.xs_supplier` read `fx.ewma_factor_cov`'s output as a "
+            "date-indexed stack of matrices and took one row of it, so the (17, 17) "
+            "block had 272 of 289 cells NaN and every window failed the finiteness "
+            "check, and `efb.build.rebuild_e4` never rebuilt the race at all, so "
+            "F4.3 was scoring an artifact written on 2026-09-20 that ended "
+            "2026-07-31 and predated every panel correction this branch makes. With "
+            "the block read as the matrix and the race rebuilt by the E4 build, "
+            "XS-v1 scores a median realized volatility of 0.089532 against the "
+            "sample covariance's 0.276707, a ratio of 0.323563, and the stored "
+            "verdict is pass because every ratio is below the 0.9 bound, not "
+            "because the list was short. `estimators_missing` names what was not "
+            "produced and `estimators_required` names what was asked for."
         ),
     }
 
@@ -2721,6 +2730,12 @@ def main_e4(data_root: Path = ROOT / "data") -> None:
         ROOT / "sprints" / "E4" / "RESULTS.json",
         sprint="E4",
         data_hash=e4_data_hash(data_root),
+        # the hash the record being replaced was measured on, so the revisions
+        # entry names what it moved from (E7's writer has carried this since the
+        # alpha refresh; E4's did not)
+        previous_data_hash=_previous_data_hash(
+            ROOT / "sprints" / "E4" / "RESULTS.json", e4_data_hash(data_root)
+        ),
         reference_values=e4_reference_values(data_root),
     )
     if any(block.get("n_changed") for block in check.values()):

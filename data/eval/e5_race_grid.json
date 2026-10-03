@@ -1,40 +1,43 @@
 {
-  "n_dates": 175,
+  "n_dates": 176,
   "first_date": "2012-01-31",
-  "last_date": "2026-07-31",
+  "last_date": "2026-08-31",
   "median_gap_days": 31.0,
-  "worst_ratio": 0.5715118239875542,
+  "worst_ratio": 0.5778027206392432,
   "derived_verdict": "pass",
   "stored_verdict": "pass",
   "moved": false,
   "medians": {
-    "clip": 0.0860420522152373,
-    "constant_correlation": 0.16025446251624748,
-    "ewma": 0.29849385834412884,
-    "ledoit_wolf": 0.0941019876478635,
-    "pca_v1": 0.0866739833512632,
-    "pca_v1c": 0.08731759279333594,
-    "sample": 0.2804044567234314,
-    "ts_v1": 0.15094789273544665
+    "clip": 0.08591879486833146,
+    "constant_correlation": 0.1598822426616992,
+    "ewma": 0.29688639750383033,
+    "ledoit_wolf": 0.09251354664257731,
+    "pca_v1": 0.08535854086704989,
+    "pca_v1c": 0.08678844116990266,
+    "sample": 0.2767073205969261,
+    "ts_v1": 0.150292960321312,
+    "xs_v1": 0.0895322389102784
   },
   "windows_won": {
-    "clip": 39,
+    "clip": 27,
     "constant_correlation": 0,
     "ewma": 0,
-    "ledoit_wolf": 39,
-    "pca_v1": 48,
-    "pca_v1c": 46,
+    "ledoit_wolf": 28,
+    "pca_v1": 33,
+    "pca_v1c": 32,
     "sample": 0,
-    "ts_v1": 3
+    "ts_v1": 3,
+    "xs_v1": 53
   },
   "median_ratio_to_stored": {
-    "clip": 1.0,
-    "constant_correlation": 1.0,
-    "ewma": 1.0,
-    "ledoit_wolf": 1.0,
-    "pca_v1": 1.0,
-    "pca_v1c": 1.0,
-    "sample": 1.0,
-    "ts_v1": 1.0
+    "clip": 0.9985674755107247,
+    "constant_correlation": 0.997677319878,
+    "ewma": 0.9946147607551601,
+    "ledoit_wolf": 0.9831200058044444,
+    "pca_v1": 0.984823098773686,
+    "pca_v1c": 0.9939399197056923,
+    "sample": 0.9868149880008795,
+    "ts_v1": 0.9956612020064269,
+    "xs_v1": NaN
   }
 }

@@ -88,12 +88,12 @@ def test_the_failing_criteria_store_the_numbers_that_failed(payload: dict) -> No
     failing = {
         key for key, block in payload["criteria"].items() if block["verdict"] == "fail"
     }
-    assert failing == {"F4.1", "F4.3", "F4.4"}, failing
+    assert failing == {"F4.1", "F4.4"}, failing
 
     f41 = payload["criteria"]["F4.1"]["stored_numbers"]
-    assert max(f41["pc1_vs_market_pca_v1"], f41["pc1_vs_market_pca_v1c"]) < 0.95, (
-        "F4.1 fails on both PC1 objects, and both are stored"
-    )
+    assert (
+        max(f41["pc1_vs_market_pca_v1"], f41["pc1_vs_market_pca_v1c"]) < 0.95
+    ), "F4.1 fails on both PC1 objects, and both are stored"
     assert f41["pc1_vs_equal_weight_pca_v1"] > 0.95, (
         "the correlation PCA's PC1 is an equal-weight object, which is why the "
         "market threshold was the wrong threshold"
@@ -121,9 +121,36 @@ def test_the_failing_criteria_store_the_numbers_that_failed(payload: dict) -> No
     }
     assert nan == known_nan, f"the NaN set moved: {nan} (see docs/open_items.md)"
 
-    f43 = payload["criteria"]["F4.3"]["stored_numbers"]
-    assert f43["estimators_required"], "F4.3 has to say which estimators it needs"
-    assert f43["estimators_missing"], "and which of them are missing"
+
+@pytest.mark.integration
+def test_f4_3_scores_every_required_estimator(payload: dict) -> None:
+    """F4.3's verdict comes from scoring the full list, not from a short one.
+
+    The XS-v1 row exists now: `efb.race.xs_supplier` reads the model's own design,
+    factor covariance and specific diagonal, and the E4 build owns the race
+    artifact its criterion reads. A missing estimator still fails
+    (`test_a_missing_estimator_fails_f4_3` covers that), so the error this test
+    rules out is the opposite one - a pass produced by scoring fewer estimators.
+    """
+    block = payload["criteria"]["F4.3"]
+    numbers = block["stored_numbers"]
+    required = numbers["estimators_required"]
+    assert numbers["estimators_missing"] == [], numbers["estimators_missing"]
+    assert set(numbers["ratio_to_sample"]) == set(required)
+    for name, ratio in numbers["ratio_to_sample"].items():
+        assert math.isfinite(ratio), name
+    assert numbers["worst_ratio"] == pytest.approx(
+        max(numbers["ratio_to_sample"].values())
+    )
+    # the estimator that was absent is scored, and its ratio is stored
+    assert math.isfinite(numbers["ratio_to_sample"]["xs_v1"])
+    assert (
+        numbers["median_realized_vol"]["xs_v1"]
+        < numbers["median_realized_vol"]["sample"]
+    )
+    assert block["verdict"] == (
+        "pass" if max(numbers["ratio_to_sample"].values()) <= 0.9 else "fail"
+    )
 
 
 @pytest.mark.integration

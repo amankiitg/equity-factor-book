@@ -78,13 +78,10 @@ def test_the_ledger_row_count_matches_the_runs() -> None:
     lines = [
         line
         for line in LEDGER.read_text().splitlines()
-        if line.startswith("| ")
-        and not line.startswith("| run_id")
+        if line.startswith("| ") and not line.startswith("| run_id")
         # the markdown separator row is not a run: `verdict_by_signal` carried it
         # as one until the parser learned to skip it (H3)
-        and not all(
-            set(cell) <= set("-: ") for cell in line.strip("|").split("|")
-        )
+        and not all(set(cell) <= set("-: ") for cell in line.strip("|").split("|"))
     ]
     assert len(lines) == n_runs
 
