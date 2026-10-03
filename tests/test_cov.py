@@ -28,11 +28,28 @@ def synthetic_window(n_days: int = 504, n_names: int = 60, seed: int = 5) -> np.
 
 
 def test_every_estimator_returns_a_symmetric_positive_definite_matrix() -> None:
+    """Every estimator, XS-v1 included.
+
+    XS-v1 was skipped here, so the one estimator F4.3 and F5.0b report missing was
+    also the one this property test never ran: the defect had no coverage anywhere.
+    It is not window-only, so its three inputs are supplied.
+    """
     window = synthetic_window()
+    n_names = window.shape[1]
+    rng = np.random.default_rng(11)
+    design = np.column_stack(
+        [np.ones(n_names), rng.normal(size=n_names), rng.normal(size=n_names)]
+    )
+    specific = np.full(n_names, 0.0004)
     for name in cov.ESTIMATORS:
+        supplied: dict[str, object] = {}
         if name == "xs_v1":
-            continue
-        result = cov.estimator_from_window(window, name)
+            supplied = {
+                "design": design,
+                "factor_covariance": np.eye(design.shape[1]) * 1e-4,
+                "specific": specific,
+            }
+        result = cov.estimator_from_window(window, name, **supplied)  # type: ignore[arg-type]
         assert np.allclose(result.matrix, result.matrix.T, atol=1e-12), name
         assert np.linalg.eigvalsh(result.matrix).min() > 0, name
         assert result.parameter_count > 0, name
