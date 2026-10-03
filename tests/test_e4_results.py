@@ -29,16 +29,21 @@ def payload() -> dict:
 def test_the_seven_criteria_are_stored_with_the_verdicts_measured(
     payload: dict,
 ) -> None:
-    verdicts = {key: block["verdict"] for key, block in payload["criteria"].items()}
-    assert verdicts == {
-        "F4.1": "fail",
-        "F4.2": "pass",
-        "F4.3": "pass",
-        "F4.4": "fail",
-        "F4.5": "pass",
-        "F4.6": "pass",
-        "F4.7": "pass",
+    """The verdicts are re-derived from the artifacts, not read back.
+
+    Asserting the stored strings against hardcoded strings would pass with every
+    stored number replaced by garbage - measured: it does - because a verdict is
+    not a number. This recomputes the verdicts from the artifacts the numbers were
+    measured on and requires the stored file to agree.
+    """
+    derived = evaluate.evaluate_e4_criteria(
+        **evaluate.compute_e4_from_artifacts(data_root=ROOT / "data")
+    )
+    assert {key: block["verdict"] for key, block in payload["criteria"].items()} == {
+        key: block["verdict"] for key, block in derived.items()
     }
+    assert payload["criteria"]["F4.1"]["verdict"] == "fail"
+    assert payload["criteria"]["F4.4"]["verdict"] == "fail"
 
 
 @pytest.mark.integration

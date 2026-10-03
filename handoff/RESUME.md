@@ -1,3 +1,14 @@
+# Resume
+
+## Parked: branch `backport` (do not merge, rebase or delete)
+
+`backport` (head `8b1bbe9`) holds the E11-to-research back-ports: the recorded
+vendor spinoffs, the E3 stale-cell contract, the panel pin (`END=2026-10-02`),
+E6's F6.1 re-scored on the next session's row, and the E1 reused-ticker
+extension. It is parked because the remaining work is mostly record-keeping
+while the merge carries live risk, and it has an unexplained `n_eff_kept` jump
+(131.9 to 281.4) to resolve before any merge. Do not merge, rebase or delete it.
+
 # Resume: pre-launch batches 2 and 3
 
 ## Alpha refresh: branch `alpha-refresh`, off `main`, NOT merged
