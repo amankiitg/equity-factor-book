@@ -64,14 +64,53 @@ them meant reading what the system produced rather than what it said.
 ## The live system
 
 ```mermaid
-flowchart LR
-  D[data prices universe factors] --> M[model XS-v1]
-  M --> A[alpha contract]
-  A --> S[sizing 20-share floor gross 1.0]
-  S --> H[hedge exact FMP next session row]
-  H --> O[orders paper]
-  O --> F[fills check]
-  F --> P[page and email]
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontFamily": "Inter, Helvetica, Arial, sans-serif",
+    "fontSize": "14px",
+    "primaryTextColor": "#2F3B4C",
+    "lineColor": "#8A94A6"
+  },
+  "flowchart": {
+    "subGraphTitleMargin": { "top": 10, "bottom": 10 },
+    "nodeSpacing": 30,
+    "rankSpacing": 45,
+    "padding": 14
+  }
+}}%%
+flowchart TB
+  subgraph R1["&nbsp;&nbsp;1. Model&nbsp;&nbsp;"]
+    direction LR
+    D["Data<br/>prices, universe, factors"] --> M["Risk model<br/>XS-v1"] --> A["Alpha<br/>contract"]
+  end
+
+  subgraph R2["&nbsp;&nbsp;2. Construct&nbsp;&nbsp;"]
+    direction RL
+    S["Sizing<br/>20-share floor, gross 1.0"] --> H["Hedge<br/>exact FMP, next session row"] --> O["Orders<br/>paper"]
+  end
+
+  subgraph R3["&nbsp;&nbsp;3. Monitor&nbsp;&nbsp;"]
+    direction LR
+    F["Fills<br/>check"] --> P["Page<br/>and email"]
+  end
+
+  R1 --> R2
+  R2 --> R3
+
+  classDef model fill:#FFFFFF,stroke:#8FB3DE,stroke-width:1.5px,color:#2F3B4C
+  classDef construct fill:#FFFFFF,stroke:#93C9A4,stroke-width:1.5px,color:#2F3B4C
+  classDef monitor fill:#FFFFFF,stroke:#E2B97F,stroke-width:1.5px,color:#2F3B4C
+
+  class D,M,A model
+  class S,H,O construct
+  class F,P monitor
+
+  style R1 fill:#EEF4FB,stroke:#B9CFEA,stroke-width:1px,color:#2F3B4C
+  style R2 fill:#EEF7F1,stroke:#B7DCC2,stroke-width:1px,color:#2F3B4C
+  style R3 fill:#FDF5EA,stroke:#EDD3AC,stroke-width:1px,color:#2F3B4C
+
+  linkStyle default stroke:#8A94A6,stroke-width:1.5px
 ```
 
 ## The live book
