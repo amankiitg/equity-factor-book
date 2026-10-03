@@ -2493,3 +2493,39 @@ Status. On the `backport` branch. **This would have changed the live book at the
 merge**: the regenerated seed would have carried a registry with no floor, and
 the evening would have sized all 502 names. The rest of the +142.5 question is
 closed; there is no further unexplained term.
+
+## 2026-10-03: the design book as the live loop trades it, stored beside the full book
+
+Decision. The design book's performance is now measured twice and stored beside
+itself, under E8's F8.5 and E10's F10.1: `full_book_*` is the book as those two
+sprints already measure it, at the reference AUM; `kept_*` is the same weights
+taken to the E11 construction, whole shares at $1mn NAV with no name held under
+20 whole shares and the kept book renormalized to gross 1.0. Nothing stored is
+replaced, and no threshold is attached: the measurement was taken after the
+numbers existed, so it is a stored measurement and not a criterion (STANDARDS
+2b), recorded here and in the memos rather than scored against a bound. The
+figures live in `data/portfolios/traded_book.parquet`, written by both the E8 and
+the E10 rebuild, and both sprints' criteria read it.
+
+Reason. E11 trades a different object from the one E8 and E10 score. The scored
+book is the persistent proportional design book at its reference AUM with every
+name in it; what trades is that book taken to whole shares at $1mn with a
+20-share floor, which drops names and renormalizes the rest. Quoting the scored
+Sharpe as the traded book's would overstate what the loop earns, and the gap is
+entirely a construction effect.
+
+Evidence. On the frozen panel (`END=2026-10-02`), through
+`efb.allocate.traded_book_figures`: `full_book_sharpe` **1.0262173** over
+`full_book_n_names` **498.0**, `kept_sharpe` **0.7909531** over `kept_n_names`
+**233.4629**, `kept_names_dropped_share` **0.49454**, and
+`kept_gross_before_renorm` **0.7428933**. The Phase 1 scratch measurement
+(Sharpe 0.98 to 0.73, "about half the names dropped") is therefore **corrected**
+on the panel the branch carries: the mechanism and the "about half" hold (49.45%
+of name-rebalances are dropped by the floor), the levels are 1.0262 to 0.7910.
+The floor, not the corrections, is what separates the two books: with
+`share_floor` 0 the same quantizer keeps every sized name (the item 1 defect).
+
+Tests. `tests/test_allocate.py`: the quantizer's floor behaviour on a hand-built
+book, and that the stored row is what the function computes now.
+
+Status. On the `backport` branch. Stored, not scored: no verdict moves.

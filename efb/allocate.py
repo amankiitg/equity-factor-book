@@ -92,6 +92,52 @@ def pick_design_config(data_root: Path = DATA_ROOT) -> dict[str, float]:
     return best
 
 
+def net_returns_of_book(
+    w_wide: pd.DataFrame, aum: float, data_root: Path = DATA_ROOT
+) -> pd.Series:
+    """The per-rebalance net return of a supplied gross-normalized book.
+
+    `design_net_returns` reads the design book and calls this; the traded-book
+    measurement calls it with the quantized book, so the full book and the book
+    the live loop trades are priced by the same arithmetic.
+    """
+    from efb import costs
+
+    root = Path(data_root)
+    if w_wide.empty:
+        return pd.Series(dtype=float, name="net_return")
+    prices = pd.read_parquet(root / "raw" / "prices.parquet")
+    spread = costs.spread_schedule(prices, root)
+    adv = costs._adv_per_ticker(prices)
+    specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
+    sigma_map = specific.groupby("ticker")["specific_return"].std(ddof=1)
+    gross = w_wide.abs().sum(axis=1)
+    book = w_wide.div(gross, axis=0)
+    realized = costs._realized_returns(book, root)
+    names = list(book.columns)
+    spread_map = spread.reindex(names).fillna(spread.median())
+    adv_map = adv.reindex(names).fillna(adv.median())
+    sigma_np = sigma_map.reindex(names).fillna(sigma_map.median())
+    realized_dates = realized.index
+    aligned = book.reindex(realized_dates)
+    cost_rows: list[float] = []
+    for index in range(1, len(realized_dates)):
+        current = aligned.iloc[index].reindex(names).fillna(0.0).to_numpy(dtype=float)
+        prev = aligned.iloc[index - 1].reindex(names).fillna(0.0).to_numpy(dtype=float)
+        cost_rows.append(
+            costs._trade_cost(
+                current - prev,
+                spread_map.to_numpy(dtype=float),
+                sigma_np.to_numpy(dtype=float),
+                adv_map.to_numpy(dtype=float),
+                aum,
+                costs.IMPACT_K,
+            )
+        )
+    net = realized.iloc[1:] - pd.Series(cost_rows, index=realized.index[1:])
+    return net.rename("net_return")
+
+
 def design_net_returns(
     rho: float,
     phi: float,
@@ -104,47 +150,113 @@ def design_net_returns(
     The realized specific return of the gross-normalized persistent weights
     minus the corrected transaction cost at the reference AUM.
     """
-    from efb import costs
-
     root = Path(data_root)
-    prices = pd.read_parquet(root / "raw" / "prices.parquet")
-    spread = costs.spread_schedule(prices, root)
-    adv = costs._adv_per_ticker(prices)
     weights = pd.read_parquet(root / "portfolios" / "persistent_proportional.parquet")
-    specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
-    sigma_map = specific.groupby("ticker")["specific_return"].std(ddof=1)
     frame = weights.loc[
         (weights["rho"] == rho) & (weights["phi"] == phi) & (weights["seed"] == seed)
     ]
     if frame.empty:
         return pd.Series(dtype=float, name="net_return")
     w_wide = frame.pivot_table(index="date", columns="ticker", values="weight")
-    gross = w_wide.abs().sum(axis=1)
-    w_wide = w_wide.div(gross, axis=0)
-    realized = costs._realized_returns(w_wide, root)
-    names = [t for t in w_wide.columns]
-    spread_map = spread.reindex(names).fillna(spread.median())
-    adv_map = adv.reindex(names).fillna(adv.median())
-    sigma_np = sigma_map.reindex(names).fillna(sigma_map.median())
-    realized_dates = realized.index
-    aligned = w_wide.reindex(realized_dates)
-    cost_rows: list[float] = []
-    for index in range(1, len(realized_dates)):
-        current = aligned.iloc[index].reindex(names).fillna(0.0).to_numpy(dtype=float)
-        prev = aligned.iloc[index - 1].reindex(names).fillna(0.0).to_numpy(dtype=float)
-        delta = current - prev
-        cost_rows.append(
-            costs._trade_cost(
-                delta,
-                spread_map.to_numpy(dtype=float),
-                sigma_np.to_numpy(dtype=float),
-                adv_map.to_numpy(dtype=float),
-                aum,
-                costs.IMPACT_K,
-            )
+    return net_returns_of_book(w_wide, aum, root)
+
+
+TRADED_BOOK_NAV = 1_000_000.0
+TRADED_BOOK_SHARE_FLOOR = 20
+
+
+def quantize_book_to_shares(
+    book: pd.DataFrame,
+    close: pd.DataFrame,
+    nav: float,
+    floor: int = TRADED_BOOK_SHARE_FLOOR,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """E11's construction applied to a design book.
+
+    Whole shares at `nav`, no name held under `floor` whole shares, and the
+    kept book renormalized to its own gross. A name with no usable close on the
+    rebalance date is dropped from that date's book rather than priced.
+    """
+    out: dict[pd.Timestamp, pd.Series] = {}
+    diary: list[dict[str, float]] = []
+    for date, row in book.iterrows():
+        if date in close.index:
+            price = close.loc[date]
+        else:
+            prior = close.index[close.index.searchsorted(date) - 1]
+            price = close.loc[prior]
+        price = price.reindex(row.index)
+        usable = row.notna() & price.notna() & (price > 0)
+        shares = np.floor(np.abs(row.where(usable, 0.0)) * nav / price.where(usable))
+        keep = usable & (shares >= floor)
+        kept = row.where(keep, 0.0)
+        gross_before = float(row.abs().sum())
+        gross_after = float(kept.abs().sum())
+        if gross_after > 0:
+            kept = kept * (gross_before / gross_after)
+        out[date] = kept
+        diary.append(
+            {
+                "date": date,
+                "names_sized": int(row.notna().sum()),
+                "names_kept": int(keep.sum()),
+                "gross_before": gross_before,
+                "gross_after_floor": gross_after,
+            }
         )
-    net = realized.iloc[1:] - pd.Series(cost_rows, index=realized.index[1:])
-    return net.rename("net_return")
+    return pd.DataFrame(out).T, pd.DataFrame(diary)
+
+
+def traded_book_figures(
+    data_root: Path = DATA_ROOT,
+    nav: float = TRADED_BOOK_NAV,
+    floor: int = TRADED_BOOK_SHARE_FLOOR,
+    store: bool = False,
+) -> dict[str, float]:
+    """The design book as the live loop trades it, beside the full book.
+
+    `full_book_*` is the design book as E8 and E10 measure it, at the reference
+    AUM. `kept_*` is the same weights taken to whole shares at `nav`, with no
+    name held under `floor` whole shares and the kept book renormalized to
+    gross 1.0, which is the E11 construction. Sharpe is the annualized net
+    Sharpe after the same vol target. A measurement taken after the numbers
+    exist is not a criterion: these are stored beside the existing figures, not
+    scored against a threshold.
+    """
+    root = Path(data_root)
+    config = pick_design_config(root)
+    rho, phi, seed = float(config["rho"]), float(config["phi"]), int(config["seed"])
+    weights = pd.read_parquet(root / "portfolios" / "persistent_proportional.parquet")
+    frame = weights.loc[
+        (weights["rho"] == rho) & (weights["phi"] == phi) & (weights["seed"] == seed)
+    ]
+    w_wide = frame.pivot_table(index="date", columns="ticker", values="weight")
+    w_full = w_wide.div(w_wide.abs().sum(axis=1), axis=0)
+    prices = pd.read_parquet(root / "raw" / "prices.parquet")
+    close = prices["close"].unstack("ticker").sort_index()
+    kept_book, diary = quantize_book_to_shares(w_full, close, nav, floor)
+    figures: dict[str, float] = {
+        "kept_nav": float(nav),
+        "kept_share_floor": int(floor),
+    }
+    for label, book, aum in (
+        ("full_book", w_full, REFERENCE_AUM),
+        ("kept", kept_book, nav),
+    ):
+        net = _scale_to_vol(net_returns_of_book(book, aum, root))
+        kelly = kelly_analysis(net, data_root=root, store=False)
+        figures[f"{label}_sharpe"] = float(kelly["sharpe"].iloc[0])
+        figures[f"{label}_n_names"] = float((book != 0).sum(axis=1).mean())
+    if not diary.empty:
+        figures["kept_names_dropped_share"] = float(
+            1.0 - diary["names_kept"].sum() / diary["names_sized"].sum()
+        )
+        figures["kept_gross_before_renorm"] = float(diary["gross_after_floor"].mean())
+    if store:
+        directory = root / "portfolios"
+        directory.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame([figures]).to_parquet(directory / "traded_book.parquet")
+    return figures
 
 
 def _scale_to_vol(
@@ -815,6 +927,7 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
         float(config["rho"]), float(config["phi"]), int(config["seed"]), root
     )
     voltarget_daily = vol_target_daily_analysis(net, daily, data_root=root, store=store)
+    traded = traded_book_figures(root, store=store)
     return {
         "config": config,
         "net": net,
@@ -825,4 +938,5 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
         "regime": regime,
         "daily": daily,
         "voltarget_daily": voltarget_daily,
+        "traded_book": traded,
     }

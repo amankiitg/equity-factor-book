@@ -1,7 +1,7 @@
 {
   "sprint": "E10",
-  "evaluated_at": "2026-09-22T17:24:02+00:00",
-  "data_hash": "279de5b063ddbb0adec13e4d7e9aa1ecc59531d6104ade08ee50ef2fc723625d",
+  "evaluated_at": "2026-10-03T20:20:48+00:00",
+  "data_hash": "d8f7d827191b25dbff2bf81d762949068404e59a7071ef1662ef022106ae473a",
   "criteria": {
     "F10.1": {
       "criterion": "Simulated drawdown distribution matches the analytical approximation within 10% at the median for the seed book's SR.",
@@ -11,7 +11,17 @@
         "analytical_median_drawdown": 0.0354329710482708,
         "relative_gap_at_median": 2.9598245584793177,
         "gaussian_median_drawdown": -0.1539687769091203,
-        "n_bootstrap": 2000
+        "n_bootstrap": 2000,
+        "traded_book": {
+          "kept_nav": 1000000.0,
+          "kept_share_floor": 20.0,
+          "full_book_sharpe": 1.0262173292733416,
+          "full_book_n_names": 498.0,
+          "kept_sharpe": 0.7909530546269876,
+          "kept_n_names": 233.46285714285713,
+          "kept_names_dropped_share": 0.49453785151368934,
+          "kept_gross_before_renorm": 0.7428933412883961
+        }
       },
       "verdict": "fail",
       "note": "The analytical benchmark is the Magdon-Ismail infinite-horizon Brownian median, ln(2) sigma^2 / (2 mu), computed from the book's own annualized moments. The simulated median is the median maximum drawdown of i.i.d. bootstrapped paths of the book's net return series. The gap is not fat tails or volatility clustering: the Gaussian control, i.i.d. Gaussian paths at the book's own moments and length, draws down deeper than the bootstrap, so the gap is the mismatch between a stationary median and a finite-sample maximum drawdown."
@@ -90,16 +100,16 @@
     }
   },
   "revisions": {
-    "previous_data_hash": "34cefce18053476daca2b9b40a9525170e15837d14308f15a1ad9f9fb3a16b69",
-    "data_hash": "279de5b063ddbb0adec13e4d7e9aa1ecc59531d6104ade08ee50ef2fc723625d",
+    "previous_data_hash": "279de5b063ddbb0adec13e4d7e9aa1ecc59531d6104ade08ee50ef2fc723625d",
+    "data_hash": "d8f7d827191b25dbff2bf81d762949068404e59a7071ef1662ef022106ae473a",
     "n_changed": 1,
     "changed_tickers_or_criteria": [
-      "F10.1b"
+      "F10.1"
     ],
     "cross_sprint_criteria": [],
     "changed": {
       "F10.1": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "fail",
           "criterion": "Simulated drawdown distribution matches the analytical approximation within 10% at the median for the seed book's SR.",
@@ -121,20 +131,33 @@
             "analytical_median_drawdown": 0.0354329710482708,
             "relative_gap_at_median": 2.9598245584793177,
             "gaussian_median_drawdown": -0.1539687769091203,
-            "n_bootstrap": 2000
+            "n_bootstrap": 2000,
+            "traded_book": {
+              "kept_nav": 1000000.0,
+              "kept_share_floor": 20.0,
+              "full_book_sharpe": 1.0262173292733416,
+              "full_book_n_names": 498.0,
+              "kept_sharpe": 0.7909530546269876,
+              "kept_n_names": 233.46285714285713,
+              "kept_names_dropped_share": 0.49453785151368934,
+              "kept_gross_before_renorm": 0.7428933412883961
+            }
           }
         }
       },
       "F10.1b": {
-        "changed": true,
+        "changed": false,
         "old": {
-          "verdict": "pass",
-          "criterion": "The expected maximum drawdown at the book's horizon, n_obs * 21 / 252 years, is between 0.15 and 0.25 and within 100% of the simulated median.",
-          "threshold": "expected maximum drawdown between 0.15 and 0.25 and a relative gap below 1.0",
+          "verdict": "fail",
+          "criterion": "Simulated drawdown distribution matches the horizon-matched analytical approximation within 10% at the median for the seed book's SR.",
+          "threshold": "simulated median drawdown within 10% of the analytical value",
           "stored_numbers": {
             "horizon_years": 14.5,
             "expected_mdd_at_horizon": 0.1993770805683501,
             "expected_mdd_relative_gap": 0.2962664086721387,
+            "simulated_median_drawdown": -0.14030834893682936,
+            "simulated_mean_drawdown": -0.14798490415621438,
+            "expected_mdd_mean_relative_gap": 0.25776371218615346,
             "n_obs": 174
           }
         },
@@ -1008,11 +1031,208 @@
             }
           }
         }
+      },
+      {
+        "previous_data_hash": "279de5b063ddbb0adec13e4d7e9aa1ecc59531d6104ade08ee50ef2fc723625d",
+        "data_hash": "d8f7d827191b25dbff2bf81d762949068404e59a7071ef1662ef022106ae473a",
+        "n_changed": 1,
+        "changed_tickers_or_criteria": [
+          "F10.1"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F10.1": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Simulated drawdown distribution matches the analytical approximation within 10% at the median for the seed book's SR.",
+              "threshold": "simulated median drawdown within 10% of the analytical value",
+              "stored_numbers": {
+                "simulated_median_drawdown": -0.14030834893682936,
+                "analytical_median_drawdown": 0.0354329710482708,
+                "relative_gap_at_median": 2.9598245584793177,
+                "gaussian_median_drawdown": -0.1539687769091203,
+                "n_bootstrap": 2000
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Simulated drawdown distribution matches the analytical approximation within 10% at the median for the seed book's SR.",
+              "threshold": "simulated median drawdown within 10% of the analytical value",
+              "stored_numbers": {
+                "simulated_median_drawdown": -0.14030834893682936,
+                "analytical_median_drawdown": 0.0354329710482708,
+                "relative_gap_at_median": 2.9598245584793177,
+                "gaussian_median_drawdown": -0.1539687769091203,
+                "n_bootstrap": 2000,
+                "traded_book": {
+                  "kept_nav": 1000000.0,
+                  "kept_share_floor": 20.0,
+                  "full_book_sharpe": 1.0262173292733416,
+                  "full_book_n_names": 498.0,
+                  "kept_sharpe": 0.7909530546269876,
+                  "kept_n_names": 233.46285714285713,
+                  "kept_names_dropped_share": 0.49453785151368934,
+                  "kept_gross_before_renorm": 0.7428933412883961
+                }
+              }
+            }
+          },
+          "F10.1b": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Simulated drawdown distribution matches the horizon-matched analytical approximation within 10% at the median for the seed book's SR.",
+              "threshold": "simulated median drawdown within 10% of the analytical value",
+              "stored_numbers": {
+                "horizon_years": 14.5,
+                "expected_mdd_at_horizon": 0.1993770805683501,
+                "expected_mdd_relative_gap": 0.2962664086721387,
+                "simulated_median_drawdown": -0.14030834893682936,
+                "simulated_mean_drawdown": -0.14798490415621438,
+                "expected_mdd_mean_relative_gap": 0.25776371218615346,
+                "n_obs": 174
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Simulated drawdown distribution matches the horizon-matched analytical approximation within 10% at the median for the seed book's SR.",
+              "threshold": "simulated median drawdown within 10% of the analytical value",
+              "stored_numbers": {
+                "horizon_years": 14.5,
+                "expected_mdd_at_horizon": 0.1993770805683501,
+                "expected_mdd_relative_gap": 0.2962664086721387,
+                "simulated_median_drawdown": -0.14030834893682936,
+                "simulated_mean_drawdown": -0.14798490415621438,
+                "expected_mdd_mean_relative_gap": 0.25776371218615346,
+                "n_obs": 174
+              }
+            }
+          },
+          "F10.2": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Control: on i.i.d. bootstrapped returns the stop-loss does not improve Sharpe. On the real book the result is reported either way.",
+              "threshold": "stop-loss does not improve Sharpe on the i.i.d. control",
+              "stored_numbers": {
+                "control_mean_sharpe_diff": -0.487285170300088,
+                "control_improves_sharpe": false,
+                "seed_ew_real_sharpe_diff": 0.0,
+                "seed_ew_n_obs": 207,
+                "seed_ew_n_dates_available": 4193,
+                "seed_mom_ls_real_sharpe_diff": 0.22596605244168746,
+                "seed_mom_ls_n_obs": 4091,
+                "seed_mom_ls_n_dates_available": 4092
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Control: on i.i.d. bootstrapped returns the stop-loss does not improve Sharpe. On the real book the result is reported either way.",
+              "threshold": "stop-loss does not improve Sharpe on the i.i.d. control",
+              "stored_numbers": {
+                "control_mean_sharpe_diff": -0.487285170300088,
+                "control_improves_sharpe": false,
+                "seed_ew_real_sharpe_diff": 0.0,
+                "seed_ew_n_obs": 207,
+                "seed_ew_n_dates_available": 4193,
+                "seed_mom_ls_real_sharpe_diff": 0.22596605244168746,
+                "seed_mom_ls_n_obs": 4091,
+                "seed_mom_ls_n_dates_available": 4092
+              }
+            }
+          },
+          "F10.2b": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "The stop-loss that can re-enter does not improve Sharpe on the i.i.d. control.",
+              "threshold": "re-entering stop does not improve Sharpe on the i.i.d. control",
+              "stored_numbers": {
+                "reentering_control_mean_sharpe_diff": -0.07161747413052198,
+                "reentering_control_improves_sharpe": false,
+                "reentering_real_sharpe_diff": -0.07716140464418775,
+                "reentering_entries": 2,
+                "reentering_exits": 3,
+                "reentering_days_flat": 9
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "The stop-loss that can re-enter does not improve Sharpe on the i.i.d. control.",
+              "threshold": "re-entering stop does not improve Sharpe on the i.i.d. control",
+              "stored_numbers": {
+                "reentering_control_mean_sharpe_diff": -0.07161747413052198,
+                "reentering_control_improves_sharpe": false,
+                "reentering_real_sharpe_diff": -0.07716140464418775,
+                "reentering_entries": 2,
+                "reentering_exits": 3,
+                "reentering_days_flat": 9
+              }
+            }
+          },
+          "F10.3": {
+            "changed": false,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Vol targeting reduces the dispersion of realized annual vol across years by more than 40%.",
+              "threshold": "dispersion reduction above 40%",
+              "stored_numbers": {
+                "raw_dispersion": 0.27535511464122947,
+                "targeted_dispersion": 0.2338401979010474,
+                "dispersion_reduction": 0.1507686421378931,
+                "n_years_raw": 15,
+                "n_years_targeted": 14,
+                "n_years_aligned": 14
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Vol targeting reduces the dispersion of realized annual vol across years by more than 40%.",
+              "threshold": "dispersion reduction above 40%",
+              "stored_numbers": {
+                "raw_dispersion": 0.27535511464122947,
+                "targeted_dispersion": 0.2338401979010474,
+                "dispersion_reduction": 0.1507686421378931,
+                "n_years_raw": 15,
+                "n_years_targeted": 14,
+                "n_years_aligned": 14
+              }
+            }
+          },
+          "F10.3b": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "A daily-return volatility estimate's dispersion reduction stays below 40% at every window.",
+              "threshold": "maximum daily-estimator reduction below 40%",
+              "stored_numbers": {
+                "daily_21_reduction": 0.286841908887589,
+                "daily_42_reduction": 0.19526090861895973,
+                "daily_63_reduction": 0.16342907720713906,
+                "daily_126_reduction": 0.20269773254335188,
+                "daily_252_reduction": 0.12647949552023874
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "A daily-return volatility estimate's dispersion reduction stays below 40% at every window.",
+              "threshold": "maximum daily-estimator reduction below 40%",
+              "stored_numbers": {
+                "daily_21_reduction": 0.286841908887589,
+                "daily_42_reduction": 0.19526090861895973,
+                "daily_63_reduction": 0.16342907720713906,
+                "daily_126_reduction": 0.20269773254335188,
+                "daily_252_reduction": 0.12647949552023874
+              }
+            }
+          }
+        }
       }
     ]
   },
   "reference_values": {
-    "data_hash": "279de5b063ddbb0adec13e4d7e9aa1ecc59531d6104ade08ee50ef2fc723625d",
+    "data_hash": "d8f7d827191b25dbff2bf81d762949068404e59a7071ef1662ef022106ae473a",
     "verdicts": {
       "F10.1": "fail",
       "F10.1b": "fail",
@@ -1027,7 +1247,17 @@
         "analytical_median_drawdown": 0.0354329710482708,
         "relative_gap_at_median": 2.9598245584793177,
         "gaussian_median_drawdown": -0.1539687769091203,
-        "n_bootstrap": 2000
+        "n_bootstrap": 2000,
+        "traded_book": {
+          "kept_nav": 1000000.0,
+          "kept_share_floor": 20.0,
+          "full_book_sharpe": 1.0262173292733416,
+          "full_book_n_names": 498.0,
+          "kept_sharpe": 0.7909530546269876,
+          "kept_n_names": 233.46285714285713,
+          "kept_names_dropped_share": 0.49453785151368934,
+          "kept_gross_before_renorm": 0.7428933412883961
+        }
       },
       "F10.1b": {
         "horizon_years": 14.5,

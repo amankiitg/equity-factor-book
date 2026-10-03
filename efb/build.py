@@ -2265,7 +2265,7 @@ def rebuild_e8(
     weights and the construction summary, the F8.4 resampling and the
     criteria read from those artifacts.
     """
-    from efb import evaluate, size
+    from efb import allocate, evaluate, size
 
     end = pinned_panel_end(end, data_root)
     e7: dict[str, object] | None = None
@@ -2276,6 +2276,11 @@ def rebuild_e8(
     size.f81b_gls_identity(data_root=data_root, store=True)
     size.store_f87(data_root=data_root, store=True)
     size.store_persistence_turnover(data_root=data_root, store=True)
+    # The design book as the live loop trades it, beside the full book: whole
+    # shares, the 20-share floor, $1mn NAV, gross renormalized to 1.0. Written
+    # here as well as in the E10 leg so either rebuild produces the artifact
+    # both sprints' criteria read.
+    allocate.traded_book_figures(data_root=data_root, store=True)
     artifact_paths = [
         data_root / rel
         for rel in (

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -80,3 +82,70 @@ def test_the_kelly_artifacts_are_written() -> None:
         pytest.skip("the E10 run has not completed")
     kelly = pd.read_parquet(path)
     assert {"kelly_full", "kelly_half", "growth_full", "sharpe"} <= set(kelly.columns)
+
+
+def _toy_book() -> tuple[pd.DataFrame, pd.DataFrame]:
+    index = pd.to_datetime(["2020-01-31", "2020-02-29"])
+    book = pd.DataFrame(
+        [[0.5, 0.5, 0.0], [0.5, 0.5, 0.0]], index=index, columns=["A", "B", "C"]
+    )
+    close = pd.DataFrame(
+        [[100.0, 10.0, 50.0], [100.0, 10.0, 50.0]], index=index, columns=book.columns
+    )
+    return book, close
+
+
+def test_quantize_book_to_shares_applies_the_e11_construction() -> None:
+    """Whole shares at the NAV, no name under the floor, gross 1.0.
+
+    At $1,000 a $500 target is 5 shares of A (below the 20-share floor) and 50
+    shares of B (kept), so B carries the whole book after renormalization.
+    """
+    book, close = _toy_book()
+    kept, diary = allocate.quantize_book_to_shares(book, close, 1_000.0, floor=20)
+    assert kept.loc[book.index[0], "A"] == 0.0
+    assert kept.loc[book.index[0], "B"] == pytest.approx(1.0)
+    assert kept.loc[book.index[0], "C"] == 0.0
+    assert float(kept.iloc[0].abs().sum()) == pytest.approx(1.0)
+    assert int(diary["names_kept"].iloc[0]) == 1
+
+
+def test_the_floor_is_what_drops_the_names() -> None:
+    """With no floor every sized name is kept; with the floor most are not."""
+    book, close = _toy_book()
+    without_floor, _ = allocate.quantize_book_to_shares(book, close, 1_000.0, floor=0)
+    with_floor, _ = allocate.quantize_book_to_shares(book, close, 1_000.0, floor=20)
+    assert int((without_floor != 0).sum().sum()) > int((with_floor != 0).sum().sum())
+
+
+@pytest.mark.integration
+def test_the_stored_traded_book_figures_are_what_the_function_computes() -> None:
+    path = DATA / "portfolios" / "traded_book.parquet"
+    if not path.exists():
+        pytest.skip("the E8/E10 build has not written the traded-book figures")
+    stored = pd.read_parquet(path).iloc[0].to_dict()
+    computed = allocate.traded_book_figures(DATA, store=False)
+    for key, value in computed.items():
+        assert stored[key] == pytest.approx(value), key
+    assert stored["kept_nav"] == allocate.TRADED_BOOK_NAV
+    assert stored["kept_share_floor"] == allocate.TRADED_BOOK_SHARE_FLOOR
+
+
+@pytest.mark.integration
+def test_e8_and_e10_store_the_traded_book_beside_the_full_book() -> None:
+    """Additive: the kept_* and full_book_* keys sit beside the old numbers."""
+    for sprint, key in (("E8", "F8.5"), ("E10", "F10.1")):
+        payload = json.loads((ROOT / "sprints" / sprint / "RESULTS.json").read_text())
+        numbers = payload["criteria"][key]["stored_numbers"]
+        block = numbers.get("traded_book")
+        assert block, f"{sprint} {key} stores no traded-book figures"
+        assert {
+            "kept_sharpe",
+            "full_book_sharpe",
+            "kept_n_names",
+            "full_book_n_names",
+            "kept_names_dropped_share",
+        } <= set(block)
+        # the floor is what separates the two books, and it bites
+        assert block["kept_n_names"] < block["full_book_n_names"]
+        assert 0.3 < block["kept_names_dropped_share"] < 0.7

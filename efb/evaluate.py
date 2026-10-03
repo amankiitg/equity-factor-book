@@ -3855,6 +3855,7 @@ E8_ARTIFACTS = [
     "portfolios/persistent_proportional.parquet",
     "portfolios/e8_realized_ic.parquet",
     "portfolios/e8_neff.parquet",
+    "portfolios/traded_book.parquet",
 ] + [
     f"portfolios/{name}.parquet"
     for name in (
@@ -3867,6 +3868,12 @@ E8_ARTIFACTS = [
         "shrunk",
     )
 ]
+
+
+def _read_traded_book(root: Path) -> pd.DataFrame:
+    """The design book as the live loop trades it, written by the E8/E10 builds."""
+    path = root / "portfolios" / "traded_book.parquet"
+    return pd.read_parquet(path) if path.exists() else pd.DataFrame()
 
 
 def compute_e8_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
@@ -3932,6 +3939,7 @@ def compute_e8_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "neff": neff,
         "f81b": f81b,
         "f87": f87,
+        "traded_book": _read_traded_book(root),
     }
 
 
@@ -3955,6 +3963,7 @@ def evaluate_e8_criteria(
     neff: pd.DataFrame | None = None,
     f81b: pd.DataFrame | None = None,
     f87: pd.DataFrame | None = None,
+    traded_book: pd.DataFrame | None = None,
 ) -> dict[str, dict[str, Any]]:
     """F8.1 to F8.6 plus F8.1b and F8.7, each with a stored number."""
     criteria: dict[str, dict[str, Any]] = {}
@@ -4284,6 +4293,10 @@ def evaluate_e8_criteria(
         ),
     }
 
+    if traded_book is not None and not traded_book.empty and "F8.5" in criteria:
+        criteria["F8.5"]["stored_numbers"]["traded_book"] = {
+            key: float(value) for key, value in traded_book.iloc[0].items()
+        }
     return criteria
 
 
@@ -4714,6 +4727,7 @@ E10_ARTIFACTS = [
     "allocation/voltarget_daily.parquet",
     "allocation/stoploss.parquet",
     "allocation/regime.parquet",
+    "portfolios/traded_book.parquet",
 ]
 
 
@@ -4726,6 +4740,7 @@ def compute_e10_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any
         "voltarget_daily": pd.DataFrame(),
         "stoploss": pd.DataFrame(),
         "regime": pd.DataFrame(),
+        "traded_book": pd.DataFrame(),
     }
     out: dict[str, Any] = {}
     for key, rel in (
@@ -4738,6 +4753,7 @@ def compute_e10_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any
     ):
         path = root / rel
         out[key] = pd.read_parquet(path) if path.exists() else empty[key]
+    out["traded_book"] = _read_traded_book(root)
     return out
 
 
@@ -4760,13 +4776,14 @@ def evaluate_e10_criteria(
     voltarget_daily: pd.DataFrame,
     stoploss: pd.DataFrame,
     regime: pd.DataFrame,
+    traded_book: pd.DataFrame | None = None,
 ) -> dict[str, dict[str, Any]]:
     """F10.1 to F10.3b, each with a stored number and a verdict."""
     criteria: dict[str, dict[str, Any]] = {}
 
     # F10.1. The simulated drawdown distribution against the analytical
     # median, at the median, with the Gaussian control beside it.
-    f101_numbers: dict[str, float | int] = {}
+    f101_numbers: dict[str, Any] = {}
     if not drawdown.empty:
         row = drawdown.iloc[0]
         f101_numbers = {
@@ -4775,6 +4792,10 @@ def evaluate_e10_criteria(
             "relative_gap_at_median": float(row["relative_gap_at_median"]),
             "gaussian_median_drawdown": float(row["gaussian_median_drawdown"]),
             "n_bootstrap": int(row["n_bootstrap"]),
+        }
+    if traded_book is not None and not traded_book.empty:
+        f101_numbers["traded_book"] = {
+            key: float(value) for key, value in traded_book.iloc[0].items()
         }
     gap = float(f101_numbers.get("relative_gap_at_median", float("nan")))
     criteria["F10.1"] = {
