@@ -15,11 +15,15 @@ missing weight or exposure is never silently zeroed.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
 from efb import eval_risk, race
+
+if TYPE_CHECKING:  # the design's own type, without importing it at run time
+    from efb.models.fundamental import CrossSection
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
@@ -237,6 +241,90 @@ def _instrument_betas(
     return np.column_stack(betas), np.array(idio)
 
 
+def panel_design(root: Path) -> dict[pd.Timestamp, CrossSection]:
+    """The panel's own design, keyed by session: the row each session carries.
+
+    `race.next_descriptor_design` builds the next session's row from data through
+    the close, with the cross-section taken as the names priced at the close,
+    because that is what is knowable at the close. `fx.build_design` will not take
+    that shortcut: it standardizes every session of the panel over the names priced
+    on that session's own date, which is the row the model would have published for
+    it. Both are needed and they are not the same object, which is what F6.1
+    scores: the hedge zeroes the exposures in the first, and the second is the row
+    the book actually earns. On an ordinary session the priced set does not move
+    and the two agree to 7e-14; on a month end it moves, the model's row for the
+    next session is standardized over a different cross-section, and the residual
+    is a basis exposure rather than zero.
+
+    INPUT: the data root. OUTPUT: one cross-section object per session, so a
+    caller can ask for a specific session's design and names instead of rebuilding
+    the panel for every date.
+    """
+    from efb import probes
+    from efb.models import fundamental as fx
+
+    inputs = probes.load_panel(root)
+    returns = inputs["returns_clean"]
+    close = inputs["close"]
+    volume = inputs["volume"]
+    sectors = inputs["sectors"]
+    mapped = inputs["mapped"]
+    shares = inputs["shares"]
+    assert isinstance(returns, pd.DataFrame)
+    assert isinstance(close, pd.DataFrame)
+    assert isinstance(volume, pd.DataFrame)
+    assert isinstance(sectors, pd.Series)
+    assert isinstance(shares, pd.DataFrame)
+    assert isinstance(mapped, list)
+    cap = fx.market_cap(close[mapped], shares[mapped])
+    design = fx.build_design(
+        returns=returns[mapped],
+        close=close[mapped],
+        volume=volume[mapped],
+        market_cap=cap,
+        sectors=sectors,
+        proxy=fx.market_proxy(returns[mapped], cap),
+    )
+    return {pd.Timestamp(day.date): day for day in design.days}
+
+
+def next_row_exposure(
+    design: np.ndarray,
+    names: list[str],
+    held: np.ndarray,
+    next_design: np.ndarray,
+    next_names: list[str],
+) -> tuple[np.ndarray, float]:
+    """The exposure a hedged book carries in the next session's own row.
+
+    INPUT: the design the hedge was built on and its names, the hedged book's
+    weights over those names, and the row the next session carries and its names.
+    OUTPUT: the per-factor exposure of that book read through the next row, and
+    the distance between the two rows over the names they share.
+
+    A name the next row does not carry has no weight in it: the row's cross-section
+    is the model's own universe for that session, so a name outside it contributes
+    nothing to the exposure rather than an unmeasured column. The distance is the
+    largest absolute elementwise difference over the names in both rows, which is
+    the number that says whether the session's own row is the row the hedge was
+    built against.
+    """
+    aligned = (
+        pd.Series(held, index=names)
+        .reindex(next_names)
+        .fillna(0.0)
+        .to_numpy(dtype=float)
+    )
+    exposure = next_design.T @ aligned
+    common = [name for name in names if name in set(next_names)]
+    if not common:
+        return exposure, float("nan")
+    close_index = [names.index(name) for name in common]
+    next_index = [next_names.index(name) for name in common]
+    distance = float(np.abs(design[close_index, :] - next_design[next_index, :]).max())
+    return exposure, distance
+
+
 def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
     """The full E6 pipeline: hedges on the seed books, efficacy and decay."""
     from efb.models import fundamental as fx
@@ -250,6 +338,10 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
     fmp_by_date = {pd.Timestamp(d): g for d, g in fmp.groupby("date")}
     grid = race.race_grid(root)
     spy = instrument_returns["SPY"]
+    # The rows the sessions carry, so the exposure the book is left with over the
+    # next session is a measurement rather than a claim about the design the hedge
+    # was built on. Built once; `panel_design` explains why it is a second object.
+    sessions = panel_design(root)
 
     position_rows: list[dict[str, object]] = []
     metric_rows: list[dict[str, object]] = []
@@ -330,13 +422,32 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
             exposure_after_fmp = design.T @ (weights + exact_hedge)
             exposure_after_fmp_capped = design.T @ (weights + capped_on_names)
             exposure_after_mv = exposures + betas_used @ h_star
-            for factor, before, after_fmp, after_capped, after_mv in zip(
-                factor_names,
-                exposures,
-                exposure_after_fmp,
-                exposure_after_fmp_capped,
-                exposure_after_mv,
-                strict=True,
+            # the same book read through the row the next session carries, which
+            # is the row it earns. Zero here is the claim; this is the check.
+            following = race._session_after(date, root)
+            next_day = sessions.get(pd.Timestamp(following)) if following else None
+            if next_day is None:
+                exposure_next = np.full(len(factor_names), np.nan)
+                next_distance = float("nan")
+                next_names: list[str] = []
+            else:
+                next_names = [str(name) for name in next_day.tickers]
+                exposure_next, next_distance = next_row_exposure(
+                    design,
+                    names,
+                    weights + exact_hedge,
+                    next_day.design,
+                    next_names,
+                )
+            for index, (factor, before, after_fmp, after_capped, after_mv) in enumerate(
+                zip(
+                    factor_names,
+                    exposures,
+                    exposure_after_fmp,
+                    exposure_after_fmp_capped,
+                    exposure_after_mv,
+                    strict=True,
+                )
             ):
                 exposure_rows.append(
                     {
@@ -347,6 +458,9 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, object]:
                         "exposure_after_fmp": float(after_fmp),
                         "exposure_after_fmp_capped": float(after_capped),
                         "exposure_after_min_variance": float(after_mv),
+                        "exposure_after_fmp_next_row": float(exposure_next[index]),
+                        "next_row_distance": next_distance,
+                        "design_vintage": str(supplied["design_vintage"]),
                     }
                 )
             factor_variance_before = float(exposures @ factor_covariance @ exposures)

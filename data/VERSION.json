@@ -1,7 +1,7 @@
 {
-  "note": "Built by make rebuild (Sprint E5). E1 through E5 artifacts, each with a content hash; the dashboard sidebar shows this version.",
-  "built_at": "2026-10-03T15:58:48+00:00",
-  "data_hash": "cddade738f668c822a612c8a4f063b6d7851e61ea443857e5796ef26d727b41f",
+  "note": "Built by make rebuild (Sprint E6). The hedging toolkit artifacts join the versioned set; the dashboard sidebar shows this version.",
+  "built_at": "2026-10-03T17:53:21+00:00",
+  "data_hash": "4412058b0af5422c99ea338c6939e8bbe8168598448d7edd39d70af0110529e3",
   "artifacts": {
     "beta_horse_race.parquet": {
       "sha256": "87af2bbd25dc898013ba81fa3878003106ebcb2db7adb5786ddc4e0e678aa21c",
@@ -104,16 +104,20 @@
       "bytes": 1518542
     },
     "cov_horse_race.parquet": {
-      "sha256": "b5f09bd6216bfa78256175c35a261c1062f512cb8327fa9af0372086f3ee6b8b",
-      "bytes": 81322
+      "sha256": "71528477128b0e29f289d1408d66af378ed42bcde07f9f647d4b1506f05f75e9",
+      "bytes": 90101
+    },
+    "cov_horse_race_derived_grid.parquet": {
+      "sha256": "71528477128b0e29f289d1408d66af378ed42bcde07f9f647d4b1506f05f75e9",
+      "bytes": 90101
     },
     "e4_f41_pc1_correlations.parquet": {
       "sha256": "cadbc1a3402b969fab8af0b6057b43502cf641b5f1c966621027c55964416fb6",
       "bytes": 4391
     },
     "e4_f44_held_out.parquet": {
-      "sha256": "5d8ab56ec8f1b1f0033ae62cfca12bdc917938ac5793355446f2c149d12c79aa",
-      "bytes": 2581
+      "sha256": "f870ca8e10b86ad4f337eeb37e1fef51a251ed548457f11aceef46c4f84661c1",
+      "bytes": 3292
     },
     "e5_asset_level.parquet": {
       "sha256": "50ef9ebd69fbc96c4dbbefaedbce33a263c7fb8c703fe57903760c254b7ba5c9",
@@ -142,6 +146,10 @@
     "e5_portfolios.parquet": {
       "sha256": "388cb598d673a47a19409df09d7f8dafdb64ef61043f9222ddc76cca10ef787d",
       "bytes": 5704174
+    },
+    "e5_race_grid.json": {
+      "sha256": "d1437170674f2152ff2d5603e446aeb36884abb4076a4b0d459bd20db6c445c5",
+      "bytes": 976
     },
     "e5_regimes.parquet": {
       "sha256": "0981010059e2aee7da3508d34205b1475fe068e2e6cd237866503541a66a52d7",
@@ -251,6 +259,26 @@
       "sha256": "6825f944ff2e103e0590f324d7cae76f68f8332460f825bc64aeaa6f81bc19ca",
       "bytes": 18256
     },
+    "e6_decay.parquet": {
+      "sha256": "9027b9561c3874fd12201c404aa10dddaa43b6a127267502726425ef62942907",
+      "bytes": 3129
+    },
+    "e6_efficacy.parquet": {
+      "sha256": "fdac87d104e1f752a9331709e271542e744648f79b1dca62fd86cdebe7218fb4",
+      "bytes": 4273
+    },
+    "e6_exposures.parquet": {
+      "sha256": "c92d695f460cab5ff31339cbf9f4d906c66911fdb30bce1646b60e6537743f8a",
+      "bytes": 199525
+    },
+    "hedge_metrics.parquet": {
+      "sha256": "79b9ede51685e39f4f2ee35df22a01531e8eca00221ec519b70c58ba2aca9321",
+      "bytes": 82677
+    },
+    "hedge_positions.parquet": {
+      "sha256": "c7210caef8e632c0c69c0e418a8427124afbfd7535851533a44f20b95208b242",
+      "bytes": 57516
+    },
     "eigenvalues.parquet": {
       "sha256": "7b9f59dbd95c5e8c4a4882e2ae7b318100d4863d5648feb13d895cca9d363fb1",
       "bytes": 22387
@@ -324,7 +352,7 @@
       "bytes": 2484301
     },
     "registry.json": {
-      "sha256": "00c3a75fd01de626d7c59ad6f7b35dde9cefa2484d69ac2e50c9b5e634209b2f",
+      "sha256": "fd56348efe935cfe1af014e3d424bb85d8ae3e895f9b2a0f53125f774ba6801e",
       "bytes": 14257
     },
     "seed_ew.parquet": {
@@ -348,24 +376,24 @@
       "bytes": 18780
     },
     "events.parquet": {
-      "sha256": "7214e0daebc2fbe54f7d0a608f13afb20c5aa22724fc8c716cc17ab266be432b",
-      "bytes": 88646
+      "sha256": "83766541cf80af8eee66e466089e9ad0db93b9b251b92a29990ecdf1ae694c8b",
+      "bytes": 90049
     },
     "market_cap.parquet": {
       "sha256": "bdcb866f0a39a41578b91c131713473e7a52711e0eca4d88f4bddb92e5cf4502",
       "bytes": 27037998
     },
     "returns.parquet": {
-      "sha256": "30e353a0ecfd505a07c50eb0677acce93ae74677c5b14ba4709bf1df3830a844",
-      "bytes": 61733902
+      "sha256": "1d8bb279582e437104f29a48d269dfb462675ce20b21185762a3268ccb978397",
+      "bytes": 61289827
     },
     "sectors.parquet": {
       "sha256": "d5382ca3ffa28fb7c2898ae8623df38e5a87d9de3de8a747de98e34d68a474ec",
       "bytes": 9535
     },
     "ticker_identity.parquet": {
-      "sha256": "82ee9130b91428939c9afa5719e5fe6dfd0f3d72c0db8d448ac0ba342020192f",
-      "bytes": 24342
+      "sha256": "350a052172b16438b3bae1a4f54103b7accc6c2ed69bea7c8c74bd1bd5ea19aa",
+      "bytes": 27832
     },
     "ticker_identity_readded.parquet": {
       "sha256": "5bef25fa60ba011b081215f41c582a6231ce8ad470c7b5be3c534038fc69cd6e",
@@ -382,6 +410,10 @@
     "universe_membership.parquet": {
       "sha256": "6fe1f60386081d80a7a4b81e760196f8ed393d1670eaaa0f6298955497375c9d",
       "bytes": 426658
+    },
+    "etf_prices.parquet": {
+      "sha256": "c0f401c3ede79dc4793990e89d1c35d182b22eba919f21589ca1a7b3ef76300e",
+      "bytes": 455352
     },
     "factors_ff.parquet": {
       "sha256": "3e1402960d72f7fc47807acc9b2cab8940bc111a7ced06ed5f923cc20b79f410",

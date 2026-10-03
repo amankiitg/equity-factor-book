@@ -2784,7 +2784,8 @@ E6_CRITERIA_TEXT = {
     ),
     "F6.5": (
         "New in E6: the residual factor exposure the instrument set cannot "
-        "reach, quantified per factor."
+        "reach, quantified per factor, with the design vintage the hedge was "
+        "built against stored beside it."
     ),
     "F6.4b": (
         "Registered in E8 Task 0b, not pre-registered: F6.4 is rerun "
@@ -2795,7 +2796,10 @@ E6_CRITERIA_TEXT = {
 }
 
 E6_THRESHOLDS = {
-    "F6.1": "every factor's post-FMP exposure below 1e-6 in absolute value",
+    "F6.1": (
+        "every factor's post-FMP exposure below 1e-6 in absolute value, read "
+        "through the row the next session carries"
+    ),
     "F6.2": "long-only seed book factor variance removed above 70%",
     "F6.3": "realized beta to Mkt-RF inside +/- 0.1 over 2018 to 2026",
     "F6.4": "headline numbers present for both models with the difference",
@@ -2849,9 +2853,20 @@ def evaluate_e6_criteria(
     criteria: dict[str, dict[str, Any]] = {}
 
     # F6.1. The FMP hedge on the seed books: every post-hedge exposure below
-    # 1e-6 in absolute value, and the idio share above 95%.
+    # 1e-6 in absolute value, and the idio share above 95%. The bound is read
+    # through **the row the next session carries**, not the design the hedge was
+    # built on: zero in the built design is true by construction and is not what
+    # the book earns. The two are the same row on an ordinary session and a
+    # different one on a month end, which is where the hedge is left with basis
+    # exposure.
     fmp_exposures = exposures[["book", "date", "factor", "exposure_after_fmp"]]
     worst = float(fmp_exposures["exposure_after_fmp"].abs().max())
+    next_values = exposures["exposure_after_fmp_next_row"]
+    measured_next = next_values.dropna()
+    worst_next = (
+        float(measured_next.abs().max()) if len(measured_next) else float("nan")
+    )
+    n_without_next_row = int(next_values.isna().sum())
     worst_capped = float(exposures["exposure_after_fmp_capped"].abs().max())
     fmp_metrics = metrics.loc[metrics["method"] == "fmp"]
     mean_idio_share = float(fmp_metrics["idio_share_after"].mean())
@@ -2860,6 +2875,23 @@ def evaluate_e6_criteria(
         "threshold": E6_THRESHOLDS["F6.1"],
         "stored_numbers": {
             "worst_abs_exposure_after_fmp": worst,
+            "worst_abs_exposure_after_fmp_next_row": worst_next,
+            "mean_abs_exposure_after_fmp_next_row": (
+                float(measured_next.abs().mean())
+                if len(measured_next)
+                else float("nan")
+            ),
+            "worst_next_row_distance": float(exposures["next_row_distance"].max()),
+            "n_dates_scored_on_the_next_row": int(
+                exposures.loc[next_values.notna(), "date"].nunique()
+            ),
+            "n_exposure_rows_without_a_next_row": n_without_next_row,
+            "design_vintages": {
+                str(vintage): int(count)
+                for vintage, count in exposures.groupby("design_vintage")["date"]
+                .nunique()
+                .items()
+            },
             "mean_idio_share_after_fmp": mean_idio_share,
             "worst_abs_exposure_after_fmp_capped_stored": worst_capped,
             "mean_fmp_name_count": float(fmp_metrics["name_count"].mean()),
@@ -2868,9 +2900,33 @@ def evaluate_e6_criteria(
             ),
             "n_fmp_dates": int(fmp_exposures["date"].nunique()),
         },
-        "verdict": _verdict(worst < 1e-6 and mean_idio_share > 0.95),
+        "verdict": _verdict(
+            worst < 1e-6 and worst_next < 1e-6 and mean_idio_share > 0.95
+        ),
         "note": (
-            "The exact in-model FMP hedge is zero by construction; the "
+            "Fails. The exact in-model FMP hedge is zero in the design it was "
+            "built against, which is what `worst_abs_exposure_after_fmp` "
+            "records: zero by construction, not a result. Read through the row "
+            "the next session carries - the row the book actually earns - the "
+            "same book is left with "
+            "`worst_abs_exposure_after_fmp_next_row`, 0.135260 on the worst of "
+            "the 176 scored dates and 0.002018 on average, against a 1e-6 bound. "
+            "The two rows are the same object on an ordinary session and "
+            "different ones on a month end, and on this tree they are never the "
+            "next session's row at all: every one of the 176 dates carries a "
+            "`stale` vintage, because a research tree publishes descriptors at "
+            "month ends plus the final session (`build._descriptor_frame`), so "
+            "the row for the session after a month end does not exist and "
+            "`race.next_descriptor_design` falls back to the row dated the "
+            "close. Each hedge is therefore one session behind by construction, "
+            "and `worst_next_row_distance` records how far behind: 3.856266 at "
+            "the worst date, over the names the two rows share. The month-end "
+            "pair is the documented example of the same gap, measured on a live "
+            "tree: 2026-07-30 to 2026-07-31 the row the hedge was built on sits "
+            "2.291 from the published row and the hedged book is left with "
+            "3.82e-03 of exposure, against 1e-15 and 3e-14 for 2026-09-17 to "
+            "2026-09-18. `design_vintages` names the row every hedge was built "
+            "against, so the gap is attributable rather than asserted. The "
             "quarterly capped FMP weights keep cap drift, which is basis risk "
             "and is stored beside the criterion number."
         ),
@@ -3075,11 +3131,23 @@ def evaluate_e6_criteria(
         "threshold": E6_THRESHOLDS["F6.5"],
         "stored_numbers": {
             "mean_abs_exposure_after_instrument_hedge": residual_dict,
+            "design_vintages": {
+                str(vintage): int(count)
+                for vintage, count in exposures.groupby("design_vintage")["date"]
+                .nunique()
+                .items()
+            },
+            "worst_next_row_distance": float(exposures["next_row_distance"].max()),
         },
         "verdict": _verdict(bool(residual_dict)),
         "note": (
             "Averaged over the long-only seed book's rebalance dates; the "
-            "instrument set cannot span every factor and this is the gap."
+            "instrument set cannot span every factor and this is the gap. The "
+            "exposures are read in the design the hedge was built against, so "
+            "the gap is the instrument set's own, and the vintage each hedge "
+            "used is stored beside it: F6.1 is the one that is re-read through "
+            "the row the next session carries, because that is the row the book "
+            "earns."
         ),
     }
 
