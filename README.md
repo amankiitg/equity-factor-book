@@ -1,5 +1,24 @@
 # Equity Factor Book (EFB)
 
+## At a glance
+
+- **What:** A full systematic long/short equity stack built from scratch on free data,
+  following Paleologo's APM and EQI: risk models, hedging, sizing, transaction costs,
+  and ex-post attribution, across 13 sprints.
+- **Live:** A daily paper-traded book of 158 names on Alpaca, factor-hedged with an
+  exact factor-mimicking-portfolio hedge, running on a cron with automated
+  reconciliation.
+- **How it's built:** An agentic research workflow. One agent implements, another
+  reviews and plans, coordinated through handoff files. Every falsification criterion
+  is pre-registered, and every headline number is checked against stored results by a
+  traceability test.
+- **Headline findings:**
+  - Survivorship bias in free S&P 500 data: about 365 bp per year.
+  - Idiosyncratic momentum looks significant raw (IC 0.0121, t 5.04 at 1 day) but
+    vanishes once factor-neutralized (IC -0.0031, t -0.51 at 21 days). The book trades
+    it anyway as a documented null, to test the machinery rather than claim an edge.
+- **Where to start:** docs/research/STATUS_REPORT.md
+  
 Learn the theory in Paleologo's *APM* and *EQI*, build the machinery, and develop
 the judgment to run a systematic book: this repository is a systematic equity
 risk and portfolio management stack, written from scratch on free data, one
