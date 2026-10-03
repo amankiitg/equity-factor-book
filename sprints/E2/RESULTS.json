@@ -1,7 +1,7 @@
 {
   "sprint": "E2",
-  "evaluated_at": "2026-09-11T14:38:33+00:00",
-  "data_hash": "51f0faa935cb57e8e9f11bf620e5f551f69ca50b415f12112f880f32b3393692",
+  "evaluated_at": "2026-10-03T15:23:46+00:00",
+  "data_hash": "223d67567eaf1ead0386cc6657039254a0ea54204b65272b99d06d8691730cff",
   "criteria": {
     "F2.0a": {
       "criterion": "coverage is reported per universe rather than as one threshold: current members 100%, point-in-time members with prices by year (the Task 0 table); the criterion passes if the table is stored and MODEL_START is recorded.",
@@ -18,7 +18,7 @@
       "criterion": "interior NaN return rows (302 rows, 13 tickers) are excluded from every regression window and never forward-filled; the criterion passes if a test proves a regression window containing a NaN row drops that row rather than imputing it.",
       "threshold": "NaN rows dropped, never imputed",
       "stored_numbers": {
-        "interior_nan_rows_e1": 302,
+        "interior_nan_rows_e1": 1,
         "nan_row_dropped_by_fit": true
       },
       "verdict": "pass",
@@ -28,9 +28,9 @@
       "criterion": "adjusted-close audit mean below 0.1 bp, and every audited day with an absolute difference above 50 bp appears in events.parquet with a cause (the 221 bp BKR day is a merger). Passes when both hold.",
       "threshold": "mean < 0.1 bp and every day above 50 bp has an event with a cause",
       "stored_numbers": {
-        "audit_mean_bp": 0.017816512107027022,
-        "large_audit_days": 1,
-        "large_audit_days_with_event": 1
+        "audit_mean_bp": 0.012652056405543944,
+        "large_audit_days": 0,
+        "large_audit_days_with_event": 0
       },
       "verdict": "pass",
       "note": "Large days are the 20-name audit sample above 50 bp, all matched to events.parquet."
@@ -38,7 +38,7 @@
     "F2.1": {
       "criterion": "Full-sample OLS beta vs mean of rolling 252d betas: cross-sectional correlation above 0.9.",
       "threshold": "cross-sectional correlation > 0.9",
-      "stored_number": 0.924360607612146,
+      "stored_number": 0.9244184771370912,
       "verdict": "pass",
       "note": "Full-sample OLS market beta vs the time mean of the rolling 252d beta."
     },
@@ -46,7 +46,7 @@
       "criterion": "Mean pairwise correlation of FF5+MOM residuals across the universe below 0.05. Higher means a missing common factor; carry the finding into E3.",
       "threshold": "mean pairwise residual correlation < 0.05",
       "stored_numbers": {
-        "mean_pairwise_correlation": 0.015617959842847057,
+        "mean_pairwise_correlation": 0.019022570246739985,
         "n_names_sampled": 150
       },
       "verdict": "pass",
@@ -56,40 +56,40 @@
       "criterion": "GARCH(1,1) and EWMA(0.94) each beat trailing 252d vol on out-of-sample QLIKE for more than 60% of names.",
       "threshold": "GARCH and EWMA(0.94) each beat trailing 252d for > 60% of names",
       "stored_numbers": {
-        "garch_win_share": 0.5816326530612245,
-        "ewma_094_win_share": 0.35403726708074534,
-        "garch_names_fitted": 98,
-        "paired_n": 80,
-        "paired_garch_win_share": 0.5375,
-        "paired_ewma_094_win_share": 0.3625,
-        "garch_beats_ewma_094_share": 0.725
+        "garch_win_share": 0.5625,
+        "ewma_094_win_share": 0.3458333333333333,
+        "garch_names_fitted": 96,
+        "paired_n": 72,
+        "paired_garch_win_share": 0.5555555555555556,
+        "paired_ewma_094_win_share": 0.3611111111111111,
+        "garch_beats_ewma_094_share": 0.7222222222222222
       },
       "verdict": "fail",
-      "note": "Win share is the fraction of names whose out-of-sample QLIKE beats trailing 252d vol. GARCH fits only 98 of the names, so the two win shares are not on the same sample: on the 80 names where both are available, GARCH beats EWMA (0.94) for 72.5% of them."
+      "note": "Win share is the fraction of names whose out-of-sample QLIKE beats trailing 252d vol. GARCH fits only 96 of the names, so the two win shares are not on the same sample: on the 72 names where both are available, GARCH beats EWMA (0.94) for 72.2% of them."
     },
     "F2.4": {
       "criterion": "For the equal-weight seed portfolio, bias statistic (realized 63d forward vol over model-predicted vol) averages between 0.8 and 1.2 across calendar years.",
       "threshold": "mean bias ratio in [0.8, 1.2] across calendar years",
       "stored_numbers": {
-        "bias_mean": 1.0225333792324938,
+        "bias_mean": 1.0219219817846674,
         "bias_by_year": {
-          "2010": 0.6894745441461914,
-          "2011": 1.243169042984342,
-          "2012": 0.6832150422159406,
-          "2013": 0.8715465929945752,
-          "2014": 1.0347752887326924,
-          "2015": 1.207778980310976,
-          "2016": 0.775656690436585,
-          "2017": 0.9282227718355079,
-          "2018": 1.3178797011660677,
-          "2019": 1.2341508695112442,
-          "2020": 1.3936401040451825,
-          "2021": 0.826414662817548,
-          "2022": 1.2305398720195155,
-          "2023": 0.7583397191684487,
-          "2024": 1.0336420038155036,
-          "2025": 1.2558251392176192,
-          "2026": 0.8987964215344576
+          "2010": 0.6874912145899773,
+          "2011": 1.2425255889020992,
+          "2012": 0.6846634939140376,
+          "2013": 0.8709372659744143,
+          "2014": 1.03637212043079,
+          "2015": 1.2079882426936697,
+          "2016": 0.7767978993173411,
+          "2017": 0.9291535624943085,
+          "2018": 1.3246264717354468,
+          "2019": 1.2311912546288248,
+          "2020": 1.3938586670093975,
+          "2021": 0.8234458331424448,
+          "2022": 1.228144771701993,
+          "2023": 0.758625745655324,
+          "2024": 1.0312106061771034,
+          "2025": 1.2506867239100457,
+          "2026": 0.8949542280621328
         }
       },
       "verdict": "pass",
@@ -98,7 +98,7 @@
     "F2.5": {
       "criterion": "Newey-West SE exceeds OLS SE at lag 5 for more than 80% of names. If not, document the direction and why.",
       "threshold": "Newey-West SE > OLS SE for > 80% of names",
-      "stored_number": 0.9633757961783439,
+      "stored_number": 0.9658536585365853,
       "verdict": "pass",
       "note": "Share of names where the Newey-West market-beta SE exceeds the OLS SE at lag 5."
     },
@@ -106,14 +106,15 @@
       "criterion": "Successor to F2.3, added on 2026-09-10 after the flagged MI row turned out to be a series break rather than a bad return: no name in the panel has an adjusted-close move above 5x that no recorded split explains. A name above that level has to leave the panel, not just lose the row, because every earlier date carries a different company's returns. This one is not pre-registered, and it is recorded as such.",
       "threshold": "0 names with an unexplained adjusted-close move above 5x",
       "stored_numbers": {
-        "names_with_breaks": 4,
+        "names_with_breaks": 5,
         "break_tickers": [
           "CPWR",
+          "CTVA",
           "EP",
           "MI",
           "POM"
         ],
-        "break_rows": 20
+        "break_rows": 21
       },
       "verdict": "fail",
       "note": "Ticker reuse: a later listing takes the old symbol and the vendor splices both histories, so one company's returns are attributed to another. Fixing it needs a security-identity source (FIGI or PERMNO) and is tracked in docs/open_items.md."
@@ -221,33 +222,33 @@
       "stored_numbers": {
         "win_shares": {
           "1": {
-            "ewma_094": 0.35403726708074534,
-            "ewma_097": 0.5196687370600414,
-            "garch": 0.6122448979591837,
-            "trailing_63": 0.36661211129296234
+            "ewma_094": 0.3458333333333333,
+            "ewma_097": 0.5270833333333333,
+            "garch": 0.5520833333333334,
+            "trailing_63": 0.3542009884678748
           },
           "21": {
-            "ewma_094": 0.19875776397515527,
-            "ewma_097": 0.34368530020703936,
-            "garch": 0.4897959183673469,
-            "trailing_63": 0.3076923076923077
+            "ewma_094": 0.1875,
+            "ewma_097": 0.3416666666666667,
+            "garch": 0.5416666666666666,
+            "trailing_63": 0.3031301482701812
           }
         },
-        "garch_fitted": 98,
-        "garch_failed": 2,
+        "garch_fitted": 96,
+        "garch_failed": 4,
         "day_level_ewma_094": {
-          "pooled": 0.5155910558965167,
-          "excluding_2020": 0.5155910558965167,
-          "n_name_days": 242126,
+          "pooled": 0.5189866564493828,
+          "excluding_2020": 0.5189866564493828,
+          "n_name_days": 240116,
           "by_year": {
-            "2024": 0.5128413684314306,
-            "2025": 0.5458484473699501,
-            "2026": 0.472009472009472
+            "2024": 0.5026785714285714,
+            "2025": 0.5458683795093675,
+            "2026": 0.4887580002883986
           }
         }
       },
       "verdict": "fail",
-      "note": "Horizon matched on both sides. GARCH improves when the 21-day dynamics are used rather than a flat scaling (49.0% of names against the one-step 61.2%), which was the hypothesis behind treating F2.3 as suspect, but neither horizon reaches 60%, so F2.3 stands and EWMA stays the production estimator."
+      "note": "Horizon matched on both sides. GARCH improves when the 21-day dynamics are used rather than a flat scaling (54.2% of names against the one-step 55.2%), which was the hypothesis behind treating F2.3 as suspect, but neither horizon reaches 60%, so F2.3 stands and EWMA stays the production estimator."
     },
     "F2.6c": {
       "criterion": "Close-out C6, added 2026-09-10 and not pre-registered: for every ticker the F2.6b identity check dropped, the changes table is asked for an added row dated after the removal and the constituents table for the name the symbol carries today. When either exists, that name is compared with the yfinance holder. A match means the symbol was renamed rather than taken over, so the ticker returns to the universe with its history truncated to the later of the re-add date and its first valid price; no match means it stays dropped. The criterion passes when the current constituents are covered by the estimation panel (returns.parquet) at 501 of 503, the bar stated in the close-out brief, and when the review itself is stored.",
@@ -323,136 +324,151 @@
           "ALK",
           "ALL",
           "AMCR",
-          "AMZN",
-          "APO",
-          "ARES",
-          "AVGO",
-          "AVY",
-          "BBWI",
-          "BBY",
-          "BHF",
+          "AMTM",
+          "APD",
+          "APTV",
+          "ARE",
+          "ATO",
+          "BALL",
+          "BAX",
+          "BF.B",
+          "BRO",
           "BTU",
-          "BX",
-          "CFG",
-          "CL",
-          "CMS",
-          "CPB",
+          "CEG",
+          "CIEN",
+          "CMI",
+          "CPAY",
+          "CPRI",
           "CPRT",
           "CPT",
-          "CRH",
           "CVNA",
-          "D",
+          "CZR",
           "DAL",
-          "DE",
-          "DGX",
-          "DTE",
-          "EL",
-          "ERIE",
+          "DDOG",
+          "DG",
+          "DRI",
+          "EIX",
+          "EQT",
           "ETN",
+          "EVRG",
           "EW",
-          "EXC",
-          "F",
+          "EXR",
           "FE",
-          "FIX",
-          "GDDY",
+          "FITB",
           "GE",
           "GEHC",
-          "GLW",
-          "GPN",
-          "GRMN",
-          "GWW",
-          "HAL",
-          "HIG",
-          "HPQ",
-          "HUM",
-          "INVH",
+          "GEN",
+          "GM",
+          "GS",
+          "GT",
+          "HAS",
+          "HBAN",
+          "HLT",
+          "HRL",
+          "IBKR",
           "IPGP",
-          "IT",
-          "KLAC",
+          "IR",
+          "ITW",
           "KMI",
-          "LDOS",
-          "LEN",
+          "KO",
+          "LH",
           "LHX",
-          "LII",
-          "LLY",
-          "LW",
-          "MGM",
-          "MO",
-          "MTB",
-          "NI",
-          "NTAP",
-          "NUE",
-          "NWL",
-          "NWSA",
-          "OMC",
-          "ON",
+          "LIN",
+          "LITE",
+          "LNC",
+          "LYV",
+          "MKC",
+          "MOS",
+          "MTCH",
+          "NOC",
+          "NTRS",
+          "NVR",
+          "NWS",
+          "NXPI",
           "ORCL",
-          "PAYX",
-          "PEP",
-          "PHM",
-          "POOL",
-          "PRU",
-          "QRVO",
-          "RDDT",
-          "REGN",
-          "RF",
+          "OTIS",
+          "PBI",
+          "PCG",
+          "PFE",
+          "PLD",
+          "PPG",
+          "PPL",
+          "PSA",
+          "R",
+          "REG",
           "RHI",
-          "RRC",
-          "SBUX",
-          "SE",
-          "SHW",
+          "RIG",
+          "RJF",
+          "RSG",
+          "SCHW",
+          "SEDG",
           "SIG",
-          "SII",
-          "SUN",
-          "TPL",
-          "TYL",
-          "VFC",
-          "VNT",
-          "VRSN",
-          "WAB",
-          "WEC",
+          "SJM",
+          "SW",
+          "TRGP",
+          "UAL",
+          "UNM",
+          "VLTO",
+          "VST",
+          "VZ",
+          "WBD",
           "WHR",
-          "WSM",
-          "XEL"
+          "WU",
+          "XRX"
         ],
-        "n_fully_covered": 599,
-        "garch_fitted": 98,
-        "garch_failed": 2,
+        "n_fully_covered": 598,
+        "garch_fitted": 96,
+        "garch_failed": 4,
         "not_converged": [
-          "LW",
-          "RDDT"
+          "AMTM",
+          "NXPI",
+          "RIG",
+          "VLTO"
         ],
         "win_shares": {
           "1": {
-            "ewma_094": 0.35403726708074534,
-            "ewma_097": 0.5196687370600414,
-            "garch": 0.6122448979591837,
-            "trailing_63": 0.36661211129296234
+            "ewma_094": 0.3458333333333333,
+            "ewma_097": 0.5270833333333333,
+            "garch": 0.5520833333333334,
+            "trailing_63": 0.3542009884678748
           },
           "21": {
-            "ewma_094": 0.19875776397515527,
-            "ewma_097": 0.34368530020703936,
-            "garch": 0.4897959183673469,
-            "trailing_63": 0.3076923076923077
+            "ewma_094": 0.1875,
+            "ewma_097": 0.3416666666666667,
+            "garch": 0.5416666666666666,
+            "trailing_63": 0.3031301482701812
           }
         },
-        "oos_start": "2024-09-03"
+        "oos_start": "2024-10-02"
       },
       "verdict": "fail",
-      "note": "Seed 20260910, sample of 100 names drawn from the 599 with full coverage over the window, 98 fits converging and 2 not (LW, RDDT). The GARCH win share is sample-dependent: 61.2% at horizon 1 on this sample against 46.7% on the alphabetical 60 that F2.3b first used, and 49.0% at horizon 21, but EWMA(0.94) is nowhere near the bar at either horizon, so the verdict does not turn on the sample."
+      "note": "Seed 20260910, sample of 100 names drawn from the 598 with full coverage over the window, 96 fits converging and 4 not (AMTM, NXPI, RIG, VLTO). The GARCH win share is sample-dependent: 55.2% at horizon 1 on this sample against 46.7% on the alphabetical 60 that F2.3b first used, and 54.2% at horizon 21, but EWMA(0.94) is nowhere near the bar at either horizon, so the verdict does not turn on the sample."
     }
   },
   "revisions": {
-    "previous_data_hash": "050f2b4531540bbcc6142f64fef7d1aa7f124a10c4c124dc34747ebd5206e6ad",
-    "data_hash": "51f0faa935cb57e8e9f11bf620e5f551f69ca50b415f12112f880f32b3393692",
-    "n_changed": 0,
-    "changed_tickers_or_criteria": [],
+    "previous_data_hash": "fa3285e67332e55077aa8e4ed3d8a257c52a90e2db1e43cfb151ef0947f98053",
+    "data_hash": "223d67567eaf1ead0386cc6657039254a0ea54204b65272b99d06d8691730cff",
+    "n_changed": 10,
+    "changed_tickers_or_criteria": [
+      "F2.0b",
+      "F2.0c",
+      "F2.1",
+      "F2.2",
+      "F2.3",
+      "F2.3b",
+      "F2.3c",
+      "F2.4",
+      "F2.5",
+      "F2.6"
+    ],
     "cross_sprint_criteria": [],
     "changed": {
       "F2.0a": {
         "changed": false,
         "old": {
           "verdict": "pass",
+          "criterion": "coverage is reported per universe rather than as one threshold: current members 100%, point-in-time members with prices by year (the Task 0 table); the criterion passes if the table is stored and MODEL_START is recorded.",
+          "threshold": "table stored and MODEL_START recorded",
           "stored_numbers": {
             "model_start": 2010,
             "coverage_years_stored": 17,
@@ -461,6 +477,8 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "coverage is reported per universe rather than as one threshold: current members 100%, point-in-time members with prices by year (the Task 0 table); the criterion passes if the table is stored and MODEL_START is recorded.",
+          "threshold": "table stored and MODEL_START recorded",
           "stored_numbers": {
             "model_start": 2010,
             "coverage_years_stored": 17,
@@ -469,9 +487,11 @@
         }
       },
       "F2.0b": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
+          "criterion": "interior NaN return rows (302 rows, 13 tickers) are excluded from every regression window and never forward-filled; the criterion passes if a test proves a regression window containing a NaN row drops that row rather than imputing it.",
+          "threshold": "NaN rows dropped, never imputed",
           "stored_numbers": {
             "interior_nan_rows_e1": 302,
             "nan_row_dropped_by_fit": true
@@ -479,16 +499,20 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "interior NaN return rows (302 rows, 13 tickers) are excluded from every regression window and never forward-filled; the criterion passes if a test proves a regression window containing a NaN row drops that row rather than imputing it.",
+          "threshold": "NaN rows dropped, never imputed",
           "stored_numbers": {
-            "interior_nan_rows_e1": 302,
+            "interior_nan_rows_e1": 1,
             "nan_row_dropped_by_fit": true
           }
         }
       },
       "F2.0c": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
+          "criterion": "adjusted-close audit mean below 0.1 bp, and every audited day with an absolute difference above 50 bp appears in events.parquet with a cause (the 221 bp BKR day is a merger). Passes when both hold.",
+          "threshold": "mean < 0.1 bp and every day above 50 bp has an event with a cause",
           "stored_numbers": {
             "audit_mean_bp": 0.017816512107027022,
             "large_audit_days": 1,
@@ -497,28 +521,36 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "adjusted-close audit mean below 0.1 bp, and every audited day with an absolute difference above 50 bp appears in events.parquet with a cause (the 221 bp BKR day is a merger). Passes when both hold.",
+          "threshold": "mean < 0.1 bp and every day above 50 bp has an event with a cause",
           "stored_numbers": {
-            "audit_mean_bp": 0.017816512107027022,
-            "large_audit_days": 1,
-            "large_audit_days_with_event": 1
+            "audit_mean_bp": 0.012652056405543944,
+            "large_audit_days": 0,
+            "large_audit_days_with_event": 0
           }
         }
       },
       "F2.1": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
+          "criterion": "Full-sample OLS beta vs mean of rolling 252d betas: cross-sectional correlation above 0.9.",
+          "threshold": "cross-sectional correlation > 0.9",
           "stored_number": 0.924360607612146
         },
         "new": {
           "verdict": "pass",
-          "stored_number": 0.924360607612146
+          "criterion": "Full-sample OLS beta vs mean of rolling 252d betas: cross-sectional correlation above 0.9.",
+          "threshold": "cross-sectional correlation > 0.9",
+          "stored_number": 0.9244184771370912
         }
       },
       "F2.2": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
+          "criterion": "Mean pairwise correlation of FF5+MOM residuals across the universe below 0.05. Higher means a missing common factor; carry the finding into E3.",
+          "threshold": "mean pairwise residual correlation < 0.05",
           "stored_numbers": {
             "mean_pairwise_correlation": 0.015617959842847057,
             "n_names_sampled": 150
@@ -526,16 +558,20 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "Mean pairwise correlation of FF5+MOM residuals across the universe below 0.05. Higher means a missing common factor; carry the finding into E3.",
+          "threshold": "mean pairwise residual correlation < 0.05",
           "stored_numbers": {
-            "mean_pairwise_correlation": 0.015617959842847057,
+            "mean_pairwise_correlation": 0.019022570246739985,
             "n_names_sampled": 150
           }
         }
       },
       "F2.3": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "fail",
+          "criterion": "GARCH(1,1) and EWMA(0.94) each beat trailing 252d vol on out-of-sample QLIKE for more than 60% of names.",
+          "threshold": "GARCH and EWMA(0.94) each beat trailing 252d for > 60% of names",
           "stored_numbers": {
             "garch_win_share": 0.5816326530612245,
             "ewma_094_win_share": 0.35403726708074534,
@@ -548,21 +584,25 @@
         },
         "new": {
           "verdict": "fail",
+          "criterion": "GARCH(1,1) and EWMA(0.94) each beat trailing 252d vol on out-of-sample QLIKE for more than 60% of names.",
+          "threshold": "GARCH and EWMA(0.94) each beat trailing 252d for > 60% of names",
           "stored_numbers": {
-            "garch_win_share": 0.5816326530612245,
-            "ewma_094_win_share": 0.35403726708074534,
-            "garch_names_fitted": 98,
-            "paired_n": 80,
-            "paired_garch_win_share": 0.5375,
-            "paired_ewma_094_win_share": 0.3625,
-            "garch_beats_ewma_094_share": 0.725
+            "garch_win_share": 0.5625,
+            "ewma_094_win_share": 0.3458333333333333,
+            "garch_names_fitted": 96,
+            "paired_n": 72,
+            "paired_garch_win_share": 0.5555555555555556,
+            "paired_ewma_094_win_share": 0.3611111111111111,
+            "garch_beats_ewma_094_share": 0.7222222222222222
           }
         }
       },
       "F2.4": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
+          "criterion": "For the equal-weight seed portfolio, bias statistic (realized 63d forward vol over model-predicted vol) averages between 0.8 and 1.2 across calendar years.",
+          "threshold": "mean bias ratio in [0.8, 1.2] across calendar years",
           "stored_numbers": {
             "bias_mean": 1.0225333792324938,
             "bias_by_year": {
@@ -588,45 +628,53 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "For the equal-weight seed portfolio, bias statistic (realized 63d forward vol over model-predicted vol) averages between 0.8 and 1.2 across calendar years.",
+          "threshold": "mean bias ratio in [0.8, 1.2] across calendar years",
           "stored_numbers": {
-            "bias_mean": 1.0225333792324938,
+            "bias_mean": 1.0219219817846674,
             "bias_by_year": {
-              "2010": 0.6894745441461914,
-              "2011": 1.243169042984342,
-              "2012": 0.6832150422159406,
-              "2013": 0.8715465929945752,
-              "2014": 1.0347752887326924,
-              "2015": 1.207778980310976,
-              "2016": 0.775656690436585,
-              "2017": 0.9282227718355079,
-              "2018": 1.3178797011660677,
-              "2019": 1.2341508695112442,
-              "2020": 1.3936401040451825,
-              "2021": 0.826414662817548,
-              "2022": 1.2305398720195155,
-              "2023": 0.7583397191684487,
-              "2024": 1.0336420038155036,
-              "2025": 1.2558251392176192,
-              "2026": 0.8987964215344576
+              "2010": 0.6874912145899773,
+              "2011": 1.2425255889020992,
+              "2012": 0.6846634939140376,
+              "2013": 0.8709372659744143,
+              "2014": 1.03637212043079,
+              "2015": 1.2079882426936697,
+              "2016": 0.7767978993173411,
+              "2017": 0.9291535624943085,
+              "2018": 1.3246264717354468,
+              "2019": 1.2311912546288248,
+              "2020": 1.3938586670093975,
+              "2021": 0.8234458331424448,
+              "2022": 1.228144771701993,
+              "2023": 0.758625745655324,
+              "2024": 1.0312106061771034,
+              "2025": 1.2506867239100457,
+              "2026": 0.8949542280621328
             }
           }
         }
       },
       "F2.5": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
+          "criterion": "Newey-West SE exceeds OLS SE at lag 5 for more than 80% of names. If not, document the direction and why.",
+          "threshold": "Newey-West SE > OLS SE for > 80% of names",
           "stored_number": 0.9633757961783439
         },
         "new": {
           "verdict": "pass",
-          "stored_number": 0.9633757961783439
+          "criterion": "Newey-West SE exceeds OLS SE at lag 5 for more than 80% of names. If not, document the direction and why.",
+          "threshold": "Newey-West SE > OLS SE for > 80% of names",
+          "stored_number": 0.9658536585365853
         }
       },
       "F2.6": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "fail",
+          "criterion": "Successor to F2.3, added on 2026-09-10 after the flagged MI row turned out to be a series break rather than a bad return: no name in the panel has an adjusted-close move above 5x that no recorded split explains. A name above that level has to leave the panel, not just lose the row, because every earlier date carries a different company's returns. This one is not pre-registered, and it is recorded as such.",
+          "threshold": "0 names with an unexplained adjusted-close move above 5x",
           "stored_numbers": {
             "names_with_breaks": 4,
             "break_tickers": [
@@ -640,15 +688,18 @@
         },
         "new": {
           "verdict": "fail",
+          "criterion": "Successor to F2.3, added on 2026-09-10 after the flagged MI row turned out to be a series break rather than a bad return: no name in the panel has an adjusted-close move above 5x that no recorded split explains. A name above that level has to leave the panel, not just lose the row, because every earlier date carries a different company's returns. This one is not pre-registered, and it is recorded as such.",
+          "threshold": "0 names with an unexplained adjusted-close move above 5x",
           "stored_numbers": {
-            "names_with_breaks": 4,
+            "names_with_breaks": 5,
             "break_tickers": [
               "CPWR",
+              "CTVA",
               "EP",
               "MI",
               "POM"
             ],
-            "break_rows": 20
+            "break_rows": 21
           }
         }
       },
@@ -656,6 +707,8 @@
         "changed": false,
         "old": {
           "verdict": "pass",
+          "criterion": "Close-out C1, added 2026-09-10 and not pre-registered: every ticker on the Wikipedia changes table's removed list is compared with the current holder of that symbol on yfinance, matched by name token overlap after stripping legal suffixes, punctuation and share class letters. A name match means the history is legitimate even if prices continue past the removal; no match means the symbol was reused and rows before the current company's first valid date are dropped, or the ticker is dropped when that date cannot be determined. Tickers with a gap above 60 business days between two live price segments are flagged separately. The criterion passes when the flagged list is stored in data/processed/ticker_identity.parquet and efb/build.py applies the exclusions itself, which is checked against the estimated panel rather than asserted.",
+          "threshold": "identity table stored and the reused-symbol exclusions applied by the build",
           "stored_numbers": {
             "identity_table_rows": 373,
             "names_matched": 93,
@@ -750,6 +803,8 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "Close-out C1, added 2026-09-10 and not pre-registered: every ticker on the Wikipedia changes table's removed list is compared with the current holder of that symbol on yfinance, matched by name token overlap after stripping legal suffixes, punctuation and share class letters. A name match means the history is legitimate even if prices continue past the removal; no match means the symbol was reused and rows before the current company's first valid date are dropped, or the ticker is dropped when that date cannot be determined. Tickers with a gap above 60 business days between two live price segments are flagged separately. The criterion passes when the flagged list is stored in data/processed/ticker_identity.parquet and efb/build.py applies the exclusions itself, which is checked against the estimated panel rather than asserted.",
+          "threshold": "identity table stored and the reused-symbol exclusions applied by the build",
           "stored_numbers": {
             "identity_table_rows": 373,
             "names_matched": 93,
@@ -844,9 +899,11 @@
         }
       },
       "F2.3b": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "fail",
+          "criterion": "Close-out C3, added 2026-09-10 and not pre-registered: the same 60% win-share bar as F2.3, evaluated on forecasts matched to the target horizon. One-step forecasts are scored against the squared return of the same day, and 21-day forecasts (GARCH multi-step, EWMA held flat, trailing held flat) against the realized variance of the next 21 days, both over the same out-of-sample window with flagged rows excluded. GARCH and EWMA(0.94) each have to beat the trailing 252d baseline for more than 60% of names at both horizons. EWMA(0.97) stays the production estimator unless GARCH wins for more than 70% of names here, which would be an open decision for E5 rather than a change now.",
+          "threshold": "GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of names at horizon 1 and at horizon 21",
           "stored_numbers": {
             "win_shares": {
               "1": {
@@ -878,31 +935,33 @@
         },
         "new": {
           "verdict": "fail",
+          "criterion": "Close-out C3, added 2026-09-10 and not pre-registered: the same 60% win-share bar as F2.3, evaluated on forecasts matched to the target horizon. One-step forecasts are scored against the squared return of the same day, and 21-day forecasts (GARCH multi-step, EWMA held flat, trailing held flat) against the realized variance of the next 21 days, both over the same out-of-sample window with flagged rows excluded. GARCH and EWMA(0.94) each have to beat the trailing 252d baseline for more than 60% of names at both horizons. EWMA(0.97) stays the production estimator unless GARCH wins for more than 70% of names here, which would be an open decision for E5 rather than a change now.",
+          "threshold": "GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of names at horizon 1 and at horizon 21",
           "stored_numbers": {
             "win_shares": {
               "1": {
-                "ewma_094": 0.35403726708074534,
-                "ewma_097": 0.5196687370600414,
-                "garch": 0.6122448979591837,
-                "trailing_63": 0.36661211129296234
+                "ewma_094": 0.3458333333333333,
+                "ewma_097": 0.5270833333333333,
+                "garch": 0.5520833333333334,
+                "trailing_63": 0.3542009884678748
               },
               "21": {
-                "ewma_094": 0.19875776397515527,
-                "ewma_097": 0.34368530020703936,
-                "garch": 0.4897959183673469,
-                "trailing_63": 0.3076923076923077
+                "ewma_094": 0.1875,
+                "ewma_097": 0.3416666666666667,
+                "garch": 0.5416666666666666,
+                "trailing_63": 0.3031301482701812
               }
             },
-            "garch_fitted": 98,
-            "garch_failed": 2,
+            "garch_fitted": 96,
+            "garch_failed": 4,
             "day_level_ewma_094": {
-              "pooled": 0.5155910558965167,
-              "excluding_2020": 0.5155910558965167,
-              "n_name_days": 242126,
+              "pooled": 0.5189866564493828,
+              "excluding_2020": 0.5189866564493828,
+              "n_name_days": 240116,
               "by_year": {
-                "2024": 0.5128413684314306,
-                "2025": 0.5458484473699501,
-                "2026": 0.472009472009472
+                "2024": 0.5026785714285714,
+                "2025": 0.5458683795093675,
+                "2026": 0.4887580002883986
               }
             }
           }
@@ -912,6 +971,8 @@
         "changed": false,
         "old": {
           "verdict": "pass",
+          "criterion": "Close-out C6, added 2026-09-10 and not pre-registered: for every ticker the F2.6b identity check dropped, the changes table is asked for an added row dated after the removal and the constituents table for the name the symbol carries today. When either exists, that name is compared with the yfinance holder. A match means the symbol was renamed rather than taken over, so the ticker returns to the universe with its history truncated to the later of the re-add date and its first valid price; no match means it stays dropped. The criterion passes when the current constituents are covered by the estimation panel (returns.parquet) at 501 of 503, the bar stated in the close-out brief, and when the review itself is stored.",
+          "threshold": "current-constituent coverage of the estimation panel at or above 501 of 503, with the re-add review stored",
           "stored_numbers": {
             "review_rows": 36,
             "kept": [
@@ -967,6 +1028,8 @@
         },
         "new": {
           "verdict": "pass",
+          "criterion": "Close-out C6, added 2026-09-10 and not pre-registered: for every ticker the F2.6b identity check dropped, the changes table is asked for an added row dated after the removal and the constituents table for the name the symbol carries today. When either exists, that name is compared with the yfinance holder. A match means the symbol was renamed rather than taken over, so the ticker returns to the universe with its history truncated to the later of the re-add date and its first valid price; no match means it stays dropped. The criterion passes when the current constituents are covered by the estimation panel (returns.parquet) at 501 of 503, the bar stated in the close-out brief, and when the review itself is stored.",
+          "threshold": "current-constituent coverage of the estimation panel at or above 501 of 503, with the re-add review stored",
           "stored_numbers": {
             "review_rows": 36,
             "kept": [
@@ -1022,9 +1085,11 @@
         }
       },
       "F2.3c": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "fail",
+          "criterion": "Close-out C7, added 2026-09-10 and not pre-registered: the same 60 percent bar as F2.3b, evaluated on a seeded random sample of 100 names with full coverage over the out-of-sample window rather than on the alphabetical head of the universe, which is not a sample of anything. The seed, the sample size, the number of fits that converged and the names that did not are stored with the result. GARCH and EWMA(0.94) each have to beat the trailing 252d baseline for more than 60 percent of the names at horizon 1 and at horizon 21. The criterion exists because F2.3 and F2.3b were measured on a sample chosen by ticker order, and the point of a sample is to be chosen at random from the names that can be scored.",
+          "threshold": "GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of a seeded random sample of 100 fully covered names at horizon 1 and at horizon 21",
           "stored_numbers": {
             "seed": 20260910,
             "sample_size": 100,
@@ -1156,6 +1221,8 @@
         },
         "new": {
           "verdict": "fail",
+          "criterion": "Close-out C7, added 2026-09-10 and not pre-registered: the same 60 percent bar as F2.3b, evaluated on a seeded random sample of 100 names with full coverage over the out-of-sample window rather than on the alphabetical head of the universe, which is not a sample of anything. The seed, the sample size, the number of fits that converged and the names that did not are stored with the result. GARCH and EWMA(0.94) each have to beat the trailing 252d baseline for more than 60 percent of the names at horizon 1 and at horizon 21. The criterion exists because F2.3 and F2.3b were measured on a sample chosen by ticker order, and the point of a sample is to be chosen at random from the names that can be scored.",
+          "threshold": "GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of a seeded random sample of 100 fully covered names at horizon 1 and at horizon 21",
           "stored_numbers": {
             "seed": 20260910,
             "sample_size": 100,
@@ -1169,120 +1236,122 @@
               "ALK",
               "ALL",
               "AMCR",
-              "AMZN",
-              "APO",
-              "ARES",
-              "AVGO",
-              "AVY",
-              "BBWI",
-              "BBY",
-              "BHF",
+              "AMTM",
+              "APD",
+              "APTV",
+              "ARE",
+              "ATO",
+              "BALL",
+              "BAX",
+              "BF.B",
+              "BRO",
               "BTU",
-              "BX",
-              "CFG",
-              "CL",
-              "CMS",
-              "CPB",
+              "CEG",
+              "CIEN",
+              "CMI",
+              "CPAY",
+              "CPRI",
               "CPRT",
               "CPT",
-              "CRH",
               "CVNA",
-              "D",
+              "CZR",
               "DAL",
-              "DE",
-              "DGX",
-              "DTE",
-              "EL",
-              "ERIE",
+              "DDOG",
+              "DG",
+              "DRI",
+              "EIX",
+              "EQT",
               "ETN",
+              "EVRG",
               "EW",
-              "EXC",
-              "F",
+              "EXR",
               "FE",
-              "FIX",
-              "GDDY",
+              "FITB",
               "GE",
               "GEHC",
-              "GLW",
-              "GPN",
-              "GRMN",
-              "GWW",
-              "HAL",
-              "HIG",
-              "HPQ",
-              "HUM",
-              "INVH",
+              "GEN",
+              "GM",
+              "GS",
+              "GT",
+              "HAS",
+              "HBAN",
+              "HLT",
+              "HRL",
+              "IBKR",
               "IPGP",
-              "IT",
-              "KLAC",
+              "IR",
+              "ITW",
               "KMI",
-              "LDOS",
-              "LEN",
+              "KO",
+              "LH",
               "LHX",
-              "LII",
-              "LLY",
-              "LW",
-              "MGM",
-              "MO",
-              "MTB",
-              "NI",
-              "NTAP",
-              "NUE",
-              "NWL",
-              "NWSA",
-              "OMC",
-              "ON",
+              "LIN",
+              "LITE",
+              "LNC",
+              "LYV",
+              "MKC",
+              "MOS",
+              "MTCH",
+              "NOC",
+              "NTRS",
+              "NVR",
+              "NWS",
+              "NXPI",
               "ORCL",
-              "PAYX",
-              "PEP",
-              "PHM",
-              "POOL",
-              "PRU",
-              "QRVO",
-              "RDDT",
-              "REGN",
-              "RF",
+              "OTIS",
+              "PBI",
+              "PCG",
+              "PFE",
+              "PLD",
+              "PPG",
+              "PPL",
+              "PSA",
+              "R",
+              "REG",
               "RHI",
-              "RRC",
-              "SBUX",
-              "SE",
-              "SHW",
+              "RIG",
+              "RJF",
+              "RSG",
+              "SCHW",
+              "SEDG",
               "SIG",
-              "SII",
-              "SUN",
-              "TPL",
-              "TYL",
-              "VFC",
-              "VNT",
-              "VRSN",
-              "WAB",
-              "WEC",
+              "SJM",
+              "SW",
+              "TRGP",
+              "UAL",
+              "UNM",
+              "VLTO",
+              "VST",
+              "VZ",
+              "WBD",
               "WHR",
-              "WSM",
-              "XEL"
+              "WU",
+              "XRX"
             ],
-            "n_fully_covered": 599,
-            "garch_fitted": 98,
-            "garch_failed": 2,
+            "n_fully_covered": 598,
+            "garch_fitted": 96,
+            "garch_failed": 4,
             "not_converged": [
-              "LW",
-              "RDDT"
+              "AMTM",
+              "NXPI",
+              "RIG",
+              "VLTO"
             ],
             "win_shares": {
               "1": {
-                "ewma_094": 0.35403726708074534,
-                "ewma_097": 0.5196687370600414,
-                "garch": 0.6122448979591837,
-                "trailing_63": 0.36661211129296234
+                "ewma_094": 0.3458333333333333,
+                "ewma_097": 0.5270833333333333,
+                "garch": 0.5520833333333334,
+                "trailing_63": 0.3542009884678748
               },
               "21": {
-                "ewma_094": 0.19875776397515527,
-                "ewma_097": 0.34368530020703936,
-                "garch": 0.4897959183673469,
-                "trailing_63": 0.3076923076923077
+                "ewma_094": 0.1875,
+                "ewma_097": 0.3416666666666667,
+                "garch": 0.5416666666666666,
+                "trailing_63": 0.3031301482701812
               }
             },
-            "oos_start": "2024-09-03"
+            "oos_start": "2024-10-02"
           }
         }
       }
@@ -4684,6 +4753,918 @@
                   }
                 },
                 "oos_start": "2024-09-03"
+              }
+            }
+          }
+        }
+      },
+      {
+        "previous_data_hash": "fa3285e67332e55077aa8e4ed3d8a257c52a90e2db1e43cfb151ef0947f98053",
+        "data_hash": "223d67567eaf1ead0386cc6657039254a0ea54204b65272b99d06d8691730cff",
+        "n_changed": 10,
+        "changed_tickers_or_criteria": [
+          "F2.0b",
+          "F2.0c",
+          "F2.1",
+          "F2.2",
+          "F2.3",
+          "F2.3b",
+          "F2.3c",
+          "F2.4",
+          "F2.5",
+          "F2.6"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F2.0a": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "coverage is reported per universe rather than as one threshold: current members 100%, point-in-time members with prices by year (the Task 0 table); the criterion passes if the table is stored and MODEL_START is recorded.",
+              "threshold": "table stored and MODEL_START recorded",
+              "stored_numbers": {
+                "model_start": 2010,
+                "coverage_years_stored": 17,
+                "current_member_coverage": 1.0
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "coverage is reported per universe rather than as one threshold: current members 100%, point-in-time members with prices by year (the Task 0 table); the criterion passes if the table is stored and MODEL_START is recorded.",
+              "threshold": "table stored and MODEL_START recorded",
+              "stored_numbers": {
+                "model_start": 2010,
+                "coverage_years_stored": 17,
+                "current_member_coverage": 1.0
+              }
+            }
+          },
+          "F2.0b": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "interior NaN return rows (302 rows, 13 tickers) are excluded from every regression window and never forward-filled; the criterion passes if a test proves a regression window containing a NaN row drops that row rather than imputing it.",
+              "threshold": "NaN rows dropped, never imputed",
+              "stored_numbers": {
+                "interior_nan_rows_e1": 302,
+                "nan_row_dropped_by_fit": true
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "interior NaN return rows (302 rows, 13 tickers) are excluded from every regression window and never forward-filled; the criterion passes if a test proves a regression window containing a NaN row drops that row rather than imputing it.",
+              "threshold": "NaN rows dropped, never imputed",
+              "stored_numbers": {
+                "interior_nan_rows_e1": 1,
+                "nan_row_dropped_by_fit": true
+              }
+            }
+          },
+          "F2.0c": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "adjusted-close audit mean below 0.1 bp, and every audited day with an absolute difference above 50 bp appears in events.parquet with a cause (the 221 bp BKR day is a merger). Passes when both hold.",
+              "threshold": "mean < 0.1 bp and every day above 50 bp has an event with a cause",
+              "stored_numbers": {
+                "audit_mean_bp": 0.017816512107027022,
+                "large_audit_days": 1,
+                "large_audit_days_with_event": 1
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "adjusted-close audit mean below 0.1 bp, and every audited day with an absolute difference above 50 bp appears in events.parquet with a cause (the 221 bp BKR day is a merger). Passes when both hold.",
+              "threshold": "mean < 0.1 bp and every day above 50 bp has an event with a cause",
+              "stored_numbers": {
+                "audit_mean_bp": 0.012652056405543944,
+                "large_audit_days": 0,
+                "large_audit_days_with_event": 0
+              }
+            }
+          },
+          "F2.1": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Full-sample OLS beta vs mean of rolling 252d betas: cross-sectional correlation above 0.9.",
+              "threshold": "cross-sectional correlation > 0.9",
+              "stored_number": 0.924360607612146
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Full-sample OLS beta vs mean of rolling 252d betas: cross-sectional correlation above 0.9.",
+              "threshold": "cross-sectional correlation > 0.9",
+              "stored_number": 0.9244184771370912
+            }
+          },
+          "F2.2": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Mean pairwise correlation of FF5+MOM residuals across the universe below 0.05. Higher means a missing common factor; carry the finding into E3.",
+              "threshold": "mean pairwise residual correlation < 0.05",
+              "stored_numbers": {
+                "mean_pairwise_correlation": 0.015617959842847057,
+                "n_names_sampled": 150
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Mean pairwise correlation of FF5+MOM residuals across the universe below 0.05. Higher means a missing common factor; carry the finding into E3.",
+              "threshold": "mean pairwise residual correlation < 0.05",
+              "stored_numbers": {
+                "mean_pairwise_correlation": 0.019022570246739985,
+                "n_names_sampled": 150
+              }
+            }
+          },
+          "F2.3": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "GARCH(1,1) and EWMA(0.94) each beat trailing 252d vol on out-of-sample QLIKE for more than 60% of names.",
+              "threshold": "GARCH and EWMA(0.94) each beat trailing 252d for > 60% of names",
+              "stored_numbers": {
+                "garch_win_share": 0.5816326530612245,
+                "ewma_094_win_share": 0.35403726708074534,
+                "garch_names_fitted": 98,
+                "paired_n": 80,
+                "paired_garch_win_share": 0.5375,
+                "paired_ewma_094_win_share": 0.3625,
+                "garch_beats_ewma_094_share": 0.725
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "GARCH(1,1) and EWMA(0.94) each beat trailing 252d vol on out-of-sample QLIKE for more than 60% of names.",
+              "threshold": "GARCH and EWMA(0.94) each beat trailing 252d for > 60% of names",
+              "stored_numbers": {
+                "garch_win_share": 0.5625,
+                "ewma_094_win_share": 0.3458333333333333,
+                "garch_names_fitted": 96,
+                "paired_n": 72,
+                "paired_garch_win_share": 0.5555555555555556,
+                "paired_ewma_094_win_share": 0.3611111111111111,
+                "garch_beats_ewma_094_share": 0.7222222222222222
+              }
+            }
+          },
+          "F2.4": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "For the equal-weight seed portfolio, bias statistic (realized 63d forward vol over model-predicted vol) averages between 0.8 and 1.2 across calendar years.",
+              "threshold": "mean bias ratio in [0.8, 1.2] across calendar years",
+              "stored_numbers": {
+                "bias_mean": 1.0225333792324938,
+                "bias_by_year": {
+                  "2010": 0.6894745441461914,
+                  "2011": 1.243169042984342,
+                  "2012": 0.6832150422159406,
+                  "2013": 0.8715465929945752,
+                  "2014": 1.0347752887326924,
+                  "2015": 1.207778980310976,
+                  "2016": 0.775656690436585,
+                  "2017": 0.9282227718355079,
+                  "2018": 1.3178797011660677,
+                  "2019": 1.2341508695112442,
+                  "2020": 1.3936401040451825,
+                  "2021": 0.826414662817548,
+                  "2022": 1.2305398720195155,
+                  "2023": 0.7583397191684487,
+                  "2024": 1.0336420038155036,
+                  "2025": 1.2558251392176192,
+                  "2026": 0.8987964215344576
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "For the equal-weight seed portfolio, bias statistic (realized 63d forward vol over model-predicted vol) averages between 0.8 and 1.2 across calendar years.",
+              "threshold": "mean bias ratio in [0.8, 1.2] across calendar years",
+              "stored_numbers": {
+                "bias_mean": 1.0219219817846674,
+                "bias_by_year": {
+                  "2010": 0.6874912145899773,
+                  "2011": 1.2425255889020992,
+                  "2012": 0.6846634939140376,
+                  "2013": 0.8709372659744143,
+                  "2014": 1.03637212043079,
+                  "2015": 1.2079882426936697,
+                  "2016": 0.7767978993173411,
+                  "2017": 0.9291535624943085,
+                  "2018": 1.3246264717354468,
+                  "2019": 1.2311912546288248,
+                  "2020": 1.3938586670093975,
+                  "2021": 0.8234458331424448,
+                  "2022": 1.228144771701993,
+                  "2023": 0.758625745655324,
+                  "2024": 1.0312106061771034,
+                  "2025": 1.2506867239100457,
+                  "2026": 0.8949542280621328
+                }
+              }
+            }
+          },
+          "F2.5": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Newey-West SE exceeds OLS SE at lag 5 for more than 80% of names. If not, document the direction and why.",
+              "threshold": "Newey-West SE > OLS SE for > 80% of names",
+              "stored_number": 0.9633757961783439
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Newey-West SE exceeds OLS SE at lag 5 for more than 80% of names. If not, document the direction and why.",
+              "threshold": "Newey-West SE > OLS SE for > 80% of names",
+              "stored_number": 0.9658536585365853
+            }
+          },
+          "F2.6": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Successor to F2.3, added on 2026-09-10 after the flagged MI row turned out to be a series break rather than a bad return: no name in the panel has an adjusted-close move above 5x that no recorded split explains. A name above that level has to leave the panel, not just lose the row, because every earlier date carries a different company's returns. This one is not pre-registered, and it is recorded as such.",
+              "threshold": "0 names with an unexplained adjusted-close move above 5x",
+              "stored_numbers": {
+                "names_with_breaks": 4,
+                "break_tickers": [
+                  "CPWR",
+                  "EP",
+                  "MI",
+                  "POM"
+                ],
+                "break_rows": 20
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Successor to F2.3, added on 2026-09-10 after the flagged MI row turned out to be a series break rather than a bad return: no name in the panel has an adjusted-close move above 5x that no recorded split explains. A name above that level has to leave the panel, not just lose the row, because every earlier date carries a different company's returns. This one is not pre-registered, and it is recorded as such.",
+              "threshold": "0 names with an unexplained adjusted-close move above 5x",
+              "stored_numbers": {
+                "names_with_breaks": 5,
+                "break_tickers": [
+                  "CPWR",
+                  "CTVA",
+                  "EP",
+                  "MI",
+                  "POM"
+                ],
+                "break_rows": 21
+              }
+            }
+          },
+          "F2.6b": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Close-out C1, added 2026-09-10 and not pre-registered: every ticker on the Wikipedia changes table's removed list is compared with the current holder of that symbol on yfinance, matched by name token overlap after stripping legal suffixes, punctuation and share class letters. A name match means the history is legitimate even if prices continue past the removal; no match means the symbol was reused and rows before the current company's first valid date are dropped, or the ticker is dropped when that date cannot be determined. Tickers with a gap above 60 business days between two live price segments are flagged separately. The criterion passes when the flagged list is stored in data/processed/ticker_identity.parquet and efb/build.py applies the exclusions itself, which is checked against the estimated panel rather than asserted.",
+              "threshold": "identity table stored and the reused-symbol exclusions applied by the build",
+              "stored_numbers": {
+                "identity_table_rows": 373,
+                "names_matched": 93,
+                "names_unverified": 244,
+                "names_reused": 36,
+                "reused_tickers": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "FOX",
+                  "FOXA",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCG",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "restored_by_the_c6_review": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "dropped_by_build": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "truncated": {
+                  "FOX": "2019-03-13 00:00:00",
+                  "FOXA": "2019-03-12 00:00:00",
+                  "PCG": "2022-10-03 00:00:00"
+                },
+                "gap_tickers": [],
+                "dropped_still_in_panel": []
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Close-out C1, added 2026-09-10 and not pre-registered: every ticker on the Wikipedia changes table's removed list is compared with the current holder of that symbol on yfinance, matched by name token overlap after stripping legal suffixes, punctuation and share class letters. A name match means the history is legitimate even if prices continue past the removal; no match means the symbol was reused and rows before the current company's first valid date are dropped, or the ticker is dropped when that date cannot be determined. Tickers with a gap above 60 business days between two live price segments are flagged separately. The criterion passes when the flagged list is stored in data/processed/ticker_identity.parquet and efb/build.py applies the exclusions itself, which is checked against the estimated panel rather than asserted.",
+              "threshold": "identity table stored and the reused-symbol exclusions applied by the build",
+              "stored_numbers": {
+                "identity_table_rows": 373,
+                "names_matched": 93,
+                "names_unverified": 244,
+                "names_reused": 36,
+                "reused_tickers": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "FOX",
+                  "FOXA",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCG",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "restored_by_the_c6_review": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "dropped_by_build": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "truncated": {
+                  "FOX": "2019-03-13 00:00:00",
+                  "FOXA": "2019-03-12 00:00:00",
+                  "PCG": "2022-10-03 00:00:00"
+                },
+                "gap_tickers": [],
+                "dropped_still_in_panel": []
+              }
+            }
+          },
+          "F2.3b": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Close-out C3, added 2026-09-10 and not pre-registered: the same 60% win-share bar as F2.3, evaluated on forecasts matched to the target horizon. One-step forecasts are scored against the squared return of the same day, and 21-day forecasts (GARCH multi-step, EWMA held flat, trailing held flat) against the realized variance of the next 21 days, both over the same out-of-sample window with flagged rows excluded. GARCH and EWMA(0.94) each have to beat the trailing 252d baseline for more than 60% of names at both horizons. EWMA(0.97) stays the production estimator unless GARCH wins for more than 70% of names here, which would be an open decision for E5 rather than a change now.",
+              "threshold": "GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of names at horizon 1 and at horizon 21",
+              "stored_numbers": {
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.35403726708074534,
+                    "ewma_097": 0.5196687370600414,
+                    "garch": 0.6122448979591837,
+                    "trailing_63": 0.36661211129296234
+                  },
+                  "21": {
+                    "ewma_094": 0.19875776397515527,
+                    "ewma_097": 0.34368530020703936,
+                    "garch": 0.4897959183673469,
+                    "trailing_63": 0.3076923076923077
+                  }
+                },
+                "garch_fitted": 98,
+                "garch_failed": 2,
+                "day_level_ewma_094": {
+                  "pooled": 0.5155910558965167,
+                  "excluding_2020": 0.5155910558965167,
+                  "n_name_days": 242126,
+                  "by_year": {
+                    "2024": 0.5128413684314306,
+                    "2025": 0.5458484473699501,
+                    "2026": 0.472009472009472
+                  }
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Close-out C3, added 2026-09-10 and not pre-registered: the same 60% win-share bar as F2.3, evaluated on forecasts matched to the target horizon. One-step forecasts are scored against the squared return of the same day, and 21-day forecasts (GARCH multi-step, EWMA held flat, trailing held flat) against the realized variance of the next 21 days, both over the same out-of-sample window with flagged rows excluded. GARCH and EWMA(0.94) each have to beat the trailing 252d baseline for more than 60% of names at both horizons. EWMA(0.97) stays the production estimator unless GARCH wins for more than 70% of names here, which would be an open decision for E5 rather than a change now.",
+              "threshold": "GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of names at horizon 1 and at horizon 21",
+              "stored_numbers": {
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.3458333333333333,
+                    "ewma_097": 0.5270833333333333,
+                    "garch": 0.5520833333333334,
+                    "trailing_63": 0.3542009884678748
+                  },
+                  "21": {
+                    "ewma_094": 0.1875,
+                    "ewma_097": 0.3416666666666667,
+                    "garch": 0.5416666666666666,
+                    "trailing_63": 0.3031301482701812
+                  }
+                },
+                "garch_fitted": 96,
+                "garch_failed": 4,
+                "day_level_ewma_094": {
+                  "pooled": 0.5189866564493828,
+                  "excluding_2020": 0.5189866564493828,
+                  "n_name_days": 240116,
+                  "by_year": {
+                    "2024": 0.5026785714285714,
+                    "2025": 0.5458683795093675,
+                    "2026": 0.4887580002883986
+                  }
+                }
+              }
+            }
+          },
+          "F2.6c": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Close-out C6, added 2026-09-10 and not pre-registered: for every ticker the F2.6b identity check dropped, the changes table is asked for an added row dated after the removal and the constituents table for the name the symbol carries today. When either exists, that name is compared with the yfinance holder. A match means the symbol was renamed rather than taken over, so the ticker returns to the universe with its history truncated to the later of the re-add date and its first valid price; no match means it stays dropped. The criterion passes when the current constituents are covered by the estimation panel (returns.parquet) at 501 of 503, the bar stated in the close-out brief, and when the review itself is stored.",
+              "threshold": "current-constituent coverage of the estimation panel at or above 501 of 503, with the re-add review stored",
+              "stored_numbers": {
+                "review_rows": 36,
+                "kept": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "stays_dropped": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "n_current_dropped_by_c1": 4,
+                "n_kept_current": 3,
+                "n_current": 503,
+                "n_covered": 502,
+                "coverage": 0.9980119284294234,
+                "bar": 0.9960238568588469,
+                "missing": [
+                  "DD"
+                ]
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Close-out C6, added 2026-09-10 and not pre-registered: for every ticker the F2.6b identity check dropped, the changes table is asked for an added row dated after the removal and the constituents table for the name the symbol carries today. When either exists, that name is compared with the yfinance holder. A match means the symbol was renamed rather than taken over, so the ticker returns to the universe with its history truncated to the later of the re-add date and its first valid price; no match means it stays dropped. The criterion passes when the current constituents are covered by the estimation panel (returns.parquet) at 501 of 503, the bar stated in the close-out brief, and when the review itself is stored.",
+              "threshold": "current-constituent coverage of the estimation panel at or above 501 of 503, with the re-add review stored",
+              "stored_numbers": {
+                "review_rows": 36,
+                "kept": [
+                  "FOX",
+                  "FOXA",
+                  "PCG"
+                ],
+                "stays_dropped": [
+                  "ADCT",
+                  "AN",
+                  "APC",
+                  "ATI",
+                  "AV",
+                  "BEAM",
+                  "CAM",
+                  "CCE",
+                  "CLF",
+                  "CNX",
+                  "CPWR",
+                  "CSC",
+                  "CSRA",
+                  "DD",
+                  "DV",
+                  "DYN",
+                  "EMC",
+                  "EP",
+                  "GENZ",
+                  "GRN",
+                  "INFO",
+                  "KG",
+                  "LIFE",
+                  "MHS",
+                  "MI",
+                  "MMI",
+                  "NFX",
+                  "NSM",
+                  "NYX",
+                  "OI",
+                  "PCL",
+                  "PCS",
+                  "POM"
+                ],
+                "n_current_dropped_by_c1": 4,
+                "n_kept_current": 3,
+                "n_current": 503,
+                "n_covered": 502,
+                "coverage": 0.9980119284294234,
+                "bar": 0.9960238568588469,
+                "missing": [
+                  "DD"
+                ]
+              }
+            }
+          },
+          "F2.3c": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Close-out C7, added 2026-09-10 and not pre-registered: the same 60 percent bar as F2.3b, evaluated on a seeded random sample of 100 names with full coverage over the out-of-sample window rather than on the alphabetical head of the universe, which is not a sample of anything. The seed, the sample size, the number of fits that converged and the names that did not are stored with the result. GARCH and EWMA(0.94) each have to beat the trailing 252d baseline for more than 60 percent of the names at horizon 1 and at horizon 21. The criterion exists because F2.3 and F2.3b were measured on a sample chosen by ticker order, and the point of a sample is to be chosen at random from the names that can be scored.",
+              "threshold": "GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of a seeded random sample of 100 fully covered names at horizon 1 and at horizon 21",
+              "stored_numbers": {
+                "seed": 20260910,
+                "sample_size": 100,
+                "sample": [
+                  "AAPL",
+                  "ABNB",
+                  "AEE",
+                  "AEP",
+                  "AES",
+                  "AKAM",
+                  "ALK",
+                  "ALL",
+                  "AMCR",
+                  "AMZN",
+                  "APO",
+                  "ARES",
+                  "AVGO",
+                  "AVY",
+                  "BBWI",
+                  "BBY",
+                  "BHF",
+                  "BTU",
+                  "BX",
+                  "CFG",
+                  "CL",
+                  "CMS",
+                  "CPB",
+                  "CPRT",
+                  "CPT",
+                  "CRH",
+                  "CVNA",
+                  "D",
+                  "DAL",
+                  "DE",
+                  "DGX",
+                  "DTE",
+                  "EL",
+                  "ERIE",
+                  "ETN",
+                  "EW",
+                  "EXC",
+                  "F",
+                  "FE",
+                  "FIX",
+                  "GDDY",
+                  "GE",
+                  "GEHC",
+                  "GLW",
+                  "GPN",
+                  "GRMN",
+                  "GWW",
+                  "HAL",
+                  "HIG",
+                  "HPQ",
+                  "HUM",
+                  "INVH",
+                  "IPGP",
+                  "IT",
+                  "KLAC",
+                  "KMI",
+                  "LDOS",
+                  "LEN",
+                  "LHX",
+                  "LII",
+                  "LLY",
+                  "LW",
+                  "MGM",
+                  "MO",
+                  "MTB",
+                  "NI",
+                  "NTAP",
+                  "NUE",
+                  "NWL",
+                  "NWSA",
+                  "OMC",
+                  "ON",
+                  "ORCL",
+                  "PAYX",
+                  "PEP",
+                  "PHM",
+                  "POOL",
+                  "PRU",
+                  "QRVO",
+                  "RDDT",
+                  "REGN",
+                  "RF",
+                  "RHI",
+                  "RRC",
+                  "SBUX",
+                  "SE",
+                  "SHW",
+                  "SIG",
+                  "SII",
+                  "SUN",
+                  "TPL",
+                  "TYL",
+                  "VFC",
+                  "VNT",
+                  "VRSN",
+                  "WAB",
+                  "WEC",
+                  "WHR",
+                  "WSM",
+                  "XEL"
+                ],
+                "n_fully_covered": 599,
+                "garch_fitted": 98,
+                "garch_failed": 2,
+                "not_converged": [
+                  "LW",
+                  "RDDT"
+                ],
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.35403726708074534,
+                    "ewma_097": 0.5196687370600414,
+                    "garch": 0.6122448979591837,
+                    "trailing_63": 0.36661211129296234
+                  },
+                  "21": {
+                    "ewma_094": 0.19875776397515527,
+                    "ewma_097": 0.34368530020703936,
+                    "garch": 0.4897959183673469,
+                    "trailing_63": 0.3076923076923077
+                  }
+                },
+                "oos_start": "2024-09-03"
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Close-out C7, added 2026-09-10 and not pre-registered: the same 60 percent bar as F2.3b, evaluated on a seeded random sample of 100 names with full coverage over the out-of-sample window rather than on the alphabetical head of the universe, which is not a sample of anything. The seed, the sample size, the number of fits that converged and the names that did not are stored with the result. GARCH and EWMA(0.94) each have to beat the trailing 252d baseline for more than 60 percent of the names at horizon 1 and at horizon 21. The criterion exists because F2.3 and F2.3b were measured on a sample chosen by ticker order, and the point of a sample is to be chosen at random from the names that can be scored.",
+              "threshold": "GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of a seeded random sample of 100 fully covered names at horizon 1 and at horizon 21",
+              "stored_numbers": {
+                "seed": 20260910,
+                "sample_size": 100,
+                "sample": [
+                  "AAPL",
+                  "ABNB",
+                  "AEE",
+                  "AEP",
+                  "AES",
+                  "AKAM",
+                  "ALK",
+                  "ALL",
+                  "AMCR",
+                  "AMTM",
+                  "APD",
+                  "APTV",
+                  "ARE",
+                  "ATO",
+                  "BALL",
+                  "BAX",
+                  "BF.B",
+                  "BRO",
+                  "BTU",
+                  "CEG",
+                  "CIEN",
+                  "CMI",
+                  "CPAY",
+                  "CPRI",
+                  "CPRT",
+                  "CPT",
+                  "CVNA",
+                  "CZR",
+                  "DAL",
+                  "DDOG",
+                  "DG",
+                  "DRI",
+                  "EIX",
+                  "EQT",
+                  "ETN",
+                  "EVRG",
+                  "EW",
+                  "EXR",
+                  "FE",
+                  "FITB",
+                  "GE",
+                  "GEHC",
+                  "GEN",
+                  "GM",
+                  "GS",
+                  "GT",
+                  "HAS",
+                  "HBAN",
+                  "HLT",
+                  "HRL",
+                  "IBKR",
+                  "IPGP",
+                  "IR",
+                  "ITW",
+                  "KMI",
+                  "KO",
+                  "LH",
+                  "LHX",
+                  "LIN",
+                  "LITE",
+                  "LNC",
+                  "LYV",
+                  "MKC",
+                  "MOS",
+                  "MTCH",
+                  "NOC",
+                  "NTRS",
+                  "NVR",
+                  "NWS",
+                  "NXPI",
+                  "ORCL",
+                  "OTIS",
+                  "PBI",
+                  "PCG",
+                  "PFE",
+                  "PLD",
+                  "PPG",
+                  "PPL",
+                  "PSA",
+                  "R",
+                  "REG",
+                  "RHI",
+                  "RIG",
+                  "RJF",
+                  "RSG",
+                  "SCHW",
+                  "SEDG",
+                  "SIG",
+                  "SJM",
+                  "SW",
+                  "TRGP",
+                  "UAL",
+                  "UNM",
+                  "VLTO",
+                  "VST",
+                  "VZ",
+                  "WBD",
+                  "WHR",
+                  "WU",
+                  "XRX"
+                ],
+                "n_fully_covered": 598,
+                "garch_fitted": 96,
+                "garch_failed": 4,
+                "not_converged": [
+                  "AMTM",
+                  "NXPI",
+                  "RIG",
+                  "VLTO"
+                ],
+                "win_shares": {
+                  "1": {
+                    "ewma_094": 0.3458333333333333,
+                    "ewma_097": 0.5270833333333333,
+                    "garch": 0.5520833333333334,
+                    "trailing_63": 0.3542009884678748
+                  },
+                  "21": {
+                    "ewma_094": 0.1875,
+                    "ewma_097": 0.3416666666666667,
+                    "garch": 0.5416666666666666,
+                    "trailing_63": 0.3031301482701812
+                  }
+                },
+                "oos_start": "2024-10-02"
               }
             }
           }
