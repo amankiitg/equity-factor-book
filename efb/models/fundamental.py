@@ -17,6 +17,23 @@ design rules:
 - Factor returns are reported after the identification adjustment; the
   factor-mimicking portfolios are reported both before it (where
   X' w = e_k holds exactly) and after it.
+
+The contract on what the model is allowed to read, revised after E11 (see the
+hygiene ledger entry of 2026-10-03):
+
+- **A stale cell is not a return.** A run of exact-zero returns is a price that did
+  not move, not a session that paid nothing, so it is excluded from every estimation
+  window. `efb.build.build_e3_artifacts` fits on `probes.load_panel()["returns_clean"]`,
+  which is `hygiene.clean_returns` applied to the panel: the row keeps its value and
+  its `stale` flag in `returns.parquet`, and takes no part in the design, the
+  descriptors or the fit.
+- **A real move is kept.** The mask is the hygiene rule and nothing else - 6,186
+  cells on the E1 panel, each of them a zero-return run of five sessions or more. A
+  large move, a delisting tail or a hole is not silently dropped by this change.
+- **A corporate action is corrected at the source, not smoothed.** XS-v1 never
+  adjusts a return itself. Where a spin-off makes the price vendor's own number
+  wrong, the correction is a record (`efb/corporate_actions.py`) applied to the
+  panel before the fit, and the print it replaced stays in the `outlier` flag.
 """
 
 from __future__ import annotations

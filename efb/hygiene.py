@@ -94,11 +94,23 @@ def clean_returns(returns_frame: pd.DataFrame) -> pd.Series:
     so volatility, beta and portfolio code all read returns through here.
     The flags themselves are never rewritten; the raw r column stays intact
     in returns.parquet.
+
+    A row whose cell was *repaired* is the exception, and the only one: on a
+    recorded spin-off the `outlier` flag describes the vendor's print, because
+    that is the number a reader has to be able to find again, while `r` holds the
+    total return the record computed. Masking it would delete the observation the
+    correction exists to restore - the same distinction the live rule draws when it
+    says the cell is the fit's input and the flag is the record.
     """
     r = _frame_r(returns_frame)
+    repaired = (
+        returns_frame["corrected"].astype(bool)
+        if "corrected" in returns_frame.columns
+        else pd.Series(False, index=returns_frame.index)
+    )
     for flag in ("stale", "outlier"):
         if flag in returns_frame.columns:
-            r = r.mask(returns_frame[flag].astype(bool))
+            r = r.mask(returns_frame[flag].astype(bool) & ~repaired)
     return r
 
 

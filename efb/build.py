@@ -16,7 +16,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from efb import factors, hygiene, identity, prices, returns, universe
+from efb import (
+    corporate_actions,
+    factors,
+    hygiene,
+    identity,
+    prices,
+    returns,
+    universe,
+)
 from efb.models import fundamental as fx
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -288,6 +296,18 @@ def write_version(artifact_paths: list[Path], out_path: Path, note: str) -> dict
                     "sha256": hash_file(path),
                     "bytes": path.stat().st_size,
                 }
+    # The recorded corporate actions are a fetched input rather than a build
+    # product: `rebuild` reads the table and cannot regenerate it without the
+    # vendor, so it joins the versioned set only when it is there. A root built
+    # offline has none, and that must not fail the build - the whole reason the
+    # correction is recorded separately from the prices is that a rebuild is
+    # reproducible from the artifacts on disk.
+    recorded = out_path.parent / "processed" / "corporate_actions.parquet"
+    if recorded.exists():
+        artifacts[recorded.name] = {
+            "sha256": hash_file(recorded),
+            "bytes": recorded.stat().st_size,
+        }
     payload = {
         "note": note,
         "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -365,7 +385,18 @@ def rebuild(
         returns_frame = returns_frame[
             ~returns_frame.index.isin(identity_drops, level="ticker")
         ]
+    # The flags are computed on the vendor's own numbers, and only then is a
+    # recorded spin-off put back. That order is the whole point on the sessions
+    # where it matters: the flag has to describe the print the rule replaced, and
+    # the cell has to hold the return the rule computed. `corrected` is what says
+    # the two now describe different things, and it is what stops the hygiene mask
+    # from throwing away a cell that was just repaired.
     returns_frame = hygiene.apply_flags(returns_frame)
+    records = corporate_actions.ensure(data_root)
+    if not records.empty:
+        returns_frame, _outcomes = corporate_actions.apply(
+            returns_frame, prices_artifact, data_root
+        )
     returns_frame.to_parquet(processed_dir / "returns.parquet")
 
     # 7. Event log
@@ -1180,7 +1211,15 @@ def build_e3_artifacts(
     from efb.models import fundamental
 
     inputs = probes.load_panel(data_root)
-    returns = inputs["returns"]
+    # The fit reads the cleaned panel, not the file. A stale run of exact-zero
+    # returns is not a return - it is a frozen price - and an estimation window that
+    # includes one is estimating a risk that was not there. The flagged rows keep
+    # their flags and their values in returns.parquet; they simply do not enter the
+    # design, the descriptors, the factor returns or the specific returns. Measured
+    # on the E1 panel: 6,186 stale cells over 502 mapped names, moving the mean
+    # cross-sectional R squared from 0.3294501878861149 to 0.33154304979604715
+    # with no verdict changing.
+    returns = inputs["returns_clean"]
     close = inputs["close"]
     volume = inputs["volume"]
     sectors = inputs["sectors"]

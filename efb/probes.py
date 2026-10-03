@@ -19,7 +19,7 @@ import pandas as pd
 import requests
 import yfinance as yf
 
-from efb import factors, prices
+from efb import factors, hygiene, prices
 from efb.universe import (
     WIKI_CHANGES_OLDID,
     all_tickers,
@@ -592,6 +592,13 @@ def load_panel(data_root: Path | None = None) -> dict[str, object]:
     sectors_frame = pd.read_parquet(root / "processed" / "sectors.parquet")
     membership = pd.read_parquet(root / "processed" / "universe_membership.parquet")
     returns = _wide(returns_frame, "r")
+    # The same panel with the flagged rows masked, for the callers whose windows are
+    # estimation windows rather than measurements of the file. It is returned beside
+    # the raw panel rather than instead of it, because the flags are the record of
+    # what was there and a reader has to be able to see both.
+    returns_clean = _wide(
+        returns_frame.assign(r=hygiene.clean_returns(returns_frame)), "r"
+    )
     close = _wide(prices_frame, "close")
     volume = _wide(prices_frame, "volume")
     index = returns.index
@@ -613,6 +620,9 @@ def load_panel(data_root: Path | None = None) -> dict[str, object]:
     look_ahead = shares_long.pivot(index="date", columns="ticker", values="look_ahead")
     return {
         "returns": returns,
+        "returns_clean": returns_clean.reindex(
+            index=returns.index, columns=returns.columns
+        ),
         "close": close.reindex(index=returns.index, columns=returns.columns),
         "volume": volume.reindex(index=returns.index, columns=returns.columns),
         "sectors": sectors,
