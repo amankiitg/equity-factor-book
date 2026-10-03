@@ -206,6 +206,12 @@ def test_the_record_and_the_message_name_the_split():
             "factor": 2.0,
             "source": "yfinance.splits",
             "cross_check_ratio": 0.5,
+            # The same table carries spin-offs, so every row says which of the two
+            # actions it is. A split names no child and carries no rates.
+            "explained_by": "split",
+            "new_ticker": None,
+            "source_rate": None,
+            "new_rate": None,
         }
     ]
 
@@ -459,6 +465,9 @@ def test_the_artifact_is_written_back_only_when_a_split_was_applied(tmp_path):
         since=pd.Timestamp("2026-09-03"),
         split_fetcher=fake_splits({"AAA": [("2026-09-04", 2.0)]}),
         close_fetcher=lambda ticker, session: 100.0,
+        # No spin-off in this test: the vendor read is answered empty rather than
+        # made, so the split rule is what is being measured.
+        spinoff_fetcher=lambda symbols, session: [],
     )
     assert ca.describe(outcome.splits) == "split: AAA 2:1 applied"
     written = pd.read_parquet(root / "processed" / "returns.parquet")
@@ -479,6 +488,10 @@ def test_the_artifact_is_written_back_only_when_a_split_was_applied(tmp_path):
             "factor": 2.0,
             "source": "yfinance.splits",
             "cross_check_ratio": 1.0,
+            "explained_by": "split",
+            "new_ticker": None,
+            "source_rate": None,
+            "new_rate": None,
         }
     ]
     # And nothing was appended for a session that is already stored.

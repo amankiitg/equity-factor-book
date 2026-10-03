@@ -9,12 +9,14 @@ frozen as-of.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from efb import prices
+from live import corporate_actions as ca
 from live import extend
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -389,3 +391,268 @@ def test_the_live_fetch_asks_for_the_prewarm_and_applies_the_retry(
     # the name the bulk pass missed on the close is in the panel with a real price,
     # because the retry's row replaced the empty one
     assert not pd.isna(session.loc["LIVE2", "close"])
+
+
+# --- recorded spin-offs, put back by the returns rebuild ------------------------
+#
+# A spin-off moves one session's return and neither vendor adjusts history for it,
+# so the stored prices alone always produce the raw print: CTVA closed 77.65 on
+# 2026-09-30 and printed 12.57 the next day (-83.81%) while the holder was also
+# given a VYLR share worth 68.26. The cell was corrected by the append path and
+# then recomputed away, which is what the 2026-10-01 run did: it flagged the print
+# as an unexplained large move and the whole 2026-10-02 cross-section was built from
+# it. `extend_returns` recomputes every session from those prices, so the correction
+# has to be re-applied from its record every evening.
+
+CTVA = "CTVA"
+VYLR = "VYLR"
+BEFORE = pd.Timestamp("2026-09-29")
+PRIOR = pd.Timestamp("2026-09-30")
+EX_DATE = pd.Timestamp("2026-10-01")
+NEXT = pd.Timestamp("2026-10-02")
+# the closes the appendix carries, to the last bit
+BEFORE_CLOSE = 77.870002746582
+PARENT_PREVIOUS_CLOSE = 77.6500015258789
+PARENT_CLOSE = 12.5699996948242
+CHILD_CLOSE = 68.2600021362305
+PARENT_NEXT_CLOSE = 11.9200000762939
+CHILD_NEXT_CLOSE = 67.2600021362305
+# 12.57 / 77.65 - 1: what the fit read as a return before this rule existed
+RAW_PRINT = PARENT_CLOSE / PARENT_PREVIOUS_CLOSE - 1.0
+# the same session's own return, which must not move
+PRIOR_RETURN = PARENT_PREVIOUS_CLOSE / BEFORE_CLOSE - 1.0
+# (12.57 + 1 x 68.26) / 77.65 - 1, which prints as +4.10%
+TOTAL_RETURN = (PARENT_CLOSE + CHILD_CLOSE) / PARENT_PREVIOUS_CLOSE - 1.0
+
+
+def _returns_tree(root: Path) -> None:
+    """A tree `extend_returns` can run on, carrying the real spin-off closes."""
+    (root / "raw").mkdir(parents=True)
+    (root / "processed").mkdir(parents=True)
+    rows = [
+        (BEFORE, CTVA, BEFORE_CLOSE),
+        (PRIOR, CTVA, PARENT_PREVIOUS_CLOSE),
+        (EX_DATE, CTVA, PARENT_CLOSE),
+        (NEXT, CTVA, PARENT_NEXT_CLOSE),
+        (EX_DATE, VYLR, CHILD_CLOSE),
+        (NEXT, VYLR, CHILD_NEXT_CLOSE),
+        (PRIOR, "AAA", 50.0),
+        (EX_DATE, "AAA", 51.0),
+        (NEXT, "AAA", 52.0),
+    ]
+    index = pd.MultiIndex.from_tuples(
+        [(day, ticker) for day, ticker, _ in rows], names=["date", "ticker"]
+    )
+    prices_frame = pd.DataFrame(
+        {"close": [close for *_, close in rows], "adj_close": [row[2] for row in rows]},
+        index=index,
+    )
+    prices_frame.to_parquet(root / "raw" / "prices.parquet")
+    pd.DataFrame(
+        {"rf": 0.0}, index=pd.DatetimeIndex([BEFORE, PRIOR, EX_DATE, NEXT])
+    ).to_parquet(root / "raw" / "factors_ff.parquet")
+    # the returns file the rebuild reads its "sessions before" count from
+    pd.DataFrame(
+        {"r": [PRIOR_RETURN]},
+        index=pd.MultiIndex.from_tuples([(PRIOR, CTVA)], names=["date", "ticker"]),
+    ).to_parquet(root / "processed" / "returns.parquet")
+    pd.DataFrame(columns=["action"]).to_parquet(
+        root / "processed" / "ticker_identity.parquet"
+    )
+
+
+def _record(**overrides: object) -> pd.DataFrame:
+    """One row of `efb.e11_corporate_actions`, in the shape the rule writes."""
+    row: dict[str, object] = {
+        "trade_date": "2026-10-01",
+        "ticker": CTVA,
+        "effective_date": "2026-10-01",
+        "factor": 1.0,
+        "source": "alpaca.corporate_actions",
+        "cross_check_ratio": None,
+        "explained_by": "spinoff",
+        "new_ticker": VYLR,
+        "source_rate": 1.0,
+        "new_rate": 1.0,
+    }
+    row.update(overrides)
+    return pd.DataFrame([row])
+
+
+def _rebuilt(root: Path) -> pd.DataFrame:
+    return pd.read_parquet(root / "processed" / "returns.parquet")
+
+
+def test_the_rebuild_puts_the_recorded_spinoff_back_from_the_closes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cell becomes the total return, derived from the stored closes.
+
+    Nothing is typed in: the record supplies the ratio and the five closes come from
+    the panel, so the number is `spinoff_return`'s and the session before it is the
+    arithmetic it already was.
+    """
+    root = tmp_path / "data"
+    _returns_tree(root)
+    monkeypatch.setattr(extend.store, "select", lambda table: _record())
+
+    assert extend.extend_returns(root) == 3
+
+    frame = _rebuilt(root)
+    value = float(frame.loc[(EX_DATE, CTVA), "r"])
+    assert value == pytest.approx(TOTAL_RETURN, abs=1e-12)
+    assert value == pytest.approx(0.04095299733015434, abs=1e-12)
+    assert f"{value * 100:+.2f}%" == "+4.10%", "the number the owner checked by hand"
+    assert float(frame.loc[(EX_DATE, CTVA), "g"]) == pytest.approx(math.log1p(value))
+    # the next session's return is a ratio of two stored closes, and it did not move
+    moved = float(frame.loc[(NEXT, CTVA), "r"])
+    assert moved == pytest.approx(PARENT_NEXT_CLOSE / PARENT_CLOSE - 1.0)
+    assert f"{moved * 100:+.3f}%" == "-5.171%"
+    # the session before the spin-off and another name are exactly as computed
+    assert float(frame.loc[(PRIOR, CTVA), "r"]) == pytest.approx(PRIOR_RETURN)
+    assert float(frame.loc[(EX_DATE, "AAA"), "r"]) == pytest.approx(51.0 / 50.0 - 1.0)
+
+
+def test_running_the_rebuild_again_writes_the_same_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Twice writes one number, because the value is never read back.
+
+    This is the whole point of doing it here: the evening after the correction, the
+    rebuild recomputes the session from prices, so a correction that compounded or
+    that was kept only in the returns file would either drift or vanish.
+    """
+    root = tmp_path / "data"
+    _returns_tree(root)
+    monkeypatch.setattr(extend.store, "select", lambda table: _record())
+
+    extend.extend_returns(root)
+    first = _rebuilt(root)
+    extend.extend_returns(root)
+    second = _rebuilt(root)
+
+    first_value = float(first.loc[(EX_DATE, CTVA), "r"])
+    assert first_value == pytest.approx(TOTAL_RETURN)
+    assert first_value == float(second.loc[(EX_DATE, CTVA), "r"])
+    pd.testing.assert_frame_equal(first, second)
+
+
+def test_without_a_record_the_raw_print_is_what_the_rebuild_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The control: -83.81%, which is the move the 2026-10-01 run flagged.
+
+    A store with nothing recorded leaves the arithmetic alone, so what the test above
+    measures is the record and not the fixture.
+    """
+    root = tmp_path / "data"
+    _returns_tree(root)
+    monkeypatch.setattr(extend.store, "select", lambda table: pd.DataFrame())
+
+    extend.extend_returns(root)
+
+    frame = _rebuilt(root)
+    value = float(frame.loc[(EX_DATE, CTVA), "r"])
+    assert value == pytest.approx(RAW_PRINT)
+    assert f"{value * 100:+.2f}%" == "-83.81%"
+    assert bool(frame.loc[(EX_DATE, CTVA), "outlier"]), "the move the run had to flag"
+
+
+def test_a_split_row_is_not_re_applied_as_a_spinoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A factor in this table is not evidence of a spin-off: `explained_by` says which.
+
+    The split path computes with the raw close on the appended session, so treating
+    its row as a spin-off here would divide a prior close by a child that does not
+    exist. The parent's cell is left to the arithmetic the run already did.
+    """
+    root = tmp_path / "data"
+    _returns_tree(root)
+    split = _record(explained_by="split", factor=2.0, new_ticker=None)
+    monkeypatch.setattr(extend.store, "select", lambda table: split)
+
+    extend.extend_returns(root)
+
+    assert float(_rebuilt(root).loc[(EX_DATE, CTVA), "r"]) == pytest.approx(RAW_PRINT)
+
+
+def test_the_ratio_comes_from_the_record_rather_than_from_a_constant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 1:2 record is a different total return, and the record is what decides it."""
+    root = tmp_path / "data"
+    _returns_tree(root)
+    monkeypatch.setattr(
+        extend.store,
+        "select",
+        lambda table: _record(factor=0.5, source_rate=2.0, new_rate=1.0),
+    )
+
+    extend.extend_returns(root)
+
+    value = float(_rebuilt(root).loc[(EX_DATE, CTVA), "r"])
+    assert value == pytest.approx(
+        (PARENT_CLOSE + 0.5 * CHILD_CLOSE) / PARENT_PREVIOUS_CLOSE - 1.0, abs=1e-12
+    )
+    assert value != pytest.approx(TOTAL_RETURN), "the ratio was assumed"
+
+
+def test_a_record_whose_child_close_is_missing_nulls_that_one_cell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hole the hygiene layer reports, rather than the raw print left standing."""
+    root = tmp_path / "data"
+    _returns_tree(root)
+    panel = pd.read_parquet(root / "raw" / "prices.parquet")
+    missing_child = (panel.index.get_level_values("date") == EX_DATE) & (
+        panel.index.get_level_values("ticker") == VYLR
+    )
+    panel.loc[~missing_child].to_parquet(root / "raw" / "prices.parquet")
+    monkeypatch.setattr(extend.store, "select", lambda table: _record())
+
+    extend.extend_returns(root)
+
+    frame = _rebuilt(root)
+    assert pd.isna(frame.loc[(EX_DATE, CTVA), "r"])
+    assert pd.isna(frame.loc[(EX_DATE, CTVA), "g"])
+    assert pd.isna(frame.loc[(EX_DATE, CTVA), "r"]), "the print would be a lie"
+    assert float(frame.loc[(NEXT, CTVA), "r"]) == pytest.approx(
+        PARENT_NEXT_CLOSE / PARENT_CLOSE - 1.0
+    ), "only the one cell is the rule's business"
+
+
+def test_the_reader_takes_the_rows_the_rule_writes() -> None:
+    """`spinoff_rows` writes them and this reads them back, field for field."""
+    records = ca.spinoffs_from_rows(_record())
+
+    assert [record.parent for record in records] == [CTVA]
+    assert records[0].child == VYLR
+    assert records[0].ex_date == EX_DATE
+    assert records[0].child_per_parent == 1.0
+    assert records[0].source == "alpaca.corporate_actions"
+    assert records[0].applicable
+
+    # a store that predates the column reads as no records, not as a table of splits
+    assert ca.spinoffs_from_rows(_record().drop(columns=["explained_by"])) == []
+
+    # a row that cannot form a ratio is kept, so its parent's cell is nulled
+    unusable = ca.spinoffs_from_rows(_record(new_ticker=None))
+    assert unusable[0].child_per_parent is None
+    assert unusable[0].unusable_reason == "no child symbol"
+    assert ca.spinoffs_from_rows(_record(factor=None))[0].unusable_reason == (
+        "factor None cannot form a share ratio"
+    )
+
+
+def test_a_store_that_cannot_answer_stops_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The rebuild's own record is not what the evening prices: warn and carry on."""
+
+    def explode(table: str) -> None:
+        raise RuntimeError("the store is unreachable")
+
+    monkeypatch.setattr(extend.store, "select", explode)
+
+    assert extend.recorded_spinoffs() == []

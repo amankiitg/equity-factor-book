@@ -23,6 +23,15 @@ from scripts import reconcile_fills, run_live_daily
 ROOT = Path(__file__).resolve().parents[1]
 CLOSE = "2026-10-01"
 TODAY = "2026-10-02"
+# The clock every test starts from: the job's own run slot on the morning after
+# CLOSE. It is pinned by default rather than read off the machine, because this job
+# carries two dates on purpose - the run day in `cron_runs`, the evening it
+# reconciled in `run_status` - and a real clock makes a test of either one depend on
+# the day the suite happens to run. A test that is about dates passes its own `now`.
+DEFAULT_NOW = (
+    f"{TODAY}T{reconcile_fills.RUN_SLOT_UTC[0]:02d}:"
+    f"{reconcile_fills.RUN_SLOT_UTC[1]:02d}:00+00:00"
+)
 
 PUBLISHED: dict[str, Any] = {
     "schema_version": 1,
@@ -135,15 +144,16 @@ def _install(
     orders: pd.DataFrame | None = None,
     published: dict[str, Any] | None = None,
     real_calendar: bool = False,
-    now: str | None = None,
+    now: str | None = DEFAULT_NOW,
 ) -> _Harness:
     """Pin every edge of the job: store, broker, vendor, R2 and the message.
 
     `real_calendar` leaves two things alone, for the tests about dates: whether
     today is a session (`staleness.is_session`, the exchange's calendar) and which
     evening's orders are the ones to reconcile (`reconcile_fills.previous_orders`,
-    which reads the store). `now` pins the clock the job reads, so a Monday morning
-    can be tested on a Thursday.
+    which reads the store). `now` pins the clock the job reads, and it is pinned to
+    `DEFAULT_NOW` unless a test says otherwise, so a Monday morning can be tested on
+    a Thursday and no test depends on the day it runs.
     """
     monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
     if now is not None:
@@ -275,14 +285,25 @@ def test_it_writes_the_fills_for_the_evening_it_reconciles(
     # One table for the reconciliation and one row for the run: no orders, no
     # positions, no proposal, no reconciliation row of the evening's.
     assert set(harness.written) == {"fills", "run_status"}, harness.written
+    # The two dates, side by side and different on purpose: the cron row carries the
+    # day the job ran, and the run_status row carries the evening it reconciled.
+    # `reconcile_fills` states why. Reading the clock off the machine here is what
+    # made this assertion fail on any morning other than 2026-10-02.
     assert harness.recorded == [(reconcile_fills.JOB, TODAY, "ok")]
+    status_row = store.select(staleness.TABLE).iloc[0]
+    assert str(status_row["target_close"])[:10] == CLOSE
+    assert str(status_row["run_date"])[:10] == TODAY
 
 
 def test_its_own_rows_are_keyed_to_its_own_job(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The evening's run_status and cron_runs rows are keyed by job, so they are
-    safe."""
+    """The evening's run_status row sits beside the evening's, keyed by job.
+
+    The row's key is the evening it reconciled and its `run_date` is the morning it
+    ran: two dates, because they answer two questions. The job name is what keeps the
+    morning's row from landing on the evening's.
+    """
     _install(monkeypatch, tmp_path, broker_orders={"oid-dg": _order("filled")})
 
     reconcile_fills.main([])
@@ -290,6 +311,7 @@ def test_its_own_rows_are_keyed_to_its_own_job(
     row = store.select(staleness.TABLE).iloc[0]
     assert row["job"] == reconcile_fills.JOB != staleness.JOB
     assert str(row["target_close"])[:10] == CLOSE
+    assert str(row["run_date"])[:10] == TODAY, "the morning it ran is on the row"
 
 
 def test_a_quiet_morning_sends_nothing(

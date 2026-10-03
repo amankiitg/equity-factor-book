@@ -51,13 +51,14 @@ def _synthetic_seed(tmp_path: Path) -> Path:
 
 
 class _NoCorporateActions:
-    """The stub outcome of the corporate-actions step."""
+    """The stub outcome of the corporate-actions step, spin-offs included."""
 
     splits: list = []
     sessions: list = []
     ratios: dict = {}
     flags: list = []
     unchecked = 0
+    spinoffs: list = []
 
 
 def _stub_the_work(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

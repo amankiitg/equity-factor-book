@@ -278,13 +278,14 @@ def test_a_boto3_error_carrying_a_credential_is_scrubbed() -> None:
 
 
 class _NoCorporateActions:
-    """The stub outcome of the corporate-actions step: no split, no flags."""
+    """The corporate-actions stub: no split, no flags, no spin-off."""
 
     splits: list = []
     sessions: list = []
     ratios: dict = {}
     flags: list = []
     unchecked = 0
+    spinoffs: list = []
 
 
 def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:

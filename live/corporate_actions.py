@@ -31,6 +31,23 @@ The rule, in the append path only:
 6. **Unexplained large moves are flagged, not blocked.** An appended return above
    40% in absolute value with no corporate action behind it goes into `run_status`
    and the notification. A real crash is a real return.
+7. **Spin-offs are corrected from the vendor's own record, on the same terms.**
+   A spin-off is the other action that moves one session's return and that neither
+   price vendor adjusts: CTVA closed 77.65 on 2026-09-30 and printed 12.57 the next
+   day (-83.81%) while the holder was also given one VYLR share worth 68.26. Each
+   evening, before the fit reads the returns, the vendor's spin-offs whose ex-date
+   is the appended session are read for the universe, and the parent's return is
+   replaced by `(parent_close + ratio x child_close) / parent_prior_close - 1` from
+   raw closes only. The event is recorded in `efb.e11_corporate_actions` with
+   `explained_by` "spinoff", the print it replaced stays in the run's flag with its
+   own value, and the row's own cell carries the correction, because that cell is
+   the fit's input and the flag is the record. A child close that cannot be read
+   nulls that one cell and is named in the message: the run does not stop, and the
+   raw print is never left in the fit as if it were a return. A parent the panel
+   does not carry, a record for another day and a record outside the universe are
+   all dropped rather than guessed at, and a record for a name this book holds whose
+   rates cannot be turned into a ratio stops the run the way an unexplained
+   back-adjustment does.
 
 The 2026-09-03 APH split, measured from the stored rows: the vendor's record says
 2:1, the raw close halves from 158.55 on 2026-08-31 to 82.78 on 2026-09-04, and
@@ -44,14 +61,17 @@ rewriting a single stored row.
 
 from __future__ import annotations
 
+import logging
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import pandas as pd
 
 from live import store
+
+logger = logging.getLogger(__name__)
 
 TABLE = "e11_corporate_actions"
 TABLE_KEY = ("trade_date", "ticker")
@@ -227,6 +247,531 @@ def adjusted_return(close_t: float, factor: float, close_previous: float) -> flo
     return float(close_t) * float(factor) / float(close_previous) - 1.0
 
 
+# --- spin-offs ---------------------------------------------------------------
+#
+# A spin-off is the other corporate action that moves a return on one session, and
+# it is not a split: the parent keeps trading and the shareholder is given shares
+# of the company that was spun out. CTVA's Vylor spin-off on 2026-10-01 is the case
+# this exists for: CTVA closed 77.65 on 2026-09-30 and printed 12.57 the next day,
+# a raw -83.81% that is not a loss, because the holder also received one VYLR
+# share worth 68.26. Neither the price vendor's adjusted close nor Alpaca's
+# `adjustment=all` corrects it (measured: both carry the raw print), so the
+# correction has to be applied here, from the parent's and the child's raw closes
+# and the vendor's own spin-off record.
+#
+# The rule mirrors the split rule in every respect that matters: it applies to the
+# appended session before the fit reads the returns, it computes from raw closes
+# on their own bases, it restates no stored row, and it records the event.
+
+SPINOFF_SOURCE = "alpaca.corporate_actions"
+
+
+@dataclass(frozen=True)
+class Spinoff:
+    """One vendor spin-off record: the parent, the child and the share ratio.
+
+    `child_per_parent` is None when the record cannot be used at all, and
+    `unusable_reason` then says in one phrase what is missing. A record like that is
+    kept rather than dropped: the parent's cell still has to be nulled and the owner
+    still has to be told the name, which is the same shape as a child whose close
+    cannot be read.
+    """
+
+    parent: str
+    child: str
+    ex_date: pd.Timestamp
+    child_per_parent: float | None
+    source_rate: float = 1.0
+    new_rate: float = 1.0
+    source: str = SPINOFF_SOURCE
+    unusable_reason: str | None = None
+
+    @property
+    def applicable(self) -> bool:
+        """Whether the record carries a ratio the rule can apply."""
+        return self.unusable_reason is None
+
+    @property
+    def ratio_label(self) -> str:
+        """`1:1` style, for a message."""
+        if self.child_per_parent is None:
+            return "no ratio"
+        return f"{self.child_per_parent:g}:1"
+
+    @property
+    def label(self) -> str:
+        """`spinoff: CTVA -> VYLR 1:1 applied`, in the split line's own shape."""
+        if not self.applicable:
+            return (
+                f"spinoff: {self.parent} -> {self.child or '?'} not applied: "
+                f"{self.unusable_reason}"
+            )
+        return f"spinoff: {self.parent} -> {self.child} {self.ratio_label} applied"
+
+
+@dataclass(frozen=True)
+class SpinoffOutcome:
+    """What the rule did to one parent's row, for the record and the flag.
+
+    `raw_return` is the print the artifact carried before the rule touched it: it is
+    what the 40% flag reads and what a person has to be able to find afterwards.
+    `adjusted_return` is what the row now holds, or None when the cell was nulled
+    instead, which happens for two reasons that have to stay apart: the child's close
+    could not be read (`missing_child`), or the vendor's own record could not be used
+    at all (`unusable_record`).
+    """
+
+    spinoff: Spinoff
+    session: pd.Timestamp
+    raw_return: float | None
+    adjusted_return: float | None
+    child_close: float | None
+
+    @property
+    def unusable_record(self) -> bool:
+        """Whether the vendor's record itself carried no usable ratio."""
+        return not self.spinoff.applicable
+
+    @property
+    def missing_child(self) -> bool:
+        return self.child_close is None and not self.unusable_record
+
+    @property
+    def raises_flag(self) -> bool:
+        """Whether the print this replaced is worth a flag of its own.
+
+        The raw print above the large-move threshold is the event a reader looks
+        for, and a nulled cell is always worth saying: the one thing that must not
+        happen is a row that changed for a reason nothing records.
+        """
+        if self.missing_child or self.unusable_record:
+            return True
+        raw = self.raw_return
+        return raw is not None and abs(raw) > LARGE_MOVE
+
+
+def vendor_spinoffs(
+    session: pd.Timestamp,
+    universe: list[str],
+    fetcher: Callable[[list[str], pd.Timestamp], list[dict[str, Any]]] | None = None,
+) -> list[Spinoff]:
+    """Every spin-off the vendor reports with `session` as its ex-date.
+
+    Asked for the universe and filtered to the day, because the action is only
+    relevant when its ex-date is the session being appended. A record for a name
+    the book does not hold is dropped.
+
+    A record for one it does hold that cannot be used, whether because it names no
+    child symbol or because its rates cannot form a share ratio, is kept with
+    `child_per_parent` None rather than raising. The evening goes on, that one cell
+    is nulled so the raw print cannot be read as a return, and the phrase in
+    `unusable_reason` is what the message names. Stopping the run would be worse than
+    the hole: the orders are sent before this rule runs, and a vendor field coming
+    back empty is not the book's problem to solve by refusing to price it.
+    """
+    names = sorted({str(ticker) for ticker in universe if str(ticker)})
+    if not names:
+        return []
+    records = (fetcher or _default_spinoff_fetch)(names, _normalized(session))
+    wanted = set(names)
+    out: list[Spinoff] = []
+    for record in records or []:
+        parent = str(record.get("parent") or "").strip()
+        if parent not in wanted:
+            continue
+        child = str(record.get("child") or "").strip()
+        source_rate = float(record.get("source_rate") or 0.0)
+        new_rate = float(record.get("new_rate") or 0.0)
+        when = record.get("ex_date")
+        ex_date = _normalized(session if when is None else when)
+        unusable: str | None = None
+        if not child:
+            unusable = "no child symbol"
+        elif (
+            not math.isfinite(source_rate)
+            or not math.isfinite(new_rate)
+            or source_rate <= 0
+            or new_rate <= 0
+        ):
+            unusable = (
+                f"source_rate {source_rate!r} and new_rate {new_rate!r} cannot "
+                f"form a share ratio"
+            )
+        out.append(
+            Spinoff(
+                parent=parent,
+                child=child,
+                ex_date=ex_date,
+                child_per_parent=(
+                    None if unusable is not None else new_rate / source_rate
+                ),
+                source_rate=source_rate,
+                new_rate=new_rate,
+                unusable_reason=unusable,
+            )
+        )
+    return sorted(out, key=lambda spinoff: (spinoff.parent, spinoff.child))
+
+
+def _default_spinoff_fetch(
+    symbols: list[str], session: pd.Timestamp
+) -> list[dict[str, Any]]:
+    """The vendor's spin-offs for a list of names and a session, from Alpaca."""
+    from live import alpaca  # noqa: PLC0415 - the vendor, imported late
+
+    return alpaca.spin_offs(symbols, session)
+
+
+def spinoff_return(
+    parent_close: float,
+    child_close: float,
+    child_per_parent: float,
+    parent_previous_close: float,
+) -> float:
+    """The parent's total return across the spin-off's ex-date.
+
+    `(parent_close + ratio x child_close) / parent_previous_close - 1`, with the
+    ratio in child shares per parent share: the holder ends the session with the
+    parent it had plus the child it was given, so the two together are what the
+    session paid, over the parent's own prior close. Every input is a raw close on
+    its own basis, and no stored row is involved.
+    """
+    if not math.isfinite(parent_previous_close) or parent_previous_close <= 0:
+        raise ValueError("the parent's previous close is not a usable price")
+    if not math.isfinite(parent_close) or parent_close <= 0:
+        raise ValueError("the parent's close is not a usable price")
+    if not math.isfinite(child_close) or child_close <= 0:
+        raise ValueError("the child's close is not a usable price")
+    if not math.isfinite(child_per_parent) or child_per_parent <= 0:
+        raise ValueError("the child's shares per parent share must be positive")
+    return (float(parent_close) + float(child_per_parent) * float(child_close)) / float(
+        parent_previous_close
+    ) - 1.0
+
+
+def _close_before(
+    prices_frame: pd.DataFrame, ticker: str, session: pd.Timestamp
+) -> float | None:
+    """The last stored close before `session`, which is the prior close."""
+    _, close, _ = _stored_pair(prices_frame, ticker, session)
+    return close
+
+
+def _set_return(
+    frame: pd.DataFrame, session: pd.Timestamp, ticker: str, value: float
+) -> None:
+    """Write one row's return, keeping the log column consistent with it.
+
+    `processed/returns.parquet` carries `r` and `g = ln(1 + r)` in the same row
+    (measured: `|g - log1p(r)|` is exactly 0 over the stored panel), so a rule that
+    rewrote `r` alone would leave the row internally inconsistent. A null is
+    written to both, which is what `log1p` of a null is.
+    """
+    frame.loc[(session, ticker), "r"] = value
+    if "g" in getattr(frame, "columns", []):
+        frame.loc[(session, ticker), "g"] = (
+            float("nan") if pd.isna(value) else math.log1p(float(value))
+        )
+
+
+def _apply_spinoff(
+    frame: pd.DataFrame,
+    prices_frame: pd.DataFrame,
+    spinoff: Spinoff,
+    child_close: Callable[[str, pd.Timestamp], float | None] | None,
+) -> SpinoffOutcome | None:
+    """Correct the parent's appended return, or null the one cell.
+
+    Returns None when there is no row to correct, which is the ordinary case for a
+    parent outside tonight's panel. Two things null the cell rather than leaving the
+    raw print in the fit, because a null is a hole the hygiene layer reports and the
+    raw print is a number that is wrong: a child whose close cannot be read, and a
+    record the rule cannot use at all (no ratio to apply). The second is checked
+    before a single price is looked up, because there is nothing to compute with.
+    """
+    session = spinoff.ex_date
+    parent = spinoff.parent
+    if (session, parent) not in frame.index:
+        return None
+    raw = frame.loc[(session, parent), "r"]
+    raw_value = None if pd.isna(raw) else float(raw)
+    ratio = spinoff.child_per_parent
+    if ratio is None:
+        # The vendor's own record carried no usable ratio, so there is nothing to
+        # compute with: the cell is nulled before a single price is looked up.
+        _set_return(frame, session, parent, float("nan"))
+        return SpinoffOutcome(spinoff, session, raw_value, None, None)
+    previous = _close_before(prices_frame, parent, session)
+    parent_close = _close_on(prices_frame, parent, session)
+    child = _close_on(prices_frame, spinoff.child, session)
+    if child is None and child_close is not None:
+        child = child_close(spinoff.child, session)
+    if child is None or parent_close is None or previous is None:
+        _set_return(frame, session, parent, float("nan"))
+        return SpinoffOutcome(spinoff, session, raw_value, None, None)
+    value = spinoff_return(
+        parent_close=parent_close,
+        child_close=float(child),
+        child_per_parent=float(ratio),
+        parent_previous_close=previous,
+    )
+    _set_return(frame, session, parent, value)
+    return SpinoffOutcome(spinoff, session, raw_value, value, float(child))
+
+
+def spinoff_flags(
+    events: list[SpinoffOutcome], session: pd.Timestamp
+) -> list[dict[str, Any]]:
+    """One flag per spin-off applied to `session`, in the large-move shape.
+
+    `return` is the raw print, because that is the move the threshold is about and
+    the number the owner has to be able to find again; `adjusted_return` is what the
+    row holds now. `explained_by` is "spinoff", so the message counts no unexplained
+    move for a return the rule corrected.
+    """
+    out: list[dict[str, Any]] = []
+    for event in events:
+        if event.session != session or not event.raises_flag:
+            continue
+        label = event.spinoff.label
+        if event.unusable_record:
+            label = f"{label}, so the return was nulled"
+        elif event.missing_child:
+            label = (
+                f"{label}, the {event.spinoff.child} close is missing so the "
+                f"return was nulled"
+            )
+        out.append(
+            {
+                "ticker": event.spinoff.parent,
+                "return": event.raw_return,
+                "adjusted_return": event.adjusted_return,
+                "new_ticker": event.spinoff.child,
+                "new_close": event.child_close,
+                "explained_by": "spinoff",
+                "flag": label,
+            }
+        )
+    return out
+
+
+def spinoff_rows(
+    events: list[SpinoffOutcome], trade_date: pd.Timestamp
+) -> list[dict[str, Any]]:
+    """The appendix rows for the spin-offs applied to one session.
+
+    `factor` is the child's shares per parent share, the slot a split's factor
+    occupies, and `explained_by` says which of the two the row is. The
+    cross-check ratio is null: a spin-off is not a back-adjustment, so there is
+    nothing to cross-check it against.
+
+    Only records that were applied get a row: a record whose rates cannot form a
+    ratio has no factor to write, and nothing was applied with it. It is not
+    silent - the flag carries it and the message names the parent - but it does not
+    belong in a table of corporate actions the rule used.
+    """
+    stamp = pd.Timestamp(trade_date).date().isoformat()
+    rows: list[dict[str, Any]] = []
+    for event in events:
+        ratio = event.spinoff.child_per_parent
+        if ratio is None:
+            continue
+        rows.append(
+            {
+                "trade_date": stamp,
+                "ticker": event.spinoff.parent,
+                "effective_date": event.spinoff.ex_date.date().isoformat(),
+                "factor": float(ratio),
+                "source": event.spinoff.source,
+                "cross_check_ratio": None,
+                "explained_by": "spinoff",
+                "new_ticker": event.spinoff.child,
+                "source_rate": float(event.spinoff.source_rate),
+                "new_rate": float(event.spinoff.new_rate),
+            }
+        )
+    return rows
+
+
+# The rate columns arrived after the table did, so a record written before them - or
+# one read from a store that has not been migrated - carries a null where a rate
+# belongs. The rates are informational: `factor` is what the rule applies.
+DEFAULT_RATE = 1.0
+
+
+def _rate(value: Any) -> float:
+    """A stored rate, or the 1:1 default when the column is absent or null."""
+    if value is None or pd.isna(value):
+        return DEFAULT_RATE
+    number = float(value)
+    return number if math.isfinite(number) and number > 0 else DEFAULT_RATE
+
+
+def spinoffs_from_rows(rows: pd.DataFrame) -> list[Spinoff]:
+    """The spin-offs an appendix table records, read back as the rule's records.
+
+    `spinoff_rows` is what writes them, so this is its reader and the two agree by
+    construction: `factor` is the child's shares per parent share, `new_ticker` is the
+    child and `effective_date` is the ex-date. A row `explained_by` something else is
+    a split and is not a spin-off here, and a frame without the column at all reads as
+    no records rather than as a table of splits: a rebuild that guessed would move
+    returns nobody recorded.
+
+    A row that names no child, or carries no usable factor, is kept with
+    `unusable_reason` set rather than dropped. The parent's cell is then nulled by the
+    rule that applies it, which is the point: a record that cannot be applied must not
+    leave the raw print standing as if it were a return.
+    """
+    if rows is None or len(rows) == 0 or "explained_by" not in rows.columns:
+        return []
+    wanted = rows.loc[rows["explained_by"].astype(str) == "spinoff"]
+    out: list[Spinoff] = []
+    for row in wanted.to_dict("records"):
+        parent = str(row.get("ticker") or "").strip()
+        when = row.get("effective_date")
+        if not parent or when is None or pd.isna(when):
+            continue
+        child = str(row.get("new_ticker") or "").strip()
+        factor = row.get("factor")
+        usable = (
+            factor is not None
+            and not pd.isna(factor)
+            and math.isfinite(float(factor))
+            and float(factor) > 0
+        )
+        unusable: str | None = None
+        if not child:
+            unusable = "no child symbol"
+        elif not usable:
+            unusable = f"factor {factor!r} cannot form a share ratio"
+        out.append(
+            Spinoff(
+                parent=parent,
+                child=child,
+                ex_date=_normalized(when),
+                child_per_parent=None if unusable else float(factor),
+                source_rate=_rate(row.get("source_rate")),
+                new_rate=_rate(row.get("new_rate")),
+                source=str(row.get("source") or SPINOFF_SOURCE),
+                unusable_reason=unusable,
+            )
+        )
+    return sorted(out, key=lambda spinoff: (spinoff.parent, spinoff.child))
+
+
+def apply_recorded(
+    frame: pd.DataFrame, prices_frame: pd.DataFrame, spinoffs: list[Spinoff]
+) -> list[SpinoffOutcome]:
+    """Re-apply recorded spin-offs to a frame the rebuild has just recomputed.
+
+    The append path corrects the session it appends. `extend_returns` recomputes every
+    session from the stored prices, and neither vendor adjusts history for a spin-off,
+    so the correction is gone the next evening unless it is re-applied from its record.
+    That is what this is for.
+
+    Nothing is read back from the frame, so calling it twice writes the same number:
+    the record's factor and the stored closes are the whole input. An event whose child
+    close cannot be read nulls that one cell, exactly as the append path does, because
+    the raw print is the number the correction exists to remove - a hole is reported by
+    the hygiene layer and a wrong return is not.
+    """
+    out: list[SpinoffOutcome] = []
+    for spinoff in spinoffs:
+        outcome = _apply_spinoff(frame, prices_frame, spinoff, None)
+        if outcome is not None:
+            out.append(outcome)
+    return out
+
+
+def describe_spinoffs(events: list[SpinoffOutcome]) -> list[str]:
+    """`spinoff: CTVA -> VYLR 1:1 applied` per applied spin-off, for the message."""
+    return [event.spinoff.label for event in events if event.spinoff.applicable]
+
+
+def missing_child_notes(events: list[SpinoffOutcome]) -> list[str]:
+    """`VYLR (CTVA)` per spin-off whose child close could not be read."""
+    return [
+        f"{event.spinoff.child} ({event.spinoff.parent})"
+        for event in events
+        if event.missing_child
+    ]
+
+
+def unusable_spinoff_notes(events: list[SpinoffOutcome]) -> list[str]:
+    """`CTVA (no child symbol)` per record whose own fields could not be used.
+
+    The parent is named because the parent is the row that was nulled, and the
+    reason is named because "we could not use it" is not something the owner can
+    take to the vendor.
+    """
+    return [
+        f"{event.spinoff.parent} ({event.spinoff.unusable_reason})"
+        for event in events
+        if event.unusable_record
+    ]
+
+
+def resolve_spinoffs(
+    sessions: list[pd.Timestamp],
+    universe: list[str],
+    prices_frame: pd.DataFrame,
+    fetcher: Callable[[list[str], pd.Timestamp], list[dict[str, Any]]] | None = None,
+    child_closes_fetcher: (
+        Callable[[list[str], pd.Timestamp], dict[str, float]] | None
+    ) = None,
+) -> tuple[dict[pd.Timestamp, list[Spinoff]], dict[tuple[str, pd.Timestamp], float]]:
+    """The spin-offs of each appended session, and the child closes we lack.
+
+    A child the panel already prices costs no request at all, which is the common
+    case: the run's universe carries the spun-off ticker from the session it starts
+    trading. The ones it does not price are asked for together, one request per
+    session, because the alternative is a nulled return for a name the vendor can
+    answer for.
+    """
+    found: dict[pd.Timestamp, list[Spinoff]] = {
+        session: vendor_spinoffs(session, universe, fetcher=fetcher)
+        for session in sessions
+    }
+    fetched: dict[tuple[str, pd.Timestamp], float] = {}
+    for session, spinoffs in sorted(found.items()):
+        children = sorted(
+            {
+                spinoff.child
+                for spinoff in spinoffs
+                if _close_on(prices_frame, spinoff.child, session) is None
+            }
+        )
+        if not children:
+            continue
+        values = (child_closes_fetcher or _default_child_closes)(children, session)
+        for name, value in (values or {}).items():
+            fetched[(str(name), session)] = float(value)
+    return found, fetched
+
+
+def _default_child_closes(
+    symbols: list[str], session: pd.Timestamp
+) -> dict[str, float]:
+    """The children's raw closes for one session, from the vendor."""
+    from live import alpaca  # noqa: PLC0415 - the vendor, imported late
+
+    return alpaca.closes_on(symbols, session)
+
+
+def child_close_lookup(
+    prices_frame: pd.DataFrame, fetched: dict[tuple[str, pd.Timestamp], float]
+) -> Callable[[str, pd.Timestamp], float | None]:
+    """A lookup that prefers the panel and falls back to what was fetched."""
+
+    def lookup(child: str, session: pd.Timestamp) -> float | None:
+        value = _close_on(prices_frame, child, session)
+        if value is not None:
+            return value
+        return fetched.get((str(child), pd.Timestamp(session)))
+
+    return lookup
+
+
 def adjusted_returns_for_session(
     raw_closes: pd.Series, previous_closes: pd.Series, splits: list[Split]
 ) -> pd.Series:
@@ -266,6 +811,9 @@ class Outcome:
     # The names the request cap stopped the cross-check from reaching. Never an
     # error, and never invisible: the run records them and the message says so.
     unchecked: list[str]
+    # The spin-offs applied to the appended sessions, one record per parent row the
+    # rule corrected (or nulled, when the child's close could not be read).
+    spinoffs: list[SpinoffOutcome] = field(default_factory=list)
 
 
 def appended_sessions(
@@ -362,10 +910,14 @@ def _stored_pair(
 def _close_on(
     prices_frame: pd.DataFrame, ticker: str, session: pd.Timestamp
 ) -> float | None:
-    tickers = prices_frame.index.get_level_values("ticker")
-    if ticker not in set(tickers) or session not in set(
-        prices_frame.index.get_level_values("date")
-    ):
+    """One session's raw close for one ticker, or None when that row is not there.
+
+    The ticker and the session are asked for together. Asked for apart, a name the
+    panel prices on other sessions and not on this one passes both checks and then
+    raises on the lookup, which is the difference between a nulled cell and a stopped
+    run - the case the missing-close rule exists for.
+    """
+    if (session, ticker) not in prices_frame.index:
         return None
     value = prices_frame.loc[(session, ticker), "close"]
     if value is None or pd.isna(value):
@@ -451,8 +1003,13 @@ def _check_one(
     if patch and previous_close is not None and (session, ticker) in frame.index:
         today = _close_on(prices_frame, ticker, session)
         if today is not None:
-            frame.loc[(session, ticker), "r"] = adjusted_return(
-                close_t=today, factor=split.factor, close_previous=previous_close
+            _set_return(
+                frame,
+                session,
+                ticker,
+                adjusted_return(
+                    close_t=today, factor=split.factor, close_previous=previous_close
+                ),
             )
     return split, ratio, spent
 
@@ -464,6 +1021,8 @@ def apply_to_append(
     split_fetcher: Callable[[str], Any] | None = None,
     close_fetcher: Callable[[str, pd.Timestamp], float] | None = None,
     max_cross_checks: int = MAX_CROSS_CHECKS,
+    spinoffs: dict[pd.Timestamp, list[Spinoff]] | None = None,
+    child_close: Callable[[str, pd.Timestamp], float | None] | None = None,
 ) -> Outcome:
     """Apply the corporate-actions rule to the sessions this run is appending.
 
@@ -473,6 +1032,14 @@ def apply_to_append(
     split the vendor restates without reporting. Both paths start from a refetch of
     the last stored session's adjusted close, and a ratio no record explains stops
     the run before any artifact is written.
+
+    Spin-offs are the third pass and a different animal: they are not detected from
+    the frame at all, they are handed in per session as the vendor's own records,
+    and the parent's return is computed from the parent's and the child's raw closes
+    plus the share ratio. `child_close` is where a child the panel does not price is
+    read from. Neither of the two things that can go wrong here stops the run: a
+    child close that cannot be read, and a record the rule cannot use at all, each
+    null that one cell, and the message names the name and the reason.
     """
     sessions = appended_sessions(returns_frame, since)
     if not sessions:
@@ -480,6 +1047,7 @@ def apply_to_append(
     splits: list[Split] = []
     ratios: dict[str, float] = {}
     cross_checked: list[str] = []
+    events: list[SpinoffOutcome] = []
     frame = returns_frame
     for session in sessions:
         for ticker in split_flag_tickers(prices_frame, session):
@@ -492,6 +1060,10 @@ def apply_to_append(
                 cross_checked.append(ticker)
             if split is not None:
                 splits.append(split)
+        for spinoff in (spinoffs or {}).get(session, []):
+            event = _apply_spinoff(frame, prices_frame, spinoff, child_close)
+            if event is not None:
+                events.append(event)
         if session not in frame.index:
             continue
         row = frame.loc[session, "r"]
@@ -518,16 +1090,30 @@ def apply_to_append(
                 cross_checked.append(ticker)
     last = sessions[-1]
     tail = frame.loc[last, "r"] if last in frame.index else pd.Series(dtype=float)
-    flags = flag_large_moves(
-        tail, explained={split.ticker: describe([split]) for split in splits}
+    explained = {split.ticker: describe([split]) for split in splits}
+    explained.update(
+        {
+            event.spinoff.parent: event.spinoff.label
+            for event in events
+            if event.session == last and event.spinoff.applicable
+        }
     )
+    flags = flag_large_moves(tail, explained=explained)
+    # The spin-off's own flag replaces whatever the post-correction move produced for
+    # that name, because the print worth recording is the one the rule replaced.
+    corrected = {event.spinoff.parent for event in events if event.session == last}
+    flags = [flag for flag in flags if flag["ticker"] not in corrected]
+    flags.extend(spinoff_flags(events, last))
+    flags.sort(key=lambda flag: abs(flag.get("return") or 0.0), reverse=True)
     watched_last = [
         str(ticker)
         for ticker, value in tail.items()
         if not pd.isna(value) and abs(float(value)) > CROSS_CHECK_MOVE
     ]
     unchecked = [ticker for ticker in watched_last if ticker not in cross_checked]
-    return Outcome(frame, splits, ratios, flags, cross_checked, sessions, unchecked)
+    return Outcome(
+        frame, splits, ratios, flags, cross_checked, sessions, unchecked, events
+    )
 
 
 def apply_to_artifact(
@@ -536,13 +1122,25 @@ def apply_to_artifact(
     split_fetcher: Callable[[str], Any] | None = None,
     close_fetcher: Callable[[str, pd.Timestamp], float] | None = None,
     max_cross_checks: int = MAX_CROSS_CHECKS,
+    spinoff_fetcher: (
+        Callable[[list[str], pd.Timestamp], list[dict[str, Any]]] | None
+    ) = None,
+    child_closes_fetcher: (
+        Callable[[list[str], pd.Timestamp], dict[str, float]] | None
+    ) = None,
 ) -> Outcome:
     """Apply the rule to the artifact's appended sessions and write it back.
 
     Only the sessions this run appended are touched, and inside them only the
     tickers a corporate action moved, so every stored row keeps its value. The
-    frame is written back only when a split was actually applied, which is what
-    keeps an ordinary evening's artifact byte-identical.
+    frame is written back only when a split or a spin-off was actually applied,
+    which is what keeps an ordinary evening's artifact byte-identical.
+
+    The spin-off request is the one thing here that can fail without the run
+    failing: a vendor read that raises is logged and the rule is skipped for that
+    session, which leaves the raw print in place where the 40% flag names it as an
+    unexplained large move. That is the same position the loop was in before this
+    rule existed, and it is visible rather than silent.
     """
     from pathlib import Path
 
@@ -552,6 +1150,29 @@ def apply_to_artifact(
     prices_frame = pd.read_parquet(
         root / "raw" / "prices.parquet", columns=["close", "adj_close", "split_factor"]
     )
+    sessions = appended_sessions(frame, since)
+    found: dict[pd.Timestamp, list[Spinoff]] = {}
+    fetched: dict[tuple[str, pd.Timestamp], float] = {}
+    if sessions:
+        universe = sorted(
+            {str(ticker) for ticker in prices_frame.index.get_level_values("ticker")}
+        )
+        try:
+            found, fetched = resolve_spinoffs(
+                sessions,
+                universe,
+                prices_frame,
+                fetcher=spinoff_fetcher,
+                child_closes_fetcher=child_closes_fetcher,
+            )
+        except Exception as exc:  # noqa: BLE001 - a read that may fail, named
+            logger.warning(
+                "could not read the vendor's spin-offs for %s: %s: %s",
+                ", ".join(str(session.date()) for session in sessions),
+                type(exc).__name__,
+                exc,
+            )
+            found, fetched = {}, {}
     outcome = apply_to_append(
         frame,
         prices_frame,
@@ -559,8 +1180,10 @@ def apply_to_artifact(
         split_fetcher=split_fetcher,
         close_fetcher=close_fetcher,
         max_cross_checks=max_cross_checks,
+        spinoffs=found,
+        child_close=child_close_lookup(prices_frame, fetched),
     )
-    if outcome.splits:
+    if outcome.splits or outcome.spinoffs:
         outcome.returns.to_parquet(returns_path)
     return outcome
 
@@ -671,6 +1294,10 @@ def rows(
             "factor": float(split.factor),
             "source": split.source,
             "cross_check_ratio": ratios.get(split.ticker),
+            "explained_by": "split",
+            "new_ticker": None,
+            "source_rate": None,
+            "new_rate": None,
         }
         for split in splits
     ]
