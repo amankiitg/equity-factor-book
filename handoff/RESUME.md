@@ -1,6 +1,6 @@
 # Resume
 
-## 2026-10-03 (continued): items 0, 1 and 2 done on `backport`; items 3 to 6 not started
+## 2026-10-03 (continued): items 0, 1, 2 and 3 done on `backport`; items 4 to 6 not started
 
 Stopped at an item boundary. Nothing is part-committed.
 
@@ -53,10 +53,21 @@ tracked `data/VERSION.json` and `data/models/registry.json` are untouched and
    recomputes every E8 portfolio and was still running; `data/VERSION.json` has
    therefore not yet been re-written with the new artifact, and item 4's full
    chain must produce it.
-3. **E9 costs.** Charge borrow on the short leg at E11's rate, split reversals
-   into two cost events, apply the $250 floor at the tested AUM, record that
-   borrow availability has no history to replay. Scratch: `/tmp/efb-backport/item7_constraints.py`.
-   Rebuild E9 and re-score.
+3. **DONE (`347506f`).** F9.1's stored numbers carry an `e11_constraints` block
+   beside the scored ones, with no threshold attached (STANDARDS 2b). Borrow on
+   the short leg at E11's rate (`costs.BORROW_RATE`, the constant
+   `live/evening_job.py` reads): `short_gross` 0.499641, so borrow is
+   `borrow_cost_share` 0.003105 of the transaction cost. Reversals as two cost
+   events: 33.22% of legs, 52.04% of turnover, and the name-flat-for-the-horizon
+   upper bound costs 23% of the IR (`reversal_ir_upper_bound_ratio` 0.769127).
+   The $250 floor (`costs.ALPACA_MIN_NOTIONAL`) at the tested AUM ($1mn): 6.04%
+   of legs and 0.25% of turnover skipped, IR ratio 0.999204. Borrow availability
+   has no history and is recorded as such, with size as a labelled proxy
+   (`size_proxy_ir_ratio` 0.961951). Code: `efb.costs.e11_constraint_effects`,
+   written to `costs/e11_constraints.parquet` by `costs.run` and in E9_ARTIFACTS.
+   No verdict moved; E9 `data_hash` -> e4b8f9ca. **Note for item 4:** as with item
+   2, E9 was re-scored through `efb.evaluate.main_e9` rather than
+   `make rebuild-e9`, so `data/VERSION.json` still needs item 4's chain.
 4. **Frozen-panel propagation, once, at `END=2026-10-02`.** Rebuild E1 to E10 in
    order (`make rebuild END=2026-10-02`); fix the stored-hash inconsistencies
    (`data/VERSION.json` against the registry for E2 to E4, and E5's stale
