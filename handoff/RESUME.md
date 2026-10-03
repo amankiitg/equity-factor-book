@@ -1,13 +1,12 @@
 # Resume
 
-## 2026-10-03 (continued): items 0 and 1 done on `backport`, items 2 to 6 not started
+## 2026-10-03 (continued): items 0, 1 and 2 done on `backport`; items 3 to 6 not started
 
 Stopped at an item boundary. Nothing is part-committed.
 
-**Item 0 (rebase) done.** `backport` was rebased onto `origin/main` (`db4d39c`)
-and force-pushed with `--force-with-lease`. One conflict, in
-`tests/test_e4_results.py` (main's H4 test fixes against backport's fuller H4
-set); resolved to backport's version, which is a superset. main's README
+**Item 0 (rebase) done.** Part A merged a README rewrite to `main` first
+(`852e504`), then `backport` was rebased onto it and force-pushed with
+`--force-with-lease`, keeping main's README text. main's README
 structure, the "What E11 taught us" sections and the test fixes are all present.
 Head after the rebase: `adc09fb`.
 
@@ -38,18 +37,22 @@ tracked `data/VERSION.json` and `data/models/registry.json` are untouched and
 `/tmp/efb-neff/withfloor`, and the pre-back-port tree with it at
 `/tmp/efb-neff/base-withfloor`.
 
-**Items 2 to 6, not started. Next steps, in order:**
+**Items 3 to 6, not started. Next steps, in order:**
 
-2. **E8 and E10 traded-book figures.** The scratch measurement is
-   `/tmp/efb-backport/item56_quantize.py` (`quantize` + `net_returns`, read-only).
-   It reads `data/portfolios/persistent_proportional.parquet` (the E10 design
-   book, rho=0.02, phi=0.95, seed=1) and quantizes to the E11 construction:
-   whole shares, 20-share floor, $1mn NAV, gross cap 1.0. Store `kept_*` and
-   `full_book_*` beside the existing numbers (additive; do not replace) and
-   confirm or correct the Phase 1 figures (Sharpe 0.98 to 0.73, about half the
-   names dropped). A measurement taken after the numbers exist is not a
-   criterion (STANDARDS 2b): record it as a stored block, not a new F ID, and
-   put the narrative in the ledger and the memo.
+2. **DONE (`3a235d8`).** E8's F8.5 and E10's F10.1 carry a `traded_book` block
+   beside their existing numbers: `full_book_sharpe` 1.0262173 over 498.0 names
+   against `kept_sharpe` 0.7909531 over 233.4629, with 49.454% of
+   name-rebalances dropped by the 20-share floor and mean gross 0.7428933 before
+   renormalization. The Phase 1 scratch (Sharpe 0.98 to 0.73) is corrected: the
+   mechanism and "about half" hold, the levels are 1.0262 to 0.7910. Code:
+   `efb/allocate.py` (`net_returns_of_book`, `quantize_book_to_shares`,
+   `traded_book_figures`), written by both the E8 and the E10 build into
+   `data/portfolios/traded_book.parquet` and read by both sprints' criteria. No
+   verdict moved. **Note for item 4:** the E8/E10 re-score was run through
+   `efb.evaluate.main_e8`/`main_e10` rather than `make rebuild-e8`, which
+   recomputes every E8 portfolio and was still running; `data/VERSION.json` has
+   therefore not yet been re-written with the new artifact, and item 4's full
+   chain must produce it.
 3. **E9 costs.** Charge borrow on the short leg at E11's rate, split reversals
    into two cost events, apply the $250 floor at the tested AUM, record that
    borrow availability has no history to replay. Scratch: `/tmp/efb-backport/item7_constraints.py`.
