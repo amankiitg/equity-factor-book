@@ -28,6 +28,27 @@ left byte for byte as it was, and `processed/returns.parquet` is not touched at
 all, so `make verify-evidence` still describes the same data and the ledger entry
 is how the change is announced.
 
+**Two modes, and the difference is the name's own row.** The default masks the
+name out of the session's panel and leaves the fit without it, which is the right
+answer when the cell is a print nothing explains: the name cannot be priced from
+it, and an explicit null is what says so. `--refit` keeps every name, including the
+one it was asked about, and re-derives the session from the panel as it stands.
+That is the right answer once the cell has been **corrected** rather than removed: a
+recorded spin-off puts the true total return into the panel, so the name's own
+return is a real observation again, and masking it would delete the return instead
+of using it. Both modes fit one session, refuse a payload that is not exactly that
+session or that carries a key twice, and leave every other session byte for byte as
+it was; the report says which mode ran, under `mode`.
+
+**A rerun of `--refit` is a fixed point in value, not a byte comparison.** Measured
+on the real panel for 2026-10-01 and 2026-10-02: a rerun reproduces CTVA's specific
+return and variance to one or two units in the last place and leaves `xs_r2`
+byte-identical, while `descriptors`, `factor_returns`, `specific_returns` and
+`specific_var` hash differently. Those hashes are taken over the in-memory frame, so
+they are not a byte comparison across a run boundary either: within a run,
+`history_hash_before == history_hash_after` is what holds, and it is the check that
+no earlier session moved.
+
 Dry run by default. `--write` performs the artifact writes and, for every input it
 repaired, replaces that session in the appendix by key, so no other session and no
 other input is touched.
@@ -96,8 +117,10 @@ def _keys_for(frame: pd.DataFrame) -> list[str]:
     return ["date"]
 
 
-def masked_panel(root: Path, ticker: str, session: pd.Timestamp) -> dict[str, object]:
-    """The panel the loop itself fits from, with the one cell the repair is about.
+def masked_panel(
+    root: Path, ticker: str, session: pd.Timestamp, *, mask: bool = True
+) -> dict[str, object]:
+    """The panel the loop itself fits from, and the one cell the repair is about.
 
     `extend_model` fits `probes.load_panel` as it stands, flagged rows and all.
     That is the loader-parity gap, and it is parked on its own branch because
@@ -105,6 +128,10 @@ def masked_panel(root: Path, ticker: str, session: pd.Timestamp) -> dict[str, ob
     may not apply that fix quietly to one session, so the panel here is the
     loop's own panel and the only edit is the name and the day it was asked
     about.
+
+    `mask=False` is the refit mode: the panel is returned as it stands, every name
+    kept, and the named ticker's value is read for the report rather than removed.
+    That is for a cell that has been corrected rather than one that is a print.
 
     Cleaning instead (`efb.hygiene.clean_returns`) nulls every flagged cell in
     the history, which is a different decision and a visible one: MRNA is flagged
@@ -121,14 +148,17 @@ def masked_panel(root: Path, ticker: str, session: pd.Timestamp) -> dict[str, ob
         raise SystemExit(f"{session.date()} is not a row of the returns panel")
     edited = returns.copy()
     inputs["masked_value"] = float(edited.loc[session, ticker])
-    edited.loc[session, ticker] = np.nan
+    if mask:
+        edited.loc[session, ticker] = np.nan
     inputs["returns"] = edited
     return inputs
 
 
-def refit(root: Path, ticker: str, session: pd.Timestamp) -> dict[str, pd.DataFrame]:
-    """The repaired rows for one session, fitted from the masked panel."""
-    inputs = masked_panel(root, ticker, session)
+def refit(
+    root: Path, ticker: str, session: pd.Timestamp, *, mask: bool = True
+) -> dict[str, pd.DataFrame]:
+    """The repaired rows for one session, fitted from the panel `mask` describes."""
+    inputs = masked_panel(root, ticker, session, mask=mask)
     returns = inputs["returns"]
     close = inputs["close"]
     volume = inputs["volume"]
@@ -285,9 +315,13 @@ def _session_block(
 
 
 def repair(
-    root: Path, ticker: str, session: pd.Timestamp, *, write: bool
+    root: Path, ticker: str, session: pd.Timestamp, *, write: bool, mask: bool = True
 ) -> dict[str, object]:
-    """Re-fit the session and replace it, in the tree and (with `write`) the store."""
+    """Re-fit the session and replace it, in the tree and (with `write`) the store.
+
+    `mask` is the mode: True refits the session without the named name, False
+    (`--refit`) keeps every name including that one. See the module docstring.
+    """
     xs = root / "models" / "XS-v1"
     paths = {name: xs / f"{name}.parquet" for name in REPAIRED_ARTIFACTS}
     before_files = {name: _file_hash(path) for name, path in paths.items()}
@@ -323,7 +357,7 @@ def repair(
         float(np.sqrt(old_variance_value)) if len(old_variance) else float("nan")
     )
 
-    repaired = refit(root, ticker, session)
+    repaired = refit(root, ticker, session, mask=mask)
 
     frames = dict(before_frames)
     frames["descriptors"] = _with_repaired_session(
@@ -331,7 +365,7 @@ def repair(
         session,
         repaired["descriptors"],
         ticker,
-        null_the_ticker=True,
+        null_the_ticker=mask,
     )
     frames["factor_returns"] = _with_repaired_session(
         before_frames["factor_returns"],
@@ -345,7 +379,7 @@ def repair(
         session,
         repaired["specific_returns"],
         ticker,
-        null_the_ticker=True,
+        null_the_ticker=mask,
     )
     frames["xs_r2"] = _with_repaired_session(
         before_frames["xs_r2"],
@@ -367,7 +401,7 @@ def repair(
         .dropna()
     )
     frames["factor_cov"] = fx.ewma_factor_cov(factor_wide, half_life=fx.F_HALF_LIFE)
-    inputs = masked_panel(root, ticker, session)
+    inputs = masked_panel(root, ticker, session, mask=mask)
     sectors = inputs["sectors"]
     shares = inputs["shares"]
     close = inputs["close"]
@@ -474,6 +508,7 @@ def repair(
     report: dict[str, object] = {
         "ticker": ticker,
         "session": str(session.date()),
+        "mode": "mask" if mask else "refit",
         "specific_return_before": old_specific,
         "specific_return_after": new_specific,
         "variance_before": old_variance_value,
@@ -572,11 +607,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="write the artifacts and replace the session in the appendix",
     )
+    parser.add_argument(
+        "--refit",
+        action="store_true",
+        help=(
+            "keep every name in the session, including --ticker, and re-derive "
+            "it from the panel as it stands; the default masks --ticker out"
+        ),
+    )
     args = parser.parse_args(argv)
 
     session = pd.Timestamp(args.session)
     root = load_tree(args.work, args.tree)
-    report = repair(root, args.ticker, session, write=args.write)
+    report = repair(root, args.ticker, session, write=args.write, mask=not args.refit)
     print(json.dumps(report, indent=2, default=str))
     print()
     print(f"tree: {root}")

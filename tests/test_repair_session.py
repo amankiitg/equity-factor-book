@@ -455,3 +455,100 @@ def test_the_mask_removes_the_one_cell_and_leaves_other_flagged_ones(
     assert returns.loc[SESSION, other] == pytest.approx(
         float(frame.loc[(SESSION, other), "r"])
     ), "the mask reached a cell it was not asked about"
+
+
+def _correct_the_print(root: Path, clean: Path) -> None:
+    """Put the clean panel's return into the printed cell of `root`'s panel.
+
+    This is what a recorded corporate action does to the real panel: the cell stops
+    being a print and becomes the name's own return, so a refit has something real to
+    keep while the stored artifacts still hold the print's fit.
+    """
+    corrected = float(
+        pd.read_parquet(clean / "processed" / "returns.parquet").loc[
+            (SESSION, PRINT_TICKER), "r"
+        ]
+    )
+    path = root / "processed" / "returns.parquet"
+    frame = pd.read_parquet(path)
+    frame.loc[(SESSION, PRINT_TICKER), "r"] = corrected
+    frame.loc[(SESSION, PRINT_TICKER), "outlier"] = False
+    frame.to_parquet(path)
+
+
+def test_the_refit_keeps_the_name_and_its_row(
+    trees: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the cell corrected, the name stays in the session it was corrected for.
+
+    The masked mode refits the session *without* the name, which is the right answer
+    when the cell is a print nothing explains and the wrong one once a recorded
+    corporate action has put the true return back in the panel: masking here throws
+    a real observation away. The panel below carries the name's own return for that
+    session, as the corrected panel does, the refit keeps every name, and the fitted
+    value is the level the clean panel gives rather than the print's.
+    """
+    dirty, clean = trees
+    _correct_the_print(dirty, clean)
+    path = dirty / "processed" / "returns.parquet"
+    returns_before = _file_hash(path)
+
+    writes: list[tuple[str, str, list[dict]]] = []
+    monkeypatch.setattr(
+        store,
+        "replace_by_date",
+        lambda table, on, rows: writes.append((table, str(on), list(rows))),
+    )
+
+    report = repair_session.repair(dirty, PRINT_TICKER, SESSION, write=True, mask=False)
+
+    assert report["mode"] == "refit"
+    # the corner the masked mode gets wrong: the name is priced, not nulled
+    value = _specific_return(dirty, SESSION, PRINT_TICKER)
+    assert np.isfinite(value), "the refit nulled the name it was asked about"
+    assert value == pytest.approx(
+        _specific_return(clean, SESSION, PRINT_TICKER), rel=0.35
+    ), "the refit's value is not the level the clean panel gives"
+    # and the appendix carries that value rather than an explicit null row
+    kept = [
+        row
+        for table, _on, rows in writes
+        if table == "e11_specific_returns"
+        for row in rows
+        if row["ticker"] == PRINT_TICKER
+    ]
+    assert len(kept) == 1, "the appendix lost the name's own row"
+    assert kept[0]["specific_return"] is not None
+    assert np.isfinite(float(kept[0]["specific_return"]))
+
+    # the print's own record and every earlier session are still untouched
+    assert report["returns_untouched"] is True
+    assert _file_hash(path) == returns_before
+    assert report["history_hash_before"] == report["history_hash_after"]
+
+
+def test_a_second_refit_changes_nothing(
+    trees: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Refit twice on a corrected panel: the second run rewrites the same rows.
+
+    The masked mode has its fixed-point test; this is the refit mode's. The stored
+    session still holds the print's fit, so the first run has to change it and the
+    second has to hash to itself, with every earlier session untouched and no key
+    gained or lost.
+    """
+    dirty, clean = trees
+    _correct_the_print(dirty, clean)
+    monkeypatch.setattr(store, "replace_by_date", lambda *args, **kwargs: None)
+
+    first = repair_session.repair(dirty, PRINT_TICKER, SESSION, write=True, mask=False)
+    second = repair_session.repair(dirty, PRINT_TICKER, SESSION, write=True, mask=False)
+
+    assert (
+        first["session_hash_before"] != first["session_hash_after"]
+    ), "the first run did not change the session the print was fitted into"
+    assert second["session_hash_before"] == second["session_hash_after"]
+    assert second["session_hash_before"] == first["session_hash_after"]
+    assert second["file_hash_after"] == first["file_hash_after"]
+    assert second["history_hash_before"] == second["history_hash_after"]
+    assert second["row_set_changed"] == {}
