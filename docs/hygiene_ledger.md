@@ -2340,3 +2340,111 @@ is asserted to be the exception that may re-cut it.
 Status. On the `backport` branch. `docs/backport_runbook.md` §4 states the date and
 the two rules, `docs/engineering_standards.md` carries the one-line contract, and
 every rebuild in the rest of this pass uses `END=2026-10-02`.
+
+## 2026-10-03: F6.1 is scored on the row the session carries, and it fails
+
+Decision. `efb.hedge.run` records the `design_vintage` of the row each hedge was
+built against, and it measures the exposure the hedged book carries in **the row
+the next session carries** - built from the panel by `fx.build_design`, over the
+names priced on that session's own date - beside the in-model exposure. F6.1's
+verdict is read from that number, so the criterion is scored on the row the book
+earns rather than on the design the hedge was built on. F6.1's stored verdict is
+**fail**: `worst_abs_exposure_after_fmp` is 5.49e-15 by construction while
+`worst_abs_exposure_after_fmp_next_row` is **0.135260** (mean **0.002018**) over
+176 scored dates. F6.5's framing is updated to match: the per-factor residual it
+stores is the instrument set's own gap, read in the design the hedge was built
+against, with the vintage stored beside it.
+
+Reason. The exact FMP hedge subtracts the design's own columns, so its exposure is
+zero in that design by construction. That is arithmetic, not a result, and the
+criterion read it as one. What the book carries over the session it is held for is
+a different object: `race.next_descriptor_design` builds the next session's row
+with the cross-section taken as the names priced at the close, because that is what
+is knowable at the close, while `fx.build_design` standardizes each row over the
+names priced on that row's own date. On an ordinary session the priced set does not
+move and the two agree to 7e-14. On a month end it moves, and on this tree it is
+worse than that: a research tree publishes descriptors at month ends plus the final
+session, so the row for the session after a month end does not exist and every one
+of the 176 scored dates carries a `stale` vintage - the hedge is built against the
+row dated the close, one session behind, by construction.
+
+Evidence. All 176 dates scored, none missing a next session
+(`n_exposure_rows_without_a_next_row` 0). `worst_next_row_distance` 3.856266 at the
+worst date over the names the two rows share; `design_vintages` is `stale` for all
+176. The month-end finding of the same date is the documented example: on the
+2026-07-30 to 2026-07-31 pair the row the hedge was built on sits **2.291** from the
+published row and the hedged book is left with **3.82e-03** of exposure, against
+1e-15 and 3e-14 for 2026-09-17 to 2026-09-18. The re-scoring was expected to fail at
+about 1e-2; it fails at 1.35e-01, an order of magnitude worse, because the worst
+date moves further than the month-end pair does. Stored verdict pass -> fail, one
+designed flip, and `make rebuild-e6` reports it as its own stop condition
+(`E6: 1 of 7 changed`, then exit 3, which is the project's signal and not a failed
+write).
+
+Test. `tests/test_e6_next_row.py` holds the arithmetic on hand-built matrices (a
+name the next row does not carry holds no weight in it; a row read through itself
+gives the book's own exposures and a zero distance) and the stored record: the
+in-model worst is below 1e-12 while the next-row worst is above 1e-6 and a million
+times larger, the artifact's per-row numbers re-derive the stored ones, and the
+verdict is asserted to be the arithmetic on those numbers.
+
+Status. On the `backport` branch, rebuilt with `make rebuild-e6 END=2026-10-02`.
+The E6 artifacts carry `design_vintage`, `exposure_after_fmp_next_row` and
+`next_row_distance` per row.
+
+## 2026-10-03: a series that does not overlap the member's stint is dropped, whatever the name says
+
+Decision. `efb.identity.identity_table` now drops a ticker whose served price
+series does not overlap the member's own stint, and `efb.hygiene.build_events`
+writes that removal into `events.parquet` as
+`identity_series_does_not_cover_membership`. The previous rule reached the same
+conclusion only through the name check, and only for a symbol it had already
+called reused. The test is on coverage: a series whose prints sit entirely before
+the member joined or entirely after the member left carries **no history of the
+member**, which is the same conclusion the reused-symbol rule draws, reached
+without needing a name at either end.
+
+Reason. The name check cannot decide two families of case, and both keep a
+fabricated history in the panel:
+
+- the name matches and the series still cannot be the member's. `BBBY` is the
+  clean example: prints 2026-07-17 to 2026-10-02, member 2010-01-04 to
+  2017-07-25, and the revived listing is spelled "Bed Bath & Beyond, Inc.", so
+  `reused` is False and nothing fired. `BTU`, `LEG`, `NE`, `ADT` and `SBNY` are
+  the same shape.
+- there is no name to check at all. `S`, `SLE`, `SE`, `SHLD`, `SPLS`, `STI`, `SUN`
+  and `TE` are recorded as "no current holder name available, could not verify",
+  and the vendor serves a later holder's prices under the symbol - SentinelOne's
+  history under Sprint's symbol, for instance. Before this change those rows were
+  kept.
+
+Evidence. Measured by running the table over the current artifacts: drops go from
+**36 to 49**. The thirteen new names and their windows:
+
+| ticker | series prints | member stint |
+|---|---|---|
+| ADT | 2018-01-19 to 2026-10-02 | 2012-10-01 to 2016-05-02 |
+| BBBY | 2026-07-17 to 2026-10-02 | 2010-01-04 to 2017-07-25 |
+| BTU | 2017-04-03 to 2026-10-02 | 2010-01-04 to 2014-09-19 |
+| LEG | 2026-08-26 to 2026-08-26 | 2010-01-04 to 2021-12-17 |
+| NE | 2021-06-09 to 2026-10-02 | 2010-01-04 to 2015-07-17 |
+| S | 2021-06-30 to 2026-10-02 | 2010-01-04 to 2013-07-05 |
+| SBNY | 2024-08-15 to 2026-10-02 | 2021-12-20 to 2023-03-14 |
+| SE | 2017-10-20 to 2026-10-02 | 2010-01-04 to 2017-02-27 |
+| SHLD | 2023-09-14 to 2026-10-02 | 2010-01-04 to 2012-09-04 |
+| SLE | 2019-02-26 to 2026-10-02 | 2010-01-04 to 2012-06-28 |
+| SPLS | 2026-01-16 to 2026-10-02 | 2010-01-04 to 2017-09-15 |
+| STI | 2022-05-02 to 2026-10-02 | 2010-01-04 to 2019-12-06 |
+| TE | 2020-01-10 to 2026-10-02 | 2010-01-04 to 2016-06-30 |
+
+**None of the thirteen is in today's live universe** (the SPY archive dated
+2026-09-21), and none is a current constituent, so the rule cannot move the book
+the loop trades. The control that it is coverage and not lateness: `META`, `RDDT`,
+`DELL`, `DOW`, `CEG`, `BE`, `APTV`, `P`, `Q` and `SNDK` also start printing well
+after the panel opens and are **kept**, because the membership grid carries their
+stint back to the panel start and the prints overlap it. Every ticker in the
+offender list whose series does overlap its stint is left alone.
+
+Status. On the `backport` branch. `tests/test_identity.py` gains the rule and its
+control; the removal is logged in `events.parquet`, which is where a reader looks
+for a panel change that has no other trace.

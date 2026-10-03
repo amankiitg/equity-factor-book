@@ -461,9 +461,18 @@ def rebuild(
         )
     returns_frame.to_parquet(processed_dir / "returns.parquet")
 
-    # 7. Event log
+    # 7. Event log. The identity exclusions go in with everything else: a name
+    # dropped for a series that does not overlap its member stint is a panel
+    # change, and a panel change with no row here is one a reader cannot find.
+    # The list is the one `exclusions` returns, not the table's own `action`
+    # column, because the C6 review restores a reused symbol that is a current
+    # constituent: logging the table's version would say three names were
+    # removed that are still in the panel.
     membership_events = universe.membership_changes(members)
-    events = hygiene.build_events(prices_artifact, returns_frame, membership_events)
+    removed = identity_table.loc[identity_table["ticker"].isin(identity_drops)]
+    events = hygiene.build_events(
+        prices_artifact, returns_frame, membership_events, identity_drops=removed
+    )
     events.to_parquet(processed_dir / "events.parquet")
 
     # 8. Version file

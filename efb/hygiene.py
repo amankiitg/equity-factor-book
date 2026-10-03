@@ -126,13 +126,29 @@ def build_events(
     prices: pd.DataFrame,
     returns_frame: pd.DataFrame,
     membership_events: pd.DataFrame,
+    identity_drops: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Assemble events.parquet rows from corporate actions and flags.
 
     membership_events: DataFrame with date, ticker, event_type columns
     holding added and removed rows from the universe matrix.
+
+    identity_drops: the identity table's exclusions (ticker, note, and the two
+    windows when they are known). A name whose series does not overlap its
+    member stint is removed from the panel silently otherwise, and a removal
+    with no row here is a panel a reader cannot reconstruct.
     """
     rows: list[dict[str, object]] = []
+    if identity_drops is not None and not identity_drops.empty:
+        for row in identity_drops.itertuples(index=False):
+            rows.append(
+                {
+                    "date": row.removal_date,
+                    "ticker": row.ticker,
+                    "event_type": "identity_series_does_not_cover_membership",
+                    "detail": f"{row.removed_name or 'unknown'} removed: {row.note}",
+                }
+            )
     for _, row in membership_events.iterrows():
         rows.append(
             {
