@@ -33,6 +33,20 @@ than merging into it, so a re-run of the same morning converges instead of
 doubling. Its `run_status` and `cron_runs` rows carry the job name
 `fills_reconcile`, because both tables are keyed by job as well as date and a
 second writer under the evening's name would overwrite the evening's record.
+
+**Which date each row carries, and why they differ.** `run_status` is keyed by
+`(target_close, job)` and this job's row carries **the evening whose orders it
+reconciles**, because that evening is what the row is about: `efb.fills` is written
+under that close, the republished snapshot is keyed by it, and the notification
+names it, so the fills, the page, the message and this row are all one evening's.
+It cannot collide with that evening's `live_daily` row, because the job name is
+part of the key, and a morning that runs late or is retried the next day still
+lands on the same evening's row rather than inventing a second one. `cron_runs` is
+keyed by `(run_date, job)` and carries **the day the job ran**, because that
+table's question is whether the cron fired today, and `already_ran` reads that key
+to make a second fire on the same morning a no-op. The day the job ran is on the
+`run_status` row as well, in its own `run_date` field, so keying the row to the
+evening loses nothing.
 """
 
 from __future__ import annotations
@@ -256,6 +270,9 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", detail)
 
     row = staleness.run_status_row(
+        # Keyed to the evening it reconciled, not to this morning: the fills, the
+        # snapshot and the message all belong to that close. The morning is on the
+        # row as `run_date` below.
         {"job": JOB, "target_close": close, "status": status},
         run_date=run_date,
         status=status,
@@ -273,6 +290,8 @@ def main(argv: list[str] | None = None) -> int:
         positions_check=holdings or None,
     )
     store.upsert(staleness.TABLE, [row])
+    # `cron_runs` answers whether the cron fired today, so this record keeps the day
+    # the job ran; the row above is keyed to the evening it reconciled.
     run_live_daily.record_run(JOB, today.isoformat(), status, detail)
     logger.info("%s %s: %s", JOB, status, detail)
     return 0 if status in COMPLETED_STATUSES else 1
