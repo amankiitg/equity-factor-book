@@ -1014,9 +1014,27 @@ def test_a_catch_up_run_says_so_in_the_first_line() -> None:
 
 
 def test_the_appended_sessions_are_measured_from_the_calendar() -> None:
-    """Four sessions across a weekend and a Monday, from the price panel."""
-    sessions = run_live_daily._catch_up_sessions(pd.Timestamp("2026-09-15"))
-    assert sessions == ["2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21"]
+    """Every session the panel holds after the close, weekends excluded.
+
+    The expected list is read from the panel the function itself reads rather
+    than typed: the panel's last session moves with every rebuild, and the
+    measurement is the sessions between the two dates, not a fixed count.
+    """
+    before = pd.Timestamp("2026-09-15")
+    sessions = run_live_daily._catch_up_sessions(before)
+    after = extend.last_price_session()
+    assert after is not None
+    expected = [
+        day.date().isoformat()
+        for day in staleness.sessions(before + pd.Timedelta(days=1), after)
+    ]
+    assert sessions == expected
+    # and the measurement is a calendar one: the first entry is the next
+    # session, and no weekend day is in the list
+    assert sessions[0] == "2026-09-16"
+    assert not any(
+        pd.Timestamp(day).dayofweek >= 5 for day in sessions
+    ), "a weekend day is not a session"
 
 
 def test_a_one_session_run_is_not_a_catch_up(

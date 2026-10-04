@@ -1,5 +1,59 @@
 # Resume
 
+## 2026-10-04 (later): the remaining reds are closed to three
+
+**Item 1, the survivor measurement, measured rather than assumed.** The
+forwarded explanation for the two red claims in `tests/test_survivor_measurement.py`
+was that part of the small-cap discount had been an artifact of the
+reused-ticker series item 8 drops. It is not. E1 was rebuilt in a copy of the
+tree with those drops disabled, once for the thirteen names the coverage rule
+adds and once for all forty-nine the identity layer removes, and `efb.survivor.run`
+was re-run on each with the raw descriptors recomputed from the panel under
+test. Size correlation panel-versus-mapped 0.826271 (this tree) to 0.826298 to
+0.828374; residual-volatility correlation 0.959004 to 0.959227 to 0.959007; the
+panel's size premium +0.00017388 to +0.00017423 to +0.00017215, positive with
+t 0.51 in every arm. So the file's claims are restated to what the corrected
+panel measures, with the withdrawal of the small-cap-discount claim recorded as
+a note in `sprints/E1/RESULTS.json` and `sprints/E2/RESULTS.json` and as the
+measurement in `docs/hygiene_ledger.md`. The first attempt at the measurement
+came back bit-identical on both arms because `survivor.py` caches its raw
+descriptors under a path pinned to the repository tree; that is recorded too,
+because it is what a broken counterfactual looks like.
+
+**Item 2, the mechanical reds, each regenerated from its own writer or stored
+artifact.** `efb/probes.py` was reimplementing the tertile cut that
+`efb/risk.py` writes the stored table with, and the two disagree whenever the
+rebalance count is not divisible by three, so the probe had stopped reproducing
+the 48/47/47 buckets it is documented to check; it now uses `pd.qcut` and agrees
+to zero. The construction table's reference row is `full_book_502` and the test
+derives that size from the row rather than typing 499. `scripts/make_web_fixtures.py`
+now states the close it builds for instead of sizing whatever session the panel
+ends on, which is why the fixture's book moved to 2026-10-02 while its narration
+stayed at 2026-09-21. The E11 snapshot breadth, the catch-up session list, the
+E1 reference pins, the status report's Kelly leverages and the stored
+construction table and weights are re-pointed from their artifacts.
+
+**Item 3.** The three reds that belong to the 2026-11-11 seed regeneration are
+named in `docs/backport_runbook.md` §6, point 6, with the two that are not the
+branch's either.
+
+**Item 4, the full suite once: 3 failed, 1338 passed, 1 skipped, 9 deselected**
+`make test-all`, 21 minutes. The three, none of them skipped or weakened:
+
+- `tests/test_e11_extend.py::test_pre_cutoff_blocks_are_byte_identical`. The
+  seed-generation baseline, runbook §3 step 8.
+- `tests/test_e11_corporate_actions.py::test_the_aph_split_is_reproduced_from_the_real_rows`.
+  Its premise is that the vendor's raw closes halve across the APH split; the
+  cache now serves split-adjusted closes on both sides (82.07 on 2026-09-03,
+  82.78 on 2026-09-04, `split_factor` 2.0 recorded). Not this branch's: the
+  pre-pass tree carries the same rows.
+- `tests/test_construction_table.py::test_the_table_has_all_nine_rows_and_renormalizes`.
+  The beta-magnitude inequality fails on the sparsest row (`min_position_5000`,
+  52 names, |raw beta| 0.0196 against |shrunk beta| 0.0308). The inequality is an
+  empirical claim about a dollar-neutral weighted average rather than an
+  identity, and it is left asserted rather than weakened, so the corrected panel
+  breaking it is reported instead of re-pointed.
+
 ## 2026-10-04: items 4, 5 and 6 done on `backport`, with fifteen suite reds left
 
 **Item 4 (frozen-panel propagation) done.** The whole panel is rebuilt once at

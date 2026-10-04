@@ -638,8 +638,11 @@ def test_the_hedge_drives_the_exposures_to_zero() -> None:
     # variance where the specific volatility belongs (S1): the old spelling gave
     # every alpha an extra factor of the name's own volatility, so the book leaned
     # on the volatile names, and the corrected contract spreads the same signal
-    # across more of the cross-section.
-    assert manifest["n_eff_kept"] == pytest.approx(131.9175, abs=1e-3)
+    # across more of the cross-section. It moved once more, to 150.7020, on the
+    # frozen-panel propagation pass: the panel those two corrections are read off
+    # gained the corporate-action repairs and lost the reused-ticker series, so
+    # the cross-section the same signal spreads over is a different set of names.
+    assert manifest["n_eff_kept"] == pytest.approx(150.7020, abs=1e-3)
 
 
 def test_the_headline_gross_is_the_book_that_trades() -> None:

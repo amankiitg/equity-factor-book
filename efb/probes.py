@@ -1482,10 +1482,12 @@ def momentum_factor_vol_by_tercile(data_root: Path | None = None) -> pd.DataFram
 
     dates = book_bias.index.intersection(momentum_exposure.index)
     ranked = momentum_exposure.reindex(dates).rank(method="first")
-    n = len(dates)
-    labels = pd.Series("low", index=dates)
-    labels[ranked > n / 3.0] = "mid"
-    labels[ranked > 2.0 * n / 3.0] = "high"
+    # The same cut the stored table was written with (`risk.bias_by_exposure`),
+    # so this reproduces those buckets rather than approximating them. The two
+    # differ at the boundary whenever the rebalance count is not divisible by
+    # three: `pd.qcut` puts the surplus month in the low bucket, and a
+    # hand-rolled split on thirds puts it in the high one.
+    labels = pd.qcut(ranked, 3, labels=["low", "mid", "high"]).astype(str)
 
     rows: list[dict[str, object]] = []
     for bucket in ("low", "mid", "high"):

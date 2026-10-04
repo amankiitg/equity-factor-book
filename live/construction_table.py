@@ -1021,7 +1021,7 @@ def build_table(
         full_keep,
         full_weights,
         signal_z,
-        "full_book_499",
+        "full_book_502",
         False,
     )
     full_row["n_kept_pre_iteration"] = full_row["n_kept"]

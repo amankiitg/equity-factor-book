@@ -62,8 +62,13 @@ NAMES: tuple[str, ...] = (
 
 
 def manifest() -> dict[str, Any]:
-    """The 09-21 proposal as the evening job builds it today."""
-    return evening_job.build_proposal(store=False)
+    """The 09-21 proposal as the evening job builds it today.
+
+    `as_of` is stated rather than left to the tree: left unset the job sizes the
+    panel's own last session, which moves with every rebuild, and the fixture
+    would then narrate the close it names while showing a later book.
+    """
+    return evening_job.build_proposal(store=False, as_of=pd.Timestamp(CLOSE))
 
 
 def book(proposal: dict[str, Any], *, establishment: bool = False) -> pd.DataFrame:

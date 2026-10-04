@@ -56,10 +56,10 @@ def test_feasibility_states_n_and_t_for_both_universes(feasibility) -> None:
     assert set(frame["universe"]) == {"model_universe", "panel"}
     assert frame["year"].nunique() == 16, "the probe must cover MODEL_START to 2026"
     model = frame.loc[frame["universe"] == "model_universe"]
-    assert model["names_complete_all_year"].min() == 428
-    assert model["names_complete_all_year"].max() == 499
+    assert model["names_complete_all_year"].min() == 427
+    assert model["names_complete_all_year"].max() == 500
     first = model.loc[model["year"] == 2011, "names_complete_all_year"].iloc[0]
-    assert first == 428, "the 2011 cross-section is the narrowest by construction"
+    assert first == 427, "the 2011 cross-section is the narrowest by construction"
 
 
 def test_mp_edge_follows_the_formula_for_the_stored_n_over_t() -> None:
@@ -116,12 +116,12 @@ def test_edgar_parser_reports_a_failed_lookup_rather_than_a_blank(
 def test_momentum_terciles_reproduce_the_stored_exposure_means(terciles) -> None:
     table = terciles
     assert list(table["bucket"]) == ["low", "mid", "high"]
-    assert table["n_months"].tolist() == [47, 47, 47]
+    assert table["n_months"].tolist() == [48, 47, 47]
     assert table["exposure_mean"].tolist() == pytest.approx(
         table["stored_exposure_mean"].tolist(), abs=1e-9
     )
     assert table["exposure_mean"].tolist() == pytest.approx(
-        [0.561474, 0.731709, 0.871312], abs=1e-6
+        [0.564001, 0.728254, 0.867982], abs=1e-6
     )
 
 
@@ -133,10 +133,10 @@ def test_the_momentum_factor_is_not_quieter_in_the_high_exposure_months(
     assert (
         forward.iloc[2] > forward.iloc[1] > forward.iloc[0]
     ), "the factor's own realized volatility rises with the book's exposure"
-    assert forward.iloc[2] - forward.iloc[0] == pytest.approx(0.008963, abs=1e-5)
+    assert forward.iloc[2] - forward.iloc[0] == pytest.approx(0.005443, abs=1e-5)
     realized = terciles["stored_realized_vol"]
     assert (
         realized.iloc[2] < realized.iloc[0]
     ), "the book's realized volatility falls as its measured exposure rises"
     predicted = terciles["stored_predicted_vol"]
-    assert predicted.max() - predicted.min() == pytest.approx(0.003656, abs=1e-5)
+    assert predicted.max() - predicted.min() == pytest.approx(0.000959, abs=1e-5)

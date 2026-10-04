@@ -266,3 +266,27 @@ moves, not before.
 Nothing in §1 was executed against a live tree by this branch: the effects in its
 last column are read off the call sites, and the dry run above exercises the
 research side of them plus the one live file the merge changes.
+
+**6. The three reds that belong to the seed regeneration, not to this branch.**
+They are left red deliberately, and none of them is skipped, deselected or
+xfailed on the branch:
+
+- `tests/test_hedge_vintage.py::test_a_sparse_replay_keeps_the_row_dated_the_close`
+  and `::test_the_session_before_a_holiday_is_bounded_and_not_exact`. Both are
+  the same family as §3 step 4: the first hardcodes a close whose next session a
+  live tree has not published and a research tree cannot avoid publishing, and
+  the second asserts that the priced set moves across Labor Day, which it does
+  on the vendor's ragged live coverage and does not on the corrected panel. They
+  are read on the regenerated seed, where the tree the live loop has extended is
+  the artifact under test.
+- `tests/test_e11_extend.py::test_pre_cutoff_blocks_are_byte_identical`. The
+  baseline it pins was taken from a live tree, so a research rebuild cannot
+  satisfy it; it is re-recorded by `extend.incremental_integrity()` on the day
+  the seed moves, which is §3 step 8.
+
+Two further reds are not the branch's either and are recorded in
+`docs/hygiene_ledger.md`: the APH split case in `tests/test_e11_corporate_actions.py`,
+whose premise is that the vendor's raw closes halve across the split and whose
+cache now serves split-adjusted closes, and the beta-magnitude inequality in
+`tests/test_construction_table.py`, which the corrected panel breaks on its
+sparsest row.
