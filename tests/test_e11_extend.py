@@ -513,6 +513,42 @@ def test_the_rebuild_puts_the_recorded_spinoff_back_from_the_closes(
     assert float(frame.loc[(EX_DATE, "AAA"), "r"]) == pytest.approx(51.0 / 50.0 - 1.0)
 
 
+@pytest.mark.parametrize(
+    "source", ["manual.record", "alpaca.corporate_actions", "anything.else"]
+)
+def test_the_source_column_does_not_gate_a_recorded_spinoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    """A row the rule reads is a row `explained_by` "spinoff", whatever wrote it.
+
+    The live CTVA row is `manual.record`, written by `scripts/record_spinoff.py` for
+    the case where the vendor's own table had nothing to apply. `recorded_spinoffs`
+    reads the table and hands the rows to `spinoffs_from_rows`, which selects on
+    `explained_by` and carries `source` into the record for the message without ever
+    comparing it. So the correction lands from any source, and the cell holds the
+    session's total return, +4.10%, rather than the -83.81% raw print.
+    """
+    root = tmp_path / "data"
+    _returns_tree(root)
+    record = _record(source=source)
+    monkeypatch.setattr(extend.store, "select", lambda table: record)
+
+    recorded = extend.recorded_spinoffs()
+    assert [entry.source for entry in recorded] == [source]
+    assert recorded[0].applicable, "a manual row is as usable as the vendor's"
+
+    extend.extend_returns(root)
+
+    frame = _rebuilt(root)
+    value = float(frame.loc[(EX_DATE, CTVA), "r"])
+    assert value == pytest.approx(TOTAL_RETURN, abs=1e-12)
+    assert value == pytest.approx(0.04095299733015434, abs=1e-12)
+    assert f"{value * 100:+.2f}%" == "+4.10%"
+    assert value != pytest.approx(RAW_PRINT), "the raw print is what this removes"
+    assert f"{RAW_PRINT * 100:+.2f}%" == "-83.81%"
+    assert float(frame.loc[(EX_DATE, CTVA), "g"]) == pytest.approx(math.log1p(value))
+
+
 def test_running_the_rebuild_again_writes_the_same_row(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

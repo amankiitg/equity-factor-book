@@ -286,6 +286,9 @@ class _NoCorporateActions:
     flags: list = []
     unchecked = 0
     spinoffs: list = []
+    # The vendor read behind the spin-off rule answered and found nothing, which is
+    # not the same evening as a read that failed.
+    lookup_failure: str | None = None
 
 
 def _no_work(monkeypatch: pytest.MonkeyPatch) -> None:

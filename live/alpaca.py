@@ -21,10 +21,12 @@ import hashlib
 import logging
 import math
 import os
+import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC
-from typing import Any
+from typing import Any, TypeVar, cast
 
 import pandas as pd
 
@@ -47,6 +49,63 @@ PAPER_ENDPOINT = "https://paper-api.alpaca.markets"
 # itself, so url_override carries the base without the /v2 suffix.
 DRY_RUN_DEFAULT = True
 DELTA_MIN_NOTIONAL = 250.0
+
+# The market-data reads get a deadline. alpaca-py 0.44 exposes no timeout: its
+# REST client calls `requests.Session.request` with no timeout at all, so a
+# connection the vendor accepts and never answers blocks the evening for as long
+# as the socket lives. Thirty seconds is far longer than either request takes
+# when it answers (one request for the whole universe) and far shorter than the
+# window in which the run is still useful.
+VENDOR_TIMEOUT_SECONDS = 30.0
+
+
+class VendorTimeout(TimeoutError):
+    """A vendor read that did not answer inside `VENDOR_TIMEOUT_SECONDS`."""
+
+
+T = TypeVar("T")
+
+
+def vendor_read(
+    call: Callable[[], T],
+    *,
+    timeout: float | None = None,
+    label: str = "the vendor",
+) -> T:
+    """Run one vendor read with a deadline, so a hung socket cannot stall the run.
+
+    The call runs on a thread and this waits `timeout` seconds for it, then raises
+    `VendorTimeout` rather than waiting any longer. The caller treats that the same
+    way it treats any other vendor error: the run goes on without the answer and the
+    evening's message says which session is unverified.
+
+    The thread is a daemon on purpose. An abandoned request cannot keep the process
+    alive after the evening ends, which is the difference between a slow vendor and a
+    run that never finishes. The exception the call raised, if any, is re-raised here
+    so the caller sees the vendor's own error rather than a timeout it did not have.
+
+    The deadline is read from the module constant at call time, so a test can shorten
+    it without rebuilding the call it is testing.
+    """
+    deadline = VENDOR_TIMEOUT_SECONDS if timeout is None else timeout
+    outcome: list[T] = []
+    failure: list[BaseException] = []
+
+    def target() -> None:
+        try:
+            outcome.append(call())
+        except BaseException as exc:  # noqa: BLE001 - re-raised on this thread
+            failure.append(exc)
+
+    worker = threading.Thread(target=target, name=f"vendor-read: {label}", daemon=True)
+    worker.start()
+    worker.join(deadline)
+    if worker.is_alive():
+        raise VendorTimeout(f"{label} did not answer within {deadline:g}s")
+    if failure:
+        raise failure[0]
+    return cast(T, outcome[0])
+
 
 # Alpaca's own position intents, spelled exactly as its API takes them. Every
 # order carries one, because the same side can mean open or close and the broker
@@ -1100,8 +1159,11 @@ def spin_offs(
         raise RuntimeError(
             "the corporate-actions read needs alpaca-py; install it"
         ) from exc
-    response = (client or corporate_actions_client()).get_corporate_actions(
-        CorporateActionsRequest(**request_data)
+    response = vendor_read(
+        lambda: (client or corporate_actions_client()).get_corporate_actions(
+            CorporateActionsRequest(**request_data)
+        ),
+        label=f"the spin-off lookup for {day}",
     )
     records: list[dict[str, Any]] = []
     for item in (getattr(response, "data", None) or {}).get("spin_offs") or []:
@@ -1146,19 +1208,22 @@ def closes_on(
     except ImportError as exc:  # pragma: no cover - depends on the environment
         raise RuntimeError("the bars read needs alpaca-py; install it") from exc
     day = _as_date(session)
-    response = (client or bars_client()).get_stock_bars(
-        StockBarsRequest(
-            symbol_or_symbols=names,
-            timeframe=TimeFrame.Day,
-            start=datetime.combine(day, datetime.min.time(), tzinfo=UTC),
-            # Exclusive, as measured: the session being asked for needs the day
-            # after it, or it is the one session missing from the answer.
-            end=datetime.combine(
-                day + timedelta(days=1), datetime.min.time(), tzinfo=UTC
-            ),
-            feed=DataFeed.SIP,
-            adjustment=Adjustment.RAW,
-        )
+    response = vendor_read(
+        lambda: (client or bars_client()).get_stock_bars(
+            StockBarsRequest(
+                symbol_or_symbols=names,
+                timeframe=TimeFrame.Day,
+                start=datetime.combine(day, datetime.min.time(), tzinfo=UTC),
+                # Exclusive, as measured: the session being asked for needs the day
+                # after it, or it is the one session missing from the answer.
+                end=datetime.combine(
+                    day + timedelta(days=1), datetime.min.time(), tzinfo=UTC
+                ),
+                feed=DataFeed.SIP,
+                adjustment=Adjustment.RAW,
+            )
+        ),
+        label=f"the bars read for {day}",
     )
     out: dict[str, float] = {}
     for symbol, bars in (getattr(response, "data", None) or {}).items():

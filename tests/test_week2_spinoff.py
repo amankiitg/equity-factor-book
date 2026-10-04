@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -902,9 +903,208 @@ def test_the_evening_runner_passes_the_labels_through():
     assert "corporate_actions.unusable_spinoff_notes(" in source
     assert "spinoff_missing=spinoff_missing," in source
     assert "spinoff_unusable=spinoff_unusable," in source
+    assert "spinoff_lookup_failed=spinoff_lookup_failed," in source
     import inspect
 
-    for name in ("spinoffs", "spinoff_missing", "spinoff_unusable"):
+    for name in (
+        "spinoffs",
+        "spinoff_missing",
+        "spinoff_unusable",
+        "spinoff_lookup_failed",
+    ):
         assert name in inspect.signature(run_live_daily.finish_run).parameters
         assert name in inspect.signature(notify.notify_run).parameters
         assert name in inspect.signature(notify.compose).parameters
+
+
+class _HungClient:
+    """A vendor client that accepts the request and never answers it.
+
+    alpaca-py 0.44 exposes no timeout on any of these calls: the REST client hands
+    `requests.Session.request` no timeout at all, so this is what the evening's
+    loop would look at if the socket were open and silent. Thirty seconds of
+    sleep stands in for the vendor that never answers.
+    """
+
+    def __init__(self, seconds: float = 30.0) -> None:
+        self.seconds = seconds
+        self.calls = 0
+
+    def _hang(self) -> Any:
+        self.calls += 1
+        time.sleep(self.seconds)
+        return None
+
+    def get_corporate_actions(self, request: Any) -> Any:
+        return self._hang()
+
+    def get_stock_bars(self, request: Any) -> Any:
+        return self._hang()
+
+
+def test_a_spin_off_read_that_never_answers_cannot_stall_the_evening(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The spin-off lookup gets a deadline of its own.
+
+    The client sleeps for thirty seconds; the call must come back in a fraction of
+    a second, with the vendor's request made once and the failure named, so the
+    loop can go on to write the artifact and say which session is unverified.
+    """
+    monkeypatch.setattr(alpaca, "VENDOR_TIMEOUT_SECONDS", 0.25)
+    client = _HungClient(seconds=30.0)
+
+    started = time.monotonic()
+    with pytest.raises(alpaca.VendorTimeout) as raised:
+        alpaca.spin_offs(["CTVA"], SESSION, client=client)
+    elapsed = time.monotonic() - started
+
+    assert client.calls == 1
+    assert elapsed < 5.0, f"the deadline did not hold: {elapsed:.2f}s"
+    assert str(raised.value) == (
+        "the spin-off lookup for 2026-10-01 did not answer within 0.25s"
+    )
+
+
+def test_a_bars_read_that_never_answers_cannot_stall_the_evening(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The child-close read gets the same deadline, and says which read it was."""
+    monkeypatch.setattr(alpaca, "VENDOR_TIMEOUT_SECONDS", 0.25)
+    client = _HungClient(seconds=30.0)
+
+    started = time.monotonic()
+    with pytest.raises(alpaca.VendorTimeout) as raised:
+        alpaca.closes_on(["VYLR"], SESSION, client=client)
+    elapsed = time.monotonic() - started
+
+    assert client.calls == 1
+    assert elapsed < 5.0, f"the deadline did not hold: {elapsed:.2f}s"
+    assert str(raised.value) == (
+        "the bars read for 2026-10-01 did not answer within 0.25s"
+    )
+
+
+def test_the_vendors_own_error_is_not_dressed_up_as_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A read that answers with an error keeps that error.
+
+    The deadline is for a socket that says nothing. An endpoint that says something
+    has already answered, and the caller must see the vendor's fault rather than a
+    timeout this module invented, or the log blames the wrong thing.
+    """
+
+    class _AngryClient:
+        def get_corporate_actions(self, request: Any) -> Any:
+            raise RuntimeError("the endpoint answered 502")
+
+    monkeypatch.setattr(alpaca, "VENDOR_TIMEOUT_SECONDS", 5.0)
+
+    with pytest.raises(RuntimeError, match="the endpoint answered 502") as raised:
+        alpaca.spin_offs(["CTVA"], SESSION, client=_AngryClient())
+
+    assert not isinstance(raised.value, alpaca.VendorTimeout)
+
+
+def test_the_failed_lookup_line_is_one_sentence_in_the_evening_email() -> None:
+    """The line itself: what it says, and that an ordinary evening has none.
+
+    The evening must not read as clean when nothing was applied because the read
+    died: the message names the session and says the large moves on it are
+    unverified. A lookup that answered and found nothing is not this line.
+    """
+    note = ca.lookup_failure_note([SESSION], alpaca.VendorTimeout("no answer"))
+    assert note == (
+        "Spin-off lookup failed for 2026-10-01: VendorTimeout; "
+        "large moves on this session are unverified."
+    )
+    # Two sessions read at once are named together, and read as the plural.
+    both = ca.lookup_failure_note([PRIOR, SESSION], alpaca.VendorTimeout("no answer"))
+    assert "2026-09-30, 2026-10-01" in both
+    assert "large moves on these sessions are unverified." in both
+
+    text = notify.compose(
+        status="ok",
+        target_close="2026-10-01",
+        spinoff_lookup_failed=note,
+    )
+    assert note in text.splitlines()
+
+    quiet = notify.compose(status="ok", target_close="2026-10-01")
+    assert "Spin-off lookup failed" not in quiet
+
+
+def test_a_hung_spin_off_read_is_named_in_the_evening_email(
+    tmp_path: Path,
+) -> None:
+    """The whole path, from the dead read to the line the owner reads.
+
+    The run is not failed by this: the artifact is written, the raw print is still
+    in the panel where the 40% flag finds it, and the evening's message carries the
+    one sentence that stops the session reading as an ordinary one.
+    """
+    from live.corporate_actions import apply_to_artifact
+
+    root = tmp_path / "data"
+    (root / "processed").mkdir(parents=True)
+    (root / "raw").mkdir(parents=True)
+    frame, prices = ctva_frames()
+    frame.to_parquet(root / "processed" / "returns.parquet")
+    prices.to_parquet(root / "raw" / "prices.parquet")
+
+    def hung(symbols: list[str], session: pd.Timestamp) -> list[dict[str, Any]]:
+        raise alpaca.VendorTimeout(
+            "the spin-off lookup for 2026-10-01 did not answer within 30s"
+        )
+
+    outcome = apply_to_artifact(root, since=PRIOR, spinoff_fetcher=hung)
+
+    assert outcome.lookup_failure == (
+        "Spin-off lookup failed for 2026-10-01: VendorTimeout; "
+        "large moves on this session are unverified."
+    )
+    # Nothing was applied, the raw print is still in the file, and the flag that
+    # names it is the one the loop already raises.
+    assert outcome.spinoffs == []
+    assert float(
+        pd.read_parquet(root / "processed" / "returns.parquet").loc[
+            (SESSION, "CTVA"), "r"
+        ]
+    ) == pytest.approx(RAW_PRINT)
+    flags = {item["ticker"]: item for item in outcome.flags}
+    assert flags["CTVA"]["flag"] == "unexplained large move"
+    assert flags["CTVA"]["explained_by"] is None
+
+    text = notify.compose(
+        status="ok",
+        target_close="2026-10-01",
+        spinoff_lookup_failed=outcome.lookup_failure,
+    )
+    assert outcome.lookup_failure in text.splitlines()
+
+
+def test_the_read_that_answered_and_found_nothing_is_not_a_failure(
+    tmp_path: Path,
+) -> None:
+    """The distinction the field exists for: empty is not the same as unanswered."""
+    from live.corporate_actions import apply_to_artifact
+
+    root = tmp_path / "data"
+    (root / "processed").mkdir(parents=True)
+    (root / "raw").mkdir(parents=True)
+    frame, prices = ctva_frames()
+    frame.to_parquet(root / "processed" / "returns.parquet")
+    prices.to_parquet(root / "raw" / "prices.parquet")
+
+    outcome = apply_to_artifact(
+        root, since=PRIOR, spinoff_fetcher=lambda symbols, session: []
+    )
+
+    assert outcome.lookup_failure is None
+    text = notify.compose(
+        status="ok",
+        target_close="2026-10-01",
+        spinoff_lookup_failed=outcome.lookup_failure,
+    )
+    assert "Spin-off lookup failed" not in text
