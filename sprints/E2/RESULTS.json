@@ -6618,6 +6618,9 @@
           }
         }
       }
+    ],
+    "notes": [
+      "The reused-ticker series do not explain the survivor measurement's move. E1 was rebuilt in a copy of this tree with those drops disabled, once for the thirteen names the coverage rule adds and once for all forty-nine the identity layer removes, and efb.survivor was re-run on each. Size correlation panel-vs-mapped 0.826271 (this tree) to 0.826298 (thirteen kept) to 0.828374 (all kept); residual-volatility correlation 0.959004 to 0.959227 to 0.959007; the panel's size premium +0.00017388 to +0.00017423 to +0.00017215, positive in every arm with t 0.51. The pre-back-port readings the file used to carry were 0.577780 for size and a residual-volatility correlation under 0.9, so the change is not theirs to explain and the small-cap discount claim is restated rather than attributed to junk series. tests/test_survivor_measurement.py carries the restatement; docs/hygiene_ledger.md carries the measurement."
     ]
   }
 }
