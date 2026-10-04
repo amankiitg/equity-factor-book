@@ -239,8 +239,8 @@ Closed in E6, stored in `data/hedge/` and `sprints/E6/RESULTS.json`:
 New and carried into E7, all stored:
 
 1. The as-stored quarterly capped FMP weights are not a hedge: their worst
-   residual exposure is 0.7552 (reversal, 2024-11-29, momentum book), worse
-   than the unhedged 0.7169 on that date, because the design drifts after
+   residual exposure is 0.7437 (reversal, 2024-11-29, momentum book), worse
+   than the unhedged 0.7073 on that date, because the design drifts after
    the stamp and the caps break exact spanning. The E6 recommendation is
    never to flatten exposures with the capped FMPs; E7's neutralization
    machinery must use the exact projection or accept the drift explicitly.

@@ -6,9 +6,9 @@ scaled to the 10% volatility target, with the two seed books run
 alongside. The synthetic label travels with every number.
 
 The design book is rho 0.02, phi 0.95, seed
-1, with a net annualized Sharpe of
-0.978 (the seed-averaged capacity table reads
-1.174, and the book is one realization, not the
+3, with a net annualized Sharpe of
+1.074 (the seed-averaged capacity table reads
+1.195, and the book is one realization, not the
 average of five).
 
 ## The Kelly analysis
@@ -19,14 +19,14 @@ overstated by one standard error:
 
 | quantity | value |
 | --- | --- |
-| mean (annualized) | 0.0978 |
+| mean (annualized) | 0.1074 |
 | vol (annualized) | 0.1000 |
-| Sharpe | 0.978 |
+| Sharpe | 1.074 |
 | SE of Sharpe | 0.268 |
-| full Kelly leverage | 9.781 |
-| half Kelly leverage | 4.891 |
-| growth at full Kelly | 0.4784 |
-| growth at half Kelly | 0.3588 |
+| full Kelly leverage | 10.738 |
+| half Kelly leverage | 5.369 |
+| growth at full Kelly | 0.5766 |
+| growth at half Kelly | 0.4324 |
 | growth loss, SR overstated by one SE | 0.0359 |
 
 The chosen fraction is half Kelly. Full Kelly is the wrong answer for an
@@ -43,15 +43,15 @@ drawdown:
 
 | quantity | value |
 | --- | --- |
-| simulated median drawdown | -0.1403 |
-| simulated mean drawdown | -0.1480 |
-| analytical median drawdown | 0.0354 |
-| relative gap at the median | 2.9598 |
-| Gaussian control median drawdown | -0.1540 |
-| horizon (years) | 14.5 |
-| expected max drawdown at horizon | 0.1994 |
-| expected-vs-simulated-median relative gap | 0.2963 |
-| expected-vs-simulated-mean relative gap | 0.2578 |
+| simulated median drawdown | -0.1281 |
+| simulated mean drawdown | -0.1354 |
+| analytical median drawdown | 0.0323 |
+| relative gap at the median | 2.9679 |
+| Gaussian control median drawdown | -0.1442 |
+| horizon (years) | 14.6 |
+| expected max drawdown at horizon | 0.1906 |
+| expected-vs-simulated-median relative gap | 0.3280 |
+| expected-vs-simulated-mean relative gap | 0.2897 |
 | bootstrap samples | 2000 |
 
 The analytical benchmark is the Magdon-Ismail infinite-horizon Brownian
@@ -81,9 +81,9 @@ reachable:
 
 | book | n_obs | n_dates_available | base Sharpe | old-stop change | re-entering change | stop_fired |
 | --- | --- | --- | --- | --- | --- | --- |
-| design | 174 | 174 | 0.978 | -0.394 | -0.077 | True |
-| seed_ew | 207 | 4193 | 2.207 | 0.000 | 0.000 | False |
-| seed_mom_ls | 4091 | 4092 | -0.248 | 0.226 | 0.226 | True |
+| design | 175 | 175 | 1.074 | -0.495 | 0.031 | True |
+| seed_ew | 232 | 4213 | 1.584 | 0.000 | 0.000 | False |
+| seed_mom_ls | 4111 | 4112 | -0.254 | 0.215 | 0.215 | True |
 
 ## The volatility-targeting rule
 
@@ -93,9 +93,9 @@ year set:
 
 | quantity | value |
 | --- | --- |
-| raw dispersion | 0.2754 |
-| targeted dispersion | 0.2338 |
-| dispersion reduction | 0.1508 |
+| raw dispersion | 0.5733 |
+| targeted dispersion | 0.3920 |
+| dispersion reduction | 0.3162 |
 | years, raw side | 15 |
 | years, targeted side | 14 |
 | years, aligned | 14 |
@@ -106,11 +106,11 @@ does no better:
 
 | estimator | window | dispersion reduction |
 | --- | --- | --- |
-| daily | 21 | 0.2868 |
-| daily | 42 | 0.1953 |
-| daily | 63 | 0.1634 |
-| daily | 126 | 0.2027 |
-| daily | 252 | 0.1265 |
+| daily | 21 | 0.1644 |
+| daily | 42 | 0.0452 |
+| daily | 63 | 0.0442 |
+| daily | 126 | 0.0563 |
+| daily | 252 | 0.0094 |
 
 The reduction is below the 40% bar not because the estimator is too
 noisy: the year-to-year dispersion of this book's realized volatility is
@@ -121,9 +121,9 @@ higher-frequency object than a monthly book.
 
 | VIX tercile | mean VIX | max drawdown | periods underwater |
 | --- | --- | --- | --- |
-| 0 | 12.81 | -0.097 | 48 |
-| 1 | 16.44 | -0.131 | 38 |
-| 2 | 24.31 | -0.064 | 28 |
+| 0 | 12.84 | -0.065 | 26 |
+| 1 | 16.44 | -0.112 | 37 |
+| 2 | 24.31 | -0.125 | 26 |
 
 The risk budget is written per regime, not as one number.
 

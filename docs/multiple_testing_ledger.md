@@ -144,3 +144,33 @@ Append-only. One row per signal run, including every failed variant. Written by 
 | 28 | post_earnings_drift | raw_h21 | 21 | 0.103406 | 10.356 | NA | 10.356 | 3.124 | NULL | decay horizon |
 | 29 | post_earnings_drift | raw_h63 | 63 | 0.071255 | 6.591 | NA | 6.591 | 3.134 | NULL | decay horizon |
 | 30 | post_earnings_drift | neutralized_h21 | 21 | 0.008775 | 1.174 | NA | 1.174 | 3.144 | NULL | factor-neutral via the exact in-model projection |
+| 1 | momentum_12_1 | raw_h1 | 1 | 0.015512 | 4.597 | inf | 4.597 | 1.96 | PASS |  |
+| 2 | momentum_12_1 | raw_h5 | 5 | 0.01636 | 2.555 | NA | 2.555 | 2.241 | PASS | decay horizon |
+| 3 | momentum_12_1 | raw_h21 | 21 | 0.010894 | 1.529 | NA | 1.529 | 2.394 | PASS | decay horizon |
+| 4 | momentum_12_1 | raw_h63 | 63 | 0.005773 | 0.848 | NA | 0.848 | 2.498 | PASS | decay horizon |
+| 5 | momentum_12_1 | neutralized_h21 | 21 | -0.010797 | -1.561 | NA | 1.561 | 2.576 | PASS | factor-neutral via the exact in-model projection |
+| 6 | short_term_reversal | raw_h1 | 1 | 0.011923 | 4.679 | -0.175 | 4.679 | 2.638 | NULL |  |
+| 7 | short_term_reversal | raw_h5 | 5 | 0.015978 | 3.788 | NA | 3.788 | 2.69 | NULL | decay horizon |
+| 8 | short_term_reversal | raw_h21 | 21 | 0.011229 | 2.576 | NA | 2.576 | 2.734 | NULL | decay horizon |
+| 9 | short_term_reversal | raw_h63 | 63 | 0.010595 | 2.422 | NA | 2.422 | 2.773 | NULL | decay horizon |
+| 10 | short_term_reversal | neutralized_h21 | 21 | 0.001806 | 0.404 | NA | 0.404 | 2.807 | NULL | factor-neutral via the exact in-model projection |
+| 11 | idio_momentum | raw_h1 | 1 | 0.012538 | 5.22 | 0.2082 | 5.22 | 2.838 | PASS |  |
+| 12 | idio_momentum | raw_h5 | 5 | 0.012855 | 2.813 | NA | 2.813 | 2.865 | PASS | decay horizon |
+| 13 | idio_momentum | raw_h21 | 21 | 0.008334 | 1.574 | NA | 1.574 | 2.891 | PASS | decay horizon |
+| 14 | idio_momentum | raw_h63 | 63 | 0.004385 | 0.882 | NA | 0.882 | 2.914 | PASS | decay horizon |
+| 15 | idio_momentum | neutralized_h21 | 21 | -0.004506 | -0.774 | NA | 0.774 | 2.935 | PASS | factor-neutral via the exact in-model projection |
+| 16 | low_residual_volatility | raw_h1 | 1 | -0.001527 | -0.506 | -0.9249 | 0.506 | 2.955 | NULL |  |
+| 17 | low_residual_volatility | raw_h5 | 5 | -0.013105 | -2.306 | NA | 2.306 | 2.974 | NULL | decay horizon |
+| 18 | low_residual_volatility | raw_h21 | 21 | -0.028049 | -4.161 | NA | 4.161 | 2.991 | NULL | decay horizon |
+| 19 | low_residual_volatility | raw_h63 | 63 | -0.054162 | -7.615 | NA | 7.615 | 3.008 | NULL | decay horizon |
+| 20 | low_residual_volatility | neutralized_h21 | 21 | 0.002515 | 0.44 | NA | 0.44 | 3.023 | NULL | factor-neutral via the exact in-model projection |
+| 21 | short_interest | raw_h1 | 1 | 0.003485 | 1.847 | 0.8181 | 1.847 | 3.038 | NULL |  |
+| 22 | short_interest | raw_h5 | 5 | 0.006925 | 1.932 | NA | 1.932 | 3.052 | NULL | decay horizon |
+| 23 | short_interest | raw_h21 | 21 | 0.012439 | 2.858 | NA | 2.858 | 3.065 | NULL | decay horizon |
+| 24 | short_interest | raw_h63 | 63 | 0.015711 | 3.654 | NA | 3.654 | 3.078 | NULL | decay horizon |
+| 25 | short_interest | neutralized_h21 | 21 | 0.009448 | 1.313 | NA | 1.313 | 3.09 | NULL | factor-neutral via the exact in-model projection |
+| 26 | post_earnings_drift | raw_h1 | 1 | 0.123252 | 13.816 | 0.4611 | 13.816 | 3.102 | NULL |  |
+| 27 | post_earnings_drift | raw_h5 | 5 | 0.102243 | 10.968 | NA | 10.968 | 3.113 | NULL | decay horizon |
+| 28 | post_earnings_drift | raw_h21 | 21 | 0.104212 | 10.273 | NA | 10.273 | 3.124 | NULL | decay horizon |
+| 29 | post_earnings_drift | raw_h63 | 63 | 0.071396 | 6.589 | NA | 6.589 | 3.134 | NULL | decay horizon |
+| 30 | post_earnings_drift | neutralized_h21 | 21 | 0.007738 | 1.019 | NA | 1.019 | 3.144 | NULL | factor-neutral via the exact in-model projection |

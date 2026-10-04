@@ -1,17 +1,17 @@
 {
   "sprint": "E5",
-  "evaluated_at": "2026-10-03T16:00:16+00:00",
-  "data_hash": "cee583fcaa1183539bec821da32f39dcdeb1b617492c0914e9361325f72f1a05",
+  "evaluated_at": "2026-10-03T21:37:38+00:00",
+  "data_hash": "fd8ebce26a8de7b3cbc71df3054153b9ec301c19e9d290f0e56d4c8a2c193131",
   "criteria": {
     "F5.1": {
       "criterion": "At least one model version achieves mean bias between 0.9 and 1.1 across all portfolio families.",
       "threshold": "0.9 <= mean bias <= 1.1 for every family for at least one version",
       "stored_numbers": {
         "family_bias": {
-          "XS-v1": 1.0452131916451257,
-          "PCA-v1": 1.1369146480573515,
-          "PCA-v1c": 1.1373898555749111,
-          "XS-v2": 1.037157761629842
+          "XS-v1": 1.044269473315651,
+          "PCA-v1": 1.137224299564618,
+          "PCA-v1c": 1.137643140050377,
+          "XS-v2": 1.036432740564424
         },
         "inside_all_families": {
           "XS-v1": false,
@@ -29,8 +29,8 @@
       "stored_numbers": {
         "long_short_abs_bias_minus_1": {
           "ts_v1": 0.06588433595210486,
-          "xs_v1": 0.020497696085696848,
-          "xs_v2": 0.028336707689101903,
+          "xs_v1": 0.017536216228298374,
+          "xs_v2": 0.025839930298779068,
           "pca_v1": 0.07262504745790621,
           "pca_v1c": 0.07516393727863102
         },
@@ -44,20 +44,20 @@
       "threshold": "every version's 2020 Q1 bias is its worst episode, and it is reported",
       "stored_numbers": {
         "bias_2020_q1": {
-          "pca_v1": 3.212142290721916,
-          "pca_v1c": 3.2211540475533695,
-          "sample": 3.1891895191439783,
-          "ts_v1": 3.4877491771765707,
-          "xs_v1": 2.8368033107777237,
-          "xs_v2": 2.821510865996935
+          "pca_v1": 3.2141813385848517,
+          "pca_v1c": 3.223229666718,
+          "sample": 3.1929044142626237,
+          "ts_v1": 3.4899261937565687,
+          "xs_v1": 2.840103232583133,
+          "xs_v2": 2.8254149236324295
         },
         "bias_2022": {
-          "pca_v1": 1.195211205444561,
-          "pca_v1c": 1.1982498857295047,
-          "sample": 1.1863125162544195,
-          "ts_v1": 1.3490319980833116,
-          "xs_v1": 1.1412179028815166,
-          "xs_v2": 1.133085840826783
+          "pca_v1": 1.1965507872300358,
+          "pca_v1c": 1.1992089377484814,
+          "sample": 1.1875852957285113,
+          "ts_v1": 1.349666996614428,
+          "xs_v1": 1.140332286461049,
+          "xs_v2": 1.1323612170761654
         }
       },
       "verdict": "pass",
@@ -69,7 +69,7 @@
       "stored_numbers": {
         "n_versions_in_regime_table": 6,
         "champion": "XS-v1",
-        "champion_stress_bias_vix_high": 1.3222554896198053,
+        "champion_stress_bias_vix_high": 1.3205069314295534,
         "champion_recovery_trading_days_2020_q1": 13.0
       },
       "verdict": "pass",
@@ -80,22 +80,22 @@
       "threshold": "stored, whatever it shows",
       "stored_numbers": {
         "bias_xs_v2": {
-          "factor_tilted": 0.9347005220864621,
-          "long_only": 1.1042154599997285,
-          "long_short": 1.028336707689102,
-          "sector_concentrated": 1.0813783567440758
+          "factor_tilted": 0.9371338637513444,
+          "long_only": 1.1026700470166881,
+          "long_short": 1.025839930298779,
+          "sector_concentrated": 1.0800871211908842
         },
         "bias_xs_v1": {
-          "factor_tilted": 0.9638418979970195,
-          "long_only": 1.1044793714298697,
-          "long_short": 1.0204976960856968,
-          "sector_concentrated": 1.0920338010679165
+          "factor_tilted": 0.9658826848259084,
+          "long_only": 1.1029089138768073,
+          "long_short": 1.0175362162282984,
+          "sector_concentrated": 1.0907500783315898
         },
         "ratio_xs_v2_over_xs_v1": {
-          "factor_tilted": 0.9697653982762976,
-          "long_only": 0.9997610535452558,
-          "long_short": 1.00768155737487,
-          "sector_concentrated": 0.9902425691279697
+          "factor_tilted": 0.9702357009539458,
+          "long_only": 0.999783421044917,
+          "long_short": 1.0081606078860368,
+          "sector_concentrated": 0.9902241976851236
         }
       },
       "verdict": "pass",
@@ -104,7 +104,7 @@
   },
   "revisions": {
     "previous_data_hash": null,
-    "data_hash": "cee583fcaa1183539bec821da32f39dcdeb1b617492c0914e9361325f72f1a05",
+    "data_hash": "fd8ebce26a8de7b3cbc71df3054153b9ec301c19e9d290f0e56d4c8a2c193131",
     "n_changed": 5,
     "changed_tickers_or_criteria": [
       "F5.1",
@@ -123,10 +123,10 @@
           "threshold": "0.9 <= mean bias <= 1.1 for every family for at least one version",
           "stored_numbers": {
             "family_bias": {
-              "XS-v1": 1.0469839503253322,
-              "PCA-v1": 1.1388412938997308,
-              "PCA-v1c": 1.1391854728617519,
-              "XS-v2": 1.0384709489361823
+              "XS-v1": 1.0452131916451257,
+              "PCA-v1": 1.1369146480573515,
+              "PCA-v1c": 1.1373898555749111,
+              "XS-v2": 1.037157761629842
             },
             "inside_all_families": {
               "XS-v1": false,
@@ -142,10 +142,10 @@
           "threshold": "0.9 <= mean bias <= 1.1 for every family for at least one version",
           "stored_numbers": {
             "family_bias": {
-              "XS-v1": 1.0452131916451257,
-              "PCA-v1": 1.1369146480573515,
-              "PCA-v1c": 1.1373898555749111,
-              "XS-v2": 1.037157761629842
+              "XS-v1": 1.044269473315651,
+              "PCA-v1": 1.137224299564618,
+              "PCA-v1c": 1.137643140050377,
+              "XS-v2": 1.036432740564424
             },
             "inside_all_families": {
               "XS-v1": false,
@@ -164,13 +164,13 @@
           "threshold": "every factor version's long/short mean bias closer to 1 than the sample covariance's",
           "stored_numbers": {
             "long_short_abs_bias_minus_1": {
-              "ts_v1": 0.06632785175621136,
-              "xs_v1": 0.018568115349799186,
-              "xs_v2": 0.02563794967801525,
-              "pca_v1": 0.07288545487816167,
-              "pca_v1c": 0.07545776635627166
+              "ts_v1": 0.06588433595210486,
+              "xs_v1": 0.020497696085696848,
+              "xs_v2": 0.028336707689101903,
+              "pca_v1": 0.07262504745790621,
+              "pca_v1c": 0.07516393727863102
             },
-            "sample_long_short_abs_bias_minus_1": 0.07522700661959725
+            "sample_long_short_abs_bias_minus_1": 0.07474596343590001
           }
         },
         "new": {
@@ -180,8 +180,8 @@
           "stored_numbers": {
             "long_short_abs_bias_minus_1": {
               "ts_v1": 0.06588433595210486,
-              "xs_v1": 0.020497696085696848,
-              "xs_v2": 0.028336707689101903,
+              "xs_v1": 0.017536216228298374,
+              "xs_v2": 0.025839930298779068,
               "pca_v1": 0.07262504745790621,
               "pca_v1c": 0.07516393727863102
             },
@@ -192,29 +192,6 @@
       "F5.3": {
         "changed": true,
         "old": {
-          "verdict": "pass",
-          "criterion": "Bias is worst in 2020 Q1 for every model. This is expected and is reported, not hidden.",
-          "threshold": "every version's 2020 Q1 bias is its worst episode, and it is reported",
-          "stored_numbers": {
-            "bias_2020_q1": {
-              "pca_v1": 3.2235857142567585,
-              "pca_v1c": 3.2320487695936655,
-              "sample": 3.205007104643809,
-              "ts_v1": 3.498892154914531,
-              "xs_v1": 2.8470668684488754,
-              "xs_v2": 2.830534414326818
-            },
-            "bias_2022": {
-              "pca_v1": 1.1992676970117708,
-              "pca_v1c": 1.201279826475275,
-              "sample": 1.1892311574499652,
-              "ts_v1": 1.3552221759980636,
-              "xs_v1": 1.139278188172363,
-              "xs_v2": 1.1291929280554092
-            }
-          }
-        },
-        "new": {
           "verdict": "pass",
           "criterion": "Bias is worst in 2020 Q1 for every model. This is expected and is reported, not hidden.",
           "threshold": "every version's 2020 Q1 bias is its worst episode, and it is reported",
@@ -236,6 +213,29 @@
               "xs_v2": 1.133085840826783
             }
           }
+        },
+        "new": {
+          "verdict": "pass",
+          "criterion": "Bias is worst in 2020 Q1 for every model. This is expected and is reported, not hidden.",
+          "threshold": "every version's 2020 Q1 bias is its worst episode, and it is reported",
+          "stored_numbers": {
+            "bias_2020_q1": {
+              "pca_v1": 3.2141813385848517,
+              "pca_v1c": 3.223229666718,
+              "sample": 3.1929044142626237,
+              "ts_v1": 3.4899261937565687,
+              "xs_v1": 2.840103232583133,
+              "xs_v2": 2.8254149236324295
+            },
+            "bias_2022": {
+              "pca_v1": 1.1965507872300358,
+              "pca_v1c": 1.1992089377484814,
+              "sample": 1.1875852957285113,
+              "ts_v1": 1.349666996614428,
+              "xs_v1": 1.140332286461049,
+              "xs_v2": 1.1323612170761654
+            }
+          }
         }
       },
       "F5.4": {
@@ -247,7 +247,7 @@
           "stored_numbers": {
             "n_versions_in_regime_table": 6,
             "champion": "XS-v1",
-            "champion_stress_bias_vix_high": 1.3238537403338062,
+            "champion_stress_bias_vix_high": 1.3222554896198053,
             "champion_recovery_trading_days_2020_q1": 13.0
           }
         },
@@ -258,7 +258,7 @@
           "stored_numbers": {
             "n_versions_in_regime_table": 6,
             "champion": "XS-v1",
-            "champion_stress_bias_vix_high": 1.3222554896198053,
+            "champion_stress_bias_vix_high": 1.3205069314295534,
             "champion_recovery_trading_days_2020_q1": 13.0
           }
         }
@@ -266,31 +266,6 @@
       "F5.5": {
         "changed": true,
         "old": {
-          "verdict": "pass",
-          "criterion": "New in E5: XS-v2's bias against XS-v1's on the same families, stored both ways.",
-          "threshold": "stored, whatever it shows",
-          "stored_numbers": {
-            "bias_xs_v2": {
-              "factor_tilted": 0.9425535200403738,
-              "long_only": 1.1047683895087224,
-              "long_short": 1.0256379496780152,
-              "sector_concentrated": 1.0809239365176175
-            },
-            "bias_xs_v1": {
-              "factor_tilted": 0.9726392879532143,
-              "long_only": 1.1050225721518874,
-              "long_short": 1.0185681153497992,
-              "sector_concentrated": 1.0917058258464278
-            },
-            "ratio_xs_v2_over_xs_v1": {
-              "factor_tilted": 0.9690679080256445,
-              "long_only": 0.9997699751574576,
-              "long_short": 1.0069409538956442,
-              "sector_concentrated": 0.9901238144255108
-            }
-          }
-        },
-        "new": {
           "verdict": "pass",
           "criterion": "New in E5: XS-v2's bias against XS-v1's on the same families, stored both ways.",
           "threshold": "stored, whatever it shows",
@@ -312,6 +287,31 @@
               "long_only": 0.9997610535452558,
               "long_short": 1.00768155737487,
               "sector_concentrated": 0.9902425691279697
+            }
+          }
+        },
+        "new": {
+          "verdict": "pass",
+          "criterion": "New in E5: XS-v2's bias against XS-v1's on the same families, stored both ways.",
+          "threshold": "stored, whatever it shows",
+          "stored_numbers": {
+            "bias_xs_v2": {
+              "factor_tilted": 0.9371338637513444,
+              "long_only": 1.1026700470166881,
+              "long_short": 1.025839930298779,
+              "sector_concentrated": 1.0800871211908842
+            },
+            "bias_xs_v1": {
+              "factor_tilted": 0.9658826848259084,
+              "long_only": 1.1029089138768073,
+              "long_short": 1.0175362162282984,
+              "sector_concentrated": 1.0907500783315898
+            },
+            "ratio_xs_v2_over_xs_v1": {
+              "factor_tilted": 0.9702357009539458,
+              "long_only": 0.999783421044917,
+              "long_short": 1.0081606078860368,
+              "sector_concentrated": 0.9902241976851236
             }
           }
         }
@@ -1045,11 +1045,227 @@
             }
           }
         }
+      },
+      {
+        "previous_data_hash": null,
+        "data_hash": "fd8ebce26a8de7b3cbc71df3054153b9ec301c19e9d290f0e56d4c8a2c193131",
+        "n_changed": 5,
+        "changed_tickers_or_criteria": [
+          "F5.1",
+          "F5.2",
+          "F5.3",
+          "F5.4",
+          "F5.5"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F5.1": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "At least one model version achieves mean bias between 0.9 and 1.1 across all portfolio families.",
+              "threshold": "0.9 <= mean bias <= 1.1 for every family for at least one version",
+              "stored_numbers": {
+                "family_bias": {
+                  "XS-v1": 1.0452131916451257,
+                  "PCA-v1": 1.1369146480573515,
+                  "PCA-v1c": 1.1373898555749111,
+                  "XS-v2": 1.037157761629842
+                },
+                "inside_all_families": {
+                  "XS-v1": false,
+                  "PCA-v1": false,
+                  "PCA-v1c": false,
+                  "XS-v2": false
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "At least one model version achieves mean bias between 0.9 and 1.1 across all portfolio families.",
+              "threshold": "0.9 <= mean bias <= 1.1 for every family for at least one version",
+              "stored_numbers": {
+                "family_bias": {
+                  "XS-v1": 1.044269473315651,
+                  "PCA-v1": 1.137224299564618,
+                  "PCA-v1c": 1.137643140050377,
+                  "XS-v2": 1.036432740564424
+                },
+                "inside_all_families": {
+                  "XS-v1": false,
+                  "PCA-v1": false,
+                  "PCA-v1c": false,
+                  "XS-v2": false
+                }
+              }
+            }
+          },
+          "F5.2": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Factor-based models beat the sample covariance on bias for long/short portfolios.",
+              "threshold": "every factor version's long/short mean bias closer to 1 than the sample covariance's",
+              "stored_numbers": {
+                "long_short_abs_bias_minus_1": {
+                  "ts_v1": 0.06588433595210486,
+                  "xs_v1": 0.020497696085696848,
+                  "xs_v2": 0.028336707689101903,
+                  "pca_v1": 0.07262504745790621,
+                  "pca_v1c": 0.07516393727863102
+                },
+                "sample_long_short_abs_bias_minus_1": 0.07474596343590001
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Factor-based models beat the sample covariance on bias for long/short portfolios.",
+              "threshold": "every factor version's long/short mean bias closer to 1 than the sample covariance's",
+              "stored_numbers": {
+                "long_short_abs_bias_minus_1": {
+                  "ts_v1": 0.06588433595210486,
+                  "xs_v1": 0.017536216228298374,
+                  "xs_v2": 0.025839930298779068,
+                  "pca_v1": 0.07262504745790621,
+                  "pca_v1c": 0.07516393727863102
+                },
+                "sample_long_short_abs_bias_minus_1": 0.07474596343590001
+              }
+            }
+          },
+          "F5.3": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Bias is worst in 2020 Q1 for every model. This is expected and is reported, not hidden.",
+              "threshold": "every version's 2020 Q1 bias is its worst episode, and it is reported",
+              "stored_numbers": {
+                "bias_2020_q1": {
+                  "pca_v1": 3.212142290721916,
+                  "pca_v1c": 3.2211540475533695,
+                  "sample": 3.1891895191439783,
+                  "ts_v1": 3.4877491771765707,
+                  "xs_v1": 2.8368033107777237,
+                  "xs_v2": 2.821510865996935
+                },
+                "bias_2022": {
+                  "pca_v1": 1.195211205444561,
+                  "pca_v1c": 1.1982498857295047,
+                  "sample": 1.1863125162544195,
+                  "ts_v1": 1.3490319980833116,
+                  "xs_v1": 1.1412179028815166,
+                  "xs_v2": 1.133085840826783
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Bias is worst in 2020 Q1 for every model. This is expected and is reported, not hidden.",
+              "threshold": "every version's 2020 Q1 bias is its worst episode, and it is reported",
+              "stored_numbers": {
+                "bias_2020_q1": {
+                  "pca_v1": 3.2141813385848517,
+                  "pca_v1c": 3.223229666718,
+                  "sample": 3.1929044142626237,
+                  "ts_v1": 3.4899261937565687,
+                  "xs_v1": 2.840103232583133,
+                  "xs_v2": 2.8254149236324295
+                },
+                "bias_2022": {
+                  "pca_v1": 1.1965507872300358,
+                  "pca_v1c": 1.1992089377484814,
+                  "sample": 1.1875852957285113,
+                  "ts_v1": 1.349666996614428,
+                  "xs_v1": 1.140332286461049,
+                  "xs_v2": 1.1323612170761654
+                }
+              }
+            }
+          },
+          "F5.4": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Regime table produced for every model version; the champion's stress-regime bias and its recovery time in trading days are stored alongside its average bias.",
+              "threshold": "stored for every version, champion's numbers present",
+              "stored_numbers": {
+                "n_versions_in_regime_table": 6,
+                "champion": "XS-v1",
+                "champion_stress_bias_vix_high": 1.3222554896198053,
+                "champion_recovery_trading_days_2020_q1": 13.0
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Regime table produced for every model version; the champion's stress-regime bias and its recovery time in trading days are stored alongside its average bias.",
+              "threshold": "stored for every version, champion's numbers present",
+              "stored_numbers": {
+                "n_versions_in_regime_table": 6,
+                "champion": "XS-v1",
+                "champion_stress_bias_vix_high": 1.3205069314295534,
+                "champion_recovery_trading_days_2020_q1": 13.0
+              }
+            }
+          },
+          "F5.5": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "New in E5: XS-v2's bias against XS-v1's on the same families, stored both ways.",
+              "threshold": "stored, whatever it shows",
+              "stored_numbers": {
+                "bias_xs_v2": {
+                  "factor_tilted": 0.9347005220864621,
+                  "long_only": 1.1042154599997285,
+                  "long_short": 1.028336707689102,
+                  "sector_concentrated": 1.0813783567440758
+                },
+                "bias_xs_v1": {
+                  "factor_tilted": 0.9638418979970195,
+                  "long_only": 1.1044793714298697,
+                  "long_short": 1.0204976960856968,
+                  "sector_concentrated": 1.0920338010679165
+                },
+                "ratio_xs_v2_over_xs_v1": {
+                  "factor_tilted": 0.9697653982762976,
+                  "long_only": 0.9997610535452558,
+                  "long_short": 1.00768155737487,
+                  "sector_concentrated": 0.9902425691279697
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "New in E5: XS-v2's bias against XS-v1's on the same families, stored both ways.",
+              "threshold": "stored, whatever it shows",
+              "stored_numbers": {
+                "bias_xs_v2": {
+                  "factor_tilted": 0.9371338637513444,
+                  "long_only": 1.1026700470166881,
+                  "long_short": 1.025839930298779,
+                  "sector_concentrated": 1.0800871211908842
+                },
+                "bias_xs_v1": {
+                  "factor_tilted": 0.9658826848259084,
+                  "long_only": 1.1029089138768073,
+                  "long_short": 1.0175362162282984,
+                  "sector_concentrated": 1.0907500783315898
+                },
+                "ratio_xs_v2_over_xs_v1": {
+                  "factor_tilted": 0.9702357009539458,
+                  "long_only": 0.999783421044917,
+                  "long_short": 1.0081606078860368,
+                  "sector_concentrated": 0.9902241976851236
+                }
+              }
+            }
+          }
+        }
       }
     ]
   },
   "reference_values": {
-    "data_hash": "cee583fcaa1183539bec821da32f39dcdeb1b617492c0914e9361325f72f1a05",
+    "data_hash": "fd8ebce26a8de7b3cbc71df3054153b9ec301c19e9d290f0e56d4c8a2c193131",
     "verdicts": {
       "F5.1": "fail",
       "F5.2": "fail",
@@ -1060,10 +1276,10 @@
     "stored_numbers": {
       "F5.1": {
         "family_bias": {
-          "XS-v1": 1.0452131916451257,
-          "PCA-v1": 1.1369146480573515,
-          "PCA-v1c": 1.1373898555749111,
-          "XS-v2": 1.037157761629842
+          "XS-v1": 1.044269473315651,
+          "PCA-v1": 1.137224299564618,
+          "PCA-v1c": 1.137643140050377,
+          "XS-v2": 1.036432740564424
         },
         "inside_all_families": {
           "XS-v1": false,
@@ -1075,8 +1291,8 @@
       "F5.2": {
         "long_short_abs_bias_minus_1": {
           "ts_v1": 0.06588433595210486,
-          "xs_v1": 0.020497696085696848,
-          "xs_v2": 0.028336707689101903,
+          "xs_v1": 0.017536216228298374,
+          "xs_v2": 0.025839930298779068,
           "pca_v1": 0.07262504745790621,
           "pca_v1c": 0.07516393727863102
         },
@@ -1084,46 +1300,46 @@
       },
       "F5.3": {
         "bias_2020_q1": {
-          "pca_v1": 3.212142290721916,
-          "pca_v1c": 3.2211540475533695,
-          "sample": 3.1891895191439783,
-          "ts_v1": 3.4877491771765707,
-          "xs_v1": 2.8368033107777237,
-          "xs_v2": 2.821510865996935
+          "pca_v1": 3.2141813385848517,
+          "pca_v1c": 3.223229666718,
+          "sample": 3.1929044142626237,
+          "ts_v1": 3.4899261937565687,
+          "xs_v1": 2.840103232583133,
+          "xs_v2": 2.8254149236324295
         },
         "bias_2022": {
-          "pca_v1": 1.195211205444561,
-          "pca_v1c": 1.1982498857295047,
-          "sample": 1.1863125162544195,
-          "ts_v1": 1.3490319980833116,
-          "xs_v1": 1.1412179028815166,
-          "xs_v2": 1.133085840826783
+          "pca_v1": 1.1965507872300358,
+          "pca_v1c": 1.1992089377484814,
+          "sample": 1.1875852957285113,
+          "ts_v1": 1.349666996614428,
+          "xs_v1": 1.140332286461049,
+          "xs_v2": 1.1323612170761654
         }
       },
       "F5.4": {
         "n_versions_in_regime_table": 6,
         "champion": "XS-v1",
-        "champion_stress_bias_vix_high": 1.3222554896198053,
+        "champion_stress_bias_vix_high": 1.3205069314295534,
         "champion_recovery_trading_days_2020_q1": 13.0
       },
       "F5.5": {
         "bias_xs_v2": {
-          "factor_tilted": 0.9347005220864621,
-          "long_only": 1.1042154599997285,
-          "long_short": 1.028336707689102,
-          "sector_concentrated": 1.0813783567440758
+          "factor_tilted": 0.9371338637513444,
+          "long_only": 1.1026700470166881,
+          "long_short": 1.025839930298779,
+          "sector_concentrated": 1.0800871211908842
         },
         "bias_xs_v1": {
-          "factor_tilted": 0.9638418979970195,
-          "long_only": 1.1044793714298697,
-          "long_short": 1.0204976960856968,
-          "sector_concentrated": 1.0920338010679165
+          "factor_tilted": 0.9658826848259084,
+          "long_only": 1.1029089138768073,
+          "long_short": 1.0175362162282984,
+          "sector_concentrated": 1.0907500783315898
         },
         "ratio_xs_v2_over_xs_v1": {
-          "factor_tilted": 0.9697653982762976,
-          "long_only": 0.9997610535452558,
-          "long_short": 1.00768155737487,
-          "sector_concentrated": 0.9902425691279697
+          "factor_tilted": 0.9702357009539458,
+          "long_only": 0.999783421044917,
+          "long_short": 1.0081606078860368,
+          "sector_concentrated": 0.9902241976851236
         }
       }
     }

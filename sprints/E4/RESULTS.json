@@ -1,18 +1,18 @@
 {
   "sprint": "E4",
-  "evaluated_at": "2026-10-03T16:48:16+00:00",
-  "data_hash": "e6fa25e53657ea24769b476de3f197d0e97066da3ec068eea2c42a86bb04d99a",
+  "evaluated_at": "2026-10-03T21:04:32+00:00",
+  "data_hash": "53952cdfd50672c016b332b3a37cdc1a17da46fbc609754814e9cd7f86353b56",
   "criteria": {
     "F4.1": {
       "criterion": "First principal component vs the market factor: correlation above 0.95.",
       "threshold": "correlation > 0.95",
       "stored_numbers": {
-        "pc1_vs_market_pca_v1": 0.8015077970062118,
+        "pc1_vs_market_pca_v1": 0.8005758854837357,
         "pc1_vs_equal_weight_pca_v1": 0.9889608313645085,
-        "pc1_vs_market_pca_v1c": 0.9328585329190844,
+        "pc1_vs_market_pca_v1c": 0.9328064987141882,
         "pc1_vs_equal_weight_pca_v1c": 0.9411913588192407,
-        "market_vs_equal_weight": 0.8598077151840423,
-        "pc1_vs_market_full_sample": 0.9461962897124121,
+        "market_vs_equal_weight": 0.8591128090983292,
+        "pc1_vs_market_full_sample": 0.9460171741429196,
         "window_days": 504,
         "full_sample_days": 4192,
         "n_names": 494
@@ -33,7 +33,7 @@
         "n_over_t": 0.9801587301587301,
         "mp_edge": 3.9602180526627095,
         "panel_n_factors_above_edge": 14,
-        "panel_n_names": 597
+        "panel_n_names": 591
       },
       "verdict": "pass",
       "note": "The count is the Marchenko-Pastur reading on the model universe, 13 of a permitted 15, and it is the count PCA-v1 is registered with. The covariance PCA of the same 504 days puts 16 eigenvalues above its own edge, which is stored under F4.7 and not scored here: the two spectra have different edges and different units."
@@ -51,14 +51,14 @@
           "pca_v1c": 0.08678844116990266,
           "sample": 0.2767073205969261,
           "ts_v1": 0.150292960321312,
-          "xs_v1": 0.0895322389102784
+          "xs_v1": 0.08939377888964552
         },
         "ratio_to_sample": {
           "clip": 0.3105042348824866,
           "constant_correlation": 0.5778027206392432,
           "ledoit_wolf": 0.33433718501918464,
           "ts_v1": 0.5431477562541278,
-          "xs_v1": 0.32356295712428285,
+          "xs_v1": 0.3230625727458205,
           "pca_v1": 0.3084795179358118,
           "pca_v1c": 0.313647072953034
         },
@@ -79,12 +79,12 @@
           "clip": 27,
           "constant_correlation": 0,
           "ewma": 0,
-          "ledoit_wolf": 28,
-          "pca_v1": 33,
+          "ledoit_wolf": 29,
+          "pca_v1": 34,
           "pca_v1c": 32,
           "sample": 0,
           "ts_v1": 3,
-          "xs_v1": 53
+          "xs_v1": 51
         }
       },
       "verdict": "pass",
@@ -94,16 +94,16 @@
       "criterion": "PCA-v1 with k factors explains at least as much cross-sectional variance as XS-v1 on a held-out residual test; both numbers stored.",
       "threshold": "PCA-v1 held-out R squared >= XS-v1 held-out R squared, both stored",
       "stored_numbers": {
-        "xs_v1_daily_refit": 0.3862775815247674,
-        "xs_v1_descriptors_frozen": 0.24995765503781484,
-        "pca_frozen_k_mp": 0.2689785981173807,
-        "pca_frozen_k_17": 0.30290920528629367,
-        "pca_rolling_refit": 0.3133371280521622,
-        "xs_v1_plus_top3_residual_pcs": 0.28775050762425575,
-        "xs_v1_plus_top5_residual_pcs": 0.30638380252177616,
+        "xs_v1_daily_refit": 0.38585854185531393,
+        "xs_v1_descriptors_frozen": 0.2524335471852204,
+        "pca_frozen_k_mp": 0.26947489203115255,
+        "pca_frozen_k_17": 0.30347067871289546,
+        "pca_rolling_refit": 0.3135516488764376,
+        "xs_v1_plus_top3_residual_pcs": 0.29021774393862554,
+        "xs_v1_plus_top5_residual_pcs": 0.30886569145984555,
         "held_out_days": 523,
         "held_out_days_min": 523,
-        "frozen_names_filled_mean": 11.988527724665392
+        "frozen_names_filled_mean": 0.0
       },
       "verdict": "fail",
       "note": "Fails by 7.3 points on the comparison the criterion names, PCA rolling against XS-v1 refitted daily, both measured on the same 523 held-out days with sqrt(market cap) weights and exposures dated t minus one. The useful reading is the opposite one: adding the top three residual principal components to a frozen XS-v1 raises held out R squared from 0.249958 to 0.287751, and the top five to 0.306384, which is where the missing factor structure shows up. Those two rows read NaN until 2026-10-03, with `days = 0`: the harness required every name's frozen descriptor row to be complete and returned nothing for the whole day when one name was short, so the twelve names with no 12-month momentum or no 252-day beta at the frozen stamp (BE, FDXF, HONA, P, Q, SNDK, GEV, RDDT, SOLV, SW and the rest of the recent listings and spin-offs) emptied every held-out day. A missing frozen descriptor is now a zero row, which is the rule the published design uses, and `frozen_names_filled_mean` records what that cost per day. Scored as measured."
@@ -172,8 +172,8 @@
             "high": 151.4390243902439
           }
         },
-        "residual_spectrum_largest": 21.895207445409103,
-        "residual_spectrum_edge": 3.9322503511120335,
+        "residual_spectrum_largest": 21.8828188714516,
+        "residual_spectrum_edge": 3.9362519034703327,
         "measurements_present": {
           "3a_decomposition": true,
           "3b_confound": true,
@@ -189,34 +189,34 @@
       "threshold": "4a, 4b and 4c stored",
       "stored_numbers": {
         "style_correlation_panel_vs_mapped": {
-          "market": 0.9969143431174075,
-          "size": 0.5726033405042735,
-          "beta": 0.9888927466246787,
-          "momentum": 0.9833729280532172,
-          "reversal": 0.9809515448841312,
-          "resid_vol": 0.8985023983767306,
-          "liquidity": 0.6141839286984969
+          "market": 0.9984795658408672,
+          "size": 0.8262711595469461,
+          "beta": 0.9918871795610633,
+          "momentum": 0.9868842497577522,
+          "reversal": 0.9832107875455878,
+          "resid_vol": 0.9590043960478871,
+          "liquidity": 0.8571864316352091
         },
         "size_premium": {
-          "panel": -2.0471463598498208e-05,
+          "panel": 0.00017387845619879378,
           "mapped": -0.0001685892270451677,
-          "t_panel": -0.04715737092738147,
+          "t_panel": 0.5135245806894603,
           "t_mapped": -0.5720985032012659
         },
         "mean_r_squared": {
-          "panel_825": 0.1335991558715423,
+          "panel_825": 0.1364762658454215,
           "mapped_502": 0.14193540536341642
         },
         "mean_specific_variance": {
-          "panel_825": 0.0002928276933599847,
+          "panel_825": 0.00028122532127585067,
           "mapped_502": 0.0002308004747140907
         },
         "mean_names_per_date": {
-          "panel_825": 563.6947368421053,
+          "panel_825": 560.3578947368421,
           "mapped_502": 467.63157894736844
         },
         "excluded_names": {
-          "n_names": 322,
+          "n_names": 309,
           "annualized_vol": 0.20407809176278502,
           "included_annualized_vol": 0.16650833412980515,
           "differential_annualized": -0.025586346041034685,
@@ -232,9 +232,9 @@
       "stored_numbers": {
         "pca_v1c_n_factors_above_edge": 16,
         "pca_v1c_mp_edge_covariance": 0.0020373412622233067,
-        "pca_v1c_pc1_vs_market": 0.9328585329190844,
+        "pca_v1c_pc1_vs_market": 0.9328064987141882,
         "pca_v1c_pc1_vs_equal_weight": 0.9411913588192407,
-        "pca_v1_pc1_vs_market": 0.8015077970062118,
+        "pca_v1_pc1_vs_market": 0.8005758854837357,
         "pca_v1_pc1_vs_equal_weight": 0.9889608313645085,
         "scored_against_f4_2": false,
         "covariance_spectrum_rows": 494
@@ -244,16 +244,22 @@
     }
   },
   "revisions": {
-    "previous_data_hash": "8539474aebcc01d622289c97245f1a3bc63fe4555e4f4995132eafe30338e188",
-    "data_hash": "e6fa25e53657ea24769b476de3f197d0e97066da3ec068eea2c42a86bb04d99a",
-    "n_changed": 1,
+    "previous_data_hash": "e6fa25e53657ea24769b476de3f197d0e97066da3ec068eea2c42a86bb04d99a",
+    "data_hash": "53952cdfd50672c016b332b3a37cdc1a17da46fbc609754814e9cd7f86353b56",
+    "n_changed": 7,
     "changed_tickers_or_criteria": [
-      "F4.4"
+      "F4.1",
+      "F4.2",
+      "F4.3",
+      "F4.4",
+      "F4.5",
+      "F4.6",
+      "F4.7"
     ],
     "cross_sprint_criteria": [],
     "changed": {
       "F4.1": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "fail",
           "criterion": "First principal component vs the market factor: correlation above 0.95.",
@@ -275,12 +281,12 @@
           "criterion": "First principal component vs the market factor: correlation above 0.95.",
           "threshold": "correlation > 0.95",
           "stored_numbers": {
-            "pc1_vs_market_pca_v1": 0.8015077970062118,
+            "pc1_vs_market_pca_v1": 0.8005758854837357,
             "pc1_vs_equal_weight_pca_v1": 0.9889608313645085,
-            "pc1_vs_market_pca_v1c": 0.9328585329190844,
+            "pc1_vs_market_pca_v1c": 0.9328064987141882,
             "pc1_vs_equal_weight_pca_v1c": 0.9411913588192407,
-            "market_vs_equal_weight": 0.8598077151840423,
-            "pc1_vs_market_full_sample": 0.9461962897124121,
+            "market_vs_equal_weight": 0.8591128090983292,
+            "pc1_vs_market_full_sample": 0.9460171741429196,
             "window_days": 504,
             "full_sample_days": 4192,
             "n_names": 494
@@ -288,7 +294,7 @@
         }
       },
       "F4.2": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "criterion": "Marchenko-Pastur edge isolates between 3 and 15 significant factors; the count is stored.",
@@ -320,12 +326,12 @@
             "n_over_t": 0.9801587301587301,
             "mp_edge": 3.9602180526627095,
             "panel_n_factors_above_edge": 14,
-            "panel_n_names": 597
+            "panel_n_names": 591
           }
         }
       },
       "F4.3": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "criterion": "OOS minimum-variance vol: shrinkage and factor estimators beat the sample covariance by more than 10%. If the sample covariance wins, that is an estimation bug.",
@@ -391,14 +397,14 @@
               "pca_v1c": 0.08678844116990266,
               "sample": 0.2767073205969261,
               "ts_v1": 0.150292960321312,
-              "xs_v1": 0.0895322389102784
+              "xs_v1": 0.08939377888964552
             },
             "ratio_to_sample": {
               "clip": 0.3105042348824866,
               "constant_correlation": 0.5778027206392432,
               "ledoit_wolf": 0.33433718501918464,
               "ts_v1": 0.5431477562541278,
-              "xs_v1": 0.32356295712428285,
+              "xs_v1": 0.3230625727458205,
               "pca_v1": 0.3084795179358118,
               "pca_v1c": 0.313647072953034
             },
@@ -419,12 +425,12 @@
               "clip": 27,
               "constant_correlation": 0,
               "ewma": 0,
-              "ledoit_wolf": 28,
-              "pca_v1": 33,
+              "ledoit_wolf": 29,
+              "pca_v1": 34,
               "pca_v1c": 32,
               "sample": 0,
               "ts_v1": 3,
-              "xs_v1": 53
+              "xs_v1": 51
             }
           }
         }
@@ -444,6 +450,7 @@
             "xs_v1_plus_top3_residual_pcs": 0.28775050762425575,
             "xs_v1_plus_top5_residual_pcs": 0.30638380252177616,
             "held_out_days": 523,
+            "held_out_days_min": 523,
             "frozen_names_filled_mean": 11.988527724665392
           }
         },
@@ -452,21 +459,21 @@
           "criterion": "PCA-v1 with k factors explains at least as much cross-sectional variance as XS-v1 on a held-out residual test; both numbers stored.",
           "threshold": "PCA-v1 held-out R squared >= XS-v1 held-out R squared, both stored",
           "stored_numbers": {
-            "xs_v1_daily_refit": 0.3862775815247674,
-            "xs_v1_descriptors_frozen": 0.24995765503781484,
-            "pca_frozen_k_mp": 0.2689785981173807,
-            "pca_frozen_k_17": 0.30290920528629367,
-            "pca_rolling_refit": 0.3133371280521622,
-            "xs_v1_plus_top3_residual_pcs": 0.28775050762425575,
-            "xs_v1_plus_top5_residual_pcs": 0.30638380252177616,
+            "xs_v1_daily_refit": 0.38585854185531393,
+            "xs_v1_descriptors_frozen": 0.2524335471852204,
+            "pca_frozen_k_mp": 0.26947489203115255,
+            "pca_frozen_k_17": 0.30347067871289546,
+            "pca_rolling_refit": 0.3135516488764376,
+            "xs_v1_plus_top3_residual_pcs": 0.29021774393862554,
+            "xs_v1_plus_top5_residual_pcs": 0.30886569145984555,
             "held_out_days": 523,
             "held_out_days_min": 523,
-            "frozen_names_filled_mean": 11.988527724665392
+            "frozen_names_filled_mean": 0.0
           }
         }
       },
       "F4.5": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "criterion": "Task 3 as reframed: passes when 3a, 3b, 3c and 3d are measured and the deliverable names which explanation the evidence supports.",
@@ -607,8 +614,8 @@
                 "high": 151.4390243902439
               }
             },
-            "residual_spectrum_largest": 21.895207445409103,
-            "residual_spectrum_edge": 3.9322503511120335,
+            "residual_spectrum_largest": 21.8828188714516,
+            "residual_spectrum_edge": 3.9362519034703327,
             "measurements_present": {
               "3a_decomposition": true,
               "3b_confound": true,
@@ -619,7 +626,7 @@
         }
       },
       "F4.6": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "criterion": "Task 4 as reframed: passes when 4a, 4b and 4c are stored. Registered 2026-09-20 as measured and material.",
@@ -667,34 +674,34 @@
           "threshold": "4a, 4b and 4c stored",
           "stored_numbers": {
             "style_correlation_panel_vs_mapped": {
-              "market": 0.9969143431174075,
-              "size": 0.5726033405042735,
-              "beta": 0.9888927466246787,
-              "momentum": 0.9833729280532172,
-              "reversal": 0.9809515448841312,
-              "resid_vol": 0.8985023983767306,
-              "liquidity": 0.6141839286984969
+              "market": 0.9984795658408672,
+              "size": 0.8262711595469461,
+              "beta": 0.9918871795610633,
+              "momentum": 0.9868842497577522,
+              "reversal": 0.9832107875455878,
+              "resid_vol": 0.9590043960478871,
+              "liquidity": 0.8571864316352091
             },
             "size_premium": {
-              "panel": -2.0471463598498208e-05,
+              "panel": 0.00017387845619879378,
               "mapped": -0.0001685892270451677,
-              "t_panel": -0.04715737092738147,
+              "t_panel": 0.5135245806894603,
               "t_mapped": -0.5720985032012659
             },
             "mean_r_squared": {
-              "panel_825": 0.1335991558715423,
+              "panel_825": 0.1364762658454215,
               "mapped_502": 0.14193540536341642
             },
             "mean_specific_variance": {
-              "panel_825": 0.0002928276933599847,
+              "panel_825": 0.00028122532127585067,
               "mapped_502": 0.0002308004747140907
             },
             "mean_names_per_date": {
-              "panel_825": 563.6947368421053,
+              "panel_825": 560.3578947368421,
               "mapped_502": 467.63157894736844
             },
             "excluded_names": {
-              "n_names": 322,
+              "n_names": 309,
               "annualized_vol": 0.20407809176278502,
               "included_annualized_vol": 0.16650833412980515,
               "differential_annualized": -0.025586346041034685,
@@ -704,7 +711,7 @@
         }
       },
       "F4.7": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "criterion": "Registered 2026-09-20 by decision. PCA-v1c is measured on its own terms: both PC1 objects are computed and the deliverable names which object each PC1 is. PCA-v1c's factor count is stored under F4.7 and is never scored against F4.2's 3 to 15 band.",
@@ -727,9 +734,9 @@
           "stored_numbers": {
             "pca_v1c_n_factors_above_edge": 16,
             "pca_v1c_mp_edge_covariance": 0.0020373412622233067,
-            "pca_v1c_pc1_vs_market": 0.9328585329190844,
+            "pca_v1c_pc1_vs_market": 0.9328064987141882,
             "pca_v1c_pc1_vs_equal_weight": 0.9411913588192407,
-            "pca_v1_pc1_vs_market": 0.8015077970062118,
+            "pca_v1_pc1_vs_market": 0.8005758854837357,
             "pca_v1_pc1_vs_equal_weight": 0.9889608313645085,
             "scored_against_f4_2": false,
             "covariance_spectrum_rows": 494
@@ -3337,11 +3344,513 @@
             }
           }
         }
+      },
+      {
+        "previous_data_hash": "e6fa25e53657ea24769b476de3f197d0e97066da3ec068eea2c42a86bb04d99a",
+        "data_hash": "53952cdfd50672c016b332b3a37cdc1a17da46fbc609754814e9cd7f86353b56",
+        "n_changed": 7,
+        "changed_tickers_or_criteria": [
+          "F4.1",
+          "F4.2",
+          "F4.3",
+          "F4.4",
+          "F4.5",
+          "F4.6",
+          "F4.7"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F4.1": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "First principal component vs the market factor: correlation above 0.95.",
+              "threshold": "correlation > 0.95",
+              "stored_numbers": {
+                "pc1_vs_market_pca_v1": 0.8015077970062118,
+                "pc1_vs_equal_weight_pca_v1": 0.9889608313645085,
+                "pc1_vs_market_pca_v1c": 0.9328585329190844,
+                "pc1_vs_equal_weight_pca_v1c": 0.9411913588192407,
+                "market_vs_equal_weight": 0.8598077151840423,
+                "pc1_vs_market_full_sample": 0.9461962897124121,
+                "window_days": 504,
+                "full_sample_days": 4192,
+                "n_names": 494
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "First principal component vs the market factor: correlation above 0.95.",
+              "threshold": "correlation > 0.95",
+              "stored_numbers": {
+                "pc1_vs_market_pca_v1": 0.8005758854837357,
+                "pc1_vs_equal_weight_pca_v1": 0.9889608313645085,
+                "pc1_vs_market_pca_v1c": 0.9328064987141882,
+                "pc1_vs_equal_weight_pca_v1c": 0.9411913588192407,
+                "market_vs_equal_weight": 0.8591128090983292,
+                "pc1_vs_market_full_sample": 0.9460171741429196,
+                "window_days": 504,
+                "full_sample_days": 4192,
+                "n_names": 494
+              }
+            }
+          },
+          "F4.2": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Marchenko-Pastur edge isolates between 3 and 15 significant factors; the count is stored.",
+              "threshold": "3 <= factor count <= 15, the STOP CONDITION 3 band",
+              "stored_numbers": {
+                "n_factors_mp": 13,
+                "n_factors_selected": 13,
+                "n_factors_scree": 2,
+                "n_factors_cv": 12,
+                "n_names": 494,
+                "n_days": 504,
+                "n_over_t": 0.9801587301587301,
+                "mp_edge": 3.9602180526627095,
+                "panel_n_factors_above_edge": 14,
+                "panel_n_names": 597
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Marchenko-Pastur edge isolates between 3 and 15 significant factors; the count is stored.",
+              "threshold": "3 <= factor count <= 15, the STOP CONDITION 3 band",
+              "stored_numbers": {
+                "n_factors_mp": 13,
+                "n_factors_selected": 13,
+                "n_factors_scree": 2,
+                "n_factors_cv": 12,
+                "n_names": 494,
+                "n_days": 504,
+                "n_over_t": 0.9801587301587301,
+                "mp_edge": 3.9602180526627095,
+                "panel_n_factors_above_edge": 14,
+                "panel_n_names": 591
+              }
+            }
+          },
+          "F4.3": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "OOS minimum-variance vol: shrinkage and factor estimators beat the sample covariance by more than 10%. If the sample covariance wins, that is an estimation bug.",
+              "threshold": "every shrinkage and factor estimator's median at least 10% below the sample covariance's median",
+              "stored_numbers": {
+                "median_realized_vol": {
+                  "clip": 0.08591879486833146,
+                  "constant_correlation": 0.1598822426616992,
+                  "ewma": 0.29688639750383033,
+                  "ledoit_wolf": 0.09251354664257731,
+                  "pca_v1": 0.08535854086704989,
+                  "pca_v1c": 0.08678844116990266,
+                  "sample": 0.2767073205969261,
+                  "ts_v1": 0.150292960321312,
+                  "xs_v1": 0.0895322389102784
+                },
+                "ratio_to_sample": {
+                  "clip": 0.3105042348824866,
+                  "constant_correlation": 0.5778027206392432,
+                  "ledoit_wolf": 0.33433718501918464,
+                  "ts_v1": 0.5431477562541278,
+                  "xs_v1": 0.32356295712428285,
+                  "pca_v1": 0.3084795179358118,
+                  "pca_v1c": 0.313647072953034
+                },
+                "worst_ratio": 0.5778027206392432,
+                "estimators_missing": [],
+                "estimators_required": [
+                  "clip",
+                  "constant_correlation",
+                  "ledoit_wolf",
+                  "ts_v1",
+                  "xs_v1",
+                  "pca_v1",
+                  "pca_v1c"
+                ],
+                "windows": 176,
+                "n_names": 495,
+                "windows_won": {
+                  "clip": 27,
+                  "constant_correlation": 0,
+                  "ewma": 0,
+                  "ledoit_wolf": 28,
+                  "pca_v1": 33,
+                  "pca_v1c": 32,
+                  "sample": 0,
+                  "ts_v1": 3,
+                  "xs_v1": 53
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "OOS minimum-variance vol: shrinkage and factor estimators beat the sample covariance by more than 10%. If the sample covariance wins, that is an estimation bug.",
+              "threshold": "every shrinkage and factor estimator's median at least 10% below the sample covariance's median",
+              "stored_numbers": {
+                "median_realized_vol": {
+                  "clip": 0.08591879486833146,
+                  "constant_correlation": 0.1598822426616992,
+                  "ewma": 0.29688639750383033,
+                  "ledoit_wolf": 0.09251354664257731,
+                  "pca_v1": 0.08535854086704989,
+                  "pca_v1c": 0.08678844116990266,
+                  "sample": 0.2767073205969261,
+                  "ts_v1": 0.150292960321312,
+                  "xs_v1": 0.08939377888964552
+                },
+                "ratio_to_sample": {
+                  "clip": 0.3105042348824866,
+                  "constant_correlation": 0.5778027206392432,
+                  "ledoit_wolf": 0.33433718501918464,
+                  "ts_v1": 0.5431477562541278,
+                  "xs_v1": 0.3230625727458205,
+                  "pca_v1": 0.3084795179358118,
+                  "pca_v1c": 0.313647072953034
+                },
+                "worst_ratio": 0.5778027206392432,
+                "estimators_missing": [],
+                "estimators_required": [
+                  "clip",
+                  "constant_correlation",
+                  "ledoit_wolf",
+                  "ts_v1",
+                  "xs_v1",
+                  "pca_v1",
+                  "pca_v1c"
+                ],
+                "windows": 176,
+                "n_names": 495,
+                "windows_won": {
+                  "clip": 27,
+                  "constant_correlation": 0,
+                  "ewma": 0,
+                  "ledoit_wolf": 29,
+                  "pca_v1": 34,
+                  "pca_v1c": 32,
+                  "sample": 0,
+                  "ts_v1": 3,
+                  "xs_v1": 51
+                }
+              }
+            }
+          },
+          "F4.4": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "PCA-v1 with k factors explains at least as much cross-sectional variance as XS-v1 on a held-out residual test; both numbers stored.",
+              "threshold": "PCA-v1 held-out R squared >= XS-v1 held-out R squared, both stored",
+              "stored_numbers": {
+                "xs_v1_daily_refit": 0.3862775815247674,
+                "xs_v1_descriptors_frozen": 0.24995765503781484,
+                "pca_frozen_k_mp": 0.2689785981173807,
+                "pca_frozen_k_17": 0.30290920528629367,
+                "pca_rolling_refit": 0.3133371280521622,
+                "xs_v1_plus_top3_residual_pcs": 0.28775050762425575,
+                "xs_v1_plus_top5_residual_pcs": 0.30638380252177616,
+                "held_out_days": 523,
+                "held_out_days_min": 523,
+                "frozen_names_filled_mean": 11.988527724665392
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "PCA-v1 with k factors explains at least as much cross-sectional variance as XS-v1 on a held-out residual test; both numbers stored.",
+              "threshold": "PCA-v1 held-out R squared >= XS-v1 held-out R squared, both stored",
+              "stored_numbers": {
+                "xs_v1_daily_refit": 0.38585854185531393,
+                "xs_v1_descriptors_frozen": 0.2524335471852204,
+                "pca_frozen_k_mp": 0.26947489203115255,
+                "pca_frozen_k_17": 0.30347067871289546,
+                "pca_rolling_refit": 0.3135516488764376,
+                "xs_v1_plus_top3_residual_pcs": 0.29021774393862554,
+                "xs_v1_plus_top5_residual_pcs": 0.30886569145984555,
+                "held_out_days": 523,
+                "held_out_days_min": 523,
+                "frozen_names_filled_mean": 0.0
+              }
+            }
+          },
+          "F4.5": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Task 3 as reframed: passes when 3a, 3b, 3c and 3d are measured and the deliverable names which explanation the evidence supports.",
+              "threshold": "3a, 3b, 3c and 3d measured and the explanation named",
+              "stored_numbers": {
+                "momentum_share_of_predicted_variance": {
+                  "low": 0.3198075601623549,
+                  "high": 0.5612671526099806
+                },
+                "realized_book_vol": {
+                  "low": 0.04909255195966771,
+                  "high": 0.027775005014359557
+                },
+                "predicted_book_vol": {
+                  "low": 0.054010065811213134,
+                  "high": 0.05472874629297251
+                },
+                "forward_market_vol": {
+                  "low": 0.21928617646320958,
+                  "high": 0.16819101257153132
+                },
+                "covariance_between_components": {
+                  "low": 1.2900024639991553e-06,
+                  "high": -1.0391607116310025e-06
+                },
+                "orthogonality_correlation": {
+                  "low": 0.052039887450922646,
+                  "high": -0.09166137374563459
+                },
+                "half_life_bias_high_tercile": {
+                  "21": 0.5218762515909683,
+                  "42": 0.5209481395520448,
+                  "90": 0.5247492592588209
+                },
+                "half_life_spread": {
+                  "21": 0.44612018955739086,
+                  "42": 0.43077773355050886,
+                  "90": 0.39841351516531087
+                },
+                "residual_top5_share": {
+                  "low": 0.5681373901266118,
+                  "high": 0.5768030936931818
+                },
+                "residual_largest_eigenvalue": {
+                  "low": 7.110191430882313,
+                  "high": 6.2041621050265165
+                },
+                "residual_edge": {
+                  "low": 2.393528275582561,
+                  "high": 2.39403246322348
+                },
+                "residual_tree": {
+                  "n_above_edge": {
+                    "low": 11.2,
+                    "high": 10.804878048780488
+                  },
+                  "effective_directions": {
+                    "low": 11.513603626573392,
+                    "high": 10.828942509265122
+                  },
+                  "n_names": {
+                    "low": 151.13333333333333,
+                    "high": 151.4390243902439
+                  }
+                },
+                "residual_spectrum_largest": 21.895207445409103,
+                "residual_spectrum_edge": 3.9322503511120335,
+                "measurements_present": {
+                  "3a_decomposition": true,
+                  "3b_confound": true,
+                  "3c_orthogonality": true,
+                  "3d_sweep": true
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Task 3 as reframed: passes when 3a, 3b, 3c and 3d are measured and the deliverable names which explanation the evidence supports.",
+              "threshold": "3a, 3b, 3c and 3d measured and the explanation named",
+              "stored_numbers": {
+                "momentum_share_of_predicted_variance": {
+                  "low": 0.3198075601623549,
+                  "high": 0.5612671526099806
+                },
+                "realized_book_vol": {
+                  "low": 0.04909255195966771,
+                  "high": 0.027775005014359557
+                },
+                "predicted_book_vol": {
+                  "low": 0.054010065811213134,
+                  "high": 0.05472874629297251
+                },
+                "forward_market_vol": {
+                  "low": 0.21928617646320958,
+                  "high": 0.16819101257153132
+                },
+                "covariance_between_components": {
+                  "low": 1.2900024639991553e-06,
+                  "high": -1.0391607116310025e-06
+                },
+                "orthogonality_correlation": {
+                  "low": 0.052039887450922646,
+                  "high": -0.09166137374563459
+                },
+                "half_life_bias_high_tercile": {
+                  "21": 0.5218762515909683,
+                  "42": 0.5209481395520448,
+                  "90": 0.5247492592588209
+                },
+                "half_life_spread": {
+                  "21": 0.44612018955739086,
+                  "42": 0.43077773355050886,
+                  "90": 0.39841351516531087
+                },
+                "residual_top5_share": {
+                  "low": 0.5681373901266118,
+                  "high": 0.5768030936931818
+                },
+                "residual_largest_eigenvalue": {
+                  "low": 7.110191430882313,
+                  "high": 6.2041621050265165
+                },
+                "residual_edge": {
+                  "low": 2.393528275582561,
+                  "high": 2.39403246322348
+                },
+                "residual_tree": {
+                  "n_above_edge": {
+                    "low": 11.2,
+                    "high": 10.804878048780488
+                  },
+                  "effective_directions": {
+                    "low": 11.513603626573392,
+                    "high": 10.828942509265122
+                  },
+                  "n_names": {
+                    "low": 151.13333333333333,
+                    "high": 151.4390243902439
+                  }
+                },
+                "residual_spectrum_largest": 21.8828188714516,
+                "residual_spectrum_edge": 3.9362519034703327,
+                "measurements_present": {
+                  "3a_decomposition": true,
+                  "3b_confound": true,
+                  "3c_orthogonality": true,
+                  "3d_sweep": true
+                }
+              }
+            }
+          },
+          "F4.6": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Task 4 as reframed: passes when 4a, 4b and 4c are stored. Registered 2026-09-20 as measured and material.",
+              "threshold": "4a, 4b and 4c stored",
+              "stored_numbers": {
+                "style_correlation_panel_vs_mapped": {
+                  "market": 0.9969143431174075,
+                  "size": 0.5726033405042735,
+                  "beta": 0.9888927466246787,
+                  "momentum": 0.9833729280532172,
+                  "reversal": 0.9809515448841312,
+                  "resid_vol": 0.8985023983767306,
+                  "liquidity": 0.6141839286984969
+                },
+                "size_premium": {
+                  "panel": -2.0471463598498208e-05,
+                  "mapped": -0.0001685892270451677,
+                  "t_panel": -0.04715737092738147,
+                  "t_mapped": -0.5720985032012659
+                },
+                "mean_r_squared": {
+                  "panel_825": 0.1335991558715423,
+                  "mapped_502": 0.14193540536341642
+                },
+                "mean_specific_variance": {
+                  "panel_825": 0.0002928276933599847,
+                  "mapped_502": 0.0002308004747140907
+                },
+                "mean_names_per_date": {
+                  "panel_825": 563.6947368421053,
+                  "mapped_502": 467.63157894736844
+                },
+                "excluded_names": {
+                  "n_names": 322,
+                  "annualized_vol": 0.20407809176278502,
+                  "included_annualized_vol": 0.16650833412980515,
+                  "differential_annualized": -0.025586346041034685,
+                  "years": "2010 to 2016"
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Task 4 as reframed: passes when 4a, 4b and 4c are stored. Registered 2026-09-20 as measured and material.",
+              "threshold": "4a, 4b and 4c stored",
+              "stored_numbers": {
+                "style_correlation_panel_vs_mapped": {
+                  "market": 0.9984795658408672,
+                  "size": 0.8262711595469461,
+                  "beta": 0.9918871795610633,
+                  "momentum": 0.9868842497577522,
+                  "reversal": 0.9832107875455878,
+                  "resid_vol": 0.9590043960478871,
+                  "liquidity": 0.8571864316352091
+                },
+                "size_premium": {
+                  "panel": 0.00017387845619879378,
+                  "mapped": -0.0001685892270451677,
+                  "t_panel": 0.5135245806894603,
+                  "t_mapped": -0.5720985032012659
+                },
+                "mean_r_squared": {
+                  "panel_825": 0.1364762658454215,
+                  "mapped_502": 0.14193540536341642
+                },
+                "mean_specific_variance": {
+                  "panel_825": 0.00028122532127585067,
+                  "mapped_502": 0.0002308004747140907
+                },
+                "mean_names_per_date": {
+                  "panel_825": 560.3578947368421,
+                  "mapped_502": 467.63157894736844
+                },
+                "excluded_names": {
+                  "n_names": 309,
+                  "annualized_vol": 0.20407809176278502,
+                  "included_annualized_vol": 0.16650833412980515,
+                  "differential_annualized": -0.025586346041034685,
+                  "years": "2010 to 2016"
+                }
+              }
+            }
+          },
+          "F4.7": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Registered 2026-09-20 by decision. PCA-v1c is measured on its own terms: both PC1 objects are computed and the deliverable names which object each PC1 is. PCA-v1c's factor count is stored under F4.7 and is never scored against F4.2's 3 to 15 band.",
+              "threshold": "both PC1 objects measured and named; the count is not scored against F4.2",
+              "stored_numbers": {
+                "pca_v1c_n_factors_above_edge": 16,
+                "pca_v1c_mp_edge_covariance": 0.0020373412622233067,
+                "pca_v1c_pc1_vs_market": 0.9328585329190844,
+                "pca_v1c_pc1_vs_equal_weight": 0.9411913588192407,
+                "pca_v1_pc1_vs_market": 0.8015077970062118,
+                "pca_v1_pc1_vs_equal_weight": 0.9889608313645085,
+                "scored_against_f4_2": false,
+                "covariance_spectrum_rows": 494
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Registered 2026-09-20 by decision. PCA-v1c is measured on its own terms: both PC1 objects are computed and the deliverable names which object each PC1 is. PCA-v1c's factor count is stored under F4.7 and is never scored against F4.2's 3 to 15 band.",
+              "threshold": "both PC1 objects measured and named; the count is not scored against F4.2",
+              "stored_numbers": {
+                "pca_v1c_n_factors_above_edge": 16,
+                "pca_v1c_mp_edge_covariance": 0.0020373412622233067,
+                "pca_v1c_pc1_vs_market": 0.9328064987141882,
+                "pca_v1c_pc1_vs_equal_weight": 0.9411913588192407,
+                "pca_v1_pc1_vs_market": 0.8005758854837357,
+                "pca_v1_pc1_vs_equal_weight": 0.9889608313645085,
+                "scored_against_f4_2": false,
+                "covariance_spectrum_rows": 494
+              }
+            }
+          }
+        }
       }
     ]
   },
   "reference_values": {
-    "data_hash": "e6fa25e53657ea24769b476de3f197d0e97066da3ec068eea2c42a86bb04d99a",
+    "data_hash": "53952cdfd50672c016b332b3a37cdc1a17da46fbc609754814e9cd7f86353b56",
     "verdicts": {
       "F4.1": "fail",
       "F4.2": "pass",
@@ -3353,12 +3862,12 @@
     },
     "stored_numbers": {
       "F4.1": {
-        "pc1_vs_market_pca_v1": 0.8015077970062118,
+        "pc1_vs_market_pca_v1": 0.8005758854837357,
         "pc1_vs_equal_weight_pca_v1": 0.9889608313645085,
-        "pc1_vs_market_pca_v1c": 0.9328585329190844,
+        "pc1_vs_market_pca_v1c": 0.9328064987141882,
         "pc1_vs_equal_weight_pca_v1c": 0.9411913588192407,
-        "market_vs_equal_weight": 0.8598077151840423,
-        "pc1_vs_market_full_sample": 0.9461962897124121,
+        "market_vs_equal_weight": 0.8591128090983292,
+        "pc1_vs_market_full_sample": 0.9460171741429196,
         "window_days": 504,
         "full_sample_days": 4192,
         "n_names": 494
@@ -3373,7 +3882,7 @@
         "n_over_t": 0.9801587301587301,
         "mp_edge": 3.9602180526627095,
         "panel_n_factors_above_edge": 14,
-        "panel_n_names": 597
+        "panel_n_names": 591
       },
       "F4.3": {
         "median_realized_vol": {
@@ -3385,14 +3894,14 @@
           "pca_v1c": 0.08678844116990266,
           "sample": 0.2767073205969261,
           "ts_v1": 0.150292960321312,
-          "xs_v1": 0.0895322389102784
+          "xs_v1": 0.08939377888964552
         },
         "ratio_to_sample": {
           "clip": 0.3105042348824866,
           "constant_correlation": 0.5778027206392432,
           "ledoit_wolf": 0.33433718501918464,
           "ts_v1": 0.5431477562541278,
-          "xs_v1": 0.32356295712428285,
+          "xs_v1": 0.3230625727458205,
           "pca_v1": 0.3084795179358118,
           "pca_v1c": 0.313647072953034
         },
@@ -3413,25 +3922,25 @@
           "clip": 27,
           "constant_correlation": 0,
           "ewma": 0,
-          "ledoit_wolf": 28,
-          "pca_v1": 33,
+          "ledoit_wolf": 29,
+          "pca_v1": 34,
           "pca_v1c": 32,
           "sample": 0,
           "ts_v1": 3,
-          "xs_v1": 53
+          "xs_v1": 51
         }
       },
       "F4.4": {
-        "xs_v1_daily_refit": 0.3862775815247674,
-        "xs_v1_descriptors_frozen": 0.24995765503781484,
-        "pca_frozen_k_mp": 0.2689785981173807,
-        "pca_frozen_k_17": 0.30290920528629367,
-        "pca_rolling_refit": 0.3133371280521622,
-        "xs_v1_plus_top3_residual_pcs": 0.28775050762425575,
-        "xs_v1_plus_top5_residual_pcs": 0.30638380252177616,
+        "xs_v1_daily_refit": 0.38585854185531393,
+        "xs_v1_descriptors_frozen": 0.2524335471852204,
+        "pca_frozen_k_mp": 0.26947489203115255,
+        "pca_frozen_k_17": 0.30347067871289546,
+        "pca_rolling_refit": 0.3135516488764376,
+        "xs_v1_plus_top3_residual_pcs": 0.29021774393862554,
+        "xs_v1_plus_top5_residual_pcs": 0.30886569145984555,
         "held_out_days": 523,
         "held_out_days_min": 523,
-        "frozen_names_filled_mean": 11.988527724665392
+        "frozen_names_filled_mean": 0.0
       },
       "F4.5": {
         "momentum_share_of_predicted_variance": {
@@ -3494,8 +4003,8 @@
             "high": 151.4390243902439
           }
         },
-        "residual_spectrum_largest": 21.895207445409103,
-        "residual_spectrum_edge": 3.9322503511120335,
+        "residual_spectrum_largest": 21.8828188714516,
+        "residual_spectrum_edge": 3.9362519034703327,
         "measurements_present": {
           "3a_decomposition": true,
           "3b_confound": true,
@@ -3505,34 +4014,34 @@
       },
       "F4.6": {
         "style_correlation_panel_vs_mapped": {
-          "market": 0.9969143431174075,
-          "size": 0.5726033405042735,
-          "beta": 0.9888927466246787,
-          "momentum": 0.9833729280532172,
-          "reversal": 0.9809515448841312,
-          "resid_vol": 0.8985023983767306,
-          "liquidity": 0.6141839286984969
+          "market": 0.9984795658408672,
+          "size": 0.8262711595469461,
+          "beta": 0.9918871795610633,
+          "momentum": 0.9868842497577522,
+          "reversal": 0.9832107875455878,
+          "resid_vol": 0.9590043960478871,
+          "liquidity": 0.8571864316352091
         },
         "size_premium": {
-          "panel": -2.0471463598498208e-05,
+          "panel": 0.00017387845619879378,
           "mapped": -0.0001685892270451677,
-          "t_panel": -0.04715737092738147,
+          "t_panel": 0.5135245806894603,
           "t_mapped": -0.5720985032012659
         },
         "mean_r_squared": {
-          "panel_825": 0.1335991558715423,
+          "panel_825": 0.1364762658454215,
           "mapped_502": 0.14193540536341642
         },
         "mean_specific_variance": {
-          "panel_825": 0.0002928276933599847,
+          "panel_825": 0.00028122532127585067,
           "mapped_502": 0.0002308004747140907
         },
         "mean_names_per_date": {
-          "panel_825": 563.6947368421053,
+          "panel_825": 560.3578947368421,
           "mapped_502": 467.63157894736844
         },
         "excluded_names": {
-          "n_names": 322,
+          "n_names": 309,
           "annualized_vol": 0.20407809176278502,
           "included_annualized_vol": 0.16650833412980515,
           "differential_annualized": -0.025586346041034685,
@@ -3542,9 +4051,9 @@
       "F4.7": {
         "pca_v1c_n_factors_above_edge": 16,
         "pca_v1c_mp_edge_covariance": 0.0020373412622233067,
-        "pca_v1c_pc1_vs_market": 0.9328585329190844,
+        "pca_v1c_pc1_vs_market": 0.9328064987141882,
         "pca_v1c_pc1_vs_equal_weight": 0.9411913588192407,
-        "pca_v1_pc1_vs_market": 0.8015077970062118,
+        "pca_v1_pc1_vs_market": 0.8005758854837357,
         "pca_v1_pc1_vs_equal_weight": 0.9889608313645085,
         "scored_against_f4_2": false,
         "covariance_spectrum_rows": 494

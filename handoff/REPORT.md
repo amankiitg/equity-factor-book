@@ -134,7 +134,7 @@ stubbed to a pass as well, and the gate is not part of what the seed has to sati
 its own behaviour is tested at length elsewhere, and the three bounds belong to the
 measurement harness rather than to `scripts/push_seed.py`, because the owner's own
 run on a fresh evening has no bounds at all. **The list the running measurement
-returns is therefore the pre-build read set** — honest and incomplete. It covers
+returns is therefore the pre-build read set**, honest and incomplete. It covers
 hydrate, the extension, the corporate-actions rule, the appendix write and the gate,
 and not the proposal build.
 

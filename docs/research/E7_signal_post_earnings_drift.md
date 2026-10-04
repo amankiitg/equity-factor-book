@@ -1,8 +1,8 @@
 # E7 Signal Report: post_earnings_drift
 
 Verdict against the RG-Signal checklist: **NULL**. The number that
-decided it: neutral out-of-sample t 1.034,
-out-of-sample spread Sharpe 0.035, break-even
+decided it: neutral out-of-sample t 0.999,
+out-of-sample spread Sharpe 0.071, break-even
 cost nan bp per rebalance
 against a realistic 5 bp.
 
@@ -20,32 +20,32 @@ NaN, never filled.
 
 | horizon | mean IC |
 | --- | --- |
-| ic_h1 | 0.123986 |
-| ic_h5 | 0.105174 |
-| ic_h21 | 0.102950 |
-| ic_h63 | 0.071382 |
+| ic_h1 | 0.123252 |
+| ic_h5 | 0.102243 |
+| ic_h21 | 0.104212 |
+| ic_h63 | 0.071396 |
 
 ## Factor-neutral IC
 
 The signal is residualized on the champion design at each rebalance date,
-s_perp = s - X (X'X)^-1 X' s. Mean neutral IC 0.009876,
-out-of-sample mean 0.011988 with t
-1.034.
+s_perp = s - X (X'X)^-1 X' s. Mean neutral IC 0.007738,
+out-of-sample mean 0.010626 with t
+0.999.
 
 ## Regime IC
 
 | regime | mean IC | n days |
 | --- | --- | --- |
-| pooled | 0.123986 | 715 |
-| vix_low | 0.126904 | 239 |
-| vix_mid | 0.128630 | 238 |
-| vix_high | 0.116412 | 238 |
+| pooled | 0.123252 | 721 |
+| vix_low | 0.126919 | 241 |
+| vix_mid | 0.127712 | 240 |
+| vix_high | 0.115110 | 240 |
 
 ## Quantile spread
 
-Hit rate 0.3952, turnover share per rebalance
+Hit rate 0.3947, turnover share per rebalance
 nan, out-of-sample spread Sharpe
-0.035.
+0.071.
 
 ## RG-Signal answers
 
@@ -60,15 +60,3 @@ Q7. Answer: yes, on paper
 ## Champion against alternative
 
 The raw IC is shared by both models; the stored difference is in the converted alpha under the champion's idio volatility and the alternative's, which is the quantity the models actually move.
-
-## Empirical shift audit (F7.1b, recorded in E8 Task 0a)
-
-The empirical shift audit rebuilds the signal with every input advanced
-one day and pairs it with the same-day return. This signal's after-shift
-IC is 0.2015 with t 21.15 against 0.124 with t 14.05 before the shift: the
-IC not only survives, it grows. The shifted construction is the
-announcement-day signal itself, so the survival is the announcement
-adjacent edge, and that is leakage. The one-session lag this signal
-carries is exactly what removes it, and any use of the unlagged surprise
-on the announcement day is same-day leakage. The traded form stays the
-lagged one.

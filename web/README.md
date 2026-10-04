@@ -1,7 +1,7 @@
 # EFB live book monitor
 
 One screen: the evening cron's snapshot, served by a Worker on Cloudflare behind
-Access. The browser never queries Postgres and never reaches R2 — the Worker reads
+Access. The browser never queries Postgres and never reaches R2: the Worker reads
 `latest.json` through a binding and the bucket stays private.
 
 ## Live book
@@ -10,7 +10,7 @@ Access. The browser never queries Postgres and never reaches R2 — the Worker r
 
 The page sits behind **Cloudflare Access**, and the only identity allowed is the
 owner's email address: signing in is an email one-time PIN, and until it is
-answered every path — the page and the API alike — answers a redirect to the
+answered every path, the page and the API alike, answers a redirect to the
 login rather than any content. It updates after each weekday evening run (the
 cron fires at 22:30 UTC, inside the after-hours window), so the book on it is
 always the last proposal the loop actually priced.
@@ -34,7 +34,7 @@ npm run deploy      # vite build && wrangler deploy
 
 1. **The R2 bucket `efb-snapshots`**, private. The cron's `EFB_R2_*` credentials
    are scoped to it with object read and write, and the Worker reads it through
-   the binding in `wrangler.jsonc` — no key ever reaches the browser.
+   the binding in `wrangler.jsonc`, so no key ever reaches the browser.
 2. **A Cloudflare Access application** in front of the Worker's hostname, with the
    owner's email as the only allowed identity.
 3. **The two values** from that Access application, in `wrangler.jsonc`:

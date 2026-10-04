@@ -77,7 +77,7 @@ rolling or EWMA estimate dated t is fit on data through t-1; a shift test
 proves it. Volatility: EWMA(0.94) and EWMA(0.97), trailing variance over
 21, 63 and 252 days, and GARCH(1,1) via the arch package, which installed
 and fit cleanly on Python 3.14. Forecasts are evaluated out of sample
-from 2024-09-03 with QLIKE, ln(sigma_hat^2) + r^2 / sigma_hat^2.
+from 2024-10-02 with QLIKE, ln(sigma_hat^2) + r^2 / sigma_hat^2.
 
 ## Stored numbers
 
@@ -87,17 +87,17 @@ sprints/E2/RESULTS.json.
 | ID | Threshold | Stored number | Verdict |
 | --- | --- | --- | --- |
 | F2.0a | coverage table stored and MODEL_START recorded | MODEL_START 2010, 17 years stored, current members 100% | pass |
-| F2.0b | NaN rows dropped, never imputed | 302 interior NaN rows, dropped by the fit (n_obs equals valid count) | pass |
-| F2.0c | audit mean below 0.1 bp, every day above 50 bp in events with a cause | mean 0.0178 bp, 1 day above 50 bp, 1 matched (BKR 2017-07-05 special distribution) | pass |
-| F2.1 | full-sample vs mean rolling beta correlation above 0.9 | 0.9244 | pass |
-| F2.2 | mean pairwise FF5+MOM residual correlation below 0.05 | 0.0156 on 150 names | pass |
-| F2.3 | GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of names | GARCH 58.2% of 98 names, EWMA(0.94) 35.4% of 483 names, paired 80 names where both fit: GARCH 53.8%, EWMA(0.94) 36.3% | fail |
-| F2.3b | the same 60% bar with forecast and target horizons matched | horizon 1: GARCH 61.2%, EWMA(0.94) 35.4%. horizon 21: GARCH 49.0%, EWMA(0.94) 19.9% | fail |
-| F2.3c | the same 60% bar on a seeded random sample of 100 fully covered names | seed 20260910, 100 names drawn from 599 with full coverage, 98 fits converging and 2 not (LW, RDDT). horizon 1: GARCH 61.2%, EWMA(0.94) 35.4%. horizon 21: GARCH 49.0%, EWMA(0.94) 19.9% | fail |
-| F2.4 | equal-weight seed book bias ratio between 0.8 and 1.2 across calendar years | mean 1.0225, per-year range 0.68 (2012) to 1.39 (2020) | pass |
-| F2.5 | Newey-West SE exceeds OLS SE for more than 80% of names | 96.3% | pass |
-| F2.6 | no name has an unexplained adjusted-close move above 5x (successor to F2.3, not pre-registered) | 4 names: CPWR, EP, MI, POM, 20 rows | fail |
-| F2.6b | identity check stored and its exclusions applied by the build | 373 removed tickers compared, 36 reused symbols found, 33 dropped and 3 restored by the C6 review, none left in the estimated panel that the build did not mean to keep | pass |
+| F2.0b | NaN rows dropped, never imputed | 1 interior NaN row, dropped by the fit (n_obs equals valid count) | pass |
+| F2.0c | audit mean below 0.1 bp, every day above 50 bp in events with a cause | mean 0.0127 bp, 0 days above 50 bp | pass |
+| F2.1 | full-sample vs mean rolling beta correlation above 0.9 | 0.9386 | pass |
+| F2.2 | mean pairwise FF5+MOM residual correlation below 0.05 | 0.0254 on 150 names | pass |
+| F2.3 | GARCH and EWMA(0.94) each beat trailing 252d QLIKE for more than 60% of names | GARCH 53.6% of 97 names, EWMA(0.94) 34.6%, paired 80 names where both fit: GARCH 52.5%, EWMA(0.94) 32.5% | fail |
+| F2.3b | the same 60% bar with forecast and target horizons matched | horizon 1: GARCH 52.6%, EWMA(0.94) 34.6%. horizon 21: GARCH 46.4%, EWMA(0.94) 18.8% | fail |
+| F2.3c | the same 60% bar on a seeded random sample of 100 fully covered names | seed 20260910, 100 names drawn from 592 with full coverage, 97 fits converging and 3 not (AMTM, LW, VLTO). horizon 1: GARCH 52.6%, EWMA(0.94) 34.6%. horizon 21: GARCH 46.4%, EWMA(0.94) 18.8% | fail |
+| F2.4 | equal-weight seed book bias ratio between 0.8 and 1.2 across calendar years | mean 1.0219, per-year range 0.68 (2012) to 1.39 (2020) | pass |
+| F2.5 | Newey-West SE exceeds OLS SE for more than 80% of names | 97.0% | pass |
+| F2.6 | no name has an unexplained adjusted-close move above 5x (successor to F2.3, not pre-registered) | 5 names: CPWR, CTVA, EP, MI, POM, 21 rows | fail |
+| F2.6b | identity check stored and its exclusions applied by the build | 373 removed tickers compared, 36 reused symbols found, 46 dropped (33 by the reused-name rule and 13 by the coverage rule) and 3 restored by the C6 review, none left in the estimated panel that the build did not mean to keep | pass |
 | F2.6c | current-constituent coverage of the estimation panel at or above 501 of 503, with the re-add review stored | 502 of 503 covered, 99.80% against a bar of 99.602%, one name missing (DD); review keeps FOX (2019-03-13), FOXA (2019-03-12) and PCG (2022-10-03) | pass |
 
 Reference loadings, full sample. AAPL beta 1.074 (OLS SE 0.0182, Newey-West
@@ -599,15 +599,14 @@ covariance, which is the item already open in docs/open_items.md. The
 ledger entry for C4 is corrected to say so, and the open item is rewritten
 with the same ordering.
 
-After C8: make rebuild-e2 versions 29 artifacts, data/VERSION.json and the
-TS-v1 registry entry both carry artifacts hash 51f0faa935cb57e8 (full value
-in the file), and the sprint has 13 criteria, 9 passing and 4 failing (F2.3,
+After C8: make rebuild-e2 versions 29 artifacts, and the sprint has 13
+criteria, 9 passing and 4 failing (F2.3,
 F2.3b, F2.3c, F2.6). Every criterion, in order, with its verdict, is listed
 at the end of this section.
 
 Final criteria list, in criterion order, read from
 sprints/E2/RESULTS.json at data hash
-51f0faa935cb57e8:
+752b798c0cd9e6d6:
 
 | Criterion | Verdict |
 | --- | --- |

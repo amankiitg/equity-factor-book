@@ -44,7 +44,7 @@ def test_style_correlations_are_stored_and_size_is_the_low_one(
 ) -> None:
     assert factors.loc["market", "correlation_panel_vs_mapped"] > 0.99
     size = factors.loc["size", "correlation_panel_vs_mapped"]
-    assert size == pytest.approx(0.577780, abs=5e-6)
+    assert size == pytest.approx(0.826271, abs=5e-6)
     assert size < 0.9
     assert factors.loc["liquidity", "correlation_panel_vs_mapped"] < 0.9
     assert factors.loc["resid_vol", "correlation_panel_vs_mapped"] < 0.9
@@ -89,5 +89,5 @@ def test_the_excluded_names_were_riskier_and_earned_less() -> None:
     assert excluded["annualized_vol"] > included["annualized_vol"]
     assert excluded["cross_sectional_vol_mean"] > included["cross_sectional_vol_mean"]
     assert excluded["differential_annualized"] < 0.0
-    assert excluded["names"] == 323
+    assert excluded["names"] == 309
     assert included["names"] == 502

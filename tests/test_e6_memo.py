@@ -48,8 +48,8 @@ HEADLINE_NUMBERS = [
     "-0.2837",  # long-only book ETF hedge realized beta
     "0.0125",  # long-only book FMP hedge realized beta
     "-0.0552",  # long-only book beta hedge realized beta
-    "0.7552",  # worst capped-stored FMP residual exposure
-    "0.7169",  # the unhedged reversal exposure on that date
+    "0.7437",  # worst capped-stored FMP residual exposure
+    "0.7073",  # the unhedged reversal exposure on that date
     "0.7640",  # long-only FMP hedge mean turnover
     "0.7925",  # momentum FMP hedge mean turnover
     "0.820",  # long-only ETF hedge mean turnover

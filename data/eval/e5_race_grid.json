@@ -16,18 +16,18 @@
     "pca_v1c": 0.08678844116990266,
     "sample": 0.2767073205969261,
     "ts_v1": 0.150292960321312,
-    "xs_v1": 0.0895322389102784
+    "xs_v1": 0.08939377888964552
   },
   "windows_won": {
     "clip": 27,
     "constant_correlation": 0,
     "ewma": 0,
-    "ledoit_wolf": 28,
-    "pca_v1": 33,
+    "ledoit_wolf": 29,
+    "pca_v1": 34,
     "pca_v1c": 32,
     "sample": 0,
     "ts_v1": 3,
-    "xs_v1": 53
+    "xs_v1": 51
   },
   "median_ratio_to_stored": {
     "clip": 1.0,
@@ -38,6 +38,6 @@
     "pca_v1c": 1.0,
     "sample": 1.0,
     "ts_v1": 1.0,
-    "xs_v1": 1.0
+    "xs_v1": 0.9984535177236925
   }
 }

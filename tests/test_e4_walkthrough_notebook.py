@@ -112,7 +112,7 @@ def test_the_four_residual_measurements_are_printed() -> None:
     assert f"{numbers['residual_spectrum_largest']:.4f}" in printed
     assert f"{numbers['residual_spectrum_edge']:.4f}" in printed
     assert "1.039161e-06" in printed, "the factor-specific covariance is not printed"
-    assert "3.9 points" in printed
+    assert "3.8 points" in printed
 
 
 @pytest.mark.integration

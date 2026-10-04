@@ -1,6 +1,6 @@
 {
   "sprint": "E1",
-  "evaluated_at": "2026-10-03T17:35:55+00:00",
+  "evaluated_at": "2026-10-03T20:40:16+00:00",
   "data_hash": "37222bb97aa9883826971ffba0e78e8181d04850de724d4baa0068760bf42f47",
   "criteria": {
     "F1.1": {
@@ -43,7 +43,7 @@
       "threshold": "recoverable fraction >= 70%",
       "stored_numbers": {
         "fraction_recovered": 0.4096045197740113,
-        "naive_minus_pit_bp_per_year": 359.58471777781415,
+        "naive_minus_pit_bp_per_year": 359.58471777781443,
         "naive_minus_ff_market_bp_per_year": 376.2607134974268,
         "pit_minus_ff_market_bp_per_year": 14.701670460865973
       },
@@ -52,7 +52,7 @@
     }
   },
   "revisions": {
-    "previous_data_hash": "c094ec2c92702a118443f65c4a8adb12dad8b09d4eda75fd99164c46b664f4f9",
+    "previous_data_hash": "5945fd93c07a9a99f9184da9792fbc978d2f9fa79b84c50ccd8d51ade6ab1480",
     "data_hash": "37222bb97aa9883826971ffba0e78e8181d04850de724d4baa0068760bf42f47",
     "n_changed": 1,
     "changed_tickers_or_criteria": [
@@ -146,7 +146,7 @@
           "threshold": "recoverable fraction >= 70%",
           "stored_numbers": {
             "fraction_recovered": 0.4096045197740113,
-            "naive_minus_pit_bp_per_year": 359.58471777781443,
+            "naive_minus_pit_bp_per_year": 359.58471777781415,
             "naive_minus_ff_market_bp_per_year": 376.2607134974268,
             "pit_minus_ff_market_bp_per_year": 14.701670460865973
           }
@@ -157,7 +157,7 @@
           "threshold": "recoverable fraction >= 70%",
           "stored_numbers": {
             "fraction_recovered": 0.4096045197740113,
-            "naive_minus_pit_bp_per_year": 359.58471777781415,
+            "naive_minus_pit_bp_per_year": 359.58471777781443,
             "naive_minus_ff_market_bp_per_year": 376.2607134974268,
             "pit_minus_ff_market_bp_per_year": 14.701670460865973
           }

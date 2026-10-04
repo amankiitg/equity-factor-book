@@ -1,16 +1,16 @@
 {
   "sprint": "E6",
-  "evaluated_at": "2026-10-03T17:57:17+00:00",
-  "data_hash": "b774d460605c8d3b5edba6c63354c1de3fbc68974a822c37982dee07bd63cc0d",
+  "evaluated_at": "2026-10-03T22:08:22+00:00",
+  "data_hash": "f5cea5fcf99468a4c45ffb9403ed5044d37ae260793f6b58157bc3f1d255aa79",
   "criteria": {
     "F6.1": {
       "criterion": "Full FMP hedge drives every factor exposure below 1e-6 in absolute value and lifts the idio share of variance above 95%.",
       "threshold": "every factor's post-FMP exposure below 1e-6 in absolute value, read through the row the next session carries",
       "stored_numbers": {
-        "worst_abs_exposure_after_fmp": 5.492134524942571e-15,
-        "worst_abs_exposure_after_fmp_next_row": 0.13526022643449995,
-        "mean_abs_exposure_after_fmp_next_row": 0.0020183623402982723,
-        "worst_next_row_distance": 3.856266381605092,
+        "worst_abs_exposure_after_fmp": 5.483460907562687e-15,
+        "worst_abs_exposure_after_fmp_next_row": 0.1408196496809009,
+        "mean_abs_exposure_after_fmp_next_row": 0.0016047806053531642,
+        "worst_next_row_distance": 3.862012183411623,
         "n_dates_scored_on_the_next_row": 176,
         "n_exposure_rows_without_a_next_row": 0,
         "design_vintages": {
@@ -192,21 +192,21 @@
           "stale 2026-08-31 (the panel reaches past the close and the model has published no row for 2026-09-01)": 1
         },
         "mean_idio_share_after_fmp": 1.0,
-        "worst_abs_exposure_after_fmp_capped_stored": 0.7448583947758431,
+        "worst_abs_exposure_after_fmp_capped_stored": 0.7437049343456419,
         "mean_fmp_name_count": 461.5738636363636,
-        "mean_fmp_name_count_capped": 460.67045454545456,
+        "mean_fmp_name_count_capped": 461.5738636363636,
         "n_fmp_dates": 176
       },
       "verdict": "fail",
-      "note": "Fails. The exact in-model FMP hedge is zero in the design it was built against, which is what `worst_abs_exposure_after_fmp` records: zero by construction, not a result. Read through the row the next session carries - the row the book actually earns - the same book is left with `worst_abs_exposure_after_fmp_next_row`, 0.135260 on the worst of the 176 scored dates and 0.002018 on average, against a 1e-6 bound. The two rows are the same object on an ordinary session and different ones on a month end, and on this tree they are never the next session's row at all: every one of the 176 dates carries a `stale` vintage, because a research tree publishes descriptors at month ends plus the final session (`build._descriptor_frame`), so the row for the session after a month end does not exist and `race.next_descriptor_design` falls back to the row dated the close. Each hedge is therefore one session behind by construction, and `worst_next_row_distance` records how far behind: 3.856266 at the worst date, over the names the two rows share. The month-end pair is the documented example of the same gap, measured on a live tree: 2026-07-30 to 2026-07-31 the row the hedge was built on sits 2.291 from the published row and the hedged book is left with 3.82e-03 of exposure, against 1e-15 and 3e-14 for 2026-09-17 to 2026-09-18. `design_vintages` names the row every hedge was built against, so the gap is attributable rather than asserted. The quarterly capped FMP weights keep cap drift, which is basis risk and is stored beside the criterion number."
+      "note": "Fails. The exact in-model FMP hedge is zero in the design it was built against, which is what `worst_abs_exposure_after_fmp` records: zero by construction, not a result. Read through the row the next session carries - the row the book actually earns - the same book is left with `worst_abs_exposure_after_fmp_next_row`, 0.140820 on the worst of the 176 scored dates and 0.001605 on average, against a 1e-6 bound. The two rows are the same object on an ordinary session and different ones on a month end, and on this tree they are never the next session's row at all: every one of the 176 dates carries a `stale` vintage, because a research tree publishes descriptors at month ends plus the final session (`build._descriptor_frame`), so the row for the session after a month end does not exist and `race.next_descriptor_design` falls back to the row dated the close. Each hedge is therefore one session behind by construction, and `worst_next_row_distance` records how far behind: 3.862012 at the worst date, over the names the two rows share. The month-end pair is the documented example of the same gap, measured on a live tree: 2026-07-30 to 2026-07-31 the row the hedge was built on sits 2.291 from the published row and the hedged book is left with 3.82e-03 of exposure, against 1e-15 and 3e-14 for 2026-09-17 to 2026-09-18. `design_vintages` names the row every hedge was built against, so the gap is attributable rather than asserted. The quarterly capped FMP weights keep cap drift, which is basis risk and is stored beside the criterion number."
     },
     "F6.2": {
       "criterion": "ETF minimum-variance hedge removes more than 70% of the factor variance of the long-only seed book. ETFs cannot span every factor; the residual is reported.",
       "threshold": "long-only seed book factor variance removed above 70%",
       "stored_numbers": {
         "mean_factor_variance_removed_share": {
-          "xs_v1": 0.9779390929678066,
-          "xs_v2": 0.9779390929678066
+          "xs_v1": 0.9779107990696175,
+          "xs_v2": 0.9779107990696175
         },
         "mean_n_instruments": 13.034090909090908,
         "residual_reported": "per-factor post-hedge exposures in F6.5"
@@ -219,8 +219,8 @@
       "threshold": "realized beta to Mkt-RF inside +/- 0.1 over 2018 to 2026",
       "stored_numbers": {
         "realized_beta_to_mkt_rf": {
-          "xs_v1": -0.021679892724730653,
-          "xs_v2": -0.021679892724730653
+          "xs_v1": -0.02163909347005956,
+          "xs_v2": -0.02163909347005956
         },
         "unhedged_realized_beta_to_mkt_rf": -0.045430017357877786
       },
@@ -233,13 +233,13 @@
       "stored_numbers": {
         "xs_v1": {
           "fmp_idio_share": 1.0,
-          "mv_share_long_only": 0.9779390929678066,
-          "momentum_realized_beta": -0.021679892724730653
+          "mv_share_long_only": 0.9779107990696175,
+          "momentum_realized_beta": -0.02163909347005956
         },
         "xs_v2": {
           "fmp_idio_share": 1.0,
-          "mv_share_long_only": 0.9779390929678066,
-          "momentum_realized_beta": -0.021679892724730653
+          "mv_share_long_only": 0.9779107990696175,
+          "momentum_realized_beta": -0.02163909347005956
         },
         "difference_v1_minus_v2": {
           "fmp_idio_share": 0.0,
@@ -267,32 +267,32 @@
         "champion": {
           "long_only": {
             "fmp_idio_share": 1.0,
-            "mv_share": 0.9779390929678066,
-            "mv_idio_share_after": 0.027618927241181503
+            "mv_share": 0.9779107990696175,
+            "mv_idio_share_after": 0.027672072584072484
           },
           "long_short": {
             "fmp_idio_share": 1.0,
-            "realized_beta_to_mkt_rf": -0.021679892724730653,
-            "mv_idio_share_after": 0.6706682052458411
+            "realized_beta_to_mkt_rf": -0.02163909347005956,
+            "mv_idio_share_after": 0.6696445319908055
           }
         },
         "alternative": {
           "long_only": {
             "fmp_idio_share": 1.0,
-            "mv_share": 0.9779390929678066,
-            "mv_idio_share_after": 0.027607809027895117
+            "mv_share": 0.9779107990696175,
+            "mv_idio_share_after": 0.027650189393471303
           },
           "long_short": {
             "fmp_idio_share": 1.0,
-            "realized_beta_to_mkt_rf": -0.021679892724730653,
-            "mv_idio_share_after": 0.6706682052458411
+            "realized_beta_to_mkt_rf": -0.02163909347005956,
+            "mv_idio_share_after": 0.6696445319908055
           }
         },
         "difference_champion_minus_alternative": {
           "long_only": {
             "fmp_idio_share": 0.0,
             "mv_share": 0.0,
-            "mv_idio_share_after": 1.1118213286386014e-05
+            "mv_idio_share_after": 2.188319060118099e-05
           },
           "long_short": {
             "fmp_idio_share": 0.0,
@@ -309,23 +309,23 @@
       "threshold": "per-factor post-hedge exposure stored for the instrument set",
       "stored_numbers": {
         "mean_abs_exposure_after_instrument_hedge": {
-          "beta": 0.045495086505612535,
-          "liquidity": 0.3257063240212508,
-          "market": 0.012869461738927763,
-          "momentum": 0.049154786755147166,
-          "resid_vol": 0.08900597050191536,
-          "reversal": 0.11405399851621935,
-          "sector_10": 0.02721052916265693,
-          "sector_15": 0.016971896911814496,
-          "sector_20": 0.06819269481709968,
-          "sector_25": 0.05645753760812114,
-          "sector_30": 0.0561262138881744,
-          "sector_35": 0.0751928980194371,
-          "sector_40": 0.09005309478050393,
-          "sector_45": 0.1339156733189977,
-          "sector_50": 0.0458464347370145,
-          "sector_55": 0.032187404476300446,
-          "size": 0.3844321340161622
+          "beta": 0.04519878339310483,
+          "liquidity": 0.3271884547619967,
+          "market": 0.01280566968434344,
+          "momentum": 0.0491461611639981,
+          "resid_vol": 0.08889057104922597,
+          "reversal": 0.11374655434627315,
+          "sector_10": 0.027257154237382265,
+          "sector_15": 0.01695220824494835,
+          "sector_20": 0.06831667402252319,
+          "sector_25": 0.05633260693132904,
+          "sector_30": 0.0565855968783586,
+          "sector_35": 0.07550686897276147,
+          "sector_40": 0.09030842583129527,
+          "sector_45": 0.1341315602790784,
+          "sector_50": 0.04586201623430585,
+          "sector_55": 0.03234612381066853,
+          "size": 0.38575667580980666
         },
         "design_vintages": {
           "stale 2012-01-31 (the panel reaches past the close and the model has published no row for 2012-02-01)": 1,
@@ -505,7 +505,7 @@
           "stale 2026-07-31 (the panel reaches past the close and the model has published no row for 2026-08-03)": 1,
           "stale 2026-08-31 (the panel reaches past the close and the model has published no row for 2026-09-01)": 1
         },
-        "worst_next_row_distance": 3.856266381605092
+        "worst_next_row_distance": 3.862012183411623
       },
       "verdict": "pass",
       "note": "Averaged over the long-only seed book's rebalance dates; the instrument set cannot span every factor and this is the gap. The exposures are read in the design the hedge was built against, so the gap is the instrument set's own, and the vintage each hedge used is stored beside it: F6.1 is the one that is re-read through the row the next session carries, because that is the row the book earns."
@@ -526,13 +526,20 @@
   },
   "revisions": {
     "previous_data_hash": null,
-    "data_hash": "b774d460605c8d3b5edba6c63354c1de3fbc68974a822c37982dee07bd63cc0d",
-    "n_changed": 0,
-    "changed_tickers_or_criteria": [],
+    "data_hash": "f5cea5fcf99468a4c45ffb9403ed5044d37ae260793f6b58157bc3f1d255aa79",
+    "n_changed": 6,
+    "changed_tickers_or_criteria": [
+      "F6.1",
+      "F6.2",
+      "F6.3",
+      "F6.4",
+      "F6.4b",
+      "F6.5"
+    ],
     "cross_sprint_criteria": [],
     "changed": {
       "F6.1": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "fail",
           "criterion": "Full FMP hedge drives every factor exposure below 1e-6 in absolute value and lifts the idio share of variance above 95%.",
@@ -734,10 +741,10 @@
           "criterion": "Full FMP hedge drives every factor exposure below 1e-6 in absolute value and lifts the idio share of variance above 95%.",
           "threshold": "every factor's post-FMP exposure below 1e-6 in absolute value, read through the row the next session carries",
           "stored_numbers": {
-            "worst_abs_exposure_after_fmp": 5.492134524942571e-15,
-            "worst_abs_exposure_after_fmp_next_row": 0.13526022643449995,
-            "mean_abs_exposure_after_fmp_next_row": 0.0020183623402982723,
-            "worst_next_row_distance": 3.856266381605092,
+            "worst_abs_exposure_after_fmp": 5.483460907562687e-15,
+            "worst_abs_exposure_after_fmp_next_row": 0.1408196496809009,
+            "mean_abs_exposure_after_fmp_next_row": 0.0016047806053531642,
+            "worst_next_row_distance": 3.862012183411623,
             "n_dates_scored_on_the_next_row": 176,
             "n_exposure_rows_without_a_next_row": 0,
             "design_vintages": {
@@ -919,15 +926,15 @@
               "stale 2026-08-31 (the panel reaches past the close and the model has published no row for 2026-09-01)": 1
             },
             "mean_idio_share_after_fmp": 1.0,
-            "worst_abs_exposure_after_fmp_capped_stored": 0.7448583947758431,
+            "worst_abs_exposure_after_fmp_capped_stored": 0.7437049343456419,
             "mean_fmp_name_count": 461.5738636363636,
-            "mean_fmp_name_count_capped": 460.67045454545456,
+            "mean_fmp_name_count_capped": 461.5738636363636,
             "n_fmp_dates": 176
           }
         }
       },
       "F6.2": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "criterion": "ETF minimum-variance hedge removes more than 70% of the factor variance of the long-only seed book. ETFs cannot span every factor; the residual is reported.",
@@ -947,8 +954,8 @@
           "threshold": "long-only seed book factor variance removed above 70%",
           "stored_numbers": {
             "mean_factor_variance_removed_share": {
-              "xs_v1": 0.9779390929678066,
-              "xs_v2": 0.9779390929678066
+              "xs_v1": 0.9779107990696175,
+              "xs_v2": 0.9779107990696175
             },
             "mean_n_instruments": 13.034090909090908,
             "residual_reported": "per-factor post-hedge exposures in F6.5"
@@ -956,7 +963,7 @@
         }
       },
       "F6.3": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "criterion": "Realized: the hedged momentum long/short book has a beta to Mkt-RF within plus or minus 0.1 over 2018 to 2026.",
@@ -975,15 +982,15 @@
           "threshold": "realized beta to Mkt-RF inside +/- 0.1 over 2018 to 2026",
           "stored_numbers": {
             "realized_beta_to_mkt_rf": {
-              "xs_v1": -0.021679892724730653,
-              "xs_v2": -0.021679892724730653
+              "xs_v1": -0.02163909347005956,
+              "xs_v2": -0.02163909347005956
             },
             "unhedged_realized_beta_to_mkt_rf": -0.045430017357877786
           }
         }
       },
       "F6.4": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "criterion": "New in E6: every headline hedge result stored under the champion model and under the alternative model, with the difference stored.",
@@ -1013,13 +1020,13 @@
           "stored_numbers": {
             "xs_v1": {
               "fmp_idio_share": 1.0,
-              "mv_share_long_only": 0.9779390929678066,
-              "momentum_realized_beta": -0.021679892724730653
+              "mv_share_long_only": 0.9779107990696175,
+              "momentum_realized_beta": -0.02163909347005956
             },
             "xs_v2": {
               "fmp_idio_share": 1.0,
-              "mv_share_long_only": 0.9779390929678066,
-              "momentum_realized_beta": -0.021679892724730653
+              "mv_share_long_only": 0.9779107990696175,
+              "momentum_realized_beta": -0.02163909347005956
             },
             "difference_v1_minus_v2": {
               "fmp_idio_share": 0.0,
@@ -1030,7 +1037,7 @@
         }
       },
       "F6.4b": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "criterion": "Registered in E8 Task 0b, not pre-registered: F6.4 is rerun against a real alternative, the per-portfolio-family best-calibrated model in E5's family table, and the difference is stored.",
@@ -1102,32 +1109,32 @@
             "champion": {
               "long_only": {
                 "fmp_idio_share": 1.0,
-                "mv_share": 0.9779390929678066,
-                "mv_idio_share_after": 0.027618927241181503
+                "mv_share": 0.9779107990696175,
+                "mv_idio_share_after": 0.027672072584072484
               },
               "long_short": {
                 "fmp_idio_share": 1.0,
-                "realized_beta_to_mkt_rf": -0.021679892724730653,
-                "mv_idio_share_after": 0.6706682052458411
+                "realized_beta_to_mkt_rf": -0.02163909347005956,
+                "mv_idio_share_after": 0.6696445319908055
               }
             },
             "alternative": {
               "long_only": {
                 "fmp_idio_share": 1.0,
-                "mv_share": 0.9779390929678066,
-                "mv_idio_share_after": 0.027607809027895117
+                "mv_share": 0.9779107990696175,
+                "mv_idio_share_after": 0.027650189393471303
               },
               "long_short": {
                 "fmp_idio_share": 1.0,
-                "realized_beta_to_mkt_rf": -0.021679892724730653,
-                "mv_idio_share_after": 0.6706682052458411
+                "realized_beta_to_mkt_rf": -0.02163909347005956,
+                "mv_idio_share_after": 0.6696445319908055
               }
             },
             "difference_champion_minus_alternative": {
               "long_only": {
                 "fmp_idio_share": 0.0,
                 "mv_share": 0.0,
-                "mv_idio_share_after": 1.1118213286386014e-05
+                "mv_idio_share_after": 2.188319060118099e-05
               },
               "long_short": {
                 "fmp_idio_share": 0.0,
@@ -1139,7 +1146,7 @@
         }
       },
       "F6.5": {
-        "changed": false,
+        "changed": true,
         "old": {
           "verdict": "pass",
           "criterion": "New in E6: the residual factor exposure the instrument set cannot reach, quantified per factor, with the design vintage the hedge was built against stored beside it.",
@@ -1351,23 +1358,23 @@
           "threshold": "per-factor post-hedge exposure stored for the instrument set",
           "stored_numbers": {
             "mean_abs_exposure_after_instrument_hedge": {
-              "beta": 0.045495086505612535,
-              "liquidity": 0.3257063240212508,
-              "market": 0.012869461738927763,
-              "momentum": 0.049154786755147166,
-              "resid_vol": 0.08900597050191536,
-              "reversal": 0.11405399851621935,
-              "sector_10": 0.02721052916265693,
-              "sector_15": 0.016971896911814496,
-              "sector_20": 0.06819269481709968,
-              "sector_25": 0.05645753760812114,
-              "sector_30": 0.0561262138881744,
-              "sector_35": 0.0751928980194371,
-              "sector_40": 0.09005309478050393,
-              "sector_45": 0.1339156733189977,
-              "sector_50": 0.0458464347370145,
-              "sector_55": 0.032187404476300446,
-              "size": 0.3844321340161622
+              "beta": 0.04519878339310483,
+              "liquidity": 0.3271884547619967,
+              "market": 0.01280566968434344,
+              "momentum": 0.0491461611639981,
+              "resid_vol": 0.08889057104922597,
+              "reversal": 0.11374655434627315,
+              "sector_10": 0.027257154237382265,
+              "sector_15": 0.01695220824494835,
+              "sector_20": 0.06831667402252319,
+              "sector_25": 0.05633260693132904,
+              "sector_30": 0.0565855968783586,
+              "sector_35": 0.07550686897276147,
+              "sector_40": 0.09030842583129527,
+              "sector_45": 0.1341315602790784,
+              "sector_50": 0.04586201623430585,
+              "sector_55": 0.03234612381066853,
+              "size": 0.38575667580980666
             },
             "design_vintages": {
               "stale 2012-01-31 (the panel reaches past the close and the model has published no row for 2012-02-01)": 1,
@@ -1547,7 +1554,7 @@
               "stale 2026-07-31 (the panel reaches past the close and the model has published no row for 2026-08-03)": 1,
               "stale 2026-08-31 (the panel reaches past the close and the model has published no row for 2026-09-01)": 1
             },
-            "worst_next_row_distance": 3.856266381605092
+            "worst_next_row_distance": 3.862012183411623
           }
         }
       },
@@ -2801,11 +2808,1074 @@
             }
           }
         }
+      },
+      {
+        "previous_data_hash": null,
+        "data_hash": "f5cea5fcf99468a4c45ffb9403ed5044d37ae260793f6b58157bc3f1d255aa79",
+        "n_changed": 6,
+        "changed_tickers_or_criteria": [
+          "F6.1",
+          "F6.2",
+          "F6.3",
+          "F6.4",
+          "F6.4b",
+          "F6.5"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F6.1": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Full FMP hedge drives every factor exposure below 1e-6 in absolute value and lifts the idio share of variance above 95%.",
+              "threshold": "every factor's post-FMP exposure below 1e-6 in absolute value, read through the row the next session carries",
+              "stored_numbers": {
+                "worst_abs_exposure_after_fmp": 5.492134524942571e-15,
+                "worst_abs_exposure_after_fmp_next_row": 0.13526022643449995,
+                "mean_abs_exposure_after_fmp_next_row": 0.0020183623402982723,
+                "worst_next_row_distance": 3.856266381605092,
+                "n_dates_scored_on_the_next_row": 176,
+                "n_exposure_rows_without_a_next_row": 0,
+                "design_vintages": {
+                  "stale 2012-01-31 (the panel reaches past the close and the model has published no row for 2012-02-01)": 1,
+                  "stale 2012-02-29 (the panel reaches past the close and the model has published no row for 2012-03-01)": 1,
+                  "stale 2012-03-30 (the panel reaches past the close and the model has published no row for 2012-04-02)": 1,
+                  "stale 2012-04-30 (the panel reaches past the close and the model has published no row for 2012-05-01)": 1,
+                  "stale 2012-05-31 (the panel reaches past the close and the model has published no row for 2012-06-01)": 1,
+                  "stale 2012-06-29 (the panel reaches past the close and the model has published no row for 2012-07-02)": 1,
+                  "stale 2012-07-31 (the panel reaches past the close and the model has published no row for 2012-08-01)": 1,
+                  "stale 2012-08-31 (the panel reaches past the close and the model has published no row for 2012-09-04)": 1,
+                  "stale 2012-09-28 (the panel reaches past the close and the model has published no row for 2012-10-01)": 1,
+                  "stale 2012-10-31 (the panel reaches past the close and the model has published no row for 2012-11-01)": 1,
+                  "stale 2012-11-30 (the panel reaches past the close and the model has published no row for 2012-12-03)": 1,
+                  "stale 2012-12-31 (the panel reaches past the close and the model has published no row for 2013-01-02)": 1,
+                  "stale 2013-01-31 (the panel reaches past the close and the model has published no row for 2013-02-01)": 1,
+                  "stale 2013-02-28 (the panel reaches past the close and the model has published no row for 2013-03-01)": 1,
+                  "stale 2013-03-28 (the panel reaches past the close and the model has published no row for 2013-04-01)": 1,
+                  "stale 2013-04-30 (the panel reaches past the close and the model has published no row for 2013-05-01)": 1,
+                  "stale 2013-05-31 (the panel reaches past the close and the model has published no row for 2013-06-03)": 1,
+                  "stale 2013-06-28 (the panel reaches past the close and the model has published no row for 2013-07-01)": 1,
+                  "stale 2013-07-31 (the panel reaches past the close and the model has published no row for 2013-08-01)": 1,
+                  "stale 2013-08-30 (the panel reaches past the close and the model has published no row for 2013-09-03)": 1,
+                  "stale 2013-09-30 (the panel reaches past the close and the model has published no row for 2013-10-01)": 1,
+                  "stale 2013-10-31 (the panel reaches past the close and the model has published no row for 2013-11-01)": 1,
+                  "stale 2013-11-29 (the panel reaches past the close and the model has published no row for 2013-12-02)": 1,
+                  "stale 2013-12-31 (the panel reaches past the close and the model has published no row for 2014-01-02)": 1,
+                  "stale 2014-01-31 (the panel reaches past the close and the model has published no row for 2014-02-03)": 1,
+                  "stale 2014-02-28 (the panel reaches past the close and the model has published no row for 2014-03-03)": 1,
+                  "stale 2014-03-31 (the panel reaches past the close and the model has published no row for 2014-04-01)": 1,
+                  "stale 2014-04-30 (the panel reaches past the close and the model has published no row for 2014-05-01)": 1,
+                  "stale 2014-05-30 (the panel reaches past the close and the model has published no row for 2014-06-02)": 1,
+                  "stale 2014-06-30 (the panel reaches past the close and the model has published no row for 2014-07-01)": 1,
+                  "stale 2014-07-31 (the panel reaches past the close and the model has published no row for 2014-08-01)": 1,
+                  "stale 2014-08-29 (the panel reaches past the close and the model has published no row for 2014-09-02)": 1,
+                  "stale 2014-09-30 (the panel reaches past the close and the model has published no row for 2014-10-01)": 1,
+                  "stale 2014-10-31 (the panel reaches past the close and the model has published no row for 2014-11-03)": 1,
+                  "stale 2014-11-28 (the panel reaches past the close and the model has published no row for 2014-12-01)": 1,
+                  "stale 2014-12-31 (the panel reaches past the close and the model has published no row for 2015-01-02)": 1,
+                  "stale 2015-01-30 (the panel reaches past the close and the model has published no row for 2015-02-02)": 1,
+                  "stale 2015-02-27 (the panel reaches past the close and the model has published no row for 2015-03-02)": 1,
+                  "stale 2015-03-31 (the panel reaches past the close and the model has published no row for 2015-04-01)": 1,
+                  "stale 2015-04-30 (the panel reaches past the close and the model has published no row for 2015-05-01)": 1,
+                  "stale 2015-05-29 (the panel reaches past the close and the model has published no row for 2015-06-01)": 1,
+                  "stale 2015-06-30 (the panel reaches past the close and the model has published no row for 2015-07-01)": 1,
+                  "stale 2015-07-31 (the panel reaches past the close and the model has published no row for 2015-08-03)": 1,
+                  "stale 2015-08-31 (the panel reaches past the close and the model has published no row for 2015-09-01)": 1,
+                  "stale 2015-09-30 (the panel reaches past the close and the model has published no row for 2015-10-01)": 1,
+                  "stale 2015-10-30 (the panel reaches past the close and the model has published no row for 2015-11-02)": 1,
+                  "stale 2015-11-30 (the panel reaches past the close and the model has published no row for 2015-12-01)": 1,
+                  "stale 2015-12-31 (the panel reaches past the close and the model has published no row for 2016-01-04)": 1,
+                  "stale 2016-01-29 (the panel reaches past the close and the model has published no row for 2016-02-01)": 1,
+                  "stale 2016-02-29 (the panel reaches past the close and the model has published no row for 2016-03-01)": 1,
+                  "stale 2016-03-31 (the panel reaches past the close and the model has published no row for 2016-04-01)": 1,
+                  "stale 2016-04-29 (the panel reaches past the close and the model has published no row for 2016-05-02)": 1,
+                  "stale 2016-05-31 (the panel reaches past the close and the model has published no row for 2016-06-01)": 1,
+                  "stale 2016-06-30 (the panel reaches past the close and the model has published no row for 2016-07-01)": 1,
+                  "stale 2016-07-29 (the panel reaches past the close and the model has published no row for 2016-08-01)": 1,
+                  "stale 2016-08-31 (the panel reaches past the close and the model has published no row for 2016-09-01)": 1,
+                  "stale 2016-09-30 (the panel reaches past the close and the model has published no row for 2016-10-03)": 1,
+                  "stale 2016-10-31 (the panel reaches past the close and the model has published no row for 2016-11-01)": 1,
+                  "stale 2016-11-30 (the panel reaches past the close and the model has published no row for 2016-12-01)": 1,
+                  "stale 2016-12-30 (the panel reaches past the close and the model has published no row for 2017-01-03)": 1,
+                  "stale 2017-01-31 (the panel reaches past the close and the model has published no row for 2017-02-01)": 1,
+                  "stale 2017-02-28 (the panel reaches past the close and the model has published no row for 2017-03-01)": 1,
+                  "stale 2017-03-31 (the panel reaches past the close and the model has published no row for 2017-04-03)": 1,
+                  "stale 2017-04-28 (the panel reaches past the close and the model has published no row for 2017-05-01)": 1,
+                  "stale 2017-05-31 (the panel reaches past the close and the model has published no row for 2017-06-01)": 1,
+                  "stale 2017-06-30 (the panel reaches past the close and the model has published no row for 2017-07-03)": 1,
+                  "stale 2017-07-31 (the panel reaches past the close and the model has published no row for 2017-08-01)": 1,
+                  "stale 2017-08-31 (the panel reaches past the close and the model has published no row for 2017-09-01)": 1,
+                  "stale 2017-09-29 (the panel reaches past the close and the model has published no row for 2017-10-02)": 1,
+                  "stale 2017-10-31 (the panel reaches past the close and the model has published no row for 2017-11-01)": 1,
+                  "stale 2017-11-30 (the panel reaches past the close and the model has published no row for 2017-12-01)": 1,
+                  "stale 2017-12-29 (the panel reaches past the close and the model has published no row for 2018-01-02)": 1,
+                  "stale 2018-01-31 (the panel reaches past the close and the model has published no row for 2018-02-01)": 1,
+                  "stale 2018-02-28 (the panel reaches past the close and the model has published no row for 2018-03-01)": 1,
+                  "stale 2018-03-29 (the panel reaches past the close and the model has published no row for 2018-04-02)": 1,
+                  "stale 2018-04-30 (the panel reaches past the close and the model has published no row for 2018-05-01)": 1,
+                  "stale 2018-05-31 (the panel reaches past the close and the model has published no row for 2018-06-01)": 1,
+                  "stale 2018-06-29 (the panel reaches past the close and the model has published no row for 2018-07-02)": 1,
+                  "stale 2018-07-31 (the panel reaches past the close and the model has published no row for 2018-08-01)": 1,
+                  "stale 2018-08-31 (the panel reaches past the close and the model has published no row for 2018-09-04)": 1,
+                  "stale 2018-09-28 (the panel reaches past the close and the model has published no row for 2018-10-01)": 1,
+                  "stale 2018-10-31 (the panel reaches past the close and the model has published no row for 2018-11-01)": 1,
+                  "stale 2018-11-30 (the panel reaches past the close and the model has published no row for 2018-12-03)": 1,
+                  "stale 2018-12-31 (the panel reaches past the close and the model has published no row for 2019-01-02)": 1,
+                  "stale 2019-01-31 (the panel reaches past the close and the model has published no row for 2019-02-01)": 1,
+                  "stale 2019-02-28 (the panel reaches past the close and the model has published no row for 2019-03-01)": 1,
+                  "stale 2019-03-29 (the panel reaches past the close and the model has published no row for 2019-04-01)": 1,
+                  "stale 2019-04-30 (the panel reaches past the close and the model has published no row for 2019-05-01)": 1,
+                  "stale 2019-05-31 (the panel reaches past the close and the model has published no row for 2019-06-03)": 1,
+                  "stale 2019-06-28 (the panel reaches past the close and the model has published no row for 2019-07-01)": 1,
+                  "stale 2019-07-31 (the panel reaches past the close and the model has published no row for 2019-08-01)": 1,
+                  "stale 2019-08-30 (the panel reaches past the close and the model has published no row for 2019-09-03)": 1,
+                  "stale 2019-09-30 (the panel reaches past the close and the model has published no row for 2019-10-01)": 1,
+                  "stale 2019-10-31 (the panel reaches past the close and the model has published no row for 2019-11-01)": 1,
+                  "stale 2019-11-29 (the panel reaches past the close and the model has published no row for 2019-12-02)": 1,
+                  "stale 2019-12-31 (the panel reaches past the close and the model has published no row for 2020-01-02)": 1,
+                  "stale 2020-01-31 (the panel reaches past the close and the model has published no row for 2020-02-03)": 1,
+                  "stale 2020-02-28 (the panel reaches past the close and the model has published no row for 2020-03-02)": 1,
+                  "stale 2020-03-31 (the panel reaches past the close and the model has published no row for 2020-04-01)": 1,
+                  "stale 2020-04-30 (the panel reaches past the close and the model has published no row for 2020-05-01)": 1,
+                  "stale 2020-05-29 (the panel reaches past the close and the model has published no row for 2020-06-01)": 1,
+                  "stale 2020-06-30 (the panel reaches past the close and the model has published no row for 2020-07-01)": 1,
+                  "stale 2020-07-31 (the panel reaches past the close and the model has published no row for 2020-08-03)": 1,
+                  "stale 2020-08-31 (the panel reaches past the close and the model has published no row for 2020-09-01)": 1,
+                  "stale 2020-09-30 (the panel reaches past the close and the model has published no row for 2020-10-01)": 1,
+                  "stale 2020-10-30 (the panel reaches past the close and the model has published no row for 2020-11-02)": 1,
+                  "stale 2020-11-30 (the panel reaches past the close and the model has published no row for 2020-12-01)": 1,
+                  "stale 2020-12-31 (the panel reaches past the close and the model has published no row for 2021-01-04)": 1,
+                  "stale 2021-01-29 (the panel reaches past the close and the model has published no row for 2021-02-01)": 1,
+                  "stale 2021-02-26 (the panel reaches past the close and the model has published no row for 2021-03-01)": 1,
+                  "stale 2021-03-31 (the panel reaches past the close and the model has published no row for 2021-04-01)": 1,
+                  "stale 2021-04-30 (the panel reaches past the close and the model has published no row for 2021-05-03)": 1,
+                  "stale 2021-05-28 (the panel reaches past the close and the model has published no row for 2021-06-01)": 1,
+                  "stale 2021-06-30 (the panel reaches past the close and the model has published no row for 2021-07-01)": 1,
+                  "stale 2021-07-30 (the panel reaches past the close and the model has published no row for 2021-08-02)": 1,
+                  "stale 2021-08-31 (the panel reaches past the close and the model has published no row for 2021-09-01)": 1,
+                  "stale 2021-09-30 (the panel reaches past the close and the model has published no row for 2021-10-01)": 1,
+                  "stale 2021-10-29 (the panel reaches past the close and the model has published no row for 2021-11-01)": 1,
+                  "stale 2021-11-30 (the panel reaches past the close and the model has published no row for 2021-12-01)": 1,
+                  "stale 2021-12-31 (the panel reaches past the close and the model has published no row for 2022-01-03)": 1,
+                  "stale 2022-01-31 (the panel reaches past the close and the model has published no row for 2022-02-01)": 1,
+                  "stale 2022-02-28 (the panel reaches past the close and the model has published no row for 2022-03-01)": 1,
+                  "stale 2022-03-31 (the panel reaches past the close and the model has published no row for 2022-04-01)": 1,
+                  "stale 2022-04-29 (the panel reaches past the close and the model has published no row for 2022-05-02)": 1,
+                  "stale 2022-05-31 (the panel reaches past the close and the model has published no row for 2022-06-01)": 1,
+                  "stale 2022-06-30 (the panel reaches past the close and the model has published no row for 2022-07-01)": 1,
+                  "stale 2022-07-29 (the panel reaches past the close and the model has published no row for 2022-08-01)": 1,
+                  "stale 2022-08-31 (the panel reaches past the close and the model has published no row for 2022-09-01)": 1,
+                  "stale 2022-09-30 (the panel reaches past the close and the model has published no row for 2022-10-03)": 1,
+                  "stale 2022-10-31 (the panel reaches past the close and the model has published no row for 2022-11-01)": 1,
+                  "stale 2022-11-30 (the panel reaches past the close and the model has published no row for 2022-12-01)": 1,
+                  "stale 2022-12-30 (the panel reaches past the close and the model has published no row for 2023-01-03)": 1,
+                  "stale 2023-01-31 (the panel reaches past the close and the model has published no row for 2023-02-01)": 1,
+                  "stale 2023-02-28 (the panel reaches past the close and the model has published no row for 2023-03-01)": 1,
+                  "stale 2023-03-31 (the panel reaches past the close and the model has published no row for 2023-04-03)": 1,
+                  "stale 2023-04-28 (the panel reaches past the close and the model has published no row for 2023-05-01)": 1,
+                  "stale 2023-05-31 (the panel reaches past the close and the model has published no row for 2023-06-01)": 1,
+                  "stale 2023-06-30 (the panel reaches past the close and the model has published no row for 2023-07-03)": 1,
+                  "stale 2023-07-31 (the panel reaches past the close and the model has published no row for 2023-08-01)": 1,
+                  "stale 2023-08-31 (the panel reaches past the close and the model has published no row for 2023-09-01)": 1,
+                  "stale 2023-09-29 (the panel reaches past the close and the model has published no row for 2023-10-02)": 1,
+                  "stale 2023-10-31 (the panel reaches past the close and the model has published no row for 2023-11-01)": 1,
+                  "stale 2023-11-30 (the panel reaches past the close and the model has published no row for 2023-12-01)": 1,
+                  "stale 2023-12-29 (the panel reaches past the close and the model has published no row for 2024-01-02)": 1,
+                  "stale 2024-01-31 (the panel reaches past the close and the model has published no row for 2024-02-01)": 1,
+                  "stale 2024-02-29 (the panel reaches past the close and the model has published no row for 2024-03-01)": 1,
+                  "stale 2024-03-28 (the panel reaches past the close and the model has published no row for 2024-04-01)": 1,
+                  "stale 2024-04-30 (the panel reaches past the close and the model has published no row for 2024-05-01)": 1,
+                  "stale 2024-05-31 (the panel reaches past the close and the model has published no row for 2024-06-03)": 1,
+                  "stale 2024-06-28 (the panel reaches past the close and the model has published no row for 2024-07-01)": 1,
+                  "stale 2024-07-31 (the panel reaches past the close and the model has published no row for 2024-08-01)": 1,
+                  "stale 2024-08-30 (the panel reaches past the close and the model has published no row for 2024-09-03)": 1,
+                  "stale 2024-09-30 (the panel reaches past the close and the model has published no row for 2024-10-01)": 1,
+                  "stale 2024-10-31 (the panel reaches past the close and the model has published no row for 2024-11-01)": 1,
+                  "stale 2024-11-29 (the panel reaches past the close and the model has published no row for 2024-12-02)": 1,
+                  "stale 2024-12-31 (the panel reaches past the close and the model has published no row for 2025-01-02)": 1,
+                  "stale 2025-01-31 (the panel reaches past the close and the model has published no row for 2025-02-03)": 1,
+                  "stale 2025-02-28 (the panel reaches past the close and the model has published no row for 2025-03-03)": 1,
+                  "stale 2025-03-31 (the panel reaches past the close and the model has published no row for 2025-04-01)": 1,
+                  "stale 2025-04-30 (the panel reaches past the close and the model has published no row for 2025-05-01)": 1,
+                  "stale 2025-05-30 (the panel reaches past the close and the model has published no row for 2025-06-02)": 1,
+                  "stale 2025-06-30 (the panel reaches past the close and the model has published no row for 2025-07-01)": 1,
+                  "stale 2025-07-31 (the panel reaches past the close and the model has published no row for 2025-08-01)": 1,
+                  "stale 2025-08-29 (the panel reaches past the close and the model has published no row for 2025-09-02)": 1,
+                  "stale 2025-09-30 (the panel reaches past the close and the model has published no row for 2025-10-01)": 1,
+                  "stale 2025-10-31 (the panel reaches past the close and the model has published no row for 2025-11-03)": 1,
+                  "stale 2025-11-28 (the panel reaches past the close and the model has published no row for 2025-12-01)": 1,
+                  "stale 2025-12-31 (the panel reaches past the close and the model has published no row for 2026-01-02)": 1,
+                  "stale 2026-01-30 (the panel reaches past the close and the model has published no row for 2026-02-02)": 1,
+                  "stale 2026-02-27 (the panel reaches past the close and the model has published no row for 2026-03-02)": 1,
+                  "stale 2026-03-31 (the panel reaches past the close and the model has published no row for 2026-04-01)": 1,
+                  "stale 2026-04-30 (the panel reaches past the close and the model has published no row for 2026-05-01)": 1,
+                  "stale 2026-05-29 (the panel reaches past the close and the model has published no row for 2026-06-01)": 1,
+                  "stale 2026-06-30 (the panel reaches past the close and the model has published no row for 2026-07-01)": 1,
+                  "stale 2026-07-31 (the panel reaches past the close and the model has published no row for 2026-08-03)": 1,
+                  "stale 2026-08-31 (the panel reaches past the close and the model has published no row for 2026-09-01)": 1
+                },
+                "mean_idio_share_after_fmp": 1.0,
+                "worst_abs_exposure_after_fmp_capped_stored": 0.7448583947758431,
+                "mean_fmp_name_count": 461.5738636363636,
+                "mean_fmp_name_count_capped": 460.67045454545456,
+                "n_fmp_dates": 176
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Full FMP hedge drives every factor exposure below 1e-6 in absolute value and lifts the idio share of variance above 95%.",
+              "threshold": "every factor's post-FMP exposure below 1e-6 in absolute value, read through the row the next session carries",
+              "stored_numbers": {
+                "worst_abs_exposure_after_fmp": 5.483460907562687e-15,
+                "worst_abs_exposure_after_fmp_next_row": 0.1408196496809009,
+                "mean_abs_exposure_after_fmp_next_row": 0.0016047806053531642,
+                "worst_next_row_distance": 3.862012183411623,
+                "n_dates_scored_on_the_next_row": 176,
+                "n_exposure_rows_without_a_next_row": 0,
+                "design_vintages": {
+                  "stale 2012-01-31 (the panel reaches past the close and the model has published no row for 2012-02-01)": 1,
+                  "stale 2012-02-29 (the panel reaches past the close and the model has published no row for 2012-03-01)": 1,
+                  "stale 2012-03-30 (the panel reaches past the close and the model has published no row for 2012-04-02)": 1,
+                  "stale 2012-04-30 (the panel reaches past the close and the model has published no row for 2012-05-01)": 1,
+                  "stale 2012-05-31 (the panel reaches past the close and the model has published no row for 2012-06-01)": 1,
+                  "stale 2012-06-29 (the panel reaches past the close and the model has published no row for 2012-07-02)": 1,
+                  "stale 2012-07-31 (the panel reaches past the close and the model has published no row for 2012-08-01)": 1,
+                  "stale 2012-08-31 (the panel reaches past the close and the model has published no row for 2012-09-04)": 1,
+                  "stale 2012-09-28 (the panel reaches past the close and the model has published no row for 2012-10-01)": 1,
+                  "stale 2012-10-31 (the panel reaches past the close and the model has published no row for 2012-11-01)": 1,
+                  "stale 2012-11-30 (the panel reaches past the close and the model has published no row for 2012-12-03)": 1,
+                  "stale 2012-12-31 (the panel reaches past the close and the model has published no row for 2013-01-02)": 1,
+                  "stale 2013-01-31 (the panel reaches past the close and the model has published no row for 2013-02-01)": 1,
+                  "stale 2013-02-28 (the panel reaches past the close and the model has published no row for 2013-03-01)": 1,
+                  "stale 2013-03-28 (the panel reaches past the close and the model has published no row for 2013-04-01)": 1,
+                  "stale 2013-04-30 (the panel reaches past the close and the model has published no row for 2013-05-01)": 1,
+                  "stale 2013-05-31 (the panel reaches past the close and the model has published no row for 2013-06-03)": 1,
+                  "stale 2013-06-28 (the panel reaches past the close and the model has published no row for 2013-07-01)": 1,
+                  "stale 2013-07-31 (the panel reaches past the close and the model has published no row for 2013-08-01)": 1,
+                  "stale 2013-08-30 (the panel reaches past the close and the model has published no row for 2013-09-03)": 1,
+                  "stale 2013-09-30 (the panel reaches past the close and the model has published no row for 2013-10-01)": 1,
+                  "stale 2013-10-31 (the panel reaches past the close and the model has published no row for 2013-11-01)": 1,
+                  "stale 2013-11-29 (the panel reaches past the close and the model has published no row for 2013-12-02)": 1,
+                  "stale 2013-12-31 (the panel reaches past the close and the model has published no row for 2014-01-02)": 1,
+                  "stale 2014-01-31 (the panel reaches past the close and the model has published no row for 2014-02-03)": 1,
+                  "stale 2014-02-28 (the panel reaches past the close and the model has published no row for 2014-03-03)": 1,
+                  "stale 2014-03-31 (the panel reaches past the close and the model has published no row for 2014-04-01)": 1,
+                  "stale 2014-04-30 (the panel reaches past the close and the model has published no row for 2014-05-01)": 1,
+                  "stale 2014-05-30 (the panel reaches past the close and the model has published no row for 2014-06-02)": 1,
+                  "stale 2014-06-30 (the panel reaches past the close and the model has published no row for 2014-07-01)": 1,
+                  "stale 2014-07-31 (the panel reaches past the close and the model has published no row for 2014-08-01)": 1,
+                  "stale 2014-08-29 (the panel reaches past the close and the model has published no row for 2014-09-02)": 1,
+                  "stale 2014-09-30 (the panel reaches past the close and the model has published no row for 2014-10-01)": 1,
+                  "stale 2014-10-31 (the panel reaches past the close and the model has published no row for 2014-11-03)": 1,
+                  "stale 2014-11-28 (the panel reaches past the close and the model has published no row for 2014-12-01)": 1,
+                  "stale 2014-12-31 (the panel reaches past the close and the model has published no row for 2015-01-02)": 1,
+                  "stale 2015-01-30 (the panel reaches past the close and the model has published no row for 2015-02-02)": 1,
+                  "stale 2015-02-27 (the panel reaches past the close and the model has published no row for 2015-03-02)": 1,
+                  "stale 2015-03-31 (the panel reaches past the close and the model has published no row for 2015-04-01)": 1,
+                  "stale 2015-04-30 (the panel reaches past the close and the model has published no row for 2015-05-01)": 1,
+                  "stale 2015-05-29 (the panel reaches past the close and the model has published no row for 2015-06-01)": 1,
+                  "stale 2015-06-30 (the panel reaches past the close and the model has published no row for 2015-07-01)": 1,
+                  "stale 2015-07-31 (the panel reaches past the close and the model has published no row for 2015-08-03)": 1,
+                  "stale 2015-08-31 (the panel reaches past the close and the model has published no row for 2015-09-01)": 1,
+                  "stale 2015-09-30 (the panel reaches past the close and the model has published no row for 2015-10-01)": 1,
+                  "stale 2015-10-30 (the panel reaches past the close and the model has published no row for 2015-11-02)": 1,
+                  "stale 2015-11-30 (the panel reaches past the close and the model has published no row for 2015-12-01)": 1,
+                  "stale 2015-12-31 (the panel reaches past the close and the model has published no row for 2016-01-04)": 1,
+                  "stale 2016-01-29 (the panel reaches past the close and the model has published no row for 2016-02-01)": 1,
+                  "stale 2016-02-29 (the panel reaches past the close and the model has published no row for 2016-03-01)": 1,
+                  "stale 2016-03-31 (the panel reaches past the close and the model has published no row for 2016-04-01)": 1,
+                  "stale 2016-04-29 (the panel reaches past the close and the model has published no row for 2016-05-02)": 1,
+                  "stale 2016-05-31 (the panel reaches past the close and the model has published no row for 2016-06-01)": 1,
+                  "stale 2016-06-30 (the panel reaches past the close and the model has published no row for 2016-07-01)": 1,
+                  "stale 2016-07-29 (the panel reaches past the close and the model has published no row for 2016-08-01)": 1,
+                  "stale 2016-08-31 (the panel reaches past the close and the model has published no row for 2016-09-01)": 1,
+                  "stale 2016-09-30 (the panel reaches past the close and the model has published no row for 2016-10-03)": 1,
+                  "stale 2016-10-31 (the panel reaches past the close and the model has published no row for 2016-11-01)": 1,
+                  "stale 2016-11-30 (the panel reaches past the close and the model has published no row for 2016-12-01)": 1,
+                  "stale 2016-12-30 (the panel reaches past the close and the model has published no row for 2017-01-03)": 1,
+                  "stale 2017-01-31 (the panel reaches past the close and the model has published no row for 2017-02-01)": 1,
+                  "stale 2017-02-28 (the panel reaches past the close and the model has published no row for 2017-03-01)": 1,
+                  "stale 2017-03-31 (the panel reaches past the close and the model has published no row for 2017-04-03)": 1,
+                  "stale 2017-04-28 (the panel reaches past the close and the model has published no row for 2017-05-01)": 1,
+                  "stale 2017-05-31 (the panel reaches past the close and the model has published no row for 2017-06-01)": 1,
+                  "stale 2017-06-30 (the panel reaches past the close and the model has published no row for 2017-07-03)": 1,
+                  "stale 2017-07-31 (the panel reaches past the close and the model has published no row for 2017-08-01)": 1,
+                  "stale 2017-08-31 (the panel reaches past the close and the model has published no row for 2017-09-01)": 1,
+                  "stale 2017-09-29 (the panel reaches past the close and the model has published no row for 2017-10-02)": 1,
+                  "stale 2017-10-31 (the panel reaches past the close and the model has published no row for 2017-11-01)": 1,
+                  "stale 2017-11-30 (the panel reaches past the close and the model has published no row for 2017-12-01)": 1,
+                  "stale 2017-12-29 (the panel reaches past the close and the model has published no row for 2018-01-02)": 1,
+                  "stale 2018-01-31 (the panel reaches past the close and the model has published no row for 2018-02-01)": 1,
+                  "stale 2018-02-28 (the panel reaches past the close and the model has published no row for 2018-03-01)": 1,
+                  "stale 2018-03-29 (the panel reaches past the close and the model has published no row for 2018-04-02)": 1,
+                  "stale 2018-04-30 (the panel reaches past the close and the model has published no row for 2018-05-01)": 1,
+                  "stale 2018-05-31 (the panel reaches past the close and the model has published no row for 2018-06-01)": 1,
+                  "stale 2018-06-29 (the panel reaches past the close and the model has published no row for 2018-07-02)": 1,
+                  "stale 2018-07-31 (the panel reaches past the close and the model has published no row for 2018-08-01)": 1,
+                  "stale 2018-08-31 (the panel reaches past the close and the model has published no row for 2018-09-04)": 1,
+                  "stale 2018-09-28 (the panel reaches past the close and the model has published no row for 2018-10-01)": 1,
+                  "stale 2018-10-31 (the panel reaches past the close and the model has published no row for 2018-11-01)": 1,
+                  "stale 2018-11-30 (the panel reaches past the close and the model has published no row for 2018-12-03)": 1,
+                  "stale 2018-12-31 (the panel reaches past the close and the model has published no row for 2019-01-02)": 1,
+                  "stale 2019-01-31 (the panel reaches past the close and the model has published no row for 2019-02-01)": 1,
+                  "stale 2019-02-28 (the panel reaches past the close and the model has published no row for 2019-03-01)": 1,
+                  "stale 2019-03-29 (the panel reaches past the close and the model has published no row for 2019-04-01)": 1,
+                  "stale 2019-04-30 (the panel reaches past the close and the model has published no row for 2019-05-01)": 1,
+                  "stale 2019-05-31 (the panel reaches past the close and the model has published no row for 2019-06-03)": 1,
+                  "stale 2019-06-28 (the panel reaches past the close and the model has published no row for 2019-07-01)": 1,
+                  "stale 2019-07-31 (the panel reaches past the close and the model has published no row for 2019-08-01)": 1,
+                  "stale 2019-08-30 (the panel reaches past the close and the model has published no row for 2019-09-03)": 1,
+                  "stale 2019-09-30 (the panel reaches past the close and the model has published no row for 2019-10-01)": 1,
+                  "stale 2019-10-31 (the panel reaches past the close and the model has published no row for 2019-11-01)": 1,
+                  "stale 2019-11-29 (the panel reaches past the close and the model has published no row for 2019-12-02)": 1,
+                  "stale 2019-12-31 (the panel reaches past the close and the model has published no row for 2020-01-02)": 1,
+                  "stale 2020-01-31 (the panel reaches past the close and the model has published no row for 2020-02-03)": 1,
+                  "stale 2020-02-28 (the panel reaches past the close and the model has published no row for 2020-03-02)": 1,
+                  "stale 2020-03-31 (the panel reaches past the close and the model has published no row for 2020-04-01)": 1,
+                  "stale 2020-04-30 (the panel reaches past the close and the model has published no row for 2020-05-01)": 1,
+                  "stale 2020-05-29 (the panel reaches past the close and the model has published no row for 2020-06-01)": 1,
+                  "stale 2020-06-30 (the panel reaches past the close and the model has published no row for 2020-07-01)": 1,
+                  "stale 2020-07-31 (the panel reaches past the close and the model has published no row for 2020-08-03)": 1,
+                  "stale 2020-08-31 (the panel reaches past the close and the model has published no row for 2020-09-01)": 1,
+                  "stale 2020-09-30 (the panel reaches past the close and the model has published no row for 2020-10-01)": 1,
+                  "stale 2020-10-30 (the panel reaches past the close and the model has published no row for 2020-11-02)": 1,
+                  "stale 2020-11-30 (the panel reaches past the close and the model has published no row for 2020-12-01)": 1,
+                  "stale 2020-12-31 (the panel reaches past the close and the model has published no row for 2021-01-04)": 1,
+                  "stale 2021-01-29 (the panel reaches past the close and the model has published no row for 2021-02-01)": 1,
+                  "stale 2021-02-26 (the panel reaches past the close and the model has published no row for 2021-03-01)": 1,
+                  "stale 2021-03-31 (the panel reaches past the close and the model has published no row for 2021-04-01)": 1,
+                  "stale 2021-04-30 (the panel reaches past the close and the model has published no row for 2021-05-03)": 1,
+                  "stale 2021-05-28 (the panel reaches past the close and the model has published no row for 2021-06-01)": 1,
+                  "stale 2021-06-30 (the panel reaches past the close and the model has published no row for 2021-07-01)": 1,
+                  "stale 2021-07-30 (the panel reaches past the close and the model has published no row for 2021-08-02)": 1,
+                  "stale 2021-08-31 (the panel reaches past the close and the model has published no row for 2021-09-01)": 1,
+                  "stale 2021-09-30 (the panel reaches past the close and the model has published no row for 2021-10-01)": 1,
+                  "stale 2021-10-29 (the panel reaches past the close and the model has published no row for 2021-11-01)": 1,
+                  "stale 2021-11-30 (the panel reaches past the close and the model has published no row for 2021-12-01)": 1,
+                  "stale 2021-12-31 (the panel reaches past the close and the model has published no row for 2022-01-03)": 1,
+                  "stale 2022-01-31 (the panel reaches past the close and the model has published no row for 2022-02-01)": 1,
+                  "stale 2022-02-28 (the panel reaches past the close and the model has published no row for 2022-03-01)": 1,
+                  "stale 2022-03-31 (the panel reaches past the close and the model has published no row for 2022-04-01)": 1,
+                  "stale 2022-04-29 (the panel reaches past the close and the model has published no row for 2022-05-02)": 1,
+                  "stale 2022-05-31 (the panel reaches past the close and the model has published no row for 2022-06-01)": 1,
+                  "stale 2022-06-30 (the panel reaches past the close and the model has published no row for 2022-07-01)": 1,
+                  "stale 2022-07-29 (the panel reaches past the close and the model has published no row for 2022-08-01)": 1,
+                  "stale 2022-08-31 (the panel reaches past the close and the model has published no row for 2022-09-01)": 1,
+                  "stale 2022-09-30 (the panel reaches past the close and the model has published no row for 2022-10-03)": 1,
+                  "stale 2022-10-31 (the panel reaches past the close and the model has published no row for 2022-11-01)": 1,
+                  "stale 2022-11-30 (the panel reaches past the close and the model has published no row for 2022-12-01)": 1,
+                  "stale 2022-12-30 (the panel reaches past the close and the model has published no row for 2023-01-03)": 1,
+                  "stale 2023-01-31 (the panel reaches past the close and the model has published no row for 2023-02-01)": 1,
+                  "stale 2023-02-28 (the panel reaches past the close and the model has published no row for 2023-03-01)": 1,
+                  "stale 2023-03-31 (the panel reaches past the close and the model has published no row for 2023-04-03)": 1,
+                  "stale 2023-04-28 (the panel reaches past the close and the model has published no row for 2023-05-01)": 1,
+                  "stale 2023-05-31 (the panel reaches past the close and the model has published no row for 2023-06-01)": 1,
+                  "stale 2023-06-30 (the panel reaches past the close and the model has published no row for 2023-07-03)": 1,
+                  "stale 2023-07-31 (the panel reaches past the close and the model has published no row for 2023-08-01)": 1,
+                  "stale 2023-08-31 (the panel reaches past the close and the model has published no row for 2023-09-01)": 1,
+                  "stale 2023-09-29 (the panel reaches past the close and the model has published no row for 2023-10-02)": 1,
+                  "stale 2023-10-31 (the panel reaches past the close and the model has published no row for 2023-11-01)": 1,
+                  "stale 2023-11-30 (the panel reaches past the close and the model has published no row for 2023-12-01)": 1,
+                  "stale 2023-12-29 (the panel reaches past the close and the model has published no row for 2024-01-02)": 1,
+                  "stale 2024-01-31 (the panel reaches past the close and the model has published no row for 2024-02-01)": 1,
+                  "stale 2024-02-29 (the panel reaches past the close and the model has published no row for 2024-03-01)": 1,
+                  "stale 2024-03-28 (the panel reaches past the close and the model has published no row for 2024-04-01)": 1,
+                  "stale 2024-04-30 (the panel reaches past the close and the model has published no row for 2024-05-01)": 1,
+                  "stale 2024-05-31 (the panel reaches past the close and the model has published no row for 2024-06-03)": 1,
+                  "stale 2024-06-28 (the panel reaches past the close and the model has published no row for 2024-07-01)": 1,
+                  "stale 2024-07-31 (the panel reaches past the close and the model has published no row for 2024-08-01)": 1,
+                  "stale 2024-08-30 (the panel reaches past the close and the model has published no row for 2024-09-03)": 1,
+                  "stale 2024-09-30 (the panel reaches past the close and the model has published no row for 2024-10-01)": 1,
+                  "stale 2024-10-31 (the panel reaches past the close and the model has published no row for 2024-11-01)": 1,
+                  "stale 2024-11-29 (the panel reaches past the close and the model has published no row for 2024-12-02)": 1,
+                  "stale 2024-12-31 (the panel reaches past the close and the model has published no row for 2025-01-02)": 1,
+                  "stale 2025-01-31 (the panel reaches past the close and the model has published no row for 2025-02-03)": 1,
+                  "stale 2025-02-28 (the panel reaches past the close and the model has published no row for 2025-03-03)": 1,
+                  "stale 2025-03-31 (the panel reaches past the close and the model has published no row for 2025-04-01)": 1,
+                  "stale 2025-04-30 (the panel reaches past the close and the model has published no row for 2025-05-01)": 1,
+                  "stale 2025-05-30 (the panel reaches past the close and the model has published no row for 2025-06-02)": 1,
+                  "stale 2025-06-30 (the panel reaches past the close and the model has published no row for 2025-07-01)": 1,
+                  "stale 2025-07-31 (the panel reaches past the close and the model has published no row for 2025-08-01)": 1,
+                  "stale 2025-08-29 (the panel reaches past the close and the model has published no row for 2025-09-02)": 1,
+                  "stale 2025-09-30 (the panel reaches past the close and the model has published no row for 2025-10-01)": 1,
+                  "stale 2025-10-31 (the panel reaches past the close and the model has published no row for 2025-11-03)": 1,
+                  "stale 2025-11-28 (the panel reaches past the close and the model has published no row for 2025-12-01)": 1,
+                  "stale 2025-12-31 (the panel reaches past the close and the model has published no row for 2026-01-02)": 1,
+                  "stale 2026-01-30 (the panel reaches past the close and the model has published no row for 2026-02-02)": 1,
+                  "stale 2026-02-27 (the panel reaches past the close and the model has published no row for 2026-03-02)": 1,
+                  "stale 2026-03-31 (the panel reaches past the close and the model has published no row for 2026-04-01)": 1,
+                  "stale 2026-04-30 (the panel reaches past the close and the model has published no row for 2026-05-01)": 1,
+                  "stale 2026-05-29 (the panel reaches past the close and the model has published no row for 2026-06-01)": 1,
+                  "stale 2026-06-30 (the panel reaches past the close and the model has published no row for 2026-07-01)": 1,
+                  "stale 2026-07-31 (the panel reaches past the close and the model has published no row for 2026-08-03)": 1,
+                  "stale 2026-08-31 (the panel reaches past the close and the model has published no row for 2026-09-01)": 1
+                },
+                "mean_idio_share_after_fmp": 1.0,
+                "worst_abs_exposure_after_fmp_capped_stored": 0.7437049343456419,
+                "mean_fmp_name_count": 461.5738636363636,
+                "mean_fmp_name_count_capped": 461.5738636363636,
+                "n_fmp_dates": 176
+              }
+            }
+          },
+          "F6.2": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "ETF minimum-variance hedge removes more than 70% of the factor variance of the long-only seed book. ETFs cannot span every factor; the residual is reported.",
+              "threshold": "long-only seed book factor variance removed above 70%",
+              "stored_numbers": {
+                "mean_factor_variance_removed_share": {
+                  "xs_v1": 0.9779390929678066,
+                  "xs_v2": 0.9779390929678066
+                },
+                "mean_n_instruments": 13.034090909090908,
+                "residual_reported": "per-factor post-hedge exposures in F6.5"
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "ETF minimum-variance hedge removes more than 70% of the factor variance of the long-only seed book. ETFs cannot span every factor; the residual is reported.",
+              "threshold": "long-only seed book factor variance removed above 70%",
+              "stored_numbers": {
+                "mean_factor_variance_removed_share": {
+                  "xs_v1": 0.9779107990696175,
+                  "xs_v2": 0.9779107990696175
+                },
+                "mean_n_instruments": 13.034090909090908,
+                "residual_reported": "per-factor post-hedge exposures in F6.5"
+              }
+            }
+          },
+          "F6.3": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Realized: the hedged momentum long/short book has a beta to Mkt-RF within plus or minus 0.1 over 2018 to 2026.",
+              "threshold": "realized beta to Mkt-RF inside +/- 0.1 over 2018 to 2026",
+              "stored_numbers": {
+                "realized_beta_to_mkt_rf": {
+                  "xs_v1": -0.021679892724730653,
+                  "xs_v2": -0.021679892724730653
+                },
+                "unhedged_realized_beta_to_mkt_rf": -0.045430017357877786
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Realized: the hedged momentum long/short book has a beta to Mkt-RF within plus or minus 0.1 over 2018 to 2026.",
+              "threshold": "realized beta to Mkt-RF inside +/- 0.1 over 2018 to 2026",
+              "stored_numbers": {
+                "realized_beta_to_mkt_rf": {
+                  "xs_v1": -0.02163909347005956,
+                  "xs_v2": -0.02163909347005956
+                },
+                "unhedged_realized_beta_to_mkt_rf": -0.045430017357877786
+              }
+            }
+          },
+          "F6.4": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "New in E6: every headline hedge result stored under the champion model and under the alternative model, with the difference stored.",
+              "threshold": "headline numbers present for both models with the difference",
+              "stored_numbers": {
+                "xs_v1": {
+                  "fmp_idio_share": 1.0,
+                  "mv_share_long_only": 0.9779390929678066,
+                  "momentum_realized_beta": -0.021679892724730653
+                },
+                "xs_v2": {
+                  "fmp_idio_share": 1.0,
+                  "mv_share_long_only": 0.9779390929678066,
+                  "momentum_realized_beta": -0.021679892724730653
+                },
+                "difference_v1_minus_v2": {
+                  "fmp_idio_share": 0.0,
+                  "mv_share_long_only": 0.0,
+                  "momentum_realized_beta": 0.0
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "New in E6: every headline hedge result stored under the champion model and under the alternative model, with the difference stored.",
+              "threshold": "headline numbers present for both models with the difference",
+              "stored_numbers": {
+                "xs_v1": {
+                  "fmp_idio_share": 1.0,
+                  "mv_share_long_only": 0.9779107990696175,
+                  "momentum_realized_beta": -0.02163909347005956
+                },
+                "xs_v2": {
+                  "fmp_idio_share": 1.0,
+                  "mv_share_long_only": 0.9779107990696175,
+                  "momentum_realized_beta": -0.02163909347005956
+                },
+                "difference_v1_minus_v2": {
+                  "fmp_idio_share": 0.0,
+                  "mv_share_long_only": 0.0,
+                  "momentum_realized_beta": 0.0
+                }
+              }
+            }
+          },
+          "F6.4b": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Registered in E8 Task 0b, not pre-registered: F6.4 is rerun against a real alternative, the per-portfolio-family best-calibrated model in E5's family table, and the difference is stored.",
+              "threshold": "the per-family alternative and the three headline differences stored",
+              "stored_numbers": {
+                "per_family_alternative": {
+                  "factor_tilted": "xs_v1",
+                  "long_only": "xs_v2",
+                  "long_short": "xs_v1",
+                  "sector_concentrated": "xs_v2"
+                },
+                "book_family": {
+                  "seed_ew": "long_only",
+                  "seed_mom_ls": "long_short"
+                },
+                "champion": {
+                  "long_only": {
+                    "fmp_idio_share": 1.0,
+                    "mv_share": 0.9779390929678066,
+                    "mv_idio_share_after": 0.027618927241181503
+                  },
+                  "long_short": {
+                    "fmp_idio_share": 1.0,
+                    "realized_beta_to_mkt_rf": -0.021679892724730653,
+                    "mv_idio_share_after": 0.6706682052458411
+                  }
+                },
+                "alternative": {
+                  "long_only": {
+                    "fmp_idio_share": 1.0,
+                    "mv_share": 0.9779390929678066,
+                    "mv_idio_share_after": 0.027607809027895117
+                  },
+                  "long_short": {
+                    "fmp_idio_share": 1.0,
+                    "realized_beta_to_mkt_rf": -0.021679892724730653,
+                    "mv_idio_share_after": 0.6706682052458411
+                  }
+                },
+                "difference_champion_minus_alternative": {
+                  "long_only": {
+                    "fmp_idio_share": 0.0,
+                    "mv_share": 0.0,
+                    "mv_idio_share_after": 1.1118213286386014e-05
+                  },
+                  "long_short": {
+                    "fmp_idio_share": 0.0,
+                    "realized_beta_to_mkt_rf": 0.0,
+                    "mv_idio_share_after": 0.0
+                  }
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Registered in E8 Task 0b, not pre-registered: F6.4 is rerun against a real alternative, the per-portfolio-family best-calibrated model in E5's family table, and the difference is stored.",
+              "threshold": "the per-family alternative and the three headline differences stored",
+              "stored_numbers": {
+                "per_family_alternative": {
+                  "factor_tilted": "xs_v1",
+                  "long_only": "xs_v2",
+                  "long_short": "xs_v1",
+                  "sector_concentrated": "xs_v2"
+                },
+                "book_family": {
+                  "seed_ew": "long_only",
+                  "seed_mom_ls": "long_short"
+                },
+                "champion": {
+                  "long_only": {
+                    "fmp_idio_share": 1.0,
+                    "mv_share": 0.9779107990696175,
+                    "mv_idio_share_after": 0.027672072584072484
+                  },
+                  "long_short": {
+                    "fmp_idio_share": 1.0,
+                    "realized_beta_to_mkt_rf": -0.02163909347005956,
+                    "mv_idio_share_after": 0.6696445319908055
+                  }
+                },
+                "alternative": {
+                  "long_only": {
+                    "fmp_idio_share": 1.0,
+                    "mv_share": 0.9779107990696175,
+                    "mv_idio_share_after": 0.027650189393471303
+                  },
+                  "long_short": {
+                    "fmp_idio_share": 1.0,
+                    "realized_beta_to_mkt_rf": -0.02163909347005956,
+                    "mv_idio_share_after": 0.6696445319908055
+                  }
+                },
+                "difference_champion_minus_alternative": {
+                  "long_only": {
+                    "fmp_idio_share": 0.0,
+                    "mv_share": 0.0,
+                    "mv_idio_share_after": 2.188319060118099e-05
+                  },
+                  "long_short": {
+                    "fmp_idio_share": 0.0,
+                    "realized_beta_to_mkt_rf": 0.0,
+                    "mv_idio_share_after": 0.0
+                  }
+                }
+              }
+            }
+          },
+          "F6.5": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "New in E6: the residual factor exposure the instrument set cannot reach, quantified per factor, with the design vintage the hedge was built against stored beside it.",
+              "threshold": "per-factor post-hedge exposure stored for the instrument set",
+              "stored_numbers": {
+                "mean_abs_exposure_after_instrument_hedge": {
+                  "beta": 0.045495086505612535,
+                  "liquidity": 0.3257063240212508,
+                  "market": 0.012869461738927763,
+                  "momentum": 0.049154786755147166,
+                  "resid_vol": 0.08900597050191536,
+                  "reversal": 0.11405399851621935,
+                  "sector_10": 0.02721052916265693,
+                  "sector_15": 0.016971896911814496,
+                  "sector_20": 0.06819269481709968,
+                  "sector_25": 0.05645753760812114,
+                  "sector_30": 0.0561262138881744,
+                  "sector_35": 0.0751928980194371,
+                  "sector_40": 0.09005309478050393,
+                  "sector_45": 0.1339156733189977,
+                  "sector_50": 0.0458464347370145,
+                  "sector_55": 0.032187404476300446,
+                  "size": 0.3844321340161622
+                },
+                "design_vintages": {
+                  "stale 2012-01-31 (the panel reaches past the close and the model has published no row for 2012-02-01)": 1,
+                  "stale 2012-02-29 (the panel reaches past the close and the model has published no row for 2012-03-01)": 1,
+                  "stale 2012-03-30 (the panel reaches past the close and the model has published no row for 2012-04-02)": 1,
+                  "stale 2012-04-30 (the panel reaches past the close and the model has published no row for 2012-05-01)": 1,
+                  "stale 2012-05-31 (the panel reaches past the close and the model has published no row for 2012-06-01)": 1,
+                  "stale 2012-06-29 (the panel reaches past the close and the model has published no row for 2012-07-02)": 1,
+                  "stale 2012-07-31 (the panel reaches past the close and the model has published no row for 2012-08-01)": 1,
+                  "stale 2012-08-31 (the panel reaches past the close and the model has published no row for 2012-09-04)": 1,
+                  "stale 2012-09-28 (the panel reaches past the close and the model has published no row for 2012-10-01)": 1,
+                  "stale 2012-10-31 (the panel reaches past the close and the model has published no row for 2012-11-01)": 1,
+                  "stale 2012-11-30 (the panel reaches past the close and the model has published no row for 2012-12-03)": 1,
+                  "stale 2012-12-31 (the panel reaches past the close and the model has published no row for 2013-01-02)": 1,
+                  "stale 2013-01-31 (the panel reaches past the close and the model has published no row for 2013-02-01)": 1,
+                  "stale 2013-02-28 (the panel reaches past the close and the model has published no row for 2013-03-01)": 1,
+                  "stale 2013-03-28 (the panel reaches past the close and the model has published no row for 2013-04-01)": 1,
+                  "stale 2013-04-30 (the panel reaches past the close and the model has published no row for 2013-05-01)": 1,
+                  "stale 2013-05-31 (the panel reaches past the close and the model has published no row for 2013-06-03)": 1,
+                  "stale 2013-06-28 (the panel reaches past the close and the model has published no row for 2013-07-01)": 1,
+                  "stale 2013-07-31 (the panel reaches past the close and the model has published no row for 2013-08-01)": 1,
+                  "stale 2013-08-30 (the panel reaches past the close and the model has published no row for 2013-09-03)": 1,
+                  "stale 2013-09-30 (the panel reaches past the close and the model has published no row for 2013-10-01)": 1,
+                  "stale 2013-10-31 (the panel reaches past the close and the model has published no row for 2013-11-01)": 1,
+                  "stale 2013-11-29 (the panel reaches past the close and the model has published no row for 2013-12-02)": 1,
+                  "stale 2013-12-31 (the panel reaches past the close and the model has published no row for 2014-01-02)": 1,
+                  "stale 2014-01-31 (the panel reaches past the close and the model has published no row for 2014-02-03)": 1,
+                  "stale 2014-02-28 (the panel reaches past the close and the model has published no row for 2014-03-03)": 1,
+                  "stale 2014-03-31 (the panel reaches past the close and the model has published no row for 2014-04-01)": 1,
+                  "stale 2014-04-30 (the panel reaches past the close and the model has published no row for 2014-05-01)": 1,
+                  "stale 2014-05-30 (the panel reaches past the close and the model has published no row for 2014-06-02)": 1,
+                  "stale 2014-06-30 (the panel reaches past the close and the model has published no row for 2014-07-01)": 1,
+                  "stale 2014-07-31 (the panel reaches past the close and the model has published no row for 2014-08-01)": 1,
+                  "stale 2014-08-29 (the panel reaches past the close and the model has published no row for 2014-09-02)": 1,
+                  "stale 2014-09-30 (the panel reaches past the close and the model has published no row for 2014-10-01)": 1,
+                  "stale 2014-10-31 (the panel reaches past the close and the model has published no row for 2014-11-03)": 1,
+                  "stale 2014-11-28 (the panel reaches past the close and the model has published no row for 2014-12-01)": 1,
+                  "stale 2014-12-31 (the panel reaches past the close and the model has published no row for 2015-01-02)": 1,
+                  "stale 2015-01-30 (the panel reaches past the close and the model has published no row for 2015-02-02)": 1,
+                  "stale 2015-02-27 (the panel reaches past the close and the model has published no row for 2015-03-02)": 1,
+                  "stale 2015-03-31 (the panel reaches past the close and the model has published no row for 2015-04-01)": 1,
+                  "stale 2015-04-30 (the panel reaches past the close and the model has published no row for 2015-05-01)": 1,
+                  "stale 2015-05-29 (the panel reaches past the close and the model has published no row for 2015-06-01)": 1,
+                  "stale 2015-06-30 (the panel reaches past the close and the model has published no row for 2015-07-01)": 1,
+                  "stale 2015-07-31 (the panel reaches past the close and the model has published no row for 2015-08-03)": 1,
+                  "stale 2015-08-31 (the panel reaches past the close and the model has published no row for 2015-09-01)": 1,
+                  "stale 2015-09-30 (the panel reaches past the close and the model has published no row for 2015-10-01)": 1,
+                  "stale 2015-10-30 (the panel reaches past the close and the model has published no row for 2015-11-02)": 1,
+                  "stale 2015-11-30 (the panel reaches past the close and the model has published no row for 2015-12-01)": 1,
+                  "stale 2015-12-31 (the panel reaches past the close and the model has published no row for 2016-01-04)": 1,
+                  "stale 2016-01-29 (the panel reaches past the close and the model has published no row for 2016-02-01)": 1,
+                  "stale 2016-02-29 (the panel reaches past the close and the model has published no row for 2016-03-01)": 1,
+                  "stale 2016-03-31 (the panel reaches past the close and the model has published no row for 2016-04-01)": 1,
+                  "stale 2016-04-29 (the panel reaches past the close and the model has published no row for 2016-05-02)": 1,
+                  "stale 2016-05-31 (the panel reaches past the close and the model has published no row for 2016-06-01)": 1,
+                  "stale 2016-06-30 (the panel reaches past the close and the model has published no row for 2016-07-01)": 1,
+                  "stale 2016-07-29 (the panel reaches past the close and the model has published no row for 2016-08-01)": 1,
+                  "stale 2016-08-31 (the panel reaches past the close and the model has published no row for 2016-09-01)": 1,
+                  "stale 2016-09-30 (the panel reaches past the close and the model has published no row for 2016-10-03)": 1,
+                  "stale 2016-10-31 (the panel reaches past the close and the model has published no row for 2016-11-01)": 1,
+                  "stale 2016-11-30 (the panel reaches past the close and the model has published no row for 2016-12-01)": 1,
+                  "stale 2016-12-30 (the panel reaches past the close and the model has published no row for 2017-01-03)": 1,
+                  "stale 2017-01-31 (the panel reaches past the close and the model has published no row for 2017-02-01)": 1,
+                  "stale 2017-02-28 (the panel reaches past the close and the model has published no row for 2017-03-01)": 1,
+                  "stale 2017-03-31 (the panel reaches past the close and the model has published no row for 2017-04-03)": 1,
+                  "stale 2017-04-28 (the panel reaches past the close and the model has published no row for 2017-05-01)": 1,
+                  "stale 2017-05-31 (the panel reaches past the close and the model has published no row for 2017-06-01)": 1,
+                  "stale 2017-06-30 (the panel reaches past the close and the model has published no row for 2017-07-03)": 1,
+                  "stale 2017-07-31 (the panel reaches past the close and the model has published no row for 2017-08-01)": 1,
+                  "stale 2017-08-31 (the panel reaches past the close and the model has published no row for 2017-09-01)": 1,
+                  "stale 2017-09-29 (the panel reaches past the close and the model has published no row for 2017-10-02)": 1,
+                  "stale 2017-10-31 (the panel reaches past the close and the model has published no row for 2017-11-01)": 1,
+                  "stale 2017-11-30 (the panel reaches past the close and the model has published no row for 2017-12-01)": 1,
+                  "stale 2017-12-29 (the panel reaches past the close and the model has published no row for 2018-01-02)": 1,
+                  "stale 2018-01-31 (the panel reaches past the close and the model has published no row for 2018-02-01)": 1,
+                  "stale 2018-02-28 (the panel reaches past the close and the model has published no row for 2018-03-01)": 1,
+                  "stale 2018-03-29 (the panel reaches past the close and the model has published no row for 2018-04-02)": 1,
+                  "stale 2018-04-30 (the panel reaches past the close and the model has published no row for 2018-05-01)": 1,
+                  "stale 2018-05-31 (the panel reaches past the close and the model has published no row for 2018-06-01)": 1,
+                  "stale 2018-06-29 (the panel reaches past the close and the model has published no row for 2018-07-02)": 1,
+                  "stale 2018-07-31 (the panel reaches past the close and the model has published no row for 2018-08-01)": 1,
+                  "stale 2018-08-31 (the panel reaches past the close and the model has published no row for 2018-09-04)": 1,
+                  "stale 2018-09-28 (the panel reaches past the close and the model has published no row for 2018-10-01)": 1,
+                  "stale 2018-10-31 (the panel reaches past the close and the model has published no row for 2018-11-01)": 1,
+                  "stale 2018-11-30 (the panel reaches past the close and the model has published no row for 2018-12-03)": 1,
+                  "stale 2018-12-31 (the panel reaches past the close and the model has published no row for 2019-01-02)": 1,
+                  "stale 2019-01-31 (the panel reaches past the close and the model has published no row for 2019-02-01)": 1,
+                  "stale 2019-02-28 (the panel reaches past the close and the model has published no row for 2019-03-01)": 1,
+                  "stale 2019-03-29 (the panel reaches past the close and the model has published no row for 2019-04-01)": 1,
+                  "stale 2019-04-30 (the panel reaches past the close and the model has published no row for 2019-05-01)": 1,
+                  "stale 2019-05-31 (the panel reaches past the close and the model has published no row for 2019-06-03)": 1,
+                  "stale 2019-06-28 (the panel reaches past the close and the model has published no row for 2019-07-01)": 1,
+                  "stale 2019-07-31 (the panel reaches past the close and the model has published no row for 2019-08-01)": 1,
+                  "stale 2019-08-30 (the panel reaches past the close and the model has published no row for 2019-09-03)": 1,
+                  "stale 2019-09-30 (the panel reaches past the close and the model has published no row for 2019-10-01)": 1,
+                  "stale 2019-10-31 (the panel reaches past the close and the model has published no row for 2019-11-01)": 1,
+                  "stale 2019-11-29 (the panel reaches past the close and the model has published no row for 2019-12-02)": 1,
+                  "stale 2019-12-31 (the panel reaches past the close and the model has published no row for 2020-01-02)": 1,
+                  "stale 2020-01-31 (the panel reaches past the close and the model has published no row for 2020-02-03)": 1,
+                  "stale 2020-02-28 (the panel reaches past the close and the model has published no row for 2020-03-02)": 1,
+                  "stale 2020-03-31 (the panel reaches past the close and the model has published no row for 2020-04-01)": 1,
+                  "stale 2020-04-30 (the panel reaches past the close and the model has published no row for 2020-05-01)": 1,
+                  "stale 2020-05-29 (the panel reaches past the close and the model has published no row for 2020-06-01)": 1,
+                  "stale 2020-06-30 (the panel reaches past the close and the model has published no row for 2020-07-01)": 1,
+                  "stale 2020-07-31 (the panel reaches past the close and the model has published no row for 2020-08-03)": 1,
+                  "stale 2020-08-31 (the panel reaches past the close and the model has published no row for 2020-09-01)": 1,
+                  "stale 2020-09-30 (the panel reaches past the close and the model has published no row for 2020-10-01)": 1,
+                  "stale 2020-10-30 (the panel reaches past the close and the model has published no row for 2020-11-02)": 1,
+                  "stale 2020-11-30 (the panel reaches past the close and the model has published no row for 2020-12-01)": 1,
+                  "stale 2020-12-31 (the panel reaches past the close and the model has published no row for 2021-01-04)": 1,
+                  "stale 2021-01-29 (the panel reaches past the close and the model has published no row for 2021-02-01)": 1,
+                  "stale 2021-02-26 (the panel reaches past the close and the model has published no row for 2021-03-01)": 1,
+                  "stale 2021-03-31 (the panel reaches past the close and the model has published no row for 2021-04-01)": 1,
+                  "stale 2021-04-30 (the panel reaches past the close and the model has published no row for 2021-05-03)": 1,
+                  "stale 2021-05-28 (the panel reaches past the close and the model has published no row for 2021-06-01)": 1,
+                  "stale 2021-06-30 (the panel reaches past the close and the model has published no row for 2021-07-01)": 1,
+                  "stale 2021-07-30 (the panel reaches past the close and the model has published no row for 2021-08-02)": 1,
+                  "stale 2021-08-31 (the panel reaches past the close and the model has published no row for 2021-09-01)": 1,
+                  "stale 2021-09-30 (the panel reaches past the close and the model has published no row for 2021-10-01)": 1,
+                  "stale 2021-10-29 (the panel reaches past the close and the model has published no row for 2021-11-01)": 1,
+                  "stale 2021-11-30 (the panel reaches past the close and the model has published no row for 2021-12-01)": 1,
+                  "stale 2021-12-31 (the panel reaches past the close and the model has published no row for 2022-01-03)": 1,
+                  "stale 2022-01-31 (the panel reaches past the close and the model has published no row for 2022-02-01)": 1,
+                  "stale 2022-02-28 (the panel reaches past the close and the model has published no row for 2022-03-01)": 1,
+                  "stale 2022-03-31 (the panel reaches past the close and the model has published no row for 2022-04-01)": 1,
+                  "stale 2022-04-29 (the panel reaches past the close and the model has published no row for 2022-05-02)": 1,
+                  "stale 2022-05-31 (the panel reaches past the close and the model has published no row for 2022-06-01)": 1,
+                  "stale 2022-06-30 (the panel reaches past the close and the model has published no row for 2022-07-01)": 1,
+                  "stale 2022-07-29 (the panel reaches past the close and the model has published no row for 2022-08-01)": 1,
+                  "stale 2022-08-31 (the panel reaches past the close and the model has published no row for 2022-09-01)": 1,
+                  "stale 2022-09-30 (the panel reaches past the close and the model has published no row for 2022-10-03)": 1,
+                  "stale 2022-10-31 (the panel reaches past the close and the model has published no row for 2022-11-01)": 1,
+                  "stale 2022-11-30 (the panel reaches past the close and the model has published no row for 2022-12-01)": 1,
+                  "stale 2022-12-30 (the panel reaches past the close and the model has published no row for 2023-01-03)": 1,
+                  "stale 2023-01-31 (the panel reaches past the close and the model has published no row for 2023-02-01)": 1,
+                  "stale 2023-02-28 (the panel reaches past the close and the model has published no row for 2023-03-01)": 1,
+                  "stale 2023-03-31 (the panel reaches past the close and the model has published no row for 2023-04-03)": 1,
+                  "stale 2023-04-28 (the panel reaches past the close and the model has published no row for 2023-05-01)": 1,
+                  "stale 2023-05-31 (the panel reaches past the close and the model has published no row for 2023-06-01)": 1,
+                  "stale 2023-06-30 (the panel reaches past the close and the model has published no row for 2023-07-03)": 1,
+                  "stale 2023-07-31 (the panel reaches past the close and the model has published no row for 2023-08-01)": 1,
+                  "stale 2023-08-31 (the panel reaches past the close and the model has published no row for 2023-09-01)": 1,
+                  "stale 2023-09-29 (the panel reaches past the close and the model has published no row for 2023-10-02)": 1,
+                  "stale 2023-10-31 (the panel reaches past the close and the model has published no row for 2023-11-01)": 1,
+                  "stale 2023-11-30 (the panel reaches past the close and the model has published no row for 2023-12-01)": 1,
+                  "stale 2023-12-29 (the panel reaches past the close and the model has published no row for 2024-01-02)": 1,
+                  "stale 2024-01-31 (the panel reaches past the close and the model has published no row for 2024-02-01)": 1,
+                  "stale 2024-02-29 (the panel reaches past the close and the model has published no row for 2024-03-01)": 1,
+                  "stale 2024-03-28 (the panel reaches past the close and the model has published no row for 2024-04-01)": 1,
+                  "stale 2024-04-30 (the panel reaches past the close and the model has published no row for 2024-05-01)": 1,
+                  "stale 2024-05-31 (the panel reaches past the close and the model has published no row for 2024-06-03)": 1,
+                  "stale 2024-06-28 (the panel reaches past the close and the model has published no row for 2024-07-01)": 1,
+                  "stale 2024-07-31 (the panel reaches past the close and the model has published no row for 2024-08-01)": 1,
+                  "stale 2024-08-30 (the panel reaches past the close and the model has published no row for 2024-09-03)": 1,
+                  "stale 2024-09-30 (the panel reaches past the close and the model has published no row for 2024-10-01)": 1,
+                  "stale 2024-10-31 (the panel reaches past the close and the model has published no row for 2024-11-01)": 1,
+                  "stale 2024-11-29 (the panel reaches past the close and the model has published no row for 2024-12-02)": 1,
+                  "stale 2024-12-31 (the panel reaches past the close and the model has published no row for 2025-01-02)": 1,
+                  "stale 2025-01-31 (the panel reaches past the close and the model has published no row for 2025-02-03)": 1,
+                  "stale 2025-02-28 (the panel reaches past the close and the model has published no row for 2025-03-03)": 1,
+                  "stale 2025-03-31 (the panel reaches past the close and the model has published no row for 2025-04-01)": 1,
+                  "stale 2025-04-30 (the panel reaches past the close and the model has published no row for 2025-05-01)": 1,
+                  "stale 2025-05-30 (the panel reaches past the close and the model has published no row for 2025-06-02)": 1,
+                  "stale 2025-06-30 (the panel reaches past the close and the model has published no row for 2025-07-01)": 1,
+                  "stale 2025-07-31 (the panel reaches past the close and the model has published no row for 2025-08-01)": 1,
+                  "stale 2025-08-29 (the panel reaches past the close and the model has published no row for 2025-09-02)": 1,
+                  "stale 2025-09-30 (the panel reaches past the close and the model has published no row for 2025-10-01)": 1,
+                  "stale 2025-10-31 (the panel reaches past the close and the model has published no row for 2025-11-03)": 1,
+                  "stale 2025-11-28 (the panel reaches past the close and the model has published no row for 2025-12-01)": 1,
+                  "stale 2025-12-31 (the panel reaches past the close and the model has published no row for 2026-01-02)": 1,
+                  "stale 2026-01-30 (the panel reaches past the close and the model has published no row for 2026-02-02)": 1,
+                  "stale 2026-02-27 (the panel reaches past the close and the model has published no row for 2026-03-02)": 1,
+                  "stale 2026-03-31 (the panel reaches past the close and the model has published no row for 2026-04-01)": 1,
+                  "stale 2026-04-30 (the panel reaches past the close and the model has published no row for 2026-05-01)": 1,
+                  "stale 2026-05-29 (the panel reaches past the close and the model has published no row for 2026-06-01)": 1,
+                  "stale 2026-06-30 (the panel reaches past the close and the model has published no row for 2026-07-01)": 1,
+                  "stale 2026-07-31 (the panel reaches past the close and the model has published no row for 2026-08-03)": 1,
+                  "stale 2026-08-31 (the panel reaches past the close and the model has published no row for 2026-09-01)": 1
+                },
+                "worst_next_row_distance": 3.856266381605092
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "New in E6: the residual factor exposure the instrument set cannot reach, quantified per factor, with the design vintage the hedge was built against stored beside it.",
+              "threshold": "per-factor post-hedge exposure stored for the instrument set",
+              "stored_numbers": {
+                "mean_abs_exposure_after_instrument_hedge": {
+                  "beta": 0.04519878339310483,
+                  "liquidity": 0.3271884547619967,
+                  "market": 0.01280566968434344,
+                  "momentum": 0.0491461611639981,
+                  "resid_vol": 0.08889057104922597,
+                  "reversal": 0.11374655434627315,
+                  "sector_10": 0.027257154237382265,
+                  "sector_15": 0.01695220824494835,
+                  "sector_20": 0.06831667402252319,
+                  "sector_25": 0.05633260693132904,
+                  "sector_30": 0.0565855968783586,
+                  "sector_35": 0.07550686897276147,
+                  "sector_40": 0.09030842583129527,
+                  "sector_45": 0.1341315602790784,
+                  "sector_50": 0.04586201623430585,
+                  "sector_55": 0.03234612381066853,
+                  "size": 0.38575667580980666
+                },
+                "design_vintages": {
+                  "stale 2012-01-31 (the panel reaches past the close and the model has published no row for 2012-02-01)": 1,
+                  "stale 2012-02-29 (the panel reaches past the close and the model has published no row for 2012-03-01)": 1,
+                  "stale 2012-03-30 (the panel reaches past the close and the model has published no row for 2012-04-02)": 1,
+                  "stale 2012-04-30 (the panel reaches past the close and the model has published no row for 2012-05-01)": 1,
+                  "stale 2012-05-31 (the panel reaches past the close and the model has published no row for 2012-06-01)": 1,
+                  "stale 2012-06-29 (the panel reaches past the close and the model has published no row for 2012-07-02)": 1,
+                  "stale 2012-07-31 (the panel reaches past the close and the model has published no row for 2012-08-01)": 1,
+                  "stale 2012-08-31 (the panel reaches past the close and the model has published no row for 2012-09-04)": 1,
+                  "stale 2012-09-28 (the panel reaches past the close and the model has published no row for 2012-10-01)": 1,
+                  "stale 2012-10-31 (the panel reaches past the close and the model has published no row for 2012-11-01)": 1,
+                  "stale 2012-11-30 (the panel reaches past the close and the model has published no row for 2012-12-03)": 1,
+                  "stale 2012-12-31 (the panel reaches past the close and the model has published no row for 2013-01-02)": 1,
+                  "stale 2013-01-31 (the panel reaches past the close and the model has published no row for 2013-02-01)": 1,
+                  "stale 2013-02-28 (the panel reaches past the close and the model has published no row for 2013-03-01)": 1,
+                  "stale 2013-03-28 (the panel reaches past the close and the model has published no row for 2013-04-01)": 1,
+                  "stale 2013-04-30 (the panel reaches past the close and the model has published no row for 2013-05-01)": 1,
+                  "stale 2013-05-31 (the panel reaches past the close and the model has published no row for 2013-06-03)": 1,
+                  "stale 2013-06-28 (the panel reaches past the close and the model has published no row for 2013-07-01)": 1,
+                  "stale 2013-07-31 (the panel reaches past the close and the model has published no row for 2013-08-01)": 1,
+                  "stale 2013-08-30 (the panel reaches past the close and the model has published no row for 2013-09-03)": 1,
+                  "stale 2013-09-30 (the panel reaches past the close and the model has published no row for 2013-10-01)": 1,
+                  "stale 2013-10-31 (the panel reaches past the close and the model has published no row for 2013-11-01)": 1,
+                  "stale 2013-11-29 (the panel reaches past the close and the model has published no row for 2013-12-02)": 1,
+                  "stale 2013-12-31 (the panel reaches past the close and the model has published no row for 2014-01-02)": 1,
+                  "stale 2014-01-31 (the panel reaches past the close and the model has published no row for 2014-02-03)": 1,
+                  "stale 2014-02-28 (the panel reaches past the close and the model has published no row for 2014-03-03)": 1,
+                  "stale 2014-03-31 (the panel reaches past the close and the model has published no row for 2014-04-01)": 1,
+                  "stale 2014-04-30 (the panel reaches past the close and the model has published no row for 2014-05-01)": 1,
+                  "stale 2014-05-30 (the panel reaches past the close and the model has published no row for 2014-06-02)": 1,
+                  "stale 2014-06-30 (the panel reaches past the close and the model has published no row for 2014-07-01)": 1,
+                  "stale 2014-07-31 (the panel reaches past the close and the model has published no row for 2014-08-01)": 1,
+                  "stale 2014-08-29 (the panel reaches past the close and the model has published no row for 2014-09-02)": 1,
+                  "stale 2014-09-30 (the panel reaches past the close and the model has published no row for 2014-10-01)": 1,
+                  "stale 2014-10-31 (the panel reaches past the close and the model has published no row for 2014-11-03)": 1,
+                  "stale 2014-11-28 (the panel reaches past the close and the model has published no row for 2014-12-01)": 1,
+                  "stale 2014-12-31 (the panel reaches past the close and the model has published no row for 2015-01-02)": 1,
+                  "stale 2015-01-30 (the panel reaches past the close and the model has published no row for 2015-02-02)": 1,
+                  "stale 2015-02-27 (the panel reaches past the close and the model has published no row for 2015-03-02)": 1,
+                  "stale 2015-03-31 (the panel reaches past the close and the model has published no row for 2015-04-01)": 1,
+                  "stale 2015-04-30 (the panel reaches past the close and the model has published no row for 2015-05-01)": 1,
+                  "stale 2015-05-29 (the panel reaches past the close and the model has published no row for 2015-06-01)": 1,
+                  "stale 2015-06-30 (the panel reaches past the close and the model has published no row for 2015-07-01)": 1,
+                  "stale 2015-07-31 (the panel reaches past the close and the model has published no row for 2015-08-03)": 1,
+                  "stale 2015-08-31 (the panel reaches past the close and the model has published no row for 2015-09-01)": 1,
+                  "stale 2015-09-30 (the panel reaches past the close and the model has published no row for 2015-10-01)": 1,
+                  "stale 2015-10-30 (the panel reaches past the close and the model has published no row for 2015-11-02)": 1,
+                  "stale 2015-11-30 (the panel reaches past the close and the model has published no row for 2015-12-01)": 1,
+                  "stale 2015-12-31 (the panel reaches past the close and the model has published no row for 2016-01-04)": 1,
+                  "stale 2016-01-29 (the panel reaches past the close and the model has published no row for 2016-02-01)": 1,
+                  "stale 2016-02-29 (the panel reaches past the close and the model has published no row for 2016-03-01)": 1,
+                  "stale 2016-03-31 (the panel reaches past the close and the model has published no row for 2016-04-01)": 1,
+                  "stale 2016-04-29 (the panel reaches past the close and the model has published no row for 2016-05-02)": 1,
+                  "stale 2016-05-31 (the panel reaches past the close and the model has published no row for 2016-06-01)": 1,
+                  "stale 2016-06-30 (the panel reaches past the close and the model has published no row for 2016-07-01)": 1,
+                  "stale 2016-07-29 (the panel reaches past the close and the model has published no row for 2016-08-01)": 1,
+                  "stale 2016-08-31 (the panel reaches past the close and the model has published no row for 2016-09-01)": 1,
+                  "stale 2016-09-30 (the panel reaches past the close and the model has published no row for 2016-10-03)": 1,
+                  "stale 2016-10-31 (the panel reaches past the close and the model has published no row for 2016-11-01)": 1,
+                  "stale 2016-11-30 (the panel reaches past the close and the model has published no row for 2016-12-01)": 1,
+                  "stale 2016-12-30 (the panel reaches past the close and the model has published no row for 2017-01-03)": 1,
+                  "stale 2017-01-31 (the panel reaches past the close and the model has published no row for 2017-02-01)": 1,
+                  "stale 2017-02-28 (the panel reaches past the close and the model has published no row for 2017-03-01)": 1,
+                  "stale 2017-03-31 (the panel reaches past the close and the model has published no row for 2017-04-03)": 1,
+                  "stale 2017-04-28 (the panel reaches past the close and the model has published no row for 2017-05-01)": 1,
+                  "stale 2017-05-31 (the panel reaches past the close and the model has published no row for 2017-06-01)": 1,
+                  "stale 2017-06-30 (the panel reaches past the close and the model has published no row for 2017-07-03)": 1,
+                  "stale 2017-07-31 (the panel reaches past the close and the model has published no row for 2017-08-01)": 1,
+                  "stale 2017-08-31 (the panel reaches past the close and the model has published no row for 2017-09-01)": 1,
+                  "stale 2017-09-29 (the panel reaches past the close and the model has published no row for 2017-10-02)": 1,
+                  "stale 2017-10-31 (the panel reaches past the close and the model has published no row for 2017-11-01)": 1,
+                  "stale 2017-11-30 (the panel reaches past the close and the model has published no row for 2017-12-01)": 1,
+                  "stale 2017-12-29 (the panel reaches past the close and the model has published no row for 2018-01-02)": 1,
+                  "stale 2018-01-31 (the panel reaches past the close and the model has published no row for 2018-02-01)": 1,
+                  "stale 2018-02-28 (the panel reaches past the close and the model has published no row for 2018-03-01)": 1,
+                  "stale 2018-03-29 (the panel reaches past the close and the model has published no row for 2018-04-02)": 1,
+                  "stale 2018-04-30 (the panel reaches past the close and the model has published no row for 2018-05-01)": 1,
+                  "stale 2018-05-31 (the panel reaches past the close and the model has published no row for 2018-06-01)": 1,
+                  "stale 2018-06-29 (the panel reaches past the close and the model has published no row for 2018-07-02)": 1,
+                  "stale 2018-07-31 (the panel reaches past the close and the model has published no row for 2018-08-01)": 1,
+                  "stale 2018-08-31 (the panel reaches past the close and the model has published no row for 2018-09-04)": 1,
+                  "stale 2018-09-28 (the panel reaches past the close and the model has published no row for 2018-10-01)": 1,
+                  "stale 2018-10-31 (the panel reaches past the close and the model has published no row for 2018-11-01)": 1,
+                  "stale 2018-11-30 (the panel reaches past the close and the model has published no row for 2018-12-03)": 1,
+                  "stale 2018-12-31 (the panel reaches past the close and the model has published no row for 2019-01-02)": 1,
+                  "stale 2019-01-31 (the panel reaches past the close and the model has published no row for 2019-02-01)": 1,
+                  "stale 2019-02-28 (the panel reaches past the close and the model has published no row for 2019-03-01)": 1,
+                  "stale 2019-03-29 (the panel reaches past the close and the model has published no row for 2019-04-01)": 1,
+                  "stale 2019-04-30 (the panel reaches past the close and the model has published no row for 2019-05-01)": 1,
+                  "stale 2019-05-31 (the panel reaches past the close and the model has published no row for 2019-06-03)": 1,
+                  "stale 2019-06-28 (the panel reaches past the close and the model has published no row for 2019-07-01)": 1,
+                  "stale 2019-07-31 (the panel reaches past the close and the model has published no row for 2019-08-01)": 1,
+                  "stale 2019-08-30 (the panel reaches past the close and the model has published no row for 2019-09-03)": 1,
+                  "stale 2019-09-30 (the panel reaches past the close and the model has published no row for 2019-10-01)": 1,
+                  "stale 2019-10-31 (the panel reaches past the close and the model has published no row for 2019-11-01)": 1,
+                  "stale 2019-11-29 (the panel reaches past the close and the model has published no row for 2019-12-02)": 1,
+                  "stale 2019-12-31 (the panel reaches past the close and the model has published no row for 2020-01-02)": 1,
+                  "stale 2020-01-31 (the panel reaches past the close and the model has published no row for 2020-02-03)": 1,
+                  "stale 2020-02-28 (the panel reaches past the close and the model has published no row for 2020-03-02)": 1,
+                  "stale 2020-03-31 (the panel reaches past the close and the model has published no row for 2020-04-01)": 1,
+                  "stale 2020-04-30 (the panel reaches past the close and the model has published no row for 2020-05-01)": 1,
+                  "stale 2020-05-29 (the panel reaches past the close and the model has published no row for 2020-06-01)": 1,
+                  "stale 2020-06-30 (the panel reaches past the close and the model has published no row for 2020-07-01)": 1,
+                  "stale 2020-07-31 (the panel reaches past the close and the model has published no row for 2020-08-03)": 1,
+                  "stale 2020-08-31 (the panel reaches past the close and the model has published no row for 2020-09-01)": 1,
+                  "stale 2020-09-30 (the panel reaches past the close and the model has published no row for 2020-10-01)": 1,
+                  "stale 2020-10-30 (the panel reaches past the close and the model has published no row for 2020-11-02)": 1,
+                  "stale 2020-11-30 (the panel reaches past the close and the model has published no row for 2020-12-01)": 1,
+                  "stale 2020-12-31 (the panel reaches past the close and the model has published no row for 2021-01-04)": 1,
+                  "stale 2021-01-29 (the panel reaches past the close and the model has published no row for 2021-02-01)": 1,
+                  "stale 2021-02-26 (the panel reaches past the close and the model has published no row for 2021-03-01)": 1,
+                  "stale 2021-03-31 (the panel reaches past the close and the model has published no row for 2021-04-01)": 1,
+                  "stale 2021-04-30 (the panel reaches past the close and the model has published no row for 2021-05-03)": 1,
+                  "stale 2021-05-28 (the panel reaches past the close and the model has published no row for 2021-06-01)": 1,
+                  "stale 2021-06-30 (the panel reaches past the close and the model has published no row for 2021-07-01)": 1,
+                  "stale 2021-07-30 (the panel reaches past the close and the model has published no row for 2021-08-02)": 1,
+                  "stale 2021-08-31 (the panel reaches past the close and the model has published no row for 2021-09-01)": 1,
+                  "stale 2021-09-30 (the panel reaches past the close and the model has published no row for 2021-10-01)": 1,
+                  "stale 2021-10-29 (the panel reaches past the close and the model has published no row for 2021-11-01)": 1,
+                  "stale 2021-11-30 (the panel reaches past the close and the model has published no row for 2021-12-01)": 1,
+                  "stale 2021-12-31 (the panel reaches past the close and the model has published no row for 2022-01-03)": 1,
+                  "stale 2022-01-31 (the panel reaches past the close and the model has published no row for 2022-02-01)": 1,
+                  "stale 2022-02-28 (the panel reaches past the close and the model has published no row for 2022-03-01)": 1,
+                  "stale 2022-03-31 (the panel reaches past the close and the model has published no row for 2022-04-01)": 1,
+                  "stale 2022-04-29 (the panel reaches past the close and the model has published no row for 2022-05-02)": 1,
+                  "stale 2022-05-31 (the panel reaches past the close and the model has published no row for 2022-06-01)": 1,
+                  "stale 2022-06-30 (the panel reaches past the close and the model has published no row for 2022-07-01)": 1,
+                  "stale 2022-07-29 (the panel reaches past the close and the model has published no row for 2022-08-01)": 1,
+                  "stale 2022-08-31 (the panel reaches past the close and the model has published no row for 2022-09-01)": 1,
+                  "stale 2022-09-30 (the panel reaches past the close and the model has published no row for 2022-10-03)": 1,
+                  "stale 2022-10-31 (the panel reaches past the close and the model has published no row for 2022-11-01)": 1,
+                  "stale 2022-11-30 (the panel reaches past the close and the model has published no row for 2022-12-01)": 1,
+                  "stale 2022-12-30 (the panel reaches past the close and the model has published no row for 2023-01-03)": 1,
+                  "stale 2023-01-31 (the panel reaches past the close and the model has published no row for 2023-02-01)": 1,
+                  "stale 2023-02-28 (the panel reaches past the close and the model has published no row for 2023-03-01)": 1,
+                  "stale 2023-03-31 (the panel reaches past the close and the model has published no row for 2023-04-03)": 1,
+                  "stale 2023-04-28 (the panel reaches past the close and the model has published no row for 2023-05-01)": 1,
+                  "stale 2023-05-31 (the panel reaches past the close and the model has published no row for 2023-06-01)": 1,
+                  "stale 2023-06-30 (the panel reaches past the close and the model has published no row for 2023-07-03)": 1,
+                  "stale 2023-07-31 (the panel reaches past the close and the model has published no row for 2023-08-01)": 1,
+                  "stale 2023-08-31 (the panel reaches past the close and the model has published no row for 2023-09-01)": 1,
+                  "stale 2023-09-29 (the panel reaches past the close and the model has published no row for 2023-10-02)": 1,
+                  "stale 2023-10-31 (the panel reaches past the close and the model has published no row for 2023-11-01)": 1,
+                  "stale 2023-11-30 (the panel reaches past the close and the model has published no row for 2023-12-01)": 1,
+                  "stale 2023-12-29 (the panel reaches past the close and the model has published no row for 2024-01-02)": 1,
+                  "stale 2024-01-31 (the panel reaches past the close and the model has published no row for 2024-02-01)": 1,
+                  "stale 2024-02-29 (the panel reaches past the close and the model has published no row for 2024-03-01)": 1,
+                  "stale 2024-03-28 (the panel reaches past the close and the model has published no row for 2024-04-01)": 1,
+                  "stale 2024-04-30 (the panel reaches past the close and the model has published no row for 2024-05-01)": 1,
+                  "stale 2024-05-31 (the panel reaches past the close and the model has published no row for 2024-06-03)": 1,
+                  "stale 2024-06-28 (the panel reaches past the close and the model has published no row for 2024-07-01)": 1,
+                  "stale 2024-07-31 (the panel reaches past the close and the model has published no row for 2024-08-01)": 1,
+                  "stale 2024-08-30 (the panel reaches past the close and the model has published no row for 2024-09-03)": 1,
+                  "stale 2024-09-30 (the panel reaches past the close and the model has published no row for 2024-10-01)": 1,
+                  "stale 2024-10-31 (the panel reaches past the close and the model has published no row for 2024-11-01)": 1,
+                  "stale 2024-11-29 (the panel reaches past the close and the model has published no row for 2024-12-02)": 1,
+                  "stale 2024-12-31 (the panel reaches past the close and the model has published no row for 2025-01-02)": 1,
+                  "stale 2025-01-31 (the panel reaches past the close and the model has published no row for 2025-02-03)": 1,
+                  "stale 2025-02-28 (the panel reaches past the close and the model has published no row for 2025-03-03)": 1,
+                  "stale 2025-03-31 (the panel reaches past the close and the model has published no row for 2025-04-01)": 1,
+                  "stale 2025-04-30 (the panel reaches past the close and the model has published no row for 2025-05-01)": 1,
+                  "stale 2025-05-30 (the panel reaches past the close and the model has published no row for 2025-06-02)": 1,
+                  "stale 2025-06-30 (the panel reaches past the close and the model has published no row for 2025-07-01)": 1,
+                  "stale 2025-07-31 (the panel reaches past the close and the model has published no row for 2025-08-01)": 1,
+                  "stale 2025-08-29 (the panel reaches past the close and the model has published no row for 2025-09-02)": 1,
+                  "stale 2025-09-30 (the panel reaches past the close and the model has published no row for 2025-10-01)": 1,
+                  "stale 2025-10-31 (the panel reaches past the close and the model has published no row for 2025-11-03)": 1,
+                  "stale 2025-11-28 (the panel reaches past the close and the model has published no row for 2025-12-01)": 1,
+                  "stale 2025-12-31 (the panel reaches past the close and the model has published no row for 2026-01-02)": 1,
+                  "stale 2026-01-30 (the panel reaches past the close and the model has published no row for 2026-02-02)": 1,
+                  "stale 2026-02-27 (the panel reaches past the close and the model has published no row for 2026-03-02)": 1,
+                  "stale 2026-03-31 (the panel reaches past the close and the model has published no row for 2026-04-01)": 1,
+                  "stale 2026-04-30 (the panel reaches past the close and the model has published no row for 2026-05-01)": 1,
+                  "stale 2026-05-29 (the panel reaches past the close and the model has published no row for 2026-06-01)": 1,
+                  "stale 2026-06-30 (the panel reaches past the close and the model has published no row for 2026-07-01)": 1,
+                  "stale 2026-07-31 (the panel reaches past the close and the model has published no row for 2026-08-03)": 1,
+                  "stale 2026-08-31 (the panel reaches past the close and the model has published no row for 2026-09-01)": 1
+                },
+                "worst_next_row_distance": 3.862012183411623
+              }
+            }
+          },
+          "F6_decay": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "New in E6: beta-hedge efficacy against rebalancing frequency, stored as a curve for the hedge study.",
+              "threshold": "curve stored",
+              "stored_numbers": {
+                "realized_beta_by_frequency": {
+                  "5d": 0.006823047621660487,
+                  "21d": 0.00789057436796479,
+                  "63d": 0.014288378188338424
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "New in E6: beta-hedge efficacy against rebalancing frequency, stored as a curve for the hedge study.",
+              "threshold": "curve stored",
+              "stored_numbers": {
+                "realized_beta_by_frequency": {
+                  "5d": 0.006823047621660487,
+                  "21d": 0.00789057436796479,
+                  "63d": 0.014288378188338424
+                }
+              }
+            }
+          }
+        }
       }
     ]
   },
   "reference_values": {
-    "data_hash": "b774d460605c8d3b5edba6c63354c1de3fbc68974a822c37982dee07bd63cc0d",
+    "data_hash": "f5cea5fcf99468a4c45ffb9403ed5044d37ae260793f6b58157bc3f1d255aa79",
     "verdicts": {
       "F6.1": "fail",
       "F6.2": "pass",
@@ -2817,10 +3887,10 @@
     },
     "stored_numbers": {
       "F6.1": {
-        "worst_abs_exposure_after_fmp": 5.492134524942571e-15,
-        "worst_abs_exposure_after_fmp_next_row": 0.13526022643449995,
-        "mean_abs_exposure_after_fmp_next_row": 0.0020183623402982723,
-        "worst_next_row_distance": 3.856266381605092,
+        "worst_abs_exposure_after_fmp": 5.483460907562687e-15,
+        "worst_abs_exposure_after_fmp_next_row": 0.1408196496809009,
+        "mean_abs_exposure_after_fmp_next_row": 0.0016047806053531642,
+        "worst_next_row_distance": 3.862012183411623,
         "n_dates_scored_on_the_next_row": 176,
         "n_exposure_rows_without_a_next_row": 0,
         "design_vintages": {
@@ -3002,36 +4072,36 @@
           "stale 2026-08-31 (the panel reaches past the close and the model has published no row for 2026-09-01)": 1
         },
         "mean_idio_share_after_fmp": 1.0,
-        "worst_abs_exposure_after_fmp_capped_stored": 0.7448583947758431,
+        "worst_abs_exposure_after_fmp_capped_stored": 0.7437049343456419,
         "mean_fmp_name_count": 461.5738636363636,
-        "mean_fmp_name_count_capped": 460.67045454545456,
+        "mean_fmp_name_count_capped": 461.5738636363636,
         "n_fmp_dates": 176
       },
       "F6.2": {
         "mean_factor_variance_removed_share": {
-          "xs_v1": 0.9779390929678066,
-          "xs_v2": 0.9779390929678066
+          "xs_v1": 0.9779107990696175,
+          "xs_v2": 0.9779107990696175
         },
         "mean_n_instruments": 13.034090909090908,
         "residual_reported": "per-factor post-hedge exposures in F6.5"
       },
       "F6.3": {
         "realized_beta_to_mkt_rf": {
-          "xs_v1": -0.021679892724730653,
-          "xs_v2": -0.021679892724730653
+          "xs_v1": -0.02163909347005956,
+          "xs_v2": -0.02163909347005956
         },
         "unhedged_realized_beta_to_mkt_rf": -0.045430017357877786
       },
       "F6.4": {
         "xs_v1": {
           "fmp_idio_share": 1.0,
-          "mv_share_long_only": 0.9779390929678066,
-          "momentum_realized_beta": -0.021679892724730653
+          "mv_share_long_only": 0.9779107990696175,
+          "momentum_realized_beta": -0.02163909347005956
         },
         "xs_v2": {
           "fmp_idio_share": 1.0,
-          "mv_share_long_only": 0.9779390929678066,
-          "momentum_realized_beta": -0.021679892724730653
+          "mv_share_long_only": 0.9779107990696175,
+          "momentum_realized_beta": -0.02163909347005956
         },
         "difference_v1_minus_v2": {
           "fmp_idio_share": 0.0,
@@ -3053,32 +4123,32 @@
         "champion": {
           "long_only": {
             "fmp_idio_share": 1.0,
-            "mv_share": 0.9779390929678066,
-            "mv_idio_share_after": 0.027618927241181503
+            "mv_share": 0.9779107990696175,
+            "mv_idio_share_after": 0.027672072584072484
           },
           "long_short": {
             "fmp_idio_share": 1.0,
-            "realized_beta_to_mkt_rf": -0.021679892724730653,
-            "mv_idio_share_after": 0.6706682052458411
+            "realized_beta_to_mkt_rf": -0.02163909347005956,
+            "mv_idio_share_after": 0.6696445319908055
           }
         },
         "alternative": {
           "long_only": {
             "fmp_idio_share": 1.0,
-            "mv_share": 0.9779390929678066,
-            "mv_idio_share_after": 0.027607809027895117
+            "mv_share": 0.9779107990696175,
+            "mv_idio_share_after": 0.027650189393471303
           },
           "long_short": {
             "fmp_idio_share": 1.0,
-            "realized_beta_to_mkt_rf": -0.021679892724730653,
-            "mv_idio_share_after": 0.6706682052458411
+            "realized_beta_to_mkt_rf": -0.02163909347005956,
+            "mv_idio_share_after": 0.6696445319908055
           }
         },
         "difference_champion_minus_alternative": {
           "long_only": {
             "fmp_idio_share": 0.0,
             "mv_share": 0.0,
-            "mv_idio_share_after": 1.1118213286386014e-05
+            "mv_idio_share_after": 2.188319060118099e-05
           },
           "long_short": {
             "fmp_idio_share": 0.0,
@@ -3089,23 +4159,23 @@
       },
       "F6.5": {
         "mean_abs_exposure_after_instrument_hedge": {
-          "beta": 0.045495086505612535,
-          "liquidity": 0.3257063240212508,
-          "market": 0.012869461738927763,
-          "momentum": 0.049154786755147166,
-          "resid_vol": 0.08900597050191536,
-          "reversal": 0.11405399851621935,
-          "sector_10": 0.02721052916265693,
-          "sector_15": 0.016971896911814496,
-          "sector_20": 0.06819269481709968,
-          "sector_25": 0.05645753760812114,
-          "sector_30": 0.0561262138881744,
-          "sector_35": 0.0751928980194371,
-          "sector_40": 0.09005309478050393,
-          "sector_45": 0.1339156733189977,
-          "sector_50": 0.0458464347370145,
-          "sector_55": 0.032187404476300446,
-          "size": 0.3844321340161622
+          "beta": 0.04519878339310483,
+          "liquidity": 0.3271884547619967,
+          "market": 0.01280566968434344,
+          "momentum": 0.0491461611639981,
+          "resid_vol": 0.08889057104922597,
+          "reversal": 0.11374655434627315,
+          "sector_10": 0.027257154237382265,
+          "sector_15": 0.01695220824494835,
+          "sector_20": 0.06831667402252319,
+          "sector_25": 0.05633260693132904,
+          "sector_30": 0.0565855968783586,
+          "sector_35": 0.07550686897276147,
+          "sector_40": 0.09030842583129527,
+          "sector_45": 0.1341315602790784,
+          "sector_50": 0.04586201623430585,
+          "sector_55": 0.03234612381066853,
+          "size": 0.38575667580980666
         },
         "design_vintages": {
           "stale 2012-01-31 (the panel reaches past the close and the model has published no row for 2012-02-01)": 1,
@@ -3285,7 +4355,7 @@
           "stale 2026-07-31 (the panel reaches past the close and the model has published no row for 2026-08-03)": 1,
           "stale 2026-08-31 (the panel reaches past the close and the model has published no row for 2026-09-01)": 1
         },
-        "worst_next_row_distance": 3.856266381605092
+        "worst_next_row_distance": 3.862012183411623
       },
       "F6_decay": {
         "realized_beta_by_frequency": {

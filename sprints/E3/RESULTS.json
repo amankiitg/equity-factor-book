@@ -1,48 +1,48 @@
 {
   "sprint": "E3",
-  "evaluated_at": "2026-10-03T15:36:32+00:00",
-  "data_hash": "25acd5806b282e0750956bd51f5059be8a6b8ecb797de0d1dd5128a52657be19",
+  "evaluated_at": "2026-10-03T20:56:41+00:00",
+  "data_hash": "516547692d50a556917adfa4043a903dd31b9ee83e66cc2594c85f5bd8e3de1e",
   "criteria": {
     "F3.1": {
       "criterion": "Average daily cross-sectional R squared above 20%. Below 15% means descriptor construction or weighting is wrong, not that the market is unusual.",
       "threshold": "mean cross-sectional R squared > 0.20, fail band below 0.15",
       "stored_numbers": {
-        "mean_cross_sectional_r_squared": 0.33148342799085984,
+        "mean_cross_sectional_r_squared": 0.3313181102291975,
         "n_days": 3941,
         "r_squared_by_year": {
           "2011": 0.355728,
           "2012": 0.29167,
           "2013": 0.250586,
           "2014": 0.285242,
-          "2015": 0.296273,
-          "2016": 0.318474,
-          "2017": 0.279895,
-          "2018": 0.314299,
-          "2019": 0.28529,
-          "2020": 0.372282,
-          "2021": 0.342826,
-          "2022": 0.416081,
-          "2023": 0.36917,
-          "2024": 0.366958,
-          "2025": 0.382319,
-          "2026": 0.396287
+          "2015": 0.296277,
+          "2016": 0.318438,
+          "2017": 0.27959,
+          "2018": 0.314185,
+          "2019": 0.284938,
+          "2020": 0.371816,
+          "2021": 0.342616,
+          "2022": 0.41595,
+          "2023": 0.36903,
+          "2024": 0.366977,
+          "2025": 0.382134,
+          "2026": 0.39532
         },
         "r_squared_market_only_mean": -0.0,
         "r_squared_by_sector": {
-          "Communication Services": 0.314602,
-          "Consumer Discretionary": 0.227118,
-          "Consumer Staples": 0.274963,
-          "Energy": 0.390641,
-          "Financials": 0.270568,
-          "Health Care": 0.217216,
-          "Industrials": 0.246986,
-          "Information Technology": 0.259687,
-          "Materials": 0.198299,
-          "Real Estate": 0.314788,
-          "Utilities": 0.433313
+          "Communication Services": 0.314392,
+          "Consumer Discretionary": 0.227154,
+          "Consumer Staples": 0.275018,
+          "Energy": 0.390765,
+          "Financials": 0.270632,
+          "Health Care": 0.21729,
+          "Industrials": 0.247079,
+          "Information Technology": 0.259353,
+          "Materials": 0.198187,
+          "Real Estate": 0.31484,
+          "Utilities": 0.433397
         },
-        "shift_test_lagged_mean_r_squared": 0.33171268546500404,
-        "shift_test_dated_t_mean_r_squared": 0.3661324218298358
+        "shift_test_lagged_mean_r_squared": 0.33154514514393213,
+        "shift_test_dated_t_mean_r_squared": 0.365969180892464
       },
       "verdict": "pass",
       "note": "The three diagnostics standing instruction B names are stored here whether or not the average clears 20 percent, so a low number can be attributed without a rebuild. The shift test pair is stored beside them: the design dated t-1 explains shift_test_lagged_mean_r_squared and the design dated t explains shift_test_dated_t_mean_r_squared, and the difference is the same-day information the t-1 rule removes."
@@ -51,9 +51,9 @@
       "criterion": "FMP check: X' w_FMP(k) equals the unit vector e_k within 1e-8 for every factor k.",
       "threshold": "max abs deviation from e_k < 1e-8",
       "stored_numbers": {
-        "max_abs_identity_error_estimated": 1.398549787264003e-13,
+        "max_abs_identity_error_estimated": 1.3999912340523224e-13,
         "n_days_checked": 3941,
-        "n_factor_days": 1040690,
+        "n_factor_days": 1043035,
         "kinds": [
           "estimated",
           "identified"
@@ -76,8 +76,8 @@
       "criterion": "Agreement with the time-series world: XS-v1 momentum factor return vs FF MOM daily correlation above 0.6; market factor vs Mkt-RF above 0.9.",
       "threshold": "momentum correlation > 0.6 and market correlation > 0.9",
       "stored_numbers": {
-        "momentum_vs_ff_mom_correlation": 0.7556666162988234,
-        "market_vs_ff_market_correlation": 0.9888891631261907,
+        "momentum_vs_ff_mom_correlation": 0.755774319227073,
+        "market_vs_ff_market_correlation": 0.9887925307586583,
         "n_overlap_momentum": 3938,
         "n_overlap_market": 3938
       },
@@ -89,11 +89,11 @@
       "threshold": "identity error at machine precision",
       "stored_numbers": {
         "max_abs_factor_plus_idio_minus_total": 0.0,
-        "max_abs_contribution_sum_minus_sigma_p": 5.898059818321144e-17,
+        "max_abs_contribution_sum_minus_sigma_p": 6.245004513516506e-17,
         "n_book_dates": 368,
         "factor_share_by_book": {
-          "seed_ew": 0.9956618407737751,
-          "seed_mom_ls": 0.8216197940330241
+          "seed_ew": 0.9956295571447363,
+          "seed_mom_ls": 0.8216676922476561
         }
       },
       "verdict": "pass",
@@ -104,45 +104,45 @@
       "threshold": "mean monthly bias in [0.8, 1.25] for both books",
       "stored_numbers": {
         "seed_ew": {
-          "mean": 0.9611682605359657,
-          "min": 0.20201802412784606,
-          "max": 4.455811028699055,
+          "mean": 0.9611490333636017,
+          "min": 0.20026467865391806,
+          "max": 4.449147320592649,
           "share_in_band": 0.37142857142857144,
           "n_months": 140,
           "by_year": {
-            "2015": 0.8006441056490506,
-            "2016": 1.0030688803211494,
-            "2017": 1.2544987044708296,
-            "2018": 0.631449531617553,
-            "2019": 1.0141196946385078,
-            "2020": 0.3998933405192325,
-            "2021": 1.5714024525648627,
-            "2022": 0.6676233953889934,
-            "2023": 1.318449423634264,
-            "2024": 0.9686262690609628,
-            "2025": 0.7220999631214061,
-            "2026": 1.2926309178991837
+            "2015": 0.8006448683795044,
+            "2016": 1.002185121968053,
+            "2017": 1.2537600305884269,
+            "2018": 0.632581221424534,
+            "2019": 1.0129496486927,
+            "2020": 0.4009544853112565,
+            "2021": 1.5701648487019935,
+            "2022": 0.668576071844265,
+            "2023": 1.3185570359448224,
+            "2024": 0.9688819109697726,
+            "2025": 0.7229702680141511,
+            "2026": 1.2917698161038098
           }
         },
         "seed_mom_ls": {
-          "mean": 0.6673021570253536,
-          "min": 0.17310395817668695,
-          "max": 3.303119371223423,
-          "share_in_band": 0.12142857142857143,
+          "mean": 0.6645939589945178,
+          "min": 0.17428713287291517,
+          "max": 3.4052055391996774,
+          "share_in_band": 0.10714285714285714,
           "n_months": 140,
           "by_year": {
-            "2015": 0.6103607305060422,
-            "2016": 0.7820914880460856,
-            "2017": 0.8871115014006855,
-            "2018": 0.4723431244454144,
-            "2019": 0.5589399053504546,
-            "2020": 0.3789357506516227,
-            "2021": 1.4623269074388627,
-            "2022": 0.561840952352257,
-            "2023": 0.8422267912426807,
-            "2024": 0.4519700506285811,
-            "2025": 0.4814451697614616,
-            "2026": 0.44339919020746626
+            "2015": 0.6103921273304925,
+            "2016": 0.7837553025653022,
+            "2017": 0.8786496237268943,
+            "2018": 0.47455436615861807,
+            "2019": 0.5517457028880414,
+            "2020": 0.384846471874226,
+            "2021": 1.459669299628071,
+            "2022": 0.5568984808787852,
+            "2023": 0.8210724687786465,
+            "2024": 0.4521383107740182,
+            "2025": 0.4850190050178771,
+            "2026": 0.44228254297260594
           }
         }
       },
@@ -173,13 +173,13 @@
       "threshold": "both factor shares stored for both books",
       "stored_numbers": {
         "seed_ew": {
-          "factor_share_diagonal_mean": 0.9940728924506771,
-          "factor_share_realized_mean": 0.9968170009688586,
+          "factor_share_diagonal_mean": 0.9940312483197763,
+          "factor_share_realized_mean": 0.996853019360076,
           "n_windows": 142
         },
         "seed_mom_ls": {
-          "factor_share_diagonal_mean": 0.7940980134850785,
-          "factor_share_realized_mean": 0.5967110865832945,
+          "factor_share_diagonal_mean": 0.7945127077299305,
+          "factor_share_realized_mean": 0.598194817494072,
           "n_windows": 142
         }
       },
@@ -190,9 +190,9 @@
       "criterion": "The XS-v1 exposure time series for the momentum book is stored and reconciled to the E2 measurements in writing.",
       "threshold": "exposure series stored and reconciled",
       "stored_numbers": {
-        "xs_exposure_mean": 0.7182127341576876,
-        "xs_exposure_min": 0.23554946114699435,
-        "xs_exposure_max": 1.1031453368036945,
+        "xs_exposure_mean": 0.7202659326851429,
+        "xs_exposure_min": 0.24694075819168249,
+        "xs_exposure_max": 1.103140121500729,
         "n_rebalances": 140,
         "e2_reference": {
           "static_name_level_factor_share_last_month": 0.09681972392333447,
@@ -210,13 +210,12 @@
     }
   },
   "revisions": {
-    "previous_data_hash": "223d67567eaf1ead0386cc6657039254a0ea54204b65272b99d06d8691730cff",
-    "data_hash": "25acd5806b282e0750956bd51f5059be8a6b8ecb797de0d1dd5128a52657be19",
-    "n_changed": 8,
+    "previous_data_hash": "752b798c0cd9e6d69625976b1e69593039369c4da70577e0b4c658679e1ce390",
+    "data_hash": "516547692d50a556917adfa4043a903dd31b9ee83e66cc2594c85f5bd8e3de1e",
+    "n_changed": 7,
     "changed_tickers_or_criteria": [
       "F3.1",
       "F3.2",
-      "F3.3",
       "F3.4",
       "F3.5",
       "F3.6",
@@ -228,49 +227,6 @@
       "F3.1": {
         "changed": true,
         "old": {
-          "verdict": "pass",
-          "criterion": "Average daily cross-sectional R squared above 20%. Below 15% means descriptor construction or weighting is wrong, not that the market is unusual.",
-          "threshold": "mean cross-sectional R squared > 0.20, fail band below 0.15",
-          "stored_numbers": {
-            "mean_cross_sectional_r_squared": 0.33154304979604715,
-            "n_days": 3941,
-            "r_squared_by_year": {
-              "2011": 0.356427,
-              "2012": 0.292094,
-              "2013": 0.250941,
-              "2014": 0.28475,
-              "2015": 0.296243,
-              "2016": 0.319633,
-              "2017": 0.28022,
-              "2018": 0.314237,
-              "2019": 0.286212,
-              "2020": 0.373009,
-              "2021": 0.342752,
-              "2022": 0.416004,
-              "2023": 0.368443,
-              "2024": 0.36634,
-              "2025": 0.381067,
-              "2026": 0.397577
-            },
-            "r_squared_market_only_mean": -0.0,
-            "r_squared_by_sector": {
-              "Communication Services": 0.313444,
-              "Consumer Discretionary": 0.227382,
-              "Consumer Staples": 0.27335,
-              "Energy": 0.39089,
-              "Financials": 0.271408,
-              "Health Care": 0.218289,
-              "Industrials": 0.247121,
-              "Information Technology": 0.259421,
-              "Materials": 0.19822,
-              "Real Estate": 0.315649,
-              "Utilities": 0.434586
-            },
-            "shift_test_lagged_mean_r_squared": 0.33163250016239376,
-            "shift_test_dated_t_mean_r_squared": 0.3660805582929351
-          }
-        },
-        "new": {
           "verdict": "pass",
           "criterion": "Average daily cross-sectional R squared above 20%. Below 15% means descriptor construction or weighting is wrong, not that the market is unusual.",
           "threshold": "mean cross-sectional R squared > 0.20, fail band below 0.15",
@@ -312,25 +268,54 @@
             "shift_test_lagged_mean_r_squared": 0.33171268546500404,
             "shift_test_dated_t_mean_r_squared": 0.3661324218298358
           }
+        },
+        "new": {
+          "verdict": "pass",
+          "criterion": "Average daily cross-sectional R squared above 20%. Below 15% means descriptor construction or weighting is wrong, not that the market is unusual.",
+          "threshold": "mean cross-sectional R squared > 0.20, fail band below 0.15",
+          "stored_numbers": {
+            "mean_cross_sectional_r_squared": 0.3313181102291975,
+            "n_days": 3941,
+            "r_squared_by_year": {
+              "2011": 0.355728,
+              "2012": 0.29167,
+              "2013": 0.250586,
+              "2014": 0.285242,
+              "2015": 0.296277,
+              "2016": 0.318438,
+              "2017": 0.27959,
+              "2018": 0.314185,
+              "2019": 0.284938,
+              "2020": 0.371816,
+              "2021": 0.342616,
+              "2022": 0.41595,
+              "2023": 0.36903,
+              "2024": 0.366977,
+              "2025": 0.382134,
+              "2026": 0.39532
+            },
+            "r_squared_market_only_mean": -0.0,
+            "r_squared_by_sector": {
+              "Communication Services": 0.314392,
+              "Consumer Discretionary": 0.227154,
+              "Consumer Staples": 0.275018,
+              "Energy": 0.390765,
+              "Financials": 0.270632,
+              "Health Care": 0.21729,
+              "Industrials": 0.247079,
+              "Information Technology": 0.259353,
+              "Materials": 0.198187,
+              "Real Estate": 0.31484,
+              "Utilities": 0.433397
+            },
+            "shift_test_lagged_mean_r_squared": 0.33154514514393213,
+            "shift_test_dated_t_mean_r_squared": 0.365969180892464
+          }
         }
       },
       "F3.2": {
         "changed": true,
         "old": {
-          "verdict": "pass",
-          "criterion": "FMP check: X' w_FMP(k) equals the unit vector e_k within 1e-8 for every factor k.",
-          "threshold": "max abs deviation from e_k < 1e-8",
-          "stored_numbers": {
-            "max_abs_identity_error_estimated": 1.1190825826776218e-13,
-            "n_days_checked": 3941,
-            "n_factor_days": 1026690,
-            "kinds": [
-              "estimated",
-              "identified"
-            ]
-          }
-        },
-        "new": {
           "verdict": "pass",
           "criterion": "FMP check: X' w_FMP(k) equals the unit vector e_k within 1e-8 for every factor k.",
           "threshold": "max abs deviation from e_k < 1e-8",
@@ -343,16 +328,30 @@
               "identified"
             ]
           }
+        },
+        "new": {
+          "verdict": "pass",
+          "criterion": "FMP check: X' w_FMP(k) equals the unit vector e_k within 1e-8 for every factor k.",
+          "threshold": "max abs deviation from e_k < 1e-8",
+          "stored_numbers": {
+            "max_abs_identity_error_estimated": 1.3999912340523224e-13,
+            "n_days_checked": 3941,
+            "n_factor_days": 1043035,
+            "kinds": [
+              "estimated",
+              "identified"
+            ]
+          }
         }
       },
       "F3.3": {
-        "changed": true,
+        "changed": false,
         "old": {
           "verdict": "pass",
           "criterion": "Identification: cap-weighted sector factor returns sum to zero within 1e-10 on every day.",
           "threshold": "abs cap-weighted sector sum < 1e-10 on every day",
           "stored_numbers": {
-            "max_abs_cap_weighted_sector_sum": 8.023096076392733e-18,
+            "max_abs_cap_weighted_sector_sum": 8.890457814381136e-18,
             "n_days_checked": 3941
           }
         },
@@ -373,8 +372,8 @@
           "criterion": "Agreement with the time-series world: XS-v1 momentum factor return vs FF MOM daily correlation above 0.6; market factor vs Mkt-RF above 0.9.",
           "threshold": "momentum correlation > 0.6 and market correlation > 0.9",
           "stored_numbers": {
-            "momentum_vs_ff_mom_correlation": 0.7558927322084853,
-            "market_vs_ff_market_correlation": 0.9886987053192353,
+            "momentum_vs_ff_mom_correlation": 0.7556666162988234,
+            "market_vs_ff_market_correlation": 0.9888891631261907,
             "n_overlap_momentum": 3938,
             "n_overlap_market": 3938
           }
@@ -384,8 +383,8 @@
           "criterion": "Agreement with the time-series world: XS-v1 momentum factor return vs FF MOM daily correlation above 0.6; market factor vs Mkt-RF above 0.9.",
           "threshold": "momentum correlation > 0.6 and market correlation > 0.9",
           "stored_numbers": {
-            "momentum_vs_ff_mom_correlation": 0.7556666162988234,
-            "market_vs_ff_market_correlation": 0.9888891631261907,
+            "momentum_vs_ff_mom_correlation": 0.755774319227073,
+            "market_vs_ff_market_correlation": 0.9887925307586583,
             "n_overlap_momentum": 3938,
             "n_overlap_market": 3938
           }
@@ -402,8 +401,8 @@
             "max_abs_contribution_sum_minus_sigma_p": 5.898059818321144e-17,
             "n_book_dates": 368,
             "factor_share_by_book": {
-              "seed_ew": 0.9956767473297614,
-              "seed_mom_ls": 0.8231673607989574
+              "seed_ew": 0.9956618407737751,
+              "seed_mom_ls": 0.8216197940330241
             }
           }
         },
@@ -413,11 +412,11 @@
           "threshold": "identity error at machine precision",
           "stored_numbers": {
             "max_abs_factor_plus_idio_minus_total": 0.0,
-            "max_abs_contribution_sum_minus_sigma_p": 5.898059818321144e-17,
+            "max_abs_contribution_sum_minus_sigma_p": 6.245004513516506e-17,
             "n_book_dates": 368,
             "factor_share_by_book": {
-              "seed_ew": 0.9956618407737751,
-              "seed_mom_ls": 0.8216197940330241
+              "seed_ew": 0.9956295571447363,
+              "seed_mom_ls": 0.8216676922476561
             }
           }
         }
@@ -425,55 +424,6 @@
       "F3.6": {
         "changed": true,
         "old": {
-          "verdict": "fail",
-          "criterion": "Bias statistic for both seed portfolios, monthly 2015 to 2026, between 0.8 and 1.25.",
-          "threshold": "mean monthly bias in [0.8, 1.25] for both books",
-          "stored_numbers": {
-            "seed_ew": {
-              "mean": 0.9605028337144126,
-              "min": 0.20227925798119104,
-              "max": 4.447953171050092,
-              "share_in_band": 0.37142857142857144,
-              "n_months": 140,
-              "by_year": {
-                "2015": 0.801166822388247,
-                "2016": 1.0030062161271365,
-                "2017": 1.2522039300487964,
-                "2018": 0.6314865801085843,
-                "2019": 1.0125091921634686,
-                "2020": 0.39897511538475144,
-                "2021": 1.5702711072577158,
-                "2022": 0.6689709512812388,
-                "2023": 1.3166215087657263,
-                "2024": 0.9666726777636155,
-                "2025": 0.7222896353398348,
-                "2026": 1.292538985058545
-              }
-            },
-            "seed_mom_ls": {
-              "mean": 0.6659800757094299,
-              "min": 0.17161441701026503,
-              "max": 3.3436559780749158,
-              "share_in_band": 0.12142857142857143,
-              "n_months": 140,
-              "by_year": {
-                "2015": 0.6128539340861979,
-                "2016": 0.7861256622908083,
-                "2017": 0.8822090124166501,
-                "2018": 0.4778049983341646,
-                "2019": 0.5590693237552408,
-                "2020": 0.37954030217129614,
-                "2021": 1.4647305719522914,
-                "2022": 0.5576892413873574,
-                "2023": 0.8255086769997573,
-                "2024": 0.45843639642131223,
-                "2025": 0.47488642909901,
-                "2026": 0.43636950154389276
-              }
-            }
-          }
-        },
-        "new": {
           "verdict": "fail",
           "criterion": "Bias statistic for both seed portfolios, monthly 2015 to 2026, between 0.8 and 1.25.",
           "threshold": "mean monthly bias in [0.8, 1.25] for both books",
@@ -518,6 +468,55 @@
                 "2024": 0.4519700506285811,
                 "2025": 0.4814451697614616,
                 "2026": 0.44339919020746626
+              }
+            }
+          }
+        },
+        "new": {
+          "verdict": "fail",
+          "criterion": "Bias statistic for both seed portfolios, monthly 2015 to 2026, between 0.8 and 1.25.",
+          "threshold": "mean monthly bias in [0.8, 1.25] for both books",
+          "stored_numbers": {
+            "seed_ew": {
+              "mean": 0.9611490333636017,
+              "min": 0.20026467865391806,
+              "max": 4.449147320592649,
+              "share_in_band": 0.37142857142857144,
+              "n_months": 140,
+              "by_year": {
+                "2015": 0.8006448683795044,
+                "2016": 1.002185121968053,
+                "2017": 1.2537600305884269,
+                "2018": 0.632581221424534,
+                "2019": 1.0129496486927,
+                "2020": 0.4009544853112565,
+                "2021": 1.5701648487019935,
+                "2022": 0.668576071844265,
+                "2023": 1.3185570359448224,
+                "2024": 0.9688819109697726,
+                "2025": 0.7229702680141511,
+                "2026": 1.2917698161038098
+              }
+            },
+            "seed_mom_ls": {
+              "mean": 0.6645939589945178,
+              "min": 0.17428713287291517,
+              "max": 3.4052055391996774,
+              "share_in_band": 0.10714285714285714,
+              "n_months": 140,
+              "by_year": {
+                "2015": 0.6103921273304925,
+                "2016": 0.7837553025653022,
+                "2017": 0.8786496237268943,
+                "2018": 0.47455436615861807,
+                "2019": 0.5517457028880414,
+                "2020": 0.384846471874226,
+                "2021": 1.459669299628071,
+                "2022": 0.5568984808787852,
+                "2023": 0.8210724687786465,
+                "2024": 0.4521383107740182,
+                "2025": 0.4850190050178771,
+                "2026": 0.44228254297260594
               }
             }
           }
@@ -570,14 +569,14 @@
           "threshold": "both factor shares stored for both books",
           "stored_numbers": {
             "seed_ew": {
-              "factor_share_diagonal_mean": 0.9942084634700509,
-              "factor_share_realized_mean": 0.9967818160099762,
-              "n_windows": 140
+              "factor_share_diagonal_mean": 0.9940728924506771,
+              "factor_share_realized_mean": 0.9968170009688586,
+              "n_windows": 142
             },
             "seed_mom_ls": {
-              "factor_share_diagonal_mean": 0.7940553664869032,
-              "factor_share_realized_mean": 0.5964599409667224,
-              "n_windows": 140
+              "factor_share_diagonal_mean": 0.7940980134850785,
+              "factor_share_realized_mean": 0.5967110865832945,
+              "n_windows": 142
             }
           }
         },
@@ -587,13 +586,13 @@
           "threshold": "both factor shares stored for both books",
           "stored_numbers": {
             "seed_ew": {
-              "factor_share_diagonal_mean": 0.9940728924506771,
-              "factor_share_realized_mean": 0.9968170009688586,
+              "factor_share_diagonal_mean": 0.9940312483197763,
+              "factor_share_realized_mean": 0.996853019360076,
               "n_windows": 142
             },
             "seed_mom_ls": {
-              "factor_share_diagonal_mean": 0.7940980134850785,
-              "factor_share_realized_mean": 0.5967110865832945,
+              "factor_share_diagonal_mean": 0.7945127077299305,
+              "factor_share_realized_mean": 0.598194817494072,
               "n_windows": 142
             }
           }
@@ -606,9 +605,9 @@
           "criterion": "The XS-v1 exposure time series for the momentum book is stored and reconciled to the E2 measurements in writing.",
           "threshold": "exposure series stored and reconciled",
           "stored_numbers": {
-            "xs_exposure_mean": 0.7201082234440193,
-            "xs_exposure_min": 0.23424551447995295,
-            "xs_exposure_max": 1.0906105388442495,
+            "xs_exposure_mean": 0.7182127341576876,
+            "xs_exposure_min": 0.23554946114699435,
+            "xs_exposure_max": 1.1031453368036945,
             "n_rebalances": 140,
             "e2_reference": {
               "static_name_level_factor_share_last_month": 0.09681972392333447,
@@ -627,9 +626,9 @@
           "criterion": "The XS-v1 exposure time series for the momentum book is stored and reconciled to the E2 measurements in writing.",
           "threshold": "exposure series stored and reconciled",
           "stored_numbers": {
-            "xs_exposure_mean": 0.7182127341576876,
-            "xs_exposure_min": 0.23554946114699435,
-            "xs_exposure_max": 1.1031453368036945,
+            "xs_exposure_mean": 0.7202659326851429,
+            "xs_exposure_min": 0.24694075819168249,
+            "xs_exposure_max": 1.103140121500729,
             "n_rebalances": 140,
             "e2_reference": {
               "static_name_level_factor_share_last_month": 0.09681972392333447,
@@ -3685,6 +3684,442 @@
                 "xs_exposure_mean": 0.7182127341576876,
                 "xs_exposure_min": 0.23554946114699435,
                 "xs_exposure_max": 1.1031453368036945,
+                "n_rebalances": 140,
+                "e2_reference": {
+                  "static_name_level_factor_share_last_month": 0.09681972392333447,
+                  "regression_loading": 0.2884639400639966,
+                  "regression_t_stat": 29.104952622365634,
+                  "rolling_beta_aggregate_mean": 0.06978002876927968,
+                  "rolling_beta_aggregate_min": -0.3322050420277022,
+                  "rolling_beta_aggregate_max": 0.3904549841533205,
+                  "static_full_sample_aggregate": -0.016190070548666415,
+                  "n_rebalances": 195
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "previous_data_hash": "752b798c0cd9e6d69625976b1e69593039369c4da70577e0b4c658679e1ce390",
+        "data_hash": "516547692d50a556917adfa4043a903dd31b9ee83e66cc2594c85f5bd8e3de1e",
+        "n_changed": 7,
+        "changed_tickers_or_criteria": [
+          "F3.1",
+          "F3.2",
+          "F3.4",
+          "F3.5",
+          "F3.6",
+          "F3.8",
+          "F3.9"
+        ],
+        "cross_sprint_criteria": [],
+        "changed": {
+          "F3.1": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Average daily cross-sectional R squared above 20%. Below 15% means descriptor construction or weighting is wrong, not that the market is unusual.",
+              "threshold": "mean cross-sectional R squared > 0.20, fail band below 0.15",
+              "stored_numbers": {
+                "mean_cross_sectional_r_squared": 0.33148342799085984,
+                "n_days": 3941,
+                "r_squared_by_year": {
+                  "2011": 0.355728,
+                  "2012": 0.29167,
+                  "2013": 0.250586,
+                  "2014": 0.285242,
+                  "2015": 0.296273,
+                  "2016": 0.318474,
+                  "2017": 0.279895,
+                  "2018": 0.314299,
+                  "2019": 0.28529,
+                  "2020": 0.372282,
+                  "2021": 0.342826,
+                  "2022": 0.416081,
+                  "2023": 0.36917,
+                  "2024": 0.366958,
+                  "2025": 0.382319,
+                  "2026": 0.396287
+                },
+                "r_squared_market_only_mean": -0.0,
+                "r_squared_by_sector": {
+                  "Communication Services": 0.314602,
+                  "Consumer Discretionary": 0.227118,
+                  "Consumer Staples": 0.274963,
+                  "Energy": 0.390641,
+                  "Financials": 0.270568,
+                  "Health Care": 0.217216,
+                  "Industrials": 0.246986,
+                  "Information Technology": 0.259687,
+                  "Materials": 0.198299,
+                  "Real Estate": 0.314788,
+                  "Utilities": 0.433313
+                },
+                "shift_test_lagged_mean_r_squared": 0.33171268546500404,
+                "shift_test_dated_t_mean_r_squared": 0.3661324218298358
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Average daily cross-sectional R squared above 20%. Below 15% means descriptor construction or weighting is wrong, not that the market is unusual.",
+              "threshold": "mean cross-sectional R squared > 0.20, fail band below 0.15",
+              "stored_numbers": {
+                "mean_cross_sectional_r_squared": 0.3313181102291975,
+                "n_days": 3941,
+                "r_squared_by_year": {
+                  "2011": 0.355728,
+                  "2012": 0.29167,
+                  "2013": 0.250586,
+                  "2014": 0.285242,
+                  "2015": 0.296277,
+                  "2016": 0.318438,
+                  "2017": 0.27959,
+                  "2018": 0.314185,
+                  "2019": 0.284938,
+                  "2020": 0.371816,
+                  "2021": 0.342616,
+                  "2022": 0.41595,
+                  "2023": 0.36903,
+                  "2024": 0.366977,
+                  "2025": 0.382134,
+                  "2026": 0.39532
+                },
+                "r_squared_market_only_mean": -0.0,
+                "r_squared_by_sector": {
+                  "Communication Services": 0.314392,
+                  "Consumer Discretionary": 0.227154,
+                  "Consumer Staples": 0.275018,
+                  "Energy": 0.390765,
+                  "Financials": 0.270632,
+                  "Health Care": 0.21729,
+                  "Industrials": 0.247079,
+                  "Information Technology": 0.259353,
+                  "Materials": 0.198187,
+                  "Real Estate": 0.31484,
+                  "Utilities": 0.433397
+                },
+                "shift_test_lagged_mean_r_squared": 0.33154514514393213,
+                "shift_test_dated_t_mean_r_squared": 0.365969180892464
+              }
+            }
+          },
+          "F3.2": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "FMP check: X' w_FMP(k) equals the unit vector e_k within 1e-8 for every factor k.",
+              "threshold": "max abs deviation from e_k < 1e-8",
+              "stored_numbers": {
+                "max_abs_identity_error_estimated": 1.398549787264003e-13,
+                "n_days_checked": 3941,
+                "n_factor_days": 1040690,
+                "kinds": [
+                  "estimated",
+                  "identified"
+                ]
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "FMP check: X' w_FMP(k) equals the unit vector e_k within 1e-8 for every factor k.",
+              "threshold": "max abs deviation from e_k < 1e-8",
+              "stored_numbers": {
+                "max_abs_identity_error_estimated": 1.3999912340523224e-13,
+                "n_days_checked": 3941,
+                "n_factor_days": 1043035,
+                "kinds": [
+                  "estimated",
+                  "identified"
+                ]
+              }
+            }
+          },
+          "F3.3": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Identification: cap-weighted sector factor returns sum to zero within 1e-10 on every day.",
+              "threshold": "abs cap-weighted sector sum < 1e-10 on every day",
+              "stored_numbers": {
+                "max_abs_cap_weighted_sector_sum": 8.890457814381136e-18,
+                "n_days_checked": 3941
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Identification: cap-weighted sector factor returns sum to zero within 1e-10 on every day.",
+              "threshold": "abs cap-weighted sector sum < 1e-10 on every day",
+              "stored_numbers": {
+                "max_abs_cap_weighted_sector_sum": 8.890457814381136e-18,
+                "n_days_checked": 3941
+              }
+            }
+          },
+          "F3.4": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Agreement with the time-series world: XS-v1 momentum factor return vs FF MOM daily correlation above 0.6; market factor vs Mkt-RF above 0.9.",
+              "threshold": "momentum correlation > 0.6 and market correlation > 0.9",
+              "stored_numbers": {
+                "momentum_vs_ff_mom_correlation": 0.7556666162988234,
+                "market_vs_ff_market_correlation": 0.9888891631261907,
+                "n_overlap_momentum": 3938,
+                "n_overlap_market": 3938
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Agreement with the time-series world: XS-v1 momentum factor return vs FF MOM daily correlation above 0.6; market factor vs Mkt-RF above 0.9.",
+              "threshold": "momentum correlation > 0.6 and market correlation > 0.9",
+              "stored_numbers": {
+                "momentum_vs_ff_mom_correlation": 0.755774319227073,
+                "market_vs_ff_market_correlation": 0.9887925307586583,
+                "n_overlap_momentum": 3938,
+                "n_overlap_market": 3938
+              }
+            }
+          },
+          "F3.5": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Decomposition adds up: factor variance plus idio variance equals w' Sigma w to machine precision; contributions sum to sigma_p.",
+              "threshold": "identity error at machine precision",
+              "stored_numbers": {
+                "max_abs_factor_plus_idio_minus_total": 0.0,
+                "max_abs_contribution_sum_minus_sigma_p": 5.898059818321144e-17,
+                "n_book_dates": 368,
+                "factor_share_by_book": {
+                  "seed_ew": 0.9956618407737751,
+                  "seed_mom_ls": 0.8216197940330241
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Decomposition adds up: factor variance plus idio variance equals w' Sigma w to machine precision; contributions sum to sigma_p.",
+              "threshold": "identity error at machine precision",
+              "stored_numbers": {
+                "max_abs_factor_plus_idio_minus_total": 0.0,
+                "max_abs_contribution_sum_minus_sigma_p": 6.245004513516506e-17,
+                "n_book_dates": 368,
+                "factor_share_by_book": {
+                  "seed_ew": 0.9956295571447363,
+                  "seed_mom_ls": 0.8216676922476561
+                }
+              }
+            }
+          },
+          "F3.6": {
+            "changed": true,
+            "old": {
+              "verdict": "fail",
+              "criterion": "Bias statistic for both seed portfolios, monthly 2015 to 2026, between 0.8 and 1.25.",
+              "threshold": "mean monthly bias in [0.8, 1.25] for both books",
+              "stored_numbers": {
+                "seed_ew": {
+                  "mean": 0.9611682605359657,
+                  "min": 0.20201802412784606,
+                  "max": 4.455811028699055,
+                  "share_in_band": 0.37142857142857144,
+                  "n_months": 140,
+                  "by_year": {
+                    "2015": 0.8006441056490506,
+                    "2016": 1.0030688803211494,
+                    "2017": 1.2544987044708296,
+                    "2018": 0.631449531617553,
+                    "2019": 1.0141196946385078,
+                    "2020": 0.3998933405192325,
+                    "2021": 1.5714024525648627,
+                    "2022": 0.6676233953889934,
+                    "2023": 1.318449423634264,
+                    "2024": 0.9686262690609628,
+                    "2025": 0.7220999631214061,
+                    "2026": 1.2926309178991837
+                  }
+                },
+                "seed_mom_ls": {
+                  "mean": 0.6673021570253536,
+                  "min": 0.17310395817668695,
+                  "max": 3.303119371223423,
+                  "share_in_band": 0.12142857142857143,
+                  "n_months": 140,
+                  "by_year": {
+                    "2015": 0.6103607305060422,
+                    "2016": 0.7820914880460856,
+                    "2017": 0.8871115014006855,
+                    "2018": 0.4723431244454144,
+                    "2019": 0.5589399053504546,
+                    "2020": 0.3789357506516227,
+                    "2021": 1.4623269074388627,
+                    "2022": 0.561840952352257,
+                    "2023": 0.8422267912426807,
+                    "2024": 0.4519700506285811,
+                    "2025": 0.4814451697614616,
+                    "2026": 0.44339919020746626
+                  }
+                }
+              }
+            },
+            "new": {
+              "verdict": "fail",
+              "criterion": "Bias statistic for both seed portfolios, monthly 2015 to 2026, between 0.8 and 1.25.",
+              "threshold": "mean monthly bias in [0.8, 1.25] for both books",
+              "stored_numbers": {
+                "seed_ew": {
+                  "mean": 0.9611490333636017,
+                  "min": 0.20026467865391806,
+                  "max": 4.449147320592649,
+                  "share_in_band": 0.37142857142857144,
+                  "n_months": 140,
+                  "by_year": {
+                    "2015": 0.8006448683795044,
+                    "2016": 1.002185121968053,
+                    "2017": 1.2537600305884269,
+                    "2018": 0.632581221424534,
+                    "2019": 1.0129496486927,
+                    "2020": 0.4009544853112565,
+                    "2021": 1.5701648487019935,
+                    "2022": 0.668576071844265,
+                    "2023": 1.3185570359448224,
+                    "2024": 0.9688819109697726,
+                    "2025": 0.7229702680141511,
+                    "2026": 1.2917698161038098
+                  }
+                },
+                "seed_mom_ls": {
+                  "mean": 0.6645939589945178,
+                  "min": 0.17428713287291517,
+                  "max": 3.4052055391996774,
+                  "share_in_band": 0.10714285714285714,
+                  "n_months": 140,
+                  "by_year": {
+                    "2015": 0.6103921273304925,
+                    "2016": 0.7837553025653022,
+                    "2017": 0.8786496237268943,
+                    "2018": 0.47455436615861807,
+                    "2019": 0.5517457028880414,
+                    "2020": 0.384846471874226,
+                    "2021": 1.459669299628071,
+                    "2022": 0.5568984808787852,
+                    "2023": 0.8210724687786465,
+                    "2024": 0.4521383107740182,
+                    "2025": 0.4850190050178771,
+                    "2026": 0.44228254297260594
+                  }
+                }
+              }
+            }
+          },
+          "F3.7": {
+            "changed": false,
+            "old": {
+              "verdict": "pass",
+              "criterion": "The Fama-MacBeth premia table is produced with Newey-West t-stats for every factor and subperiod, whatever the verdict; a premium with |t| below 2 is reported as unpriced, not dropped.",
+              "threshold": "table complete for every factor and subperiod",
+              "stored_numbers": {
+                "n_rows": 72,
+                "n_factors": 18,
+                "periods": [
+                  "2011_2015",
+                  "2016_2020",
+                  "2021_2026",
+                  "full_sample"
+                ],
+                "min_periods_per_factor": 4,
+                "n_unpriced": 65,
+                "unpriced_share": 0.9027777777777778
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "The Fama-MacBeth premia table is produced with Newey-West t-stats for every factor and subperiod, whatever the verdict; a premium with |t| below 2 is reported as unpriced, not dropped.",
+              "threshold": "table complete for every factor and subperiod",
+              "stored_numbers": {
+                "n_rows": 72,
+                "n_factors": 18,
+                "periods": [
+                  "2011_2015",
+                  "2016_2020",
+                  "2021_2026",
+                  "full_sample"
+                ],
+                "min_periods_per_factor": 4,
+                "n_unpriced": 65,
+                "unpriced_share": 0.9027777777777778
+              }
+            }
+          },
+          "F3.8": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "Realized residual covariance is computed for both seed portfolios and the factor share is reported both ways, with the diagonal D and with the realized residual covariance. The criterion passes when both numbers are stored, whatever they show.",
+              "threshold": "both factor shares stored for both books",
+              "stored_numbers": {
+                "seed_ew": {
+                  "factor_share_diagonal_mean": 0.9940728924506771,
+                  "factor_share_realized_mean": 0.9968170009688586,
+                  "n_windows": 142
+                },
+                "seed_mom_ls": {
+                  "factor_share_diagonal_mean": 0.7940980134850785,
+                  "factor_share_realized_mean": 0.5967110865832945,
+                  "n_windows": 142
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "Realized residual covariance is computed for both seed portfolios and the factor share is reported both ways, with the diagonal D and with the realized residual covariance. The criterion passes when both numbers are stored, whatever they show.",
+              "threshold": "both factor shares stored for both books",
+              "stored_numbers": {
+                "seed_ew": {
+                  "factor_share_diagonal_mean": 0.9940312483197763,
+                  "factor_share_realized_mean": 0.996853019360076,
+                  "n_windows": 142
+                },
+                "seed_mom_ls": {
+                  "factor_share_diagonal_mean": 0.7945127077299305,
+                  "factor_share_realized_mean": 0.598194817494072,
+                  "n_windows": 142
+                }
+              }
+            }
+          },
+          "F3.9": {
+            "changed": true,
+            "old": {
+              "verdict": "pass",
+              "criterion": "The XS-v1 exposure time series for the momentum book is stored and reconciled to the E2 measurements in writing.",
+              "threshold": "exposure series stored and reconciled",
+              "stored_numbers": {
+                "xs_exposure_mean": 0.7182127341576876,
+                "xs_exposure_min": 0.23554946114699435,
+                "xs_exposure_max": 1.1031453368036945,
+                "n_rebalances": 140,
+                "e2_reference": {
+                  "static_name_level_factor_share_last_month": 0.09681972392333447,
+                  "regression_loading": 0.2884639400639966,
+                  "regression_t_stat": 29.104952622365634,
+                  "rolling_beta_aggregate_mean": 0.06978002876927968,
+                  "rolling_beta_aggregate_min": -0.3322050420277022,
+                  "rolling_beta_aggregate_max": 0.3904549841533205,
+                  "static_full_sample_aggregate": -0.016190070548666415,
+                  "n_rebalances": 195
+                }
+              }
+            },
+            "new": {
+              "verdict": "pass",
+              "criterion": "The XS-v1 exposure time series for the momentum book is stored and reconciled to the E2 measurements in writing.",
+              "threshold": "exposure series stored and reconciled",
+              "stored_numbers": {
+                "xs_exposure_mean": 0.7202659326851429,
+                "xs_exposure_min": 0.24694075819168249,
+                "xs_exposure_max": 1.103140121500729,
                 "n_rebalances": 140,
                 "e2_reference": {
                   "static_name_level_factor_share_last_month": 0.09681972392333447,
