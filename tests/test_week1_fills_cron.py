@@ -388,6 +388,90 @@ def test_the_snapshot_gains_the_actual_holdings_beside_the_target_book(
         assert republished[key] == PUBLISHED[key]
 
 
+def test_a_snapshot_that_cannot_be_published_fails_the_morning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A morning that cannot republish the book is a failed morning, and says why.
+
+    The snapshot is the book the next evening reads and the page the owner looks
+    at, so a write that fails leaves the loop on the previous evening's page. That
+    is this morning's failure rather than a footnote on a healthy one: the run is
+    marked failed, the process exits nonzero so the cron shows it and the retry
+    fires (`already_ran` counts a completed day only), and the owner is told on a
+    morning whose legs all filled and which would otherwise have sent nothing. The
+    fills stay written: they are the morning's own record, and a rerun converges on
+    them rather than needing them back.
+    """
+    from live import snapshot
+
+    harness = _install(
+        monkeypatch, tmp_path, broker_orders={"oid-dg": _order("filled")}
+    )
+
+    def refuse(key: str, body: str, **kwargs: object) -> None:
+        raise RuntimeError("the bucket answered 503")
+
+    monkeypatch.setattr(snapshot, "put_object", refuse)
+
+    code = reconcile_fills.main([])
+
+    assert code == 1
+    assert harness.recorded == [(reconcile_fills.JOB, TODAY, "error")]
+    row = store.select(staleness.TABLE).iloc[0]
+    assert row["status"] == "error"
+    # The whole morning is on the row: the reconciliation that happened, and the
+    # write that did not.
+    assert "1 of 1 order(s) filled" in row["detail"]
+    assert "the snapshot was not published" in row["detail"]
+    assert "the bucket answered 503" in row["detail"]
+    # The notification went out and succeeded, so the row does not blame it.
+    assert row["notify_status"] == "sent"
+    assert not row["notify_failed"]
+
+    # The fills are written and stay written, and the page was not touched.
+    assert set(harness.written) == {"fills", "run_status"}, harness.written
+    assert list(store.select("fills")["ticker"]) == ["DG"]
+    assert harness.published == []
+
+    assert len(harness.sent) == 1
+    payload = harness.sent[0]
+    assert str(payload["subject"]) == f"EFB ERROR {CLOSE} | none proposed | Exception"
+    text = str(payload["text"])
+    assert f"EFB live book {CLOSE}: error, the run failed" in text
+    # The orders went out last evening: "the run failed before sizing" would be the
+    # message's own false statement about a morning whose legs filled.
+    assert "failed before sizing" not in text
+    assert f"Orders: none from this job. The 1 order(s) for the close of {CLOSE}" in (
+        text
+    )
+    # The reason is the write, not the morning's reconciliation: the realised cost
+    # and the count of filled legs are the fill lines' own business.
+    assert "Error: Exception: the snapshot was not published: RuntimeError" in text
+    assert "the bucket answered 503" in text
+    assert "Realized cost:" in text
+
+
+def test_a_snapshot_that_cannot_be_published_is_not_a_failed_morning_when_it_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The control: a morning whose page goes up is still an ok morning."""
+    harness = _install(
+        monkeypatch, tmp_path, broker_orders={"oid-dg": _order("filled")}
+    )
+
+    code = reconcile_fills.main([])
+
+    assert code == 0
+    assert [key for key, _ in harness.published] == [
+        "latest.json",
+        "snapshots/2026-10-01.json",
+    ]
+    row = store.select(staleness.TABLE).iloc[0]
+    assert row["status"] == "ok"
+    assert "the snapshot was not published" not in row["detail"]
+    assert harness.sent == [], "a filled morning with a published page says nothing"
+
+
 def test_a_closed_morning_reconciles_nothing_and_says_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

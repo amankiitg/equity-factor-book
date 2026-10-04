@@ -64,7 +64,7 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import pandas as pd
@@ -814,6 +814,10 @@ class Outcome:
     # The spin-offs applied to the appended sessions, one record per parent row the
     # rule corrected (or nulled, when the child's close could not be read).
     spinoffs: list[SpinoffOutcome] = field(default_factory=list)
+    # The line the evening's message carries when the vendor read behind those
+    # records did not answer. Never an error and never silent: the run goes on with
+    # the raw prints in place, and the owner is told which session is unverified.
+    lookup_failure: str | None = None
 
 
 def appended_sessions(
@@ -1116,6 +1120,22 @@ def apply_to_append(
     )
 
 
+def lookup_failure_note(sessions: list[pd.Timestamp], exc: BaseException) -> str:
+    """The line the evening's message carries when the vendor read failed.
+
+    The session is named because the moves nothing checked are on that session, and
+    that is the one thing a person has to look at by hand tomorrow: the 40% flag
+    still names the print, but no record explains it. The error type is named rather
+    than its message, because a transport failure's message is a URL.
+    """
+    days = [str(pd.Timestamp(session).date()) for session in sessions]
+    which = "this session" if len(days) == 1 else "these sessions"
+    return (
+        f"Spin-off lookup failed for {', '.join(days)}: {type(exc).__name__}; "
+        f"large moves on {which} are unverified."
+    )
+
+
 def apply_to_artifact(
     data_root: Any,
     since: pd.Timestamp | None,
@@ -1153,6 +1173,7 @@ def apply_to_artifact(
     sessions = appended_sessions(frame, since)
     found: dict[pd.Timestamp, list[Spinoff]] = {}
     fetched: dict[tuple[str, pd.Timestamp], float] = {}
+    lookup_failure: str | None = None
     if sessions:
         universe = sorted(
             {str(ticker) for ticker in prices_frame.index.get_level_values("ticker")}
@@ -1166,6 +1187,7 @@ def apply_to_artifact(
                 child_closes_fetcher=child_closes_fetcher,
             )
         except Exception as exc:  # noqa: BLE001 - a read that may fail, named
+            lookup_failure = lookup_failure_note(sessions, exc)
             logger.warning(
                 "could not read the vendor's spin-offs for %s: %s: %s",
                 ", ".join(str(session.date()) for session in sessions),
@@ -1183,6 +1205,12 @@ def apply_to_artifact(
         spinoffs=found,
         child_close=child_close_lookup(prices_frame, fetched),
     )
+    if lookup_failure is not None:
+        # Carried on the outcome even though the rule went on. The run is not the
+        # vendo error's problem to solve by refusing to price the book, and a
+        # session whose large moves nothing checked is not something to leave out
+        # of the message either.
+        outcome = replace(outcome, lookup_failure=lookup_failure)
     if outcome.splits or outcome.spinoffs:
         outcome.returns.to_parquet(returns_path)
     return outcome

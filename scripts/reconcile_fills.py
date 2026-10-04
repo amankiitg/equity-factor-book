@@ -206,6 +206,10 @@ def main(argv: list[str] | None = None) -> int:
     keys: list[str] = []
     message = None
     holdings: dict[str, Any] = {}
+    # The page write is the one step here that can fail without the reconciliation
+    # being wrong, and a page that did not go up is a failed morning rather than a
+    # footnote on a healthy one. None means it went up.
+    snapshot_failure: str | None = None
     try:
         # The account, not the store: this job exists to say what the account
         # holds, and `dry_run=False` is what makes a failed broker read raise
@@ -243,22 +247,36 @@ def main(argv: list[str] | None = None) -> int:
         )
         try:
             keys = publish(block)
-        except Exception as exc:  # noqa: BLE001 - the reconciliation stands alone
-            # A snapshot that cannot be published is reported and does not fail
-            # the job: what the owner needs from this morning is the fills and,
-            # when something did not fill, the message. The page section is the
-            # third thing, not the first.
-            logger.warning("could not publish the snapshot: %s", type(exc).__name__)
-            detail += f"; snapshot not published ({type(exc).__name__})"
+        except Exception as exc:  # noqa: BLE001 - named below, never swallowed
+            snapshot_failure = (
+                f"the snapshot was not published: {type(exc).__name__}: {exc}"
+            )
+            logger.error("%s", notify.scrub(snapshot_failure))
 
-        if report["unfilled"] or report["unread"]:
+        message_detail = detail
+        if snapshot_failure is not None:
+            # The published object is the book the next evening reads and the page
+            # the owner looks at, so a write that failed has left the loop on the
+            # previous evening's page. That is this morning's failure rather than a
+            # footnote on a healthy one: the run is marked failed, the process
+            # exits nonzero so the cron shows it and the retry is allowed to fire,
+            # and the owner is told. The fills above stay written, because they are
+            # the morning's own record and a rerun converges on them instead of
+            # needing them back.
+            status = "error"
+            detail = notify.scrub(f"{snapshot_failure}; {detail}")
+            # The message's own reason is the write that failed: the realised cost
+            # and the count of filled legs are the fill lines' business.
+            message_detail = notify.scrub(snapshot_failure)
+
+        if report["unfilled"] or report["unread"] or snapshot_failure is not None:
             message = notify.notify_run(
-                status="ok",
+                status=status,
                 target_close=close,
                 dry_run=False,
                 orders=report["n_orders"],
                 gross=filled_notional,
-                detail=detail,
+                detail=message_detail,
                 store=store.store_label(),
                 fills={**report, "expected_cost_bps": expected},
             )
@@ -281,9 +299,15 @@ def main(argv: list[str] | None = None) -> int:
         notify_status=(
             "not needed"
             if message is None
-            else ("sent" if status == "ok" else "failed")
+            else ("sent" if message["status"] == notify.STATUS_SENT else "failed")
         ),
-        notify_failed=bool(message is not None and status != "ok"),
+        # Keyed to the message's own outcome rather than to the run's status: a
+        # morning can fail its page write and still have told the owner about it,
+        # and a row that read that as a failed notification would send the reader
+        # looking at the messenger instead of at the bucket.
+        notify_failed=bool(
+            message is not None and message["status"] != notify.STATUS_SENT
+        ),
         n_orders=int(report.get("n_orders") or 0),
         gross_notional=filled_notional,
         snapshot=(", ".join(keys) if keys else None),

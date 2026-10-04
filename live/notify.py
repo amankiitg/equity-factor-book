@@ -290,6 +290,7 @@ def compose(
     spinoffs: list[str] | None = None,
     spinoff_missing: list[str] | None = None,
     spinoff_unusable: list[str] | None = None,
+    spinoff_lookup_failed: str | None = None,
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
     snapshot: str | None = None,
@@ -367,6 +368,15 @@ def compose(
         lines.append(
             f"Orders: {int(orders or 0)} orders sent, {_money(gross)} gross, at "
             "least one leg not confirmed"
+        )
+    elif fills:
+        # A morning message. The book was priced and its legs went out the evening
+        # before, so "the run failed before sizing" is this message's own false
+        # statement too: what such a morning failed at is the write that follows the
+        # reconciliation, and the reason is on the Error line below.
+        lines.append(
+            f"Orders: none from this job. The {int(orders or 0)} order(s) for the "
+            f"close of {close} went out last evening."
         )
     else:
         lines.append(
@@ -453,6 +463,12 @@ def compose(
             "Spin-off record unusable, so the parent's return was nulled: "
             f"{', '.join(spinoff_unusable)}."
         )
+    if spinoff_lookup_failed:
+        # The read behind every spin-off number failed, so no spin-off was applied
+        # and the session's large moves are the raw prints the 40% flag names. The
+        # run goes on either way, and this is the line that stops the run reading as
+        # a clean evening: nobody else is looking for that session.
+        lines.append(spinoff_lookup_failed.strip().rstrip(".") + ".")
     if flags:
         lines.append(f"Large moves: {_flag_list(flags)}.")
     # The day's kind, in the owner's own terms. An establishment day creates the
@@ -870,6 +886,7 @@ def notify_run(
     spinoffs: list[str] | None = None,
     spinoff_missing: list[str] | None = None,
     spinoff_unusable: list[str] | None = None,
+    spinoff_lookup_failed: str | None = None,
     flags: list[dict[str, Any]] | None = None,
     store: str | None = None,
     snapshot: str | None = None,
@@ -923,6 +940,7 @@ def notify_run(
         spinoffs=spinoffs,
         spinoff_missing=spinoff_missing,
         spinoff_unusable=spinoff_unusable,
+        spinoff_lookup_failed=spinoff_lookup_failed,
         flags=flags,
         no_price=no_price,
         thin_adv=thin_adv,

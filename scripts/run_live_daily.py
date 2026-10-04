@@ -557,6 +557,7 @@ def finish_run(
     spinoffs: list[str] | None = None,
     spinoff_missing: list[str] | None = None,
     spinoff_unusable: list[str] | None = None,
+    spinoff_lookup_failed: str | None = None,
     flags: list[dict[str, Any]] | None = None,
     started_at: str | None = None,
     cross_checks_capped: str | None = None,
@@ -719,6 +720,7 @@ def finish_run(
         spinoffs=spinoffs,
         spinoff_missing=spinoff_missing,
         spinoff_unusable=spinoff_unusable,
+        spinoff_lookup_failed=spinoff_lookup_failed,
         flags=flags,
         store=store_name,
         snapshot=snapshot_detail,
@@ -948,6 +950,11 @@ def main() -> int:
     spinoff_unusable: list[str] = []
     flags: list[dict[str, Any]] = []
     capped: str = ""
+    # The line the message carries when the vendor read behind the spin-off rule
+    # did not answer. Empty on an ordinary evening, and never inferred from the
+    # absence of spin-offs: a read that failed and a read that found nothing are
+    # different evenings and only one of them is unverified.
+    spinoff_lookup_failed: str = ""
     # Whether this run seeded the store. False on every path that is not the
     # explicit first run, including a run that fails before the guard decides.
     first_run = False
@@ -1080,6 +1087,9 @@ def main() -> int:
         capped = corporate_actions.cap_note(outcome.unchecked)
         if capped:
             logger.warning("%s", capped)
+        spinoff_lookup_failed = str(outcome.lookup_failure or "")
+        if spinoff_lookup_failed:
+            logger.warning("%s", spinoff_lookup_failed)
         flags = outcome.flags
         if flags:
             logger.warning("large moves in the appended session: %s", flags)
@@ -1315,6 +1325,7 @@ def main() -> int:
         spinoffs=spinoffs,
         spinoff_missing=spinoff_missing,
         spinoff_unusable=spinoff_unusable,
+        spinoff_lookup_failed=spinoff_lookup_failed,
         flags=flags,
         started_at=started_at,
         cross_checks_capped=capped,

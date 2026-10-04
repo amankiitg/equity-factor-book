@@ -59,6 +59,8 @@ class _NoCorporateActions:
     flags: list = []
     unchecked = 0
     spinoffs: list = []
+    # The read behind the rule answered: no lookup failure to report.
+    lookup_failure: str | None = None
 
 
 def _stub_the_work(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
