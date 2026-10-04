@@ -1,3 +1,407 @@
+# monday-fixes: the spin-off read's deadline, the failed page write, and the source column
+
+Small fixes on `main` before Monday, from the Codex review. Branch `monday-fixes`,
+off `main` at `30c7ca4`, merged with `--no-ff` as `f9d40d9` (code commit
+`8e2d244`). No database, broker or R2 write was made, and no stored-criteria file
+was touched: the change is `live/alpaca.py`, `live/corporate_actions.py`,
+`live/notify.py`, `scripts/run_live_daily.py`, `scripts/reconcile_fills.py` and
+the tests that cover them.
+
+## Item 1: the recorded spin-offs and the `source` column. No.
+
+**The recorded spin-off path does not filter on `source`.** It filters on
+`explained_by`, and `source` is carried through rather than read as a gate:
+
+- `live/corporate_actions.py:627`, in `spinoffs_from_rows`:
+  `wanted = rows.loc[rows["explained_by"].astype(str) == "spinoff"]`. A row whose
+  `explained_by` is anything else is a split and is not a spin-off here; a frame
+  with no `explained_by` column at all reads as no records
+  (`live/corporate_actions.py:625`).
+- `live/corporate_actions.py:655` is the only other mention of the column:
+  `source=str(row.get("source") or SPINOFF_SOURCE)`. It is copied into the record
+  the rule carries, defaulted when absent, and never compared.
+- The rebuild's one reader is `live/extend.py:237`,
+  `return corporate_actions.spinoffs_from_rows(rows)`, which adds nothing of its
+  own. There is no `source` literal anywhere else in
+  `live/corporate_actions.py` except the writer's own row at line 585.
+
+So no change was needed. A test now pins it rather than leaving it to be re-read:
+`tests/test_e11_extend.py::test_the_source_column_does_not_gate_a_recorded_spinoff`
+is parametrized over the three values a stored row can carry (`manual.record`,
+`alpaca.corporate_actions`, `anything.else`), patches the store read to hand the
+rebuild that row, and asserts the parent's return is the same `+4.10%` in all
+three. `TARGET_RETURN = 0.040953` and the three closes (77.65, 12.57, 68.26) are in
+`tests/test_week2_spinoff.py`; the raw print the record replaces is
+`RAW_PRINT = CTVA_CLOSE / CTVA_PREVIOUS_CLOSE - 1.0` = `-83.81%`, and the test
+asserts the two are not equal, so a rebuild that ignored the record could not pass
+it.
+
+## Item 2: a vendor read that hangs, and the line the evening's email gets
+
+**The failure, reproduced first.** `alpaca-py` 0.44 passes no timeout to
+`requests.Session.request` (`alpaca/common/rest.py`, `_one_request`), and exposes
+no timeout parameter on `StockBarsRequest`, `CorporateActionsRequest`,
+`StockHistoricalDataClient` or `RESTClient`, so a connection the vendor accepts
+and never answers blocked the evening for as long as the socket lived. The
+reproduction was a client whose `get_corporate_actions` sleeps 30 seconds:
+`spin_offs` took 30.2 s, and `hasattr(alpaca, "VENDOR_TIMEOUT_SECONDS")` was
+`False`.
+
+**What changed.**
+
+- `live/alpaca.py` gains `VENDOR_TIMEOUT_SECONDS = 30.0`, `class VendorTimeout`,
+  and `vendor_read(call, *, timeout=None, label="the vendor")`. The call runs on a
+  daemon thread and the wait is the deadline: a call that has not answered raises
+  `VendorTimeout(f"{label} did not answer within {deadline:g}s")`, and a call that
+  answered with an exception re-raises **that** exception rather than the timeout.
+  The thread is a daemon so an abandoned request cannot keep the cron process
+  alive. The deadline reads the module constant at call time, which is what lets a
+  test shorten it without rebuilding the call under test.
+- `spin_offs` and `closes_on` are the only two reads wrapped, each with its own
+  label (`the spin-off lookup for <day>`, `the bars read for <day>`), so the log
+  and the message name which read died.
+- `live/corporate_actions.py`: `Outcome` gains
+  `lookup_failure: str | None = None`, and `lookup_failure_note(sessions, exc)`
+  writes the one sentence. `apply_to_artifact` already caught the vendor read and
+  went on; it now also records why, and `replace` sets the field on the outcome it
+  returns. The failure stays non-fatal: the rule is skipped for the session, the
+  raw print stays in the panel where the 40% flag names it, and the run goes on.
+- The line reaches the evening's email: `live/notify.py` appends it in `compose`
+  (new parameter `spinoff_lookup_failed`), `notify_run` forwards it, and
+  `scripts/run_live_daily.py` reads `outcome.lookup_failure`, logs it and passes
+  it. The text is
+  `Spin-off lookup failed for 2026-10-01: VendorTimeout; large moves on this session are unverified.`
+
+**What did not change.** No status-row field, no schema and no store write: the
+line lives in the message, which is where the owner reads a session nobody else is
+looking at. A read that answered and found nothing is not this line, and the test
+asserts the two evenings are distinguishable (`outcome.lookup_failure is None` for
+an empty answer).
+
+## Item 3: a page write that fails now fails the morning
+
+**The failure, reproduced first.** The new test was run before the fix
+(`.venv/bin/python -m pytest tests/test_week1_fills_cron.py -q -k
+"cannot_be_published"`), with the bucket's `put_object` raising
+`RuntimeError("the bucket answered 503")`:
+
+```
+>       assert code == 1
+E       assert 0 == 1
+tests/test_week1_fills_cron.py:418: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  reconcile_fills:reconcile_fills.py:251 could not publish the snapshot: RuntimeError
+```
+
+Exit 0, one warning, and the run recorded as `ok`: the loop would have gone on
+reading the previous evening's page while every number around it read right.
+
+**What changed in `scripts/reconcile_fills.py`.**
+
+- The `except` around `publish(block)` no longer appends a footnote and moves on.
+  It records `snapshot_failure` (the type and the vendor's own words), logs it at
+  ERROR with `notify.scrub`, and sets `status = "error"`.
+- The message is now sent when the page write failed, not only when a leg did not
+  fill, so a morning whose legs all filled and whose page did not go up is not a
+  silent morning. Its `Error:` line carries the write that failed; the realised
+  cost and the count of filled legs stay on the fill lines.
+- The run row's `detail` carries both the reconciliation and the failed write, and
+  the process exits nonzero: `COMPLETED_STATUSES` is `{ok}`, so
+  `run_live_daily.already_ran` does not count the day as done and the next tick (or
+  a manual rerun) retries. The fills already written stay written.
+- The row's `notify_status` and `notify_failed` now follow the message's own
+  outcome instead of the run's, so a morning that failed its page write **and**
+  told the owner is not also recorded as a failed notification.
+- `live/notify.py`: `compose` gains the matching orders line. With
+  `status="error"` and a fills report, the body used to say "Orders: none. The run
+  failed before sizing, so no book was priced", which is false for a morning whose
+  legs went out the evening before. It now reads
+  `Orders: none from this job. The 1 order(s) for the close of 2026-10-01 went out last evening.`
+  The evening's own error message is unchanged (that test still passes; the branch
+  fires only when a fills report is present).
+
+The morning now reads:
+
+```
+store: postgres/efb
+EFB live book 2026-10-01: error, the run failed
+Orders: none from this job. The 1 order(s) for the close of 2026-10-01 went out last evening.
+Staleness: no input failed the check.
+Realized cost: -0.05 bps of NAV against 14.15 bps expected (1 of 1 orders filled).
+Error: Exception: the snapshot was not published: RuntimeError: the bucket answered 503
+```
+
+## Tests
+
+- `tests/test_e11_extend.py`: item 1's parametrized test (3 cases).
+- `tests/test_week2_spinoff.py`: the deadline on both reads, the vendor's own
+  error surviving the deadline, the failure line's wording (one session and
+  several), the artifact still written with the raw print and the flag when the
+  read dies, the message carrying the line, and the answered-and-empty read not
+  being a failure.
+- `tests/test_week1_fills_cron.py`: the failed page write (exit code, cron row,
+  run row, fills still written, subject, body) and a control that a morning whose
+  page goes up is still `ok` and still silent.
+- `tests/test_e11_notify.py`, `test_e11_runroot.py`, `test_e11_staleness.py`: the
+  three `_NoCorporateActions` doubles gain `lookup_failure`, so they stay faithful
+  to the outcome they stand in for.
+
+## Verification
+
+Everything below was run in the worktree `/tmp/efb-monday` on the branch tip,
+with the worktree's `.venv` (a symlink to the repository's Python 3.14 venv, whose
+`efb` import resolves to `/private/tmp/efb-monday/efb/__init__.py` because
+`python -m pytest` puts the working directory first), except the two `make test`
+runs on `main`, which were run in the main checkout.
+
+**`make lint`**
+
+```
+$ make lint
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+.venv/bin/mypy efb
+pyproject.toml: note: unused section(s): module = ['alpaca', 'alpaca.trading.*', 'boto3']
+Success: no issues found in 33 source files
+.venv/bin/mypy live scripts
+Success: no issues found in 41 source files
+.venv/bin/black --check efb dashboard live tests
+All done! ✨ 🍰 ✨
+209 files would be left unchanged.
+```
+
+exit status 0.
+
+**The touched files, with the marker filter `make test` uses.** The selection is
+the five changed source files' suites plus the two suites whose doubles the change
+had to keep faithful, and it is pasted as run:
+
+```
+$ .venv/bin/python -m pytest tests/test_week2_spinoff.py tests/test_week1_fills_cron.py tests/test_e11_extend.py tests/test_e11_corporate_actions.py tests/test_e11_notify.py tests/test_e11_runroot.py tests/test_e11_staleness.py tests/test_record_spinoff.py -m "not slow" -q
+148 passed, 3 deselected, 1 warning in 27.46s
+```
+
+exit status 0.
+
+Per item:
+
+```
+$ .venv/bin/python -m pytest tests/test_e11_extend.py -q -k "source_column_does_not_gate"
+3 passed, 18 deselected in 0.59s
+
+$ .venv/bin/python -m pytest tests/test_week2_spinoff.py -q
+25 passed, 1 warning in 5.76s
+
+$ .venv/bin/python -m pytest tests/test_week1_fills_cron.py -q
+14 passed, 1 warning in 0.84s
+```
+
+All three exit status 0.
+
+**`make test` on `main`, before the change and after the merge.** `main` is red
+before this change and red after it, with **the same 53 failing tests and eleven
+more passing ones** (the eleven tests this change adds):
+
+```
+$ cd /Users/amankesarwani/PycharmProjects/equity-factor-book    # main at 30c7ca4
+$ make test
+53 failed, 1220 passed, 1 skipped, 35 deselected, 9 warnings in 531.62s (0:08:51)
+make: *** [test] Error 1
+
+$ git merge --no-ff monday-fixes
+$ make test
+53 failed, 1231 passed, 1 skipped, 35 deselected, 9 warnings in 513.07s (0:08:33)
+make: *** [test] Error 1
+
+$ grep -c "^FAILED" before-ids.txt   # the 53 ids from the run before the merge
+53
+$ comm -13 before-ids.txt after-ids.txt    # failing ids that are new after it
+                                           # (no output)
+```
+
+**`make test` in this worktree** (the fast subset; exit status 1)
+
+```
+$ make test
+FAILED tests/test_dashboard_d5.py::test_methodology_links_exist
+FAILED tests/test_e10_memo.py::test_the_memo_exists_and_is_traceable
+FAILED tests/test_e10_results.py::test_the_stored_hash_reproduces_from_the_artifacts
+FAILED tests/test_e10_results.py::test_the_stored_criteria_equal_the_recomputed_ones
+FAILED tests/test_e10_walkthrough_notebook.py::test_the_hash_cell_asserts_the_sprint_hash_against_the_artifacts
+FAILED tests/test_e11_extend.py::test_pre_cutoff_blocks_are_byte_identical
+FAILED tests/test_e4_probes.py::test_momentum_terciles_reproduce_the_stored_exposure_means
+FAILED tests/test_e4_probes.py::test_the_momentum_factor_is_not_quieter_in_the_high_exposure_months
+FAILED tests/test_e4_walkthrough_notebook.py::test_the_render_exists_and_the_methodology_links_resolve
+FAILED tests/test_e5_memo.py::test_every_headline_number_is_in_the_memo_and_traceable
+FAILED tests/test_e5_memo.py::test_the_heatmap_cells_are_the_stored_family_bias
+FAILED tests/test_e5_walkthrough_notebook.py::test_the_hash_cell_asserts_the_sprint_hash_against_the_artifacts
+FAILED tests/test_e5_walkthrough_notebook.py::test_the_html_render_exists
+FAILED tests/test_e6_walkthrough_notebook.py::test_the_html_render_exists
+FAILED tests/test_e7_walkthrough_notebook.py::test_the_html_render_exists
+FAILED tests/test_e8_walkthrough_notebook.py::test_the_html_render_exists
+FAILED tests/test_e9_walkthrough_notebook.py::test_the_html_render_exists
+FAILED tests/test_hedge_vintage.py::test_the_row_built_at_the_close_is_the_row_the_model_publishes
+FAILED tests/test_hedge_vintage.py::test_the_row_dated_the_close_fails_that_bound
+FAILED tests/test_hedge_vintage.py::test_the_session_before_a_holiday_is_bounded_and_not_exact
+FAILED tests/test_hedge_vintage.py::test_a_published_next_session_row_is_used_as_it_stands
+21 failed, 1261 passed, 3 skipped, 35 deselected, 9 warnings in 526.65s (0:08:46)
+make: *** [test] Error 1
+```
+
+None of those 21 is in a file this change touches, and none of them is new. They
+are artifact failures: the E4 probes, the E5 and E10 memos and results, the
+walkthrough hash cells and the hedge-vintage rows compare the stored panel and the
+rendered notebooks against frozen baselines, and `data/**/*.parquet` is gitignored
+(`.gitignore:20`), so this worktree holds the copy taken from
+`/tmp/efb-backport/tree-base` rather than the tree `main` holds. Which is why the
+count here (21) is not the count on `main` (53): the two trees carry different
+local parquet. The comparison that answers "did this change break anything" is the
+one above, on `main`'s own tree, and it is 53 before and 53 after with no new id.
+`tests/test_e11_extend.py::test_pre_cutoff_blocks_are_byte_identical`, one of the
+21, was also run directly on `main` before the change and fails there the same way:
+
+```
+$ cd /Users/amankesarwani/PycharmProjects/equity-factor-book    # main at 30c7ca4
+$ .venv/bin/python -m pytest tests/test_e11_extend.py -q -m "slow"
+E           AssertionError: descriptors
+E           assert '049fe6ead943...bc1cb2a18dc6f' == '8f93968f67f3...459fdd31caafa'
+1 failed, 1 passed, 16 deselected in 7.38s
+```
+
+**`make verify-evidence`**
+
+```
+$ make verify-evidence
+.venv/bin/python -c "from efb import evidence; p = evidence.verify(); print('evidence OK' if not p else chr(10).join(p)); raise SystemExit(1 if p else 0)"
+evidence OK
+```
+
+exit status 0.
+
+**`scripts/rehearse_preflip.py`**
+
+```
+$ .venv/bin/python scripts/rehearse_preflip.py
+--- ORDER RECORDS: the broker's id for every leg that became one ---
+  accepted legs carry the broker's order id: BBB 2a5db970, CCC 826269b1, FFF ec756921, ZZB 076a40ba, ZZF 98bae6dc
+
+All checks passed: every leg carried a position intent, the reversal
+closed tonight and opened tomorrow, the removed name was closed, a
+spin-off's children were closed long and short, and an accepted
+after-close DAY order changed nothing until the next open.
+```
+
+exit status 0.
+
+**`git diff --stat` from `base_commit` `30c7ca4`**
+
+```
+$ git diff --stat 30c7ca4
+ live/alpaca.py                 |  97 ++++++++++++++++----
+ live/corporate_actions.py      |  30 +++++-
+ live/notify.py                 |  18 ++++
+ scripts/reconcile_fills.py     |  50 +++++++---
+ scripts/run_live_daily.py      |  11 +++
+ tests/test_e11_extend.py       |  36 ++++++++
+ tests/test_e11_notify.py       |   3 +
+ tests/test_e11_runroot.py      |   2 +
+ tests/test_e11_staleness.py    |   2 +
+ tests/test_week1_fills_cron.py |  84 +++++++++++++++++
+ tests/test_week2_spinoff.py    | 202 ++++++++++++++++++++++++++++++++++++++++-
+ 11 files changed, 504 insertions(+), 31 deletions(-)
+```
+
+**Headline numbers, each with the file and key it was read from.**
+
+- The three closes the spin-off case turns on: `CTVA_PREVIOUS_CLOSE = 77.65`,
+  `CTVA_CLOSE = 12.57`, `VYLR_CLOSE = 68.26` in `tests/test_week2_spinoff.py`.
+- The corrected return, `TARGET_RETURN = 0.040953` in the same file, printed as
+  `+4.10%` by its acceptance test and asserted equal in item 1's three cases.
+- The print it replaces, `RAW_PRINT = CTVA_CLOSE / CTVA_PREVIOUS_CLOSE - 1.0` in
+  the same file, printed as `-83.81%`.
+- `VENDOR_TIMEOUT_SECONDS = 30.0` in `live/alpaca.py`.
+- The failure line: `lookup_failure_note` in `live/corporate_actions.py`, whose
+  text for one session is
+  `Spin-off lookup failed for 2026-10-01: VendorTimeout; large moves on this session are unverified.`
+- The morning's subject, `EFB ERROR 2026-10-01 | none proposed | Exception`, from
+  `subject_text` in `live/notify.py`, asserted in `tests/test_week1_fills_cron.py`.
+- The morning's run row after the failed page write: `status = "error"`,
+  `notify_status = "sent"`, and a `detail` of
+  `the snapshot was not published: RuntimeError: the bucket answered 503; fills: 1 of 1 order(s) filled, 0 did not, 0 never sent, realized -0.05 bps of NAV`,
+  asserted in `tests/test_week1_fills_cron.py`.
+- Test counts: 148 passed and 3 deselected for the touched set, 21 failed and 1261
+  passed for `make test` in this worktree, and 53 failed with 1220 then 1231 passed
+  for `make test` on `main` before and after the merge.
+
+**The seven items.**
+
+1. **Any two rows or two estimators identical.** No. The change produces no stored
+   row and touches no estimator; the only identifiers compared anywhere in it are
+   in this section.
+2. **Any exception caught and skipped, or any fallback taken, with counts.** Yes,
+   three, all named:
+   (a) `apply_to_artifact` catches the vendor read and skips the spin-off rule for
+   that session, which is the pre-existing behaviour and the reason the fix is
+   non-fatal; what is new is that the reason is recorded (`outcome.lookup_failure`)
+   and sent. Count: one session per failed read.
+   (b) `vendor_read` raises `VendorTimeout` after 30 s and abandons the request
+   thread rather than waiting for the socket; the thread is a daemon, so the
+   process does not wait for it either. This is a deliberate fallback from "the
+   vendor's answer" to "no answer", and the cost is that an abandoned request may
+   still consume a connection until it dies.
+   (c) `reconcile_fills` catches the failed R2 write. It is no longer skipped: it
+   fails the run, and the exit code and the row are the two places that show.
+   Count: one write attempt per morning, for the two keys (`latest.json`,
+   `snapshots/<close>.json`); a failure on the first stops the second.
+3. **Any criterion reworded or replaced by a different test.** No. No file under
+   `docs/` and no stored criteria were touched. Every change in a test file is an
+   addition, except one line: `test_the_evening_runner_passes_the_labels_through`
+   in `tests/test_week2_spinoff.py` had its tuple of parameter names extended with
+   `spinoff_lookup_failed`, which widens that source-level plumbing check rather
+   than relaxing it. No assertion was weakened or removed
+   (`git diff 30c7ca4 -- tests/ | grep -E "^-[^-]"` returns that one line).
+4. **Any criterion that passes by construction.** No new criterion is added. The
+   one place a test could pass by construction is item 1's, if it only asserted
+   `applicable`; it also asserts the rebuilt value is `+4.10%`, that it is not the
+   raw print, and that the log return is the log of it.
+5. **Any number that moved by a factor of 10 or more from its previous stored
+   value.** No. Nothing stored moved: no stored-criteria file is touched, and the
+   only parquet written during the work was in a test's `tmp_path`.
+6. **Any stored number typed into a notebook.** No. No notebook was touched; the
+   numbers this report adds are in the test files that assert them, named in the
+   list above.
+7. **Any earlier verdict changed.** No. No stored verdict is read or written by
+   this change.
+
+**Anything decided that the reviewer might disagree with.**
+
+- **A thread deadline rather than an HTTP timeout.** alpaca-py 0.44 exposes no
+  timeout anywhere on these paths, so the choice was a thread deadline or no
+  deadline. The consequence to weigh is that the abandoned request is not
+  cancelled, only left behind; it is a daemon thread, so it cannot keep the cron
+  process alive, but it can hold a socket until the vendor or the OS drops it.
+- **The morning's message status is now `error`, and its orders line changed
+  wording.** That is a shared function (`notify.compose`), and the alternative was
+  to keep the morning's message reading `ok` and carry the failure only in the
+  detail, which would have let a failed morning read as a clean one. The branch
+  fires only when a fills report is present, so the evening's error message and
+  its test are unchanged.
+- **No schema field for the lookup failure.** It is in the evening's email and in
+  the script's log, not on the status row: adding a column would have meant a
+  schema change for an event the message already carries.
+- **A morning whose page write fails now exits 1.** The cron will show a failed
+  day where it previously showed a warning in the log, and the retry will fire.
+  That is the point of the item, and it is also a change in how the day reads on
+  the dashboard.
+- **Three test doubles were edited** (`_NoCorporateActions` in
+  `tests/test_e11_notify.py`, `test_e11_runroot.py`, `test_e11_staleness.py`) to
+  carry `lookup_failure`. They stand in for `corporate_actions.Outcome`, and the
+  alternative was a `getattr` in the script that would have hidden a real
+  interface drift.
+- **The pre-existing artifact failures are left alone.** They are outside this
+  task's three items and they are red on `main` before it, with the same ids and
+  the same count after, as pasted above.
+
 # e11-deploy: the seed decision, g, l, and f
 
 The owner's decision arrived: none of the three options in the section below. The
