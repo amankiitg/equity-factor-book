@@ -7,11 +7,13 @@
 // that stopped, errored, never happened or is late takes the colour of the strip, and
 // a book that is not tonight's says so in words underneath it.
 //
-// Two columns on a laptop and one on a phone. The left column is the hedge, which is
-// the thing the page exists to show is still exact; the right is the book's shape,
-// its largest names and where the trades came from. Nothing here is duplicated
-// between the two: the sector totals live on the metrics row, the long and short
-// dollars beside the name counts, and the largest names in their own panel rather
+// Two columns on a laptop and one on a phone. The left column is the hedge and where
+// the trades came from, the right is the book's shape and its largest names, which puts
+// two long panels against two long panels and keeps the columns close in height. On a
+// phone the single column reads in the same order: the hedge, the trades, then the
+// book's shape, with the tables behind the drawer at the bottom. Nothing here is
+// duplicated between the two: the sector totals live on the metrics row, the long and
+// short dollars beside the name counts, and the largest names in their own panel rather
 // than in a second list.
 
 import { useEffect, useState } from "react";
@@ -43,12 +45,14 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
       <StatusStrip snapshot={snapshot} now={now} state={state} />
       <Alerts snapshot={snapshot} state={state} />
       <MetricsRow snapshot={snapshot} facts={facts} />
-      <div className="grid gap-3 lg:grid-cols-2">
-        <ExposuresSection snapshot={snapshot} />
+      <div data-columns="true" className="grid gap-3 lg:grid-cols-2">
+        <div className="flex flex-col gap-3">
+          <ExposuresSection snapshot={snapshot} />
+          <Reasons facts={facts} />
+        </div>
         <div className="flex flex-col gap-3">
           <SectorSection sectors={facts.sectors} />
           <TopNames facts={facts} />
-          <Reasons facts={facts} />
           <RiskConcentration snapshot={snapshot} />
           <Movers snapshot={snapshot} />
         </div>
