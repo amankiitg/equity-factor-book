@@ -1,3 +1,194 @@
+# page-columns: the trades by reason under the hedge, and a column each for the exposure headers
+
+Branch `page-columns`, off `main` at `35afd7e`, merged with `--no-ff` as
+`0fb4776` (code commit `bc14037`), pushed as `35afd7e..0fb4776` at 23:05 UTC, outside
+both windows the task named. The page is deployed: **Worker version
+`e56b8840-da7b-4b50-a385-4f16bda1fb42`, 100% of traffic**, created
+2026-10-05T23:05:11.852Z (`npx wrangler deployments status`).
+
+Display only, as the task put it: three files under `web/src`, `web/README.md` and
+two screenshots. No Python, no snapshot field, no `web/fixtures` byte, no data write.
+108 web tests before and after, and nothing about what the page says changed, only
+where it is drawn.
+
+## Item 1: the trades by reason move into the left column
+
+`Trades by reason` was the third panel of the right column. The two columns are a
+grid, and a grid stretches both column boxes to the row height, so the imbalance was
+invisible in the markup and obvious on the screen: the right column's content was 594px
+longer than the exposures panel, and the exposures panel ended with that much blank
+space under it. The panel now sits in the left column, directly under
+`Factor exposures, before and after the hedge`, which is the honest pairing anyway:
+the exposures show what the hedge did to the book and the trades show which names the
+hedge and the alpha moved.
+
+Measured in a headless browser on the ok fixture at 1280px, reading each column's own
+content (the last child's bottom, since the stretched box reports the row):
+
+| | before | after |
+| --- | --- | --- |
+| left column content | 726px | 1006px |
+| right column content | 1320px | 1053px |
+| difference | 594px | **47px** |
+| page height | 1886px | **1619px** |
+
+The row is now set by the shorter pair instead of by the right column alone, which is
+where the 267px of page height went. The same numbers hold for the actual-holdings
+fixture, whose two columns are also 1006px and 1053px.
+
+`App.tsx` wraps each column in its own `div` with `data-columns="true"` rather than
+leaving the grid to auto-place the panels, because the phone's single column is the
+same list in the same order: exposures, trades by reason, sectors, largest longs and
+shorts, drawer. The panel's own content, caption, counts and dollars are untouched.
+
+## Item 2: the exposure headers get a column each
+
+The header row rendered "after" and "before / after" as one label, `afterbefore /
+after`. The cause is in the table's sizing: the two value columns are only as wide as
+their widest number, and neither header carried padding, so the labels had nothing
+between them.
+
+Each of the four columns now states its own width and its own padding: `w-16` with
+`pr-2` for the two value columns, `w-28` with `pl-1` for the bars column, whose width
+is the width of the bars it holds (`ExposureBars` is `w-28`), and `whitespace-nowrap`
+on all four so a label cannot wrap into the column beside it. The body cells carry the
+same classes, so every heading sits over the numbers it names.
+
+Measured as the gap between the labels' own text boxes rather than the cell boxes
+(cells touch by construction):
+
+| gap | before | after |
+| --- | --- | --- |
+| "before" to "after" | 39px | 30px |
+| "after" to "before / after" | **0px** | **12px** |
+
+At 390px the two gaps are 25px and 12px, and the whole table is 351px inside a 351px
+container, so it still fits without scrolling inside its own `overflow-x-auto`.
+
+## The screenshots
+
+Both at 1280px, committed under `docs/img/`:
+
+![the live page at 1280px, a clean run](../docs/img/live_page_columns_ok_1280.png)
+
+![the live page at 1280px, with the account's own book](../docs/img/live_page_columns_actual_holdings_1280.png)
+
+## The headless render
+
+The page was loaded in a same-origin frame of a known size (`/?w=390`) and driven with
+Playwright, `page.route("**/api/snapshot")` answering each fixture, the clock pinned to
+the evening that fixture was written for. Four renders: the ok and actual-holdings
+fixtures at 1280px and 390px.
+
+| fixture | width | page box | sideways | headings | headings apart | columns | order |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| snapshot_ok | 1280 | 1265x1619 | no | 4 separate | 30px, 12px | 1006 / 1053 | exposures > reasons > sector > top-names > drawer |
+| snapshot_ok | 390 | 389x3896 | no | 4 separate | 25px, 12px | stacked | exposures > reasons > sector > top-names > drawer |
+| snapshot_actual_holdings | 1280 | 1265x1707 | no | 4 separate | 30px, 12px | 1006 / 1053 | exposures > reasons > sector > top-names > drawer |
+| snapshot_actual_holdings | 390 | 389x4125 | no | 4 separate | 25px, 12px | stacked | exposures > reasons > sector > top-names > drawer |
+
+"page box" is `documentElement.scrollWidth x scrollHeight`, and "sideways" is that
+width exceeding the frame's own viewport width: 389 against 390 at the phone width, so
+the page does not scroll sideways. The rendered text of all four was scanned for
+`T00:00:00`, `NaN`, `undefined`, `-$0` and the em dash: none of the five appears in any
+of them, and neither did the jam, since the headings are four separate cells.
+
+## Verification
+
+The gates on merged main, as run at 23:04 UTC.
+
+```
+$ cd web && npm run test
+ ✓ src/bundle.test.ts (12 tests) 23ms
+ ✓ src/fixtures.test.ts (22 tests) 54ms
+ ✓ worker/index.test.ts (6 tests) 13ms
+ ✓ src/status.test.tsx (12 tests) 576ms
+ ✓ src/App.test.tsx (27 tests) 848ms
+ ✓ src/sections.test.tsx (29 tests) 1284ms
+ Test Files  6 passed (6)
+      Tests  108 passed (108)
+
+$ cd web && npm run build
+dist/assets/index-DTdmLlWJ.js   259.03 kB │ gzip: 80.55 kB
+✓ built in 131ms
+
+$ make lint
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+.venv/bin/mypy efb
+Success: no issues found in 33 source files
+.venv/bin/mypy live scripts
+Success: no issues found in 41 source files
+.venv/bin/black --check efb dashboard live tests
+All done! 209 files would be left unchanged.
+```
+
+No Python test was run: the change touches no Python file, no fixture and no snapshot
+byte, and `tests/test_e11_web_fixtures.py` and friends read the fixtures and the
+gitignored data tree, neither of which this changes. They are red on this machine
+before and after the change in the same thirteen cases, as the previous report
+recorded.
+
+The headline numbers and where each was read from, all in the browser on
+`web/fixtures/snapshot_ok.json` (and `snapshot_actual_holdings.json`, whose column
+heights are the same): the column contents 1006 and 1053 come from the last child's
+bottom edge inside each `[data-columns='true'] > div`, against 726 and 1320 with the
+pre-change `App.tsx` built from `35afd7e` and measured the same way; the page heights
+1619 and 1886 are `document.documentElement.scrollHeight`; the four headings are the
+`textContent` of `[aria-label='factor exposures'] thead th`; the gaps 30px and 12px are
+differences between `Range.getBoundingClientRect()` boxes over those heading texts; the
+phone widths are `documentElement.scrollWidth` 389 against `window.innerWidth` 390 and
+the exposure table's 351 against its container's 351; and the order is the
+`data-section` attributes in document order. The fixture numbers the panels show are
+unchanged from the previous report's list and were not re-derived.
+
+`git diff --stat 35afd7e 0fb4776`, pasted:
+
+```
+ .../img/live_page_columns_actual_holdings_1280.png | Bin 0 -> 357977 bytes
+ docs/img/live_page_columns_ok_1280.png             | Bin 0 -> 340198 bytes
+ web/README.md                                      |  26 +++++++++------
+ web/src/App.test.tsx                               |  37 +++++++++++++++++----
+ web/src/App.tsx                                    |  20 ++++++-----
+ web/src/ExposuresSection.tsx                       |  19 ++++++-----
+ 6 files changed, 69 insertions(+), 33 deletions(-)
+```
+
+The seven questions:
+
+1. **Any two rows or two estimators identical.** No. The two new test assertions are
+   about structure, not about two measured numbers agreeing.
+2. **Any exception caught and skipped, or fallback taken, with counts.** No. Nothing
+   in this change catches anything; it moves one panel and adds padding and widths.
+3. **Any criterion reworded or replaced by a different test.** Yes, and the reviewer
+   should look at both. The section-order test used to assert that the exposures and
+   the sectors come before the drawer; it now asserts the full order (exposures,
+   reasons, sector, top-names, drawer) and which of the two columns holds which panel,
+   which is strictly more. The exposure heading assertion used to check that the header
+   row's text contains "before" and "after" as substrings, which the jam passed; it now
+   reads the four heading texts as an exact list and rejects `afterbefore`. Neither lost
+   a check: 108 tests before and after, both files with the same number of tests.
+4. **Any criterion that passes by construction.** Partly, and it is worth naming: the
+   column-membership test reads the markup this commit writes, so it pins the structure
+   but cannot prove the columns balance. The balance claim rests on the render numbers
+   above (47px apart against 594px), which are measured, not asserted in a test. A
+   layout test that could prove balance would have to measure the rendered page, which
+   this repository's vitest setup does not do.
+5. **Any number that moved by a factor of 10 or more from its previous stored value.**
+   No. No stored number, fixture or artifact changed; the only numbers that moved are
+   pixel measurements of the layout.
+6. **Any stored number typed into a notebook.** No notebook was touched.
+7. **Any earlier verdict changed.** No.
+
+Two things the reviewer may want to look at, neither of them defects of this change.
+The right column is still the taller of the two at 47px, which is within a row of text
+and was left rather than padded out, because making it exact would mean adding filler
+to a panel. And three em dashes exist in `web/README.md` (lines 4, 13 and 48) that are
+pre-existing on `main` and outside this task's scope: they were noticed while updating
+the README's layout paragraph and left where they are, so the file still carries them.
+The root `README.md` picture of the live page, `docs/img/live_dashboard.png`, is also
+still the pre-redesign layout for the reason the previous report gave.
+
 # live-page-redesign: one status strip, one metrics row, two columns and one drawer
 
 Branch `live-page-redesign`, off `main` at `59d0eb1`, merged with `--no-ff` as
