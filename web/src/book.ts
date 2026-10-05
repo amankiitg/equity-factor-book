@@ -44,9 +44,6 @@ export interface BookFacts {
   top10Share: number | null;
   sectors: SectorBucket[];
   reasons: ReasonBucket[];
-  /** The book's ten largest |weights|, which is as close as the snapshot gets to
-   *  the largest trades: it carries one reason per name and no per-trade size. */
-  largestNames: BookName[];
   topLongs: BookName[];
   topShorts: BookName[];
 }
@@ -136,9 +133,8 @@ export function bookFacts(snapshot: Snapshot): BookFacts {
   const largest = names.length
     ? names.reduce((best, name) => (weightOf(name) > weightOf(best) ? name : best), names[0])
     : null;
-  const top10 = [...names].sort((a, b) => weightOf(b) - weightOf(a)).slice(0, 10);
-  const top10Weight = top10.reduce((total, name) => total + weightOf(name), 0);
   const byWeight = [...names].sort((a, b) => weightOf(b) - weightOf(a));
+  const top10Weight = byWeight.slice(0, 10).reduce((total, name) => total + weightOf(name), 0);
 
   return {
     nav,
@@ -153,7 +149,6 @@ export function bookFacts(snapshot: Snapshot): BookFacts {
     top10Share: grossOfRows > 0 ? top10Weight / grossOfRows : null,
     sectors,
     reasons,
-    largestNames: byWeight.slice(0, 10),
     topLongs: byWeight.filter((name) => sideOf(name) === "long").slice(0, 10),
     topShorts: byWeight.filter((name) => sideOf(name) === "short").slice(0, 10),
   };

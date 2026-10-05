@@ -28,7 +28,15 @@ const NONE = noBook as unknown as Snapshot;
 const ACTUAL = withActual as unknown as Snapshot;
 const NOW = new Date("2026-09-21T23:00:00Z");
 
-describe("the summary cards", () => {
+/** The drawer is shut until a tab is asked for, which is half of what it is for. */
+function openDrawer(tab: "book" | "actual"): HTMLElement {
+  fireEvent.click(document.querySelector(`[data-tab='${tab}']`) as HTMLElement);
+  return document.querySelector(
+    tab === "book" ? "[data-section='holdings']" : "[data-section='actual-holdings']",
+  ) as HTMLElement;
+}
+
+describe("the metrics row", () => {
   it("states the counts, the dollars, the breadth, the largest name and the cost", () => {
     const facts = bookFacts(OK);
     render(<SnapshotView snapshot={OK} now={NOW} />);
@@ -37,19 +45,53 @@ describe("the summary cards", () => {
     const card = (label: string): HTMLElement =>
       cards.querySelector(`[data-card="${label}"]`) as HTMLElement;
 
+    // Gross and net are the traded book's own, with the dollars beside the
+    // fraction so the two are one statement.
+    expect(card("gross").textContent).toContain(percent(OK.book.gross));
+    expect(card("gross").textContent).toContain(dollars(OK.book.gross_notional));
+    expect(card("net").textContent).toContain(percent(OK.book.net));
+    // The name counts carry each side's dollars, which is where the long and
+    // short gross live now that the sector footer is gone.
     expect(card("long names").textContent).toContain(String(facts.nLong));
+    expect(card("long names").textContent).toContain(dollars(facts.longNotional));
     expect(card("short names").textContent).toContain(String(facts.nShort));
-    expect(card("long dollars").textContent).toContain(dollars(facts.longNotional));
-    expect(card("short dollars").textContent).toContain(dollars(facts.shortNotional));
-    expect(card("net dollars").textContent).toContain(signedDollars(facts.netNotional));
-    expect(card("n_eff kept").textContent).toContain(
+    expect(card("short names").textContent).toContain(dollars(facts.shortNotional));
+    expect(card("n_eff_kept").textContent).toContain(
       (OK.breadth.n_eff_kept as number).toFixed(1),
+    );
+    expect(card("n_eff_kept").textContent).toContain(OK.breadth.kept_label);
+    expect(card("n_eff_full_book").textContent).toContain(
+      (OK.breadth.n_eff_full_book as number).toFixed(1),
     );
     expect(card("largest position").textContent).toContain(facts.largest?.ticker as string);
     // The ten largest weights as a share of the book's absolute weight.
     expect(card("top 10 share of gross").textContent).toContain(percent(facts.top10Share));
+    expect(card("full book before the floor").textContent).toContain(
+      percent(OK.book.full_book_gross),
+    );
     expect(card("expected cost").textContent).toContain(
       (OK.book.expected_cost_bps as number).toFixed(2),
+    );
+    // The fills card is the account's own, and this fixture has no account read.
+    expect(OK.actual_holdings).toBeUndefined();
+    expect(cards.querySelector("[data-card='fills']")).toBeNull();
+  });
+
+  it("states the fills the reconciler read, filled of sent and realized against expected", () => {
+    const block = ACTUAL.actual_holdings;
+    expect(block?.fills).toBeTruthy();
+    if (!block?.fills) return;
+    render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    const card = document.querySelector("[data-card='fills']") as HTMLElement;
+    expect(card).toBeTruthy();
+    // "filled of sent": the legs the evening never sent are not orders the broker
+    // could have filled, so they are out of the denominator.
+    const sent = (block.fills.n_orders as number) - (block.fills.not_sent ?? 0);
+    expect(sent).toBeGreaterThanOrEqual(block.fills.n_filled as number);
+    expect(card.textContent).toContain(`${block.fills.n_filled} of ${sent} filled`);
+    expect(card.textContent).toContain((block.fills.realized_cost_bps as number).toFixed(2));
+    expect(card.textContent).toContain(
+      (block.fills.expected_cost_bps as number).toFixed(2),
     );
   });
 
@@ -112,7 +154,7 @@ describe("by sector", () => {
     expect(row).toBeTruthy();
     expect(row.textContent).toContain(UNMAPPED);
     expect(row.querySelector("[data-counts='names']")?.textContent).toContain("1L");
-    const holdings = document.querySelector("[data-holdings='true']") as HTMLElement;
+    const holdings = openDrawer("book");
     const cells = Array.from(
       holdings.querySelector("[data-ticker='ZZZZ']")?.querySelectorAll("td") ?? [],
     ).map((cell) => cell.textContent);
@@ -202,13 +244,17 @@ describe("trades by reason", () => {
     expect(total).toBe(OK.book.names.length);
   });
 
-  it("names the ten largest positions beside it", () => {
+  it("names the largest position on the metrics row", () => {
+    // The list of ten largest names that used to sit beside this table is gone:
+    // it repeated the top-names panels and the drawer's own sort. The largest
+    // position is named once, on the metrics row, and the panels below carry the
+    // names themselves.
     const facts = bookFacts(OK);
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    const panel = document.querySelector("[data-largest='names']") as HTMLElement;
-    const rows = Array.from(panel.querySelectorAll("[data-ticker]")) as HTMLElement[];
-    expect(rows.length).toBe(Math.min(10, OK.book.names.length));
-    expect(rows[0].textContent).toContain(facts.largestNames[0].ticker);
+    const card = document.querySelector("[data-card='largest position']") as HTMLElement;
+    expect(card.textContent).toContain(facts.largest?.ticker as string);
+    expect(card.textContent).toContain(percent(facts.largest?.weight));
+    expect(document.querySelector("[data-largest='names']")).toBeNull();
   });
 });
 
@@ -288,43 +334,64 @@ describe("movers", () => {
   });
 });
 
-describe("the full holdings table", () => {
-  it("is collapsed by default", () => {
+describe("the detail drawer", () => {
+  it("is shut by default, and names both tables and their row counts", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    const details = document.querySelector("[data-holdings='true']") as HTMLDetailsElement;
-    expect(details).toBeTruthy();
-    expect(details.open).toBe(false);
-    expect(details.querySelector("summary")?.textContent).toContain(
-      `${OK.book.names.length} name`,
-    );
+    const drawer = document.querySelector("[data-section='drawer']") as HTMLElement;
+    expect(drawer).toBeTruthy();
+    expect(drawer.getAttribute("data-drawer")).toBe("closed");
+    // Neither table is in the document until it is asked for: 188 rows of book
+    // above the fold is a screen nobody reads.
+    expect(document.querySelector("[data-section='holdings']")).toBeNull();
+    expect(
+      drawer.querySelector("[data-tab='book']")?.textContent,
+    ).toContain(`${OK.book.names.length} name`);
+    // This fixture has no account block, so there is no second tab to open.
+    expect(drawer.querySelector("[data-tab='actual']")).toBeNull();
   });
 
-  it("starts in the snapshot's own order, then sorts on any column", () => {
+  it("opens a table when its tab is asked for, and shuts again", () => {
+    render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    const drawer = document.querySelector("[data-section='drawer']") as HTMLElement;
+    expect(drawer.querySelectorAll("[data-tab]").length).toBe(2);
+    const book = openDrawer("book");
+    expect(book).toBeTruthy();
+    expect(drawer.getAttribute("data-drawer")).toBe("open");
+    expect(document.querySelector("[data-section='actual-holdings']")).toBeNull();
+    // One tab at a time: asking for the other one closes this one.
+    fireEvent.click(drawer.querySelector("[data-tab='actual']") as HTMLElement);
+    expect(document.querySelector("[data-section='holdings']")).toBeNull();
+    expect(document.querySelector("[data-section='actual-holdings']")).toBeTruthy();
+    // And asking for the open one again closes the drawer.
+    fireEvent.click(drawer.querySelector("[data-tab='actual']") as HTMLElement);
+    expect(drawer.getAttribute("data-drawer")).toBe("closed");
+  });
+
+  it("starts the book in the snapshot's own order, then sorts on any column", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    const details = document.querySelector("[data-holdings='true']") as HTMLElement;
+    const book = openDrawer("book");
     const first = (): string | null =>
-      details.querySelector("tbody [data-ticker]")?.getAttribute("data-ticker") ?? null;
+      book.querySelector("tbody [data-ticker]")?.getAttribute("data-ticker") ?? null;
     expect(first()).toBe(OK.book.names[0].ticker);
     const ascending = [...OK.book.names]
       .map((name) => name.ticker)
       .sort((a, b) => a.localeCompare(b))[0];
-    fireEvent.click(details.querySelector("[data-sort='ticker']") as HTMLElement);
+    fireEvent.click(book.querySelector("[data-sort='ticker']") as HTMLElement);
     expect(first()).toBe(ascending);
     // The weight column sorts on the absolute value, and a first click on a
     // numeric column sorts descending: the heaviest position comes first.
     const heaviest = [...OK.book.names].sort(
       (a, b) => Math.abs(b.weight ?? 0) - Math.abs(a.weight ?? 0),
     )[0].ticker;
-    fireEvent.click(details.querySelector("[data-sort='weight']") as HTMLElement);
+    fireEvent.click(book.querySelector("[data-sort='weight']") as HTMLElement);
     expect(first()).toBe(heaviest);
   });
 
-  it("filters by sector and searches by ticker, and says how many it is showing", () => {
+  it("filters by sector and searches the drawer's one box, and counts what it shows", () => {
     const facts = bookFacts(OK);
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    const details = document.querySelector("[data-holdings='true']") as HTMLElement;
-    const count = (): string =>
-      details.querySelector("[data-count='shown']")?.textContent ?? "";
+    const book = openDrawer("book");
+    const count = (): string => book.querySelector("[data-count='shown']")?.textContent ?? "";
     expect(count()).toContain(`of ${OK.book.names.length}`);
 
     const bucket = facts.sectors.find((entry) => (entry.nLong + entry.nShort) > 2) as {
@@ -332,32 +399,34 @@ describe("the full holdings table", () => {
       nLong: number;
       nShort: number;
     };
-    fireEvent.change(within(details as HTMLElement).getByLabelText("sector filter"), {
+    fireEvent.change(within(book).getByLabelText("sector filter"), {
       target: { value: bucket.label },
     });
     expect(count()).toContain(`showing ${bucket.nLong + bucket.nShort} `);
-    const rows = details.querySelectorAll("tbody [data-ticker]");
+    const rows = book.querySelectorAll("tbody [data-ticker]");
     expect(rows.length).toBe(bucket.nLong + bucket.nShort);
 
-    // The two filters combine, so the search starts from every sector again.
-    fireEvent.change(within(details as HTMLElement).getByLabelText("sector filter"), {
+    // The two filters combine, so the search starts from every sector again. The
+    // search box is the drawer's own, shared by both tabs.
+    fireEvent.change(within(book).getByLabelText("sector filter"), {
       target: { value: "all" },
     });
     const wanted = OK.book.names[3].ticker;
-    fireEvent.change(within(details as HTMLElement).getByLabelText("ticker search"), {
+    const drawer = document.querySelector("[data-section='drawer']") as HTMLElement;
+    fireEvent.change(within(drawer).getByLabelText("ticker search"), {
       target: { value: wanted.toLowerCase() },
     });
     expect(count()).toContain("showing 1 ");
-    expect(details.querySelector("tbody [data-ticker]")?.getAttribute("data-ticker")).toBe(
+    expect(book.querySelector("tbody [data-ticker]")?.getAttribute("data-ticker")).toBe(
       wanted,
     );
   });
 
   it("names the sector of every row from the bundled map", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    const details = document.querySelector("[data-holdings='true']") as HTMLElement;
+    const book = openDrawer("book");
     for (const name of OK.book.names.slice(0, 12)) {
-      const row = details.querySelector(`[data-ticker='${name.ticker}']`) as HTMLElement;
+      const row = book.querySelector(`[data-ticker='${name.ticker}']`) as HTMLElement;
       const cells = Array.from(row.querySelectorAll("td")).map((cell) => cell.textContent);
       expect(cells[2]).toBe(sectorLabel(sectorCodeFor(name.ticker)));
     }
@@ -368,43 +437,44 @@ describe("actual holdings", () => {
   const section = (): HTMLElement =>
     document.querySelector("[data-section='actual-holdings']") as HTMLElement;
 
-  it("draws the account's own book, its read time and the fills behind it", () => {
+  it("draws the account's own book, whose read it was and the fill misses", () => {
     const block = ACTUAL.actual_holdings;
     expect(block).toBeTruthy();
     if (!block) return;
     render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
 
-    expect(screen.getByText(`Actual holdings: ${block.n_names} names`)).toBeTruthy();
+    // The tab names the table and counts it, so the count is readable without
+    // opening 235 rows.
+    expect(screen.getByText(`Actual holdings: ${block.n_names} name(s)`)).toBeTruthy();
+    const table = openDrawer("actual");
     // The read time, as a time: the evening's read and the morning's are hours
     // apart and the difference is the whole meaning of the label.
-    expect(section().textContent).toContain("read at 2026-09-22 15:30 UTC");
-    expect(section().textContent).toContain(`at the ${block.read_by} run`);
-    expect(section().textContent).toContain(`for the ${dateOnly(block.close)} close`);
-    // Long and short gross are summed from the block's own notionals, not from the
-    // block's precomputed pair: the table's rows and these lines cannot disagree.
-    const long = block.names
-      .filter((entry) => (entry.notional ?? 0) > 0)
-      .reduce((total, entry) => total + (entry.notional ?? 0), 0);
-    const short = block.names
-      .filter((entry) => (entry.notional ?? 0) < 0)
-      .reduce((total, entry) => total - (entry.notional ?? 0), 0);
-    expect(section().textContent).toContain(dollars(long));
-    expect(section().textContent).toContain(dollars(short));
-    expect(section().textContent).toContain(dollars(block.net_notional));
-    expect(long + short).toBeCloseTo(block.gross_notional as number, 6);
+    expect(table.querySelector("[data-actual='read']")?.textContent).toContain(
+      "read at 2026-09-22 15:30 UTC",
+    );
+    expect(table.querySelector("[data-actual='read']")?.textContent).toContain(
+      `at the ${block.read_by} run`,
+    );
+    expect(table.querySelector("[data-actual='read']")?.textContent).toContain(
+      `for the ${dateOnly(block.close)} close`,
+    );
+    expect(table.querySelectorAll("tbody [data-ticker]").length).toBeGreaterThan(0);
+
+    // The fills summary is on the metrics row, filled of sent and realized against
+    // expected, and the misses are their own strip with a line each, because the
+    // count alone leaves the reader to open the store to find out which leg.
     const fills = block.fills;
     expect(fills).toBeTruthy();
     if (!fills) return;
-    const summary = section().querySelector("[data-fills='summary']") as HTMLElement;
-    expect(summary.textContent).toContain(`${fills.n_filled} filled`);
-    expect(summary.textContent).toContain(`${fills.n_unfilled} did not fill`);
-    expect(summary.textContent).toContain(`${fills.not_sent} never sent`);
-    expect(fills.realized_cost_bps).not.toBeNull();
-    expect(summary.textContent).toContain(
-      `realized ${(fills.realized_cost_bps as number).toFixed(2)} bps`,
+    const card = document.querySelector("[data-card='fills']") as HTMLElement;
+    expect(card.textContent).toContain(
+      `${fills.n_filled} of ${(fills.n_orders as number) - (fills.not_sent ?? 0)} filled`,
     );
-    // And the legs behind the count, in the email's own wording.
-    const misses = section().querySelector("[data-fills='misses']") as HTMLElement;
+    expect(card.textContent).toContain(`realized ${(fills.realized_cost_bps as number).toFixed(2)}`);
+    expect(card.textContent).toContain(`against ${(fills.expected_cost_bps as number).toFixed(2)} bps`);
+    const misses = document.querySelector("[data-fills='misses']") as HTMLElement;
+    expect(misses).toBeTruthy();
+    expect(misses.getAttribute("data-tone")).toBe("warn");
     for (const line of fills.unfilled) expect(misses.textContent).toContain(line);
   });
 
@@ -413,24 +483,27 @@ describe("actual holdings", () => {
     expect(block).toBeTruthy();
     if (!block) return;
     render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    openDrawer("actual");
+    const rows = section();
 
-    const rows = section().querySelectorAll("tbody [data-ticker]");
     const held = new Set(block.names.map((entry) => entry.ticker));
     const missing = ACTUAL.book.names.filter((name) => !held.has(name.ticker));
-    expect(rows.length).toBe(block.n_names + missing.length);
-    expect(section().querySelectorAll("tbody [data-held='false']").length).toBe(
+    expect(rows.querySelectorAll("tbody [data-ticker]").length).toBe(
+      block.n_names + missing.length,
+    );
+    expect(rows.querySelectorAll("tbody [data-held='false']").length).toBe(
       missing.length,
     );
     // The two books genuinely differ, or this section would have nothing to say.
     expect(missing.length).toBeGreaterThan(0);
     expect(block.n_names).toBeLessThan(ACTUAL.book.n_names);
     // A name the account does not hold says so rather than printing 0.00%.
-    const notHeld = section().querySelector("tbody [data-held='false']") as HTMLElement;
+    const notHeld = rows.querySelector("tbody [data-held='false']") as HTMLElement;
     expect(notHeld.textContent).toContain("not held");
     expect(notHeld.textContent).not.toContain("0.00%");
     // The count line names both directions. The held names that are in the target
     // are the union's intersection, which the section derives itself.
-    expect(section().querySelector("[data-actual='unheld']")?.textContent).toContain(
+    expect(rows.querySelector("[data-actual='unheld']")?.textContent).toContain(
       `${missing.length} of the target book's ${ACTUAL.book.n_names} name(s) are not held`,
     );
   });
@@ -441,9 +514,11 @@ describe("actual holdings", () => {
     if (!block) return;
     const facts = bookFacts(ACTUAL);
     render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    openDrawer("actual");
+    const rows = section();
 
     const cellsFor = (ticker: string): Array<string | null> => {
-      const row = section().querySelector(`tbody [data-ticker='${ticker}']`) as HTMLElement;
+      const row = rows.querySelector(`tbody [data-ticker='${ticker}']`) as HTMLElement;
       return Array.from(row.querySelectorAll("td")).map((cell) => cell.textContent);
     };
 
@@ -478,20 +553,22 @@ describe("actual holdings", () => {
 
   it("sorts on every column, by absolute size for the money and the weights", () => {
     render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    openDrawer("actual");
+    const rows = section();
     const ordered = (): string[] =>
-      Array.from(section().querySelectorAll("tbody [data-ticker]")).map(
+      Array.from(rows.querySelectorAll("tbody [data-ticker]")).map(
         (row) => row.getAttribute("data-ticker") ?? "",
       );
     const before = ordered();
 
-    fireEvent.click(section().querySelector("[data-sort='ticker']") as HTMLElement);
+    fireEvent.click(rows.querySelector("[data-sort='ticker']") as HTMLElement);
     expect(ordered()).toEqual([...before].sort((a, b) => a.localeCompare(b)));
-    fireEvent.click(section().querySelector("[data-sort='ticker']") as HTMLElement);
+    fireEvent.click(rows.querySelector("[data-sort='ticker']") as HTMLElement);
     expect(ordered()).toEqual([...before].sort((a, b) => b.localeCompare(a)));
 
     // A weight or a dollar column sorts by size, so a 5% short ranks with a 5%
     // long: the reader is asking which positions matter.
-    fireEvent.click(section().querySelector("[data-sort='heldDollars']") as HTMLElement);
+    fireEvent.click(rows.querySelector("[data-sort='heldDollars']") as HTMLElement);
     const sizes = ordered().map((ticker) => {
       const entry = ACTUAL.actual_holdings?.names.find((name) => name.ticker === ticker);
       return Math.abs(entry?.notional ?? 0);
@@ -502,11 +579,14 @@ describe("actual holdings", () => {
   it("says the account was not read rather than drawing an empty book", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     expect(OK.actual_holdings).toBeUndefined();
-    expect(section().textContent).toContain("the account has not been read");
-    expect(section().querySelector("table")).toBeNull();
-    // One line, not a heading over a blank: a table of no rows reads as an
-    // account holding nothing.
-    expect(section().querySelectorAll("p").length).toBe(1);
+    // One line, in the strip, where it is visible without opening a drawer: a
+    // table of no rows reads as an account holding nothing.
+    expect(document.querySelector("[data-note='account']")?.textContent).toContain(
+      "the account has not been read",
+    );
+    const drawer = document.querySelector("[data-section='drawer']") as HTMLElement;
+    expect(drawer.querySelector("[data-tab='actual']")).toBeNull();
+    expect(section()).toBeNull();
   });
 
   it("distinguishes the evening's own read from a day on which nothing filled", () => {
@@ -525,18 +605,22 @@ describe("actual holdings", () => {
     };
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
 
-    const summary = section().querySelector("[data-fills='summary']") as HTMLElement;
+    const summary = document.querySelector("[data-card='fills']") as HTMLElement;
     expect(summary.textContent).toContain("none to reconcile yet");
     expect(summary.textContent).toContain("before the orders went out");
     expect(summary.textContent).not.toContain("0 filled");
-    expect(section().textContent).toContain("at the evening run");
-    expect(section().textContent).not.toContain("close");
+    const read = openDrawer("actual");
+    expect(read.textContent).toContain("at the evening run");
+    // No close is claimed: nothing has settled into a book read before the
+    // orders went out.
+    expect(read.textContent).not.toContain("close");
   });
 
   it("renders the read time as a time, never as a bare ISO stamp", () => {
     render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    const read = openDrawer("actual");
     expect(document.body.textContent ?? "").not.toContain("T00:00:00");
-    expect(section().textContent).toContain("2026-09-22 15:30 UTC");
+    expect(read.textContent).toContain("2026-09-22 15:30 UTC");
   });
 });
 
@@ -546,14 +630,43 @@ describe("a snapshot with no book", () => {
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
     expect(snapshot.book.n_names).toBe(0);
     expect(snapshot.book.reason).toBeTruthy();
-    expect(document.querySelector("[data-cards='true']")).toBeNull();
     expect(document.querySelector("[data-section='sector']")).toBeNull();
     expect(document.querySelector("[data-section='top-names']")).toBeNull();
     expect(document.querySelector("[data-section='reasons']")).toBeNull();
-    expect(document.querySelector("[data-section='holdings']")).toBeNull();
     expect(document.querySelector("[data-section='exposures']")).toBeNull();
     expect(document.querySelector("[data-section='risk']")).toBeNull();
     expect(document.querySelector("[data-section='movers']")).toBeNull();
+    // No book and no account read is nothing to put in a drawer, so there is no
+    // drawer: an empty one would say the book is flat.
+    expect(document.querySelector("[data-section='drawer']")).toBeNull();
+    expect(document.querySelector("[data-section='holdings']")).toBeNull();
+  });
+
+  it("keeps the metrics row, and every value in it says n/a", () => {
+    const snapshot: Snapshot = NONE;
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const cards = document.querySelector("[data-cards='true']") as HTMLElement;
+    // The row is the page's shape, so it stays; what it must not do is invent a
+    // zero for a book that was never priced.
+    expect(cards).toBeTruthy();
+    const card = (label: string): HTMLElement =>
+      cards.querySelector(`[data-card="${label}"]`) as HTMLElement;
+    for (const label of [
+      "gross",
+      "net",
+      "long names",
+      "short names",
+      "n_eff_kept",
+      "n_eff_full_book",
+      "largest position",
+      "expected cost",
+      "top 10 share of gross",
+      "full book before the floor",
+    ]) {
+      expect(card(label), label).toBeTruthy();
+      expect(card(label).textContent, label).toContain("n/a");
+    }
+    expect(cards.querySelector("[data-card='fills']")).toBeNull();
   });
 
   it("says why the book is empty, and shouts about the run", () => {

@@ -5,7 +5,7 @@
 // actually uploads rather than a hand-made shape. Every state the owner has to be
 // able to tell apart is here: clean, late, stale-stopped, errored and missing.
 
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App, { health, SnapshotView } from "./App";
@@ -77,26 +77,34 @@ describe("the page", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("puts the account's own book above the target book it is read against", () => {
-    // The one section on the page that reports the account rather than a proposal,
-    // so it sits near the top and above the book it is compared with.
+  it("puts the detail drawer last and the status first", () => {
+    // The order is the reading order: what happened, what needs a look, the
+    // numbers, the pictures, then the tables, which are the only thing on the
+    // page that is not needed to answer "does the book look like the book".
     render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    expect(document.querySelector("[data-strip='status']")).toBeTruthy();
+    expect(document.querySelector("[data-alerts='true']")).toBeTruthy();
+    expect(document.querySelector("[data-cards='true']")).toBeTruthy();
     const order = Array.from(document.querySelectorAll("[data-section]")).map((node) =>
       node.getAttribute("data-section"),
     );
-    const at = order.indexOf("actual-holdings");
-    expect(at).toBeGreaterThan(-1);
-    expect(at).toBeLessThan(order.indexOf("book"));
-    expect(at).toBeLessThan(order.indexOf("holdings"));
-    expect(order.indexOf("book")).toBeLessThan(order.indexOf("holdings"));
+    expect(order.indexOf("exposures")).toBeLessThan(order.indexOf("drawer"));
+    expect(order.indexOf("sector")).toBeLessThan(order.indexOf("drawer"));
+    // Both tables live in the drawer, and it is the last thing on the page.
+    expect(order[order.length - 1]).toBe("drawer");
+    expect(order).not.toContain("holdings");
+    expect(order).not.toContain("actual-holdings");
   });
 
   it("says the account was not read when the snapshot carries no account", () => {
     // The state every snapshot was in before the runs published this block, and
-    // the state a run that could not read the account is in: one line, no table.
+    // the state a run that could not read the account is in: one line, and no
+    // second tab to open.
     expect(OK.actual_holdings).toBeUndefined();
     render(<SnapshotView snapshot={OK} now={NOW} />);
     expect(screen.getByText(/the account has not been read/)).toBeTruthy();
+    const drawer = document.querySelector("[data-section='drawer']") as HTMLElement;
+    expect(drawer.querySelector("[data-tab='actual']")).toBeNull();
   });
 
   it("states the exposures as one table, styles first then sectors by GICS name", () => {
@@ -182,28 +190,33 @@ describe("the page", () => {
     // the fixture rather than typed in, so regenerating it cannot break this.
     render(<SnapshotView snapshot={OK} now={NOW} />);
     expect(OK.book.gross).toBe(1);
-    expect(screen.getByText("100.00% ($1,000,000)")).toBeTruthy();
-    expect(screen.getByText("full book before the floor")).toBeTruthy();
-    const full = ((OK.book.full_book_gross ?? 0) * 100).toFixed(2);
-    expect(screen.getByText(`${full}%`)).toBeTruthy();
+    const gross = document.querySelector("[data-card='gross']") as HTMLElement;
+    expect(gross.textContent).toContain("100.00%");
+    expect(gross.textContent).toContain("$1,000,000");
+    const full = document.querySelector("[data-card='full book before the floor']") as HTMLElement;
+    expect(full).toBeTruthy();
+    expect(full.textContent).toContain(`${((OK.book.full_book_gross ?? 0) * 100).toFixed(2)}%`);
   });
 
   it("breaks the summary into labelled items rather than a pipe run", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     expect(screen.queryByText(/\|/)).toBeNull();
-    expect(screen.getByText("gross")).toBeTruthy();
-    expect(screen.getByText("net")).toBeTruthy();
-    expect(screen.getByText("n_eff_kept")).toBeTruthy();
-    expect(screen.getByText("n_eff_full_book")).toBeTruthy();
-    expect(screen.getByText("cost")).toBeTruthy();
+    const cards = document.querySelector("[data-cards='true']") as HTMLElement;
+    for (const label of ["gross", "net", "n_eff_kept", "n_eff_full_book", "expected cost"]) {
+      expect(cards.querySelector(`[data-card="${label}"]`), label).toBeTruthy();
+    }
   });
 
   it("gives the effective breadth to one decimal, and names what each one is", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const kept = OK.breadth.n_eff_kept as number;
     const full = OK.breadth.n_eff_full_book as number;
-    expect(screen.getByText(new RegExp(`${kept.toFixed(1)} \\(`))).toBeTruthy();
-    expect(screen.getByText(new RegExp(`${full.toFixed(1)} \\(`))).toBeTruthy();
+    const card = (label: string): HTMLElement =>
+      document.querySelector(`[data-card='${label}']`) as HTMLElement;
+    expect(card("n_eff_kept").textContent).toContain(kept.toFixed(1));
+    expect(card("n_eff_kept").textContent).toContain(OK.breadth.kept_label);
+    expect(card("n_eff_full_book").textContent).toContain(full.toFixed(1));
+    // The stored value to seventeen places is not on the page.
     expect(screen.queryByText(String(kept))).toBeNull();
   });
 
@@ -233,6 +246,7 @@ describe("the page", () => {
 
   it("lists the names by absolute weight, the largest first", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    fireEvent.click(document.querySelector("[data-tab='book']") as HTMLElement);
     const rows = within(screen.getByRole("table", { name: "the book" })).getAllByRole("row");
     const dataRows = rows.slice(1);
     const weights = OK.book.names.map((name) => Math.abs(name.weight ?? 0));
@@ -244,15 +258,17 @@ describe("the page", () => {
     }
   });
 
-  it("draws one row per kept name and counts them in the heading", () => {
+  it("draws one row per kept name and counts them in the table's own tab", () => {
     // The 2026-10-01 shape: the page drew "The book: 0 name(s)" over an empty
     // table while every number around it was right, because the writer was
     // handed no frame for the names. The fixture is the writer's own output, so
-    // the table has to draw one row per kept name and the heading has to count
-    // the same book.
+    // the table has to draw one row per kept name and the tab has to count the
+    // same book.
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const kept = OK.book.n_kept;
     expect(kept).toBeGreaterThan(0);
+    expect(screen.getByText(new RegExp(`The book: ${kept} name\\(s\\)`))).toBeTruthy();
+    fireEvent.click(document.querySelector("[data-tab='book']") as HTMLElement);
     const rows = within(screen.getByRole("table", { name: "the book" })).getAllByRole("row");
     const dataRows = rows.slice(1);
     expect(dataRows.length).toBe(kept);
@@ -260,7 +276,6 @@ describe("the page", () => {
     for (const row of dataRows) {
       expect(row.querySelector("td")?.textContent).toBeTruthy();
     }
-    expect(screen.getByText(new RegExp(`The book: ${kept} name\\(s\\)`))).toBeTruthy();
   });
 
   it("takes the top of the screen when the run stopped", () => {

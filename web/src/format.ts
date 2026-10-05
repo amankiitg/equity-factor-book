@@ -3,8 +3,17 @@
 // 4.20% in one panel and 4.2% in the next reads as two different numbers.
 
 /** A fraction as a percentage. `null` is "n/a", never 0.00%. */
-export const percent = (value: number | null | undefined, places = 2): string =>
-  value === null || value === undefined ? "n/a" : `${(value * 100).toFixed(places)}%`;
+export const percent = (value: number | null | undefined, places = 2): string => {
+  if (value === null || value === undefined) return "n/a";
+  // A book's net is a few machine epsilons off flat every evening, and (value *
+  // 100).toFixed(2) turns those into "-0.00%": a sign on a number that is zero,
+  // which reads as a small short position rather than as the flat book it is. The
+  // rounded value decides the sign, not the raw one.
+  const rounded = Number((value * 100).toFixed(places));
+  // The rounded value decides the sign, not the raw one, and a rounded zero keeps
+  // its decimals: 0.00% reads as flat, where 0% reads as a missing value.
+  return `${(rounded === 0 ? 0 : rounded).toFixed(places)}%`;
+};
 
 /** A dollar amount, rounded to whole dollars, because cents are noise at this size. */
 export const dollars = (value: number | null | undefined): string => {
