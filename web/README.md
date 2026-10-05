@@ -19,10 +19,12 @@ It shows, in order: one status strip (the run's status pill, the dry-run or live
 banner, the snapshot's time and age, the target close, whether the owner was
 notified, and one line saying so when the book is not tonight's); the panels that
 carry a warning, a stopped run or the unfilled misses; a dense row of the run's
-headline numbers; then two columns on a wide screen (the factor exposures before
-and after the hedge beside the sector bars, the ten largest longs and shorts and
-the trades by reason); then a drawer holding the full book and the account's own
-book, each with its own tab and one shared search box.
+headline numbers; then two columns on a wide screen, which are the phone's single
+column in the same order (the factor exposures before and after the hedge and the
+trades by reason on the left, the sector bars and the ten largest longs and shorts
+on the right); then a drawer holding the full book and the account's own book,
+each with its own tab and one shared search box. The two long panels sit opposite
+two long panels so neither column leaves a blank half under it.
 
 The account's own book is written twice a day: the evening run fills it from the
 account read it makes before sizing, and the 15:30 UTC reconciliation rewrites it
@@ -74,13 +76,15 @@ npm run deploy      # vite build && wrangler deploy
   the floor, and, when the account was read, the fills as filled of sent and the
   realized cost against the expected. A value the snapshot does not carry reads
   `n/a`; nothing is filled in with a zero.
-- Two columns on a wide screen, one on a phone: the factor exposures before and
-  after the hedge (one bar scale, set by the largest exposure on the page, so a
-  factor the hedge has taken out is a flat line at zero) beside, in turn, the
-  sector bars (long gross to the right and short gross to the left on a single
-  scale, with the long and short name counts and the sector's own net), the ten
-  largest longs and shorts with their weights, dollars and trade reasons, and the
-  trades by reason.
+- Two columns on a wide screen, one on a phone, in the same reading order. The
+  left column is the hedge and the trades that moved it: the factor exposures
+  before and after the hedge (one bar scale, set by the largest exposure on the
+  page, so a factor the hedge has taken out is a flat line at zero), then the
+  trades by reason. The right column is the book's shape: the sector bars (long
+  gross to the right and short gross to the left on a single scale, with the long
+  and short name counts and the sector's own net), then the ten largest longs and
+  shorts with their weights, dollars and trade reasons. On a phone the two columns
+  stack in that order: exposures, trades, sectors, largest names.
 - The drawer at the bottom, closed until it is asked for: one search box over two
   tabs, the full book (sortable on every column, with a sector filter) and the
   account's own book (the union of held and target, sorted by the largest

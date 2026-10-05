@@ -108,13 +108,16 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
     <section data-section="exposures" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">Factor exposures, before and after the hedge</h2>
       <div className="overflow-x-auto">
+        {/* Every column states its own width. The value columns are only as wide as
+            their widest number otherwise, so "after" and "before / after" touch and
+            read as one label, and the bars column is the width of the bars it holds. */}
         <table className="mt-2 w-full border-collapse text-sm" aria-label="factor exposures">
           <thead>
             <tr className="border-b border-slate-300 text-left">
-              <th className="py-1">factor</th>
-              <th className="py-1 text-right">before</th>
-              <th className="py-1 text-right">after</th>
-              <th className="py-1">before / after</th>
+              <th className="py-1 pr-2">factor</th>
+              <th className="w-16 py-1 pr-2 text-right whitespace-nowrap">before</th>
+              <th className="w-16 py-1 pr-2 text-right whitespace-nowrap">after</th>
+              <th className="w-28 py-1 pl-1 whitespace-nowrap">before / after</th>
             </tr>
           </thead>
           <tbody>
@@ -129,14 +132,14 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
                     key.startsWith("sector_") ? "bg-slate-50" : ""
                   } ${startOfSectors ? "border-t-2 border-t-slate-300" : ""}`}
                 >
-                  <td className="py-1">{label}</td>
-                  <td className="py-1 text-right font-mono tabular-nums">
+                  <td className="py-1 pr-2">{label}</td>
+                  <td className="w-16 py-1 pr-2 text-right font-mono tabular-nums">
                     {exposure(before[key])}
                   </td>
-                  <td className="py-1 text-right font-mono tabular-nums">
+                  <td className="w-16 py-1 pr-2 text-right font-mono tabular-nums">
                     {exposure(after[key])}
                   </td>
-                  <td className="py-1">
+                  <td className="w-28 py-1 pl-1">
                     <ExposureBars
                       before={before[key] ?? 0}
                       after={after[key] ?? 0}

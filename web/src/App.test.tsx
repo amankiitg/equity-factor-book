@@ -81,6 +81,9 @@ describe("the page", () => {
     // The order is the reading order: what happened, what needs a look, the
     // numbers, the pictures, then the tables, which are the only thing on the
     // page that is not needed to answer "does the book look like the book".
+    // The two columns are the same order the phone reads in one, so the trades
+    // come before the sectors: the hedge and the trades share the long left
+    // column and the book's own shape the right one.
     render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
     expect(document.querySelector("[data-strip='status']")).toBeTruthy();
     expect(document.querySelector("[data-alerts='true']")).toBeTruthy();
@@ -88,8 +91,26 @@ describe("the page", () => {
     const order = Array.from(document.querySelectorAll("[data-section]")).map((node) =>
       node.getAttribute("data-section"),
     );
-    expect(order.indexOf("exposures")).toBeLessThan(order.indexOf("drawer"));
-    expect(order.indexOf("sector")).toBeLessThan(order.indexOf("drawer"));
+    expect(order.indexOf("exposures")).toBeLessThan(order.indexOf("reasons"));
+    expect(order.indexOf("reasons")).toBeLessThan(order.indexOf("sector"));
+    expect(order.indexOf("sector")).toBeLessThan(order.indexOf("top-names"));
+    expect(order.indexOf("top-names")).toBeLessThan(order.indexOf("drawer"));
+    // The two columns, and which section is in which: a layout test that only
+    // read the document order would pass with both long panels stacked in the
+    // right column.
+    const columns = Array.from(
+      document.querySelectorAll("[data-columns='true'] > div"),
+    ).map((column) =>
+      Array.from(column.querySelectorAll("[data-section]")).map((node) =>
+        node.getAttribute("data-section"),
+      ),
+    );
+    expect(columns.length).toBe(2);
+    expect(columns[0]).toContain("exposures");
+    expect(columns[0]).toContain("reasons");
+    expect(columns[1]).toContain("sector");
+    expect(columns[1]).toContain("top-names");
+    expect(columns[1]).not.toContain("reasons");
     // Both tables live in the drawer, and it is the last thing on the page.
     expect(order[order.length - 1]).toBe("drawer");
     expect(order).not.toContain("holdings");
@@ -111,10 +132,14 @@ describe("the page", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const table = screen.getByRole("table", { name: "factor exposures" });
     const rows = within(table).getAllByRole("row");
-    const header = rows[0].textContent ?? "";
-    expect(header).toContain("factor");
-    expect(header).toContain("before");
-    expect(header).toContain("after");
+    // Four separate header cells. Rendered as one, the last two read
+    // "afterbefore / after": the value columns are only as wide as their own
+    // numbers, so the labels touch unless each column states its width.
+    const headers = Array.from(rows[0].querySelectorAll("th")).map(
+      (cell) => cell.textContent,
+    );
+    expect(headers).toEqual(["factor", "before", "after", "before / after"]);
+    expect(headers.join(" ")).not.toContain("afterbefore");
     const labels = rows.slice(1).map((row) => row.querySelector("td")?.textContent ?? "");
     expect(labels.slice(0, 7)).toEqual([
       "Beta",
