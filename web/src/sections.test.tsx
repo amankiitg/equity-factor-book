@@ -16,14 +16,16 @@ import { describe, expect, it } from "vitest";
 
 import { SnapshotView } from "./App";
 import { bookFacts } from "./book";
-import { dollars, percent, signedDollars } from "./format";
+import { dateOnly, dollars, percent, signedDollars, signedPercent } from "./format";
 import { sectorCodeFor, sectorLabel, UNMAPPED } from "./sectors";
 import type { Snapshot } from "./types";
 import noBook from "../fixtures/snapshot_no_book.json";
 import ok from "../fixtures/snapshot_ok.json";
+import withActual from "../fixtures/snapshot_actual_holdings.json";
 
 const OK = ok as unknown as Snapshot;
 const NONE = noBook as unknown as Snapshot;
+const ACTUAL = withActual as unknown as Snapshot;
 const NOW = new Date("2026-09-21T23:00:00Z");
 
 describe("the summary cards", () => {
@@ -359,6 +361,182 @@ describe("the full holdings table", () => {
       const cells = Array.from(row.querySelectorAll("td")).map((cell) => cell.textContent);
       expect(cells[2]).toBe(sectorLabel(sectorCodeFor(name.ticker)));
     }
+  });
+});
+
+describe("actual holdings", () => {
+  const section = (): HTMLElement =>
+    document.querySelector("[data-section='actual-holdings']") as HTMLElement;
+
+  it("draws the account's own book, its read time and the fills behind it", () => {
+    const block = ACTUAL.actual_holdings;
+    expect(block).toBeTruthy();
+    if (!block) return;
+    render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+
+    expect(screen.getByText(`Actual holdings: ${block.n_names} names`)).toBeTruthy();
+    // The read time, as a time: the evening's read and the morning's are hours
+    // apart and the difference is the whole meaning of the label.
+    expect(section().textContent).toContain("read at 2026-09-22 15:30 UTC");
+    expect(section().textContent).toContain(`at the ${block.read_by} run`);
+    expect(section().textContent).toContain(`for the ${dateOnly(block.close)} close`);
+    // Long and short gross are summed from the block's own notionals, not from the
+    // block's precomputed pair: the table's rows and these lines cannot disagree.
+    const long = block.names
+      .filter((entry) => (entry.notional ?? 0) > 0)
+      .reduce((total, entry) => total + (entry.notional ?? 0), 0);
+    const short = block.names
+      .filter((entry) => (entry.notional ?? 0) < 0)
+      .reduce((total, entry) => total - (entry.notional ?? 0), 0);
+    expect(section().textContent).toContain(dollars(long));
+    expect(section().textContent).toContain(dollars(short));
+    expect(section().textContent).toContain(dollars(block.net_notional));
+    expect(long + short).toBeCloseTo(block.gross_notional as number, 6);
+    const fills = block.fills;
+    expect(fills).toBeTruthy();
+    if (!fills) return;
+    const summary = section().querySelector("[data-fills='summary']") as HTMLElement;
+    expect(summary.textContent).toContain(`${fills.n_filled} filled`);
+    expect(summary.textContent).toContain(`${fills.n_unfilled} did not fill`);
+    expect(summary.textContent).toContain(`${fills.not_sent} never sent`);
+    expect(fills.realized_cost_bps).not.toBeNull();
+    expect(summary.textContent).toContain(
+      `realized ${(fills.realized_cost_bps as number).toFixed(2)} bps`,
+    );
+    // And the legs behind the count, in the email's own wording.
+    const misses = section().querySelector("[data-fills='misses']") as HTMLElement;
+    for (const line of fills.unfilled) expect(misses.textContent).toContain(line);
+  });
+
+  it("carries one row per name in the held book and per target it does not hold", () => {
+    const block = ACTUAL.actual_holdings;
+    expect(block).toBeTruthy();
+    if (!block) return;
+    render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+
+    const rows = section().querySelectorAll("tbody [data-ticker]");
+    const held = new Set(block.names.map((entry) => entry.ticker));
+    const missing = ACTUAL.book.names.filter((name) => !held.has(name.ticker));
+    expect(rows.length).toBe(block.n_names + missing.length);
+    expect(section().querySelectorAll("tbody [data-held='false']").length).toBe(
+      missing.length,
+    );
+    // The two books genuinely differ, or this section would have nothing to say.
+    expect(missing.length).toBeGreaterThan(0);
+    expect(block.n_names).toBeLessThan(ACTUAL.book.n_names);
+    // A name the account does not hold says so rather than printing 0.00%.
+    const notHeld = section().querySelector("tbody [data-held='false']") as HTMLElement;
+    expect(notHeld.textContent).toContain("not held");
+    expect(notHeld.textContent).not.toContain("0.00%");
+    // The count line names both directions. The held names that are in the target
+    // are the union's intersection, which the section derives itself.
+    expect(section().querySelector("[data-actual='unheld']")?.textContent).toContain(
+      `${missing.length} of the target book's ${ACTUAL.book.n_names} name(s) are not held`,
+    );
+  });
+
+  it("reports a held position against its target weight, in both units", () => {
+    const block = ACTUAL.actual_holdings;
+    expect(block).toBeTruthy();
+    if (!block) return;
+    const facts = bookFacts(ACTUAL);
+    render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+
+    const cellsFor = (ticker: string): Array<string | null> => {
+      const row = section().querySelector(`tbody [data-ticker='${ticker}']`) as HTMLElement;
+      return Array.from(row.querySelectorAll("td")).map((cell) => cell.textContent);
+    };
+
+    // A name in both books: the section says what is held against what the target
+    // asked for, in weights and in dollars.
+    const held = new Set(block.names.map((entry) => entry.ticker));
+    const shared = block.names.find((entry) =>
+      ACTUAL.book.names.some((name) => name.ticker === entry.ticker),
+    );
+    expect(shared).toBeTruthy();
+    if (!shared) return;
+    const target = ACTUAL.book.names.find((name) => name.ticker === shared.ticker);
+    const sharedCells = cellsFor(shared.ticker);
+    expect(sharedCells[2]).toBe(percent(shared.weight));
+    expect(sharedCells[3]).toBe(dollars(shared.notional));
+    expect(sharedCells[4]).toBe(percent(target?.weight ?? null));
+    expect(sharedCells[5]).toBe(dollars((target?.weight as number) * (facts.nav as number)));
+    expect(sharedCells[6]).toBe(
+      signedPercent((shared.weight ?? 0) - (target?.weight as number)),
+    );
+
+    // A name the account holds and the target does not: the target columns are
+    // absent rather than zero, and the drift is the whole position.
+    const onlyHeld = block.names.find((entry) => !ACTUAL.book.names.some((name) => name.ticker === entry.ticker));
+    expect(onlyHeld).toBeTruthy();
+    if (!onlyHeld) return;
+    const heldCells = cellsFor(onlyHeld.ticker);
+    expect(heldCells[4]).toBe("n/a");
+    expect(heldCells[5]).toBe("n/a");
+    expect(heldCells[6]).toBe(signedPercent(onlyHeld.weight));
+  });
+
+  it("sorts on every column, by absolute size for the money and the weights", () => {
+    render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    const ordered = (): string[] =>
+      Array.from(section().querySelectorAll("tbody [data-ticker]")).map(
+        (row) => row.getAttribute("data-ticker") ?? "",
+      );
+    const before = ordered();
+
+    fireEvent.click(section().querySelector("[data-sort='ticker']") as HTMLElement);
+    expect(ordered()).toEqual([...before].sort((a, b) => a.localeCompare(b)));
+    fireEvent.click(section().querySelector("[data-sort='ticker']") as HTMLElement);
+    expect(ordered()).toEqual([...before].sort((a, b) => b.localeCompare(a)));
+
+    // A weight or a dollar column sorts by size, so a 5% short ranks with a 5%
+    // long: the reader is asking which positions matter.
+    fireEvent.click(section().querySelector("[data-sort='heldDollars']") as HTMLElement);
+    const sizes = ordered().map((ticker) => {
+      const entry = ACTUAL.actual_holdings?.names.find((name) => name.ticker === ticker);
+      return Math.abs(entry?.notional ?? 0);
+    });
+    expect(sizes).toEqual([...sizes].sort((a, b) => b - a));
+  });
+
+  it("says the account was not read rather than drawing an empty book", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    expect(OK.actual_holdings).toBeUndefined();
+    expect(section().textContent).toContain("the account has not been read");
+    expect(section().querySelector("table")).toBeNull();
+    // One line, not a heading over a blank: a table of no rows reads as an
+    // account holding nothing.
+    expect(section().querySelectorAll("p").length).toBe(1);
+  });
+
+  it("distinguishes the evening's own read from a day on which nothing filled", () => {
+    // The evening reads the account before it sends anything, so its block has no
+    // fills and no close: the orders it sized from have not settled. A page that
+    // read the absent block as "0 filled" would report the evening as a day the
+    // market did not fill anything.
+    const snapshot: Snapshot = {
+      ...ACTUAL,
+      actual_holdings: {
+        ...(ACTUAL.actual_holdings as NonNullable<Snapshot["actual_holdings"]>),
+        read_by: "evening",
+        close: null,
+        fills: null,
+      },
+    };
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+
+    const summary = section().querySelector("[data-fills='summary']") as HTMLElement;
+    expect(summary.textContent).toContain("none to reconcile yet");
+    expect(summary.textContent).toContain("before the orders went out");
+    expect(summary.textContent).not.toContain("0 filled");
+    expect(section().textContent).toContain("at the evening run");
+    expect(section().textContent).not.toContain("close");
+  });
+
+  it("renders the read time as a time, never as a bare ISO stamp", () => {
+    render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    expect(document.body.textContent ?? "").not.toContain("T00:00:00");
+    expect(section().textContent).toContain("2026-09-22 15:30 UTC");
   });
 });
 

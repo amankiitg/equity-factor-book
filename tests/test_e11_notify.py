@@ -9,7 +9,7 @@ owner and the dashboard actually see.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -1438,6 +1438,120 @@ def test_a_configured_snapshot_reaches_the_morning_job(
     assert run_live_daily.main() == 0
 
     assert reached == ["called"]
+
+
+def test_the_evening_publishes_the_account_it_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page's account section comes from the evening's own read of the account.
+
+    The evening reads the account before it sizes, so the book it publishes is the
+    one the orders were measured against, labelled as read at the evening run: no
+    order has settled into it, which is why it carries no close and no fills, and
+    the 15:30 UTC reconciler rewrites the section with what those orders did. Until
+    this, the evening's document dropped the block altogether, so the page lost the
+    account every evening and showed the previous morning's book until the next
+    reconciliation.
+    """
+    from live import fills as fills_module
+    from live import positions, snapshot
+
+    uploaded: list[tuple[str, str]] = []
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        positions,
+        "check",
+        lambda **kwargs: {
+            "account_read": True,
+            "establishment": False,
+            "nav": 1_000_000.0,
+            "nav_source": "the account's own equity",
+            "held": {"AAA": 60_000.0, "BBB": -20_000.0},
+            "held_quantities": {"AAA": 1_000.0, "BBB": -500.0},
+            "note": "the account matches the store (2 name(s), nothing drifted)",
+            "source": "alpaca",
+        },
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "on")
+    for name in snapshot.R2_ENVS:
+        monkeypatch.setenv(name, "test-value-for-" + name)
+    monkeypatch.setattr(
+        snapshot, "put_object", lambda key, text, **rest: uploaded.append((key, text))
+    )
+
+    assert run_live_daily.main() == 0
+
+    assert [key for key, _ in uploaded] == [
+        snapshot.LATEST_KEY,
+        f"snapshots/{SESSION}.json",
+    ]
+    block = json.loads(uploaded[0][1])["actual_holdings"]
+    assert block["read_by"] == fills_module.READ_EVENING
+    assert block["n_names"] == 2
+    assert [entry["ticker"] for entry in block["names"]] == ["AAA", "BBB"]
+    assert block["names"][0]["notional"] == pytest.approx(60_000.0)
+    assert block["names"][0]["weight"] == pytest.approx(0.06)
+    assert block["names"][1]["side"] == "short"
+    assert block["gross_notional"] == pytest.approx(80_000.0)
+    assert block["net_notional"] == pytest.approx(40_000.0)
+    # Read tonight, at the run's own clock rather than the close it is pricing.
+    stamp = str(block["as_of"])
+    assert stamp[:10] == datetime.now(UTC).date().isoformat()
+    assert "T" in stamp, "the read time has to be a time, not a bare date"
+    assert block["close"] is None
+    assert block["fills"] is None
+
+
+def test_an_evening_that_could_not_read_the_account_publishes_no_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The store's book is not the account's, so it is not published as it.
+
+    `positions.check` falls back to the loop's own position row when the broker
+    cannot be read, and that row is what the loop meant to hold. Publishing it under
+    this key would make the page's one checkable claim about the account a
+    restatement of the intention, so the block is absent and the page says the
+    account was not read.
+    """
+    from live import positions, snapshot
+
+    uploaded: list[tuple[str, str]] = []
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        positions,
+        "check",
+        lambda **kwargs: {
+            "account_read": False,
+            "establishment": False,
+            "nav": 1_000_000.0,
+            "nav_source": "the store's last book",
+            "held": {"AAA": 60_000.0},
+            "held_quantities": {},
+            "note": "the account was not read: no keys",
+            "source": "store",
+        },
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+    monkeypatch.setenv(snapshot.SNAPSHOT_ENV, "on")
+    for name in snapshot.R2_ENVS:
+        monkeypatch.setenv(name, "test-value-for-" + name)
+    monkeypatch.setattr(
+        snapshot, "put_object", lambda key, text, **rest: uploaded.append((key, text))
+    )
+
+    assert run_live_daily.main() == 0
+
+    payload = json.loads(uploaded[0][1])
+    assert "actual_holdings" not in payload
 
 
 def test_a_traceback_is_scrubbed_before_it_is_logged() -> None:

@@ -36,7 +36,7 @@ from typing import Any
 
 import pandas as pd
 
-from live import evening_job, snapshot, trade_reasons
+from live import evening_job, fills, snapshot, trade_reasons
 
 ROOT = Path(__file__).resolve().parents[1]
 PROPOSAL_DIR = ROOT / "live" / "proposals"
@@ -58,6 +58,9 @@ NAMES: tuple[str, ...] = (
     "snapshot_market_closed.json",
     "snapshot_establishment.json",
     "snapshot_no_book.json",
+    # The account's own book beside the target book, which is the state every
+    # evening is in once the 15:30 UTC reconciler has read the account.
+    "snapshot_actual_holdings.json",
 )
 
 
@@ -120,6 +123,61 @@ def _stamp(when: str) -> datetime:
     return datetime.fromisoformat(when).replace(tzinfo=UTC)
 
 
+def account_book(nav: float) -> dict[str, float]:
+    """The account's own book in dollars, as the broker reports it.
+
+    Read from the stored `proposal_<close>.parquet`, which is the book the loop
+    traded that evening: the committed file is a vintage of the older floor rule
+    (150 names, where today's manifest keeps 188), so the account's book and the
+    target book in these fixtures genuinely differ, and the page's target columns
+    have real "not in the book" and "not held" rows rather than a copy of the
+    target with a name or two shaved off. Weights are over the NAV the manifest
+    sized from, which is the account's equity at the read.
+    """
+    rows = pd.read_parquet(PROPOSAL_DIR / f"proposal_{CLOSE}.parquet")
+    held = {
+        str(row.ticker): float(row.weight) * float(nav)
+        for row in rows.itertuples(index=False)
+    }
+    return {ticker: value for ticker, value in held.items() if value}
+
+
+def fills_report(
+    target: dict[str, float], held: dict[str, float]
+) -> dict[str, Any]:
+    """What the morning reconciliation found, as `reconcile_day` reports it.
+
+    The one piece of the account fixture that stands in for a read rather than
+    being one, because a fixture cannot ask the broker what became of the orders.
+    The counts come from the two books: the legs the evening had to trade are the
+    names it had to open (in the target, not held) plus the ones it had to close
+    (held, not in the target), and two of those came back as misses. The miss lines
+    are in the shape the email uses, which is `fills.unfilled_line`'s own shape.
+    """
+    opening = sorted(set(target) - set(held))
+    closing = sorted(set(held) - set(target))
+    legs = len(opening) + len(closing)
+    misses = [
+        f"{opening[0]} buy_to_open 4 canceled 12:15 UTC",
+        f"{closing[0]} sell_to_open 3 expired 12:30 UTC",
+    ]
+    return {
+        "trade_date": CLOSE,
+        "n_orders": legs,
+        "n_filled": legs - len(misses),
+        "n_unfilled": len(misses),
+        # Nothing was skipped at the guard: this fixture is about the account's
+        # book, and a leg that was never sent has nothing to do with it.
+        "not_sent": 0,
+        # The realized cost of the evening that built this book, as the reconciler
+        # prices it from the fills and the close. A fixture has no fills to price,
+        # so the number is the fixture's own and the page is tested against it.
+        "realized_cost_bps": 6.42,
+        "unfilled": misses,
+        "unread": [],
+    }
+
+
 def _run(**over: Any) -> dict[str, Any]:
     """A run row, of the shape `run_live_daily` hands the snapshot writer."""
     base: dict[str, Any] = {
@@ -154,6 +212,15 @@ def snapshots() -> dict[str, dict[str, Any]]:
     proposal = manifest()
     rows = book(proposal)
     chosen = snapshot.chosen_row(proposal)
+    nav = float(proposal.get("nav") or 0.0)
+    # The account's own book and the target book it is read against, both in
+    # dollars over the same equity: they differ by construction (see
+    # `account_book`), which is the whole point of the section.
+    held = account_book(nav)
+    target = {
+        str(row.ticker): float(row.weight)
+        for row in pd.DataFrame(proposal.get("kept_book") or []).itertuples(index=False)
+    }
     built: dict[str, dict[str, Any]] = {
         NAMES[0]: snapshot.build(
             run=_run(),
@@ -278,6 +345,33 @@ def snapshots() -> dict[str, dict[str, Any]]:
             book=None,
             book_reason="the store holds no book for this close",
             generated_at=_stamp("2026-09-25T22:41:00"),
+        ),
+        # The account's own book, as the 15:30 UTC reconciler adds it: the book the
+        # loop held after the 09-21 evening's orders settled, and the fills behind
+        # it. The block is built by `fills.actual_holdings`, the function that
+        # reconciler itself calls, so the fixture cannot carry a shape the page's
+        # input does not have. The document is a live evening's rather than a dry
+        # run's, because a block is a claim about the account and the account only
+        # moves on a live evening.
+        NAMES[8]: snapshot.build(
+            run=_run(
+                dry_run=False,
+                detail="",
+                notify_status="sent",
+            ),
+            manifest=proposal,
+            book=rows,
+            construction=chosen,
+            actual=fills.actual_holdings(
+                held,
+                nav,
+                as_of="2026-09-22T15:30:04+00:00",
+                close=CLOSE,
+                report=fills_report(target, held),
+                expected_cost_bps=proposal.get("expected_establishment_cost_bps"),
+                read_by=fills.READ_MORNING,
+            ),
+            generated_at=_stamp("2026-09-21T22:41:00"),
         ),
     }
     missing = [name for name in NAMES if name not in built]

@@ -244,6 +244,10 @@ def main(argv: list[str] | None = None) -> int:
             close=close,
             report=report,
             expected_cost_bps=expected,
+            # This run is the morning: the book it read is what the evening's
+            # orders left behind, which is why the fills travel with it and why
+            # `close` is the evening they settled for.
+            read_by=fills.READ_MORNING,
         )
         try:
             keys = publish(block)

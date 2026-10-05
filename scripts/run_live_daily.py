@@ -568,6 +568,7 @@ def finish_run(
     manifest: dict[str, Any] | None = None,
     book: pd.DataFrame | None = None,
     reconciliation: dict[str, Any] | None = None,
+    actual: dict[str, Any] | None = None,
     init: bool = False,
     no_price: list[str] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
@@ -668,6 +669,7 @@ def finish_run(
             reconciliation=reconciliation,
             construction=snapshot_module.chosen_row(manifest),
             book_reason=book_reason,
+            actual=actual,
             dry_run=dry_run,
             poster=snapshot_poster,
         )
@@ -879,6 +881,7 @@ def main() -> int:
         corporate_actions,
         evening_job,
         extend,
+        fills,
         morning_job,
         notify,
         positions,
@@ -964,6 +967,10 @@ def main() -> int:
     # Filled on the success path; a stopped or failed run writes the snapshot
     # without them, and it falls back to the last proposal on disk.
     snapshot_inputs: dict[str, Any] = {}
+    # The account's own book as of this evening's read, for the page's own
+    # section. Filled as soon as the account is read, so a run that fails after
+    # the read still publishes the book it actually holds rather than nothing.
+    actual: dict[str, Any] | None = None
     try:
         # The model inputs are the git seed plus the Postgres appendix, so a
         # fresh container starts from seed plus every session the loop has
@@ -1195,6 +1202,22 @@ def main() -> int:
             holdings["source"],
             establishment,
         )
+        # The page's account section, built from this read and from nothing else:
+        # the store's position row is the loop's record of what it meant to hold,
+        # and publishing that as the account's book would be the one claim the
+        # section exists to make checkable. `close` and the fills are left empty on
+        # purpose, because this read happens before the orders go out: nothing has
+        # settled into the book in hand, and the 15:30 UTC reconciler rewrites the
+        # section with what the evening's orders did. A run that could not read the
+        # account publishes no block at all rather than the store's book, and the
+        # page says the account was not read.
+        if holdings["account_read"]:
+            actual = fills.actual_holdings(
+                held,
+                float(holdings["nav"]),
+                as_of=datetime.now(UTC).isoformat(timespec="seconds"),
+                read_by=fills.READ_EVENING,
+            )
         previous = previous_book(str(gate["target_close"]), [])
         prior = prior_book(holdings, previous)
         prior_weights = (
@@ -1273,6 +1296,7 @@ def main() -> int:
             "manifest": manifest,
             "book": book,
             "reconciliation": row,
+            "actual": actual,
         }
     except Exception as exc:  # noqa: BLE001 - recorded, never silent
         # The reason is scrubbed before it goes anywhere: a connection string,
@@ -1292,6 +1316,7 @@ def main() -> int:
             error_type=type(exc).__name__,
             catch_up_sessions=catch_up_sessions,
             init=first_run,
+            actual=actual,
         )
 
     # A leg that was halted, left in an unknown state, refused or rejected makes

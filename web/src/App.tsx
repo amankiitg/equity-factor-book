@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 
+import { ActualHoldingsSection } from "./ActualHoldingsSection";
 import { Reasons, SummaryCards, TopNames } from "./BookSections";
 import { bookFacts } from "./book";
 import { dateOnly, dollars, exposure, oneDecimal, percent } from "./format";
@@ -263,6 +264,15 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
           detail={positions.note ?? "not read"}
         />
       ) : null}
+
+      {/* The account's own book, high on the page: it is the one section that
+          reports what is held rather than what was proposed, and the target book
+          below it is what the two are read against. */}
+      <ActualHoldingsSection
+        actual={snapshot.actual_holdings}
+        names={snapshot.book.names}
+        nav={facts.nav}
+      />
 
       <section data-section="book">
         <h2 className="text-lg font-semibold">

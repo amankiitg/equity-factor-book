@@ -213,16 +213,21 @@
     },
     "actual_holdings": {
       "type": "object",
-      "description": "The account's own book beside the target book above, added by the 15:30 UTC fills reconciliation. The key is absent, not null, until that job has read the account: a null key would read as an account holding nothing, which is a different statement from an account nobody read.",
+      "description": "The account's own book beside the target book above, written by the evening run from the account read it makes before it sizes and rewritten by the 15:30 UTC fills reconciliation with what those orders did. Both writers fill the same block, and `read_by` says which one it was: the evening's read is the book the orders were measured against and has no close and no fills, because nothing has settled into it yet. The key is absent, not null, when nobody has read the account (a run that could not reach the broker, and the store's fallback book is not the account): a null key would read as an account holding nothing, which is a different statement from an account nobody read.",
       "required": ["as_of", "close", "n_names", "gross_notional", "net_notional", "names"],
       "properties": {
         "as_of": {
           "type": ["string", "null"],
-          "description": "The morning the account was read, YYYY-MM-DD."
+          "description": "When the account was read, as a full timestamp (the page shows its date and time), by the run `read_by` names."
         },
         "close": {
           "type": ["string", "null"],
-          "description": "The evening whose orders settled into this book, YYYY-MM-DD."
+          "description": "The evening whose orders settled into this book. Null on the evening's own read, which is taken before the orders go out."
+        },
+        "read_by": {
+          "type": ["string", "null"],
+          "enum": ["evening", "morning", null],
+          "description": "Which run read the account: `evening` is the read the book was sized from, `morning` is the reconciliation that saw the fills. Carried rather than inferred from whether `fills` is present, because an evening read is not a morning on which nothing filled."
         },
         "n_names": {
           "type": "integer",
