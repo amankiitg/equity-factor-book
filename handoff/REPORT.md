@@ -1,3 +1,400 @@
+# live-page-redesign: one status strip, one metrics row, two columns and one drawer
+
+Branch `live-page-redesign`, off `main` at `59d0eb1`, merged with `--no-ff` as
+`8d08d3d` (code commit `fb20ff3`), pushed as `59d0eb1..8d08d3d`. The page is
+deployed: **Worker version `674c859c-f5a3-4085-9989-477aa2be3512`, 100% of
+traffic**, created 2026-10-05T21:05:52.946Z (`npx wrangler deployments status`).
+The merge and the push happened at 21:05 UTC, outside both windows the task named.
+
+The change is `web/` and two screenshots under `docs/img/`: the page, its tests and
+its README. No Python file was touched, no data was written, and nothing about
+sizing, the orders, the cron, the database or the store changed. No new snapshot
+field was asked for and none was added: the page binds to what
+`docs/snapshot.schema.json` documents and `web/src/types.ts` types, and every value
+on it is either stated there or derived in `web/src/book.ts` from what it states.
+
+There is no Lovable artifact in this repository to read, so the task's own list of
+what to adopt and what not to adopt is the specification, and this report answers to
+that list item by item.
+
+## Item 1: the status strip, and the one line that matters
+
+`web/src/StatusStrip.tsx` is the first thing on the page: the status pill, the mode
+(`DRY RUN: no orders are sent` or `live`), `snapshot generated 2026-09-21 22:41 UTC
+(19 minutes ago)`, the target close, and `notify sent`. The age is omitted rather
+than guessed when the timestamp will not parse, and the timestamp goes through
+`dateTime()` so the page never shows the bare ISO stamp this repository has been
+bitten by (`T00:00:00` appears in no rendered state; see the scan below).
+
+Under the strip, one line each when they apply: `the book is the 2026-09-18 close,
+not tonight's 2026-09-21: the run did not price tonight`, the catch-up run with its
+sessions, `no book: <reason>`, and `the account has not been read, so there is no
+actual holdings table`. The last one is on the strip rather than in the drawer
+because the drawer is shut by default, and a reader who cannot find the table has to
+be able to read why it is not there.
+
+The pill is `web/src/status.ts`'s `pillFor()`: a stopped or errored run and a
+missing snapshot are shown as they are, `ok` becomes `expired` past
+`expected_next_by`, otherwise `catch_up` when the run replayed sessions, otherwise
+`ok`. Time enters through the `now` prop, so the pill is testable without pinning
+the clock.
+
+## Item 2: severity, red only for errors and stopped runs
+
+`runTone()` is the rule, and it is one function so the strip and the panels cannot
+disagree: `error` and `stale_stopped` are the only red; `expired` is amber;
+`market_closed` and `catch_up` are informational; `ok` is green. `web/src/Panel.tsx`
+turns the tone into the markup: a red panel is a `role="alert"` live region, every
+other tone is a `role="status"`.
+
+The amber strip is `web/src/Alerts.tsx`: the unfilled legs, each with the broker's
+own wording from `actual_holdings.fills.unfilled` (`AEE buy_to_open 4 canceled 12:15
+UTC`, `ABT sell_to_open 3 expired 12:30 UTC`), six lines and then `and 2 more`. The
+rendered page shows exactly that: on the actual-holdings fixture the page carries
+one amber element and no alert, and `role="alert"` appears exactly once, and only,
+for `stale_stopped`, `error` and the no-book fixture. Missing an order is a routine
+event and is not painted like a broken run.
+
+Deferred legs are amber by the same rule, and this is where the rule is written
+down rather than drawn: the snapshot has no field naming them, so nothing is
+rendered for them and no count is invented.
+
+## Item 3: the metrics row
+
+`web/src/MetricsRow.tsx` is one dense grid of `Card`s, monospaced and
+`tabular-nums`: gross (with its notional), net, long names (with their dollars),
+short names (with theirs), `n_eff_kept`, `n_eff_full_book`, largest position,
+expected cost (with the run's own cost label), the top ten's share of gross, and the
+full book before the floor. When `actual_holdings` is present the row also carries
+the fills: `130 of 132 filled` and `realized 6.42 against 14.54 bps expected`.
+
+Two numbers that the design asks to sit together, and how they are kept apart: the
+`n_eff_kept` and `n_eff_full_book` cards each carry the snapshot's own label
+(`the book's effective breadth`, `the full 499-name book's, before the floor`) so
+neither is an unqualified `n_eff`; and the full book's gross is a card of its own,
+because one number labelled "gross" that changes meaning between evenings is worse
+than two numbers.
+
+Nothing is filled in. `count()`, `dollars()`, `percent()`, `oneDecimal()` and `bps()`
+return `n/a` for a value the snapshot does not carry, and the no-book fixture renders
+all ten cards as `n/a` rather than as zeroes.
+
+The fills card is present whenever the block is, including the evening's read, where
+it says `none to reconcile yet` and `the account was read before the orders went
+out`: an evening read is not a day on which nothing filled.
+
+## Item 4: the two column grid
+
+`web/src/App.tsx` lays the page out as the strip, the alerts, the metrics row, then
+`grid gap-3 lg:grid-cols-2` and the drawer last. The left column is
+`web/src/ExposuresSection.tsx`, the factor exposures before and after the hedge, moved
+out of `App.tsx` unchanged. The right column is the sector bars, the ten largest
+longs and shorts, the trades by reason, and the two panels that still wait for data.
+Below `lg` it is one column, which is what the 390px renders show.
+
+## Item 5: the drawer
+
+`web/src/DrawerSection.tsx` is the bottom drawer: two tabs and one search box. The
+book tab is `The book: 188 name(s) (as of 2026-09-21)` and the actual tab is
+`Actual holdings: 150 name(s)`. The search box filters whichever tab is open, and
+typing a ticker with the drawer shut opens the tab that holds the name, so the search
+is not a second thing to find. Closed, it says so in one line rather than showing an
+empty table.
+
+The book tab is the same `HoldingsTable` as before (`web/src/HoldingsSection.tsx`):
+every column sortable, the sector filter, `data-count="shown"` counting the rows the
+filter leaves. Its own search box is gone, because the drawer owns the only one.
+
+The actual tab is `web/src/ActualHoldingsTable.tsx`, the union of the held book and
+the target, a held name the target has dropped and a target name the account does not
+hold both rows, every column sortable, **default order the largest absolute drift
+first**, which is asserted rather than described: the first row's drift is the largest
+of the table's absolute drifts.
+
+## Item 6: what was dropped, and what was kept
+
+Dropped, because it restated something already on the page: the long and short gross
+footer under the sector bars (`data-net='book'`), the separate ten largest names list
+(`data-largest='names'`), and the old summary cards. The book's gross is on the
+metrics row once.
+
+Kept, deliberately, because the design asked for it:
+
+- **The sector chart on its existing single scale.** `SectorSection.tsx` keeps one
+  scale across the rows, long gross to the right and short gross to the left, with
+  the long and short counts and the sector's own net beside each bar. Only the
+  duplicated footer went.
+- **The factor bars on one scale**, set by the largest exposure on the page, so a
+  factor the hedge has taken out is a flat line at zero rather than a missing bar.
+  On the ok fixture `hedge.idio_share_after_fmp` is 1.0 and
+  `max_abs_exposure_after_fmp` is 1.08e-15, so every after bar is flat, which is what
+  the page shows.
+- **The held-against-target table and the fills summary**, moved rather than lost:
+  the table into the drawer's second tab, the fills onto the metrics row and the
+  unfilled legs into the amber strip.
+
+## Item 7: what only rendering found
+
+The unit tests were green before the page was ever put in a browser, and two defects
+were in it anyway.
+
+`percent()` printed `-0.00%` for a book that is flat to machine precision: the ok
+fixture's `book.net` is `-3.3306690738754696e-16`, which
+`(value * 100).toFixed(2)` renders as `-0.00`, and a minus sign on nothing reads as a
+small short position. The rounded value now decides the sign and a rounded zero keeps
+its decimals, so it prints `0.00%`. The first fix was incomplete in a second way that
+only the browser showed: it printed `0%`, and a bare `0%` reads as a missing value
+next to cards that say `n/a`. `web/src/status.test.tsx` now pins both halves.
+
+The drawer's tables are wider than a phone. At 390px the two of them scroll inside
+their own `overflow-x-auto` container, which is measured rather than eyeballed:
+`tableScrollsInside` is `[false, true]` at 390px (the second container is the table's)
+and `[false, false]` at 1280px, and the document itself is 375px wide with the
+235-row table open.
+
+## Item 8: what was not adopted, and why
+
+- **No field the snapshot does not carry.** Every value traces to
+  `docs/snapshot.schema.json` and `web/src/types.ts`. The omissions are listed in
+  the next section.
+- **No hardcoded numbers or labels.** There is no `50.0% / 50.0%`, no `499 universe`,
+  no `17 risk drivers` and no `min 20 shares` typed into the page: the construction
+  line comes from `snapshot.construction`, the 499 from the snapshot's own breadth
+  label, and the name counts from the book. No NAV fallback exists either: the book
+  in dollars is `book.gross_notional / book.gross` and nothing else.
+- **No fabricated zeros.** A value the snapshot does not carry prints `n/a`, checked
+  on the no-book fixture where ten cards do exactly that.
+- **Never the word "conviction".** The page's vocabulary is the snapshot's: the
+  reasons are the run's own (`alpha moved`, `the hedge moved`, `new name`,
+  `no trade`).
+- **No in-page dark-mode toggle.** Nothing was added and nothing was removed: the
+  page inherits whatever the platform does, as before.
+- **No em dashes.** Checked in the rendered text of every state at both widths, not
+  only in the source.
+
+## Design elements not built, because the snapshot does not carry the data
+
+1. **Deferred legs as a list.** The seriousness rule treats them as routine and amber,
+   but `run_status` has no field naming them. They exist only in the evening's email,
+   so the rule is documented in `web/src/Alerts.tsx` and nothing is drawn. Drawing
+   them would mean inventing a count.
+2. **Anything per name the snapshot does not state.** The snapshot has no sector per
+   name, so the sector bars use the page's bundled map and a name neither
+   `data/processed/sectors.parquet` nor the dated `data/raw/spy_holdings/` archive can
+   place renders as `Unmapped` rather than being guessed at, which is stated in the
+   note under the chart.
+3. **Risk concentration and movers.** Both panels exist and both hide themselves
+   until the snapshot carries the data they need. The redesign kept them as they were:
+   an empty panel would say the answer is nothing rather than that the run has not
+   written it.
+4. **A ledger of today's trades against yesterday's.** The task's fills item is on the
+   page as filled of sent and realized against expected, which is what
+   `actual_holdings.fills` states. Anything finer (per name, per reason) is not in the
+   document.
+
+Also not changed, and the reviewer may expect it to have been: `docs/img/live_dashboard.png`,
+the picture of the live page in the root `README.md`, still shows the old layout. It is
+a capture of the deployed page behind Cloudflare Access and re-capturing it needs a
+browser session as the owner, so it was left alone rather than replaced with a render
+of a fixture under a caption that claims it is the published page.
+
+## The 1280px and 390px screenshots of the ok state
+
+`docs/img/live_page_ok_1280.png` and `docs/img/live_page_ok_390.png`, taken from a
+headless browser against `web/fixtures/snapshot_ok.json` with the clock pinned to the
+evening the fixture was written for (2026-09-21T23:00Z), so the strip reads
+`snapshot generated 2026-09-21 22:41 UTC (19 minutes ago)` and the pill reads `ok`
+rather than `expired`. The same fixture rendered against today's clock reads
+`expired` with `(14 days ago)`, which is the page being right about a fourteen day old
+book, not a defect.
+
+![the live page at 1280px](../docs/img/live_page_ok_1280.png)
+
+![the live page at 390px](../docs/img/live_page_ok_390.png)
+
+## The headless render, all nine states at both widths
+
+The editor's browser cannot be asked for a 1280px viewport and lays a 390px page out at
+whatever width it really has (a 390 request measured `innerWidth: 244`), so the page was
+loaded inside a same-origin frame of a known size (`/?w=390`) and driven with Playwright:
+`page.route("**/api/snapshot")` answers each fixture, the frame is grown to its content
+height, and the whole page is captured. Twenty renders: nine states at both widths, plus
+the actual-holdings fixture with each drawer tab open.
+
+| state | width | page box | pill | alerts | amber | sideways | forbidden |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| snapshot_ok | 1280 | 1265x1886 | ok | 0 | 0 | no | none |
+| snapshot_ok | 390 | 375x3920 | ok | 0 | 0 | no | none |
+| snapshot_stale_stopped | 1280 | 1265x1910 | stale_stopped | 1 | 0 | no | none |
+| snapshot_stale_stopped | 390 | 375x4052 | stale_stopped | 1 | 0 | no | none |
+| snapshot_error | 1280 | 1265x1910 | error | 1 | 0 | no | none |
+| snapshot_error | 390 | 375x3984 | error | 1 | 0 | no | none |
+| snapshot_market_closed | 1280 | 1265x1910 | market_closed | 0 | 0 | no | none |
+| snapshot_market_closed | 390 | 375x4012 | market_closed | 0 | 0 | no | none |
+| snapshot_catch_up | 1280 | 1265x1934 | catch_up | 0 | 0 | no | none |
+| snapshot_catch_up | 390 | 375x3988 | catch_up | 0 | 0 | no | none |
+| snapshot_expired | 1280 | 1265x1886 | expired | 0 | 2 | no | none |
+| snapshot_expired | 390 | 375x3984 | expired | 0 | 2 | no | none |
+| snapshot_establishment | 1280 | 1265x1799 | ok | 0 | 0 | no | none |
+| snapshot_establishment | 390 | 375x3833 | ok | 0 | 0 | no | none |
+| snapshot_actual_holdings | 1280 | 1265x1974 | ok | 0 | 1 | no | none |
+| snapshot_actual_holdings (actual tab) | 1280 | 1265x8858 | ok | 0 | 1 | no | none |
+| snapshot_actual_holdings | 390 | 375x4149 | ok | 0 | 1 | no | none |
+| snapshot_actual_holdings (actual tab) | 390 | 375x11068 | ok | 0 | 1 | no | none |
+| snapshot_no_book | 1280 | 1280x1000 | error | 1 | 0 | no | none |
+| snapshot_no_book | 390 | 390x1000 | error | 1 | 0 | no | none |
+
+"page box" is `documentElement.scrollWidth x scrollHeight`, so "sideways" is that
+width exceeding the frame's own viewport width. "amber" counts elements with
+`data-tone='warn'`: the pill and the run panel for `expired`, and the one unfilled
+misses strip for the actual-holdings fixture, which has two unfilled legs. "forbidden"
+scans the whole rendered text of the page for `T00:00:00`, `NaN`, `undefined`, `-$0`
+and the em dash: none of them appears in any of the twenty renders at either width.
+
+## Verification
+
+The gates on merged main, as run at 21:05 UTC, after `59d0eb1..8d08d3d` was pushed.
+
+```
+$ cd web && npm run test
+ ✓ src/bundle.test.ts (12 tests) 75ms
+ ✓ worker/index.test.ts (6 tests) 18ms
+ ✓ src/fixtures.test.ts (22 tests) 138ms
+ ✓ src/status.test.tsx (12 tests) 564ms
+ ✓ src/App.test.tsx (27 tests) 988ms
+ ✓ src/sections.test.tsx (29 tests) 1435ms
+      Tests  108 passed (108)
+
+$ cd web && npm run build
+dist/assets/index-ClMMumB5.css   14.51 kB │ gzip:  3.90 kB
+dist/assets/index-BxWhjzbs.js   258.82 kB │ gzip: 80.50 kB
+✓ built in 124ms
+
+$ make lint
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+.venv/bin/mypy efb
+Success: no issues found in 33 source files
+.venv/bin/mypy live scripts
+Success: no issues found in 41 source files
+.venv/bin/black --check efb dashboard live tests
+All done! 209 files would be left unchanged.
+
+$ .venv/bin/python -m pytest -q tests/test_e11_web_fixtures.py \
+      tests/test_web_sector_map.py tests/test_readme_traceability.py
+13 failed, 26 passed in 13.78s
+```
+
+The same selection on the untouched base commit, in the main checkout at `59d0eb1`,
+is `13 failed, 26 passed in 13.25s` with the identical node ids, so all thirteen are
+pre-existing and machine-local, and the branch neither caused nor fixed them:
+
+- the seven `test_every_fixture_is_what_the_writer_produces_now` cases and the two
+  cases that read those fixtures: the fixtures are built from this machine's
+  gitignored data tree, and it has moved on. `snapshot_ok.json` was written for
+  `book_as_of 2026-09-21` with `expected_cost_bps 14.509307503060354`, and the same
+  writer run here today produces `book_as_of 2026-10-02` and `14.544340187075452`.
+  Rebuilding them would move the page's input for every state, so they were not
+  regenerated; the report of the previous task recorded the same decision.
+- `tests/test_web_sector_map.py` (2) and `tests/test_readme_traceability.py` (2),
+  which read the same gitignored data tree and the stored artifacts.
+
+`make verify-evidence` is red on this machine for four `data/raw` files dated
+2026-10-03, the same four the previous report recorded, and nothing in this change
+writes under `data/`.
+
+The headline numbers and where they were read from, each from
+`web/fixtures/snapshot_ok.json` unless stated: gross `book.gross` 1.0 and
+`book.gross_notional` 1000000.0 (so `100.00%` and `$1,000,000`); net `book.net`
+-3.3306690738754696e-16 (so `0.00%`); long and short names `book.n_long` 89 and
+`book.n_short` 91, with `book.n_kept` 180 and `book.n_names` 180; the breadths
+`breadth.n_eff_kept` 131.91751961686217 and `breadth.n_eff_full_book`
+268.66971601615455 with their labels; the largest position `book.names[0]` (`AMAT`,
+`weight` 0.018723078744785904, so `1.87%` and `$18,723`); the expected cost
+`book.expected_cost_bps` 14.509307503060354 and the label `run_status.cost_label`
+`rebalance`; the pill inputs `run_status.status` `ok`, `expected_next_by`
+`2026-09-23T01:30:00Z`, `target_close` and `book_as_of` both `2026-09-21T00:00:00`,
+`notify_status` `sent` and `dry_run` true; the after-hedge flatness
+`hedge.idio_share_after_fmp` 1.0 and `hedge.max_abs_exposure_after_fmp`
+1.078998002057574e-15. From `web/fixtures/snapshot_actual_holdings.json`:
+`actual_holdings.n_names` 150, `read_by` `morning`, `fills.n_orders` 132,
+`fills.n_filled` 130, `fills.n_unfilled` 2, `fills.not_sent` 0,
+`fills.realized_cost_bps` 6.42 and `fills.expected_cost_bps` 14.544340187075452,
+`fills.unfilled` the two lines the amber strip prints, and `book.names` 188 in the
+book that the 235 row union table shows.
+
+`git diff --stat 59d0eb1 8d08d3d`, pasted:
+
+```
+ docs/img/live_page_ok_1280.png    | Bin 0 -> 346901 bytes
+ docs/img/live_page_ok_390.png     | Bin 0 -> 397370 bytes
+ web/README.md                     |  86 ++++----
+ web/src/ActualHoldingsSection.tsx | 296 ---------------------------
+ web/src/ActualHoldingsTable.tsx   | 242 ++++++++++++++++++++++
+ web/src/Alerts.tsx                |  69 +++++++
+ web/src/App.test.tsx              |  65 +++---
+ web/src/App.tsx                   | 412 +++++----------------------------------
+ web/src/BookSections.tsx          | 149 +++++---------
+ web/src/DrawerSection.tsx         | 134 +++++++++++++
+ web/src/ExposuresSection.tsx      | 193 ++++++++++++++++++
+ web/src/HoldingsSection.tsx       | 173 ++++++++--------
+ web/src/MetricsRow.tsx            | 145 ++++++++++++++
+ web/src/Panel.tsx                 |  55 +++++
+ web/src/SectorSection.tsx         |  66 +++---
+ web/src/StatusStrip.tsx           |  86 ++++++++
+ web/src/book.ts                   |   7 +-
+ web/src/format.ts                 |  13 +-
+ web/src/sections.test.tsx         | 279 ++++++++++++++++++--------
+ web/src/status.test.tsx           | 201 +++++++++++++++++++
+ web/src/status.ts                 | 138 +++++++++++++
+ 21 files changed, 1759 insertions(+), 1050 deletions(-)
+```
+
+The seven questions:
+
+1. **Any two rows or two estimators identical.** No. The change removes the pairs that
+   were: the sector footer and the ten largest names list both restated the metrics row.
+   The two breadths are deliberately different numbers with the snapshot's own labels
+   beside them.
+2. **Any exception caught and skipped, or fallback taken, with counts.** Yes, four, all
+   of them display fallbacks rather than swallowed errors. `dateTime()` returns null for
+   a stamp it cannot parse and the strip falls back to the day alone, which is what the
+   midnight-stamp case relies on (0 occurrences in the twenty renders). `ageText` is
+   omitted when the timestamp will not parse (0 occurrences). `count`, `dollars`,
+   `percent`, `oneDecimal` and `bps` return `n/a` for a missing value: 10 of them on the
+   no-book fixture. And the fills card falls back to `none to reconcile yet` for an
+   evening read, which is 1 card on the actual-holdings fixture at the evening vintage.
+3. **Any criterion reworded or replaced by a different test.** Yes, and it should be
+   looked at. The layout change moved markup, so assertions that named a section's
+   position were updated to name its new home: the holdings search now lives on the
+   drawer, so the filtering test types into the drawer's box and asserts the same
+   filtering, the summary cards became the metrics cards, and the section order test
+   became the two column grid test. No check was deleted: `App.test.tsx` is 27 and
+   `sections.test.tsx` is 29, three more than the two files held before, and the 12 new
+   tests in `status.test.tsx` are the severity rule, `n/a`, and the drift sort. 108
+   tests, up from 93.
+4. **Any criterion that passes by construction.** Partly. "The page never scrolls
+   sideways at 390px" is helped by the tables carrying `overflow-x-auto`, so the
+   measurement that matters is the one taken with the 235 row table open
+   (`tableScrollsInside` `[false, true]`), and it is reported as measured rather than
+   assumed. The `n/a` rule is also partly structural: the formatting helpers have no
+   other path to a zero.
+5. **Any number that moved by a factor of 10 or more from its previous stored value.**
+   No. No stored number changed at all; the only numeric change in the page is the
+   `-0.00%` to `0.00%` rendering.
+6. **Any stored number typed into a notebook.** No notebook was touched.
+7. **Any earlier verdict changed.** No. The previous report's two open decisions (the
+   stale fixtures not regenerated, `make verify-evidence` red on four dated `data/raw`
+   files) are unchanged and restated here as unchanged.
+
+Two decisions the reviewer may want to look at, beyond the list above. The drawer's
+second tab and the metrics row both mention the fills, which is duplication of a kind:
+it is deliberate, because one is a scannable count and the other is the table it
+belongs to, and neither restates the other's detail. And the sector chart's single
+scale is unchanged by instruction, which means a small sector's bars are hard to read
+next to a large one's; making it readable would have meant a scale per row and the task
+said not to.
+
 # actual-holdings: the account's own book, on the page and published by both runs
 
 Branch `actual-holdings`, off `main` at `45400a5`, merged with `--no-ff` as
