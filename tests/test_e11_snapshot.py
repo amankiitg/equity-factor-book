@@ -232,16 +232,21 @@ def test_a_run_with_no_book_publishes_null_figures_not_missing_keys() -> None:
 
 
 def test_the_actual_holdings_are_written_only_when_the_account_was_read() -> None:
-    """The evening's own document is not the reconciler's: no key, not a null one.
+    """A caller that read no account writes no key, not a null one.
 
-    The evening job writes the target book and never reads the account, so its
-    document must be the same bytes it always was; the 15:30 job adds this one
-    section to the document already published. A key holding null would tell the
-    page the account holds nothing, which is a stronger and false claim.
+    Both runs that read the account publish this section, and each says which it
+    was: the evening's read is the book it sized from, the morning's is what those
+    orders left behind. A run that could not read the account publishes no block at
+    all, because a key holding null would tell the page the account holds nothing,
+    which is a stronger and false claim. The store's fallback book is not the
+    account either, so it is not published under this key.
     """
+    from live import fills
+
     actual = {
         "as_of": "2026-09-26",
         "close": "2026-09-25",
+        "read_by": fills.READ_MORNING,
         "n_names": 2,
         "gross_notional": 30200.0,
         "net_notional": 19400.0,
@@ -260,6 +265,7 @@ def test_the_actual_holdings_are_written_only_when_the_account_was_read() -> Non
     # the dates go in as the document's own ISO timestamps, like target_close
     assert str(block["close"]).startswith("2026-09-25")
     assert str(block["as_of"]).startswith("2026-09-26")
+    assert block["read_by"] == fills.READ_MORNING
     assert block["names"] == actual["names"]
     assert block["gross_notional"] == actual["gross_notional"]
     assert block["net_notional"] == actual["net_notional"]

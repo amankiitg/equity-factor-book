@@ -327,10 +327,12 @@ def build(
             "traded_risk": _json_value((reconciliation or {}).get("traded_risk"), None),
             "full_risk": _json_value((reconciliation or {}).get("full_risk"), None),
         },
-        # The account's own book beside the target, and the fills behind it. Only
-        # present when the caller has read the account: a key that said null would
-        # read as an account holding nothing, which is a different statement from
-        # an account nobody read.
+        # The account's own book beside the target, and the fills behind it. The
+        # evening's own account read fills it, and the 15:30 UTC reconciler
+        # rewrites it with what the evening's orders did. It is absent, rather than
+        # null, when nobody has read the account: a key that said null would read as
+        # an account holding nothing, which is a different statement from an account
+        # nobody read.
         **({"actual_holdings": _actual_block(actual)} if actual else {}),
     }
 
@@ -356,6 +358,11 @@ def _actual_block(raw: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "as_of": _iso(block.get("as_of")),
         "close": _iso(block.get("close")),
+        # Which run read the account: the evening's read is the book it sized from,
+        # the morning's is what the evening's orders left behind. Carried through
+        # rather than inferred, because `fills` being absent means the evening read
+        # it and not that nothing filled.
+        "read_by": block.get("read_by"),
         "n_names": _number(block.get("n_names")) if names else 0,
         "gross_notional": _number(block.get("gross_notional")),
         "net_notional": _number(block.get("net_notional")),

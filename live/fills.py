@@ -57,6 +57,15 @@ REJECTED = "REJECTED"
 # these, so they are counted rather than looked up.
 SKIPPED = alpaca.SKIPPED
 
+# Which of the two runs read the account, for `actual_holdings.read_by`. The two
+# read the same account at different points of one trade: the evening reads it
+# before it sizes, so no order has settled into the book it read, and the morning
+# reads it to say what those orders did. The page labels the section with this
+# rather than inferring it from whether a fills block is present, because an
+# evening read is not an evening whose orders all filled.
+READ_EVENING = "evening"
+READ_MORNING = "morning"
+
 FILL_COLUMNS: tuple[str, ...] = (
     "trade_date",
     "ticker",
@@ -330,6 +339,7 @@ def actual_holdings(
     close: Any = None,
     report: dict[str, Any] | None = None,
     expected_cost_bps: float | None = None,
+    read_by: str | None = None,
 ) -> dict[str, Any]:
     """The account's own book, and the fills that produced it, for the snapshot.
 
@@ -343,6 +353,14 @@ def actual_holdings(
     the morning the account was read: the realized cost belongs to that trade, and
     a section that showed it beside a book from another day would be comparing two
     days' numbers in one line.
+
+    `read_by` says which of the two runs read the account, because the two read it
+    at different points of the same trade and only one of them can have fills: the
+    evening reads it before it sizes and sends, so nothing has settled into the
+    book it read and `close` and `report` are both absent; the morning reads it to
+    say what the evening's orders did. Without the label the page would have to
+    infer which it was holding, and a book read before the orders is not a book the
+    orders produced.
     """
     prices = {str(ticker): float(value) for ticker, value in (notional or {}).items()}
     ordered = sorted(prices.items(), key=lambda item: abs(item[1]), reverse=True)
@@ -360,6 +378,7 @@ def actual_holdings(
     block: dict[str, Any] = {
         "as_of": None if as_of is None else str(as_of),
         "close": None if close is None else str(close),
+        "read_by": read_by,
         "n_names": len(names),
         "gross_notional": float(sum(abs(value) for value in prices.values())),
         "net_notional": total,

@@ -370,6 +370,10 @@ def test_the_snapshot_gains_the_actual_holdings_beside_the_target_book(
     assert keys == ["latest.json", "snapshots/2026-10-01.json"]
     republished = json.loads(harness.published[0][1])
     section = republished["actual_holdings"]
+    # This run is the morning: the book it read is what the evening's orders left
+    # behind, which is why the fills travel with it and the close is the evening
+    # they settled for.
+    assert section["read_by"] == "morning"
     assert section["n_names"] == 2
     assert section["gross_notional"] == pytest.approx(20512.0)
     assert section["net_notional"] == pytest.approx(19488.0)

@@ -41,6 +41,47 @@ export interface PositionsCheck {
   max_abs_drift: number | null;
 }
 
+/** One name the account holds, in dollars and as a share of its own equity. */
+export interface ActualHoldingName {
+  ticker: string;
+  side: "long" | "short" | null;
+  notional: number | null;
+  weight: number | null;
+}
+
+/** What the evening's orders did, as the broker answered a read by id. */
+export interface FillsSummary {
+  trade_date: string | null;
+  n_orders: number | null;
+  n_filled: number | null;
+  n_unfilled: number | null;
+  not_sent: number | null;
+  realized_cost_bps: number | null;
+  expected_cost_bps: number | null;
+  unfilled: string[];
+  unread: Array<Record<string, unknown>>;
+}
+
+/**
+ * The account's own book beside the target book it was sized from.
+ *
+ * `read_by` says which run read it: `evening` is the read the book was sized from,
+ * taken before the orders went out, and `morning` is the reconciliation, when the
+ * fills exist. The evening's block carries no `close` and no `fills`, for that
+ * reason, and the page states it rather than reading an absent fills block as a
+ * day on which nothing filled.
+ */
+export interface ActualHoldings {
+  as_of: string | null;
+  close: string | null;
+  read_by: "evening" | "morning" | null;
+  n_names: number;
+  gross_notional: number | null;
+  net_notional: number | null;
+  names: ActualHoldingName[];
+  fills: FillsSummary | null;
+}
+
 export interface Snapshot {
   schema_version: number;
   generated_at: string;
@@ -83,6 +124,11 @@ export interface Snapshot {
   };
   exposures: Record<string, number | null>;
   reconciliation: Record<string, number | null>;
+  // The account's own book, published by the evening run from its own account
+  // read and rewritten by the morning reconciliation. Absent (not null) when
+  // nobody read the account, which is why the section says so in one line rather
+  // than drawing an empty table.
+  actual_holdings?: ActualHoldings | null;
   // Both blocks are absent until the cron writes them, and the page hides the
   // section that needs one rather than drawing an empty one: a snapshot carrying
   // neither is the state every run is in today (see docs/snapshot.schema.json for

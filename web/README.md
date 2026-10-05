@@ -16,12 +16,19 @@ cron fires at 22:30 UTC, inside the after-hours window), so the book on it is
 always the last proposal the loop actually priced.
 
 It shows, in order: the run's status and target close, the snapshot's age and the
-dry-run banner; the positions check against the paper account; the summary cards
-and the run's own book figures; a diverging bar per GICS sector; the ten largest
-longs and shorts; where the trades came from, by reason; the factor exposures
-before and after the hedge; the full holdings table, collapsed until it is asked
-for; and the run status line, meaning the gate's inputs and how far behind each
-one was, the cost with its four components, and whether the owner was notified.
+dry-run banner; the positions check against the paper account; the account's own
+book, with when it was read and the fills behind it, each name against its target;
+the summary cards and the run's own book figures; a diverging bar per GICS sector;
+the ten largest longs and shorts; where the trades came from, by reason; the
+factor exposures before and after the hedge; the full holdings table, collapsed
+until it is asked for; and the run status line, meaning the gate's inputs and how
+far behind each one was, the cost with its four components, and whether the owner
+was notified.
+
+The actual-holdings section is written twice a day: the evening run fills it from
+the account read it makes before sizing, and the 15:30 UTC reconciliation rewrites
+it with what those orders did. A run that could not read the account publishes no
+block, and the page says so in one line rather than drawing an empty book.
 
 ```
 npm install

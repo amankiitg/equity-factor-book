@@ -16,8 +16,10 @@ import errored from "../fixtures/snapshot_error.json";
 import expired from "../fixtures/snapshot_expired.json";
 import ok from "../fixtures/snapshot_ok.json";
 import stale from "../fixtures/snapshot_stale_stopped.json";
+import withActual from "../fixtures/snapshot_actual_holdings.json";
 
 const OK = ok as unknown as Snapshot;
+const ACTUAL = withActual as unknown as Snapshot;
 const NOW = new Date("2026-09-21T23:00:00Z");
 
 afterEach(() => {
@@ -73,6 +75,28 @@ describe("the page", () => {
     expect(screen.getByRole("table", { name: "factor exposures" })).toBeTruthy();
     expect(screen.getByText(/idio share after FMP/)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("puts the account's own book above the target book it is read against", () => {
+    // The one section on the page that reports the account rather than a proposal,
+    // so it sits near the top and above the book it is compared with.
+    render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    const order = Array.from(document.querySelectorAll("[data-section]")).map((node) =>
+      node.getAttribute("data-section"),
+    );
+    const at = order.indexOf("actual-holdings");
+    expect(at).toBeGreaterThan(-1);
+    expect(at).toBeLessThan(order.indexOf("book"));
+    expect(at).toBeLessThan(order.indexOf("holdings"));
+    expect(order.indexOf("book")).toBeLessThan(order.indexOf("holdings"));
+  });
+
+  it("says the account was not read when the snapshot carries no account", () => {
+    // The state every snapshot was in before the runs published this block, and
+    // the state a run that could not read the account is in: one line, no table.
+    expect(OK.actual_holdings).toBeUndefined();
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    expect(screen.getByText(/the account has not been read/)).toBeTruthy();
   });
 
   it("states the exposures as one table, styles first then sectors by GICS name", () => {
