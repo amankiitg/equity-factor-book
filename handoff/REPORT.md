@@ -1,3 +1,318 @@
+# actual-holdings: the account's own book, on the page and published by both runs
+
+Branch `actual-holdings`, off `main` at `45400a5`, merged with `--no-ff` as
+`8d3fb8f` (code commit `bc958d2`), pushed as `45400a5..8d3fb8f`. The page is
+deployed: **Worker version `21f7601e-cda4-4802-80ae-694eee5da8ac`, 100% of
+traffic**, created 2026-10-05T17:35:12Z (`npx wrangler deployments status`). No
+database, broker or R2 write was made by this work, and nothing about sizing, the
+orders or the database changed: the change is the page, the snapshot document and
+the tests around them.
+
+## Item 1: the section on the page
+
+`web/src/ActualHoldingsSection.tsx` draws the snapshot's `actual_holdings` block
+under the positions check and above the book it is read against, in the order the
+item asked for:
+
+- **When it was read**, as a date and a time in UTC (`read at 2026-09-22 15:30 UTC,
+  at the morning run, for the 2026-09-21 close`), which is why `format.ts` gained
+  `dateTime()`: a timestamp put through the page as an ISO string is the
+  `T00:00:00` this repository has already been bitten by. A value that carries no
+  clock is shown as the day alone rather than as a read at midnight.
+- **Names held** in the heading, `Actual holdings: 150 names`, counted from the
+  block's own list.
+- **Long and short gross** and the net, summed from the block's own notionals
+  rather than from a second number, so the lines above the table and its rows
+  cannot disagree.
+- **The fills summary**: filled, did not fill, never sent, realized bps against
+  the expected, plus the miss lines in the email's own wording (capped at three,
+  then counted). The evening's block has no fills, and the line says why instead of
+  reading as a day on which nothing filled.
+- **A sortable table of each name's held position against its target**: the union
+  of the held book and the target book, so a target name the account does not hold
+  and a held name the target has dropped are both rows. Held weight, held dollars,
+  target weight, target dollars and the signed drift, every column sortable, default
+  order the largest absolute drift first. It is collapsed like the full holdings
+  table, because the two books together are 235 rows and this section sits above
+  the book on a screen whose job is to be scannable; the two gaps are counted on
+  their own line (`85 of the target book's 188 name(s) are not held, and 47 held
+  name(s) are not in the target book`).
+- **One line when the block is absent**: `the account has not been read, so there
+  is no actual book to show`, and no table under it.
+
+Two smaller fixes came out of looking at the rendered page rather than the tests.
+The first draft printed `fills: fills: 130 filled` (the label was in both the term
+and the value). And `-$0`: a dollar amount that rounds to nothing printed with the
+sign of a negative it no longer had, which the net of any long/short book a few
+cents off flat would have shown, so `dollars()` and `signedDollars()` now treat a
+rounded zero as zero. The row count and the columns were rebuilt once from the
+first draft, which had a wrong count in the "not held" line and two ambiguous
+column labels (`held` beside `held weight`).
+
+## Item 2: both runs publish the block
+
+The evening's document dropped it because `finish_run` never passed an `actual` to
+the snapshot writer, and the only caller that did was the morning reconciler.
+Now:
+
+- `scripts/run_live_daily.py` builds the block from the account read it already
+  makes before it sizes (`positions.check`), passes it through `finish_run` to
+  `write_snapshot`, and passes it on the failure path too, so an evening that dies
+  after the read still publishes the book it holds. It carries no `close` and no
+  fills: the read happens before the orders go out, nothing has settled into the
+  book in hand, and the 15:30 UTC reconciliation rewrites the section the next day.
+- **`read_by`** (`"evening"` or `"morning"`, `live/fills.READ_EVENING` /
+  `READ_MORNING`) is a new field on the block: the page labels the section with it
+  instead of inferring which run it was holding from whether a fills summary is
+  present, because an evening read is not a morning on which nothing filled. Both
+  writers set it (`reconcile_fills` passes `READ_MORNING`), it passes through
+  `snapshot._actual_block`, and `docs/snapshot.schema.json` documents it along with
+  the corrected `as_of` (a timestamp, not a date) and `close` (null on the
+  evening's read).
+- **A run that could not read the account publishes no block at all.** The
+  account read falls back to the store's position row when the broker cannot be
+  reached, and that row is what the loop meant to hold, so publishing it under this
+  key would make the section's one checkable claim a restatement of the intention.
+  The block is absent, not null, and the page says the account was not read.
+
+## The fixture
+
+`web/fixtures/snapshot_actual_holdings.json`, built by
+`scripts/make_web_fixtures.py` through `fills.actual_holdings`, the function the
+reconciler itself calls, so the page's input shape cannot drift from the writer.
+Its account book is the stored `proposal_2026-09-21.parquet`'s 150 names (the
+vintage the loop traded) against the manifest's 188, which is what makes the two
+books genuinely different rather than a copy of the target with a name or two
+shaved off; its fills summary is the one piece that stands in for a broker read,
+written in `reconcile_day`'s own shape with counts derived from the two books and
+miss lines in the email's wording. `web/src/fixtures.test.ts` now covers it: the
+nine fixtures, with the block present in exactly the one that read the account, its
+keys, the name order, and the rule that `read_by === "morning"` implies a close and
+a fills block.
+
+## Verification
+
+**`make lint`** (merged `main`, exit status 0)
+
+```
+.venv/bin/ruff check efb dashboard live tests
+All checks passed!
+.venv/bin/mypy efb
+Success: no issues found in 33 source files
+.venv/bin/mypy live scripts
+Success: no issues found in 41 source files
+.venv/bin/black --check efb dashboard live tests
+All done! ✨ 🍰 ✨
+209 files would be left unchanged.
+```
+
+**`make web-test`** and `npm run build` (merged `main`)
+
+```
+$ make web-test
+ ✓ src/bundle.test.ts (12 tests)
+ ✓ src/fixtures.test.ts (22 tests)
+ ✓ worker/index.test.ts (6 tests)
+ ✓ src/App.test.tsx (27 tests)
+ ✓ src/sections.test.tsx (26 tests)
+ Test Files  5 passed (5)
+      Tests  93 passed (93)
+
+$ npm run build
+tsc -b && vite build
+dist/assets/index-BDmEuXje.js   256.83 kB │ gzip: 79.95 kB
+✓ built in 126ms
+```
+
+The page's tests were 80 before this change and are 93 now: nine cases in
+`sections.test.tsx` (the read time and the run label, the grosses and the fills
+summary, the union of the two books with both gaps counted, the target columns in
+both units with "n/a" for a name the target does not carry, sorting on a text and a
+money column, the absent block in one line with no table, the evening's own read
+not reading as "0 filled", and no `T00:00:00` anywhere in the rendered body) and
+two in `App.test.tsx` (the section's place above the book, and the absent-block
+line on the fixture that carries none).
+
+**The Python tests for the files this change touches.** The selection is every
+test file that imports or exercises `live/snapshot.py`, `live/fills.py`,
+`scripts/run_live_daily.py`, `scripts/reconcile_fills.py` or
+`scripts/make_web_fixtures.py`, which is wide because the runner is: the command is
+pasted as run. On merged `main`:
+
+```
+$ .venv/bin/python -m pytest tests/test_e11_extend.py tests/test_e11_fills.py tests/test_e11_holiday.py tests/test_e11_init_store.py tests/test_e11_notify.py tests/test_e11_positions.py tests/test_e11_reasons.py tests/test_e11_render.py tests/test_e11_runroot.py tests/test_e11_snapshot.py tests/test_e11_staleness.py tests/test_e11_store.py tests/test_e11_web_fixtures.py tests/test_run_live_daily.py tests/test_week1_fills_cron.py tests/test_week1_reasons.py tests/test_week1_run_cron.py tests/test_week2_spinoff.py -q -m "not slow"
+10 failed, 346 passed, 1 skipped, 5 deselected, 1 warning in 37.49s
+```
+
+The same selection on `main` **before** the merge is 10 failed, 342 passed, 1
+skipped: the same ten failures and four more passes (the new tests). Which is the
+control for this change, because the fixture failures are in files it touches:
+
+```
+$ cd /Users/amankesarwani/PycharmProjects/equity-factor-book    # main at 45400a5
+$ .venv/bin/python -m pytest tests/test_e11_extend.py ... tests/test_week2_spinoff.py -q -m "not slow"
+10 failed, 342 passed, 1 skipped, 5 deselected, 1 warning in 40.99s
+```
+
+Per item, on merged `main` (exit status 0):
+
+```
+$ .venv/bin/python -m pytest tests/test_e11_notify.py -q -k "publishes_the_account or could_not_read_the_account"
+2 passed, 42 deselected in 1.45s
+
+$ .venv/bin/python -m pytest tests/test_week1_fills_cron.py -q -k "actual_holdings"
+1 passed, 13 deselected in 0.34s
+
+$ .venv/bin/python -m pytest tests/test_e11_web_fixtures.py -q -k "actual_holdings"
+2 passed, 26 deselected in 11.64s
+```
+
+**The ten failures are pre-existing, and they are all artifact drift.** Seven are
+`test_every_fixture_is_what_the_writer_produces_now` for the seven fixtures this
+change did not touch, plus the two cases that read those fixtures
+(`test_the_ok_snapshot_carries_the_book_and_both_exposure_vectors`,
+`test_the_stopped_snapshot_shows_the_last_book_under_its_own_close`), plus
+`test_e11_notify.py::test_the_appended_sessions_are_measured_from_the_calendar`,
+whose panel has moved past the sessions it names. `web/fixtures/*.json` are built
+from the manifest `evening_job.build_proposal(store=False)` produces out of the
+local `data/` tree, and `data/**/*.parquet` is gitignored, so this machine's tree
+no longer matches the committed bytes. **That is why the seven stale fixtures were
+not regenerated in this change**: regenerating them is a separate decision about
+which vintage the page's input should be, it would move every number the page shows
+in nine fixtures, and it is not this item's work. The new fixture is byte-exact
+against this tree, which is the same condition the other seven are judged by.
+
+**`make verify-evidence`** (merged `main`, exit status 1, pre-existing)
+
+```
+$ make verify-evidence
+data/raw/factors_ff.parquet: the artifact on disk has moved since the snapshot
+data/raw/prices.parquet: the artifact on disk has moved since the snapshot
+data/raw/shares_history.parquet: the artifact on disk has moved since the snapshot
+data/raw/yf_cache.parquet: the artifact on disk has moved since the snapshot
+make: *** [verify-evidence] Error 1
+```
+
+The four files are the run's own downloaded inputs, written on 2026-10-03 by the
+live loop's fetches (`ls -l`: 2026-10-03 13:05 and 16:44) and gitignored, so they
+are newer than the evidence snapshot. This change touches none of them and no code
+that writes them. The same command against the monday-fixes worktree, whose `data/`
+is a copy of this tree, fails the same way, and it passed in the previous session
+against a different copy.
+
+**`git diff --stat` from `base_commit` `45400a5`**
+
+```
+$ git diff --stat 45400a5
+ docs/snapshot.schema.json                  |  11 +-
+ live/fills.py                              |  19 ++
+ live/snapshot.py                           |  15 +-
+ scripts/make_web_fixtures.py               |  96 +++++++++-
+ scripts/reconcile_fills.py                 |   4 +
+ scripts/run_live_daily.py                  |  25 +++
+ tests/test_e11_notify.py                   | 116 ++++++++++-
+ tests/test_e11_snapshot.py                 |  18 +-
+ tests/test_week1_fills_cron.py             |   4 +
+ web/README.md                              |  19 +-
+ web/fixtures/snapshot_actual_holdings.json |   1 +
+ web/src/ActualHoldingsSection.tsx          | 296 +++++++++++++++++++++++++++++
+ web/src/App.test.tsx                       |  24 +++
+ web/src/App.tsx                            |  10 +
+ web/src/fixtures.test.ts                   |  82 ++++++++
+ web/src/format.ts                          |  41 +++-
+ web/src/sections.test.tsx                  | 180 +++++++++++++++++-
+ web/src/types.ts                           |  46 +++++
+ 18 files changed, 977 insertions(+), 30 deletions(-)
+```
+
+**Headline numbers, each with the file and key it was read from.**
+
+- The fixture's account book, `web/fixtures/snapshot_actual_holdings.json`:
+  `actual_holdings.n_names` 150, `gross_notional` 1000000, `net_notional` 0,
+  `read_by` "morning", `close` "2026-09-21T00:00:00", `as_of`
+  "2026-09-22T15:30:04+00:00", `fills.n_orders` 132, `fills.n_filled` 130,
+  `fills.n_unfilled` 2, `fills.not_sent` 0, `fills.realized_cost_bps` 6.42,
+  `fills.expected_cost_bps` 14.544340187075452. Its target book is the same
+  fixture's `book.n_names` 188.
+- `live/fills.py`: `READ_EVENING = "evening"`, `READ_MORNING = "morning"`.
+- `live/snapshot.py`: the block carries `read_by` through `_actual_block`, absent
+  entirely when `actual` is None.
+- `docs/snapshot.schema.json`: `actual_holdings.properties.read_by`, `enum`
+  `["evening", "morning", null]`.
+- The deployed page: Worker version `21f7601e-cda4-4802-80ae-694eee5da8ac`, and the
+  bundle hash it uploaded, `dist/assets/index-BDmEuXje.js`, is the bundle the
+  browser check above ran against.
+- Test counts: 93 web tests (80 before), 346 passed and 10 pre-existing failures on
+  the touched selection (342 and the same 10 before).
+
+**The seven items.**
+
+1. **Any two rows or two estimators identical.** No. The section's two summary
+   numbers are summed from the block's own rows, and the table's rows are unique per
+   ticker by construction. No estimator is touched by this change.
+2. **Any exception caught and skipped, or any fallback taken, with counts.** One,
+   named: the evening publishes no block when `holdings["account_read"]` is false,
+   which is the case in which the account read fell back to the store's own position
+   row. Count: one branch, and it is the branch that keeps the store's book from
+   being published as the account's. Nothing else in this change catches anything.
+3. **Any criterion reworded or replaced by a different test.** Yes, one, and it is
+   explained rather than hidden: the docstring of
+   `tests/test_e11_snapshot.py::test_the_actual_holdings_are_written_only_when_the_account_was_read`
+   said "the evening job writes the target book and never reads the account", which
+   this change makes false, so it now states what the block's absence means for a
+   run that could not read the account. Its assertions were extended (the case now
+   also pins `read_by`), none removed or weakened. `docs/snapshot.schema.json`'s
+   descriptions of `as_of` and `close` were corrected in the same way: `as_of` was
+   documented as a date and is a timestamp, and `close` was documented as always
+   present and is null on the evening's read.
+4. **Any criterion that passes by construction.** One field in the new fixture is
+   synthetic and named as such in the commit and in the fixture's own docstring:
+   `fills`, whose counts are derived from the two books but whose realized cost has
+   no artifact to come from, because a fixture cannot ask the broker. Every page
+   assertion recomputes its expectation from the fixture rather than typing a
+   number, so the fixture's own numbers cannot be wrong about the page and the page
+   cannot be wrong about the fixture. The reference used for "held against target"
+   is the fixture's own book, which is the same document the page draws, so that
+   comparison is not independent of its input; the Python writer's tests
+   (`tests/test_e11_snapshot.py`) are what pin the block's shape from the other
+   side.
+5. **Any number that moved by a factor of 10 or more from its previous stored
+   value.** No. Nothing stored moved: no stored-criteria file, ledger or
+   `sprints/` record was touched, and the only file of numbers this change writes is
+   the new web fixture.
+6. **Any stored number typed into a notebook.** No. No notebook was touched.
+7. **Any earlier verdict changed.** No. No verdict, criterion or stored decision is
+   read or written by this change.
+
+**Anything decided that the reviewer might disagree with.**
+
+- **`read_by` is a new field in the snapshot document.** The alternative was to let
+  the page infer the run from "no fills block", which would have made an evening
+  read indistinguishable from a morning on which nothing filled, on the one page
+  whose job is to say what the account holds. It is a display field: no store
+  column, no schema migration.
+- **No carry-forward of the last block.** An evening that stops before it reads the
+  account (a stale stop, a closed day) publishes a document with no block, so the
+  page shows one line instead of yesterday's holdings. Carrying the previous block
+  forward would mean reading the previous snapshot inside the run and labelling it
+  with someone else's read time, and the failure it protects against is a stopped
+  evening, which the page already shouts about at the top. This is a deliberate
+  choice and the one place the section can go blank.
+- **The detail table is collapsed.** The item asked for a sortable table and the
+  page has one; it is one click down, because 235 rows above the book would push
+  the book off the screen. The summary line names the row count so it cannot read as
+  an empty table.
+- **`dollars()` and `signedDollars()` changed page-wide** to stop printing `-$0`,
+  which is a display change outside the new section. The risk is small and the
+  alternative was a second dollar formatter.
+- **The seven stale fixtures were left stale.** Regenerating them would have
+  rewritten the page's input for every state and moved numbers the page's own tests
+  recompute, on a machine whose `data/` tree is not the one the fixtures were built
+  from. They are red before and after this change, in the same seven cases.
+- **`make verify-evidence` is red** for four `data/raw` files this change never
+  writes, dated 2026-10-03, and the report says so rather than quietly leaving the
+  gate out.
+
 # monday-fixes: the spin-off read's deadline, the failed page write, and the source column
 
 Small fixes on `main` before Monday, from the Codex review. Branch `monday-fixes`,
