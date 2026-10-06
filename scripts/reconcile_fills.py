@@ -269,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
         fills,
         notify,
         positions,
+        preflight,
         snapshot,
         staleness,
         store,
@@ -276,6 +277,11 @@ def main(argv: list[str] | None = None) -> int:
 
     run_date = datetime.now(UTC).isoformat()
     today = datetime.now(UTC).date()
+    # The same preflight the evening makes, for the same reason: this job writes
+    # `fills` and `run_status`, and a missing column there fails the write after the
+    # broker has been read. It is checked before the calendar and the run record, so
+    # a broken schema is one clear sentence rather than a traceback.
+    preflight.check()
     if not staleness.is_session(today):
         # A closed day settles nothing: the orders are still working at the
         # broker, waiting for the next open, and an evening that reported them as

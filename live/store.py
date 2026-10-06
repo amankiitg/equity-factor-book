@@ -414,6 +414,31 @@ def select(table: str) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
+def select_catalog() -> pd.DataFrame:
+    """The columns the live database has, from `information_schema`.
+
+    One read-only SELECT, for the preflight that refuses a run whose schema is
+    missing a column this code writes. It is not a live-series table, so it does
+    not go through `select`, and the local fallback has no catalogue at all: a
+    local run answers with an empty frame and the preflight then has nothing live
+    to compare against, which is the honest answer for a store that is not a
+    database.
+
+    Columns: `table_name`, `column_name`.
+    """
+    connection = get_connection()
+    if connection is None:
+        return pd.DataFrame(columns=["table_name", "column_name"])
+    sql = (
+        "SELECT table_name, column_name FROM information_schema.columns "
+        f"WHERE table_schema = '{_schema()}'"
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+    return pd.DataFrame(rows, columns=["table_name", "column_name"])
+
+
 def upsert_one(table: str, key: str, value: Any, row: dict[str, Any]) -> None:
     """Upsert a single row, removing any existing row with the same key first."""
     frame = select(table)

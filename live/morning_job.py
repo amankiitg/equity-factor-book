@@ -490,16 +490,15 @@ def run_morning(
     rebalance that would be wrong.
     """
     if not should_execute(decision, auto_approve):
-        return {
-            "as_of": as_of,
-            "executed": False,
-            "reason": (
+        return not_executed_summary(
+            as_of,
+            dry_run=dry_run,
+            reason=(
                 "decision=reject"
                 if decision == "reject"
                 else "auto_approve off and no approve"
             ),
-            "orders": 0,
-        }
+        )
     held = {str(key): float(value) for key, value in (positions or {}).items()}
     held_quantity = {
         str(key): float(value) for key, value in (quantities or {}).items()
@@ -571,6 +570,11 @@ def run_morning(
             (records["status"] == guards.REJECTED_TRADED_NOTIONAL).sum()
         ),
         "intended_notional": float(records["intended_notional"].abs().sum()),
+        # The other half of the pair the evening message labels `sized` and `sent`.
+        # It is computed here rather than by the caller because the records are here
+        # and nowhere else: the caller reading a key nobody had set is how the
+        # evening email came to read "$0 sent of $433,480 sized".
+        "sent_notional": sent_notional(records),
         "filled_notional": float(records["filled_notional"].abs().sum()),
         # The dollars this run would actually move: the brake's own basis, and
         # the number that separates an establishment (the whole book) from a
@@ -596,6 +600,12 @@ def run_morning(
         # counted among the day's skipped legs alone, and not a reason to retry the
         # day. The names are the same ones the book above is missing.
         "skipped_borrow": borrow_skips(records),
+        # The legs the reader has to hear about even though the run did what it
+        # should: the tickers the broker's feed carries under no symbol at all, and
+        # the names it spells differently from the loop. Both are named in the
+        # message, and the caller reads them from here.
+        "no_asset": no_asset_rows(records),
+        "renamed": renamed_symbols(records),
         # A leg that was halted, left in an unknown state, refused or rejected
         # makes the run incomplete: the day is not done, and the caller must not
         # file it as ok. `incomplete_legs` names each one and why.
@@ -612,6 +622,67 @@ def run_morning(
         "cost_label": "establishment" if is_establishment else "rebalance",
         "n_held": len(held),
         "held_notional": float(sum(abs(value) for value in held.values())),
+    }
+
+
+def sent_notional(records: pd.DataFrame) -> float:
+    """The dollars the legs that were actually sent moved, absolute.
+
+    The companion of `intended_notional`, which counts every leg the run built: a
+    guard rejection, a leg under the minimum and a leg no order could be sent for are
+    all in that one and none of them is here. A leg with a broker id became an order;
+    a leg without one never left the process. The two figures are what the evening
+    message labels, so neither can be read as the other.
+    """
+    if records.empty or not {"broker_order_id", "intended_notional"} <= set(
+        records.columns
+    ):
+        return 0.0
+    sent = records["broker_order_id"].astype(str).str.len() > 0
+    return float(records.loc[sent, "intended_notional"].abs().sum())
+
+
+def not_executed_summary(
+    as_of: str, *, dry_run: bool = False, reason: str = ""
+) -> dict[str, Any]:
+    """The summary for an evening that did not execute, in the executed path's shape.
+
+    A caller must not have to know which path produced the summary to read a field
+    off it. This path used to return four keys while `run_live_daily` read thirteen,
+    so nine of them arrived as `None` through an `or` default and "this evening did
+    nothing" was indistinguishable from "this key does not exist" - the same class of
+    defect as the evening email reading a `sent_notional` nobody had set. `executed`
+    is the marker that says which path this is; every count is zero and every list is
+    empty, which is what an evening that did not run has to say.
+    """
+    return {
+        "as_of": as_of,
+        "executed": False,
+        "dry_run": dry_run,
+        "reason": reason,
+        "orders": 0,
+        "passed": 0,
+        "rejected_cap": 0,
+        "rejected_brake": 0,
+        "intended_notional": 0.0,
+        "sent_notional": 0.0,
+        "filled_notional": 0.0,
+        "traded_notional": 0.0,
+        "skipped": 0,
+        "reason_codes": {},
+        "skipped_legs": [],
+        "skipped_borrow": [],
+        "no_asset": [],
+        "renamed": {},
+        "complete": True,
+        "incomplete_legs": [],
+        "deferred_reversals": [],
+        "establishment": False,
+        "brake_limit": 0.0,
+        "brake_basis": "",
+        "cost_label": "",
+        "n_held": 0,
+        "held_notional": 0.0,
     }
 
 

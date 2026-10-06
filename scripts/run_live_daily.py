@@ -367,6 +367,35 @@ def execution_log(as_of: str) -> pd.DataFrame:
     return pd.read_parquet(path) if path.exists() else pd.DataFrame()
 
 
+def sent_orders(as_of: str) -> tuple[int, float, float]:
+    """(legs sent, their dollars, every leg's dollars) from the store's own rows.
+
+    Read from `efb.orders` rather than from the run's in-memory summary, because the
+    caller is the failure path: what the run thinks it did is exactly what is in
+    doubt when it has just raised, and the store's leg rows are what the submission
+    wrote before the failure. A leg with a broker id was sent; one without it is a
+    leg the evening decided against, and its notional belongs in the sized figure
+    only. Zeroes when the store holds no row for the close - a run that failed before
+    it built anything - so the caller can say "none sent" rather than invent one.
+    """
+    from live import store
+
+    try:
+        frame = store.select("orders")
+    except Exception as exc:  # noqa: BLE001 - the message is what matters here
+        logger.warning("could not read the day's orders: %s", type(exc).__name__)
+        return 0, 0.0, 0.0
+    if frame.empty or not {"trade_date", "intended_notional"} <= set(frame.columns):
+        return 0, 0.0, 0.0
+    days = frame["trade_date"].astype(str).str.slice(0, 10)
+    day = frame.loc[days == str(as_of)[:10]]
+    if day.empty:
+        return 0, 0.0, 0.0
+    values = day["intended_notional"].abs()
+    sent = day["broker_order_id"].astype(str).str.len() > 0
+    return int(sent.sum()), float(values[sent].sum()), float(values.sum())
+
+
 def traded_by_name(execution: pd.DataFrame) -> dict[str, float]:
     """{ticker: dollars traded tonight}, the leg's own absolute notional.
 
@@ -1014,6 +1043,50 @@ def market_closed_run(run_date: str) -> int:
         return 0 if notified["status"] == notify.STATUS_SENT else 1
 
 
+def failed_run(
+    exc: BaseException,
+    *,
+    run_date: str,
+    dry_run: bool,
+    gate: dict[str, Any] | None = None,
+    catch_up_sessions: list[str] | None = None,
+    first_run: bool = False,
+    actual: dict[str, Any] | None = None,
+) -> int:
+    """One failed evening, reported with what it actually did.
+
+    The failure path is where the message matters most: the run has already raised,
+    and anything it sent before raising is still true. On 2026-10-06 it sent 192
+    orders and then died on a missing column, and the message said "Orders: none.
+    The run failed before sizing" - the one thing an owner must never be told when it
+    is not true. So the orders are read from `efb.orders`, the store's own leg rows,
+    rather than from the in-memory summary that is exactly what is in doubt.
+
+    Returns the process exit code, so a caller is one line: `return failed_run(...)`.
+    """
+    from live import notify, staleness
+
+    detail = notify.scrub(f"{type(exc).__name__}: {exc}")[:200]
+    logger.error("live daily failed\n%s", notify.scrub_traceback(exc))
+    sent, sent_notional, sized_notional = sent_orders(run_date)
+    if sent:
+        detail = f"{detail} ({sent} order(s) already sent for this close)"
+    return finish_run(
+        run_date=run_date,
+        result=gate if gate is not None else staleness.error_result(detail),
+        status="error",
+        dry_run=dry_run,
+        detail=detail,
+        error_type=type(exc).__name__,
+        orders=sent or None,
+        gross=sized_notional or None,
+        sent_notional=sent_notional or None,
+        catch_up_sessions=catch_up_sessions,
+        init=first_run,
+        actual=actual,
+    )
+
+
 def main() -> int:
     from live import (
         corporate_actions,
@@ -1072,7 +1145,7 @@ def main() -> int:
         return 0
     dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
     from live import appendix as appendix_mod
-    from live import runroot, seed
+    from live import preflight, runroot, seed
     from live import snapshot as snapshot_module
 
     gate: dict[str, Any] | None = None
@@ -1118,6 +1191,17 @@ def main() -> int:
         # decided here and a misconfiguration stops the run as an error.
         logger.info("store: %s", store.store_label())
         store.store_mode()
+        # The schema, before the seed, the gate, the sizing and any order. A
+        # database missing a column this code writes fails at the first write, and
+        # the first write happens after the orders have gone out: on 2026-10-06,
+        # 192 orders were sent and the day's own record was never written, because
+        # `efb.reconciliation.unexplained_adjustment` had been declared in
+        # live/supabase_schema.sql and never applied. A missed migration must cost
+        # one skipped evening, never a crash after the money has moved. The refusal
+        # travels the run's own error path, so the owner is told which column and
+        # the page says why the evening did not run.
+        preflight.check()
+        logger.info("schema: every declared column is present")
         # The page's own settings, read before anything is priced or sent. The
         # writer reads them again when the evening is over, and that is the wrong
         # place to discover a missing credential: by then the book has been sized
@@ -1488,17 +1572,13 @@ def main() -> int:
         # failure inside the reporting path read the same without the frames, but
         # it is formatted and scrubbed first: a traceback carries whatever the
         # failing frame was reading, and its chained causes carry it too.
-        detail = notify.scrub(f"{type(exc).__name__}: {exc}")[:200]
-        logger.error("live daily failed\n%s", notify.scrub_traceback(exc))
-        return finish_run(
+        return failed_run(
+            exc,
             run_date=run_date,
-            result=gate if gate is not None else staleness.error_result(detail),
-            status="error",
             dry_run=dry_run,
-            detail=detail,
-            error_type=type(exc).__name__,
+            gate=gate,
             catch_up_sessions=catch_up_sessions,
-            init=first_run,
+            first_run=first_run,
             actual=actual,
         )
 

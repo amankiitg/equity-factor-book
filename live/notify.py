@@ -460,6 +460,19 @@ def compose(
             f"Orders: {int(orders or 0)} orders sent, "
             f"{_sized_sent(gross, sent_notional)}, at least one leg not confirmed"
         )
+    elif status == "error" and orders:
+        # An error is not the same as an empty evening. On 2026-10-06 the evening
+        # sent 192 orders and then died on a missing column, and this line said
+        # "Orders: none. The run failed before sizing, so no book was priced" - the
+        # one sentence an owner must never be told when it is not true. A failed run
+        # that sent orders says how many, from its own leg records, and says not to
+        # re-run the close, because the legs are at the broker and a re-run after the
+        # open is a different book.
+        lines.append(
+            f"Orders: {int(orders)} orders sent for the close of {close}, "
+            f"{_sized_sent(gross, sent_notional)}."
+        )
+        lines.append("The run failed after they were sent: do not re-run this close.")
     elif fills:
         # A morning message. The book was priced and its legs went out the evening
         # before, so "the run failed before sizing" is this message's own false
@@ -644,6 +657,12 @@ def compose(
             lines.append(departure)
     if status == "error":
         reason = scrub(detail).strip() or "no reason recorded"
+        # The body's order line above is written for a run that failed *before*
+        # sizing, and on 2026-10-06 the evening failed after it: 192 orders went out
+        # and the message said "Orders: none. The run failed before sizing", which is
+        # the one thing an owner must never be told when it is not true. A run that
+        # sent orders says so, from its own leg records, and the failure follows.
+
         prefix = error_type or "Exception"
         # the caller's one-line reason usually carries the type already
         if reason.startswith(f"{prefix}:"):
@@ -850,6 +869,11 @@ def subject_text(
             if dry_run
             else f"{int(orders or 0)} sent"
         )
+    elif orders:
+        # An error is not the same as an empty evening. The orders a failed run sent
+        # are counted on the inbox line, because "none proposed" beside 192 sent
+        # orders is the line that decides whether the owner looks.
+        middle = f"{int(orders)} sent"
     else:
         middle = "none proposed"
     if status == "error":
