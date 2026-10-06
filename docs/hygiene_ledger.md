@@ -2182,7 +2182,14 @@ failed run actually sent (read from `efb.orders`), were committed on
 schema is checked before the run, and a failed evening reports the orders it sent";
 the merge commit on main records when they went live. (Named by its subject rather
 than its hash on purpose: this entry is in that commit, and a commit cannot carry its
-own hash - amending to insert it would change it.) This entry also corrects the
-status line of the PSKY entry above, which says the symbol-resolution branch merged
-on 2026-10-07: it merged on 2026-10-06 (`7be2224`), and the page, the evening message
-and the morning reconciler have carried that change since.
+own hash - amending to insert it would change it.) The same branch carries one more
+display repair from this failure: the book a failed evening publishes is borrowed from
+`previous_proposal()`, whose `positions` frame has no `traded_notional` column, so the
+page's trades-by-reason table read a column of zeroes for a day that traded
+$355,251.19. The failure path now attaches the day's traded dollars from `efb.orders`
+for the close, by the same definition the success path uses (`traded_by_name` over
+that close's legs, a name with no leg zero), and leaves the column off rather than
+filling it with zeroes when the store cannot be read at all. This entry also corrects
+the status line of the PSKY entry above, which says the symbol-resolution branch
+merged on 2026-10-07: it merged on 2026-10-06 (`7be2224`), and the page, the evening
+message and the morning reconciler have carried that change since.

@@ -367,6 +367,32 @@ def execution_log(as_of: str) -> pd.DataFrame:
     return pd.read_parquet(path) if path.exists() else pd.DataFrame()
 
 
+def stored_legs(as_of: str) -> pd.DataFrame | None:
+    """The day's legs from `efb.orders`, or None when the store could not be read.
+
+    The same rows `execution_log` reads from the container's own file, in the
+    store instead. The file is the evening's record of the evening; the store's
+    rows are the record that outlives it, and the caller here is the evening's own
+    failure path - the one place the file may be missing because the container
+    that wrote it is gone. `None` is not "no legs": it says the legs are unknown,
+    so a caller can leave a figure off rather than publish a zero for a day whose
+    orders nobody could read.
+    """
+    from live import store
+
+    try:
+        frame = store.select("orders")
+    except Exception as exc:  # noqa: BLE001 - reported, never silent, never fatal
+        logger.warning("could not read the day's legs: %s", type(exc).__name__)
+        return None
+    if frame.empty or not {"trade_date", "ticker", "intended_notional"} <= set(
+        frame.columns
+    ):
+        return pd.DataFrame()
+    days = frame["trade_date"].astype(str).str.slice(0, 10)
+    return frame.loc[days == str(as_of)[:10]]
+
+
 def sent_orders(as_of: str) -> tuple[int, float, float]:
     """(legs sent, their dollars, every leg's dollars) from the store's own rows.
 
@@ -797,6 +823,19 @@ def finish_run(
         # must not show a committed file as the book the owner holds either. When
         # the store holds none, the book is empty and `book_reason` says why.
         manifest, book, book_reason = snapshot_module.previous_proposal()
+        # That frame is the store's `positions` rows, which carry no
+        # `traded_notional` column, so the page's trades-by-reason table read a
+        # column of zeroes for a day that traded - 2026-10-06 sent $355,251.19 and
+        # showed none of it. The day's legs are in the store either way, so the same
+        # join the evening's own book gets is applied to the borrowed one, from the
+        # same definition: `traded_by_name` over that close's legs, a name with no
+        # leg zero. A store that cannot be read leaves the column off instead of
+        # filling it with zeroes: the page reads a missing key as zero anyway, and a
+        # zero chosen for a day whose legs are unknown is a measured-looking number
+        # for an evening that may well have traded.
+        legs = stored_legs(run_date)
+        if legs is not None:
+            book = with_traded(book, traded_by_name(legs))
     if reconciliation is None:
         reconciliation = result.get("reconciliation") or {}
     # The day's cost is the proposal's own establishment cost, which is the cost
