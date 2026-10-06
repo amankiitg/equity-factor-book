@@ -19,6 +19,7 @@
 import { useEffect, useState } from "react";
 
 import { Alerts } from "./Alerts";
+import { Bridge } from "./Bridge";
 import { Reasons, TopNames } from "./BookSections";
 import { bookFacts } from "./book";
 import { DrawerSection } from "./DrawerSection";
@@ -45,6 +46,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
       <StatusStrip snapshot={snapshot} now={now} state={state} />
       <Alerts snapshot={snapshot} state={state} />
       <MetricsRow snapshot={snapshot} facts={facts} />
+      <Bridge snapshot={snapshot} />
       <div data-columns="true" className="grid gap-3 lg:grid-cols-2">
         <div className="flex flex-col gap-3">
           <ExposuresSection snapshot={snapshot} />

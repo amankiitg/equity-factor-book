@@ -1,0 +1,2453 @@
+{
+ "book": [
+  "ABT",
+  "ADM",
+  "AEE",
+  "AEP",
+  "AES",
+  "ALB",
+  "ALL",
+  "AMCR",
+  "AMT",
+  "APH",
+  "APO",
+  "APTV",
+  "ARE",
+  "AWK",
+  "BAC",
+  "BALL",
+  "BAX",
+  "BBY",
+  "BF.B",
+  "BG",
+  "BKNG",
+  "BMY",
+  "BNY",
+  "BR",
+  "C",
+  "CAH",
+  "CARR",
+  "CBOE",
+  "CBRE",
+  "CCI",
+  "CEG",
+  "CF",
+  "CHD",
+  "CHRW",
+  "CHTR",
+  "CL",
+  "CLX",
+  "CMCSA",
+  "CMG",
+  "CMS",
+  "CNC",
+  "CNP",
+  "COIN",
+  "COO",
+  "CRH",
+  "CSGP",
+  "CSX",
+  "CTVA",
+  "CVNA",
+  "CVS",
+  "CVX",
+  "D",
+  "DAL",
+  "DG",
+  "DLTR",
+  "DOC",
+  "DOW",
+  "DTE",
+  "DUK",
+  "DVN",
+  "DXCM",
+  "ECHO",
+  "ED",
+  "EIX",
+  "EL",
+  "EQT",
+  "ES",
+  "ETR",
+  "EVRG",
+  "EW",
+  "EXPD",
+  "F",
+  "FAST",
+  "FCX",
+  "FE",
+  "FIS",
+  "FITB",
+  "FOX",
+  "FRT",
+  "FTV",
+  "GDDY",
+  "GEN",
+  "GILD",
+  "GIS",
+  "GPN",
+  "HAL",
+  "HAS",
+  "HBAN",
+  "HII",
+  "HOOD",
+  "HPQ",
+  "HRL",
+  "HST",
+  "IBKR",
+  "ICE",
+  "IFF",
+  "INCY",
+  "INVH",
+  "IP",
+  "IVZ",
+  "KDP",
+  "KEY",
+  "KHC",
+  "KIM",
+  "KLAC",
+  "KMB",
+  "KMI",
+  "KO",
+  "KR",
+  "KVUE",
+  "LHX",
+  "LULU",
+  "LVS",
+  "LYB",
+  "MCHP",
+  "MET",
+  "MGM",
+  "MKC",
+  "MNST",
+  "MOS",
+  "NCLH",
+  "NDAQ",
+  "NI",
+  "NKE",
+  "NRG",
+  "NTRS",
+  "NVDA",
+  "NWS",
+  "NWSA",
+  "OMC",
+  "ON",
+  "OTIS",
+  "OXY",
+  "PAYX",
+  "PCAR",
+  "PCG",
+  "PEG",
+  "PEP",
+  "PFE",
+  "PFG",
+  "PNR",
+  "PNW",
+  "PODD",
+  "PPL",
+  "PRU",
+  "PSKY",
+  "PTC",
+  "PYPL",
+  "RF",
+  "ROL",
+  "SBAC",
+  "SBUX",
+  "SLB",
+  "SMCI",
+  "SO",
+  "SOLV",
+  "SPG",
+  "SRE",
+  "STE",
+  "STT",
+  "STZ",
+  "SW",
+  "SWK",
+  "SWKS",
+  "SYF",
+  "SYY",
+  "T",
+  "TFC",
+  "TGT",
+  "TRV",
+  "TSN",
+  "UAL",
+  "UDR",
+  "UNP",
+  "USB",
+  "VICI",
+  "VST",
+  "VTR",
+  "VTRS",
+  "VZ",
+  "WAB",
+  "WBD",
+  "WEC",
+  "WFC",
+  "WMB",
+  "WMT",
+  "WRB",
+  "WY",
+  "WYNN",
+  "XEL",
+  "ZTS"
+ ],
+ "close": "2026-10-05",
+ "deferred_reversals": [
+  "INVH",
+  "SLB"
+ ],
+ "fills": {
+  "did_not_fill": 2,
+  "filled": 197,
+  "misses": [
+   {
+    "filled_quantity": 0.0,
+    "status": "REJECTED",
+    "ticker": "PSKY"
+   },
+   {
+    "filled_quantity": 0.0,
+    "status": "REJECTED",
+    "ticker": "WBD"
+   }
+  ],
+  "n_rows": 199
+ },
+ "held_after": [
+  "ABT",
+  "ADM",
+  "AEE",
+  "AEP",
+  "AES",
+  "ALB",
+  "ALL",
+  "AMCR",
+  "AMT",
+  "APH",
+  "APO",
+  "APTV",
+  "ARE",
+  "AWK",
+  "BAC",
+  "BALL",
+  "BAX",
+  "BBY",
+  "BF.B",
+  "BG",
+  "BKNG",
+  "BMY",
+  "BNY",
+  "BR",
+  "C",
+  "CAH",
+  "CARR",
+  "CBOE",
+  "CBRE",
+  "CCI",
+  "CEG",
+  "CF",
+  "CHD",
+  "CHRW",
+  "CHTR",
+  "CL",
+  "CLX",
+  "CMCSA",
+  "CMG",
+  "CMS",
+  "CNC",
+  "CNP",
+  "COIN",
+  "COO",
+  "CRH",
+  "CSGP",
+  "CSX",
+  "CTVA",
+  "CVNA",
+  "CVS",
+  "CVX",
+  "D",
+  "DAL",
+  "DG",
+  "DLTR",
+  "DOC",
+  "DOW",
+  "DTE",
+  "DUK",
+  "DVN",
+  "DXCM",
+  "ECHO",
+  "ED",
+  "EIX",
+  "EL",
+  "EQT",
+  "ES",
+  "ETR",
+  "EVRG",
+  "EW",
+  "EXPD",
+  "F",
+  "FAST",
+  "FCX",
+  "FE",
+  "FIS",
+  "FITB",
+  "FOX",
+  "FRT",
+  "FTV",
+  "GDDY",
+  "GEN",
+  "GILD",
+  "GIS",
+  "GPN",
+  "HAL",
+  "HAS",
+  "HBAN",
+  "HII",
+  "HOOD",
+  "HPQ",
+  "HRL",
+  "HST",
+  "IBKR",
+  "ICE",
+  "IFF",
+  "INCY",
+  "IP",
+  "IVZ",
+  "KDP",
+  "KEY",
+  "KHC",
+  "KIM",
+  "KLAC",
+  "KMB",
+  "KMI",
+  "KO",
+  "KR",
+  "KVUE",
+  "LHX",
+  "LULU",
+  "LVS",
+  "LYB",
+  "MCHP",
+  "MET",
+  "MGM",
+  "MKC",
+  "MNST",
+  "MOS",
+  "NCLH",
+  "NDAQ",
+  "NI",
+  "NKE",
+  "NRG",
+  "NTRS",
+  "NVDA",
+  "NWS",
+  "NWSA",
+  "OMC",
+  "ON",
+  "OTIS",
+  "OXY",
+  "PAYX",
+  "PCAR",
+  "PCG",
+  "PEG",
+  "PEP",
+  "PFE",
+  "PFG",
+  "PNR",
+  "PNW",
+  "PODD",
+  "PPL",
+  "PRU",
+  "PTC",
+  "PYPL",
+  "RF",
+  "ROL",
+  "SBAC",
+  "SBUX",
+  "SMCI",
+  "SO",
+  "SOLV",
+  "SPG",
+  "SRE",
+  "STE",
+  "STT",
+  "STZ",
+  "SW",
+  "SWK",
+  "SWKS",
+  "SYF",
+  "SYY",
+  "T",
+  "TFC",
+  "TGT",
+  "TRV",
+  "TSN",
+  "UAL",
+  "UDR",
+  "UNP",
+  "USB",
+  "VICI",
+  "VST",
+  "VTR",
+  "VTRS",
+  "VZ",
+  "WAB",
+  "WBD",
+  "WEC",
+  "WFC",
+  "WMB",
+  "WMT",
+  "WRB",
+  "WY",
+  "WYNN",
+  "XEL",
+  "ZTS"
+ ],
+ "held_before": [
+  "ADM",
+  "AEE",
+  "AEP",
+  "AES",
+  "ALB",
+  "AMCR",
+  "AMT",
+  "AOS",
+  "APA",
+  "APO",
+  "APTV",
+  "ARE",
+  "AWK",
+  "AXP",
+  "BAC",
+  "BALL",
+  "BAX",
+  "BBY",
+  "BEN",
+  "BF.B",
+  "BG",
+  "BIIB",
+  "BMY",
+  "BNY",
+  "BXP",
+  "C",
+  "CAH",
+  "CARR",
+  "CBRE",
+  "CCI",
+  "CCL",
+  "CF",
+  "CHD",
+  "CHTR",
+  "CL",
+  "CLX",
+  "CMG",
+  "CMS",
+  "CNC",
+  "CNP",
+  "COIN",
+  "COO",
+  "COR",
+  "CRH",
+  "CRWD",
+  "CSGP",
+  "CSX",
+  "CTAS",
+  "CTVA",
+  "CVS",
+  "D",
+  "DAL",
+  "DASH",
+  "DHI",
+  "DLTR",
+  "DOC",
+  "DOV",
+  "DOW",
+  "DUK",
+  "DVN",
+  "ECHO",
+  "ED",
+  "EIX",
+  "EL",
+  "EQT",
+  "ES",
+  "ETR",
+  "EVRG",
+  "EW",
+  "EXE",
+  "EXPD",
+  "FAST",
+  "FCX",
+  "FE",
+  "FIS",
+  "FISV",
+  "FLEX",
+  "FOX",
+  "FRT",
+  "FTNT",
+  "FTV",
+  "GDDY",
+  "GEHC",
+  "GEN",
+  "GILD",
+  "GIS",
+  "GM",
+  "GPN",
+  "HAL",
+  "HAS",
+  "HBAN",
+  "HII",
+  "HPE",
+  "HPQ",
+  "HRL",
+  "HST",
+  "HWM",
+  "ICE",
+  "IFF",
+  "INCY",
+  "INVH",
+  "IP",
+  "IT",
+  "IVZ",
+  "JCI",
+  "JNJ",
+  "KDP",
+  "KEY",
+  "KHC",
+  "KIM",
+  "KKR",
+  "KLAC",
+  "KMB",
+  "KMI",
+  "KO",
+  "KR",
+  "KVUE",
+  "LNT",
+  "LULU",
+  "LUV",
+  "LVS",
+  "LYB",
+  "MCHP",
+  "MET",
+  "MGM",
+  "MKC",
+  "MNST",
+  "MOS",
+  "MRK",
+  "MTB",
+  "NCLH",
+  "NDAQ",
+  "NEM",
+  "NI",
+  "NKE",
+  "NVDA",
+  "NWS",
+  "NWSA",
+  "O",
+  "OKE",
+  "ON",
+  "ORLY",
+  "OTIS",
+  "OXY",
+  "PAYX",
+  "PCAR",
+  "PEG",
+  "PEP",
+  "PFE",
+  "PNC",
+  "PNW",
+  "PODD",
+  "PPL",
+  "PRU",
+  "PSKY",
+  "PSX",
+  "PYPL",
+  "REG",
+  "RF",
+  "ROL",
+  "SBAC",
+  "SBUX",
+  "SLB",
+  "SMCI",
+  "SO",
+  "SOLV",
+  "SPGI",
+  "SRE",
+  "STE",
+  "STT",
+  "STZ",
+  "SW",
+  "SWK",
+  "SYF",
+  "SYY",
+  "TECH",
+  "TFC",
+  "TGT",
+  "TRGP",
+  "TSN",
+  "TXT",
+  "UDR",
+  "UNP",
+  "USB",
+  "VICI",
+  "VMRK",
+  "VST",
+  "VTR",
+  "VTRS",
+  "WAB",
+  "WBD",
+  "WEC",
+  "WFC",
+  "WMB",
+  "WMT",
+  "WRB",
+  "WY",
+  "WYNN",
+  "XEL",
+  "XYL",
+  "ZTS"
+ ],
+ "held_before_values": {
+  "ADM": -6806.0,
+  "AEE": 6577.842356,
+  "AEP": 6393.77154,
+  "AES": -14393.4,
+  "ALB": -7827.75,
+  "AMCR": 8549.106838,
+  "AMT": -5192.32,
+  "AOS": -2449.71,
+  "APA": -1140.1,
+  "APO": -5998.2,
+  "APTV": 1036.54993,
+  "ARE": 2422.81172,
+  "AWK": 6573.541313,
+  "AXP": -6699.0,
+  "BAC": 4539.073299,
+  "BALL": 3723.819366,
+  "BAX": 5263.299404,
+  "BBY": 2208.834327,
+  "BEN": 909.235683,
+  "BF.B": -5569.24,
+  "BG": -11697.88,
+  "BIIB": -4471.8,
+  "BMY": 5936.99385,
+  "BNY": -8481.25,
+  "BXP": -1484.25,
+  "C": -8250.88,
+  "CAH": -9557.92,
+  "CARR": -3789.64,
+  "CBRE": -5176.0,
+  "CCI": -6690.42,
+  "CCL": 919.937375,
+  "CF": -8237.42,
+  "CHD": 5572.915274,
+  "CHTR": 8085.595255,
+  "CL": 4797.575594,
+  "CLX": 2417.848344,
+  "CMG": 7162.812386,
+  "CMS": -1664.78,
+  "CNC": 4726.662281,
+  "CNP": -2076.25,
+  "COIN": 9561.044374,
+  "COO": 4855.785895,
+  "COR": -6613.53,
+  "CRH": -1735.65,
+  "CRWD": -6279.46,
+  "CSGP": -3843.35,
+  "CSX": 7075.029209,
+  "CTAS": 5290.642108,
+  "CTVA": 2694.261742,
+  "CVS": -2349.27,
+  "D": 3417.097444,
+  "DAL": 2462.294151,
+  "DASH": 4277.404958,
+  "DHI": -2931.06,
+  "DLTR": -5093.55,
+  "DOC": 8074.085892,
+  "DOV": -4973.8,
+  "DOW": -6614.0184,
+  "DUK": 5918.121998,
+  "DVN": -9756.18,
+  "ECHO": -4326.08,
+  "ED": 8532.709136,
+  "EIX": -4068.0,
+  "EL": -6157.8,
+  "EQT": 1605.096494,
+  "ES": 2304.487406,
+  "ETR": 3447.958595,
+  "EVRG": 3865.093732,
+  "EW": -4361.5,
+  "EXE": 2433.599682,
+  "EXPD": -4658.88,
+  "FAST": -3196.62,
+  "FCX": 4104.141651,
+  "FE": 4624.263722,
+  "FIS": -1141.72,
+  "FISV": 1239.997692,
+  "FLEX": -4436.88,
+  "FOX": -1814.4,
+  "FRT": 5087.433079,
+  "FTNT": 4605.244699,
+  "FTV": -3729.7,
+  "GDDY": 3013.410402,
+  "GEHC": 1867.33251,
+  "GEN": 2785.971969,
+  "GILD": -6815.0,
+  "GIS": 2734.780131,
+  "GM": -4091.73,
+  "GPN": 10086.477787,
+  "HAL": -8326.12,
+  "HAS": -6921.75,
+  "HBAN": -5375.4948,
+  "HII": -7194.96,
+  "HPE": 2579.087793,
+  "HPQ": 1241.357713,
+  "HRL": 1862.276571,
+  "HST": 4887.998325,
+  "HWM": -4591.4,
+  "ICE": -5477.4,
+  "IFF": 4166.021976,
+  "INCY": -2800.055,
+  "INVH": 529.633236,
+  "IP": 6292.612701,
+  "IT": 5434.58122,
+  "IVZ": -4300.5,
+  "JCI": -3921.25,
+  "JNJ": 5586.687451,
+  "KDP": 2334.370403,
+  "KEY": -7086.69,
+  "KHC": 3865.726502,
+  "KIM": 5606.033918,
+  "KKR": -4048.2,
+  "KLAC": -4554.0,
+  "KMB": 6549.054652,
+  "KMI": 2403.932621,
+  "KO": 14998.149021,
+  "KR": -6054.34,
+  "KVUE": 8607.418688,
+  "LNT": -1285.8,
+  "LULU": 6682.939518,
+  "LUV": -1308.4573,
+  "LVS": -6992.51,
+  "LYB": -7698.6,
+  "MCHP": -2532.39,
+  "MET": 12084.216245,
+  "MGM": -2067.2,
+  "MKC": -1366.2,
+  "MNST": 1413.779323,
+  "MOS": 2512.721766,
+  "MRK": 6896.995643,
+  "MTB": 4390.768658,
+  "NCLH": 4221.550021,
+  "NDAQ": -2766.9,
+  "NEM": -4169.52,
+  "NI": -5616.1,
+  "NKE": -2065.46,
+  "NVDA": -7425.43,
+  "NWS": 1347.751027,
+  "NWSA": 1414.898948,
+  "O": 1717.647047,
+  "OKE": 1813.079834,
+  "ON": -5084.03,
+  "ORLY": -2097.5,
+  "OTIS": -4611.6,
+  "OXY": -8314.02,
+  "PAYX": 3788.682487,
+  "PCAR": 6344.632185,
+  "PEG": -7417.44,
+  "PEP": -7555.8,
+  "PFE": -3678.2062,
+  "PNC": 5443.428461,
+  "PNW": 5814.334327,
+  "PODD": 4282.06869,
+  "PPL": -3624.5,
+  "PRU": 9195.864586,
+  "PSKY": 3211.814835,
+  "PSX": 7827.02884,
+  "PYPL": 3861.190661,
+  "REG": 1982.819939,
+  "RF": -4628.97,
+  "ROL": -4305.05,
+  "SBAC": -9061.92,
+  "SBUX": 5394.203881,
+  "SLB": -3219.3536,
+  "SMCI": 10864.095069,
+  "SO": 2023.3975,
+  "SOLV": 3431.609363,
+  "SPGI": -7860.404,
+  "SRE": -5471.2,
+  "STE": -5487.82,
+  "STT": 13406.081519,
+  "STZ": -4419.09,
+  "SW": 4231.783453,
+  "SWK": 5523.767754,
+  "SYF": -3234.6,
+  "SYY": -3207.96,
+  "TECH": 1994.912857,
+  "TFC": -2041.6,
+  "TGT": 11712.360629,
+  "TRGP": 9415.461711,
+  "TSN": -1085.91,
+  "TXT": -2727.0,
+  "UDR": 2407.038195,
+  "UNP": 11297.351601,
+  "USB": 10421.308415,
+  "VICI": -9855.78,
+  "VMRK": 1429.304183,
+  "VST": -6432.8,
+  "VTR": 7519.294664,
+  "VTRS": -1705.92,
+  "WAB": 12652.405877,
+  "WBD": -7065.72,
+  "WEC": -4254.6,
+  "WFC": -3516.4884,
+  "WMB": 5399.018943,
+  "WMT": -8403.2,
+  "WRB": -4046.66,
+  "WY": -1571.65,
+  "WYNN": -3890.0,
+  "XEL": -3074.07,
+  "XYL": -2970.18,
+  "ZTS": 3000.443079
+ },
+ "orders": [
+  {
+   "intended_notional": 2307.40511990086,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "ABT"
+  },
+  {
+   "intended_notional": 593.487625282459,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "ADM"
+  },
+  {
+   "intended_notional": 20.1725921066791,
+   "position_intent": "buy_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "AEE"
+  },
+  {
+   "intended_notional": -1476.99536940856,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "AEP"
+  },
+  {
+   "intended_notional": 601.707760019008,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "AES"
+  },
+  {
+   "intended_notional": 1242.29311996367,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "ALB"
+  },
+  {
+   "intended_notional": 8061.34236357657,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "ALL"
+  },
+  {
+   "intended_notional": -866.084262016607,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "AMCR"
+  },
+  {
+   "intended_notional": -159.165619466063,
+   "position_intent": "sell_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "AMT"
+  },
+  {
+   "intended_notional": 2449.71,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "AOS"
+  },
+  {
+   "intended_notional": 1140.1,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "APA"
+  },
+  {
+   "intended_notional": -1770.60092893855,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "APH"
+  },
+  {
+   "intended_notional": -666.899189884209,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "APO"
+  },
+  {
+   "intended_notional": 810.579704205653,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "APTV"
+  },
+  {
+   "intended_notional": -165.217329311411,
+   "position_intent": "sell_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "ARE"
+  },
+  {
+   "intended_notional": 131.832351196647,
+   "position_intent": "buy_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "AWK"
+  },
+  {
+   "intended_notional": 6699.0,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "AXP"
+  },
+  {
+   "intended_notional": -1148.12075454208,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "BAC"
+  },
+  {
+   "intended_notional": 165.455302128541,
+   "position_intent": "buy_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "BALL"
+  },
+  {
+   "intended_notional": 711.550160002404,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "BAX"
+  },
+  {
+   "intended_notional": -321.768137515319,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "BBY"
+  },
+  {
+   "intended_notional": -909.235683,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "BEN"
+  },
+  {
+   "intended_notional": 1037.3252846287,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "BF.B"
+  },
+  {
+   "intended_notional": 192.24158010372,
+   "position_intent": "buy_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "BG"
+  },
+  {
+   "intended_notional": 4471.8,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "BIIB"
+  },
+  {
+   "intended_notional": -3812.48953069957,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "BKNG"
+  },
+  {
+   "intended_notional": 3671.4177100953,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "BMY"
+  },
+  {
+   "intended_notional": -419.9009288244,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "BNY"
+  },
+  {
+   "intended_notional": -3856.8416785722,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "BR"
+  },
+  {
+   "intended_notional": 1484.25,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "BXP"
+  },
+  {
+   "intended_notional": 192.071561326203,
+   "position_intent": "buy_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "C"
+  },
+  {
+   "intended_notional": -679.717149092919,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CAH"
+  },
+  {
+   "intended_notional": 915.083630065032,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CARR"
+  },
+  {
+   "intended_notional": -7909.12861443676,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CBOE"
+  },
+  {
+   "intended_notional": 1218.8898010554,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CBRE"
+  },
+  {
+   "intended_notional": 368.46241551273,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CCI"
+  },
+  {
+   "intended_notional": -919.937375,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CCL"
+  },
+  {
+   "intended_notional": -6440.57813242866,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CEG"
+  },
+  {
+   "intended_notional": -229.54560716885,
+   "position_intent": "sell_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "CF"
+  },
+  {
+   "intended_notional": -731.570235647057,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CHD"
+  },
+  {
+   "intended_notional": -6548.92116365225,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CHRW"
+  },
+  {
+   "intended_notional": 309.537761912085,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CHTR"
+  },
+  {
+   "intended_notional": 894.719656410003,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CL"
+  },
+  {
+   "intended_notional": 842.93729037506,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CLX"
+  },
+  {
+   "intended_notional": 2119.04124984879,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CMCSA"
+  },
+  {
+   "intended_notional": 594.398828870706,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CMG"
+  },
+  {
+   "intended_notional": 382.866144897634,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CMS"
+  },
+  {
+   "intended_notional": -378.728107928952,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CNC"
+  },
+  {
+   "intended_notional": 34.790329076023,
+   "position_intent": "buy_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "CNP"
+  },
+  {
+   "intended_notional": -1380.2244886819,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "COIN"
+  },
+  {
+   "intended_notional": 1756.94763837606,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "COO"
+  },
+  {
+   "intended_notional": 6613.53,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "COR"
+  },
+  {
+   "intended_notional": -1482.30958213128,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CRH"
+  },
+  {
+   "intended_notional": 6279.46,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CRWD"
+  },
+  {
+   "intended_notional": -806.340170731834,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CSGP"
+  },
+  {
+   "intended_notional": -650.077826776451,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CSX"
+  },
+  {
+   "intended_notional": -5290.642108,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CTAS"
+  },
+  {
+   "intended_notional": -2316.21635113608,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CTVA"
+  },
+  {
+   "intended_notional": -1725.55475537392,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CVNA"
+  },
+  {
+   "intended_notional": -159.371877542651,
+   "position_intent": "sell_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "CVS"
+  },
+  {
+   "intended_notional": -4772.91954481387,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "CVX"
+  },
+  {
+   "intended_notional": 396.32299208166,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "D"
+  },
+  {
+   "intended_notional": -495.933918023415,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "DAL"
+  },
+  {
+   "intended_notional": -4277.404958,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "DASH"
+  },
+  {
+   "intended_notional": -4767.74935867037,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "DG"
+  },
+  {
+   "intended_notional": 2931.06,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "DHI"
+  },
+  {
+   "intended_notional": 965.341129001624,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "DLTR"
+  },
+  {
+   "intended_notional": 276.733164072401,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "DOC"
+  },
+  {
+   "intended_notional": 4973.8,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "DOV"
+  },
+  {
+   "intended_notional": -624.549809379295,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "DOW"
+  },
+  {
+   "intended_notional": 2753.36799644304,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "DTE"
+  },
+  {
+   "intended_notional": 146.646617420442,
+   "position_intent": "buy_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "DUK"
+  },
+  {
+   "intended_notional": 4143.02182106707,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "DVN"
+  },
+  {
+   "intended_notional": 2115.2348854467,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "DXCM"
+  },
+  {
+   "intended_notional": -1341.3885216937,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "ECHO"
+  },
+  {
+   "intended_notional": 1118.07105555154,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "ED"
+  },
+  {
+   "intended_notional": 1374.84888299773,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "EIX"
+  },
+  {
+   "intended_notional": -682.197380347846,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "EL"
+  },
+  {
+   "intended_notional": 2670.52414708219,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "EQT"
+  },
+  {
+   "intended_notional": 270.596610482855,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "ES"
+  },
+  {
+   "intended_notional": -218.179018949924,
+   "position_intent": "sell_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "ETR"
+  },
+  {
+   "intended_notional": 653.593669013391,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "EVRG"
+  },
+  {
+   "intended_notional": -932.762132394475,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "EW"
+  },
+  {
+   "intended_notional": -2433.599682,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "EXE"
+  },
+  {
+   "intended_notional": -1532.91780353399,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "EXPD"
+  },
+  {
+   "intended_notional": 732.218932761006,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "F"
+  },
+  {
+   "intended_notional": -1081.53615230004,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "FAST"
+  },
+  {
+   "intended_notional": 844.33542046602,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "FCX"
+  },
+  {
+   "intended_notional": 1687.42016811661,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "FE"
+  },
+  {
+   "intended_notional": -1314.84398894903,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "FIS"
+  },
+  {
+   "intended_notional": -1239.997692,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "FISV"
+  },
+  {
+   "intended_notional": -1063.95229992977,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "FITB"
+  },
+  {
+   "intended_notional": 4436.88,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "FLEX"
+  },
+  {
+   "intended_notional": -625.813010185003,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "FOX"
+  },
+  {
+   "intended_notional": -597.190975800876,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "FRT"
+  },
+  {
+   "intended_notional": -4605.244699,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "FTNT"
+  },
+  {
+   "intended_notional": 826.664633141418,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "FTV"
+  },
+  {
+   "intended_notional": -563.900607416205,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "GDDY"
+  },
+  {
+   "intended_notional": -1867.33251,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "GEHC"
+  },
+  {
+   "intended_notional": 1360.21453234293,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "GEN"
+  },
+  {
+   "intended_notional": 765.533769369758,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "GILD"
+  },
+  {
+   "intended_notional": -354.874581343493,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "GIS"
+  },
+  {
+   "intended_notional": 4091.73,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "GM"
+  },
+  {
+   "intended_notional": -2787.70914753508,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "GPN"
+  },
+  {
+   "intended_notional": 3592.82137365004,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "HAL"
+  },
+  {
+   "intended_notional": -114.45312611792,
+   "position_intent": "sell_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "HAS"
+  },
+  {
+   "intended_notional": -899.124063992072,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "HBAN"
+  },
+  {
+   "intended_notional": 82.8880901359398,
+   "position_intent": "buy_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "HII"
+  },
+  {
+   "intended_notional": 3092.02647778276,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "HOOD"
+  },
+  {
+   "intended_notional": -2579.087793,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "HPE"
+  },
+  {
+   "intended_notional": -574.861769058069,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "HPQ"
+  },
+  {
+   "intended_notional": -58.1136560150821,
+   "position_intent": "sell_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "HRL"
+  },
+  {
+   "intended_notional": -1131.3398786267,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "HST"
+  },
+  {
+   "intended_notional": 4591.4,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "HWM"
+  },
+  {
+   "intended_notional": -2184.22722998184,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "IBKR"
+  },
+  {
+   "intended_notional": 17.7459738557527,
+   "position_intent": "buy_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "ICE"
+  },
+  {
+   "intended_notional": 563.271391182757,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "IFF"
+  },
+  {
+   "intended_notional": 431.754330620809,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "INCY"
+  },
+  {
+   "intended_notional": -529.633236,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "INVH"
+  },
+  {
+   "intended_notional": 92.7809516170319,
+   "position_intent": "buy_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "IP"
+  },
+  {
+   "intended_notional": -5434.58122,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "IT"
+  },
+  {
+   "intended_notional": -1251.09138023528,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "IVZ"
+  },
+  {
+   "intended_notional": 3921.25,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "JCI"
+  },
+  {
+   "intended_notional": -5586.687451,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "JNJ"
+  },
+  {
+   "intended_notional": 997.177287240887,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "KDP"
+  },
+  {
+   "intended_notional": -92.0825412483064,
+   "position_intent": "sell_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "KEY"
+  },
+  {
+   "intended_notional": 237.034259261787,
+   "position_intent": "buy_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "KHC"
+  },
+  {
+   "intended_notional": -371.423601672711,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "KIM"
+  },
+  {
+   "intended_notional": 4048.2,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "KKR"
+  },
+  {
+   "intended_notional": -2628.05330059709,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "KLAC"
+  },
+  {
+   "intended_notional": 287.383885868786,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "KMB"
+  },
+  {
+   "intended_notional": 2127.52244151503,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "KMI"
+  },
+  {
+   "intended_notional": 1733.2220570936,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "KO"
+  },
+  {
+   "intended_notional": -1120.74035189084,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "KR"
+  },
+  {
+   "intended_notional": 1778.82987463887,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "KVUE"
+  },
+  {
+   "intended_notional": -7411.25010252653,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "LHX"
+  },
+  {
+   "intended_notional": 1285.8,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "LNT"
+  },
+  {
+   "intended_notional": 3759.58126984225,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "LULU"
+  },
+  {
+   "intended_notional": 1308.4573,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "LUV"
+  },
+  {
+   "intended_notional": -1924.55111647454,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "LVS"
+  },
+  {
+   "intended_notional": -895.703357434571,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "LYB"
+  },
+  {
+   "intended_notional": -1313.5688563462,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "MCHP"
+  },
+  {
+   "intended_notional": 304.094349184354,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "MET"
+  },
+  {
+   "intended_notional": -91.6745028889104,
+   "position_intent": "sell_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "MGM"
+  },
+  {
+   "intended_notional": -605.735319679923,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "MKC"
+  },
+  {
+   "intended_notional": -213.598562440284,
+   "position_intent": "sell_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "MNST"
+  },
+  {
+   "intended_notional": -1474.86735883581,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "MOS"
+  },
+  {
+   "intended_notional": -6896.995643,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "MRK"
+  },
+  {
+   "intended_notional": -4390.768658,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "MTB"
+  },
+  {
+   "intended_notional": 289.927326257912,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "NCLH"
+  },
+  {
+   "intended_notional": -741.054206409213,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "NDAQ"
+  },
+  {
+   "intended_notional": 4169.52,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "NEM"
+  },
+  {
+   "intended_notional": 83.5062060680702,
+   "position_intent": "buy_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "NI"
+  },
+  {
+   "intended_notional": 220.547785771051,
+   "position_intent": "buy_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "NKE"
+  },
+  {
+   "intended_notional": -4695.41214927519,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "NRG"
+  },
+  {
+   "intended_notional": -4200.9302206878,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "NTRS"
+  },
+  {
+   "intended_notional": -612.390948795884,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "NVDA"
+  },
+  {
+   "intended_notional": -60.6939057883753,
+   "position_intent": "sell_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "NWS"
+  },
+  {
+   "intended_notional": 77.8920075379506,
+   "position_intent": "buy_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "NWSA"
+  },
+  {
+   "intended_notional": -1717.647047,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "O"
+  },
+  {
+   "intended_notional": -1813.079834,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "OKE"
+  },
+  {
+   "intended_notional": 3031.16076924372,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "OMC"
+  },
+  {
+   "intended_notional": 453.954924216281,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "ON"
+  },
+  {
+   "intended_notional": 2097.5,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "ORLY"
+  },
+  {
+   "intended_notional": -1052.7106643723,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "OTIS"
+  },
+  {
+   "intended_notional": 6286.28148780371,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "OXY"
+  },
+  {
+   "intended_notional": 1488.11054204499,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PAYX"
+  },
+  {
+   "intended_notional": 151.560125664927,
+   "position_intent": "buy_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "PCAR"
+  },
+  {
+   "intended_notional": 786.152582252589,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PCG"
+  },
+  {
+   "intended_notional": 547.958932768121,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PEG"
+  },
+  {
+   "intended_notional": -91.0891227445554,
+   "position_intent": "sell_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "PEP"
+  },
+  {
+   "intended_notional": -831.999544014011,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PFE"
+  },
+  {
+   "intended_notional": 2835.08052618619,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PFG"
+  },
+  {
+   "intended_notional": -5443.428461,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PNC"
+  },
+  {
+   "intended_notional": -1088.49772485645,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PNR"
+  },
+  {
+   "intended_notional": 1300.19894928967,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PNW"
+  },
+  {
+   "intended_notional": -525.386882279612,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PODD"
+  },
+  {
+   "intended_notional": 504.752117008715,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PPL"
+  },
+  {
+   "intended_notional": 1711.20692275435,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PRU"
+  },
+  {
+   "intended_notional": -294.325356742941,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PSKY"
+  },
+  {
+   "intended_notional": -7827.02884,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PSX"
+  },
+  {
+   "intended_notional": 6768.79996219531,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PTC"
+  },
+  {
+   "intended_notional": -1166.54737308404,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "PYPL"
+  },
+  {
+   "intended_notional": -1982.819939,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "REG"
+  },
+  {
+   "intended_notional": -151.126841004292,
+   "position_intent": "sell_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "RF"
+  },
+  {
+   "intended_notional": -982.832203918975,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "ROL"
+  },
+  {
+   "intended_notional": 450.991947994844,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SBAC"
+  },
+  {
+   "intended_notional": -1374.57623012232,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SBUX"
+  },
+  {
+   "intended_notional": 3219.3536,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SLB"
+  },
+  {
+   "intended_notional": -1628.75026178718,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SMCI"
+  },
+  {
+   "intended_notional": -42.5539865540331,
+   "position_intent": "sell_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "SO"
+  },
+  {
+   "intended_notional": -980.613747333502,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SOLV"
+  },
+  {
+   "intended_notional": 8165.65825028307,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SPG"
+  },
+  {
+   "intended_notional": 7860.404,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SPGI"
+  },
+  {
+   "intended_notional": -275.442298941515,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SRE"
+  },
+  {
+   "intended_notional": -1396.62985784057,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "STE"
+  },
+  {
+   "intended_notional": -993.037905403309,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "STT"
+  },
+  {
+   "intended_notional": 149.817843435341,
+   "position_intent": "buy_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "STZ"
+  },
+  {
+   "intended_notional": 820.109049744485,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SW"
+  },
+  {
+   "intended_notional": 726.478028743476,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SWK"
+  },
+  {
+   "intended_notional": 2200.17210118463,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SWKS"
+  },
+  {
+   "intended_notional": -658.101753918268,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SYF"
+  },
+  {
+   "intended_notional": -713.889461064717,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "SYY"
+  },
+  {
+   "intended_notional": -1531.32634201479,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "T"
+  },
+  {
+   "intended_notional": -1994.912857,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "TECH"
+  },
+  {
+   "intended_notional": -879.424570390184,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "TFC"
+  },
+  {
+   "intended_notional": 1588.33969047841,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "TGT"
+  },
+  {
+   "intended_notional": -9415.461711,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "TRGP"
+  },
+  {
+   "intended_notional": 13130.3433889952,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "TRV"
+  },
+  {
+   "intended_notional": -2741.96774596151,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "TSN"
+  },
+  {
+   "intended_notional": 2727.0,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "TXT"
+  },
+  {
+   "intended_notional": 3327.69252810428,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "UAL"
+  },
+  {
+   "intended_notional": -610.511967514453,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "UDR"
+  },
+  {
+   "intended_notional": -392.394956055345,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "UNP"
+  },
+  {
+   "intended_notional": -651.937981791061,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "USB"
+  },
+  {
+   "intended_notional": -907.884433465015,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "VICI"
+  },
+  {
+   "intended_notional": -1429.304183,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "VMRK"
+  },
+  {
+   "intended_notional": -1354.00457378347,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "VST"
+  },
+  {
+   "intended_notional": 573.657391979258,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "VTR"
+  },
+  {
+   "intended_notional": -185.800755685295,
+   "position_intent": "sell_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "VTRS"
+  },
+  {
+   "intended_notional": -1017.05819188818,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "VZ"
+  },
+  {
+   "intended_notional": -82.2766473121301,
+   "position_intent": "sell_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "WAB"
+  },
+  {
+   "intended_notional": -1520.88652522958,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "WBD"
+  },
+  {
+   "intended_notional": 6.96989046691033,
+   "position_intent": "buy_to_close",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "WEC"
+  },
+  {
+   "intended_notional": -2660.85275031433,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "WFC"
+  },
+  {
+   "intended_notional": 1806.46131453784,
+   "position_intent": "buy_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "WMB"
+  },
+  {
+   "intended_notional": 1334.38317998644,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "WMT"
+  },
+  {
+   "intended_notional": -2931.49701841816,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "WRB"
+  },
+  {
+   "intended_notional": -143.051884696559,
+   "position_intent": "sell_to_open",
+   "reason_code": "BELOW_MIN_NOTIONAL",
+   "sent": false,
+   "ticker": "WY"
+  },
+  {
+   "intended_notional": -1812.1565115161,
+   "position_intent": "sell_to_open",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "WYNN"
+  },
+  {
+   "intended_notional": 301.910613084041,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "XEL"
+  },
+  {
+   "intended_notional": 2970.18,
+   "position_intent": "buy_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "XYL"
+  },
+  {
+   "intended_notional": -430.004921699937,
+   "position_intent": "sell_to_close",
+   "reason_code": "",
+   "sent": true,
+   "ticker": "ZTS"
+  }
+ ],
+ "removed_without_order": [
+  {
+   "notional": 3211.814835,
+   "quantity": 326.072572039,
+   "ticker": "PSKY"
+  }
+ ]
+}

@@ -729,6 +729,44 @@ def _catch_up_sessions(before: pd.Timestamp | None) -> list[str]:
     return [day.date().isoformat() for day in staleness.sessions(start, after)]
 
 
+def evening_bridge(
+    as_of: Any,
+    *,
+    dry_run: bool,
+    holdings: dict[str, Any],
+    book: pd.DataFrame | None,
+    legs: pd.DataFrame | None,
+    reversals: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """The evening's half of the book bridge, or None on a dry run.
+
+    Three sets on the page are correct on their own and read as three
+    disagreements without the arithmetic between them: the book the model sized (191
+    names on 2026-10-05), the orders the run sent (199) and the positions the
+    account holds (188). This is that arithmetic, computed from the run's own read,
+    its own book and its own leg rows, and published for the morning to complete
+    with the fills and the account it reads.
+
+    None on a dry run, which sends nothing: `sent` would count no leg while the book
+    still holds the ones the run decided for, so the block could only be published
+    broken. A dry run has no bridge to state, and the page leaves the panel out
+    rather than drawing an evening that moved nothing.
+    """
+    if dry_run:
+        return None
+    from live import bridge
+
+    return bridge.evening(
+        close=as_of,
+        held_before=(holdings or {}).get("broker") or {},
+        book=list(book["ticker"]) if book is not None else [],
+        orders=legs,
+        reversals=[
+            item.get("ticker") for item in reversals or [] if item.get("ticker")
+        ],
+    )
+
+
 def finish_run(
     *,
     run_date: str,
@@ -769,6 +807,7 @@ def finish_run(
     renames: dict[str, str] | None = None,
     exits: dict[str, Any] | None = None,
     sent_notional: float | None = None,
+    bridge_block: dict[str, Any] | None = None,
 ) -> int:
     """Snapshot the run, notify the owner, record it, and return the exit code.
 
@@ -874,6 +913,7 @@ def finish_run(
             construction=snapshot_module.chosen_row(manifest),
             book_reason=book_reason,
             actual=actual,
+            bridge_block=bridge_block,
             dry_run=dry_run,
             poster=snapshot_poster,
         )
@@ -1569,7 +1609,28 @@ def main() -> int:
         # and it comes from the run's own legs rather than from anything re-derived:
         # a name the hedge moved with no order built for it shows as a zero beside
         # the position it changed.
-        book = with_traded(book, traded_by_name(execution_log(as_of)))
+        legs = execution_log(as_of)
+        book = with_traded(book, traded_by_name(legs))
+
+        # The bridge's first half, from this run's own read, its own book and its own
+        # legs; the morning completes it with the fills and the account it reads.
+        bridge_block = evening_bridge(
+            as_of,
+            dry_run=dry_run,
+            holdings=holdings,
+            book=book,
+            legs=legs,
+            reversals=morning.get("deferred_reversals") or [],
+        )
+        if bridge_block is not None and not bridge_block["holds"]:
+            logger.warning(
+                "the book bridge does not add up: %s",
+                "; ".join(
+                    f"{item['name']}: {item['left']} vs {item['right']}"
+                    for item in bridge_block["identities"]
+                    if not item["holds"]
+                ),
+            )
 
         row = reconcile.daily_record(as_of, dry_run=dry_run)
         # The day's P&L is the account's own equity move, and a position that left
@@ -1603,6 +1664,7 @@ def main() -> int:
             "book": book,
             "reconciliation": row,
             "actual": actual,
+            "bridge_block": bridge_block,
         }
     except Exception as exc:  # noqa: BLE001 - recorded, never silent
         # The reason is scrubbed before it goes anywhere: a connection string,

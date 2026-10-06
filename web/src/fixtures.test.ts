@@ -27,6 +27,7 @@ const NAMES = [
   "snapshot_no_book.json",
   "snapshot_actual_holdings.json",
   "snapshot_fills_rejected.json",
+  "snapshot_bridge_broken.json",
   "snapshot_position_removed.json",
 ];
 
@@ -37,8 +38,41 @@ const NAMES = [
 const ACCOUNT_FIXTURES = [
   "snapshot_actual_holdings.json",
   "snapshot_fills_rejected.json",
+  "snapshot_bridge_broken.json",
   "snapshot_position_removed.json",
 ];
+
+// The two fixtures that carry the bridge: the 2026-10-05 session's own
+// arithmetic, complete from the evening's read to the next morning's account, and
+// the same morning with one name missing from the account and nothing explaining
+// it. Exactly these, so a third cannot appear without this list moving with it.
+const BRIDGE_FIXTURES = ["snapshot_fills_rejected.json", "snapshot_bridge_broken.json"];
+
+// The bridge block, key by key: the counts the page prints on the one line, the
+// gap's two lists of names, and the identites the block checks itself against.
+const BRIDGE = [
+  "close",
+  "seen_by",
+  "book",
+  "held_before",
+  "in_both",
+  "opened",
+  "exited",
+  "changed",
+  "under_minimum",
+  "orders_sent",
+  "filled",
+  "did_not_fill",
+  "held_after",
+  "under_minimum_usd",
+  "reversals_pending",
+  "removed_without_order",
+  "unexplained",
+  "identities",
+  "holds",
+];
+
+const BRIDGE_IDENTITY = ["name", "left", "right", "holds"];
 
 // The fixture that carries the departure block: the PSKY removal, where a name
 // left the account between two reads with no closing leg filled and no activity
@@ -194,6 +228,70 @@ describe("the fixtures and the page's types", () => {
     }
   });
 
+
+  it("carries the bridge in exactly the fixtures built for it", () => {
+    // The 2026-10-05 session, whose numbers are the real evening's: 201 names held
+    // when the evening read the account and 191 in the book it published, 32 opened
+    // and 42 closed, 125 continuing names that moved by the minimum and 34 that did
+    // not, 199 orders sent of which 197 filled, and 188 names held the next morning.
+    // Every one of them is asserted, because a fixture that carries the bridge and
+    // the wrong numbers is worse than one that carries none.
+    for (const name of NAMES) {
+      const fixture = load(name) as Record<string, unknown>;
+      if (!BRIDGE_FIXTURES.includes(name)) {
+        expect(
+          Object.keys(fixture),
+          `${name} carries a bridge, which only these two may`,
+        ).not.toContain("bridge");
+        continue;
+      }
+      const bridge = fixture.bridge as Record<string, unknown>;
+      for (const key of BRIDGE) {
+        expect(Object.keys(bridge), `${name}.bridge is missing ${key}`).toContain(key);
+      }
+      const identities = bridge.identities as Array<Record<string, unknown>>;
+      expect(identities.length).toBeGreaterThan(0);
+      for (const check of identities) {
+        expect(Object.keys(check).sort()).toEqual([...BRIDGE_IDENTITY].sort());
+      }
+      expect(bridge.book).toBe(191);
+      expect(bridge.held_before).toBe(201);
+      expect(bridge.in_both).toBe(159);
+      expect(bridge.opened).toBe(32);
+      expect(bridge.exited).toBe(42);
+      expect(bridge.changed).toBe(125);
+      expect(bridge.under_minimum).toBe(34);
+      expect(bridge.orders_sent).toBe(199);
+      expect(bridge.filled).toBe(197);
+      expect(bridge.did_not_fill).toBe(2);
+      expect(bridge.under_minimum_usd).toBe(250);
+      expect(bridge.reversals_pending).toEqual(["INVH", "SLB"]);
+      const removed = bridge.removed_without_order as Array<Record<string, number>>;
+      expect(removed.map((entry) => entry.ticker)).toEqual(["PSKY"]);
+      expect(removed[0].quantity).toBeCloseTo(326.072572039, 6);
+      expect(removed[0].notional).toBeCloseTo(3211.814835, 2);
+
+      // A block whose every identity holds is one the page draws plainly; one with a
+      // failing identity is the amber case, and the two must not be mixed up.
+      const failed = identities.filter((check) => check.holds === false);
+      expect(bridge.holds, `${name}: holds disagrees with its own checks`).toBe(
+        failed.length === 0,
+      );
+      if (name === "snapshot_bridge_broken.json") {
+        expect(failed.length).toBe(1);
+        // One name the book holds is not in the account and is in neither of the
+        // lists that explain a gap, so the two sides differ by exactly that name.
+        expect(bridge.held_after).toBe(187);
+        expect(bridge.unexplained).toEqual(["AEP"]);
+        expect(failed[0].left).toBe(191);
+        expect(failed[0].right).toBe(190);
+      } else {
+        expect(failed).toEqual([]);
+        expect(bridge.held_after).toBe(188);
+        expect(bridge.unexplained).toEqual([]);
+      }
+    }
+  });
 
   it("carries the departure block in the fixture built for it, and nowhere else", () => {
     for (const name of NAMES) {

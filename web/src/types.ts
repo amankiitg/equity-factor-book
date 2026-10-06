@@ -20,6 +20,56 @@ export interface BookName {
   traded_notional?: number | null;
 }
 
+/** One identity the bridge claims, with both sides and whether it holds. */
+export interface BridgeIdentity {
+  name: string;
+  left: number | null;
+  right: number | null;
+  holds: boolean;
+}
+
+/** A name in the book that left the account with no order behind it. */
+export interface BridgeRemoval {
+  ticker: string;
+  quantity: number | null;
+  notional: number | null;
+}
+
+/**
+ * The arithmetic between the three sets the page draws.
+ *
+ * `held_before` is the account as the evening read it, `book` is what it published,
+ * `orders_sent` is what it sent, and `held_after` is the account as the morning read
+ * it: the numbers the page shows as three separate panels, connected by `in_both`,
+ * `opened`, `exited` and the two halves of the continuing names. The evening
+ * publishes the first half and the morning completes it, so `filled`,
+ * `did_not_fill` and `held_after` are null until the 15:30 UTC reconciliation has
+ * run. `identities` carries the block's own checks, each with both sides, and
+ * `holds` is their verdict: a false here is a bridge that does not add up, which
+ * the page shows in amber rather than smoothing over.
+ */
+export interface BridgeBlock {
+  close: string | null;
+  seen_by: "evening" | "morning" | null;
+  book: number | null;
+  held_before: number | null;
+  in_both: number | null;
+  opened: number | null;
+  exited: number | null;
+  changed: number | null;
+  under_minimum: number | null;
+  orders_sent: number | null;
+  filled: number | null;
+  did_not_fill: number | null;
+  held_after: number | null;
+  under_minimum_usd: number | null;
+  reversals_pending: string[];
+  removed_without_order: BridgeRemoval[];
+  unexplained: string[];
+  identities: BridgeIdentity[];
+  holds: boolean;
+}
+
 /** The day's expected cost, split into the parts the proposal computed. */
 export interface CostSplit {
   spread?: number | null;
@@ -192,6 +242,11 @@ export interface Snapshot {
   // nobody read the account, which is why the section says so in one line rather
   // than drawing an empty table.
   actual_holdings?: ActualHoldings | null;
+  // The arithmetic between the three sets above, written by the evening and
+  // completed by the morning. Absent (not null) when no run built one - a stopped
+  // evening - because a bridge of zeroes would read as an evening that moved
+  // nothing.
+  bridge?: BridgeBlock | null;
   // Both blocks are absent until the cron writes them, and the page hides the
   // section that needs one rather than drawing an empty one: a snapshot carrying
   // neither is the state every run is in today (see docs/snapshot.schema.json for

@@ -30,13 +30,14 @@ loop did propose, which is the state the page has to show rather than a blank.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from live import evening_job, fills, snapshot, trade_reasons
+from live import bridge, evening_job, fills, snapshot, trade_reasons
 
 ROOT = Path(__file__).resolve().parents[1]
 PROPOSAL_DIR = ROOT / "live" / "proposals"
@@ -52,6 +53,10 @@ CLOSED_CLOSE = "2026-11-26"
 # this one, and the fixture exists to carry it onto the page.
 REMOVED_CLOSE = "2026-10-06"
 STORE_LABEL = "local parquet (live/state/supabase)"
+# The 2026-10-05 session as it was read out of the store: the sets and the legs the
+# bridge needs, which the snapshot documents themselves do not carry. Read here
+# rather than typed so the page's bridge is the real evening's arithmetic.
+BRIDGE_SESSION = ROOT / "tests" / "fixtures" / "bridge_2026-10-05.json"
 SPECIFIC = ROOT / "data" / "models" / "XS-v1" / "specific_var.parquet"
 
 NAMES: tuple[str, ...] = (
@@ -69,6 +74,12 @@ NAMES: tuple[str, ...] = (
     # The 2026-10-05 morning's own reconciliation, which is the case the fill
     # card's denominator got wrong: 197 of 199 filled, 2 rejected, 34 never sent.
     "snapshot_fills_rejected.json",
+    # The same morning, with the bridge broken: one name the book holds is not in
+    # the account and nothing explains it, which is the case the bridge exists to
+    # catch - the PSKY disappearance before Part B named it - and the only fixture
+    # that exercises the page's amber line. Deliberately inconsistent, so no reader
+    # can take it for a real session.
+    "snapshot_bridge_broken.json",
     # The PSKY removal, three days later: a position that left the account with no
     # order and no activity behind it, named in `actual_holdings.exits` and carried
     # on the day's row as its own labelled adjustment rather than folded into the
@@ -81,6 +92,51 @@ NAMES: tuple[str, ...] = (
 def manifest() -> dict[str, Any]:
     """The 09-21 proposal as the evening job builds it today."""
     return evening_job.build_proposal(store=False)
+
+
+def bridge_2026_10_05(*, drop_from_account: str = "") -> dict[str, Any]:
+    """The bridge for the stored 2026-10-05 session, as the two runs computed it.
+
+    The session fixture holds the sets the evening read and the account the morning
+    read, so the block is built by `live.bridge` here rather than transcribed: a
+    hand-written block could carry eight numbers that agree with each other and not
+    with the run that published them. `drop_from_account` removes a name from the
+    morning's read, which is how a broken bridge is produced - the name is then in
+    the book, absent from the account and in neither of the lists that explain a
+    gap, so the last identity fails and the block says so.
+    """
+    session = json.loads(BRIDGE_SESSION.read_text())
+    evening = bridge.evening(
+        close=session["close"],
+        held_before=session["held_before"],
+        book=session["book"],
+        orders=pd.DataFrame(
+            [
+                {
+                    "ticker": row["ticker"],
+                    "intended_notional": row["intended_notional"],
+                    "position_intent": row["position_intent"],
+                    "reason_code": row["reason_code"],
+                    "broker_order_id": "sent" if row["sent"] else "",
+                }
+                for row in session["orders"]
+            ]
+        ),
+        reversals=session["deferred_reversals"],
+    )
+    held_after = [
+        name for name in session["held_after"] if name != drop_from_account.upper()
+    ]
+    if drop_from_account and len(held_after) == len(session["held_after"]):
+        raise RuntimeError(f"{drop_from_account} is not in the session's account")
+    return bridge.completed(
+        evening,
+        filled=session["fills"]["filled"],
+        did_not_fill=session["fills"]["did_not_fill"],
+        held_after=held_after,
+        book=session["book"],
+        removed=session["removed_without_order"],
+    )
 
 
 def book(proposal: dict[str, Any], *, establishment: bool = False) -> pd.DataFrame:
@@ -465,6 +521,33 @@ def snapshots() -> dict[str, dict[str, Any]]:
                 expected_cost_bps=proposal.get("expected_establishment_cost_bps"),
                 read_by=fills.READ_MORNING,
             ),
+            bridge_block=bridge_2026_10_05(),
+            generated_at=_stamp("2026-09-21T22:41:00"),
+        ),
+        # The same morning with the bridge broken: the account holds one name fewer
+        # than the book and neither a reversal nor a removal accounts for it. The
+        # page has to draw that in amber with the two sides of the failing identity,
+        # because a bridge that quietly agreed with itself would be the fourth number
+        # to trust rather than the check it is meant to be.
+        NAMES[10]: snapshot.build(
+            run=_run(
+                dry_run=False,
+                detail="",
+                notify_status="sent",
+            ),
+            manifest=proposal,
+            book=rows,
+            construction=chosen,
+            actual=fills.actual_holdings(
+                held,
+                nav,
+                as_of="2026-10-06T15:30:04+00:00",
+                close=CLOSE,
+                report=fills_report_rejected(),
+                expected_cost_bps=proposal.get("expected_establishment_cost_bps"),
+                read_by=fills.READ_MORNING,
+            ),
+            bridge_block=bridge_2026_10_05(drop_from_account="AEP"),
             generated_at=_stamp("2026-09-21T22:41:00"),
         ),
         # The PSKY removal, as the 2026-10-06 evening saw it. The account was read
@@ -477,7 +560,7 @@ def snapshots() -> dict[str, dict[str, Any]]:
         # adjustment, which is where the page reads them: a paper-keeping artifact
         # is not a result of the strategy, and it is not netted out of the P&L in
         # silence either.
-        NAMES[10]: snapshot.build(
+        NAMES[11]: snapshot.build(
             run=_run(
                 target_close=REMOVED_CLOSE,
                 dry_run=False,

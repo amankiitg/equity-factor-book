@@ -976,6 +976,233 @@
           }
         }
       }
+    },
+    "bridge": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "The arithmetic between the three sets the page draws: the book the model sized, the orders the run sent and the positions the account holds. Each is correct on its own - 191 names, 199 orders and 188 positions on 2026-10-05 - and without this block they read as three disagreements rather than as one evening: which names were opened, which closed, which merely moved and which never traded at all. Every count is the writers' own, computed by `live/bridge.py` and published in this document so the page recomputes none of it and the two runs cannot disagree about a count. The evening writes the first half from the account read it makes and the legs it built, and the 15:30 UTC morning completes it with the fills and its own account read. The key is absent, not null, when no run built one (an evening that failed before its account read, or a morning with no published bridge to complete): a block of zeroes would read as an evening that moved nothing. Written by scripts/run_live_daily.py and scripts/reconcile_fills.py, and surfaced on the page as the book bridge panel.",
+      "required": [
+        "close",
+        "seen_by",
+        "book",
+        "held_before",
+        "in_both",
+        "opened",
+        "exited",
+        "changed",
+        "under_minimum",
+        "orders_sent",
+        "filled",
+        "did_not_fill",
+        "held_after",
+        "under_minimum_usd",
+        "reversals_pending",
+        "removed_without_order",
+        "unexplained",
+        "identities",
+        "holds"
+      ],
+      "properties": {
+        "close": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The close the bridge is about: the session the evening sized for, which is the morning's own target_close when it completes the block."
+        },
+        "seen_by": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "evening",
+            "morning",
+            null
+          ],
+          "description": "Which run wrote the block as it stands. `evening` means the fills and the account after are not in it yet and the three identities that need them are not checked; `morning` means it is complete."
+        },
+        "book": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "The book's own size, so the count can be checked against the list the page draws rather than trusted."
+        },
+        "held_before": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "The names the account held when the evening read it, before any of the evening's orders."
+        },
+        "in_both": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Names in both the held-before read and the new book: the names the evening considered trading."
+        },
+        "opened": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Names in the book and not held before: legs opened into a name the account did not have."
+        },
+        "exited": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Names held before and not in the book: positions closed out entirely."
+        },
+        "changed": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Names in both whose change was at least `under_minimum_usd`, which is the line between a leg worth an order and one the evening left alone."
+        },
+        "under_minimum": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Names in both whose change was under `under_minimum_usd`: legs the run built and did not send. They are the reason an order count can be smaller than a book, and on 2026-10-05 there were 34 of them."
+        },
+        "orders_sent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Legs the run actually sent, from its own order rows rather than from a recount: a leg with a broker order id was sent, one without is a leg it decided against."
+        },
+        "filled": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Orders the 15:30 UTC reconciliation found filled. Null until the morning has completed the block."
+        },
+        "did_not_fill": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Orders sent and rejected. Null until the morning has completed the block."
+        },
+        "held_after": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Names the account held when the morning read it: the evening's held_before plus what it opened less what it closed, less any name that left with nothing behind it. Null until the morning has completed the block, never zero: a zero would read as an account holding nothing."
+        },
+        "under_minimum_usd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "The dollar line below which a continuing name is left untraded, $250.00 today, so the threshold the count was taken at travels with the count."
+        },
+        "reversals_pending": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Names the evening closed in order to reopen the other side at the next close, which explains part of the gap between the book and the account without an unexplained departure."
+        },
+        "removed_without_order": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "Positions that left the account with no order of the loop's behind them, the PSKY case: the exit is a paper-keeping artifact and is carried on the reconciliation row as its own labelled adjustment, never netted out of the P&L in silence.",
+          "items": {
+            "type": "object",
+            "required": [
+              "ticker",
+              "quantity",
+              "notional"
+            ],
+            "properties": {
+              "ticker": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "The shares the account held at the last read before it left."
+              },
+              "notional": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "Those shares' dollars at that read, which is the figure on the reconciliation row."
+              }
+            }
+          }
+        },
+        "unexplained": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Names the book holds, the account does not, and neither list above accounts for. Empty on a bridge that adds up. A name here is the finding: the loop believes it holds something the account does not, which is what the PSKY disappearance was before Part B named it."
+        },
+        "identities": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "Every identity the block claims, with both sides and whether each holds, checked by the runs that wrote the block. The page shows the ones that fail with their two figures rather than smoothing over them, so a bridge that does not add up is a finding and not a fourth number to trust.",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "left",
+              "right",
+              "holds"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "left": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "right": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "holds": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "holds": {
+          "type": "boolean",
+          "description": "The block's verdict on its own identities: true when every one of them holds. False is a bridge that does not add up - a name the loop believes it holds and the account does not - and the page draws it in amber."
+        }
+      }
     }
   }
 }

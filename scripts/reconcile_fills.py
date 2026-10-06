@@ -141,6 +141,7 @@ def publish(
     block: dict[str, Any],
     *,
     notify_status: str | None = None,
+    bridge_block: dict[str, Any] | None = None,
     getter: Any = None,
     poster: Any = None,
 ) -> list[str]:
@@ -160,11 +161,19 @@ def publish(
     say the owner was never told rather than showing a pending forever. None
     leaves the document's own value alone, which is what a morning with no
     evening row to read must do rather than inventing a status.
+
+    `bridge_block` is the other key this morning owns a half of: the evening
+    published what it read, sized and sent, and this morning adds what filled, what
+    the account holds now and which names the gap is made of. None leaves the
+    evening's half as it stands, which is a page that says the evening's arithmetic
+    and not the morning's.
     """
     from live import snapshot
 
     published = json.loads(snapshot.get_object_text(snapshot.LATEST_KEY, getter=getter))
     published["actual_holdings"] = block
+    if bridge_block is not None:
+        published["bridge"] = bridge_block
     run_status = published.get("run_status")
     if notify_status is not None and isinstance(run_status, dict):
         run_status["notify_status"] = notify_status
@@ -436,11 +445,45 @@ def _reconcile(argv: list[str] | None = None) -> int:
             detail += f"; {len(exits['exits'])} position(s) left with no order"
 
         expected = None
+        published: dict[str, Any] = {}
         try:
             published = json.loads(snapshot.get_object_text(snapshot.LATEST_KEY))
             expected = (published.get("book") or {}).get("expected_cost_bps")
         except Exception as exc:  # noqa: BLE001 - the cost pair is not the job
             logger.warning("could not read the published book: %s", type(exc).__name__)
+        # The bridge's second half: the fills, the account as it stands now, and the
+        # names the gap between the book and the account is made of. The evening's
+        # half comes from the document that is up, because these two runs are
+        # describing one evening and neither may rebuild the other's numbers.
+        from live import bridge as bridge_module
+
+        # A document that is not an object is no document to complete: the read
+        # above already warned, and the morning's answer is that it has no evening
+        # half to add to rather than a crash after the reconciliation succeeded.
+        document = published if isinstance(published, dict) else {}
+        book_names = [
+            str(name.get("ticker"))
+            for name in ((document.get("book") or {}).get("names") or [])
+            if isinstance(name, dict) and name.get("ticker")
+        ]
+        bridge_block = bridge_module.completed(
+            document.get("bridge"),
+            filled=report["n_filled"],
+            did_not_fill=report["n_unfilled"],
+            held_after=list((holdings.get("held") or {}).keys()),
+            book=book_names,
+            removed=(exits or {}).get("exits") or [],
+            unread=len(report.get("unread") or []),
+        )
+        if bridge_block and not bridge_block["holds"]:
+            logger.warning(
+                "the book bridge does not add up: %s",
+                "; ".join(
+                    f"{item['name']}: {item['left']} vs {item['right']}"
+                    for item in bridge_block["identities"]
+                    if not item["holds"]
+                ),
+            )
         block = fills.actual_holdings(
             holdings.get("held") or {},
             nav,
@@ -462,7 +505,9 @@ def _reconcile(argv: list[str] | None = None) -> int:
             realized_average=realized_cost_average(),
         )
         try:
-            keys = publish(block, notify_status=notify_status)
+            keys = publish(
+                block, notify_status=notify_status, bridge_block=bridge_block or None
+            )
         except Exception as exc:  # noqa: BLE001 - named below, never swallowed
             snapshot_failure = (
                 f"the snapshot was not published: {type(exc).__name__}: {exc}"
