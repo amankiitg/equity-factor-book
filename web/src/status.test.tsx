@@ -105,6 +105,47 @@ describe("severity", () => {
   });
 });
 
+describe("the notification state", () => {
+  it("says nothing when the message went out, or has not yet been sent", () => {
+    // The evening writes the snapshot before it sends, so `pending` is what the
+    // document carries on a clean evening and `sent` is what the morning writes
+    // back. Neither is news: a strip that names the notification every evening is
+    // one the reader stops reading, and the one that matters is the failure.
+    for (const notifyStatus of ["pending", "sent", null]) {
+      document.body.innerHTML = "";
+      const snapshot: Snapshot = {
+        ...OK,
+        run_status: { ...OK.run_status, notify_status: notifyStatus },
+      };
+      render(<SnapshotView snapshot={snapshot} now={NOW} />);
+      expect(
+        document.querySelector("[data-flag='notify']"),
+        `notify_status ${notifyStatus} still prints a notify field`,
+      ).toBeNull();
+      expect(
+        document.querySelector("[data-note='notify-failed']"),
+        `notify_status ${notifyStatus} claims a failure`,
+      ).toBeNull();
+    }
+  });
+
+  it("warns when the evening's message never went out", () => {
+    const snapshot: Snapshot = {
+      ...OK,
+      run_status: { ...OK.run_status, notify_status: "failed" },
+    };
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const note = document.querySelector("[data-note='notify-failed']") as HTMLElement;
+    expect(note).toBeTruthy();
+    expect(note.textContent).toContain("never told");
+    // The close it belongs to, not a generic warning: the owner has to know which
+    // evening's message is missing.
+    expect(note.textContent).toContain(String(OK.target_close).slice(0, 10));
+    // A failed send is not a failed run: the book is on the page and green.
+    expect(panel("run").getAttribute("data-tone")).toBe("good");
+  });
+});
+
 describe("a missing value", () => {
   it("says n/a on the metrics row rather than zero", () => {
     const snapshot: Snapshot = {

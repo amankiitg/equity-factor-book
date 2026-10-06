@@ -50,12 +50,13 @@ export function MetricsRow({
   const book = snapshot.book;
   const breadth = snapshot.breadth;
   const fills = snapshot.actual_holdings?.fills ?? null;
-  // "filled of sent": a leg the evening never sent is not an order the broker could
-  // have filled, so it is out of the denominator rather than counted as a miss.
-  const sent =
-    fills === null || fills.n_orders === null || fills.n_orders === undefined
-      ? null
-      : fills.n_orders - (fills.not_sent ?? 0);
+  // "filled of sent": the denominator is the legs the evening **sent**, because a
+  // leg it never sent is not an order the broker could have filled. Sent is
+  // `n_orders` itself, not `n_orders - not_sent`: the writer counts the submitted
+  // legs only, so subtracting the never-sent legs a second time reported "197 of
+  // 165 filled" for a morning that reconciled 197 of 199. The never-sent and the
+  // did-not-fill legs are stated beside it as their own counts.
+  const sent = fills?.n_orders ?? null;
 
   return (
     <div data-cards="true" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -132,11 +133,17 @@ export function MetricsRow({
               ? snapshot.actual_holdings.read_by === "evening"
                 ? "the account was read before the orders went out"
                 : "the account was read without a reconciliation"
-              : fills.realized_cost_bps === null || fills.realized_cost_bps === undefined
-                ? "realized cost not priced"
-                : `realized ${fills.realized_cost_bps.toFixed(2)} against ${bps(
-                    fills.expected_cost_bps ?? book?.expected_cost_bps,
-                  )} expected`
+              : [
+                  `${count(fills.not_sent)} never sent, ${count(
+                    fills.n_unfilled,
+                  )} did not fill`,
+                  fills.realized_cost_bps === null ||
+                  fills.realized_cost_bps === undefined
+                    ? "realized cost not priced"
+                    : `realized ${fills.realized_cost_bps.toFixed(2)} against ${bps(
+                        fills.expected_cost_bps ?? book?.expected_cost_bps,
+                      )} expected`,
+                ].join(" · ")
           }
         />
       ) : null}

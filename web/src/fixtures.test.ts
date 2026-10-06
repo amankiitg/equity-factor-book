@@ -26,7 +26,13 @@ const NAMES = [
   "snapshot_establishment.json",
   "snapshot_no_book.json",
   "snapshot_actual_holdings.json",
+  "snapshot_fills_rejected.json",
 ];
+
+// The fixtures whose document was republished by a morning reconciliation, which
+// is what gives them an `actual_holdings` block. Exactly these, so a third one
+// cannot appear without this list moving with it.
+const MORNING_FIXTURES = ["snapshot_actual_holdings.json", "snapshot_fills_rejected.json"];
 
 // The account's own book. Not in TOP_LEVEL on purpose: the key is absent until a
 // run has read the account, so requiring it everywhere would demand a key none of
@@ -154,51 +160,55 @@ describe("the fixtures and the page's types", () => {
     // which is a different statement from an account nobody read.
     for (const name of NAMES) {
       const fixture = load(name) as Record<string, unknown>;
-      if (name === "snapshot_actual_holdings.json") {
+      if (MORNING_FIXTURES.includes(name)) {
         expect(Object.keys(fixture), `${name} has no actual holdings`).toContain(
           "actual_holdings",
         );
       } else {
         expect(
           Object.keys(fixture),
-          `${name} carries actual_holdings, which only the read fixture may`,
+          `${name} carries actual_holdings, which only a morning fixture may`,
         ).not.toContain("actual_holdings");
       }
     }
   });
 
-  it("reads the actual holdings block the way the page draws it", () => {
-    const block = load("snapshot_actual_holdings.json").actual_holdings as Record<
-      string,
-      unknown
-    >;
-    for (const key of ACTUAL) {
-      expect(Object.keys(block), `actual_holdings is missing ${key}`).toContain(key);
-    }
-    const names = block.names as Array<Record<string, unknown>>;
-    expect(names.length).toBe(block.n_names);
-    for (const entry of names) {
-      for (const key of ACTUAL_NAME) {
-        expect(Object.keys(entry), `a held name is missing ${key}`).toContain(key);
+  it.each(MORNING_FIXTURES)(
+    "reads the actual holdings block of %s the way the page draws it",
+    (name) => {
+      const block = load(name).actual_holdings as Record<string, unknown>;
+      for (const key of ACTUAL) {
+        expect(Object.keys(block), `${name}: actual_holdings is missing ${key}`).toContain(key);
       }
-    }
-    // Largest absolute position first, the order the section prints and the same
-    // order the target book above it uses.
-    const notionals = names.map((entry) => Math.abs(entry.notional as number));
-    expect(notionals).toEqual([...notionals].sort((a, b) => b - a));
-    // Which run read it, and the fields that follow from that: the morning's read
-    // is the one with fills, the evening's is the one with no close.
-    expect(["evening", "morning"]).toContain(block.read_by);
-    if (block.read_by === "morning") {
-      expect(block.close).toBeTruthy();
-      expect(block.fills).toBeTruthy();
-      const fills = block.fills as Record<string, unknown>;
-      for (const key of ACTUAL_FILLS) {
-        expect(Object.keys(fills), `fills is missing ${key}`).toContain(key);
+      const names = block.names as Array<Record<string, unknown>>;
+      expect(names.length).toBe(block.n_names);
+      for (const entry of names) {
+        for (const key of ACTUAL_NAME) {
+          expect(Object.keys(entry), `${name}: a held name is missing ${key}`).toContain(key);
+        }
       }
-      const filled = fills.n_filled as number;
-      const missed = fills.n_unfilled as number;
-      expect((fills.n_orders as number) - (fills.not_sent as number)).toBe(filled + missed);
-    }
-  });
+      // Largest absolute position first, the order the section prints and the same
+      // order the target book above it uses.
+      const notionals = names.map((entry) => Math.abs(entry.notional as number));
+      expect(notionals).toEqual([...notionals].sort((a, b) => b - a));
+      // Which run read it, and the fields that follow from that: the morning's read
+      // is the one with fills, the evening's is the one with no close.
+      expect(["evening", "morning"]).toContain(block.read_by);
+      if (block.read_by === "morning") {
+        expect(block.close).toBeTruthy();
+        expect(block.fills).toBeTruthy();
+        const fills = block.fills as Record<string, unknown>;
+        for (const key of ACTUAL_FILLS) {
+          expect(Object.keys(fills), `${name}: fills is missing ${key}`).toContain(key);
+        }
+        const filled = fills.n_filled as number;
+        const missed = fills.n_unfilled as number;
+        const unread = (fills.unread as unknown[]).length;
+        // `n_orders` counts the legs the evening sent, and `not_sent` counts the
+        // legs it did not; the two are disjoint sets, so subtracting `not_sent`
+        // from `n_orders` double-counts the exclusion the writer already made.
+        expect(fills.n_orders).toBe(filled + missed + unread);
+      }
+    },
+  );
 });

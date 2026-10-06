@@ -222,6 +222,39 @@ def _failure_list(
     return "; ".join(parts)
 
 
+def _miss_line(fills: dict[str, Any] | None) -> str | None:
+    """`Did not fill: ...` for the legs the broker did not fill, or None.
+
+    The misses are capped and counted rather than truncated: a line that shows
+    six of nine legs reads as if three legs are fine. Shared by the evening's
+    fills lines and the morning's own message, so the two cannot drift.
+    """
+    if not fills:
+        return None
+    misses = [str(line) for line in (fills.get("unfilled") or [])]
+    if not misses:
+        return None
+    shown = "; ".join(misses[:UNFILLED_LINES])
+    if len(misses) > UNFILLED_LINES:
+        shown += f"; and {len(misses) - UNFILLED_LINES} more"
+    return f"Did not fill: {shown}."
+
+
+def _unread_line(fills: dict[str, Any] | None) -> str | None:
+    """`Could not be read back: ...`, or None.
+
+    An order the broker will not answer about is a question to answer, not a leg
+    that did not happen, so it is stated apart from the misses.
+    """
+    if not fills:
+        return None
+    unread = [
+        f"{item.get('ticker', '?')} ({item.get('error', 'unknown')})"
+        for item in (fills.get("unread") or [])
+    ]
+    return f"Could not be read back: {', '.join(unread)}." if unread else None
+
+
 def _fills_lines(fills: dict[str, Any] | None, cost_bps: float | None) -> list[str]:
     """The lines the fills reconciliation adds, or none when there is nothing to say.
 
@@ -230,25 +263,13 @@ def _fills_lines(fills: dict[str, Any] | None, cost_bps: float | None) -> list[s
     against the close beside the cost that was expected. A leg that filled says
     nothing here: the count of orders is on the evening's line, and this message
     is sent only when there is something the reader has to do something about.
-
-    The misses are capped and counted rather than truncated: a line that shows
-    six of nine legs reads as if three legs are fine.
     """
     if not fills:
         return []
     out: list[str] = []
-    misses = [str(line) for line in (fills.get("unfilled") or [])]
-    if misses:
-        shown = "; ".join(misses[:UNFILLED_LINES])
-        if len(misses) > UNFILLED_LINES:
-            shown += f"; and {len(misses) - UNFILLED_LINES} more"
-        out.append(f"Did not fill: {shown}.")
-    unread = [
-        f"{item.get('ticker', '?')} ({item.get('error', 'unknown')})"
-        for item in (fills.get("unread") or [])
-    ]
-    if unread:
-        out.append(f"Could not be read back: {', '.join(unread)}.")
+    for line in (_miss_line(fills), _unread_line(fills)):
+        if line is not None:
+            out.append(line)
     realized = fills.get("realized_cost_bps")
     filled_of = f"({fills.get('n_filled')} of {fills.get('n_orders')} orders filled)"
     expected = fills.get("expected_cost_bps", cost_bps)
@@ -729,6 +750,119 @@ def subject_text(
     return " | ".join(parts)
 
 
+def _miss_phrase(fills: dict[str, Any] | None) -> str:
+    """The leg(s) that did not fill, by the broker's own word: `2 rejected`.
+
+    The morning subject's third field. The counts are by status rather than one
+    "did not fill" number, because a cancellation is a working order the broker
+    took back and a rejection is an order that never worked, and the owner reads
+    the subject from a phone to decide whether to open the message. `nothing
+    missed` when every leg filled, which is what a morning that only had a page
+    write to report sends.
+    """
+    counts = (fills or {}).get("miss_statuses") or {}
+    if isinstance(counts, dict) and counts:
+        parts = [
+            f"{int(count)} {str(word).lower().replace('_', ' ')}"
+            for word, count in sorted(
+                counts.items(), key=lambda item: (-int(item[1]), str(item[0]))
+            )
+        ]
+        return ", ".join(parts)
+    missed = int((fills or {}).get("n_unfilled") or 0)
+    return "nothing missed" if not missed else f"{missed} did not fill"
+
+
+def fills_subject(*, target_close: str | None, fills: dict[str, Any] | None) -> str:
+    """The morning's inbox line: what the last evening's orders did.
+
+    Three fields, readable without opening the email, which is why it does not
+    reuse the evening's subject: `EFB fills 2026-10-05 | 197 of 199 filled | 2
+    rejected`. The denominator is the legs the evening **sent**, not every leg it
+    sized - the legs under the minimum that were never sent are not orders the
+    broker could have filled - and the last field names the misses by the broker's
+    own status word. The evening's subject is about the evening (`EFB ok ... | 199
+    sent | stale 0`); this one is about the trade, and neither can be read as the
+    other.
+    """
+    data = fills or {}
+    filled = int(data.get("n_filled") or 0)
+    sent = int(data.get("n_orders") or 0)
+    return (
+        f"EFB fills {target_close or 'unknown close'} | {filled} of {sent} "
+        f"filled | {_miss_phrase(fills)}"
+    )
+
+
+def fills_message(
+    *,
+    target_close: str | None,
+    fills: dict[str, Any] | None,
+    status: str = "ok",
+    store: str | None = None,
+    snapshot: str | None = None,
+    detail: str = "",
+    sent_notional: float | None = None,
+    unsent_notional: float | None = None,
+    filled_notional: float | None = None,
+) -> str:
+    """The morning's own body: the trade the evening's orders did, and nothing else.
+
+    Two of the evening's lines are deliberately absent. There is no staleness
+    line, because this job reads no model input and the field would be a number
+    about a different run; and there is no "the run completed", because the
+    evening is the run and this morning only reports it.
+
+    The notional is labelled, not fixed: `$425,740 filled of $429,218 sent` is two
+    different numbers, and the evening's own `$433,480 gross` is a third - every
+    leg it sized, including the legs under the $250 minimum that were never sent.
+    Calling any of the three `gross` without saying which is what made the two
+    emails look like they disagreed about the same trade.
+    """
+    data = fills or {}
+    close = target_close or "unknown close"
+    lines = [f"store: {store if store is not None else live_store.store_label()}"]
+    lines.append(
+        f"EFB fills {close}: {int(data.get('n_filled') or 0)} of "
+        f"{int(data.get('n_orders') or 0)} order(s) filled"
+    )
+    if filled_notional is not None or sent_notional is not None:
+        notional = (
+            f"Notional: {_money(filled_notional)} filled of "
+            f"{_money(sent_notional)} sent"
+        )
+        not_sent = int(data.get("not_sent") or 0)
+        if not_sent:
+            notional += (
+                f"; {_money(unsent_notional)} in {not_sent} leg(s) under the "
+                f"{_money(alpaca_mod.DELTA_MIN_NOTIONAL)} minimum were never sent"
+            )
+        lines.append(notional + ".")
+    for detail_line in (_miss_line(data), _unread_line(data)):
+        if detail_line is not None:
+            lines.append(detail_line)
+    realized = data.get("realized_cost_bps")
+    expected = data.get("expected_cost_bps")
+    against = (
+        f" against {float(expected):.2f} bps expected" if expected is not None else ""
+    )
+    if realized is not None:
+        lines.append(f"Realized cost: {float(realized):.2f} bps of NAV{against}.")
+    elif expected is not None:
+        # Nothing to price, so there is no realized cost. "0.00 bps" would read as
+        # a trade that cost nothing rather than one that did not happen.
+        lines.append(f"Realized cost: no fill could be priced{against}.")
+    if snapshot:
+        lines.append(f"Snapshot: {snapshot}.")
+    if status != "ok":
+        # The morning can fail its page write and still have reconciled the legs:
+        # the error is what did not happen, and it is stated last so the trade
+        # above is read first.
+        reason = scrub(detail).strip() or "no reason recorded"
+        lines.append(f"Error: {reason}")
+    return "\n".join(lines)
+
+
 def _split_short(splits: list[str]) -> str:
     """`split APH 2:1` from the body's own wording, so the two cannot drift."""
     names = []
@@ -959,6 +1093,49 @@ def notify_run(
         deferred_reversals=deferred_reversals,
         skipped_minimum=skipped_minimum,
         skipped_borrow=skipped_borrow,
+    )
+    result = send(subject_line, message, poster=poster)
+    result["text"] = message
+    result["subject"] = subject_line
+    return result
+
+
+def notify_fills(
+    *,
+    target_close: str | None,
+    fills: dict[str, Any] | None,
+    status: str = "ok",
+    store: str | None = None,
+    snapshot: str | None = None,
+    detail: str = "",
+    sent_notional: float | None = None,
+    unsent_notional: float | None = None,
+    filled_notional: float | None = None,
+    poster: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    """Compose and deliver the morning's message, returning both parts.
+
+    Its own subject and body rather than the evening's composer with a flag: the
+    two messages answer different questions, and a field-by-field reuse would
+    drag the evening's staleness, cost and establishment lines into a morning
+    that has none of them.
+    """
+    subject_line = fills_subject(target_close=target_close, fills=fills)
+    if status != "ok":
+        # The status word is appended rather than made the first field: the count
+        # that filled is still what the owner reads first, and a message that
+        # begins "ERROR" reads as a morning on which nothing traded.
+        subject_line = f"{subject_line} | {status.upper()}"
+    message = fills_message(
+        target_close=target_close,
+        fills=fills,
+        status=status,
+        store=store,
+        snapshot=snapshot,
+        detail=detail,
+        sent_notional=sent_notional,
+        unsent_notional=unsent_notional,
+        filled_notional=filled_notional,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message

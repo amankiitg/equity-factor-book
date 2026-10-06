@@ -61,6 +61,9 @@ NAMES: tuple[str, ...] = (
     # The account's own book beside the target book, which is the state every
     # evening is in once the 15:30 UTC reconciler has read the account.
     "snapshot_actual_holdings.json",
+    # The 2026-10-05 morning's own reconciliation, which is the case the fill
+    # card's denominator got wrong: 197 of 199 filled, 2 rejected, 34 never sent.
+    "snapshot_fills_rejected.json",
 )
 
 
@@ -174,6 +177,42 @@ def fills_report(
         # so the number is the fixture's own and the page is tested against it.
         "realized_cost_bps": 6.42,
         "unfilled": misses,
+        "unread": [],
+    }
+
+
+def fills_report_rejected() -> dict[str, Any]:
+    """The 2026-10-05 morning's reconciliation, with the numbers it produced.
+
+    This is the fixture for the page's fill card, and it pins the one case the
+    page got wrong: 199 orders sent, 197 filled, 2 rejected, and the 34 names
+    under the $250 minimum never sent. The page read `n_orders - not_sent` as its
+    denominator and printed "197 of 165 filled", subtracting the never-sent names
+    a second time.
+
+    Its counts are written here rather than derived from the fixture's own books,
+    the way `fills_report` derives its. Those books are the 09-21 proposal and
+    their leg count moves when the proposal moves; the bug this guards is about
+    which field the denominator comes from, so the numbers have to be the
+    incident's numbers whatever the book does. The miss lines are the real ones,
+    in `fills.unfilled_line`'s own shape.
+    """
+    return {
+        "trade_date": CLOSE,
+        "n_orders": 199,
+        "n_filled": 197,
+        "n_unfilled": 2,
+        # The names left untraded under the $250 minimum: never sent, so never
+        # orders the broker could have filled, and counted apart from the misses.
+        "not_sent": 34,
+        # The realized cost of the evening that built this book, as the reconciler
+        # prices it from the fills and the close. A fixture has no fills to price,
+        # so the number is the fixture's own and the page is tested against it.
+        "realized_cost_bps": 6.42,
+        "unfilled": [
+            "PSKY sell_to_close 30.11 rejected 08:00 UTC",
+            "WBD sell_to_open 49 rejected 08:00 UTC",
+        ],
         "unread": [],
     }
 
@@ -368,6 +407,30 @@ def snapshots() -> dict[str, dict[str, Any]]:
                 as_of="2026-09-22T15:30:04+00:00",
                 close=CLOSE,
                 report=fills_report(target, held),
+                expected_cost_bps=proposal.get("expected_establishment_cost_bps"),
+                read_by=fills.READ_MORNING,
+            ),
+            generated_at=_stamp("2026-09-21T22:41:00"),
+        ),
+        # The morning of 2026-10-05's reconciliation, built the same way and with
+        # the numbers that morning produced. The page's fill card is tested against
+        # this document rather than against an object assembled in the test, so a
+        # writer that changes what `n_orders` counts fails here as well.
+        NAMES[9]: snapshot.build(
+            run=_run(
+                dry_run=False,
+                detail="",
+                notify_status="sent",
+            ),
+            manifest=proposal,
+            book=rows,
+            construction=chosen,
+            actual=fills.actual_holdings(
+                held,
+                nav,
+                as_of="2026-10-06T15:30:04+00:00",
+                close=CLOSE,
+                report=fills_report_rejected(),
                 expected_cost_bps=proposal.get("expected_establishment_cost_bps"),
                 read_by=fills.READ_MORNING,
             ),
