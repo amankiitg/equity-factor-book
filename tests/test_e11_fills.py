@@ -305,6 +305,72 @@ def test_the_realized_cost_is_the_slippage_in_dollars_over_the_nav() -> None:
     assert frame.loc["BBB", "slippage_bps"] == pytest.approx(-80.0)
 
 
+def test_the_running_average_is_over_days_and_only_the_days_that_were_priced() -> None:
+    """One day of realized cost is mostly the overnight move, so the loop needs a
+    series, and an average of days rather than of legs.
+
+    The leg is sized after one close and fills at the next open, so the gap between
+    the two is inside every day's number: the average across the days that have a
+    priced fill is the figure that can be read as execution quality. A day nothing
+    was priced on contributes nothing and is not counted, because an average over
+    days nobody measured would be an average of the easy ones.
+    """
+    rows = pd.DataFrame(
+        [
+            # Day one: equal buys and sells at 10 bps each, so the day costs nothing.
+            {
+                "trade_date": "2026-10-01",
+                "ticker": "AAA",
+                "filled_quantity": 10.0,
+                "slippage_bps": 10.0,
+                "close_price": 100.0,
+            },
+            {
+                "trade_date": "2026-10-01",
+                "ticker": "BBB",
+                "filled_quantity": 10.0,
+                "slippage_bps": -10.0,
+                "close_price": 100.0,
+            },
+            # Day two: one leg at 20 bps, which is 0.02 bps of a $1m book.
+            {
+                "trade_date": "2026-10-02",
+                "ticker": "AAA",
+                "filled_quantity": 10.0,
+                "slippage_bps": 20.0,
+                "close_price": 100.0,
+            },
+            # Day three: nothing filled, so there is no price to cost.
+            {
+                "trade_date": "2026-10-03",
+                "ticker": "AAA",
+                "filled_quantity": 0.0,
+                "slippage_bps": None,
+                "close_price": 100.0,
+            },
+        ]
+    )
+    nav = {
+        "2026-10-01": 1_000_000.0,
+        "2026-10-02": 1_000_000.0,
+        "2026-10-03": 1_000_000.0,
+    }
+
+    history = fills.realized_cost_history(rows, nav)
+
+    assert history["days"] == 2
+    assert history["avg_bps"] == pytest.approx(0.01)
+
+    # A day whose NAV was never measured is not averaged in as a zero.
+    without = fills.realized_cost_history(rows, {"2026-10-01": 1_000_000.0})
+    assert without["days"] == 1
+    assert without["avg_bps"] == pytest.approx(0.0)
+
+    # And nothing priced at all is an absence, not a measured zero.
+    empty = fills.realized_cost_history(rows.iloc[0:0], nav)
+    assert empty == {"avg_bps": None, "days": 0}
+
+
 def test_the_frames_columns_are_the_tables_columns() -> None:
     """What is written must fit the table, including the columns added for this.
 

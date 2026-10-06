@@ -25,8 +25,18 @@ export interface SectorBucket {
 export interface ReasonBucket {
   reason: string;
   n: number;
-  /** The dollars in that bucket. Positions, not traded notional: see `notes`. */
+  /** The dollars held in that bucket, signed as the book holds them. */
   notional: number;
+  /**
+   * The dollars the evening traded in that bucket, absolute and summed.
+   *
+   * A movement, not a holding: this is what the names under this reason cost the
+   * turnover, which is the one thing the held dollars above cannot say. Absolute
+   * because it is turnover - a bucket holding a long the run trimmed and a short
+   * it opened would otherwise net the two and report less trading than happened.
+   * Zero for a bucket the run built no leg for, which is the hedge's own case.
+   */
+  traded: number;
 }
 
 export interface BookFacts {
@@ -123,9 +133,15 @@ export function bookFacts(snapshot: Snapshot): BookFacts {
   const reasonBuckets = new Map<string, ReasonBucket>();
   for (const name of names) {
     const reason = (name.reason ?? "").trim() || "no reason recorded";
-    const bucket = reasonBuckets.get(reason) ?? { reason, n: 0, notional: 0 };
+    const bucket = reasonBuckets.get(reason) ?? { reason, n: 0, notional: 0, traded: 0 };
     bucket.n += 1;
     bucket.notional += inDollars(weightOf(name));
+    // The leg's own notional, already absolute in the snapshot: this is turnover,
+    // so the sign of the book's weight is not what it is measured by. A name with
+    // no leg is a zero, and a book published without any is a zero for every
+    // bucket rather than a missing column, because the section reads one number
+    // per reason and both columns are always shown.
+    bucket.traded += Math.abs(name.traded_notional ?? 0);
     reasonBuckets.set(reason, bucket);
   }
   const reasons = [...reasonBuckets.values()].sort((a, b) => b.notional - a.notional);

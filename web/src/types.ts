@@ -12,6 +12,23 @@ export interface BookName {
   reason: string | null;
   z: number | null;
   alpha: number | null;
+  // The dollars the evening traded in this name, as the absolute notional of the
+  // leg it built for it, or 0 when it built none. `weight` is a holding and this
+  // is a movement: the trades-by-reason table needs both to say where the
+  // turnover came from. Absent on a frame that carried no orders, which is what a
+  // stopped run's book is, and read as "not recorded" rather than as zero.
+  traded_notional?: number | null;
+}
+
+/** The day's expected cost, split into the parts the proposal computed. */
+export interface CostSplit {
+  spread?: number | null;
+  impact?: number | null;
+  commission?: number | null;
+  borrow?: number | null;
+  /** spread + impact + commission: the half a fill price can be measured against. */
+  trading?: number | null;
+  total?: number | null;
 }
 
 export interface RunStatus {
@@ -57,6 +74,13 @@ export interface FillsSummary {
   n_unfilled: number | null;
   not_sent: number | null;
   realized_cost_bps: number | null;
+  // The same figure over every day the loop has reconciled, and how many days are
+  // behind it. One day is mostly the overnight move between the close the leg was
+  // sized from and the open it filled at, so the average is the number that can be
+  // read as execution quality; the count is shown with it, because an average of
+  // two days is not an average of twenty. Null before any day has been priced.
+  realized_cost_avg_bps: number | null;
+  realized_cost_days: number | null;
   expected_cost_bps: number | null;
   unfilled: string[];
   // The legs the evening could not send at all, with the reason derived by the
@@ -144,6 +168,13 @@ export interface Snapshot {
     max_kept_weight: number | null;
     achieved_annual_vol: number | null;
     expected_cost_bps: number | null;
+    // The same cost split the way the proposal computes it, in bps of NAV: the
+    // trading half (spread + impact + commission, summed as `trading`) and borrow,
+    // the cost of holding the short leg over the horizon. The page compares the
+    // fills against the trading half only - a fill price cannot be measured against
+    // a holding cost - and the split is what makes that comparison readable.
+    // Absent on a manifest that predates the breakdown.
+    expected_cost_split?: CostSplit | null;
     names: BookName[];
   };
   exposures_before_hedge: Record<string, number | null>;

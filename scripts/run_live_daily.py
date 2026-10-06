@@ -354,6 +354,62 @@ def store_proposal(
     return rows
 
 
+def execution_log(as_of: str) -> pd.DataFrame:
+    """The day's own order rows, as the morning job wrote them, or an empty frame.
+
+    The evening's own record of every leg it built, which is the only place the
+    page's traded dollars come from: the manifest carries the book it ended up with
+    and no notionals per name, and the fills of those legs do not exist until the
+    next morning. An evening with no log has no orders, which is an empty frame
+    rather than an error - a run that priced a book and sent nothing is a day.
+    """
+    path = ROOT / "live" / "logs" / f"execution_{as_of}.parquet"
+    return pd.read_parquet(path) if path.exists() else pd.DataFrame()
+
+
+def traded_by_name(execution: pd.DataFrame) -> dict[str, float]:
+    """{ticker: dollars traded tonight}, the leg's own absolute notional.
+
+    Absolute, not signed: this is turnover, and the question it answers is where
+    the day's trading came from - how much of it the hedge drove, how much of it a
+    name that merely moved. A bucket signed the way the book's weights are would
+    net a trimmed long against a bought short within one reason and report the
+    trading as smaller than it was. A guard rejection and a leg under the minimum
+    are both in here: they are legs of the day whose dollars did not move, which is
+    exactly the fact the two columns separate.
+    """
+    if execution.empty or not {"ticker", "intended_notional"} <= set(execution.columns):
+        return {}
+    out: dict[str, float] = {}
+    for row in execution.itertuples(index=False):
+        ticker = str(row.ticker)
+        notional = abs(float(getattr(row, "intended_notional", 0.0) or 0.0))
+        out[ticker] = out.get(ticker, 0.0) + notional
+    return out
+
+
+def with_traded(
+    book: pd.DataFrame | None, traded: dict[str, float]
+) -> pd.DataFrame | None:
+    """The book's rows carrying the dollars this run traded in each name.
+
+    A name with no leg tonight is a zero, not an absent column: "the hedge moved
+    this name and the run built nothing for it" is a fact about the evening, and a
+    blank would read as a number nobody measured.
+
+    A run with no book in hand keeps having none: None is the caller's way of
+    saying the store holds no proposal to show, and a frame invented here would
+    publish a book nobody wrote.
+    """
+    if book is None:
+        return None
+    rows = book.copy()
+    rows["traded_notional"] = [
+        float(traded.get(str(ticker), 0.0)) for ticker in rows["ticker"]
+    ]
+    return rows
+
+
 def store_orders(as_of: str, dry_run: bool) -> None:
     """Write the day's order records to the store, replacing the day's old ones.
 
@@ -371,11 +427,10 @@ def store_orders(as_of: str, dry_run: bool) -> None:
     """
     from live import store
 
-    path = ROOT / "live" / "logs" / f"execution_{as_of}.parquet"
-    if not path.exists():
+    if not (ROOT / "live" / "logs" / f"execution_{as_of}.parquet").exists():
         store.replace_by_date("orders", as_of, [])
         return
-    execution = pd.read_parquet(path)
+    execution = execution_log(as_of)
     orders = [
         {
             "trade_date": as_of,
@@ -462,7 +517,9 @@ def stored_adjustment(as_of: str) -> float | None:
     except Exception as exc:  # noqa: BLE001 - the row keeps whatever it has
         logger.warning("could not read the day's row (%s)", type(exc).__name__)
         return None
-    if frame.empty or not {"trade_date", "unexplained_adjustment"} <= set(frame.columns):
+    if frame.empty or not {"trade_date", "unexplained_adjustment"} <= set(
+        frame.columns
+    ):
         return None
     days = frame["trade_date"].astype(str).str.slice(0, 10)
     rows = frame.loc[days == str(as_of)[:10]]
@@ -1384,6 +1441,12 @@ def main() -> int:
             establishment=establishment,
         )
         store_orders(as_of, dry_run)
+        # The dollars tonight's legs moved, per name, for the page's trades-by-reason
+        # table. This is the one column there that says where the turnover came from,
+        # and it comes from the run's own legs rather than from anything re-derived:
+        # a name the hedge moved with no order built for it shows as a zero beside
+        # the position it changed.
+        book = with_traded(book, traded_by_name(execution_log(as_of)))
 
         row = reconcile.daily_record(as_of, dry_run=dry_run)
         # The day's P&L is the account's own equity move, and a position that left
