@@ -23,6 +23,7 @@ from live import (
     extend,
     morning_job,
     notify,
+    positions,
     staleness,
     store,
 )
@@ -56,8 +57,11 @@ def test_the_message_leads_with_the_status_and_the_target_close() -> None:
     store_line, first, second, third = message.splitlines()
     assert store_line.startswith("store: ")
     assert first == f"EFB live book {SESSION}: ok, the run completed"
+    # "sized", not "gross": the number counts every leg the run built, and the
+    # morning's message labels the same dollars the same way. A dry run sends none
+    # of them, so there is no sent figure to state beside it.
     assert second == (
-        "Orders: dry run: 152 orders proposed, $2,014,000 gross, none sent"
+        "Orders: dry run: 152 orders proposed, $2,014,000 sized, none sent"
     )
     assert third == "Staleness: worst input prices, 0 sessions behind."
     # the field the rule names explicitly: never "0 orders"
@@ -71,11 +75,15 @@ def test_a_live_run_says_orders_were_sent() -> None:
         dry_run=False,
         orders=12,
         gross=250_000.0,
+        sent_notional=250_000.0,
         worst_input="shares",
         worst_sessions_behind=1,
     )
-    assert "Orders: 12 orders sent, $250,000 gross" in message
+    assert "Orders: 12 orders sent, $250,000 sent of $250,000 sized" in message
     assert "dry run" not in message
+    # The figure the run no longer calls `gross` on its own: one word for a number
+    # that counts the legs under the minimum as though they had traded.
+    assert "$250,000 gross" not in message
 
 
 def test_a_stale_stop_names_every_failing_input() -> None:
@@ -575,7 +583,7 @@ def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     assert len(sent) == 1
     body = str(sent[0]["text"])
     assert f"EFB live book {SESSION}: ok" in body
-    assert "dry run: 152 orders proposed, $2,014,000 gross, none sent" in body
+    assert "dry run: 152 orders proposed, $2,014,000 sized, none sent" in body
     # the gate's own inputs mapping reaches the message: the universe is one
     # session behind and allowed one, and both the body's line and the subject's
     # staleness field say so
@@ -590,6 +598,127 @@ def test_a_clean_run_sends_the_message_and_stores_what_it_said(
     assert row["n_orders"] == 152
     assert row["gross_notional"] == 2_014_000.0
     assert store.select("cron_runs").iloc[0]["status"] == "ok"
+
+
+def test_the_evening_records_a_position_that_left_with_nothing_behind_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The removal is a labelled adjustment on the day's row, never a P&L edit.
+
+    The realised P&L stays the account's own equity move, because that is the only
+    measurement of the book there is. The dollars that left with no order behind
+    them are stated beside it, so a broker-side paper artifact cannot be read as a
+    result of the strategy and cannot be quietly netted out either.
+    """
+    real_store_reconciliation = run_live_daily.store_reconciliation
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        run_live_daily, "store_reconciliation", real_store_reconciliation
+    )
+    _read_the_account(monkeypatch)
+    # The real case: 326.072572039 PSKY shares worth $3,211.81 at the 10-05 close,
+    # gone by the next read with no closing leg filled and no activity naming it.
+    monkeypatch.setattr(
+        run_live_daily,
+        "departures_since_last_read",
+        lambda before, holdings: {
+            "previous_read": "2026-10-05",
+            "feed": positions.FEED_READ,
+            "window": "2026-10-06T00:00:00Z to 2026-10-06T15:30:04+00:00",
+            "exits": [
+                {
+                    "ticker": "PSKY",
+                    "quantity": 326.072572039,
+                    "notional": 3211.814835,
+                }
+            ],
+        },
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    sent: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: sent.append(payload)
+    )
+
+    assert run_live_daily.main() == 0
+
+    row = store.select("reconciliation").iloc[0]
+    # The dollars that left, negated: the figure is the removal, not a correction
+    # to the P&L, and it is the account's own market value for the name.
+    assert float(row["unexplained_adjustment"]) == pytest.approx(-3211.814835)
+    body = str(sent[0]["text"])
+    assert (
+        "PSKY: 326.07 shares ($3,212) left the account with no order or activity."
+        in body
+    )
+
+
+def test_a_retry_keeps_the_adjustment_its_first_attempt_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A retry cannot re-derive a removal its own read has already swallowed.
+
+    The store's most recent broker read is then the retry's own, so the comparison
+    has nothing to see: writing that nothing over the day's figure would erase the
+    removal from the only place the page keeps it.
+    """
+    real_store_reconciliation = run_live_daily.store_reconciliation
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        run_live_daily, "store_reconciliation", real_store_reconciliation
+    )
+    _read_the_account(monkeypatch)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+    store.upsert(
+        "reconciliation",
+        [{"trade_date": SESSION, "dry_run": True, "unexplained_adjustment": -3211.81}],
+    )
+    # The first attempt's own read is what the retry compares against: the previous
+    # read is dated the close being priced.
+    monkeypatch.setattr(
+        run_live_daily,
+        "departures_since_last_read",
+        lambda before, holdings: {
+            "previous_read": SESSION,
+            "feed": positions.FEED_READ,
+            "window": "",
+            "exits": [],
+        },
+    )
+
+    assert run_live_daily.main() == 0
+
+    row = store.select("reconciliation").iloc[0]
+    assert float(row["unexplained_adjustment"]) == pytest.approx(-3211.81)
+
+
+def test_the_evening_records_no_adjustment_on_an_ordinary_day(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing left, so the figure is a measured zero rather than absent."""
+    real_store_reconciliation = run_live_daily.store_reconciliation
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        run_live_daily, "store_reconciliation", real_store_reconciliation
+    )
+    _read_the_account(monkeypatch)
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(notify, "post", lambda url, payload, headers=None: None)
+
+    assert run_live_daily.main() == 0
+
+    row = store.select("reconciliation").iloc[0]
+    assert float(row["unexplained_adjustment"]) == 0.0
 
 
 def test_the_evening_stores_the_brokers_book_and_the_accounts_equity(

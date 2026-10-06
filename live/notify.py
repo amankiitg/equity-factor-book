@@ -49,6 +49,10 @@ from typing import Any
 # the legs it left untraded, from the one definition the morning job applies.
 from live import alpaca as alpaca_mod
 
+# The three answers the broker's activity feed gives, read for the sentence that
+# reports a position leaving the account with nothing explaining it.
+from live import positions as positions_mod
+
 # The store's own label, so the first line of every message names where the
 # run's writes went, or says why they could not go anywhere.
 from live import store as live_store
@@ -228,10 +232,17 @@ def _miss_line(fills: dict[str, Any] | None) -> str | None:
     The misses are capped and counted rather than truncated: a line that shows
     six of nine legs reads as if three legs are fine. Shared by the evening's
     fills lines and the morning's own message, so the two cannot drift.
+
+    The legs the evening could not send at all are named on the same line and
+    after the broker's own misses. A leg whose ticker the broker's feed carries
+    under no symbol never filled either, and it is the one of those the reader has
+    to act on - the name cannot be traded until the ticker is right - so the line
+    carries its derived reason, `symbol_not_found`, rather than dropping it.
     """
     if not fills:
         return None
     misses = [str(line) for line in (fills.get("unfilled") or [])]
+    misses += [str(line) for line in (fills.get("not_sent_lines") or [])]
     if not misses:
         return None
     shown = "; ".join(misses[:UNFILLED_LINES])
@@ -253,6 +264,60 @@ def _unread_line(fills: dict[str, Any] | None) -> str | None:
         for item in (fills.get("unread") or [])
     ]
     return f"Could not be read back: {', '.join(unread)}." if unread else None
+
+
+def _shares(value: float) -> str:
+    """A share count as a reader writes it: `326.07`, or `12` when it is whole."""
+    number = float(value)
+    return f"{number:,.0f}" if number.is_integer() else f"{number:,.2f}"
+
+
+def _rename_line(renames: dict[str, str] | None) -> str | None:
+    """`Renamed at the broker: PSKY now trades as SKYD.`, or None.
+
+    A renamed company is the one thing in an evening's message that explains why a
+    name the owner holds appears in neither the book nor the broker's: the loop
+    sized PSKY and the order went out as SKYD. Saying it in the message is what
+    keeps the rename from reading as a name that went missing.
+    """
+    pairs = sorted((renames or {}).items())
+    if not pairs:
+        return None
+    return (
+        "Renamed at the broker: "
+        + "; ".join(f"{ticker} now trades as {symbol}" for ticker, symbol in pairs)
+        + "."
+    )
+
+
+def _departure_line(exits: list[dict[str, Any]] | None, feed: str | None) -> str | None:
+    """`PSKY: 326.07 shares ($3,212) left the account with no order or ...`, or None.
+
+    The line the morning sends when a position walked out of the account and
+    nothing the loop did explains it: no order of the evening's filled, and - when
+    the broker's activity feed answered - no activity of the broker's names the
+    name either. The shares are the previous read's own quantity and the dollars
+    its market value, so the line says what was lost rather than only that
+    something was.
+
+    With the feed unread the sentence says *less*, not more: the departure is
+    still reported, because a removal no order explains is worth a look either
+    way, and the reader is told the second explanation was not checked rather than
+    being told it came back empty.
+    """
+    if not exits:
+        return None
+    items = ", ".join(
+        f"{item.get('ticker')}: {_shares(float(item.get('quantity') or 0.0))} "
+        f"shares ({_money(abs(float(item.get('notional') or 0.0)))})"
+        for item in exits
+    )
+    if feed == positions_mod.FEED_READ:
+        return f"{items} left the account with no order or activity."
+    return (
+        f"{items} left the account with no closing order, and the broker's "
+        "activity feed could not be read."
+    )
 
 
 def _fills_lines(fills: dict[str, Any] | None, cost_bps: float | None) -> list[str]:
@@ -330,6 +395,10 @@ def compose(
     deferred_reversals: list[dict[str, Any]] | None = None,
     skipped_minimum: list[dict[str, Any]] | None = None,
     skipped_borrow: list[dict[str, Any]] | None = None,
+    no_asset: list[dict[str, Any]] | None = None,
+    renames: dict[str, str] | None = None,
+    exits: dict[str, Any] | None = None,
+    sent_notional: float | None = None,
 ) -> str:
     """The fields, in order, ready for a preview.
 
@@ -365,11 +434,12 @@ def compose(
         if dry_run:
             lines.append(
                 f"Orders: dry run: {int(orders or 0)} orders proposed, "
-                f"{_money(gross)} gross, none sent"
+                f"{_money(gross)} sized, none sent"
             )
         else:
             lines.append(
-                f"Orders: {int(orders or 0)} orders sent, {_money(gross)} gross"
+                f"Orders: {int(orders or 0)} orders sent, "
+                f"{_sized_sent(gross, sent_notional)}"
             )
     elif status == "stale_stopped":
         lines.append(
@@ -387,8 +457,8 @@ def compose(
         # beside a booked day is the message's own false statement, and the owner
         # reading it would look for a failure before sizing that never happened.
         lines.append(
-            f"Orders: {int(orders or 0)} orders sent, {_money(gross)} gross, at "
-            "least one leg not confirmed"
+            f"Orders: {int(orders or 0)} orders sent, "
+            f"{_sized_sent(gross, sent_notional)}, at least one leg not confirmed"
         )
     elif fills:
         # A morning message. The book was priced and its legs went out the evening
@@ -408,6 +478,12 @@ def compose(
         # find out what to do about it, and the detail the run recorded already
         # says it.
         lines.append(f"{scrub(detail).strip().rstrip('.')}.")
+    renamed = _rename_line(renames)
+    if renamed:
+        # A rename explains two names at once: the one the owner holds and the one
+        # the order went out under. Said here, above everything else about the
+        # book, because it is the answer to "where did PSKY go".
+        lines.append(renamed)
 
     if worst_input is None and inputs:
         # A run that passed still has inputs behind the close: the universe sits
@@ -551,6 +627,21 @@ def compose(
             f"Not easy to borrow, so not opened: "
             f"{_borrow_skip_list(skipped_borrow)}."
         )
+    if no_asset:
+        # A ticker the broker's feed carries under no symbol under any spelling.
+        # The leg is skipped rather than sent, because an order under a symbol the
+        # broker does not have is refused every evening and buys nothing; and it is
+        # named rather than only skipped, because the book is then one name short of
+        # its own target and nothing else in the message would say so.
+        lines.append(f"No broker asset, so not sent: {_no_asset_list(no_asset)}.")
+    if exits and exits.get("exits"):
+        # A position that left the account with nothing of the loop's to explain
+        # it. The same sentence the morning sends, from the same read, because the
+        # two runs see the same departure one day apart and a line that only one of
+        # them printed would read as two different events.
+        departure = _departure_line(exits.get("exits"), exits.get("feed"))
+        if departure:
+            lines.append(departure)
     if status == "error":
         reason = scrub(detail).strip() or "no reason recorded"
         prefix = error_type or "Exception"
@@ -594,6 +685,40 @@ def _cost_line(
         parts_bps = sum(value for _, value in parts)
         line += f", which sum to {parts_bps:.2f}, not {total_bps:.2f}"
     return line + "."
+
+
+def _sized_sent(sized: float | None, sent: float | None) -> str:
+    """`$429,218 sent of $433,480 sized`, or the sized figure alone.
+
+    The evening used to call one number `gross`, and that one number counted every
+    leg it sized, including the legs under the minimum that were never sent: the
+    reader compared it against the morning's filled dollars and saw two emails
+    disagreeing about the same trade. Two figures that name themselves cannot be
+    read as the wrong one, and the difference between them is exactly the turnover
+    that never happened.
+
+    A caller with no sent figure keeps the old wording rather than being handed a
+    zero: nothing measured is not nothing sent.
+    """
+    if sent is None:
+        return f"{_money(sized)} gross"
+    return f"{_money(sent)} sent of {_money(sized)} sized"
+
+
+def _no_asset_list(rows: list[dict[str, Any]]) -> str:
+    """The legs no order could be sent for, each with the size of its leg.
+
+    A ticker the broker's feed carries under no symbol is not a name the run may
+    trade under a guess, so the leg is skipped and named here. The size is what
+    makes the line checkable against the book's own target for the name, the same
+    way the borrow line is.
+    """
+    named = [
+        f"{str(row.get('ticker'))} "
+        f"{_money(abs(float(row.get('intended_notional') or 0.0)))}"
+        for row in sorted(rows, key=lambda item: str(item.get("ticker")))
+    ]
+    return ", ".join(named)
 
 
 def _borrow_skip_list(rows: list[dict[str, Any]]) -> str:
@@ -805,6 +930,7 @@ def fills_message(
     sent_notional: float | None = None,
     unsent_notional: float | None = None,
     filled_notional: float | None = None,
+    exits: dict[str, Any] | None = None,
 ) -> str:
     """The morning's own body: the trade the evening's orders did, and nothing else.
 
@@ -841,6 +967,14 @@ def fills_message(
     for detail_line in (_miss_line(data), _unread_line(data)):
         if detail_line is not None:
             lines.append(detail_line)
+    if exits:
+        # A position that left the account with nothing of the loop's to explain it.
+        # It is on this message rather than only on the page because the page can be
+        # read at leisure and this cannot: a position that vanished overnight is the
+        # one thing here that nobody can reconstruct afterwards.
+        line = _departure_line(exits.get("exits"), exits.get("feed"))
+        if line:
+            lines.append(line)
     realized = data.get("realized_cost_bps")
     expected = data.get("expected_cost_bps")
     against = (
@@ -1039,6 +1173,10 @@ def notify_run(
     deferred_reversals: list[dict[str, Any]] | None = None,
     skipped_minimum: list[dict[str, Any]] | None = None,
     skipped_borrow: list[dict[str, Any]] | None = None,
+    no_asset: list[dict[str, Any]] | None = None,
+    renames: dict[str, str] | None = None,
+    exits: dict[str, Any] | None = None,
+    sent_notional: float | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -1093,6 +1231,10 @@ def notify_run(
         deferred_reversals=deferred_reversals,
         skipped_minimum=skipped_minimum,
         skipped_borrow=skipped_borrow,
+        no_asset=no_asset,
+        renames=renames,
+        exits=exits,
+        sent_notional=sent_notional,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message
@@ -1111,6 +1253,7 @@ def notify_fills(
     sent_notional: float | None = None,
     unsent_notional: float | None = None,
     filled_notional: float | None = None,
+    exits: dict[str, Any] | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     """Compose and deliver the morning's message, returning both parts.
@@ -1136,6 +1279,7 @@ def notify_fills(
         sent_notional=sent_notional,
         unsent_notional=unsent_notional,
         filled_notional=filled_notional,
+        exits=exits,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message

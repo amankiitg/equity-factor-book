@@ -370,6 +370,58 @@ def test_a_morning_with_a_miss_names_it_in_the_message(
     assert "the run completed" not in text
 
 
+def test_a_position_that_left_the_account_is_a_morning_of_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A silent removal triggers the message even when every leg filled.
+
+    The removal is invisible in every other number this job writes: the fills are
+    what they are, the page's book is what it is, and a name can walk out of the
+    account while the whole evening reconciles clean. So it is its own reason to
+    send, it is named in the message, and it is on the republished page with the
+    holdings.
+    """
+    harness = _install(
+        monkeypatch, tmp_path, broker_orders={"oid-dg": _order("filled")}
+    )
+    monkeypatch.setattr(
+        positions,
+        "unexplained_since_last_read",
+        lambda *args, **kwargs: {
+            "previous_read": "2026-10-05",
+            "feed": positions.FEED_READ,
+            "window": "2026-10-06T00:00:00Z to 2026-10-06T15:30:04+00:00",
+            "exits": [
+                {
+                    "ticker": "PSKY",
+                    "quantity": 326.072572039,
+                    "notional": 3211.814835,
+                }
+            ],
+        },
+    )
+
+    code = reconcile_fills.main([])
+
+    assert code == 0
+    assert len(harness.sent) == 1, "a removal is a reason to send"
+    text = str(harness.sent[0]["text"])
+    assert (
+        "PSKY: 326.07 shares ($3,212) left the account with no order or activity."
+        in text
+    )
+    # And the page: the same names, beside the book they are missing from.
+    body = json.loads(harness.published[0][1])
+    exits = body["actual_holdings"]["exits"]
+    assert exits["feed"] == "read"
+    assert exits["previous_read"].startswith("2026-10-05")
+    assert [name["ticker"] for name in exits["names"]] == ["PSKY"]
+    assert exits["names"][0]["quantity"] == pytest.approx(326.072572039)
+    assert exits["names"][0]["notional"] == pytest.approx(3211.814835)
+    row = store.select(staleness.TABLE).iloc[0]
+    assert "1 position(s) left with no order" in row["detail"]
+
+
 def test_the_snapshot_gains_the_actual_holdings_beside_the_target_book(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

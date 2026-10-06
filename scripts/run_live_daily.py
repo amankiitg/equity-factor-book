@@ -397,6 +397,83 @@ def store_orders(as_of: str, dry_run: bool) -> None:
     store.replace_by_date("orders", as_of, orders)
 
 
+def previous_fills(before: str) -> pd.DataFrame:
+    """The fills of the last close before this one, from the store.
+
+    The legs that could have closed a position between two account reads are the
+    ones the evening before last sent: they settled at the open in between, and
+    their fills are the record. The newest close strictly before `before` is that
+    evening, so the rows come back keyed to it.
+
+    An empty frame is the honest answer for a close whose morning reconciler never
+    ran, and it is not the same as "nothing closed": the caller reports the
+    departure with that in mind rather than reading the gap as evidence.
+    """
+    from live import store
+
+    frame = store.select("fills")
+    if frame.empty or "trade_date" not in frame.columns:
+        return frame
+    days = frame["trade_date"].astype(str).str.slice(0, 10)
+    earlier = frame.loc[days < str(before)[:10]]
+    if earlier.empty:
+        return frame.iloc[0:0]
+    close = str(earlier["trade_date"].astype(str).str.slice(0, 10).max())
+    return earlier.loc[days == close].reset_index(drop=True)
+
+
+def departures_since_last_read(before: str, holdings: dict[str, Any]) -> dict[str, Any]:
+    """What left the account since it was last read, and what explains it.
+
+    Both runs ask this, and both have to: the evening writes the day's
+    reconciliation row and the day's P&L, and a position that walked out of the
+    account with no order behind it is an adjustment to that P&L rather than a
+    trade, while the morning is where the owner is told about it.
+
+    The plausible explanations are the filled close, read from the previous close's
+    fills, and the broker's own activity feed. An account that could not be read
+    answers with an empty block rather than with every name in the store missing:
+    the read failed, and that is not evidence about the book.
+    """
+    from live import positions
+
+    if not holdings.get("account_read"):
+        return {"previous_read": "", "exits": [], "feed": "", "window": ""}
+    return positions.unexplained_since_last_read(
+        before,
+        holdings.get("broker"),
+        closed=positions.closed_shares(previous_fills(before)),
+    )
+
+
+def stored_adjustment(as_of: str) -> float | None:
+    """The adjustment the day's row already carries, or None when there is no row.
+
+    Read for one case: a retry of an evening whose first attempt already saw the
+    removal. The store's most recent broker read is then that attempt's own, so the
+    comparison cannot see anything that happened before it, a fresh detection finds
+    nothing - and writing that nothing over the day's figure would erase a fact the
+    first attempt recorded, from a page that has no other place to keep it.
+    """
+    from live import store
+
+    try:
+        frame = store.select("reconciliation")
+    except Exception as exc:  # noqa: BLE001 - the row keeps whatever it has
+        logger.warning("could not read the day's row (%s)", type(exc).__name__)
+        return None
+    if frame.empty or not {"trade_date", "unexplained_adjustment"} <= set(frame.columns):
+        return None
+    days = frame["trade_date"].astype(str).str.slice(0, 10)
+    rows = frame.loc[days == str(as_of)[:10]]
+    if rows.empty:
+        return None
+    value = rows.iloc[-1]["unexplained_adjustment"]
+    if value is None or pd.isna(value):
+        return None
+    return float(value)
+
+
 def store_reconciliation(as_of: str, row: dict, *, holdings: dict[str, Any]) -> None:
     """Write the day's reconciliation and NAV rows to the store.
 
@@ -485,9 +562,7 @@ def store_broker_book(as_of: str, holdings: dict[str, Any]) -> None:
             "trade_date": as_of,
             "ticker": ticker,
             "side": "long" if float(value) >= 0 else "short",
-            "quantity": (
-                float(quantities[ticker]) if ticker in quantities else None
-            ),
+            "quantity": (float(quantities[ticker]) if ticker in quantities else None),
             "market_value": float(value),
             "weight": (float(value) / nav) if nav else None,
         }
@@ -578,6 +653,10 @@ def finish_run(
     deferred_reversals: list[dict[str, Any]] | None = None,
     skipped_minimum: list[dict[str, Any]] | None = None,
     skipped_borrow: list[dict[str, Any]] | None = None,
+    no_asset: list[dict[str, Any]] | None = None,
+    renames: dict[str, str] | None = None,
+    exits: dict[str, Any] | None = None,
+    sent_notional: float | None = None,
 ) -> int:
     """Snapshot the run, notify the owner, record it, and return the exit code.
 
@@ -702,9 +781,7 @@ def finish_run(
         except Exception as exc:  # noqa: BLE001 - the check never fails the run
             verdict = snapshot_module.PAGE_BOOK_UNREAD
             page_book = f"could not be read back ({type(exc).__name__})"
-        logger.info(
-            "page book: %s%s", verdict, f" ({page_book})" if page_book else ""
-        )
+        logger.info("page book: %s%s", verdict, f" ({page_book})" if page_book else "")
     notified = notify.notify_run(
         status=status,
         target_close=result.get("target_close"),
@@ -741,6 +818,10 @@ def finish_run(
         deferred_reversals=deferred_reversals,
         skipped_minimum=skipped_minimum,
         skipped_borrow=skipped_borrow,
+        no_asset=no_asset,
+        renames=renames,
+        exits=exits,
+        sent_notional=sent_notional,
     )
     delivered = notified["status"] == notify.STATUS_SENT
     store_failed = False
@@ -918,8 +999,7 @@ def main() -> int:
             f"{staleness.WINDOW_END_HOUR_ET:02d}:00 window the loop trades in"
         )
         logger.error(
-            "refused: %s (set %s=true only for a deliberate out-of-hours "
-            "rehearsal)",
+            "refused: %s (set %s=true only for a deliberate out-of-hours " "rehearsal)",
             reason,
             FORCE_HOUR_ENV,
         )
@@ -1180,9 +1260,7 @@ def main() -> int:
         # comparison is against the last book the loop held, which is the row
         # strictly before the close being priced: tonight's own target is written
         # by the proposal step below and has never been traded.
-        holdings = positions.check(
-            dry_run=dry_run, before=str(gate["target_close"])
-        )
+        holdings = positions.check(dry_run=dry_run, before=str(gate["target_close"]))
         held = holdings["held"]
         # The day's kind comes from the account, never from the store: after a
         # dry-run evening the store names a book the account has never held, and a
@@ -1202,6 +1280,23 @@ def main() -> int:
             holdings["source"],
             establishment,
         )
+        # What left the account since it was last read, and what explains it. Read
+        # here because this is the run that writes the day's reconciliation row and
+        # the day's P&L: a name that left with no order and no activity behind it is
+        # an adjustment to the account rather than a result of the strategy, and the
+        # row has to say so beside the P&L it affected. The morning asks the same
+        # question and names the names; neither run can assume the other ran.
+        exits = departures_since_last_read(str(gate["target_close"]), holdings)
+        if exits["exits"]:
+            logger.warning(
+                "%d position(s) left the account with no order behind them: %s",
+                len(exits["exits"]),
+                ", ".join(
+                    f"{item['ticker']} {abs(float(item['quantity'])):,.2f} shares "
+                    f"(${abs(float(item['notional'])):,.2f})"
+                    for item in exits["exits"]
+                ),
+            )
         # The page's account section, built from this read and from nothing else:
         # the store's position row is the loop's record of what it meant to hold,
         # and publishing that as the account's book would be the one claim the
@@ -1217,6 +1312,7 @@ def main() -> int:
                 float(holdings["nav"]),
                 as_of=datetime.now(UTC).isoformat(timespec="seconds"),
                 read_by=fills.READ_EVENING,
+                exits=exits,
             )
         previous = previous_book(str(gate["target_close"]), [])
         prior = prior_book(holdings, previous)
@@ -1226,8 +1322,8 @@ def main() -> int:
         logger.info(
             "prior book: %s",
             (
-                f"none (establishment evening: nothing is held, so the whole target "
-                f"trades)"
+                "none (establishment evening: nothing is held, so the whole target "
+                "trades)"
                 if prior is None
                 else f"{len(prior)} name(s) from the account's own holdings over "
                 f"${float(holdings['nav']):,.0f} of equity"
@@ -1290,6 +1386,30 @@ def main() -> int:
         store_orders(as_of, dry_run)
 
         row = reconcile.daily_record(as_of, dry_run=dry_run)
+        # The day's P&L is the account's own equity move, and a position that left
+        # with no order on it is inside that move without being a result of the
+        # book. It is written as its own labelled figure rather than netted out of
+        # the P&L: a number quietly adjusted is a number nobody can check, and this
+        # one is a fact about the account's paper keeping rather than about the
+        # strategy. Zero when nothing left.
+        adjustment = float(
+            -sum(float(item.get("notional") or 0.0) for item in exits["exits"])
+        )
+        if not exits["exits"] and exits["previous_read"] == str(as_of)[:10]:
+            # A retry. The previous read the store holds is this evening's own,
+            # written by the attempt before, so there is nothing left for the
+            # comparison to see - and the fact the first attempt recorded is not
+            # this attempt's to erase. The row keeps the figure it already has.
+            kept = stored_adjustment(as_of)
+            if kept is not None:
+                adjustment = kept
+                logger.info(
+                    "%s already carries an adjustment of %.2f, kept: the previous "
+                    "broker read is this evening's own, so a retry cannot re-derive it",
+                    as_of,
+                    kept,
+                )
+        row = {**row, "unexplained_adjustment": adjustment}
         store_reconciliation(as_of, row, holdings=holdings)
         store_broker_book(as_of, holdings)
         snapshot_inputs = {
@@ -1370,6 +1490,21 @@ def main() -> int:
         # for the same reason: the run did what it should have and the book is one
         # leg short of its own target, which the message has to say.
         skipped_borrow=morning.get("skipped_borrow") or [],
+        # The legs no order could be sent for at all, because the broker's own feed
+        # carries no asset for the ticker under any spelling. A name the book holds
+        # and the run cannot trade is stated rather than silently dropped from the
+        # order list.
+        no_asset=morning.get("no_asset") or [],
+        # The names the broker spells differently from the loop, so the two names in
+        # one company's trade are explained rather than left as a missing position.
+        renames=morning.get("renamed") or {},
+        # What left the account since it was last read with nothing behind it, named
+        # in the message as well as written on the day's row: the row is read later
+        # and this is the run that saw it happen.
+        exits=exits,
+        # The two halves of the evening's notional, so the message cannot call the
+        # sized figure `sent` or the sent figure `sized`.
+        sent_notional=float(morning.get("sent_notional") or 0.0),
         **snapshot_inputs,
     )
 

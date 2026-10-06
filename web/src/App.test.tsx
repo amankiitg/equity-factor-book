@@ -17,9 +17,11 @@ import expired from "../fixtures/snapshot_expired.json";
 import ok from "../fixtures/snapshot_ok.json";
 import stale from "../fixtures/snapshot_stale_stopped.json";
 import withActual from "../fixtures/snapshot_actual_holdings.json";
+import withRemoval from "../fixtures/snapshot_position_removed.json";
 
 const OK = ok as unknown as Snapshot;
 const ACTUAL = withActual as unknown as Snapshot;
+const REMOVAL = withRemoval as unknown as Snapshot;
 const NOW = new Date("2026-09-21T23:00:00Z");
 
 afterEach(() => {
@@ -267,6 +269,70 @@ describe("the page", () => {
     const later = new Date("2026-09-22T22:41:30Z");
     render(<SnapshotView snapshot={OK} now={later} />);
     expect(document.body.textContent ?? "").toContain("24 hours ago");
+  });
+
+  it("shows a position that left the account with no order behind it", () => {
+    // The PSKY case: the book, the orders and the fill count can all be right
+    // while a name has walked out of the account, so this is the one line on the
+    // page that nothing else implies.
+    render(<SnapshotView snapshot={REMOVAL} now={new Date("2026-10-06T23:00:00Z")} />);
+    const panel = document.querySelector("[data-alert='exits']") as HTMLElement;
+    expect(panel).toBeTruthy();
+    expect(panel.textContent).toContain("1 position left the account with no order behind it");
+    expect(panel.textContent).toContain("PSKY");
+    expect(panel.textContent).toContain("326.07 shares");
+    expect(panel.textContent).toContain("$3,212");
+    // The dollars are labelled where the day's reconciled figures are, rather than
+    // netted out of the P&L: a number quietly adjusted is one nobody can check.
+    const figure = document.querySelector(
+      "[data-figure='unexplained-adjustment']",
+    ) as HTMLElement;
+    expect(figure.textContent).toContain("unexplained adjustment");
+    expect(figure.textContent).toContain("-$3,212");
+  });
+
+  it("says a departure the activity feed could not be asked about is weaker, not absent", () => {
+    const unread: Snapshot = {
+      ...REMOVAL,
+      actual_holdings: {
+        ...(REMOVAL.actual_holdings as NonNullable<Snapshot["actual_holdings"]>),
+        exits: {
+          ...(REMOVAL.actual_holdings?.exits as NonNullable<
+            NonNullable<Snapshot["actual_holdings"]>["exits"]
+          >),
+          feed: "not read",
+        },
+      },
+    };
+    render(<SnapshotView snapshot={unread} now={new Date("2026-10-06T23:00:00Z")} />);
+    const panel = document.querySelector("[data-alert='exits']") as HTMLElement;
+    expect(panel.textContent).toContain("no closing order filled");
+    expect(panel.textContent).not.toContain("no activity of the broker's");
+    expect(panel.textContent).toContain("could not be read");
+  });
+
+  it("names a leg the evening could not send at all", () => {
+    // A ticker the broker's asset feed carries under no symbol: no order was sent,
+    // so it is not a miss, and the line carries the derived reason because the
+    // broker never saw the order and holds no record of it.
+    const unsendable: Snapshot = {
+      ...ACTUAL,
+      actual_holdings: {
+        ...(ACTUAL.actual_holdings as NonNullable<Snapshot["actual_holdings"]>),
+        fills: {
+          ...(ACTUAL.actual_holdings?.fills as NonNullable<
+            NonNullable<Snapshot["actual_holdings"]>["fills"]
+          >),
+          not_sent_lines: ["SKYD sell_to_open $500 never sent (SYMBOL_NOT_FOUND)"],
+        },
+      },
+    };
+    render(<SnapshotView snapshot={unsendable} now={NOW} />);
+    const panel = document.querySelector("[data-alert='misses']") as HTMLElement;
+    expect(panel.textContent).toContain("could not be sent");
+    const line = document.querySelector("[data-not-sent='true']") as HTMLElement;
+    expect(line.textContent).toContain("SKYD");
+    expect(line.textContent).toContain("SYMBOL_NOT_FOUND");
   });
 
   it("lists the names by absolute weight, the largest first", () => {

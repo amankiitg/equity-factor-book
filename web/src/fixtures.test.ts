@@ -27,12 +27,23 @@ const NAMES = [
   "snapshot_no_book.json",
   "snapshot_actual_holdings.json",
   "snapshot_fills_rejected.json",
+  "snapshot_position_removed.json",
 ];
 
-// The fixtures whose document was republished by a morning reconciliation, which
-// is what gives them an `actual_holdings` block. Exactly these, so a third one
-// cannot appear without this list moving with it.
-const MORNING_FIXTURES = ["snapshot_actual_holdings.json", "snapshot_fills_rejected.json"];
+// The fixtures that carry an `actual_holdings` block, which is every document a
+// run has read the account for: the two the morning republished, and the evening
+// whose read found a position gone. Exactly these, so a fourth one cannot appear
+// without this list moving with it.
+const ACCOUNT_FIXTURES = [
+  "snapshot_actual_holdings.json",
+  "snapshot_fills_rejected.json",
+  "snapshot_position_removed.json",
+];
+
+// The fixture that carries the departure block: the PSKY removal, where a name
+// left the account between two reads with no closing leg filled and no activity
+// of the broker's naming it.
+const REMOVED_FIXTURE = "snapshot_position_removed.json";
 
 // The account's own book. Not in TOP_LEVEL on purpose: the key is absent until a
 // run has read the account, so requiring it everywhere would demand a key none of
@@ -59,8 +70,16 @@ const ACTUAL_FILLS = [
   "realized_cost_bps",
   "expected_cost_bps",
   "unfilled",
+  "not_sent_lines",
   "unread",
 ];
+
+// The departure block: the names that left the account with nothing of the
+// evening's explaining them, which is the one fact on the page no other number
+// implies.
+const EXITS = ["previous_read", "feed", "window", "names"];
+
+const EXIT_NAME = ["ticker", "quantity", "notional"];
 
 const TOP_LEVEL = [
   "schema_version",
@@ -160,7 +179,7 @@ describe("the fixtures and the page's types", () => {
     // which is a different statement from an account nobody read.
     for (const name of NAMES) {
       const fixture = load(name) as Record<string, unknown>;
-      if (MORNING_FIXTURES.includes(name)) {
+      if (ACCOUNT_FIXTURES.includes(name)) {
         expect(Object.keys(fixture), `${name} has no actual holdings`).toContain(
           "actual_holdings",
         );
@@ -173,7 +192,38 @@ describe("the fixtures and the page's types", () => {
     }
   });
 
-  it.each(MORNING_FIXTURES)(
+
+  it("carries the departure block in the fixture built for it, and nowhere else", () => {
+    for (const name of NAMES) {
+      const fixture = load(name) as Record<string, unknown>;
+      const actual = fixture.actual_holdings as Record<string, unknown> | undefined;
+      if (name === REMOVED_FIXTURE) {
+        const exits = actual?.exits as Record<string, unknown>;
+        for (const key of EXITS) {
+          expect(Object.keys(exits), `${name}: exits is missing ${key}`).toContain(key);
+        }
+        // The real case: PSKY left the account between the 10-05 read and the
+        // 10-06 one, and neither a filled close nor an activity of the broker's
+        // names the ticker.
+        const names = exits.names as Array<Record<string, number>>;
+        expect(names.map((entry) => entry.ticker)).toEqual(["PSKY"]);
+        expect(names[0].quantity).toBeCloseTo(326.072572039, 6);
+        expect(names[0].notional).toBeCloseTo(3211.81, 2);
+        expect(exits.feed).toBe("read");
+        // The dollars are on the day's row as their own labelled figure, which is
+        // what stops them from being read as a result of the strategy.
+        const reconciliation = fixture.reconciliation as Record<string, number>;
+        expect(reconciliation.unexplained_adjustment).toBeCloseTo(-3211.81, 2);
+      } else {
+        expect(
+          Object.keys(actual ?? {}),
+          `${name} carries a departure block, which only the removal fixture may`,
+        ).not.toContain("exits");
+      }
+    }
+  });
+
+  it.each(ACCOUNT_FIXTURES)(
     "reads the actual holdings block of %s the way the page draws it",
     (name) => {
       const block = load(name).actual_holdings as Record<string, unknown>;

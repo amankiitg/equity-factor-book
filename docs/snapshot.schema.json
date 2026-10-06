@@ -23,59 +23,136 @@
     "reconciliation"
   ],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {
+      "const": 1
+    },
     "generated_at": {
       "type": "string",
       "format": "date-time",
       "description": "UTC, when the snapshot was built."
     },
     "target_close": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "The session the book is priced from."
     },
     "book_as_of": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "The close of the proposal the book came from. On a stopped run this is the previous proposal's close, never the target, so the page cannot show a book without its date."
     },
     "expected_next_by": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "date-time",
       "description": "The UTC instant by which the next run's snapshot should already exist: the next NYSE session at the cron's own slot plus the stated grace. Past it, the page is in a failure state."
     },
-    "dry_run": {"type": "boolean"},
+    "dry_run": {
+      "type": "boolean"
+    },
     "store": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Where the run's writes went, or why they could not go anywhere."
     },
     "run_status": {
       "type": "object",
-      "required": ["status", "detail", "failing_inputs", "catch_up", "catch_up_sessions", "splits", "flags", "snapshot"],
+      "required": [
+        "status",
+        "detail",
+        "failing_inputs",
+        "catch_up",
+        "catch_up_sessions",
+        "splits",
+        "flags",
+        "snapshot"
+      ],
       "properties": {
         "status": {
-          "type": ["string", "null"],
-          "enum": ["ok", "stale_stopped", "error", "market_closed", null],
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "ok",
+            "stale_stopped",
+            "error",
+            "market_closed",
+            null
+          ],
           "description": "Every value except ok and market_closed is a failure state on the page. market_closed is a day the exchange was shut: no close to price, so no run was due."
         },
-        "detail": {"type": "string"},
-        "failing_inputs": {"type": "array"},
-        "worst_input": {"type": ["string", "null"]},
-        "worst_sessions_behind": {"type": ["integer", "null"]},
-        "catch_up": {"type": "boolean"},
-        "catch_up_sessions": {"type": "array", "items": {"type": "string"}},
-        "splits": {"type": "array", "items": {"type": "string"}},
-        "flags": {"type": "array"},
+        "detail": {
+          "type": "string"
+        },
+        "failing_inputs": {
+          "type": "array"
+        },
+        "worst_input": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "worst_sessions_behind": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "catch_up": {
+          "type": "boolean"
+        },
+        "catch_up_sessions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "splits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "flags": {
+          "type": "array"
+        },
         "notify_status": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "What the evening's message did. Written as `pending` because the snapshot is published before the message is sent, and rewritten by the 15:30 UTC fills reconciliation from the evening's own `run_status` row, which holds the truth: `pending` and `sent` are both ordinary and the page says nothing about either, while `failed` means the owner was never told and is the one state the page warns about."
         },
-        "snapshot": {"type": ["string", "null"]},
+        "snapshot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "establishment": {
           "type": "boolean",
           "description": "True when the run created the book from an empty account: it may trade up to the full book and the daily traded-notional brake starts on the second trading day."
         },
         "cost_label": {
-          "type": ["string", "null"],
-          "enum": ["establishment", "rebalance", null],
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "establishment",
+            "rebalance",
+            null
+          ],
           "description": "What the day's cost number is the cost of: building the book from flat (establishment) or a rebalance. The proposal's cost is the establishment cost, so a rebalance day must not read as though it were one."
         }
       }
@@ -86,84 +163,247 @@
     },
     "positions": {
       "type": "object",
-      "required": ["matches", "n_broker", "n_store", "source", "note"],
+      "required": [
+        "matches",
+        "n_broker",
+        "n_store",
+        "source",
+        "note"
+      ],
       "description": "The paper account's book against the store's, read before the orders were built. matches is null when the account could not be read, which is a different answer from an account that holds nothing.",
       "properties": {
-        "matches": {"type": ["boolean", "null"]},
-        "n_broker": {"type": ["integer", "number", "null"]},
-        "n_store": {"type": ["integer", "number", "null"]},
-        "source": {"type": ["string", "null"], "enum": ["alpaca paper account", "store", null]},
-        "note": {"type": ["string", "null"]},
-        "missing_at_broker": {"type": "array", "items": {"type": "string"}},
-        "missing_in_store": {"type": "array", "items": {"type": "string"}},
-        "max_abs_drift": {"type": ["number", "null"]}
+        "matches": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "n_broker": {
+          "type": [
+            "integer",
+            "number",
+            "null"
+          ]
+        },
+        "n_store": {
+          "type": [
+            "integer",
+            "number",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "alpaca paper account",
+            "store",
+            null
+          ]
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "missing_at_broker": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_in_store": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_abs_drift": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
       }
     },
     "breadth": {
       "type": "object",
-      "required": ["n_eff_kept", "n_eff_full_book", "kept_label", "full_book_label"],
+      "required": [
+        "n_eff_kept",
+        "n_eff_full_book",
+        "kept_label",
+        "full_book_label"
+      ],
       "description": "There is no unqualified n_eff anywhere in this document: n_eff_kept is the book that trades and n_eff_full_book is the 499-name book before the floor, each with its label.",
       "properties": {
-        "n_eff_kept": {"type": ["number", "null"]},
-        "n_eff_full_book": {"type": ["number", "null"]},
-        "kept_label": {"type": "string"},
-        "full_book_label": {"type": "string"}
+        "n_eff_kept": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "n_eff_full_book": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "kept_label": {
+          "type": "string"
+        },
+        "full_book_label": {
+          "type": "string"
+        }
       }
     },
     "book": {
       "type": "object",
-      "required": ["n_names", "reason", "names"],
+      "required": [
+        "n_names",
+        "reason",
+        "names"
+      ],
       "properties": {
-        "n_names": {"type": "integer"},
+        "n_names": {
+          "type": "integer"
+        },
         "reason": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Why the book is empty, when it is: a stopped run whose store holds no proposal shows no names and this sentence. Null when the book has names."
         },
-        "n_kept": {"type": ["integer", "number", "null"]},
-        "n_long": {"type": ["integer", "number", "null"]},
-        "n_short": {"type": ["integer", "number", "null"]},
+        "n_kept": {
+          "type": [
+            "integer",
+            "number",
+            "null"
+          ]
+        },
+        "n_long": {
+          "type": [
+            "integer",
+            "number",
+            "null"
+          ]
+        },
+        "n_short": {
+          "type": [
+            "integer",
+            "number",
+            "null"
+          ]
+        },
         "gross": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "The gross of the book that trades: the kept set after the hedge, renormalized to exactly 1.0 (100%)."
         },
         "gross_notional": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "That book's gross in dollars, so the headline gross is 100% and $1,000,000 rather than a fraction alone."
         },
         "full_book_gross": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "The 499-name book's gross after sizing and before the floor - no variance cap, because the cap is applied to the kept set. A different book, shown only as a labelled detail, never as the gross."
         },
         "net": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "The traded book's net, the kept set after the hedge."
         },
         "full_book_net": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "The 499-name book's net, beside the traded book's rather than as \"the net\"."
         },
-        "max_kept_weight": {"type": ["number", "null"]},
+        "max_kept_weight": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "achieved_annual_vol": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "The traded book's forecast annual volatility: the book the owner holds."
         },
         "full_book_achieved_annual_vol": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "The 499-name book's forecast annual volatility, shown beside the traded book's rather than as the book's forecast."
         },
-        "expected_cost_bps": {"type": ["number", "null"]},
+        "expected_cost_bps": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "names": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["ticker", "weight", "side"],
+            "required": [
+              "ticker",
+              "weight",
+              "side"
+            ],
             "properties": {
-              "ticker": {"type": "string"},
-              "weight": {"type": ["number", "null"]},
-              "side": {"type": "string", "enum": ["long", "short", ""]},
-              "reason": {"type": ["string", "null"]},
-              "z": {"type": ["number", "null"]},
-              "alpha": {"type": ["number", "null"]}
+              "ticker": {
+                "type": "string"
+              },
+              "weight": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "side": {
+                "type": "string",
+                "enum": [
+                  "long",
+                  "short",
+                  ""
+                ]
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "z": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "alpha": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
             }
           }
         }
@@ -172,64 +412,167 @@
     "exposures_before_hedge": {
       "type": "object",
       "description": "X'w of the pre-hedge book, one value per design column, named by fx.ESTIMATED_NAMES. This is the hedge's own X'w, taken from the sizing step rather than reconstructed, and it is clearly nonzero.",
-      "additionalProperties": {"type": ["number", "null"]}
+      "additionalProperties": {
+        "type": [
+          "number",
+          "null"
+        ]
+      }
     },
     "exposures_after_hedge": {
       "type": "object",
       "description": "X'w after the FMP hedge, on the same labels. The hedge neutralizes every factor, so these are zero to within floating point.",
-      "additionalProperties": {"type": ["number", "null"]}
+      "additionalProperties": {
+        "type": [
+          "number",
+          "null"
+        ]
+      }
     },
     "hedge": {
       "type": "object",
       "properties": {
-        "idio_share_after_fmp": {"type": ["number", "null"]},
-        "max_abs_exposure_after_fmp": {"type": ["number", "null"]},
-        "post_hedge_idio_share": {"type": ["number", "null"]},
-        "post_hedge_max_abs_exposure": {"type": ["number", "null"]}
+        "idio_share_after_fmp": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "max_abs_exposure_after_fmp": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "post_hedge_idio_share": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "post_hedge_max_abs_exposure": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
       }
     },
     "exposures": {
       "type": "object",
       "properties": {
-        "realized_market_beta": {"type": ["number", "null"]},
-        "realized_market_beta_shrunk": {"type": ["number", "null"]},
-        "residual_exposure_shrunk": {"type": ["number", "null"]},
-        "residual_exposure_winsor": {"type": ["number", "null"]}
+        "realized_market_beta": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "realized_market_beta_shrunk": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "residual_exposure_shrunk": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "residual_exposure_winsor": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
       }
     },
     "reconciliation": {
       "type": "object",
       "properties": {
-        "intended_notional": {"type": ["number", "null"]},
-        "filled_notional": {"type": ["number", "null"]},
-        "realized_annual_vol": {"type": ["number", "null"]},
-        "expected_cost_bps": {"type": ["number", "null"]},
+        "intended_notional": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "filled_notional": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "realized_annual_vol": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "expected_cost_bps": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "traded_risk": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "description": "The traded book's risk figures under their own names: forecast_annual_vol, idio_share, max_abs_exposure, gross, net, n_eff, max_weight, variance_share_cap_binds, top_variance_shares. Read from the proposal manifest, so the page, the reconciliation row and the run_status row cannot disagree."
         },
         "full_risk": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "description": "The full book's risk figures under their own names: forecast_annual_vol, idio_share, max_abs_exposure, gross, net, n_eff, n_names."
+        },
+        "unexplained_adjustment": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "The part of the day's realised P&L that no order of the loop's explains: a position that left the account with nothing behind it, as its own labelled figure rather than a correction applied to the P&L. Negative for a removal, zero on a day nothing left. The evening writes it, because the evening owns the day's P&L, from the same read as the `exits` block above. The key is absent, not null, on a document built without a reconciled row: there is no P&L to adjust, and an invented zero would read as a measured one."
         }
       }
     },
     "actual_holdings": {
       "type": "object",
       "description": "The account's own book beside the target book above, written by the evening run from the account read it makes before it sizes and rewritten by the 15:30 UTC fills reconciliation with what those orders did. Both writers fill the same block, and `read_by` says which one it was: the evening's read is the book the orders were measured against and has no close and no fills, because nothing has settled into it yet. The key is absent, not null, when nobody has read the account (a run that could not reach the broker, and the store's fallback book is not the account): a null key would read as an account holding nothing, which is a different statement from an account nobody read.",
-      "required": ["as_of", "close", "n_names", "gross_notional", "net_notional", "names"],
+      "required": [
+        "as_of",
+        "close",
+        "n_names",
+        "gross_notional",
+        "net_notional",
+        "names"
+      ],
       "properties": {
         "as_of": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "When the account was read, as a full timestamp (the page shows its date and time), by the run `read_by` names."
         },
         "close": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "The evening whose orders settled into this book. Null on the evening's own read, which is taken before the orders go out."
         },
         "read_by": {
-          "type": ["string", "null"],
-          "enum": ["evening", "morning", null],
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "evening",
+            "morning",
+            null
+          ],
           "description": "Which run read the account: `evening` is the read the book was sized from, `morning` is the reconciliation that saw the fills. Carried rather than inferred from whether `fills` is present, because an evening read is not a morning on which nothing filled."
         },
         "n_names": {
@@ -237,11 +580,17 @@
           "description": "The number of names below, so the count and the list cannot disagree."
         },
         "gross_notional": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "The sum of absolute notionals: what the account holds, both sides."
         },
         "net_notional": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "Longs minus shorts."
         },
         "names": {
@@ -249,28 +598,49 @@
           "description": "The held names, largest absolute notional first.",
           "items": {
             "type": "object",
-            "required": ["ticker", "side", "notional", "weight"],
+            "required": [
+              "ticker",
+              "side",
+              "notional",
+              "weight"
+            ],
             "properties": {
               "ticker": {
                 "type": "string"
               },
               "side": {
-                "type": ["string", "null"],
-                "enum": ["long", "short", null]
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "long",
+                  "short",
+                  null
+                ]
               },
               "notional": {
-                "type": ["number", "null"],
+                "type": [
+                  "number",
+                  "null"
+                ],
                 "description": "Signed dollars, positive for a long."
               },
               "weight": {
-                "type": ["number", "null"],
+                "type": [
+                  "number",
+                  "null"
+                ],
                 "description": "That notional over the account's equity, so it is comparable with the weights above."
               }
             }
           }
         },
         "fills": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "description": "The evening's orders that produced this book, as the broker answered a read by id. Null when the book was written without a reconciliation.",
           "required": [
             "trade_date",
@@ -281,35 +651,61 @@
             "realized_cost_bps",
             "expected_cost_bps",
             "unfilled",
-            "unread"
+            "unread",
+            "not_sent_lines"
           ],
           "properties": {
             "trade_date": {
-              "type": ["string", "null"],
+              "type": [
+                "string",
+                "null"
+              ],
               "description": "The close whose orders settled, which is the evening the notional belongs to."
             },
             "n_orders": {
-              "type": ["integer", "number", "null"],
+              "type": [
+                "integer",
+                "number",
+                "null"
+              ],
               "description": "The legs the evening sent to the broker, which is the denominator a fill count is read against: a leg the evening decided against was never an order the broker could fill, and it is counted apart in `not_sent` rather than subtracted from this. The two sets are disjoint."
             },
             "n_filled": {
-              "type": ["integer", "number", "null"],
+              "type": [
+                "integer",
+                "number",
+                "null"
+              ],
               "description": "Those the broker reports as filled."
             },
             "n_unfilled": {
-              "type": ["integer", "number", "null"],
+              "type": [
+                "integer",
+                "number",
+                "null"
+              ],
               "description": "Those it reports as canceled, expired or rejected, or as only partly filled."
             },
             "not_sent": {
-              "type": ["integer", "number", "null"],
+              "type": [
+                "integer",
+                "number",
+                "null"
+              ],
               "description": "Legs the evening decided against, so there is nothing at the broker to read. Counted apart from `n_orders`, which counts only the legs that were sent: the page shows `filled of n_orders` and states this beside it, because subtracting it from `n_orders` takes the never-sent legs out of a denominator they were never in."
             },
             "realized_cost_bps": {
-              "type": ["number", "null"],
+              "type": [
+                "number",
+                "null"
+              ],
               "description": "Signed slippage of the fill prices against the close, in basis points of NAV: positive is a cost. Null when no fill could be priced."
             },
             "expected_cost_bps": {
-              "type": ["number", "null"],
+              "type": [
+                "number",
+                "null"
+              ],
               "description": "The evening's own expectation for the same trade, from the reconciled row."
             },
             "unfilled": {
@@ -325,59 +721,186 @@
               "items": {
                 "type": "object"
               }
+            },
+            "not_sent_lines": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "One line per leg the evening could not send at all, with the reason derived here because the broker never saw the order and holds no record of it: \"SKYD sell_to_open $500 never sent (SYMBOL_NOT_FOUND)\". Only the legs no spelling could have traded - a ticker the broker's feed carries under no symbol - because the evening has already named its own decisions, the $250 minimum and the borrow among them."
+            }
+          }
+        },
+        "exits": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "The names the account held when it was last read and does not hold now, with nothing the loop did to explain them: no closing leg filled and no activity of the broker's names the ticker. Absent (not null) when the question was not asked, which is a different statement from an account where nothing left. This is the block behind the page's amber line about a position that walked out.",
+          "required": [
+            "previous_read",
+            "feed",
+            "window",
+            "names"
+          ],
+          "properties": {
+            "previous_read": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The date of the broker read this block compares against, which is the evening that priced the previous close."
+            },
+            "feed": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "read",
+                "not read",
+                "no previous read",
+                null
+              ],
+              "description": "Whether the broker's activity feed answered for the window. `not read` is not `nothing found`: the departure is still reported, with one fewer explanation checked, and the sentence says so rather than claiming the feed came back empty."
+            },
+            "window": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The window the activity feed was read for, from the day after the previous read to the read that noticed the name gone."
+            },
+            "names": {
+              "type": "array",
+              "description": "The departures, largest absolute notional first.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "ticker",
+                  "quantity",
+                  "notional"
+                ],
+                "properties": {
+                  "ticker": {
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "The shares the previous read held, signed as that read held them."
+                  },
+                  "notional": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "The dollars that went with them, at the previous read's own market value."
+                  }
+                }
+              }
             }
           }
         }
       }
     },
     "risk": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Per-name share of the book's predicted specific variance, for the page's concentration panel. Not written today: the sizing step caps that share at a fixed fraction, so the numbers exist inside the evening job's sizing call but the manifest does not carry them. The page hides the panel until this block is present rather than drawing it empty. `variance_share_cap` is the cap as a fraction, so 0.10 is the ten percent cap the sizing applies.",
       "properties": {
-        "variance_share_cap": {"type": ["number", "null"]},
+        "variance_share_cap": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "concentration": {
-          "type": ["array", "null"],
+          "type": [
+            "array",
+            "null"
+          ],
           "description": "One entry per name, largest share first. Shares are fractions of the same total and add to one.",
           "items": {
             "type": "object",
-            "required": ["ticker", "share"],
+            "required": [
+              "ticker",
+              "share"
+            ],
             "properties": {
-              "ticker": {"type": "string"},
-              "share": {"type": "number"}
+              "ticker": {
+                "type": "string"
+              },
+              "share": {
+                "type": "number"
+              }
             }
           }
         }
       }
     },
     "movers": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "What moved the book in the latest session, in dollars, for the page's movers panel. Not written today: the evening step that attributes a stored day lives on the E12 branch, and its per-name contributions are not in the manifest. The page hides the panel until this block is present.",
       "properties": {
         "session": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "The session the contributions belong to."
         },
         "by_name": {
-          "type": ["array", "null"],
+          "type": [
+            "array",
+            "null"
+          ],
           "description": "Per-name contribution to the session's P&L, in dollars, signed. The page shows the five best and the five worst.",
           "items": {
             "type": "object",
-            "required": ["ticker", "contribution"],
+            "required": [
+              "ticker",
+              "contribution"
+            ],
             "properties": {
-              "ticker": {"type": "string"},
-              "contribution": {"type": "number"}
+              "ticker": {
+                "type": "string"
+              },
+              "contribution": {
+                "type": "number"
+              }
             }
           }
         },
         "by_sector": {
-          "type": ["array", "null"],
+          "type": [
+            "array",
+            "null"
+          ],
           "description": "The same contributions summed by GICS sector, in dollars, signed. The sector names are the model's own, so they match the bundled map's labels.",
           "items": {
             "type": "object",
-            "required": ["sector", "contribution"],
+            "required": [
+              "sector",
+              "contribution"
+            ],
             "properties": {
-              "sector": {"type": ["string", "null"]},
-              "contribution": {"type": "number"}
+              "sector": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "contribution": {
+                "type": "number"
+              }
             }
           }
         }

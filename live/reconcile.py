@@ -56,6 +56,13 @@ RECONCILIATION_COLUMNS = [
     # run_status row and the snapshot cannot disagree about the book.
     "traded_risk",
     "full_risk",
+    # The day's P&L is the account's own equity move, and this is the part of it
+    # that no order of the loop's explains: a position that left the account with
+    # nothing behind it. It is its own labelled figure rather than a correction
+    # applied to the P&L, because a quietly adjusted number is one nobody can
+    # check, and this one is a fact about the account's paper keeping rather than
+    # about the strategy. Negative for a removal, zero when nothing left.
+    "unexplained_adjustment",
 ]
 
 # The manifest keys behind each unqualified figure on the row, and the 499-name
@@ -212,6 +219,12 @@ def daily_record(
         "dry_run": dry_run,
         "traded_risk": store.json_text(risk["traded"]),
         "full_risk": store.json_text(risk["full"]),
+        # Zero here, and filled in by the evening once it has read the account:
+        # this function prices the book and does not read the broker, so "nothing
+        # left unexplained" is the only answer it can honestly give. The column is
+        # declared on the row rather than absent so a reader always has the field
+        # to look at and a zero cannot be mistaken for "not collected".
+        "unexplained_adjustment": 0.0,
     }
     state_dir.mkdir(parents=True, exist_ok=True)
     path = state_dir / "reconciliation.parquet"

@@ -103,6 +103,9 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
     ...[...Object.values(before), ...Object.values(after)].map((value) => Math.abs(value ?? 0)),
     0.0001,
   );
+  // Present only when the evening recorded one: the key is absent on a document
+  // built without a reconciled row, and a missing figure is not a zero figure.
+  const adjustment = (snapshot.reconciliation?.unexplained_adjustment as number | null) ?? null;
 
   return (
     <section data-section="exposures" className="rounded border border-slate-200 bg-white p-3">
@@ -186,6 +189,22 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
             {dollars(snapshot.reconciliation?.intended_notional as number | null)}
           </dd>
         </div>
+        {adjustment ? (
+          // The day's P&L is the account's own equity move, and this is the part of
+          // it that no order of the loop's explains: a position that left with
+          // nothing behind it. It is labelled rather than netted out of the P&L,
+          // because a number quietly adjusted is one nobody can check, and the
+          // figure is the account's paper keeping rather than a result of the book.
+          <div className="flex gap-2" data-figure="unexplained-adjustment">
+            <dt className="font-medium">unexplained adjustment</dt>
+            <dd className="font-mono tabular-nums">
+              {dollars(adjustment)}{" "}
+              <span className="text-slate-500">
+                (left the account with no order behind it)
+              </span>
+            </dd>
+          </div>
+        ) : null}
       </dl>
       <p className="mt-1 text-xs text-slate-500">
         The construction is {snapshot.construction || "n/a"}, and the book is the traded set after

@@ -2044,3 +2044,73 @@ while the other four artifacts' session hashes differ, because those hashes are
 taken over the in-memory frame and so are not a byte comparison across a run
 boundary. The rerun's guarantee is therefore "the same numbers to floating-point
 precision", not byte equality.
+
+## 2026-10-06: The PSKY position left the paper account with nothing explaining it
+
+Decision. The **326.072572039 PSKY shares** the paper account held when the
+2026-10-05 evening read it, worth **$3,211.81** at that close, were gone by the
+2026-10-06 read, with **no order, no fill and no cash or share credit** behind the
+removal. It is recorded as a **broker-side paper artifact, not a strategy
+result**: it is carried as its own labelled adjustment (`unexplained_adjustment`
+on the day's reconciliation row, and the same figure labelled on the page) and it
+is **never netted out of the P&L in silence** - the realised P&L stays the
+account's own equity move, which is the only measurement of the book there is, and
+the adjustment sits beside it as a separate statement with the names in it.
+
+Reason. Three of the four things that can move a position are absent, and the
+fourth is the one that is present. No order of the loop's did it: the only closing
+leg was `sell_to_close` **30.110012095** shares under order
+`3630c0c4-ad8a-48e2-bd6d-d98baaab8f35`, and the broker **rejected** it at
+2026-10-06T08:00:02.963893Z - thirty shares of a 326-share position, refused. No
+fill did it: the broker's activity feed for 2026-10-06 returns 530 fills and names
+**neither PSKY nor SKYD** anywhere in the window; the same read over the day
+before the removal names PSKY twice, which is the position being *opened*. No
+credit explains it: the account's cash was **$993,934.86** at the 10-05 close and
+**$991,763.22** now, a fall of $2,171.64 that is the day's trades and fees - a
+sale of the position would have raised cash by about $3,212 - and there is no
+cash-in-lieu line, no share credit and no journal in the feed. What is present is
+the **rename**: asset id `5b47111b-5e0d-4adc-929c-3efae02f747e`, CUSIP
+**69932A204**, is what both names resolve to - the broker's active asset feed now
+carries it as **SKYD** ("Skydance Corporation"), `/v2/assets/PSKY` answers 404,
+and the two rejected legs of that open (PSKY and WBD) both failed at
+**08:00:02Z and 08:00:03Z** on 2026-10-06, which is a corporate-action timestamp
+rather than a market one. A paper account that loses a renamed security while its
+trades are rejected is the broker's own record-keeping, not the book's decision,
+and pricing it as a loss of the strategy's would put a number into the record that
+no position ever earned.
+
+Evidence. `efb.broker_positions` for 2026-10-05 holds one PSKY row - long,
+quantity **326.072572039**, `market_value` **3211.814835**, weight 0.0032295 - in
+a 201-name book, and `efb.broker_positions` and the live account both hold no
+PSKY or SKYD row today (188 positions, equity $991,010.78, cash $991,763.22).
+`efb.positions` for the same close holds PSKY as an intention at
+`$2,917.19`/0.29333%, so the loop believed it held the name. The opening buy is
+order `7a94f418-20c7-4791-a4fb-fd084d06cd9b`, a notional `buy_to_open` that filled
+**326.072572039** shares at $9.37 at 2026-10-05T13:30:48Z, and the same read shows
+one fill of 327 and a reversal of -0.927427961 shares, which is where the
+fractional 0.072572039 comes from: the account's fractional tail is a
+notional-order artifact and has nothing to do with the removal (50 fractional
+legs filled that same morning, so a fractional position is not in itself a
+rejection). No rejection *reason* exists to read: the order the broker refused
+carries `status=rejected` and `failed_at`, and no field on it states why. The
+detection added with this entry therefore derives what it can - the status and
+`failed_at` for a leg the broker refused, `SYMBOL_NOT_FOUND` for a ticker its
+asset feed does not carry at all - and writes it into the morning email's "Did not
+fill" line rather than inventing a column for a reason the broker does not
+publish.
+
+Status. Recorded, in the branch `fix-symbol-resolution` merged to main on
+2026-10-07 (the merge commit is in the session's report). The removal is read back by
+`live.positions.unexplained_since_last_read` in both runs - the evening writes
+`unexplained_adjustment` on the day's reconciliation row and shows the name on the
+page, and the morning reconciler names it in its own message - on the rule that a
+position which left the account with no filled closing leg and no broker activity
+naming it is reported whatever the reason turns out to be. Two limits are
+recorded rather than smoothed over. The activity window starts the day *after* the
+previous read, because the store keys the broker book by date and holds no time,
+so an activity on the read's own date cannot be placed either side of it; a
+removal explained by an activity just before a read would be reported as
+unexplained. And a departure is not conclusive on its own: this entry says the
+shares were not sold, not that nothing at all happened to them, which is exactly
+why the line is a labelled adjustment for a human to read rather than a silent
+correction to a number.

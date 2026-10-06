@@ -165,6 +165,11 @@ create table if not exists efb.reconciliation (
   expected_borrow_bps double precision,
   dry_run boolean not null,
   realized_pnl double precision,
+  -- The part of the day's P&L that no order of the loop's explains: a position
+  -- that left the account with nothing behind it. Its own labelled figure rather
+  -- than a correction applied to the P&L - a quietly adjusted number is one
+  -- nobody can check - and negative for a removal.
+  unexplained_adjustment double precision,
   -- The traded book's risk figures and the full book's, each under its own
   -- names, as jsonb. The traded book is what the run holds; the full book is
   -- every name the model sized before the floor dropped any.
@@ -404,6 +409,14 @@ alter table efb.reconciliation
   add column if not exists expected_commission_bps double precision;
 alter table efb.reconciliation
   add column if not exists expected_borrow_bps double precision;
+
+-- Part B: the PSKY removal. A position that left the paper account between two
+-- reads with no order, no fill, no cash and no share credit is an adjustment to
+-- the day's P&L rather than a result of the strategy, and it is written as its
+-- own labelled figure so the P&L itself is never silently edited. See the entry
+-- of the same date in docs/hygiene_ledger.md.
+alter table efb.reconciliation
+  add column if not exists unexplained_adjustment double precision;
 
 -- Pre-flip: the establishment day's flag and its cost label.
 alter table efb.run_status
