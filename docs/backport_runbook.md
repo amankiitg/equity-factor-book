@@ -62,6 +62,7 @@ Steps 1 to 4 are the ones no default run performs.
 | 6 | Run the full suite on the merged commit, with the seed in place | `make test-all` | green, no deselected group |
 | 7 | State the end date on any further rebuild | `make rebuild END=<last session before the merge>` | `data/VERSION.json` records that session |
 | 8 | Re-record the frozen block baseline if the seed moved a pre-cutoff row | `.venv/bin/python -c "from live import extend; print(extend.incremental_integrity())"` | `tests/test_e11_extend.py` green |
+| 9 | Clear the 11 known reds the refresh exists to fix | `.venv/bin/python -m pytest tests/test_e11_bridge.py tests/test_e11_preflight.py tests/test_e11_notify.py tests/test_e11_symbol_resolution.py tests/test_run_live_daily.py tests/test_week1_fills_cron.py tests/test_e11_snapshot.py tests/test_e11_execution.py tests/test_week1_run_cron.py tests/test_e11_fills.py tests/test_e11_web_fixtures.py -q` | 0 failures. Any red still failing is fixed or recorded in note 9 below, never skipped and never `xfail` |
 
 1. **Read one panel.** At merge, `live/extend.py` must read `returns_clean` as
    well, in the same commit, so the live model fit and `next_descriptor_design`
@@ -108,6 +109,32 @@ Steps 1 to 4 are the ones no default run performs.
    before and after that pass. The pin belongs to the seed generation event: run
    `extend.incremental_integrity()` on the regenerated seed and copy its three
    values into `BASELINE`.
+9. **Clear the 11 known reds.** Measured on `main` on 2026-10-06: eleven failures,
+   all of them fixture or artifact vintage, none of them about behaviour. On this
+   branch as it stands the same three files pass (101 tests), because the branch's
+   fixture generator predates the writer changes that moved the page's inputs; the
+   merged tree takes `main`'s, so the reds come back with the merge and are cleared
+   by step 5. They are not this branch's own reds (§6): they are the live-page and
+   live-loop suite's. Each line says what has to move.
+
+   | # | test | cause | what clears it |
+   |---|---|---|---|
+   | 1-7 | `tests/test_e11_web_fixtures.py::test_every_fixture_is_what_the_writer_produces_now[snapshot_ok.json]`, `[snapshot_stale_stopped.json]`, `[snapshot_error.json]`, `[snapshot_expired.json]`, `[snapshot_catch_up.json]`, `[snapshot_market_closed.json]`, `[snapshot_establishment.json]` | stale fixtures: the committed documents are from the 2026-09-21 vintage and the writers no longer produce those bytes. Measured 2026-10-06, the regenerated `snapshot_ok.json` carries `book_as_of` 2026-10-02, and `breadth`, `hedge`, `exposures_before/after_hedge`, `expected_cost_bps` and `expected_cost_split` all move with the newer book | step 5: `scripts/make_web_fixtures.py` on the refreshed seed, committed with the fixtures it produces |
+   | 8 | `tests/test_e11_web_fixtures.py::test_the_ok_snapshot_carries_the_book_and_both_exposure_vectors` | asserts the document's close equals `fixtures.CLOSE` (`2026-09-21`); the regenerated book is dated the newer close | re-pin `CLOSE`/`NEXT_CLOSE`/`CATCH_UP_CLOSE`/`STOPPED_CLOSE`/`REMOVED_CLOSE` in `scripts/make_web_fixtures.py` to the refreshed vintage, or derive them from the generated document instead of typing them |
+   | 9 | `tests/test_e11_web_fixtures.py::test_the_stopped_snapshot_shows_the_last_book_under_its_own_close` | the same close pin, for the stopped variant | as row 8 |
+   | 10 | `tests/test_e11_snapshot.py::test_the_hedge_drives_the_exposures_to_zero` | artifact vintage: it pins `manifest["n_eff_kept"] == 131.9175` and the manifest built from the tree's artifacts reports `140.887` | re-pin from the refreshed manifest, or read the figure off the artifact the manifest came from rather than typing it |
+   | 11 | `tests/test_e11_notify.py::test_the_appended_sessions_are_measured_from_the_calendar` | the tree's price appendix has advanced nine sessions past the four dates the test types (`2026-09-16` .. `2026-09-21`), so the measured list is longer and correct | derive the expected window from the tree's own appendix - the same call the assertion is testing - instead of typing the dates |
+
+   The exit condition is the whole of step 9: after the refresh this suite has
+   **0 failures**, and a test still failing is either fixed or written down in
+   this note with its reason. None of them may be skipped, deselected or marked
+   `xfail` - a red that is silenced is how the September hedge-vintage pairs
+   stopped existing without anyone noticing (§2).
+
+   Until the refresh, every report on this work splits its failures into two
+   lists: **known** (the 11 above) and **new**. A new failure is investigated on
+   its own and is never counted among the known ones, so a real regression cannot
+   hide in the eleven.
 
 ## 4. Rollback
 
