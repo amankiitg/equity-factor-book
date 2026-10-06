@@ -415,6 +415,42 @@ def realized_cost_bps(fills: pd.DataFrame, nav: float | None) -> float | None:
     return 1e4 * dollars * 1e-4 / float(nav)
 
 
+def realized_cost_history(
+    fills: pd.DataFrame, nav_by_date: dict[str, float]
+) -> dict[str, Any]:
+    """The average realized cost over every reconciled day, and the day count.
+
+    One day of realized cost is mostly the overnight move: the evening sizes the leg
+    after one close and it fills at the next open, so the gap between the two is in
+    the number whatever the execution did. The average over the days that have a
+    priced fill is the figure that can be read as execution quality, and it is an
+    average of *days* rather than of legs, so a day with one fill does not weigh
+    less than a day with two hundred.
+
+    `nav_by_date` is the equity each day's cost is a share of, in the same
+    basis-point terms `realized_cost_bps` computes. A day with no NAV, or with no
+    fill that could be priced, contributes nothing and is not counted: an average
+    over days nobody measured would be an average of the days that are easy.
+
+    The frame is the store's own `efb.fills` - every day's rows together - which is
+    why the days are grouped here rather than passed one at a time.
+    """
+    if fills is None or getattr(fills, "empty", True):
+        return {"avg_bps": None, "days": 0}
+    columns = set(fills.columns)
+    if not {"trade_date", "ticker", "filled_quantity", "slippage_bps"} <= columns:
+        return {"avg_bps": None, "days": 0}
+    days = fills["trade_date"].astype(str).str.slice(0, 10)
+    per_day: list[float] = []
+    for day, rows in fills.groupby(days):
+        bps = realized_cost_bps(rows, nav_by_date.get(str(day)))
+        if bps is not None:
+            per_day.append(float(bps))
+    if not per_day:
+        return {"avg_bps": None, "days": 0}
+    return {"avg_bps": sum(per_day) / len(per_day), "days": len(per_day)}
+
+
 def actual_holdings(
     notional: dict[str, float] | None,
     nav: float | None,
@@ -425,6 +461,7 @@ def actual_holdings(
     expected_cost_bps: float | None = None,
     read_by: str | None = None,
     exits: dict[str, Any] | None = None,
+    realized_average: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The account's own book, and the fills that produced it, for the snapshot.
 
@@ -478,6 +515,11 @@ def actual_holdings(
             "n_unfilled": report.get("n_unfilled"),
             "not_sent": report.get("not_sent"),
             "realized_cost_bps": report.get("realized_cost_bps"),
+            # The same figure averaged over every reconciled day, and how many days
+            # are behind it. The caller measures it, because this module reads the
+            # frames it is given and never the store.
+            "realized_cost_avg_bps": (realized_average or {}).get("avg_bps"),
+            "realized_cost_days": (realized_average or {}).get("days"),
             "expected_cost_bps": expected_cost_bps,
             "unfilled": list(report.get("unfilled") or []),
             "not_sent_lines": list(report.get("not_sent_lines") or []),

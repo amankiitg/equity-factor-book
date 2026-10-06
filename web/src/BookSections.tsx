@@ -62,7 +62,8 @@ export function Reasons({ facts }: { facts: BookFacts }) {
           <tr className="border-b border-slate-300 text-left">
             <th className="py-1">reason</th>
             <th className="py-1 text-right">names</th>
-            <th className="py-1 text-right">dollars</th>
+            <th className="py-1 text-right">held</th>
+            <th className="py-1 text-right">traded</th>
           </tr>
         </thead>
         <tbody>
@@ -77,14 +78,23 @@ export function Reasons({ facts }: { facts: BookFacts }) {
               <td className="py-1 text-right font-mono tabular-nums">
                 {dollars(bucket.notional)}
               </td>
+              <td
+                className="py-1 text-right font-mono tabular-nums"
+                data-traded={bucket.reason}
+              >
+                {dollars(bucket.traded)}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
       <p className="mt-1 text-xs text-slate-500">
-        The count and the dollars are the positions carrying each reason. The snapshot records one
-        reason per name and no per-trade size, so the dollars are what the run holds under that
-        reason, not the notional traded today.
+        The count and the held dollars are the positions carrying each reason: what the run keeps
+        under it. The traded dollars are the legs it built for those same names, so the two columns
+        answer different questions about one reason - a name the book keeps because the hedge moved
+        is a holding with an order behind it, and the hedge's own reason is many names with little
+        trading. Turnover is the traded column; the held column is not a difference between two
+        books.
       </p>
     </section>
   );

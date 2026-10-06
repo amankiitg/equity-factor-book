@@ -69,6 +69,8 @@ const ACTUAL_FILLS = [
   "not_sent",
   "realized_cost_bps",
   "expected_cost_bps",
+  "realized_cost_avg_bps",
+  "realized_cost_days",
   "unfilled",
   "not_sent_lines",
   "unread",

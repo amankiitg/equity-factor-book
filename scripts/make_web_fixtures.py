@@ -115,21 +115,43 @@ def book(proposal: dict[str, Any], *, establishment: bool = False) -> pd.DataFra
     specific = pd.read_parquet(SPECIFIC)
     as_of = pd.Timestamp(CLOSE)
     today_std = trade_reasons.specific_std(specific, as_of=as_of)
+    # The session before this close, for the reasons and for the traded dollars
+    # below. None when the close is the first one the directory holds.
+    paths = sorted(PROPOSAL_DIR.glob("proposal_*.parquet"))
+    previous = (
+        pd.read_parquet(paths[-2])
+        if len(paths) > 1 and paths[-1].stem == f"proposal_{CLOSE}"
+        else None
+    )
     if establishment:
         # The establishment evening, with no earlier book at all.
         reasons = trade_reasons.assign_trade_reasons(rows, None, today_std, None)
     else:
-        paths = sorted(PROPOSAL_DIR.glob("proposal_*.parquet"))
-        previous = (
-            pd.read_parquet(paths[-2])
-            if len(paths) > 1 and paths[-1].stem == f"proposal_{CLOSE}"
-            else None
-        )
         reasons = trade_reasons.assign_trade_reasons(
             rows, previous, today_std, today_std, nav=float(proposal.get("nav") or 0.0)
         )
     merged = rows.merge(reasons[["ticker", "reason"]], on="ticker", how="left")
     merged["reason"] = merged["reason"].fillna(trade_reasons.ALPHA_MOVED)
+    # The dollars the run traded in each name, which the page's trades-by-reason
+    # table sums beside the held dollars. A run reads this from its own execution
+    # log, and a fixture cannot: the plans the run wrote live under `live/logs/`,
+    # which is not committed and not the same on any two machines. So it is derived
+    # from the two stored sessions instead - the difference between this close's
+    # weight and the previous close's, over the NAV the manifest sized from - which
+    # is the leg the run's own delta logic would have built for the name: the whole
+    # weight for a name the previous session did not carry, nothing for a name
+    # unchanged between the two. Stood in for, and said so here rather than
+    # presented as the evening's own log.
+    nav = float(proposal.get("nav") or 0.0)
+    before = (
+        {str(row.ticker): float(row.weight) for row in previous.itertuples(index=False)}
+        if previous is not None
+        else {}
+    )
+    merged["traded_notional"] = [
+        abs(float(weight) - float(before.get(str(ticker), 0.0))) * nav
+        for ticker, weight in zip(merged["ticker"], merged["weight"])
+    ]
     return merged
 
 

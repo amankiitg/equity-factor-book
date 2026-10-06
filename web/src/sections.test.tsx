@@ -71,9 +71,17 @@ describe("the metrics row", () => {
     expect(card("full book before the floor").textContent).toContain(
       percent(OK.book.full_book_gross),
     );
-    expect(card("expected cost").textContent).toContain(
-      (OK.book.expected_cost_bps as number).toFixed(2),
-    );
+    const cost = card("expected cost").textContent ?? "";
+    expect(cost).toContain((OK.book.expected_cost_bps as number).toFixed(2));
+    // And the split: the trading half summed from its own three parts, and the
+    // borrow that no fill price can be measured against. A total alone leaves the
+    // reader unable to say which half a miss belongs to.
+    const split = OK.book.expected_cost_split as NonNullable<
+      typeof OK.book.expected_cost_split
+    >;
+    expect(cost).toContain(`trading ${(split.trading as number).toFixed(2)} bps`);
+    expect(cost).toContain(`spread ${(split.spread as number).toFixed(2)}`);
+    expect(cost).toContain(`borrow ${(split.borrow as number).toFixed(2)} bps of holding cost`);
     // The fills card is the account's own, and this fixture has no account read.
     expect(OK.actual_holdings).toBeUndefined();
     expect(cards.querySelector("[data-card='fills']")).toBeNull();
@@ -95,10 +103,94 @@ describe("the metrics row", () => {
     expect(card.textContent).toContain(
       `${fills.not_sent} never sent, ${fills.n_unfilled} did not fill`,
     );
-    expect(card.textContent).toContain((fills.realized_cost_bps as number).toFixed(2));
-    expect(card.textContent).toContain(
-      (fills.expected_cost_bps as number).toFixed(2),
+    const realized = card.textContent ?? "";
+    expect(realized).toContain((fills.realized_cost_bps as number).toFixed(2));
+    // Measured from the previous close to the fill, and against the trading half of
+    // the expectation: borrow is a holding cost and no fill price pays it.
+    expect(realized).toContain("from the previous close to the fill");
+    const split = ACTUAL.book.expected_cost_split as NonNullable<
+      typeof ACTUAL.book.expected_cost_split
+    >;
+    expect(realized).toContain(
+      `against ${(split.trading as number).toFixed(2)} bps of trading cost expected`,
     );
+  });
+
+  it("shows the realized cost averaged over every reconciled day", () => {
+    // A single day is dominated by the overnight move: the leg is sized after one
+    // close and fills at the next open, so the average is the number that can be
+    // read as execution quality. The day count travels with it, because an average
+    // of two days is not an average of twenty.
+    const block = ACTUAL.actual_holdings;
+    if (!block?.fills) return;
+    const averaged: Snapshot = {
+      ...ACTUAL,
+      actual_holdings: {
+        ...block,
+        fills: { ...block.fills, realized_cost_avg_bps: 4.31, realized_cost_days: 7 },
+      },
+    };
+    render(<SnapshotView snapshot={averaged} now={NOW} />);
+    const card = document.querySelector("[data-card='fills']") as HTMLElement;
+    expect(card.textContent).toContain("4.31 bps average over 7 reconciled days");
+  });
+
+  it("says one day in the singular", () => {
+    const block = ACTUAL.actual_holdings;
+    if (!block?.fills) return;
+    const one: Snapshot = {
+      ...ACTUAL,
+      actual_holdings: {
+        ...block,
+        fills: { ...block.fills, realized_cost_avg_bps: 6.42, realized_cost_days: 1 },
+      },
+    };
+    render(<SnapshotView snapshot={one} now={NOW} />);
+    expect(
+      (document.querySelector("[data-card='fills']") as HTMLElement).textContent,
+    ).toContain("6.42 bps average over 1 reconciled day");
+  });
+
+  it("says the day's own number and no average when no day has been priced", () => {
+    const block = ACTUAL.actual_holdings;
+    if (!block?.fills) return;
+    const none: Snapshot = {
+      ...ACTUAL,
+      actual_holdings: {
+        ...block,
+        fills: { ...block.fills, realized_cost_avg_bps: null, realized_cost_days: 0 },
+      },
+    };
+    render(<SnapshotView snapshot={none} now={NOW} />);
+    const text =
+      (document.querySelector("[data-card='fills']") as HTMLElement).textContent ?? "";
+    expect(text).not.toContain("average over");
+    expect(text).toContain("from the previous close to the fill");
+  });
+
+  it("falls back to the whole expected cost when the document carries no split", () => {
+    // A manifest that predates the cost breakdown has a total and no parts, and the
+    // page states the total as what it is rather than comparing a fill against a
+    // half it was never given.
+    const block = ACTUAL.actual_holdings;
+    if (!block?.fills) return;
+    const { expected_cost_split: _drop, ...book } = ACTUAL.book;
+    const older: Snapshot = {
+      ...ACTUAL,
+      book: { ...book, expected_cost_bps: 14.54 },
+      actual_holdings: {
+        ...block,
+        fills: { ...block.fills, expected_cost_bps: 14.54 },
+      },
+    };
+    render(<SnapshotView snapshot={older} now={NOW} />);
+    const cost = (document.querySelector("[data-card='expected cost']") as HTMLElement)
+      .textContent ?? "";
+    expect(cost).toContain("14.54");
+    expect(cost).not.toContain("trading");
+    const fills = (document.querySelector("[data-card='fills']") as HTMLElement).textContent ?? "";
+    expect(fills).toContain("against 14.54 bps expected");
+    expect(fills).not.toContain("trading cost expected");
   });
 
   it("reports the 2026-10-05 morning's exact counts, and never a double-subtracted 165", () => {
@@ -274,6 +366,68 @@ describe("trades by reason", () => {
     });
     const total = facts.reasons.reduce((sum, bucket) => sum + bucket.n, 0);
     expect(total).toBe(OK.book.names.length);
+  });
+
+  it("shows the dollars traded beside the dollars held, under each reason", () => {
+    // The held column says what the run keeps under a reason and the traded column
+    // says what it did about those names: without the second, the section cannot
+    // answer the question it exists for, which is where the turnover came from.
+    const facts = bookFacts(OK);
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const table = screen.getByRole("table", { name: "trades by reason" });
+    const headers = within(table).getAllByRole("columnheader").map((cell) => cell.textContent);
+    expect(headers).toEqual(["reason", "names", "held", "traded"]);
+
+    for (const bucket of facts.reasons) {
+      const cell = document.querySelector(
+        `[data-traded="${bucket.reason}"]`,
+      ) as HTMLElement;
+      expect(cell).toBeTruthy();
+      expect(cell.textContent).toBe(dollars(bucket.traded));
+    }
+    // The traded column is the movement and the held column is the holding: on this
+    // book the two differ, which is the point of printing both.
+    const traded = facts.reasons.reduce((sum, bucket) => sum + bucket.traded, 0);
+    const held = facts.reasons.reduce((sum, bucket) => sum + Math.abs(bucket.notional), 0);
+    expect(traded).toBeGreaterThan(0);
+    expect(traded).not.toBeCloseTo(held, 0);
+  });
+
+  it("keeps the traded column a movement, not a second holding", () => {
+    // A name the run built no leg for is a zero in the traded column rather than a
+    // copy of its weight: the bucket's traded dollars are the legs, absolute, so a
+    // reason whose names were not traded reads as nothing traded there.
+    const quiet: Snapshot = {
+      ...OK,
+      book: {
+        ...OK.book,
+        names: OK.book.names.map((name) => ({ ...name, traded_notional: 0 })),
+      },
+    };
+    const facts = bookFacts(quiet);
+    expect(facts.reasons.every((bucket) => bucket.traded === 0)).toBe(true);
+    render(<SnapshotView snapshot={quiet} now={NOW} />);
+    const table = screen.getByRole("table", { name: "trades by reason" });
+    for (const bucket of facts.reasons) {
+      const cell = document.querySelector(
+        `[data-traded="${bucket.reason}"]`,
+      ) as HTMLElement;
+      expect(cell.textContent).toBe(dollars(0));
+    }
+    expect(within(table).getAllByRole("row").length).toBe(facts.reasons.length + 1);
+  });
+
+  it("reads a book published without the traded column as nothing traded", () => {
+    // A document written before the column existed carries no traded dollars, and
+    // the page must not invent them from the weights it does have.
+    const older: Snapshot = {
+      ...OK,
+      book: {
+        ...OK.book,
+        names: OK.book.names.map(({ traded_notional: _drop, ...name }) => name),
+      },
+    };
+    expect(bookFacts(older).reasons.every((bucket) => bucket.traded === 0)).toBe(true);
   });
 
   it("names the largest position on the metrics row", () => {
@@ -503,8 +657,10 @@ describe("actual holdings", () => {
     expect(card.textContent).toContain(
       `${fills.not_sent} never sent, ${fills.n_unfilled} did not fill`,
     );
-    expect(card.textContent).toContain(`realized ${(fills.realized_cost_bps as number).toFixed(2)}`);
-    expect(card.textContent).toContain(`against ${(fills.expected_cost_bps as number).toFixed(2)} bps`);
+    expect(card.textContent).toContain(
+      `realized ${(fills.realized_cost_bps as number).toFixed(2)}`,
+    );
+    expect(card.textContent).toContain("against");
     const misses = document.querySelector("[data-fills='misses']") as HTMLElement;
     expect(misses).toBeTruthy();
     expect(misses.getAttribute("data-tone")).toBe("warn");

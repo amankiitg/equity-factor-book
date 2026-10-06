@@ -403,7 +403,62 @@
                   "number",
                   "null"
                 ]
+              },
+              "traded_notional": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "The dollars the evening traded in this name, as the absolute notional of the leg it built for it - 0 for a name it built no leg for, including the kept names the $250 minimum left untraded. `weight` is the holding and this is the movement, so the two answer different questions about the same name: the trades-by-reason table sums both, and the turnover it reports is this column, not a difference between two books. Null when the book was published by a run that carried no orders."
               }
+            }
+          }
+        },
+        "expected_cost_split": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "The same expected cost, split the way the proposal computes it, in basis points of NAV. `trading` is spread + impact + commission, which is the only half a fill price can be measured against; `borrow` is the short leg's financing over the horizon, which no fill price pays, and comparing execution against it would be comparing a fill to a calendar. Absent on a manifest written before the breakdown existed, and never invented from the total.",
+          "properties": {
+            "spread": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "impact": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "commission": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "borrow": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "The holding cost of the short leg over the horizon, not a year."
+            },
+            "trading": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "spread + impact + commission."
+            },
+            "total": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "trading + borrow, which is `expected_cost_bps` on this same block by construction."
             }
           }
         }
@@ -652,7 +707,9 @@
             "expected_cost_bps",
             "unfilled",
             "unread",
-            "not_sent_lines"
+            "not_sent_lines",
+            "realized_cost_avg_bps",
+            "realized_cost_days"
           ],
           "properties": {
             "trade_date": {
@@ -728,6 +785,20 @@
                 "type": "string"
               },
               "description": "One line per leg the evening could not send at all, with the reason derived here because the broker never saw the order and holds no record of it: \"SKYD sell_to_open $500 never sent (SYMBOL_NOT_FOUND)\". Only the legs no spelling could have traded - a ticker the broker's feed carries under no symbol - because the evening has already named its own decisions, the $250 minimum and the borrow among them."
+            },
+            "realized_cost_avg_bps": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "The same realized cost averaged over every day the loop has reconciled, in basis points of NAV. One day is mostly the overnight move - the leg is sized after one close and fills at the next open - so this is the figure that can be read as execution quality. Null before any day has been priced."
+            },
+            "realized_cost_days": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "How many days are behind the average. Stated with it because an average of two days is not an average of twenty, and because a day nothing could be priced on is not counted: an average over days nobody measured would be an average of the easy ones."
             }
           }
         },

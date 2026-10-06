@@ -12,7 +12,7 @@
 
 import type { BookFacts } from "./book";
 import { count, dollars, oneDecimal, percent } from "./format";
-import type { Snapshot } from "./types";
+import type { CostSplit, Snapshot } from "./types";
 
 export function Card({
   label,
@@ -40,6 +40,70 @@ export function bps(value: number | null | undefined): string {
   return value === null || value === undefined ? "n/a" : `${value.toFixed(2)} bps`;
 }
 
+/** The expected cost, split into the trading half and the holding cost.
+ *
+ * A total alone leaves the reader unable to tell which half a number belongs to,
+ * and the fills can only be measured against one of them: spread, impact and
+ * commission are what a fill price pays, and borrow is the short leg's cost over
+ * the horizon, which no fill price can be compared to. Absent on a manifest that
+ * predates the breakdown, in which case the card shows the total and its label and
+ * says nothing about a split it does not have.
+ */
+export function costDetail(
+  label: string | null | undefined,
+  split: CostSplit | null,
+): string | undefined {
+  const parts: string[] = [];
+  if (split && split.trading !== null && split.trading !== undefined) {
+    const names = (["spread", "impact", "commission"] as const)
+      .filter((name) => split[name] !== null && split[name] !== undefined)
+      .map((name) => `${name} ${(split[name] as number).toFixed(2)}`);
+    parts.push(
+      `trading ${split.trading.toFixed(2)} bps${names.length ? ` (${names.join(" + ")})` : ""}`,
+    );
+    if (split.borrow !== null && split.borrow !== undefined) {
+      parts.push(`borrow ${split.borrow.toFixed(2)} bps of holding cost`);
+    }
+  }
+  if (label) parts.push(label);
+  return parts.length ? parts.join(" · ") : undefined;
+}
+
+/**
+ * The fills' own cost, against the half of the expectation it can be measured by.
+ *
+ * Two figures, and both are on purpose. The day's realized cost is measured from
+ * the previous close to the fill, which is the trade the loop actually made: the
+ * leg is sent after one close and fills at the next open, so the overnight gap is
+ * inside it. The average over every reconciled day is the one that can be read as
+ * execution quality, and it is stated with its day count.
+ */
+export function realizedLine(
+  fills: NonNullable<Snapshot["actual_holdings"]>["fills"],
+  split: CostSplit | null,
+  fallbackExpected: number | null | undefined,
+): string {
+  if (!fills) return "realized cost not priced";
+  if (fills.realized_cost_bps === null || fills.realized_cost_bps === undefined) {
+    return "realized cost not priced";
+  }
+  // The trading half when the split is published, because that is the only half a
+  // fill price can be measured against: borrow is a holding cost over the horizon
+  // and no fill price pays it. Without a split the total is all there is, and it is
+  // stated as what it is rather than compared against as though it were trading.
+  const against =
+    split && split.trading !== null && split.trading !== undefined
+      ? ` against ${split.trading.toFixed(2)} bps of trading cost expected`
+      : ` against ${bps(fills.expected_cost_bps ?? fallbackExpected)} expected`;
+  const day = `realized ${fills.realized_cost_bps.toFixed(2)} bps from the previous close to the fill${against}`;
+  const avg = fills.realized_cost_avg_bps;
+  const days = fills.realized_cost_days;
+  if (avg === null || avg === undefined || !days) return day;
+  return `${day} · ${avg.toFixed(2)} bps average over ${days} reconciled day${
+    days === 1 ? "" : "s"
+  }`;
+}
+
 export function MetricsRow({
   snapshot,
   facts,
@@ -50,6 +114,7 @@ export function MetricsRow({
   const book = snapshot.book;
   const breadth = snapshot.breadth;
   const fills = snapshot.actual_holdings?.fills ?? null;
+  const split = book?.expected_cost_split ?? null;
   // "filled of sent": the denominator is the legs the evening **sent**, because a
   // leg it never sent is not an order the broker could have filled. Sent is
   // `n_orders` itself, not `n_orders - not_sent`: the writer counts the submitted
@@ -102,7 +167,7 @@ export function MetricsRow({
       <Card
         label="expected cost"
         value={bps(book?.expected_cost_bps)}
-        detail={snapshot.run_status?.cost_label ?? undefined}
+        detail={costDetail(snapshot.run_status?.cost_label, split)}
       />
       <Card
         label="top 10 share of gross"
@@ -137,12 +202,11 @@ export function MetricsRow({
                   `${count(fills.not_sent)} never sent, ${count(
                     fills.n_unfilled,
                   )} did not fill`,
-                  fills.realized_cost_bps === null ||
-                  fills.realized_cost_bps === undefined
-                    ? "realized cost not priced"
-                    : `realized ${fills.realized_cost_bps.toFixed(2)} against ${bps(
-                        fills.expected_cost_bps ?? book?.expected_cost_bps,
-                      )} expected`,
+                  realizedLine(
+                    fills,
+                    split,
+                    book?.expected_cost_bps ?? null,
+                  ),
                 ].join(" · ")
           }
         />

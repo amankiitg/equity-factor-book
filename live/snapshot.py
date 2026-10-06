@@ -208,6 +208,20 @@ def build(
                     "reason": entry.get("reason"),
                     "z": _number(entry.get("z")),
                     "alpha": _number(entry.get("alpha")),
+                    # The dollars the evening actually traded in this name, which is
+                    # what the page's trades-by-reason table needs to say where the
+                    # turnover came from. Named for what it is - the leg's own
+                    # notional, absolute - because the book above it is a holding and
+                    # this is a movement, and the two are different questions about
+                    # the same name. The key is present only for a frame that carries
+                    # the column, which every evening's own book does now: a book
+                    # published before the column existed has no traded dollars to
+                    # state, and a zero invented for it would read as a measured one.
+                    **(
+                        {"traded_notional": _number(entry.get("traded_notional"))}
+                        if "traded_notional" in rows.columns
+                        else {}
+                    ),
                 }
             )
     return {
@@ -284,6 +298,13 @@ def build(
             "expected_cost_bps": _number(
                 proposal.get("expected_establishment_cost_bps")
             ),
+            # The same cost, split the way the proposal computes it: trading
+            # (spread + impact + commission) and borrow, the cost of holding the
+            # short leg over the horizon. The page compares the fills against the
+            # trading half only, because borrow is not something a fill price can
+            # be measured against, and a total alone leaves the reader unable to
+            # tell which part a miss belongs to.
+            "expected_cost_split": _cost_split(proposal),
             # Why the book is empty, when it is. A stopped evening whose store
             # holds nothing must not read as a book of zero names for no stated
             # reason, so the reason travels with the empty book.
@@ -350,6 +371,42 @@ def build(
     }
 
 
+def _cost_split(proposal: dict[str, Any]) -> dict[str, Any]:
+    """The day's expected cost, split into trading and borrow, in bps of NAV.
+
+    Read from the proposal's own `cost_breakdown_bps`, which the evening built as
+    spread + impact + commission + borrow, so the parts sum to the total by
+    construction rather than by this function's arithmetic. Trading is the three
+    the fills can actually be measured against; borrow is the holding cost, and
+    comparing an execution price to it would be comparing a fill to a calendar.
+
+    Empty when the manifest predates the breakdown: a part nobody computed is not
+    invented here, and the page says what it has rather than zeroes.
+    """
+    from live import reconcile
+
+    breakdown = reconcile.cost_breakdown(proposal)
+    if not breakdown:
+        return {}
+    parts = {
+        str(name): _number(breakdown.get(name))
+        for name in ("spread", "impact", "commission", "borrow")
+        if breakdown.get(name) is not None
+    }
+    if not parts:
+        return {}
+    trading = [
+        value
+        for name, value in parts.items()
+        if name in ("spread", "impact", "commission") and value is not None
+    ]
+    return {
+        **parts,
+        "trading": float(sum(trading)),
+        "total": _number(breakdown.get("total")),
+    }
+
+
 def _actual_block(raw: dict[str, Any] | None) -> dict[str, Any]:
     """The account's book as the page's own object, with the non-finite nulled.
 
@@ -388,6 +445,16 @@ def _actual_block(raw: dict[str, Any] | None) -> dict[str, Any]:
                 "n_unfilled": _number(fills_block.get("n_unfilled")),
                 "not_sent": _number(fills_block.get("not_sent")),
                 "realized_cost_bps": _number(fills_block.get("realized_cost_bps")),
+                # The same number averaged over every day the loop has reconciled,
+                # with how many days are in it. One day of realized cost is mostly
+                # the overnight move - the order is sent after one close and fills
+                # at the next open - so the average is the figure that can be read
+                # as execution quality, and the count is stated because an average
+                # of two days is not an average of twenty.
+                "realized_cost_avg_bps": _number(
+                    fills_block.get("realized_cost_avg_bps")
+                ),
+                "realized_cost_days": _number(fills_block.get("realized_cost_days")),
                 "expected_cost_bps": _number(fills_block.get("expected_cost_bps")),
                 "unfilled": list(fills_block.get("unfilled") or []),
                 "not_sent_lines": list(fills_block.get("not_sent_lines") or []),

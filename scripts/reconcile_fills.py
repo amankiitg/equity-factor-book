@@ -209,6 +209,39 @@ def evening_notify_status(close: str) -> str | None:
     return str(value)
 
 
+def realized_cost_average() -> dict[str, Any]:
+    """The realized cost averaged over every reconciled day, and the day count.
+
+    Read from the store rather than from this morning's own frame, because the
+    question is what the loop's executions have cost over its whole life and one
+    day of it is mostly the overnight move: the evening sizes a leg after one close
+    and it fills at the next open, so the gap between the two is inside the number
+    whatever the execution did. The average is over days, not legs, so a day with
+    one fill does not weigh less than a day with two hundred.
+
+    The day being reconciled is in here already: the fills are written to the store
+    before this is called, so the morning's own number is inside the average it
+    publishes rather than one day behind it.
+    """
+    from live import fills as fills_module
+    from live import store as store_module
+
+    try:
+        frame = store_module.select("fills")
+        nav_frame = store_module.select("nav")
+    except Exception as exc:  # noqa: BLE001 - the average is not worth a failure
+        logger.warning("could not read the fills history: %s", type(exc).__name__)
+        return {"avg_bps": None, "days": 0}
+    nav_by_date: dict[str, float] = {}
+    if not nav_frame.empty and {"trade_date", "nav"} <= set(nav_frame.columns):
+        nav_by_date = {
+            str(day)[:10]: float(value)
+            for day, value in zip(nav_frame["trade_date"], nav_frame["nav"])
+            if value is not None and not pd.isna(value)
+        }
+    return fills_module.realized_cost_history(frame, nav_by_date)
+
+
 def _notionals(orders: pd.DataFrame) -> tuple[float, float]:
     """(sent, never-sent) intended notional for one evening's order rows.
 
@@ -345,6 +378,10 @@ def main(argv: list[str] | None = None) -> int:
             # the holdings because that is where a reader looks for a name that is
             # no longer there.
             exits=exits,
+            # The day's realized cost beside the same number averaged over every
+            # reconciled day, which is the one that can be read as execution
+            # quality.
+            realized_average=realized_cost_average(),
         )
         try:
             keys = publish(block, notify_status=notify_status)

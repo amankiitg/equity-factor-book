@@ -20,6 +20,67 @@ from scripts import run_live_daily
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_the_days_traded_dollars_come_from_its_own_legs() -> None:
+    """Turnover per name, absolute, from the legs the evening built.
+
+    The page's trades-by-reason table sums this beside the held dollars, and the
+    two are different questions about one reason: what the run keeps, and what it
+    did about those names. Absolute because it is turnover - a name the run trimmed
+    and a name it opened are both dollars moved, and netting them would report less
+    trading than happened.
+    """
+    execution = pd.DataFrame(
+        {
+            "ticker": ["DG", "AAA", "DG"],
+            "intended_notional": [512.42, -1_000.0, 12.0],
+        }
+    )
+    traded = run_live_daily.traded_by_name(execution)
+    assert traded == {"DG": pytest.approx(524.42), "AAA": pytest.approx(1_000.0)}
+
+    book = pd.DataFrame({"ticker": ["DG", "BBB"], "weight": [0.01, -0.02]})
+    rows = run_live_daily.with_traded(book, traded)
+    assert rows is not None
+    # A name with no leg tonight is a zero, not a blank: the run traded nothing in
+    # it, which is a fact about the evening rather than a missing measurement.
+    assert list(rows["traded_notional"]) == [
+        pytest.approx(524.42),
+        pytest.approx(0.0),
+    ]
+    # A run with no book in hand keeps having none.
+    assert run_live_daily.with_traded(None, traded) is None
+
+
+def test_the_writer_publishes_the_traded_column_only_when_it_was_measured() -> None:
+    """The page reads one number per reason, and a book published without the
+    column must not be given invented trading."""
+    from live import snapshot
+
+    book = pd.DataFrame(
+        {
+            "ticker": ["DG", "AAA"],
+            "weight": [0.01, -0.02],
+            "side": ["long", "short"],
+            "reason": ["alpha moved", "the hedge moved"],
+            "traded_notional": [524.42, 0.0],
+        }
+    )
+    manifest = {"as_of": "2026-09-21", "nav": 1_000_000.0}
+    published = snapshot.build(
+        run={"target_close": "2026-09-21"}, manifest=manifest, book=book
+    )
+    by_ticker = {name["ticker"]: name for name in published["book"]["names"]}
+    assert by_ticker["DG"]["traded_notional"] == pytest.approx(524.42)
+    assert by_ticker["AAA"]["traded_notional"] == pytest.approx(0.0)
+
+    older = snapshot.build(
+        run={"target_close": "2026-09-21"},
+        manifest=manifest,
+        book=book.drop(columns=["traded_notional"]),
+    )
+    assert all("traded_notional" not in name for name in older["book"]["names"])
+
+
 def test_record_run_handles_an_empty_cron_runs_table(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
