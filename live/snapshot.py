@@ -326,7 +326,20 @@ def build(
             # own names, from the manifest via the reconciled row.
             "traded_risk": _json_value((reconciliation or {}).get("traded_risk"), None),
             "full_risk": _json_value((reconciliation or {}).get("full_risk"), None),
-        },
+        }
+        # The part of the day's P&L no order of the loop's explains, from the same
+        # row the store holds. Present only when the row carries it, which is the
+        # evening's own row: a document built without a reconciliation has no P&L
+        # to adjust, and a zero invented for it would read as a measured nought.
+        | (
+            {
+                "unexplained_adjustment": _number(
+                    (reconciliation or {}).get("unexplained_adjustment")
+                )
+            }
+            if (reconciliation or {}).get("unexplained_adjustment") is not None
+            else {}
+        ),
         # The account's own book beside the target, and the fills behind it. The
         # evening's own account read fills it, and the 15:30 UTC reconciler
         # rewrites it with what the evening's orders did. It is absent, rather than
@@ -377,11 +390,35 @@ def _actual_block(raw: dict[str, Any] | None) -> dict[str, Any]:
                 "realized_cost_bps": _number(fills_block.get("realized_cost_bps")),
                 "expected_cost_bps": _number(fills_block.get("expected_cost_bps")),
                 "unfilled": list(fills_block.get("unfilled") or []),
+                "not_sent_lines": list(fills_block.get("not_sent_lines") or []),
                 "unread": list(fills_block.get("unread") or []),
             }
             if isinstance(fills_block, dict)
             else None
         ),
+        # The names that left the account with nothing of the loop's to explain
+        # them, written beside the book because that is where a reader looks for a
+        # name that is no longer there. Absent (rather than an empty list) when the
+        # question was not asked, so the page can say "not read" instead of "none".
+        **({"exits": _exits_block(block.get("exits"))} if block.get("exits") else {}),
+    }
+
+
+def _exits_block(raw: Any) -> dict[str, Any]:
+    """The departures block as the page's own object, with the non-finite nulled."""
+    block = raw if isinstance(raw, dict) else {}
+    return {
+        "previous_read": _iso(block.get("previous_read")),
+        "feed": block.get("feed"),
+        "window": block.get("window"),
+        "names": [
+            {
+                "ticker": str(entry.get("ticker")),
+                "quantity": _number(entry.get("quantity")),
+                "notional": _number(entry.get("notional")),
+            }
+            for entry in (block.get("names") or [])
+        ],
     }
 
 

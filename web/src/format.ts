@@ -84,6 +84,21 @@ export const exposure = (value: number | null | undefined): string => {
 export const count = (value: number | null | undefined): string =>
   value === null || value === undefined ? "n/a" : String(value);
 
+/**
+ * A share count: whole shares bare, a fraction to two places.
+ *
+ * The account's quantities are the broker's own, and a notional buy leaves a
+ * fractional position of eleven significant figures: 326.072572039 shares printed
+ * as it stands reads as a measurement nobody made. Two places is what the
+ * position is worth stating to, and a whole count keeps no decimals because
+ * "12.00 shares" claims a precision the broker never wrote down.
+ */
+export const shares = (value: number | null | undefined): string => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "n/a";
+  const abs = Math.abs(value);
+  return Number.isInteger(abs) ? abs.toLocaleString() : abs.toFixed(2);
+};
+
 /** A share of the book, as a percentage to two places, with its own sign. */
 export const signedPercent = (value: number | null | undefined, places = 2): string => {
   if (value === null || value === undefined) return "n/a";

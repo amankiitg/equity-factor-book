@@ -18,6 +18,7 @@ credit-trading-lab's without a second login.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import math
 import os
@@ -27,6 +28,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC
 from typing import Any, TypeVar, cast
+from urllib.parse import urlencode
 
 import pandas as pd
 
@@ -199,6 +201,11 @@ class Fill:
     # True when the broker already held an order under this leg's id and the run
     # resolved that order instead of submitting a second copy.
     resolved: bool = False
+    # The symbol the order actually carried when the broker's feed spells the
+    # company differently from the loop's own ticker (a rename). Empty is the
+    # ordinary case, where the two agree, and it is what the caller reads to name
+    # the rename in the email rather than leaving the two names unexplained.
+    broker_symbol: str = ""
 
 
 # ---------------------------------------------------------------- rate limiting
@@ -296,6 +303,11 @@ REASON_SHORT_CHECK_FAILED = "SHORTABLE_CHECK_FAILED"
 REASON_NOT_TRADABLE = "ASSET_NOT_TRADABLE"
 REASON_NOT_SHORTABLE = "ASSET_NOT_SHORTABLE"
 REASON_NOT_EASY_TO_BORROW = "ASSET_NOT_EASY_TO_BORROW"
+# A ticker the broker's asset feed does not carry under any symbol, so there is
+# nothing to send an order for. Sending it anyway is an order the broker rejects
+# every evening, which is a nightly red herring rather than a trade: the leg is
+# recorded with this code and named in the email instead.
+REASON_SYMBOL_NOT_FOUND = "SYMBOL_NOT_FOUND"
 # A close whose size cannot be computed: no price and no broker quantity to take
 # the whole position from. Guessing is worse than not sending.
 REASON_CLOSE_QTY_UNKNOWN = "CLOSE_QUANTITY_UNKNOWN"
@@ -378,6 +390,197 @@ def _skipped(
         detail=detail,
         intent=intent,
     )
+
+
+@dataclass(frozen=True)
+class SymbolResolution:
+    """Which symbol the broker carries a ticker under, and how that was found."""
+
+    ticker: str
+    # The symbol to submit. Empty when the feed carries no asset for this ticker
+    # at all, which is the one state the run must not send an order in.
+    symbol: str
+    asset_id: str
+    renamed: bool
+    missing: bool
+    detail: str
+
+
+class SymbolResolver:
+    """The broker's current symbol for a ticker, by the asset's own identity.
+
+    A rename is not a delisting. On 2026-10-05 the vendor still said PSKY while
+    the broker's feed carried the same security - asset id `5b47111b…`, CUSIP
+    69932A204 - as SKYD, and the order sent under the stale spelling was rejected
+    at the next open. The order's own fields do not state that: `symbol` says
+    PSKY, `status` says rejected, and the asset that owns the `asset_id` is the
+    only thing that connects the two names. The identity is therefore the asset
+    id, and this resolves a ticker to the symbol the broker *currently* carries it
+    under, so the run trades the company it sized rather than the spelling it was
+    handed.
+
+    Two reads, both once per run and both lazy. The whole active US-equity feed
+    answers the ordinary case in one request. A ticker the feed no longer lists is
+    resolved through the account's own order history, which is the only place the
+    old spelling and the asset id appear together, and then through the feed's
+    asset-id index for the current spelling.
+
+    A feed that cannot be read is *not* an answer. It leaves every ticker
+    unresolved, and reading that as "no such asset" would stop the whole book over
+    a transport failure, so this falls back to the loop's own spelling - exactly
+    how the run behaved before this class existed. The history lookup failing is
+    the opposite case and is answered as unresolved, because a ticker the feed
+    does not carry, whose identity cannot be established either, is a leg whose
+    order the broker will refuse.
+    """
+
+    def __init__(
+        self,
+        client: Any,
+        *,
+        cache: dict[str, SymbolResolution] | None = None,
+        assets: Any = None,
+        order_reader: Callable[[str], list[Any]] | None = None,
+    ) -> None:
+        self._client = client
+        self._cache: dict[str, SymbolResolution] = {} if cache is None else cache
+        self._assets = assets
+        self._order_reader = order_reader
+        self._by_symbol: dict[str, Any] | None = None
+        self._by_id: dict[str, Any] = {}
+        self._feed_failed = False
+
+    def _load(self) -> None:
+        """The feed, once per run, or the mark that it could not be read."""
+        if self._by_symbol is not None or self._feed_failed:
+            return
+        if self._assets is None:
+            if self._client is None:
+                self._feed_failed = True
+                return
+            try:
+                from alpaca.trading.enums import AssetClass, AssetStatus  # type: ignore
+                from alpaca.trading.requests import GetAssetsRequest  # type: ignore
+
+                self._assets = list(
+                    self._client.get_all_assets(
+                        GetAssetsRequest(
+                            status=AssetStatus.ACTIVE, asset_class=AssetClass.US_EQUITY
+                        )
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 - the fallback is the old path
+                logger.warning(
+                    "the broker's asset feed could not be read (%s), so every "
+                    "ticker keeps the run's own spelling",
+                    type(exc).__name__,
+                )
+                self._feed_failed = True
+                return
+        self._by_symbol = {
+            str(getattr(asset, "symbol", "") or ""): asset for asset in self._assets
+        }
+        self._by_id = {
+            str(getattr(asset, "id", "") or ""): asset for asset in self._assets
+        }
+
+    def _history_asset_id(self, ticker: str) -> str:
+        """The asset id the account's own last order under this symbol carried.
+
+        The only read that can connect a spelling the feed has dropped to the
+        asset that still exists, because the corporate-actions feed is keyed by
+        CUSIP and the asset object carries none.
+        """
+        try:
+            if self._order_reader is not None:
+                orders = self._order_reader(ticker)
+            elif self._client is not None:
+                from alpaca.trading.enums import QueryOrderStatus  # type: ignore
+                from alpaca.trading.requests import GetOrdersRequest  # type: ignore
+
+                # The endpoint's own default order is most recent first, which is
+                # the order this wants: the last order under the spelling is the
+                # one carrying the asset id the ticker still belongs to.
+                orders = self._client.get_orders(
+                    GetOrdersRequest(
+                        symbols=[ticker],
+                        status=QueryOrderStatus.ALL,
+                        limit=25,
+                    )
+                )
+            else:
+                return ""
+        except Exception as exc:  # noqa: BLE001 - reported as unresolved below
+            logger.warning(
+                "could not read the order history for %s (%s)",
+                ticker,
+                type(exc).__name__,
+            )
+            return ""
+        for order in orders or []:
+            value = str(getattr(order, "asset_id", "") or "")
+            if value:
+                return value
+        return ""
+
+    def resolve(self, ticker: str) -> SymbolResolution:
+        """The broker's symbol for one ticker, cached for the run."""
+        key = str(ticker).upper().strip()
+        if key in self._cache:
+            return self._cache[key]
+        self._load()
+        if self._by_symbol is None:
+            # The feed could not be read: keep the run's own spelling and let the
+            # broker answer, rather than stopping the book over a failed read.
+            result = SymbolResolution(key, key, "", False, False, "")
+        elif key in self._by_symbol:
+            asset = self._by_symbol[key]
+            result = SymbolResolution(
+                key, key, str(getattr(asset, "id", "") or ""), False, False, ""
+            )
+        else:
+            result = self._resolve_stale(key)
+        self._cache[key] = result
+        return result
+
+    def _resolve_stale(self, ticker: str) -> SymbolResolution:
+        """A ticker the active feed does not carry: renamed, or gone."""
+        asset_id = self._history_asset_id(ticker)
+        asset = self._by_id.get(asset_id) if asset_id else None
+        symbol = str(getattr(asset, "symbol", "") or "") if asset is not None else ""
+        if not symbol:
+            return SymbolResolution(
+                ticker,
+                "",
+                asset_id,
+                False,
+                True,
+                f"{ticker}: the broker's asset feed carries no asset for this "
+                "ticker, under this symbol or any other",
+            )
+        return SymbolResolution(
+            ticker,
+            symbol,
+            asset_id,
+            symbol != ticker,
+            False,
+            f"{ticker} now trades as {symbol}",
+        )
+
+    def renames(self, tickers: Any) -> dict[str, str]:
+        """{ticker: broker symbol} for the tickers the broker spells differently.
+
+        What the positions check needs: the broker's book is keyed by symbol and
+        the store's by ticker, so without this a rename reads as one name the loop
+        holds and the account does not have plus one name the account has and the
+        loop does not hold, which is one company counted twice.
+        """
+        out: dict[str, str] = {}
+        for ticker in tickers:
+            resolution = self.resolve(str(ticker))
+            if resolution.renamed and resolution.symbol:
+                out[resolution.ticker] = resolution.symbol
+        return out
 
 
 def connect(dry_run: bool = DRY_RUN_DEFAULT):
@@ -754,6 +957,121 @@ def get_positions(client, dry_run: bool = DRY_RUN_DEFAULT) -> dict[str, float]:
     return position_book(client, dry_run)[0]
 
 
+# The activity feed answers one page at a time, oldest first, so a busy session is
+# several requests. The cap is a stop against a client that keeps handing back a
+# full page rather than a budget: a fold with more activities than this in the
+# window is reported as *not read*, because a partial list would read as "nothing
+# explains the exit" and that is the one answer this read exists to rule out.
+ACTIVITY_PAGE_SIZE = 100
+ACTIVITY_MAX_PAGES = 50
+
+
+def _activity_page(url: str, headers: dict[str, str]) -> list[dict[str, Any]]:
+    """One page of the activity feed, straight from the REST endpoint.
+
+    `alpaca-py` 0.44 binds no client method for this endpoint, so it is read as
+    the request it is, with the same paper keys and the same deadline as every
+    other broker read in this module.
+    """
+    import urllib.request
+
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=VENDOR_TIMEOUT_SECONDS) as response:
+        body = response.read().decode("utf-8")
+    return list(json.loads(body) if body.strip() else [])
+
+
+def activity_stamp(row: dict[str, Any]) -> str:
+    """One activity's own instant, as the ISO string the window compares against.
+
+    The feed's `after`/`until` bound an activity by one of three fields depending
+    on its type - a fill carries `transaction_time`, a fee only `date` and
+    `created_at` - and a fee dated in an earlier window is served inside a later
+    one. The caller filters on this rather than trusting the bound, so an activity
+    from before the window cannot be read as having happened inside it.
+    """
+    for field in ("transaction_time", "created_at", "date"):
+        value = str(row.get(field) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def account_activities(
+    after: Any,
+    until: Any,
+    *,
+    fetch: Callable[[str, dict[str, str]], list[dict[str, Any]]] | None = None,
+    page_size: int = ACTIVITY_PAGE_SIZE,
+    max_pages: int = ACTIVITY_MAX_PAGES,
+) -> list[dict[str, Any]]:
+    """Every account activity the broker recorded in a window, oldest first.
+
+    The feed is the broker's own statement of what it did to the account outside
+    the loop's orders: a transfer, a corporate action, a dividend, or a fill the
+    loop never sent. It is read for one question - did anything other than this
+    run's own orders move a position - so the rows are returned whole and the
+    caller decides what they explain.
+
+    A window is inclusive of `after`, and an activity whose own instant falls
+    before it is dropped: the service serves a fee dated in an earlier window
+    inside a later one, and an activity counted twice could explain away an exit
+    in the wrong session. A read that cannot be completed raises, and the caller
+    says the feed was not read rather than reporting it silent.
+    """
+    key = os.environ.get("EFB_ALPACA_PAPER_API_KEY", "").strip()
+    secret = os.environ.get("EFB_ALPACA_PAPER_SECRET_KEY", "").strip()
+    if not key or not secret:
+        raise RuntimeError(
+            "reading the activity feed needs the paper keys, from "
+            "EFB_ALPACA_PAPER_API_KEY and EFB_ALPACA_PAPER_SECRET_KEY only"
+        )
+    headers = {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
+    reader = fetch or _activity_page
+    start = str(after)
+    rows: list[dict[str, Any]] = []
+    token = ""
+    for _ in range(max_pages):
+        query = {
+            "after": start,
+            "until": str(until),
+            "direction": "asc",
+            "page_size": str(page_size),
+        }
+        if token:
+            query["page_token"] = token
+        url = f"{PAPER_ENDPOINT}/v2/account/activities?{urlencode(query)}"
+        page = list(reader(url, headers))
+        rows.extend(
+            row
+            for row in page
+            if isinstance(row, dict) and activity_stamp(row) >= start
+        )
+        if len(page) < page_size:
+            return rows
+        token = str(page[-1].get("id") or "")
+        if not token:
+            return rows
+    raise RuntimeError(
+        f"the activity feed served {max_pages} full pages between {after} and "
+        f"{until}, so it was not read to its end"
+    )
+
+
+def activity_symbols(after: Any, until: Any, **kwargs: Any) -> set[str]:
+    """The symbols the broker's own feed mentions in a window.
+
+    An empty set is "the feed answered and said nothing about any of these names",
+    which is the answer a silent removal is left with; the symbols are read by
+    name rather than by id because the loop's book is keyed by ticker.
+    """
+    return {
+        str(row.get("symbol") or "").strip().upper()
+        for row in account_activities(after, until, **kwargs)
+        if str(row.get("symbol") or "").strip()
+    }
+
+
 def _side_word(trade_notional: float) -> str:
     """The side an order's signed change implies: buys positive, sells negative."""
     return "buy" if trade_notional >= 0 else "sell"
@@ -863,6 +1181,7 @@ def submit_market_orders(
     close: Any = None,
     throttle: Throttle | None = None,
     id_prefix: str = "efb",
+    resolver: SymbolResolver | None = None,
 ) -> list[Fill]:
     """Submit market orders, one record per intended leg, and do not poll.
 
@@ -927,6 +1246,15 @@ def submit_market_orders(
         pace.wait()
         existing[order.ticker] = find_existing_order(client, tickets[order.ticker])
 
+    # The symbol each leg is actually sent under, and whether the broker carries
+    # the ticker at all. Resolved before the first submission for the same reason
+    # the tickets are: a leg whose identity cannot be established must be recorded
+    # with its reason rather than discovered halfway through the book.
+    resolver = SymbolResolver(client) if resolver is None else resolver
+    symbols: dict[str, SymbolResolution] = {
+        order.ticker: resolver.resolve(order.ticker) for order in orders
+    }
+
     fills: list[Fill] = []
     halted = False
     for order in orders:
@@ -952,10 +1280,28 @@ def submit_market_orders(
                 )
             )
             continue
+        resolution = symbols[order.ticker]
+        if resolution.missing:
+            # The broker's feed carries no asset for this ticker under any symbol,
+            # so an order here is refused every evening and purchases nothing but a
+            # nightly rejection. It is recorded with the code that says so and named
+            # in the email, which is the whole point: the alternative is a red
+            # herring in every run's record for the life of the book.
+            fills.append(
+                _skipped(
+                    order.ticker,
+                    trade,
+                    REASON_SYMBOL_NOT_FOUND,
+                    resolution.detail,
+                    intent,
+                )
+            )
+            continue
+        symbol = resolution.symbol or order.ticker
         price = prices.get(order.ticker, 0.0)
         if intent == INTENT_BUY_TO_OPEN:
             request = MarketOrderRequest(
-                symbol=order.ticker,
+                symbol=symbol,
                 notional=round(notional, 2),
                 side=OrderSide.BUY,
                 time_in_force=time_in_force,
@@ -992,7 +1338,7 @@ def submit_market_orders(
                 )
                 continue
             request = MarketOrderRequest(
-                symbol=order.ticker,
+                symbol=symbol,
                 qty=qty,
                 side=(
                     OrderSide.SELL if intent == INTENT_SELL_TO_CLOSE else OrderSide.BUY
@@ -1002,7 +1348,9 @@ def submit_market_orders(
                 position_intent=intent_enum[intent],
             )
         elif intent == INTENT_SELL_TO_OPEN:
-            refusal = short_refusal(client, order.ticker, cache)
+            # The flags are the broker's own, so they are read for the symbol the
+            # order will actually carry rather than for the loop's spelling of it.
+            refusal = short_refusal(client, symbol, cache)
             if refusal is not None:
                 code, detail = refusal
                 fills.append(_skipped(order.ticker, trade, code, detail, intent))
@@ -1020,7 +1368,7 @@ def submit_market_orders(
                 )
                 continue
             request = MarketOrderRequest(
-                symbol=order.ticker,
+                symbol=symbol,
                 qty=qty,
                 side=OrderSide.SELL,
                 time_in_force=time_in_force,
@@ -1075,6 +1423,10 @@ def submit_market_orders(
                 status=status,
                 intent=intent,
                 client_order_id=ticket,
+                # Only when the broker spells it differently: the empty string is
+                # the ordinary case, and the caller reads a non-empty one as the
+                # rename to name in the email.
+                broker_symbol=symbol if symbol != order.ticker else "",
             )
         )
     return fills

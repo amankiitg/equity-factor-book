@@ -175,10 +175,18 @@ def unfilled_line(ticker: str, order: Any) -> str:
     UTC`: the name, the broker's own intent, the intended size, the status in
     words and the instant it reached that status, which for a cancellation is
     the cancellation and otherwise is the broker's last update.
+
+    A rejected order is dated by `failed_at`. That is the only field the broker
+    fills in for one, and the reason it carries is exactly the one Alpaca does not
+    persist: an order rejected at the open says `rejected 08:00 UTC` and nothing
+    more, which is why this line is where the derived reason is written down - it
+    is the record, and no column holds it.
     """
     status = order_status(order)
     when = clock_word(
-        getattr(order, "canceled_at", None) or getattr(order, "updated_at", None)
+        getattr(order, "canceled_at", None)
+        or getattr(order, "failed_at", None)
+        or getattr(order, "updated_at", None)
     )
     fields = [
         str(ticker),
@@ -186,6 +194,27 @@ def unfilled_line(ticker: str, order: Any) -> str:
         size_word(order),
         status.lower().replace("_", " "),
         when,
+    ]
+    return " ".join(field for field in fields if field)
+
+
+def not_sent_line(ticker: str, reason_code: str, notional: float, intent: str) -> str:
+    """One line for a leg the evening never sent, with the reason it was not sent.
+
+    A leg the evening decided against did not fill either, and the morning's line
+    is about what did not happen: leaving it out reported nine legs where the book
+    had ten and said nothing about the tenth. The reason is derived rather than
+    read, because the broker never saw the order and has no record of it - a ticker
+    whose asset the broker's feed does not carry says `symbol_not_found` - and the
+    size is the leg's own intended notional, which is the only size an order that
+    was never sent has.
+    """
+    fields = [
+        str(ticker),
+        str(intent or "").lower(),
+        f"${abs(float(notional or 0.0)):,.0f}",
+        "never sent",
+        f"({reason_code})" if reason_code else "",
     ]
     return " ".join(field for field in fields if field)
 
@@ -324,6 +353,42 @@ def unfilled_lines(fills: pd.DataFrame, orders: dict[str, Any]) -> list[str]:
     return lines
 
 
+def never_sent_lines(rows: pd.DataFrame) -> list[str]:
+    """One line per leg the evening could not send at all, with the derived reason.
+
+    Read from the evening's own order rows rather than from the fills frame: a leg
+    that was never sent has no broker order to read back, and its reason exists
+    only in the record the evening wrote. A leg the broker already held from a
+    rerun is not one of these - it was sent, just not twice - so the test is the
+    absence of a broker id, which is the same predicate the fill reconciliation
+    uses.
+
+    Only the legs the broker could not have traded under any spelling are listed,
+    which is `symbol_not_found`. The evening's other never-sent legs are its own
+    decisions and it has already named them - the $250 minimum, the borrow it could
+    not get, the halt it stopped on - and repeating them here would say the
+    morning had found something new about a leg whose reason was already reported.
+    """
+    if rows.empty or "broker_order_id" not in rows.columns:
+        return []
+    unsent = rows.loc[
+        (rows["broker_order_id"].astype(str).str.len() == 0)
+        & (
+            rows.get("reason_code", pd.Series(dtype=str)).astype(str)
+            == alpaca.REASON_SYMBOL_NOT_FOUND
+        )
+    ]
+    return [
+        not_sent_line(
+            str(row.ticker),
+            str(getattr(row, "reason_code", "") or ""),
+            float(getattr(row, "intended_notional", 0.0) or 0.0),
+            str(getattr(row, "position_intent", "") or ""),
+        )
+        for row in unsent.itertuples(index=False)
+    ]
+
+
 def realized_cost_bps(fills: pd.DataFrame, nav: float | None) -> float | None:
     """The fills' own cost against the close, in bp of NAV, or None.
 
@@ -359,6 +424,7 @@ def actual_holdings(
     report: dict[str, Any] | None = None,
     expected_cost_bps: float | None = None,
     read_by: str | None = None,
+    exits: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The account's own book, and the fills that produced it, for the snapshot.
 
@@ -414,7 +480,27 @@ def actual_holdings(
             "realized_cost_bps": report.get("realized_cost_bps"),
             "expected_cost_bps": expected_cost_bps,
             "unfilled": list(report.get("unfilled") or []),
+            "not_sent_lines": list(report.get("not_sent_lines") or []),
             "unread": list(report.get("unread") or []),
+        }
+    if exits is not None:
+        # The names the account held when it was last read and does not hold now,
+        # with nothing the loop did to explain them. It travels with the account
+        # rather than with the fills because it is a fact about the book in hand:
+        # the page draws them beside the holdings, where a reader looking for a
+        # name that is gone will actually see them.
+        block["exits"] = {
+            "previous_read": exits.get("previous_read"),
+            "feed": exits.get("feed"),
+            "window": exits.get("window"),
+            "names": [
+                {
+                    "ticker": str(item.get("ticker")),
+                    "quantity": float(item.get("quantity") or 0.0),
+                    "notional": float(item.get("notional") or 0.0),
+                }
+                for item in (exits.get("exits") or [])
+            ],
         }
     return block
 
@@ -447,6 +533,10 @@ def reconcile_day(
         "fills": fills,
         "orders": broker_orders,
         "unfilled": unfilled_lines(fills, broker_orders),
+        # The legs the evening never sent, with their derived reasons. They are
+        # not broker misses and are not counted as ones; they are the rest of what
+        # did not happen, and the morning's line names them for that reason.
+        "not_sent_lines": never_sent_lines(orders),
         "unread": unread,
         "not_sent": int(len(unmoved)),
         "n_orders": int(len(submitted)),

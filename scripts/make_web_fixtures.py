@@ -46,6 +46,11 @@ NEXT_CLOSE = "2026-09-22"
 CATCH_UP_CLOSE = "2026-09-24"
 STOPPED_CLOSE = "2026-09-25"
 CLOSED_CLOSE = "2026-11-26"
+# The evening whose account read found the PSKY position gone, three sessions
+# after the close the fixtures' book is from. It is a real close from the record
+# rather than a placeholder: the removal happened between the 2026-10-05 read and
+# this one, and the fixture exists to carry it onto the page.
+REMOVED_CLOSE = "2026-10-06"
 STORE_LABEL = "local parquet (live/state/supabase)"
 SPECIFIC = ROOT / "data" / "models" / "XS-v1" / "specific_var.parquet"
 
@@ -64,6 +69,12 @@ NAMES: tuple[str, ...] = (
     # The 2026-10-05 morning's own reconciliation, which is the case the fill
     # card's denominator got wrong: 197 of 199 filled, 2 rejected, 34 never sent.
     "snapshot_fills_rejected.json",
+    # The PSKY removal, three days later: a position that left the account with no
+    # order and no activity behind it, named in `actual_holdings.exits` and carried
+    # on the day's row as its own labelled adjustment rather than folded into the
+    # P&L. The one fixture that exercises the page's amber line about a name that
+    # walked out.
+    "snapshot_position_removed.json",
 )
 
 
@@ -145,9 +156,7 @@ def account_book(nav: float) -> dict[str, float]:
     return {ticker: value for ticker, value in held.items() if value}
 
 
-def fills_report(
-    target: dict[str, float], held: dict[str, float]
-) -> dict[str, Any]:
+def fills_report(target: dict[str, float], held: dict[str, float]) -> dict[str, Any]:
     """What the morning reconciliation found, as `reconcile_day` reports it.
 
     The one piece of the account fixture that stands in for a read rather than
@@ -435,6 +444,52 @@ def snapshots() -> dict[str, dict[str, Any]]:
                 read_by=fills.READ_MORNING,
             ),
             generated_at=_stamp("2026-09-21T22:41:00"),
+        ),
+        # The PSKY removal, as the 2026-10-06 evening saw it. The account was read
+        # that evening and PSKY was no longer in it: it had held 326.072572 shares
+        # worth $3,211.81 when the previous evening read the account, and nothing
+        # of the loop's explains where they went - the only closing leg of the run
+        # was rejected at the open, and the broker's own activity feed names the
+        # ticker nowhere between the two reads (see docs/hygiene_ledger.md). The
+        # name is in `exits`, and the dollars are on the row as its own labelled
+        # adjustment, which is where the page reads them: a paper-keeping artifact
+        # is not a result of the strategy, and it is not netted out of the P&L in
+        # silence either.
+        NAMES[10]: snapshot.build(
+            run=_run(
+                target_close=REMOVED_CLOSE,
+                dry_run=False,
+                notify_status="sent",
+            ),
+            manifest=proposal,
+            book=rows,
+            construction=chosen,
+            reconciliation={
+                "intended_notional": 433_479.55,
+                "filled_notional": 425_739.98,
+                "realized_annual_vol": None,
+                "expected_cost_bps": 14.54,
+                "unexplained_adjustment": -3_211.81,
+            },
+            actual=fills.actual_holdings(
+                held,
+                nav,
+                as_of="2026-10-06T22:41:09+00:00",
+                read_by=fills.READ_EVENING,
+                exits={
+                    "previous_read": "2026-10-05",
+                    "feed": "read",
+                    "window": "2026-10-06T00:00:00Z to 2026-10-06T22:41:09+00:00",
+                    "exits": [
+                        {
+                            "ticker": "PSKY",
+                            "quantity": 326.072572039,
+                            "notional": 3_211.81,
+                        }
+                    ],
+                },
+            ),
+            generated_at=_stamp("2026-10-06T22:41:00"),
         ),
     }
     missing = [name for name in NAMES if name not in built]

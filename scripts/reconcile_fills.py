@@ -109,9 +109,7 @@ def previous_orders(as_of: str | None = None) -> tuple[str, pd.DataFrame] | None
     return close, earlier.loc[dates == close].reset_index(drop=True)
 
 
-def closes_for(
-    tickers: list[str], close: str, *, fetch: Any = None
-) -> pd.Series:
+def closes_for(tickers: list[str], close: str, *, fetch: Any = None) -> pd.Series:
     """The close each leg was sized from, read from the vendor for one session.
 
     The orders themselves carry no price, only a notional, so the close has to be
@@ -125,9 +123,7 @@ def closes_for(
     from efb import prices as prices_module
 
     day = pd.Timestamp(close)
-    frame = (
-        fetch or prices_module.download_prices
-    )(
+    frame = (fetch or prices_module.download_prices)(
         names,
         start=(day - pd.Timedelta(days=10)).date().isoformat(),
         end=(day + pd.Timedelta(days=1)).date().isoformat(),
@@ -167,9 +163,7 @@ def publish(
     """
     from live import snapshot
 
-    published = json.loads(
-        snapshot.get_object_text(snapshot.LATEST_KEY, getter=getter)
-    )
+    published = json.loads(snapshot.get_object_text(snapshot.LATEST_KEY, getter=getter))
     published["actual_holdings"] = block
     run_status = published.get("run_status")
     if notify_status is not None and isinstance(run_status, dict):
@@ -196,7 +190,9 @@ def evening_notify_status(close: str) -> str | None:
     try:
         frame = store.select(staleness.TABLE)
     except Exception as exc:  # noqa: BLE001 - the page keeps the pending status
-        logger.warning("could not read the evening's run status: %s", type(exc).__name__)
+        logger.warning(
+            "could not read the evening's run status: %s", type(exc).__name__
+        )
         return None
     if frame.empty or not {"job", "target_close"} <= set(frame.columns):
         return None
@@ -251,7 +247,9 @@ def main(argv: list[str] | None = None) -> int:
         # A closed day settles nothing: the orders are still working at the
         # broker, waiting for the next open, and an evening that reported them as
         # unfilled would be reporting the calendar.
-        logger.info("no NYSE session on %s: nothing settled, nothing to reconcile", today)
+        logger.info(
+            "no NYSE session on %s: nothing settled, nothing to reconcile", today
+        )
         return 0
     if run_live_daily.already_ran(JOB, today.isoformat()):
         logger.info("%s already ran for %s", JOB, today.isoformat())
@@ -289,22 +287,42 @@ def main(argv: list[str] | None = None) -> int:
         # The account, not the store: this job exists to say what the account
         # holds, and `dry_run=False` is what makes a failed broker read raise
         # instead of falling back to the book the loop believed it held.
-        holdings = positions.check(dry_run=False, before=close)
+        holdings = positions.check(dry_run=False, before=close, include_close=True)
         nav = float(holdings["nav"])
         client = alpaca.connect(dry_run=False)
-        closes = closes_for(
-            [str(ticker) for ticker in orders["ticker"]], close
-        )
+        closes = closes_for([str(ticker) for ticker in orders["ticker"]], close)
         report = fills.reconcile_day(orders, client, closes=closes, nav=nav)
         frame = report["fills"]
         if len(frame):
             store.replace_by_date("fills", close, frame.to_dict("records"))
             filled_notional = float(frame["filled_notional"].abs().sum())
+        # What left the account since the evening last read it, and what explains
+        # it: a filled close from this very reconciliation, or an activity of the
+        # broker's own. Read here because this is where the account is read and
+        # where a silent removal has to be caught - the departure is invisible in
+        # every other number this job writes, and the fills above are the only
+        # record of a close that could explain it.
+        exits = positions.unexplained_since_last_read(
+            close,
+            holdings.get("broker"),
+            closed=positions.closed_shares(frame),
+        )
+        if exits["exits"]:
+            detail_tail = "; ".join(
+                f"{item['ticker']} {abs(float(item['quantity'])):,.2f} shares "
+                f"(${abs(float(item['notional'])):,.2f}) left with no order"
+                for item in exits["exits"]
+            )
+            logger.warning(
+                "%d position(s) left the account: %s", len(exits["exits"]), detail_tail
+            )
         detail = (
             f"fills: {report['n_filled']} of {report['n_orders']} order(s) filled"
             f", {report['n_unfilled']} did not, {report['not_sent']} never sent"
             f", realized {_bps(report['realized_cost_bps'])}"
         )
+        if exits["exits"]:
+            detail += f"; {len(exits['exits'])} position(s) left with no order"
 
         expected = None
         try:
@@ -323,6 +341,10 @@ def main(argv: list[str] | None = None) -> int:
             # orders left behind, which is why the fills travel with it and why
             # `close` is the evening they settled for.
             read_by=fills.READ_MORNING,
+            # The names that left the account with nothing behind them, drawn with
+            # the holdings because that is where a reader looks for a name that is
+            # no longer there.
+            exits=exits,
         )
         try:
             keys = publish(block, notify_status=notify_status)
@@ -348,7 +370,13 @@ def main(argv: list[str] | None = None) -> int:
             # and the count of filled legs are the fill lines' business.
             message_detail = notify.scrub(snapshot_failure)
 
-        if report["unfilled"] or report["unread"] or snapshot_failure is not None:
+        if (
+            report["unfilled"]
+            or report["not_sent_lines"]
+            or report["unread"]
+            or exits["exits"]
+            or snapshot_failure is not None
+        ):
             message = notify.notify_fills(
                 status=status,
                 target_close=close,
@@ -359,12 +387,18 @@ def main(argv: list[str] | None = None) -> int:
                 sent_notional=sent_notional,
                 unsent_notional=unsent_notional,
                 filled_notional=filled_notional,
+                # A position that left the account with nothing behind it is the
+                # one thing this message must never lose to a condition: it is
+                # part of what triggers the send above for exactly that reason.
+                exits=exits,
             )
             if message["status"] != notify.STATUS_SENT:
                 status, detail = "error", f"the message could not be sent: {detail}"
     except Exception as exc:  # noqa: BLE001 - recorded and retried, never silent
         status = "error"
-        detail = notify.scrub(f"fills reconciliation failed: {type(exc).__name__}: {exc}")
+        detail = notify.scrub(
+            f"fills reconciliation failed: {type(exc).__name__}: {exc}"
+        )
         logger.error("%s", detail)
 
     row = staleness.run_status_row(

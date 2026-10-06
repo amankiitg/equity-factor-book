@@ -52,6 +52,10 @@ EXECUTION_COLUMNS = [
     # arrives as an activity on an order id, and the deterministic ticket is only
     # unique among the orders this loop sends.
     "broker_order_id",
+    # The symbol the leg was actually sent under, when the broker's feed spells the
+    # company differently from the loop's own ticker. Empty is the ordinary case:
+    # the two agree, and there is nothing to explain to the reader.
+    "broker_symbol",
 ]
 
 # A leg with one of these statuses, or one of these reason codes, was not
@@ -99,6 +103,15 @@ EXPECTED_SKIP_REASON_CODES = frozenset(
         alpaca.REASON_BELOW_MIN_NOTIONAL,
         alpaca.REASON_COVER_UNDER_ONE_SHARE,
         alpaca.REASON_NOT_EASY_TO_BORROW,
+        # A ticker the broker's own feed carries under no symbol at all. The leg
+        # cannot be sent: an order under a symbol the broker does not have is
+        # refused every evening and buys nothing but a nightly rejection, which is
+        # why it is skipped rather than attempted. It is named in the message by
+        # `no_asset_line`, so a book quietly short of a name it cannot trade is
+        # stated rather than left to be found in a shorter order list, and the day
+        # can still be filed: retrying it at the next tick would find the same
+        # answer, and a run that failed forever would never file at all.
+        alpaca.REASON_SYMBOL_NOT_FOUND,
     }
 )
 
@@ -113,15 +126,48 @@ def borrow_skips(records: pd.DataFrame) -> list[dict[str, object]]:
     owner reads a shorter trade list otherwise, and a short book quietly missing a
     leg is a book nobody can check.
     """
+    return _skipped_rows(records, alpaca.REASON_NOT_EASY_TO_BORROW)
+
+
+def no_asset_rows(records: pd.DataFrame) -> list[dict[str, object]]:
+    """The legs no order could be sent for, because the broker has no such asset.
+
+    A ticker the broker's own feed carries under no symbol is not a name the run
+    may trade under a guess: the order is rejected every evening, and a rejection
+    a night is not a trade. The skip is loud for that reason - the leg is named in
+    the email - and it is a skip rather than a failure, because the answer will be
+    the same tomorrow and a run that never filed would never report anything else.
+    """
+    return _skipped_rows(records, alpaca.REASON_SYMBOL_NOT_FOUND)
+
+
+def renamed_symbols(records: pd.DataFrame) -> dict[str, str]:
+    """{loop ticker: broker symbol} for the legs the broker spells differently.
+
+    Read from the legs that were sent, because that is the record of the symbol
+    the order actually carried: the loop sized PSKY, the broker's feed calls the
+    same asset SKYD, and the email says so rather than leaving the reader to wonder
+    why a name they hold is in neither list.
+    """
+    if records.empty or "broker_symbol" not in records.columns:
+        return {}
+    spellings = records.loc[:, ["ticker", "broker_symbol"]].astype(str)
+    found = spellings.loc[spellings["broker_symbol"].str.len() > 0]
+    return {
+        str(row.ticker): str(row.broker_symbol)
+        for row in found.drop_duplicates(subset=["ticker"]).itertuples(index=False)
+    }
+
+
+def _skipped_rows(records: pd.DataFrame, code: str) -> list[dict[str, object]]:
+    """The legs skipped under one reason code, with what the message needs."""
     if records.empty:
         return []
     codes = records.get("reason_code")
     if codes is None:
         return []
     out: list[dict[str, object]] = []
-    for row in records.loc[codes == alpaca.REASON_NOT_EASY_TO_BORROW].itertuples(
-        index=False
-    ):
+    for row in records.loc[codes == code].itertuples(index=False):
         out.append(
             {
                 "ticker": str(row.ticker),
@@ -359,6 +405,9 @@ def submit_orders(
                     "client_order_id": "",
                     "position_intent": order.intent,
                     "broker_order_id": "",
+                    # A guard-rejected leg is never sent, so it carries no symbol
+                    # of the broker's: there is no rename to name.
+                    "broker_symbol": "",
                 }
             )
             continue
@@ -386,6 +435,9 @@ def submit_orders(
                     "position_intent": order.intent,
                     # No order exists yet, so there is no broker id to record.
                     "broker_order_id": "",
+                    # Nothing was resolved either: a dry evening asks the broker
+                    # nothing, so no rename can be reported from it.
+                    "broker_symbol": "",
                 }
             )
             continue
@@ -405,6 +457,7 @@ def submit_orders(
                     "client_order_id": fill.client_order_id,
                     "position_intent": fill.intent,
                     "broker_order_id": fill.order_id,
+                    "broker_symbol": fill.broker_symbol,
                 }
             )
     return pd.DataFrame(records, columns=EXECUTION_COLUMNS[1:])

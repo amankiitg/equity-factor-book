@@ -59,7 +59,38 @@ export interface FillsSummary {
   realized_cost_bps: number | null;
   expected_cost_bps: number | null;
   unfilled: string[];
+  // The legs the evening could not send at all, with the reason derived by the
+  // writer because the broker never saw the order: a ticker the asset feed
+  // carries under no symbol says `SYMBOL_NOT_FOUND`. They are not broker misses,
+  // so they are not in `n_unfilled`; they are the rest of what did not happen.
+  not_sent_lines?: string[];
   unread: Array<Record<string, unknown>>;
+}
+
+/** One name that left the account with nothing of the loop's to explain it. */
+export interface ExitName {
+  ticker: string;
+  // The shares the previous read held, and the dollars that went with them at
+  // that read's own market value.
+  quantity: number | null;
+  notional: number | null;
+}
+
+/**
+ * The names the account held when it was last read and does not hold now, with no
+ * closing leg filled and no activity of the broker's naming the ticker.
+ *
+ * Absent (not empty) when the question was not asked, which is what lets the page
+ * say "not read" rather than "none": the two are different statements about the
+ * same book. `feed` says whether the broker's activity feed answered, because a
+ * departure the feed could not be asked about is a weaker finding, not an absence
+ * of one.
+ */
+export interface ExitsBlock {
+  previous_read: string | null;
+  feed: "read" | "not read" | "no previous read" | null;
+  window: string | null;
+  names: ExitName[];
 }
 
 /**
@@ -80,6 +111,7 @@ export interface ActualHoldings {
   net_notional: number | null;
   names: ActualHoldingName[];
   fills: FillsSummary | null;
+  exits?: ExitsBlock | null;
 }
 
 export interface Snapshot {
