@@ -1144,6 +1144,98 @@ def test_the_subject_reads_from_the_inbox_the_way_the_owner_asked() -> None:
     assert sent[0]["text"] == "body"
 
 
+def test_the_morning_message_is_its_own_subject_and_body() -> None:
+    """The fills message answers a different question from the evening's.
+
+    The subject is the close, filled-of-sent and the misses by the broker's own
+    word; the body labels the notional as filled-against-sent; and neither the
+    staleness line nor "the run completed" belongs to a job that reads no model
+    input and is not the run.
+    """
+    fills = {
+        "trade_date": "2026-10-05",
+        "n_orders": 199,
+        "n_filled": 197,
+        "n_unfilled": 2,
+        "not_sent": 34,
+        "miss_statuses": {"REJECTED": 2},
+        "unfilled": [
+            "PSKY sell_to_close 30.11 rejected 08:00 UTC",
+            "WBD sell_to_open 49 rejected 08:00 UTC",
+        ],
+        "unread": [],
+        "realized_cost_bps": 6.42,
+        "expected_cost_bps": 14.54,
+    }
+    assert notify.fills_subject(target_close="2026-10-05", fills=fills) == (
+        "EFB fills 2026-10-05 | 197 of 199 filled | 2 rejected"
+    )
+    text = notify.fills_message(
+        target_close="2026-10-05",
+        fills=fills,
+        store="postgres/efb",
+        snapshot="latest.json",
+        sent_notional=429217.60,
+        unsent_notional=4261.95,
+        filled_notional=425739.98,
+    )
+    assert "EFB fills 2026-10-05: 197 of 199 order(s) filled" in text
+    # The figure is labelled, which is what the evening's bare `gross` was not:
+    # $425,740 is what filled, $429,218 is what was sent, and the evening's own
+    # $433,480 counted the never-sent legs as well.
+    assert "Notional: $425,740 filled of $429,218 sent" in text
+    assert "34 leg(s) under the $250 minimum were never sent" in text
+    assert "Did not fill: PSKY sell_to_close 30.11 rejected 08:00 UTC" in text
+    assert "Realized cost: 6.42 bps of NAV against 14.54 bps expected." in text
+    assert "Staleness:" not in text
+    assert "the run completed" not in text
+    # A morning with no misses says so rather than dropping the field: the message
+    # only goes out when there is something to report, and that something can be
+    # the page write alone.
+    quiet = notify.fills_subject(
+        target_close="2026-10-05",
+        fills={**fills, "miss_statuses": {}, "n_filled": 199, "n_unfilled": 0},
+    )
+    assert quiet == "EFB fills 2026-10-05 | 199 of 199 filled | nothing missed"
+    # A cancel and a reject are two different things to go and look at.
+    mixed = notify.fills_subject(
+        target_close="2026-10-05",
+        fills={**fills, "miss_statuses": {"REJECTED": 2, "CANCELED": 1}},
+    )
+    assert mixed == "EFB fills 2026-10-05 | 197 of 199 filled | 2 rejected, 1 canceled"
+
+
+def test_notify_fills_sends_the_morning_subject_and_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(notify.API_KEY_ENV, "re_" + "test-key-value")
+    monkeypatch.setenv(notify.TO_ENV, "owner@example.com")
+    sent: list[dict[str, Any]] = []
+    result = notify.notify_fills(
+        target_close="2026-10-05",
+        fills={"n_orders": 199, "n_filled": 197, "miss_statuses": {"REJECTED": 2}},
+        store="postgres/efb",
+        poster=lambda url, payload, headers=None: sent.append(payload),
+    )
+    assert result["status"] == notify.STATUS_SENT
+    assert sent[0]["subject"] == "EFB fills 2026-10-05 | 197 of 199 filled | 2 rejected"
+    assert result["text"].startswith("store: postgres/efb")
+    # A morning that could not publish its page says so on the subject, after the
+    # counts rather than instead of them.
+    failed = notify.notify_fills(
+        target_close="2026-10-05",
+        fills={"n_orders": 199, "n_filled": 197, "miss_statuses": {"REJECTED": 2}},
+        status="error",
+        detail="the snapshot was not published",
+        store="postgres/efb",
+        poster=lambda url, payload, headers=None: sent.append(payload),
+    )
+    assert sent[1]["subject"] == (
+        "EFB fills 2026-10-05 | 197 of 199 filled | 2 rejected | ERROR"
+    )
+    assert "Error: the snapshot was not published" in failed["text"]
+
+
 def test_the_resend_key_shape_is_scrubbed() -> None:
     """It is a credential, and nothing else in the scrub rules matches it."""
     cleaned = notify.scrub(f"Resend refused: {FAKE_KEY}")

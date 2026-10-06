@@ -1,9 +1,12 @@
 // The top strip: one line that answers "what am I looking at" without scrolling.
 //
 // It carries the run's own state (the pill), whether anything is trading, when the
-// snapshot was written and how old that is, the close the book is priced from, and
-// whether the owner was told. The one line under it is the honest version of the
-// most dangerous state the page has: a book that is not tonight's. A reader who
+// snapshot was written and how old that is, and the close the book is priced from.
+// It says nothing about the notification unless the notification failed: the
+// snapshot is written before the message is sent, so a status read off it is
+// `pending` on every evening, and the one status worth a line is the one where the
+// owner was never told. The one line under it is the honest version of the most
+// dangerous state the page has: a book that is not tonight's. A reader who
 // misses that reads a stale book as a current one, so it is stated in words rather
 // than left to a date they have to compare.
 
@@ -26,6 +29,13 @@ export function StatusStrip({
   const bookClose = dateOnly(snapshot.book_as_of);
   const staleBook = Boolean(bookClose && close && bookClose !== close);
   const reason = snapshot.book?.reason;
+  // The evening writes its snapshot before it sends its message, so the document
+  // itself says `pending` on an evening whose email went out; the morning reads
+  // the evening's own row and rewrites this field with what actually happened.
+  // Only a failure is worth a line: `pending` is the writer's ordering and
+  // `sent` is the ordinary case, and a strip that reports either on every clean
+  // evening is a strip nobody reads. `failed` is the one the owner has to know.
+  const notifyFailed = snapshot.run_status?.notify_status === "failed";
 
   return (
     <header data-strip="status" className="rounded border border-slate-300 bg-white px-3 py-2">
@@ -50,10 +60,13 @@ export function StatusStrip({
         <span data-flag="close" className="text-slate-600">
           target close {close ?? "unknown"}
         </span>
-        <span data-flag="notify" className="text-slate-600">
-          notify {snapshot.run_status?.notify_status ?? "n/a"}
-        </span>
       </div>
+      {notifyFailed ? (
+        <p data-note="notify-failed" className="mt-1 text-sm font-medium text-amber-800">
+          the owner was never told: the message for the {close ?? "last"} close
+          failed to send
+        </p>
+      ) : null}
       {staleBook ? (
         <p data-note="older-book" className="mt-1 text-sm font-medium text-amber-800">
           the book is the {bookClose} close, not tonight's {close}: the run did not price

@@ -21,11 +21,13 @@ import { sectorCodeFor, sectorLabel, UNMAPPED } from "./sectors";
 import type { Snapshot } from "./types";
 import noBook from "../fixtures/snapshot_no_book.json";
 import ok from "../fixtures/snapshot_ok.json";
+import rejected from "../fixtures/snapshot_fills_rejected.json";
 import withActual from "../fixtures/snapshot_actual_holdings.json";
 
 const OK = ok as unknown as Snapshot;
 const NONE = noBook as unknown as Snapshot;
 const ACTUAL = withActual as unknown as Snapshot;
+const REJECTED = rejected as unknown as Snapshot;
 const NOW = new Date("2026-09-21T23:00:00Z");
 
 /** The drawer is shut until a tab is asked for, which is half of what it is for. */
@@ -81,18 +83,48 @@ describe("the metrics row", () => {
     const block = ACTUAL.actual_holdings;
     expect(block?.fills).toBeTruthy();
     if (!block?.fills) return;
+    const fills = block.fills;
     render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
     const card = document.querySelector("[data-card='fills']") as HTMLElement;
     expect(card).toBeTruthy();
-    // "filled of sent": the legs the evening never sent are not orders the broker
-    // could have filled, so they are out of the denominator.
-    const sent = (block.fills.n_orders as number) - (block.fills.not_sent ?? 0);
-    expect(sent).toBeGreaterThanOrEqual(block.fills.n_filled as number);
-    expect(card.textContent).toContain(`${block.fills.n_filled} of ${sent} filled`);
-    expect(card.textContent).toContain((block.fills.realized_cost_bps as number).toFixed(2));
+    // "filled of sent": the denominator is the legs the evening sent, which the
+    // writer's `n_orders` already counts. The never-sent legs are their own count
+    // beside it, never subtracted from the denominator a second time.
+    expect(fills.n_orders).toBeGreaterThanOrEqual(fills.n_filled as number);
+    expect(card.textContent).toContain(`${fills.n_filled} of ${fills.n_orders} filled`);
     expect(card.textContent).toContain(
-      (block.fills.expected_cost_bps as number).toFixed(2),
+      `${fills.not_sent} never sent, ${fills.n_unfilled} did not fill`,
     );
+    expect(card.textContent).toContain((fills.realized_cost_bps as number).toFixed(2));
+    expect(card.textContent).toContain(
+      (fills.expected_cost_bps as number).toFixed(2),
+    );
+  });
+
+  it("reports the 2026-10-05 morning's exact counts, and never a double-subtracted 165", () => {
+    // The incident's own numbers, from the fixture the writer built for it: the
+    // morning reconciled 197 of the 199 orders the evening sent, with 2 rejected
+    // and the 34 under-$250 names never sent. The page read `n_orders - not_sent`
+    // as the denominator and printed "197 of 165 filled", subtracting the
+    // never-sent legs a second time. The numbers are asserted literally because
+    // the point is the arithmetic, not the fixture.
+    const fills = REJECTED.actual_holdings?.fills;
+    expect(fills).toBeTruthy();
+    if (!fills) return;
+    expect([fills.n_orders, fills.n_filled, fills.n_unfilled, fills.not_sent]).toEqual([
+      199, 197, 2, 34,
+    ]);
+    render(<SnapshotView snapshot={REJECTED} now={NOW} />);
+    const card = document.querySelector("[data-card='fills']") as HTMLElement;
+    expect(card.textContent).toContain("197 of 199 filled");
+    expect(card.textContent).toContain("34 never sent, 2 did not fill");
+    expect(card.textContent).not.toContain("165");
+    // The misses are on the page too, each with the broker's own status word.
+    const misses = document.querySelector("[data-fills='misses']") as HTMLElement;
+    expect(misses.textContent).toContain("2 orders did not fill");
+    for (const line of fills.unfilled) {
+      expect(misses.textContent).toContain(line);
+    }
   });
 
   it("derives the book in dollars from the snapshot's own gross and notional", () => {
@@ -467,8 +499,9 @@ describe("actual holdings", () => {
     expect(fills).toBeTruthy();
     if (!fills) return;
     const card = document.querySelector("[data-card='fills']") as HTMLElement;
+    expect(card.textContent).toContain(`${fills.n_filled} of ${fills.n_orders} filled`);
     expect(card.textContent).toContain(
-      `${fills.n_filled} of ${(fills.n_orders as number) - (fills.not_sent ?? 0)} filled`,
+      `${fills.not_sent} never sent, ${fills.n_unfilled} did not fill`,
     );
     expect(card.textContent).toContain(`realized ${(fills.realized_cost_bps as number).toFixed(2)}`);
     expect(card.textContent).toContain(`against ${(fills.expected_cost_bps as number).toFixed(2)} bps`);

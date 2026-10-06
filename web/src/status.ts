@@ -98,10 +98,12 @@ export function health(snapshot: Snapshot, now: Date): Health {
   }
   return {
     ok: true,
+    // No detail: the notification status is not the page's to report here. The
+    // snapshot is written before the message goes out, so what it carries is
+    // `pending` on every evening; the strip states the one case the owner has to
+    // see, which is the evening whose message never went out.
     headline: `clean run for the ${dateOnly(snapshot.target_close) ?? "latest"} close`,
-    detail: snapshot.run_status?.notify_status
-      ? `the owner was notified (${snapshot.run_status.notify_status})`
-      : "",
+    detail: "",
   };
 }
 

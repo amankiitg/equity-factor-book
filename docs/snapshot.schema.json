@@ -64,7 +64,10 @@
         "catch_up_sessions": {"type": "array", "items": {"type": "string"}},
         "splits": {"type": "array", "items": {"type": "string"}},
         "flags": {"type": "array"},
-        "notify_status": {"type": ["string", "null"]},
+        "notify_status": {
+          "type": ["string", "null"],
+          "description": "What the evening's message did. Written as `pending` because the snapshot is published before the message is sent, and rewritten by the 15:30 UTC fills reconciliation from the evening's own `run_status` row, which holds the truth: `pending` and `sent` are both ordinary and the page says nothing about either, while `failed` means the owner was never told and is the one state the page warns about."
+        },
         "snapshot": {"type": ["string", "null"]},
         "establishment": {
           "type": "boolean",
@@ -287,7 +290,7 @@
             },
             "n_orders": {
               "type": ["integer", "number", "null"],
-              "description": "The legs the evening tried to have executed."
+              "description": "The legs the evening sent to the broker, which is the denominator a fill count is read against: a leg the evening decided against was never an order the broker could fill, and it is counted apart in `not_sent` rather than subtracted from this. The two sets are disjoint."
             },
             "n_filled": {
               "type": ["integer", "number", "null"],
@@ -299,7 +302,7 @@
             },
             "not_sent": {
               "type": ["integer", "number", "null"],
-              "description": "Legs the evening decided against, so there is nothing at the broker to read."
+              "description": "Legs the evening decided against, so there is nothing at the broker to read. Counted apart from `n_orders`, which counts only the legs that were sent: the page shows `filled of n_orders` and states this beside it, because subtracting it from `n_orders` takes the never-sent legs out of a denominator they were never in."
             },
             "realized_cost_bps": {
               "type": ["number", "null"],

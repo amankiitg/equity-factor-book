@@ -287,6 +287,25 @@ def facts_rows(
     return pd.DataFrame(records, columns=list(FILL_COLUMNS))
 
 
+def miss_statuses(fills: pd.DataFrame) -> dict[str, int]:
+    """How many legs missed, by the broker's own status word.
+
+    A count alone cannot say "2 rejected" from "2 canceled", and the morning
+    message's inbox line has to: a cancellation is a working order the broker took
+    back and a rejection is an order that never worked, which are two different
+    things to go and look at. Empty when every leg filled, which is what a morning
+    that only had a page write to report sends.
+    """
+    if fills.empty or "status" not in fills.columns:
+        return {}
+    missed = fills.loc[fills["status"].astype(str) != FILLED, "status"].astype(str)
+    counts = missed.value_counts()
+    # Sorted by count then status word so two mornings with the same legs produce
+    # the same sentence rather than one that depends on the frame's row order.
+    ranked = sorted(counts.items(), key=lambda item: (-int(item[1]), str(item[0])))
+    return {str(word): int(count) for word, count in ranked}
+
+
 def unfilled_lines(fills: pd.DataFrame, orders: dict[str, Any]) -> list[str]:
     """One line per leg that is not filled, in the order the book lists them.
 
@@ -435,6 +454,7 @@ def reconcile_day(
         "n_unfilled": (
             int(len(fills) - (fills["status"] == FILLED).sum()) if len(fills) else 0
         ),
+        "miss_statuses": miss_statuses(fills),
         "realized_cost_bps": realized_cost_bps(fills, nav),
         "trade_date": trade_date,
     }

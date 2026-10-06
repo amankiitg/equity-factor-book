@@ -142,9 +142,13 @@ def closes_for(
 
 
 def publish(
-    block: dict[str, Any], *, getter: Any = None, poster: Any = None
+    block: dict[str, Any],
+    *,
+    notify_status: str | None = None,
+    getter: Any = None,
+    poster: Any = None,
 ) -> list[str]:
-    """Republish the snapshot with the actual holdings added, and nothing else.
+    """Republish the snapshot with the actual holdings added, and little else.
 
     The document that is already up is the one republished, with one key added,
     rather than a payload rebuilt from the store. The target book, its close, its
@@ -152,6 +156,14 @@ def publish(
     second writer that rebuilds them is a second chance to publish a book the run
     that traded never produced. `generated_at` is left as it is for the same
     reason: the book was generated then, and this morning only added to it.
+
+    `notify_status` is the one field the evening's own bytes cannot be trusted
+    for: the snapshot was written *before* the message went out, so it carries
+    `pending` however the send went. This morning has since read the evening's
+    row, which holds what actually happened, and writes it back so the page can
+    say the owner was never told rather than showing a pending forever. None
+    leaves the document's own value alone, which is what a morning with no
+    evening row to read must do rather than inventing a status.
     """
     from live import snapshot
 
@@ -159,11 +171,66 @@ def publish(
         snapshot.get_object_text(snapshot.LATEST_KEY, getter=getter)
     )
     published["actual_holdings"] = block
+    run_status = published.get("run_status")
+    if notify_status is not None and isinstance(run_status, dict):
+        run_status["notify_status"] = notify_status
     text = snapshot.payload_text(published)
     keys = snapshot.keys_for(published.get("target_close"))
     for key in keys:
         snapshot.put_object(key, text, poster=poster)
     return keys
+
+
+def evening_notify_status(close: str) -> str | None:
+    """The evening run's actual notify_status for one close, or None.
+
+    The evening's snapshot is written before its message is sent, so its own
+    `notify_status` is `pending` even on an evening whose email went out; the
+    `run_status` row is updated afterwards with what the send did. This is the
+    read that puts the truth back on the page, and it is deliberately a read of
+    the row rather than of the snapshot: the snapshot is exactly the artifact
+    that cannot know.
+    """
+    from live import staleness, store
+
+    try:
+        frame = store.select(staleness.TABLE)
+    except Exception as exc:  # noqa: BLE001 - the page keeps the pending status
+        logger.warning("could not read the evening's run status: %s", type(exc).__name__)
+        return None
+    if frame.empty or not {"job", "target_close"} <= set(frame.columns):
+        return None
+    day = str(close)[:10]
+    rows = frame.loc[
+        (frame["job"].astype(str) == staleness.JOB)
+        & (frame["target_close"].astype(str).str.slice(0, 10) == day)
+    ]
+    if rows.empty:
+        return None
+    value = rows.iloc[-1].get("notify_status")
+    if value is None or (not isinstance(value, str) and pd.isna(value)):
+        return None
+    return str(value)
+
+
+def _notionals(orders: pd.DataFrame) -> tuple[float, float]:
+    """(sent, never-sent) intended notional for one evening's order rows.
+
+    A leg with a `broker_order_id` was sent and is one the broker could have
+    filled; a leg without one is one the evening decided against, and its notional
+    is what the evening's own `gross` counted in as though it had traded. The two
+    are the pair the morning message labels.
+
+    Zero for a frame that cannot answer rather than a raised error: the count is
+    the morning's job and a notional line is not worth failing the run over.
+    """
+    if orders.empty or "intended_notional" not in orders.columns:
+        return 0.0, 0.0
+    if "broker_order_id" not in orders.columns:
+        return float(orders["intended_notional"].abs().sum()), 0.0
+    sent = orders["broker_order_id"].astype(str).str.len() > 0
+    values = orders["intended_notional"].abs()
+    return float(values[sent].sum()), float(values[~sent].sum())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -206,6 +273,14 @@ def main(argv: list[str] | None = None) -> int:
     keys: list[str] = []
     message = None
     holdings: dict[str, Any] = {}
+    # The evening's actual notification outcome, read from its own row rather
+    # than from the snapshot it wrote before it sent. The page carries `pending`
+    # otherwise, forever, which is the one status it must never show.
+    notify_status = evening_notify_status(close)
+    # What the evening sent, and what it left unsent under the minimum. The legs
+    # are the evening's own rows: the two notionals are the pair the morning
+    # message labels so a `gross` figure cannot be read as the wrong one.
+    sent_notional, unsent_notional = _notionals(orders)
     # The page write is the one step here that can fail without the reconciliation
     # being wrong, and a page that did not go up is a failed morning rather than a
     # footnote on a healthy one. None means it went up.
@@ -250,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
             read_by=fills.READ_MORNING,
         )
         try:
-            keys = publish(block)
+            keys = publish(block, notify_status=notify_status)
         except Exception as exc:  # noqa: BLE001 - named below, never swallowed
             snapshot_failure = (
                 f"the snapshot was not published: {type(exc).__name__}: {exc}"
@@ -274,15 +349,16 @@ def main(argv: list[str] | None = None) -> int:
             message_detail = notify.scrub(snapshot_failure)
 
         if report["unfilled"] or report["unread"] or snapshot_failure is not None:
-            message = notify.notify_run(
+            message = notify.notify_fills(
                 status=status,
                 target_close=close,
-                dry_run=False,
-                orders=report["n_orders"],
-                gross=filled_notional,
+                fills={**report, "expected_cost_bps": expected},
                 detail=message_detail,
                 store=store.store_label(),
-                fills={**report, "expected_cost_bps": expected},
+                snapshot=", ".join(keys) if keys else None,
+                sent_notional=sent_notional,
+                unsent_notional=unsent_notional,
+                filled_notional=filled_notional,
             )
             if message["status"] != notify.STATUS_SENT:
                 status, detail = "error", f"the message could not be sent: {detail}"

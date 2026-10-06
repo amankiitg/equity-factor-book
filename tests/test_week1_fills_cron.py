@@ -351,10 +351,23 @@ def test_a_morning_with_a_miss_names_it_in_the_message(
 
     assert code == 0
     assert len(harness.sent) == 1
-    text = str(harness.sent[0]["text"])
+    payload = harness.sent[0]
+    text = str(payload["text"])
+    # The morning's own subject: the close, filled-of-sent, and the misses by the
+    # broker's own word. It is not the evening's subject with different numbers,
+    # and it has neither a staleness field nor an "ok".
+    assert str(payload["subject"]) == f"EFB fills {CLOSE} | 0 of 1 filled | 1 canceled"
+    assert f"EFB fills {CLOSE}: 0 of 1 order(s) filled" in text
     assert "Did not fill: DG sell_to_open 41 canceled 12:15 UTC." in text
-    assert "Realized cost:" in text and "expected" in text
-    assert "0 of 1 orders filled" in text
+    # The notional is labelled: the legs that filled against the legs that were
+    # sent, so the figure cannot be read as the evening's own `gross`.
+    assert "Notional: $0 filled of $512 sent." in text
+    assert "Realized cost: no fill could be priced against 14.15 bps expected." in text
+    # None of the evening's lines: this job reads no model input, so a staleness
+    # line would be a number about a different run, and the evening is the run
+    # whose completion the other subject reports.
+    assert "Staleness:" not in text
+    assert "the run completed" not in text
 
 
 def test_the_snapshot_gains_the_actual_holdings_beside_the_target_book(
@@ -390,6 +403,56 @@ def test_the_snapshot_gains_the_actual_holdings_beside_the_target_book(
     assert republished["generated_at"] == PUBLISHED["generated_at"]
     for key in ("schema_version", "target_close", "book_as_of", "dry_run", "store"):
         assert republished[key] == PUBLISHED[key]
+
+
+def test_the_evenings_actual_notify_status_replaces_the_documents_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page must be able to say the owner was never told.
+
+    The evening writes its snapshot before it sends its message, so the document
+    carries `pending` however the send went, and nothing on the evening's own side
+    can correct it afterwards. The evening's `run_status` row is what knows, so the
+    morning reads it back and writes it onto the document it republishes; only a
+    failure is worth a line, and a page that cannot see one cannot show it.
+    """
+    harness = _install(
+        monkeypatch, tmp_path, broker_orders={"oid-dg": _order("filled")}
+    )
+    # The evening's own row, as `finish_run` leaves it after the send failed.
+    staleness.write_run_status(
+        {"status": "ok", "target_close": CLOSE},
+        run_date=CLOSE,
+        status="ok",
+        notify_status="failed",
+    )
+
+    reconcile_fills.main([])
+
+    republished = json.loads(harness.published[0][1])
+    assert republished["run_status"]["notify_status"] == "failed"
+    # And the rest of the evening's run block is untouched: this is one field.
+    assert republished["run_status"]["status"] == PUBLISHED["run_status"]["status"]
+
+
+def test_a_morning_with_no_evening_row_leaves_the_documents_status_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An evening that recorded nothing is not an evening whose email failed.
+
+    `evening_notify_status` answers None when there is no row, and None leaves the
+    document's own value rather than inventing a status: a morning that wrote
+    `failed` on the strength of a missing row would put a false alarm on the page,
+    which is the one thing a warning is not allowed to be.
+    """
+    harness = _install(
+        monkeypatch, tmp_path, broker_orders={"oid-dg": _order("filled")}
+    )
+
+    reconcile_fills.main([])
+
+    republished = json.loads(harness.published[0][1])
+    assert republished["run_status"] == PUBLISHED["run_status"]
 
 
 def test_a_snapshot_that_cannot_be_published_fails_the_morning(
@@ -439,20 +502,26 @@ def test_a_snapshot_that_cannot_be_published_fails_the_morning(
 
     assert len(harness.sent) == 1
     payload = harness.sent[0]
-    assert str(payload["subject"]) == f"EFB ERROR {CLOSE} | none proposed | Exception"
-    text = str(payload["text"])
-    assert f"EFB live book {CLOSE}: error, the run failed" in text
-    # The orders went out last evening: "the run failed before sizing" would be the
-    # message's own false statement about a morning whose legs filled.
-    assert "failed before sizing" not in text
-    assert f"Orders: none from this job. The 1 order(s) for the close of {CLOSE}" in (
-        text
+    # The failure is appended to the morning's own subject rather than replacing
+    # it: the count that filled is still what the owner reads first, and a subject
+    # that begins "ERROR" reads as a morning on which nothing traded.
+    assert str(payload["subject"]) == (
+        f"EFB fills {CLOSE} | 1 of 1 filled | nothing missed | ERROR"
     )
+    text = str(payload["text"])
+    assert f"EFB fills {CLOSE}: 1 of 1 order(s) filled" in text
+    # The notional line is labelled on this path too: a morning that failed its
+    # page write still reconciled the legs, and $517 filled of $512 sent is not a
+    # `gross`.
+    assert "Notional: $517 filled of $512 sent." in text
     # The reason is the write, not the morning's reconciliation: the realised cost
     # and the count of filled legs are the fill lines' own business.
-    assert "Error: Exception: the snapshot was not published: RuntimeError" in text
+    assert "Error: the snapshot was not published: RuntimeError" in text
     assert "the bucket answered 503" in text
-    assert "Realized cost:" in text
+    # The evening's own lines stay out of it, as in the miss message above.
+    assert "Staleness:" not in text
+    assert "the run completed" not in text
+    assert "Orders: none from this job" not in text
 
 
 def test_a_snapshot_that_cannot_be_published_is_not_a_failed_morning_when_it_holds(
