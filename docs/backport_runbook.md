@@ -63,6 +63,7 @@ Steps 1 to 4 are the ones no default run performs.
 | 7 | State the end date on any further rebuild | `make rebuild END=<last session before the merge>` | `data/VERSION.json` records that session |
 | 8 | Re-record the frozen block baseline if the seed moved a pre-cutoff row | `.venv/bin/python -c "from live import extend; print(extend.incremental_integrity())"` | `tests/test_e11_extend.py` green |
 | 9 | Clear the known reds the refresh exists to fix (the list is `docs/known_test_failures.md`, which the full suite's 55 are measured from) | `.venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"` | 0 failures; anything still red is fixed or written down in that file with its reason, never skipped and never `xfail` (note 9) |
+| 10 | Three figures the live loop reports wrongly, each with the day that exposed it (note 10) | `tests/test_e11_bridge.py`, `tests/test_week1_fills_cron.py`, `tests/test_e11_fills.py` after each change | the bridge has an *arrived* term and 2026-10-06 holds all six identities; the morning's cost line compares realized against the trading half; `reconciliation.filled_notional` holds what filled |
 
 1. **Read one panel.** At merge, `live/extend.py` must read `returns_clean` as
    well, in the same commit, so the live model fit and `next_descriptor_design`
@@ -135,6 +136,51 @@ Steps 1 to 4 are the ones no default run performs.
    passing** (an id in that file that came back green). A new failure is
    investigated on its own and is never folded into the known list, so a real
    regression cannot hide among them; zero new is the bar for a merge.
+10. **Three figures the live loop reports wrongly.** Each was found by looking at a
+   real day rather than by a failing test, and each is small enough to fix in one
+   commit with a test that would have caught it. They are here rather than in
+   `docs/known_test_failures.md` because none of them is red: the suite passes on
+   the wrong number.
+
+   1. **The bridge cannot say a name arrived.** Its sixth identity is
+      `held before - exited + opened = held after + reversals + removed without an
+      order`, which accounts for names leaving and has no term for a name the loop
+      never held and never opened. Measured 2026-10-07 on the 2026-10-06 close: the
+      account holds **SKYD** (326.072572039 shares, asset `5b47111b…`) - the PSKY
+      position, returned by the broker's late processing of the rename - and neither
+      the evening's read (188 names) nor the book (195) holds it, so the identity
+      reads `195 vs 196` and the page goes amber on a day whose block is otherwise
+      perfect (all 24 departures carry a filled close leg; 31 of the 32 arrivals are
+      the book's own opened names). The fix is the mirror of the existing term: an
+      `arrived_without_order` list, populated the way `removed_without_order` is -
+      names in the account that the block can explain neither as held-before, nor as
+      opened, nor as a reversal - added to the right-hand side of the identity and
+      itemised beside the gap's other names. `tests/test_e11_bridge.py`, plus the
+      2026-10-06 numbers as a case, since they are now known.
+   2. **The morning's cost line compares against the wrong half.** The page's cost
+      card and the evening's message both split the expected cost into the trading
+      half (spread + impact + commission) and borrow, because no fill price pays a
+      holding cost, and the card compares realized cost against the trading half
+      only. The morning email does not: 2026-10-07 printed `Realized cost: 10.23 bps
+      of NAV against 14.22 bps expected`, and 14.22 is the full figure (trading 5.89
+      + borrow 8.33). Since the realized side can only ever contain trading cost, the
+      comparison is wrong in the flattering direction on every borrow-heavy day. The
+      fix is to compare against `expected_cost_split.trading` and to say which half
+      it is, the way the card's own label does.
+      `tests/test_week1_fills_cron.py::test_a_morning_with_a_miss_names_it_in_the_message`
+      is the call site that composes the line.
+   3. **`reconciliation.filled_notional` is stored as 0 on every row.** Measured
+      2026-10-07: all seven rows from 2026-09-25 to 2026-10-06 carry `0.0`, including
+      the 2026-10-05 close whose 197 of 199 legs filled, because the evening writes
+      the row before its orders settle and nothing back-fills it afterwards. It is
+      harmless today only because nothing reads it - the page's fills block carries
+      `filled_notional` from the morning - which is exactly why it should be either
+      written by the morning that knows the number or dropped, so a future reader
+      cannot mistake a placeholder for a measurement. `tests/test_e11_fills.py` and
+      the reconciliation writer.
+
+   The exit condition is the three of them fixed or written down here, and the day's
+   own numbers as a case in each test rather than a number typed from a message.
 
 ## 4. Rollback
 
