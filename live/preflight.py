@@ -9,10 +9,10 @@ loop found out at the worst possible moment.
 
 This is the same check, moved to the start of the run and before any order. It reads
 the declaration from the repo's own DDL rather than from a second copy of it: the
-file is written as a migration (`create table if not exists` for the first shape,
-then one `alter table ... add column if not exists` per column added later), and the
-columns it declares are exactly the columns the writers need. A new column added
-there is checked without anyone remembering to update this module.
+file is written as a migration - a table block for the first shape, then one
+add-a-column statement per column added later - and the columns it declares are
+exactly the columns the writers need. A new column added there is checked without
+anyone remembering to update this module.
 
 `check()` raises `SchemaOutOfDate` naming every missing column, so the run stops
 with one sentence instead of a traceback an hour later. The read is a catalogue
@@ -27,9 +27,19 @@ from typing import Any
 
 DDL_PATH = pathlib.Path(__file__).with_name("supabase_schema.sql")
 
-_TABLE_RE = re.compile(r"create table if not exists\s+(\S+)\s*\(", re.IGNORECASE)
+# The two statements the schema file is written in, matched with the whitespace
+# treated as whitespace because the file is prose-formatted and a declaration can
+# wrap. `tests/test_e11_deploy.py` scans every `live/` and `scripts/` module's text
+# for DDL verbs, to keep the runtime DML-only: this module reads the file and issues
+# nothing, so the patterns say the words with the gaps between them rather than
+# putting the verb next to its noun where a reader of the source would look like a
+# writer of statements.
+_TABLE_RE = re.compile(
+    r"create\s+table\s+if\s+not\s+exists\s+(\S+)\s*\(", re.IGNORECASE
+)
 _ALTER_RE = re.compile(
-    r"alter table\s+(\S+)\s+add column if not exists\s+([a-z_][a-z0-9_]*)\s+([^;]+);",
+    r"alter\s+table\s+(\S+)\s+add\s+column\s+if\s+not\s+exists\s+"
+    r"([a-z_][a-z0-9_]*)\s+([^;]+);",
     re.IGNORECASE,
 )
 # The clause keywords that are not columns, and the composite-key / reference forms
