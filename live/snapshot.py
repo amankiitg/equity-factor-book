@@ -182,6 +182,7 @@ def build(
     construction: dict[str, Any] | None = None,
     book_reason: str | None = None,
     actual: dict[str, Any] | None = None,
+    bridge_block: dict[str, Any] | None = None,
     generated_at: datetime | None = None,
 ) -> dict[str, Any]:
     """The document the page reads, assembled from what the run already knows.
@@ -368,6 +369,13 @@ def build(
         # an account holding nothing, which is a different statement from an account
         # nobody read.
         **({"actual_holdings": _actual_block(actual)} if actual else {}),
+        # The bridge: how the held book became the orders and then the positions.
+        # The evening publishes the first half of it and the morning completes it, so
+        # the page can connect three sets it draws side by side without recomputing
+        # any of the arithmetic - and can say so when the arithmetic does not add up.
+        # Absent (not null) when nobody built one, which is a stopped run: a bridge of
+        # zeroes would read as an evening that moved nothing.
+        **({"bridge": _bridge_block(bridge_block)} if bridge_block else {}),
     }
 
 
@@ -468,6 +476,58 @@ def _actual_block(raw: dict[str, Any] | None) -> dict[str, Any]:
         # name that is no longer there. Absent (rather than an empty list) when the
         # question was not asked, so the page can say "not read" instead of "none".
         **({"exits": _exits_block(block.get("exits"))} if block.get("exits") else {}),
+    }
+
+
+def _bridge_block(raw: Any) -> dict[str, Any]:
+    """The bridge as the page's own object, with the non-finite nulled.
+
+    Counts pass through as they are, because they are what the identities are
+    checked against and a count rounded on its way to the page would be a check
+    against a different number. The two name lists are lists of strings and the
+    removals keep their ticker, shares and dollars: they are the evidence under the
+    counts, and the four fields are what the reader needs to look one up.
+    """
+    block = raw if isinstance(raw, dict) else {}
+    return {
+        "close": _iso(block.get("close")),
+        "seen_by": block.get("seen_by"),
+        "book": _number(block.get("book")),
+        "held_before": _number(block.get("held_before")),
+        "in_both": _number(block.get("in_both")),
+        "opened": _number(block.get("opened")),
+        "exited": _number(block.get("exited")),
+        "changed": _number(block.get("changed")),
+        "under_minimum": _number(block.get("under_minimum")),
+        "orders_sent": _number(block.get("orders_sent")),
+        "filled": _number(block.get("filled")),
+        "did_not_fill": _number(block.get("did_not_fill")),
+        "held_after": _number(block.get("held_after")),
+        "under_minimum_usd": _number(block.get("under_minimum_usd")),
+        "reversals_pending": [
+            str(name) for name in (block.get("reversals_pending") or [])
+        ],
+        "removed_without_order": [
+            {
+                "ticker": str(item.get("ticker")),
+                "quantity": _number(item.get("quantity")),
+                "notional": _number(item.get("notional")),
+            }
+            for item in (block.get("removed_without_order") or [])
+            if isinstance(item, dict) and item.get("ticker")
+        ],
+        "unexplained": [str(name) for name in (block.get("unexplained") or [])],
+        "identities": [
+            {
+                "name": str(item.get("name")),
+                "left": _number(item.get("left")),
+                "right": _number(item.get("right")),
+                "holds": bool(item.get("holds")),
+            }
+            for item in (block.get("identities") or [])
+            if isinstance(item, dict)
+        ],
+        "holds": bool(block.get("holds", False)),
     }
 
 
@@ -714,6 +774,7 @@ def write_snapshot(
     construction: dict[str, Any] | None = None,
     book_reason: str | None = None,
     actual: dict[str, Any] | None = None,
+    bridge_block: dict[str, Any] | None = None,
     dry_run: bool = True,
     mode: str | None = None,
     poster: Callable[..., Any] | None = None,
@@ -733,6 +794,7 @@ def write_snapshot(
         construction=construction,
         book_reason=book_reason,
         actual=actual,
+        bridge_block=bridge_block,
         generated_at=generated_at,
     )
     if resolved == OFF:
