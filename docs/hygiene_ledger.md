@@ -2114,3 +2114,82 @@ unexplained. And a departure is not conclusive on its own: this entry says the
 shares were not sold, not that nothing at all happened to them, which is exactly
 why the line is a labelled adjustment for a human to read rather than a silent
 correction to a number.
+
+## 2026-10-06: the evening run died after its orders, on a column the database never got
+
+Decision. The orders of 2026-10-06 stand and are complete as sent; nothing is
+re-sent, cancelled or adjusted. The migration that the crash exposed
+(`efb.reconciliation.unexplained_adjustment`, `double precision`, declared by the
+Part B change and never applied to the live database) has been applied, and the
+three rows the evening could not write - its reconciliation row, its NAV row and its
+broker read - were backfilled by hand from the store's own records rather than by
+re-running the evening. `efb.run_status` and `efb.cron_runs` for 2026-10-06 are left
+exactly as the failed run left them: the run did fail, and no tick retries that date,
+so marking the day "ok" would be inventing a success. The branch the fix rides on (see
+Status) makes the two runs check the schema before they do anything and makes a failed
+evening report how many orders it sent.
+
+Reason. The evening of 2026-10-06 sent 192 orders and then died at
+`store_reconciliation`: `store.upsert` sends the row dictionary's keys as the
+INSERT's column list, `live.reconcile.daily_record` sets `unexplained_adjustment` on
+every row it builds (zero on a day nothing left, so the field is always there to
+read), and the live table did not have the column. The failure was therefore not
+conditional on a position leaving the account - every evening would have failed
+until the migration was applied, and this was the first evening after the merge. The
+money had already moved: the orders were submitted, accepted and exactly once, and
+the day's own record of them - the reconciliation row, the NAV row and the account
+read - was what was lost. Re-running the evening is not a repair for that: before the
+next open it would re-size the same book and find the same 192 tickets (the client id
+is `sha256(close|ticker|side)`, so the same leg is looked up rather than resent), but
+it is a live submission path, and after the open - once those orders have filled -
+the re-sized book is a different book and a new leg would be an order. Rebuilding the
+rows from the store's own proposal and leg records is the same information with no
+way to trade, which is why the repair was done that way.
+
+Evidence. The broker holds 192 orders whose client ids begin `efb-2026-10-06-`, all
+`accepted`, submitted between 22:49:56Z and 22:51:03Z, and `efb.orders` holds 220
+rows for the close: the same 192 with a `broker_order_id` and 28 skipped with
+`BELOW_MIN_NOTIONAL`. The two sets match in both directions - no sent leg without an
+order at the broker, no order at the broker without a leg - and every stored
+`broker_order_id` is an id the broker actually has. Sized $358,424.32, sent
+$355,251.19. `efb.run_status` records the failure (`status=error`,
+`detail=UndefinedColumn: column "unexplained_adjustment" ... does not exist`,
+`notify_status=sent`), and `cron_runs` holds no `live_daily` row for the date, which
+is what "the day is not marked done" means. The backfilled rows, each from the
+run's own record: the reconciliation row of 2026-10-06 with `intended_notional`
+358,424.32, `filled_notional` 0.0 (the legs had not settled), `expected_cost_bps`
+14.2241719821203 with its four parts, the traded and full risk figures from the
+proposal's own manifest, and `unexplained_adjustment` **-3211.814835** - the PSKY
+removal, recomputed by `live.positions.unexplained_since_last_read` against the
+store's 2026-10-05 broker read and the live account (188 names, `feed: read`, no
+activity naming the ticker) rather than copied from this ledger's earlier entry; the
+NAV row of 2026-10-06 with `nav` **990,976.48**, the equity the evening's own
+proposal was sized from, `realized_pnl` -3,547.21 against the 2026-10-05 row's
+994,523.69, and `cash` 991,763.22; and `efb.broker_positions` for 2026-10-06 with
+the 188 names of that read - so the departure check has Tuesday's book to compare
+against rather than Monday's, which is what the store last held for it. The document the failed run published
+(`latest.json`, `snapshots/2026-10-06.json`) was republished with that reconciliation
+block grafted in, its `status` still `error` and its `run_status.detail` extended
+with the words "backfilled", because the page must show the day's real book and cost
+without pretending the run succeeded.
+
+Status. Recorded and applied. The rows above were written by 23:15Z on 2026-10-06,
+before the 2026-10-07 open, by a one-off script that reads the broker and writes only
+those three tables. The preflight that makes this cost one skipped evening instead of
+a crash after the orders are out, and the failure message that reports the orders a
+failed run actually sent (read from `efb.orders`), were committed on
+`fix-evening-email-wiring` on 2026-10-06, in the commit whose subject line is "The
+schema is checked before the run, and a failed evening reports the orders it sent";
+the merge commit on main records when they went live. (Named by its subject rather
+than its hash on purpose: this entry is in that commit, and a commit cannot carry its
+own hash - amending to insert it would change it.) The same branch carries one more
+display repair from this failure: the book a failed evening publishes is borrowed from
+`previous_proposal()`, whose `positions` frame has no `traded_notional` column, so the
+page's trades-by-reason table read a column of zeroes for a day that traded
+$355,251.19. The failure path now attaches the day's traded dollars from `efb.orders`
+for the close, by the same definition the success path uses (`traded_by_name` over
+that close's legs, a name with no leg zero), and leaves the column off rather than
+filling it with zeroes when the store cannot be read at all. This entry also corrects
+the status line of the PSKY entry above, which says the symbol-resolution branch
+merged on 2026-10-07: it merged on 2026-10-06 (`7be2224`), and the page, the evening
+message and the morning reconciler have carried that change since.

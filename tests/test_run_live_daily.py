@@ -93,6 +93,144 @@ def test_record_run_handles_an_empty_cron_runs_table(
     assert frame.iloc[0]["status"] == "ok"
 
 
+def test_a_failed_evening_publishes_the_days_traded_dollars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failure path's own call site, and the borrowed book it publishes.
+
+    An evening that dies after its orders are sent has no manifest of its own, so
+    `finish_run` publishes the last book the store holds. That frame is the store's
+    `positions` rows, which carry no `traded_notional` column, so the page's
+    trades-by-reason table read a column of zeroes for a day that traded: 2026-10-06
+    sent $355,251.19 and showed none of it. The same definition is now applied to the
+    borrowed book, from `efb.orders` for that close rather than from the container's
+    own log, because the failure path is exactly where the file may be gone with the
+    container that wrote it.
+
+    A store that cannot be read is the control: the column stays off rather than
+    being filled with zeroes the page would read as a measured day. The page reads a
+    missing key as zero either way, so the only thing the guard costs is the claim
+    that the number was measured.
+    """
+    from live import notify
+    from live import snapshot as snapshot_module
+
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    # The day's legs, as the submission wrote them before the failure: two legs in
+    # one name, one in another, and one the minimum left unsent. The last one counts
+    # as traded dollars - it is a leg of the day - which is the success path's own
+    # definition of turnover.
+    store.replace_by_date(
+        "orders",
+        "2026-10-06",
+        [
+            {"trade_date": "2026-10-06", "ticker": "DG", "intended_notional": 512.42},
+            {"trade_date": "2026-10-06", "ticker": "DG", "intended_notional": 12.0},
+            {"trade_date": "2026-10-06", "ticker": "AAA", "intended_notional": -1000.0},
+            {"trade_date": "2026-10-06", "ticker": "ZZZ", "intended_notional": 40.0},
+            {"trade_date": "2026-10-05", "ticker": "OLD", "intended_notional": 9.0},
+        ],
+    )
+    day = run_live_daily.stored_legs("2026-10-06")
+    assert day is not None and sorted(day["ticker"]) == [
+        "AAA",
+        "DG",
+        "DG",
+        "ZZZ",
+    ], "the day's legs, and only that day's"
+
+    borrowed = pd.DataFrame(
+        {
+            "ticker": ["DG", "BBB"],
+            "weight": [0.01, -0.02],
+            "side": ["long", "long"],
+            "reason": ["alpha moved", "the hedge moved"],
+        }
+    )
+    manifest = {"as_of": "2026-10-06", "n_kept": 2}
+    monkeypatch.setattr(
+        snapshot_module, "previous_proposal", lambda: (manifest, borrowed, None)
+    )
+    captured: dict = {}
+
+    def fake_write_snapshot(**kwargs):
+        captured.update(kwargs)
+        captured["document"] = snapshot_module.build(
+            run=kwargs["run"],
+            manifest=kwargs.get("manifest"),
+            book=kwargs.get("book"),
+            reconciliation=kwargs.get("reconciliation"),
+            construction=kwargs.get("construction"),
+            book_reason=kwargs.get("book_reason"),
+            actual=kwargs.get("actual"),
+        )
+        return {"mode": "on", "written": ["latest.json"], "detail": "snapshot: on"}
+
+    monkeypatch.setattr(snapshot_module, "write_snapshot", fake_write_snapshot)
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: sent.append(payload)
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, "re_" + "test-key-value")
+    monkeypatch.setenv(notify.TO_ENV, "owner@example.com")
+
+    failed = {
+        "job": "live_daily",
+        "target_close": "2026-10-06",
+        "status": "error",
+        "inputs": {},
+        "failures": [],
+        "worst_input": None,
+        "worst_sessions_behind": 0,
+    }
+    assert (
+        run_live_daily.finish_run(
+            run_date="2026-10-06",
+            result=failed,
+            status="error",
+            dry_run=True,
+            detail='UndefinedColumn: column "unexplained_adjustment" does not exist',
+            orders=192,
+            sent_notional=355_251.19,
+        )
+        == 1
+    )
+
+    names = {name["ticker"]: name for name in captured["document"]["book"]["names"]}
+    assert names["DG"]["traded_notional"] == pytest.approx(524.42)
+    # A name with no leg is a zero, not a blank.
+    assert names["BBB"]["traded_notional"] == pytest.approx(0.0)
+    # And it is the same arithmetic the success path does on the same legs: the
+    # evening's own log and the store's rows are one set of legs, so the two paths
+    # cannot disagree about the day's turnover.
+    expected = run_live_daily.with_traded(borrowed, run_live_daily.traded_by_name(day))
+    assert expected is not None
+    assert list(names[t]["traded_notional"] for t in expected["ticker"]) == [
+        pytest.approx(value) for value in expected["traded_notional"]
+    ]
+
+    # The control: a store that could not be read answers None, not an empty frame,
+    # and the published book then carries no traded column rather than zeroes.
+    def boom(*args, **kwargs):
+        raise RuntimeError("the store is unreachable")
+
+    monkeypatch.setattr(store, "select", boom)
+    assert run_live_daily.stored_legs("2026-10-06") is None
+    monkeypatch.setattr(run_live_daily, "stored_legs", lambda as_of: None)
+    captured.clear()
+    run_live_daily.finish_run(
+        run_date="2026-10-06",
+        result=failed,
+        status="error",
+        dry_run=True,
+        detail="the store is unreachable",
+        orders=192,
+    )
+    assert all(
+        "traded_notional" not in name for name in captured["document"]["book"]["names"]
+    ), "a day whose legs could not be read is not a day that traded nothing"
+
+
 def test_record_run_replaces_the_same_date_duplicate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

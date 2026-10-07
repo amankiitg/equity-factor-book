@@ -263,12 +263,85 @@ def _notionals(orders: pd.DataFrame) -> tuple[float, float]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Reconcile one morning. Returns the process exit code."""
+    """Reconcile one morning. Returns the process exit code.
+
+    The body is guarded, because this is the one job whose failure the owner would
+    otherwise hear nothing about. The evening's failure path ends in an email by
+    construction, and the page only ever changes when a run publishes it, so a
+    morning that dies before its own message leaves no trace anywhere the owner
+    looks. On 2026-10-07 that is exactly what happened: the write of `efb.fills`
+    raised `DatatypeMismatch`, no row was written, no snapshot went up and no
+    message went out.
+
+    Everything a morning can fail on is inside this guard, not just the
+    reconciliation: the schema preflight, the exchange calendar, the idempotency
+    record, the read of the evening's orders, and the `run_status` write at the end
+    are each a way for the job to stop before it says anything.
+    """
+    try:
+        return _reconcile(argv)
+    except Exception as exc:  # noqa: BLE001 - reported, and the process exit code
+        return _report_failure(exc)
+
+
+def _close_in_hand() -> str | None:
+    """The close this morning would have reconciled, or None when even that fails.
+
+    Read the way the run itself reads it, so an error message names the same
+    evening the run was about. A store that cannot answer is the same store
+    failure that brought us here, which is why it is not allowed to raise: the
+    message still goes out, saying `unknown close` rather than nothing.
+    """
+    try:
+        found = previous_orders(datetime.now(UTC).date().isoformat())
+    except Exception as exc:  # noqa: BLE001 - the message matters more than the date
+        logger.warning("could not determine the close: %s", type(exc).__name__)
+        return None
+    return None if found is None else found[0]
+
+
+def _report_failure(exc: Exception) -> int:
+    """Tell the owner a morning failed, and return the failure exit code.
+
+    The message carries the error and the close it was reconciling, and no count:
+    the run died before it had one, and `0 of 0 filled` would read as a morning
+    whose orders all filled. The traceback goes to the log, scrubbed, because the
+    frames say where it broke and the message can only say what.
+    """
+    from live import notify, store
+
+    detail = notify.scrub(f"fills reconciliation failed: {type(exc).__name__}: {exc}")
+    logger.error("the morning failed\n%s", notify.scrub_traceback(exc))
+    close = _close_in_hand()
+    try:
+        message = notify.notify_fills(
+            status="error",
+            target_close=close,
+            fills=None,
+            failed=True,
+            detail=detail,
+            store=store.store_label(),
+        )
+    except Exception as send_exc:  # noqa: BLE001 - the log is all that is left
+        logger.error(
+            "could not send the failure message either: %s: %s",
+            type(send_exc).__name__,
+            notify.scrub(str(send_exc))[:200],
+        )
+        return 1
+    logger.info(
+        "failure message %s for %s", message.get("status"), close or "unknown close"
+    )
+    return 1
+
+
+def _reconcile(argv: list[str] | None = None) -> int:
     from live import (
         alpaca,
         fills,
         notify,
         positions,
+        preflight,
         snapshot,
         staleness,
         store,
@@ -276,6 +349,11 @@ def main(argv: list[str] | None = None) -> int:
 
     run_date = datetime.now(UTC).isoformat()
     today = datetime.now(UTC).date()
+    # The same preflight the evening makes, for the same reason: this job writes
+    # `fills` and `run_status`, and a missing column there fails the write after the
+    # broker has been read. It is checked before the calendar and the run record, so
+    # a broken schema is one clear sentence rather than a traceback.
+    preflight.check()
     if not staleness.is_session(today):
         # A closed day settles nothing: the orders are still working at the
         # broker, waiting for the next open, and an evening that reported them as
@@ -437,6 +515,32 @@ def main(argv: list[str] | None = None) -> int:
             f"fills reconciliation failed: {type(exc).__name__}: {exc}"
         )
         logger.error("%s", detail)
+        # A morning that dies before it can report anything must still say so. On
+        # 2026-10-07 this path only logged: the write of `efb.fills` raised
+        # DatatypeMismatch, no row was written, and the owner heard nothing at all
+        # - the inbox is the only place a morning failure is visible, because the
+        # page it would have republished keeps the previous evening's document.
+        # The message is composed from what is known at this point rather than from
+        # a report, so it carries the close it was reconciling and the error, and
+        # no count it never took.
+        try:
+            message = notify.notify_fills(
+                status="error",
+                target_close=close,
+                fills=None,
+                failed=True,
+                detail=detail,
+                store=store.store_label(),
+                sent_notional=sent_notional,
+                unsent_notional=unsent_notional,
+            )
+        except Exception as send_exc:  # noqa: BLE001 - the log is all that is left
+            logger.error(
+                "could not send the failure message either: %s: %s",
+                type(send_exc).__name__,
+                notify.scrub(str(send_exc))[:200],
+            )
+            message = None
 
     row = staleness.run_status_row(
         # Keyed to the evening it reconciled, not to this morning: the fills, the

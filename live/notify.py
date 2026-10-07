@@ -460,6 +460,19 @@ def compose(
             f"Orders: {int(orders or 0)} orders sent, "
             f"{_sized_sent(gross, sent_notional)}, at least one leg not confirmed"
         )
+    elif status == "error" and orders:
+        # An error is not the same as an empty evening. On 2026-10-06 the evening
+        # sent 192 orders and then died on a missing column, and this line said
+        # "Orders: none. The run failed before sizing, so no book was priced" - the
+        # one sentence an owner must never be told when it is not true. A failed run
+        # that sent orders says how many, from its own leg records, and says not to
+        # re-run the close, because the legs are at the broker and a re-run after the
+        # open is a different book.
+        lines.append(
+            f"Orders: {int(orders)} orders sent for the close of {close}, "
+            f"{_sized_sent(gross, sent_notional)}."
+        )
+        lines.append("The run failed after they were sent: do not re-run this close.")
     elif fills:
         # A morning message. The book was priced and its legs went out the evening
         # before, so "the run failed before sizing" is this message's own false
@@ -644,6 +657,12 @@ def compose(
             lines.append(departure)
     if status == "error":
         reason = scrub(detail).strip() or "no reason recorded"
+        # The body's order line above is written for a run that failed *before*
+        # sizing, and on 2026-10-06 the evening failed after it: 192 orders went out
+        # and the message said "Orders: none. The run failed before sizing", which is
+        # the one thing an owner must never be told when it is not true. A run that
+        # sent orders says so, from its own leg records, and the failure follows.
+
         prefix = error_type or "Exception"
         # the caller's one-line reason usually carries the type already
         if reason.startswith(f"{prefix}:"):
@@ -850,6 +869,11 @@ def subject_text(
             if dry_run
             else f"{int(orders or 0)} sent"
         )
+    elif orders:
+        # An error is not the same as an empty evening. The orders a failed run sent
+        # are counted on the inbox line, because "none proposed" beside 192 sent
+        # orders is the line that decides whether the owner looks.
+        middle = f"{int(orders)} sent"
     else:
         middle = "none proposed"
     if status == "error":
@@ -898,7 +922,9 @@ def _miss_phrase(fills: dict[str, Any] | None) -> str:
     return "nothing missed" if not missed else f"{missed} did not fill"
 
 
-def fills_subject(*, target_close: str | None, fills: dict[str, Any] | None) -> str:
+def fills_subject(
+    *, target_close: str | None, fills: dict[str, Any] | None, failed: bool = False
+) -> str:
     """The morning's inbox line: what the last evening's orders did.
 
     Three fields, readable without opening the email, which is why it does not
@@ -909,7 +935,15 @@ def fills_subject(*, target_close: str | None, fills: dict[str, Any] | None) -> 
     own status word. The evening's subject is about the evening (`EFB ok ... | 199
     sent | stale 0`); this one is about the trade, and neither can be read as the
     other.
+
+    `failed` says the morning never got to a count at all, which is not the same
+    statement as a count of zero: on 2026-10-07 the reconciliation died writing
+    `efb.fills` and the subject `0 of 0 filled | nothing missed` would have read as
+    a morning whose orders all filled. The two count fields are replaced rather
+    than filled in, and the close is still the first name in the line.
     """
+    if failed:
+        return f"EFB fills {target_close or 'unknown close'} | not reconciled | ERROR"
     data = fills or {}
     filled = int(data.get("n_filled") or 0)
     sent = int(data.get("n_orders") or 0)
@@ -931,6 +965,7 @@ def fills_message(
     unsent_notional: float | None = None,
     filled_notional: float | None = None,
     exits: dict[str, Any] | None = None,
+    failed: bool = False,
 ) -> str:
     """The morning's own body: the trade the evening's orders did, and nothing else.
 
@@ -948,46 +983,57 @@ def fills_message(
     data = fills or {}
     close = target_close or "unknown close"
     lines = [f"store: {store if store is not None else live_store.store_label()}"]
-    lines.append(
-        f"EFB fills {close}: {int(data.get('n_filled') or 0)} of "
-        f"{int(data.get('n_orders') or 0)} order(s) filled"
-    )
-    if filled_notional is not None or sent_notional is not None:
-        notional = (
-            f"Notional: {_money(filled_notional)} filled of "
-            f"{_money(sent_notional)} sent"
+    if failed:
+        # No count exists, so none is printed. "0 of 0 order(s) filled" is what a
+        # crash would have said, and it is the one reading that is wrong. Everything
+        # below it is a measurement this morning never took - the misses, the cost,
+        # the departures - so the error is the whole of what the body can honestly
+        # say, and it is said below.
+        lines.append(f"EFB fills {close}: not reconciled")
+    else:
+        lines.append(
+            f"EFB fills {close}: {int(data.get('n_filled') or 0)} of "
+            f"{int(data.get('n_orders') or 0)} order(s) filled"
         )
-        not_sent = int(data.get("not_sent") or 0)
-        if not_sent:
-            notional += (
-                f"; {_money(unsent_notional)} in {not_sent} leg(s) under the "
-                f"{_money(alpaca_mod.DELTA_MIN_NOTIONAL)} minimum were never sent"
+        if filled_notional is not None or sent_notional is not None:
+            notional = (
+                f"Notional: {_money(filled_notional)} filled of "
+                f"{_money(sent_notional)} sent"
             )
-        lines.append(notional + ".")
-    for detail_line in (_miss_line(data), _unread_line(data)):
-        if detail_line is not None:
-            lines.append(detail_line)
-    if exits:
-        # A position that left the account with nothing of the loop's to explain it.
-        # It is on this message rather than only on the page because the page can be
-        # read at leisure and this cannot: a position that vanished overnight is the
-        # one thing here that nobody can reconstruct afterwards.
-        line = _departure_line(exits.get("exits"), exits.get("feed"))
-        if line:
-            lines.append(line)
-    realized = data.get("realized_cost_bps")
-    expected = data.get("expected_cost_bps")
-    against = (
-        f" against {float(expected):.2f} bps expected" if expected is not None else ""
-    )
-    if realized is not None:
-        lines.append(f"Realized cost: {float(realized):.2f} bps of NAV{against}.")
-    elif expected is not None:
-        # Nothing to price, so there is no realized cost. "0.00 bps" would read as
-        # a trade that cost nothing rather than one that did not happen.
-        lines.append(f"Realized cost: no fill could be priced{against}.")
-    if snapshot:
-        lines.append(f"Snapshot: {snapshot}.")
+            not_sent = int(data.get("not_sent") or 0)
+            if not_sent:
+                notional += (
+                    f"; {_money(unsent_notional)} in {not_sent} leg(s) under the "
+                    f"{_money(alpaca_mod.DELTA_MIN_NOTIONAL)} minimum were never "
+                    "sent"
+                )
+            lines.append(notional + ".")
+        for detail_line in (_miss_line(data), _unread_line(data)):
+            if detail_line is not None:
+                lines.append(detail_line)
+        if exits:
+            # A position that left the account with nothing of the loop's to explain
+            # it. It is on this message rather than only on the page because the page
+            # can be read at leisure and this cannot: a position that vanished
+            # overnight is the one thing here that nobody can reconstruct afterwards.
+            line = _departure_line(exits.get("exits"), exits.get("feed"))
+            if line:
+                lines.append(line)
+        realized = data.get("realized_cost_bps")
+        expected = data.get("expected_cost_bps")
+        against = (
+            f" against {float(expected):.2f} bps expected"
+            if expected is not None
+            else ""
+        )
+        if realized is not None:
+            lines.append(f"Realized cost: {float(realized):.2f} bps of NAV{against}.")
+        elif expected is not None:
+            # Nothing to price, so there is no realized cost. "0.00 bps" would read
+            # as a trade that cost nothing rather than one that did not happen.
+            lines.append(f"Realized cost: no fill could be priced{against}.")
+        if snapshot:
+            lines.append(f"Snapshot: {snapshot}.")
     if status != "ok":
         # The morning can fail its page write and still have reconciled the legs:
         # the error is what did not happen, and it is stated last so the trade
@@ -1254,6 +1300,7 @@ def notify_fills(
     unsent_notional: float | None = None,
     filled_notional: float | None = None,
     exits: dict[str, Any] | None = None,
+    failed: bool = False,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     """Compose and deliver the morning's message, returning both parts.
@@ -1262,9 +1309,20 @@ def notify_fills(
     two messages answer different questions, and a field-by-field reuse would
     drag the evening's staleness, cost and establishment lines into a morning
     that has none of them.
+
+    `failed` is the morning that crashed before it had anything to report, which is
+    the one case this job used to leave the owner with silence. It suppresses the
+    counts - there are none - and states the error instead.
     """
-    subject_line = fills_subject(target_close=target_close, fills=fills)
-    if status != "ok":
+    if failed:
+        # The ERROR field is the whole subject's third field rather than an appended
+        # one, so the line does not read as a count that was reported.
+        subject_line = fills_subject(
+            target_close=target_close, fills=fills, failed=True
+        )
+    else:
+        subject_line = fills_subject(target_close=target_close, fills=fills)
+    if status != "ok" and not failed:
         # The status word is appended rather than made the first field: the count
         # that filled is still what the owner reads first, and a message that
         # begins "ERROR" reads as a morning on which nothing traded.
@@ -1280,6 +1338,7 @@ def notify_fills(
         unsent_notional=unsent_notional,
         filled_notional=filled_notional,
         exits=exits,
+        failed=failed,
     )
     result = send(subject_line, message, poster=poster)
     result["text"] = message

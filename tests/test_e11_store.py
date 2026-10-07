@@ -704,3 +704,93 @@ def test_the_replacement_is_one_transaction_in_the_source() -> None:
     block = block.split("\ndef ")[0]
     assert "with connection.transaction():" in block
     assert "connection.commit()" not in block
+
+
+def _inserted_by_column(rows: list[dict[str, Any]], recorder: _Recorder) -> dict:
+    """The row the store actually sent, named by column.
+
+    The statement's column list is `sorted(first row)` and the values are read off
+    the same list, so the pairing has to be rebuilt the same way: the recorded
+    tuple is positional, and a test that zipped it against its own dictionary would
+    agree with itself while the store sent something else.
+    """
+    return dict(zip(sorted(rows[0].keys()), recorder.inserted[0], strict=True))
+
+
+def test_a_pandas_missing_value_goes_in_as_sql_null(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The `nan` that killed the 2026-10-07 morning, and every spelling of it.
+
+    The morning reconciliation died writing `efb.fills` with `DatatypeMismatch:
+    column "cancel_time" is timestamptz but received double precision`, after the
+    broker had been read, and wrote no row. The value psycopg was handed was
+    `float('nan')`, and no writer of ours put it there: `live.fills` puts `None` for
+    a leg the broker never cancelled, and pandas replaced it with the missing value
+    of the dtype it inferred around the column. A column of strings in pandas 3 is
+    its `str` dtype, whose own missing value is that float, so `to_dict("records")`
+    hands back `nan` where the dictionary held `None`.
+
+    `nan` is a perfectly good double precision and psycopg sends it without
+    complaint, which is why this only surfaced at a column that is not one. This
+    test is that boundary: every missing value of every spelling becomes `None` -
+    the only thing Postgres reads as NULL - and nothing else is touched. The 0.0
+    matters as much as the `nan`: a zero is a measurement, not an absence.
+    """
+    rows = [
+        {
+            "trade_date": "2026-10-07",
+            "ticker": "AAA",
+            "cancel_time": float("nan"),
+            "updated_at": pd.NaT,
+            "fill_price": 12.5,
+            "slippage_bps": 0.0,
+            "status": pd.NA,
+            "intended_notional": 1_000.0,
+        }
+    ]
+    recorder = _Recorder()
+    monkeypatch.setattr(store, "get_connection", lambda: recorder)
+
+    store.replace_by_date("fills", "2026-10-07", rows)
+
+    by_column = _inserted_by_column(rows, recorder)
+    for column in ("cancel_time", "updated_at", "status"):
+        assert by_column[column] is None, (
+            f"{column} reached Postgres as {by_column[column]!r}, which is a value a "
+            "typed column will either refuse or store as data"
+        )
+    # The control: measurements survive, including the zero.
+    assert by_column["slippage_bps"] == 0.0, "a zero is a measurement, not a gap"
+    assert by_column["fill_price"] == 12.5
+    assert by_column["trade_date"] == "2026-10-07"
+    assert by_column["intended_notional"] == 1_000.0
+
+
+def test_the_upsert_nulls_missing_values_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The other statement that sends parameters, and the one the run records use.
+
+    The morning's failure was in `replace_by_date`, which writes a day's fills.
+    Every `run_status` row and everything a re-run updates goes through `upsert`
+    instead, so the same guard is asserted there: a fix applied to one statement and
+    not the other leaves the same trap on the path the page reads.
+    """
+    rows = [
+        {
+            "run_date": "2026-10-07",
+            "job": "fills_reconcile",
+            "checked_at": float("nan"),
+            "detail": None,
+            "n_orders": 192,
+        }
+    ]
+    recorder = _Recorder()
+    monkeypatch.setattr(store, "get_connection", lambda: recorder)
+
+    store.upsert("run_status", rows)
+
+    by_column = _inserted_by_column(rows, recorder)
+    assert by_column["checked_at"] is None
+    assert by_column["detail"] is None
+    assert by_column["n_orders"] == 192, "a count is not a missing value"
+    assert by_column["run_date"] == "2026-10-07"

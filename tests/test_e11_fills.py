@@ -447,3 +447,122 @@ def test_the_module_cannot_be_asked_for_an_order_to_send() -> None:
         "alpaca"
     }, f"live/fills.py imports {sorted(from_live)} from live"
     assert alpaca.read_order.__doc__, "the read is documented where it lives"
+
+
+class _Recorder:
+    """A connection that records the parameters, as the store sends them.
+
+    The store's Postgres path is what the live runs use, and a missing value can
+    only do damage there: the parquet fallback has no types to refuse one. This
+    keeps the tuples exactly as `executemany` was handed them, so the assertion is
+    about the value psycopg would have sent.
+    """
+
+    def __init__(self) -> None:
+        self.inserted: list[tuple] = []
+        self._cursor = self
+
+    def transaction(self) -> _Recorder:
+        return self
+
+    def __enter__(self) -> _Recorder:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+    def cursor(self) -> _Recorder:
+        return self
+
+    def execute(self, statement: str, parameters: object = None) -> None:
+        pass
+
+    def executemany(self, statement: str, values: list[tuple]) -> None:
+        self.inserted = list(values)
+
+    def commit(self) -> None:  # pragma: no cover - the transaction commits
+        pass
+
+
+def test_a_fills_frame_with_empty_cancel_times_is_written_as_null(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The frame that killed the 2026-10-07 morning, through the write it died on.
+
+    Two shapes, and only one of them was ever broken, which is the whole cause:
+
+    * a column of nothing but `None` infers `object` in pandas, and `to_dict`
+      gives `None` back - so an evening where **every** leg filled was always
+      safe, which is why this had never bitten before;
+    * a column where *any* value is a string is inferred as pandas 3's `str`
+      dtype, whose missing value is a float `nan`, and `to_dict` then hands `nan`
+      back where `live.fills` put `None`.
+
+    On 2026-10-07 two of the 192 legs had a cancellation time and the other 190
+    did not, so the column was the second shape: the write raised
+    `DatatypeMismatch: column "cancel_time" is timestamptz but received double
+    precision`, no row was written and the morning sent nothing. The frame here is
+    built by the producer rather than by hand, so what is asserted is the frame the
+    job really hands the store.
+    """
+    broker = _Broker(
+        {
+            "oid-filled": _order(
+                "filled", order_id="oid-filled", ticker="AAA", filled_qty="41"
+            ),
+            "oid-canceled": _order(
+                "canceled",
+                order_id="oid-canceled",
+                ticker="DG",
+                filled_qty="0",
+                filled_avg_price=None,
+                canceled_at="2026-10-07T12:15:00Z",
+            ),
+        }
+    )
+    report = fills.reconcile_day(
+        _orders(
+            [
+                {"ticker": "AAA", "broker_order_id": "oid-filled"},
+                {"ticker": "DG", "broker_order_id": "oid-canceled"},
+            ]
+        ),
+        broker,
+        closes=_closes(AAA=12.5, DG=12.5),
+        nav=NAV,
+    )
+    records = report["fills"].to_dict("records")
+
+    # The trap itself, stated so that a change in pandas is a visible change rather
+    # than a quietly different reason for this test to pass.
+    assert str(report["fills"].dtypes["cancel_time"]) == "str", (
+        "a string column with one gap is pandas 3's str dtype, whose missing value "
+        "is a float nan: that is the mechanism this fix is about"
+    )
+    assert (
+        records[0]["cancel_time"] != records[0]["cancel_time"]
+    ), "and to_dict hands that nan back where live.fills put None"
+
+    recorder = _Recorder()
+    monkeypatch.setattr(store, "get_connection", lambda: recorder)
+    store.replace_by_date("fills", "2026-10-07", records)
+
+    columns = sorted(records[0].keys())
+    by_ticker = {row[columns.index("ticker")]: row for row in recorder.inserted}
+    filled = dict(zip(columns, by_ticker["AAA"], strict=True))
+    canceled = dict(zip(columns, by_ticker["DG"], strict=True))
+    assert filled["cancel_time"] is None, (
+        f"a leg the broker never cancelled reached Postgres as "
+        f"{filled['cancel_time']!r} instead of NULL"
+    )
+    # The control: the leg that WAS cancelled keeps its instant, as the ISO string
+    # the table stores. A fix that nulled every cancel time would pass the
+    # assertion above and lose the one fact the column exists for.
+    assert canceled["cancel_time"] == "2026-10-07T12:15:00+00:00"
+    # And no value in any column of any row is a missing value.
+    for row in recorder.inserted:
+        for column, value in zip(columns, row, strict=True):
+            assert not (
+                isinstance(value, float) and value != value
+            ), f"{column} went in as nan"
+            assert value is not pd.NaT, f"{column} went in as NaT"
