@@ -63,7 +63,7 @@ Steps 1 to 4 are the ones no default run performs.
 | 7 | State the end date on any further rebuild | `make rebuild END=<last session before the merge>` | `data/VERSION.json` records that session |
 | 8 | Re-record the frozen block baseline if the seed moved a pre-cutoff row | `.venv/bin/python -c "from live import extend; print(extend.incremental_integrity())"` | `tests/test_e11_extend.py` green |
 | 9 | Clear the known reds the refresh exists to fix (the list is `docs/known_test_failures.md`, which the full suite's 55 are measured from) | `.venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"` | 0 failures; anything still red is fixed or written down in that file with its reason, never skipped and never `xfail` (note 9) |
-| 10 | Six things the live loop reports wrongly or omits, each with the day that exposed it (note 10) | `tests/test_e11_bridge.py`, `tests/test_week1_fills_cron.py`, `tests/test_e11_fills.py`, `tests/test_week1_fills_cron.py` again for the skip, and an audit query for the NaN columns | the bridge has an *arrived* term and 2026-10-06 holds all six identities; the morning's cost line compares realized against the trading half; `reconciliation.filled_notional` holds what filled; a morning with no new orders skips and says so; every NOT NULL numeric column is proved unable to hold a NaN; a filled risk estimate is reported rather than discarded |
+| 10 | Eleven things the live loop reports wrongly or omits, each with the day that exposed it (note 10) | `tests/test_e11_bridge.py`, `tests/test_week1_fills_cron.py`, `tests/test_e11_fills.py`, `tests/test_week1_fills_cron.py` again for the skip, an audit query for the NaN columns, and the evening's own proposal build for the universe | the bridge has an *arrived* term and 2026-10-06 holds all six identities; the morning's cost line compares realized against the trading half; `reconciliation.filled_notional` holds what filled; a morning with no new orders skips and says so; every NOT NULL numeric column is proved unable to hold a NaN; a filled risk estimate is reported rather than discarded; a name is sized only when the risk model can measure it; a name with risk but no signal has a stated treatment; `excluded` carries a reason, an age and a way back; DD's absence from the returns panel is explained; the pricing fetch no longer spells PSKY |
 
 1. **Read one panel.** At merge, `live/extend.py` must read `returns_clean` as
    well, in the same commit, so the live model fit and `next_descriptor_design`
@@ -136,11 +136,15 @@ Steps 1 to 4 are the ones no default run performs.
    passing** (an id in that file that came back green). A new failure is
    investigated on its own and is never folded into the known list, so a real
    regression cannot hide among them; zero new is the bar for a merge.
-10. **Six things the live loop reports wrongly or omits.** Each was found by looking at
-   a real day rather than by a failing test, and each is small enough to fix in one
+10. **Eleven things the live loop reports wrongly or omits.** Each was found by looking
+   at a real day rather than by a failing test, and each is small enough to fix in one
    commit with a test that would have caught it. They are here rather than in
    `docs/known_test_failures.md` because none of them is red: the suite passes on the
    wrong number, or says nothing about the omission at all.
+
+   Items 4 to 6 were queued on 2026-10-07 from the evening's failure; items 7 to 11 were
+   queued the same night from the questions the failure raised about the universe, and
+   carry the 2026-10-07 measurements that answered them.
 
    1. **The bridge cannot say a name arrived.** Its sixth identity is
       `held before - exited + opened = held after + reversals + removed without an
@@ -214,8 +218,8 @@ Steps 1 to 4 are the ones no default run performs.
       A query over `information_schema.columns` intersected with a scan for
       `= 'NaN'::float8` is the check, and it currently returns nothing, which is the
       point: it must stay nothing.
-   6. **A filled risk estimate is never reported.** `ebf/race.py::_specific_for`
-      returns `(aligned, missing)` and `ebf/eval_risk.py::_xs_pieces` binds it as
+   6. **A filled risk estimate is never reported.** `efb/race.py::_specific_for`
+      returns `(aligned, missing)` and `efb/eval_risk.py::_xs_pieces` binds it as
       `specific, _missing = ...`, then fills every NaN with
       `float(np.nanmedian(specific))` - so the count it just computed is discarded and
       nothing anywhere records that a name's risk was synthesised. Measured
@@ -229,8 +233,77 @@ Steps 1 to 4 are the ones no default run performs.
       is *known* - the count `_missing` is reported instead of dropped, so a reader can
       see how many names the row rests on a fill. `tests/test_e11_snapshot.py` or the
       engine's own test file.
+   7. **The sizing universe is not the risk universe.** `live/evening_job.py:1195-1198`
+      builds the names to size from the **SPY universe intersected with the cleaned
+      price matrix** (`wide_names`, from `efb/eval_risk.py:145-164`), while the risk
+      model only ever measures the names the cross-sectional fit accepts -
+      `efb/models/fundamental.py:376-389`, which requires all seven style descriptors,
+      a GICS sector and a finite positive market cap. Nothing reconciles the two sets,
+      so a name can be sized that the model cannot measure, and 2026-10-07 is what that
+      costs: **Q, FDXF and HONA** were all in the 496 sized names with no
+      specific-variance row anywhere (`efb.e11_specific_var`: 0 rows for each, at every
+      date), and Q was kept by the floor, given the cross-sectional median as its risk
+      (`efb/eval_risk.py:412-415`, the value `0.0002948594720242484` that EQT also
+      carries), and then refused by `efb.positions.idio_vol` - which is `not null` -
+      after the book had been priced. The fix: **no name is sized without all seven
+      descriptors and a specific variance.** Drop such names before sizing, record them
+      in the manifest with their reason, and name them in the evening email. The count
+      to expect on 2026-10-07 is three. `tests/test_e11_evening.py` for the manifest key
+      and the message line.
+   8. **A name with a risk estimate but no signal has no stated treatment.** The two
+      thresholds are about a year apart, because the risk estimate needs **252 sessions
+      of price** (`efb/models/fundamental.py:216-220`, `MOMENTUM_WINDOW` 231 +
+      `MOMENTUM_SKIP` 21) while the signal needs **252 specific returns**
+      (`efb/alpha.py:71-93`, `MOMENTUM_LOOKBACK` 252 - `MOMENTUM_SKIP` 21, shifted 21),
+      and a name only starts accumulating specific returns once the fit accepts it.
+      Measured: `SNDK` has a risk estimate and 159 specific returns, so no signal - and
+      its 252nd specific return is still ahead; `Q` has neither, gets its own risk
+      estimate on its 252nd session, **2026-11-03**, and cannot have a signal before
+      **2027-11-03**. Today a missing signal is silently filled with zero
+      (`live/evening_job.py:1221` `z = z.fillna(0.0)`), so such a name is held at
+      `alpha = 0` and its weight comes from the hedge alone - which is what Q's row
+      showed (`z = 0, alpha = 0`). That is a decision made by accident. **Decide it
+      explicitly** - hold it at zero, hold it hedge-only, or exclude it - and make the
+      choice visible in the manifest and the email rather than implied by a `fillna`.
+   9. **`excluded` is a one-way list with no reason and no age.** It is a rule, not a
+      config (`live/evening_job.py:1198`, over `efb/eval_risk.py:154-158`: a SPY name
+      with no GICS row or no processed returns is not a column of `wide`, so it is not
+      sized), and it has **only ever grown** across the eight stored manifests: 4
+      (2026-09-25, 09-29, 09-30), 5 (+VYLR, 2026-10-01, 10-02, 10-05), 7 (+SKYD, +TWLO,
+      2026-10-06, 10-07). Nothing has ever left it, because nothing in the evening
+      rebuilds `processed/returns.parquet` or `sectors.parquet` - the rule re-runs every
+      night against the same artifacts and returns the same answer. Three distinct
+      causes are collapsed into one list: **BE, ILMN, P** (no GICS row, so not in
+      `mapped`), **SKYD, TWLO, VYLR** (no GICS row and no price rows), and **DD** (GICS
+      row and 4,213 clean closes present, but absent from the returns panel - item 10).
+      The fix: the evening email names each excluded entry **with its reason and how
+      long it has been there**, and the loop has a defined path back - a rebuild
+      trigger, or a fetch that fills the gap - so a name cannot sit outside the book
+      forever without anyone being told why.
+  10. **Why is DD missing from `processed/returns.parquet`?** DD is in the SPY universe,
+      has a GICS row (`sectors.parquet`, `as_of` 2026-10-03) and has **4,213 non-null
+      closes in a panel of 4,213 sessions** - a complete price series through
+      2026-10-02, with no break at 2025-11-03 when Q (Qnity Electronics) was spun off.
+      Yet DD is **not among the 811 tickers of `processed/returns.parquet`**, so it has
+      no column in `wide` and is excluded (item 9) - while ILMN, with the same complete
+      price series, *is* in the returns panel and is excluded only for want of a GICS
+      row. So the two exclusions have different causes and only one is explained. The
+      question to answer: **did `hygiene.clean_returns` or the panel's build drop DD at
+      the 2025-11 spin-off**, and if so on what rule? Answer it with the build's own
+      record; if the cause is a hygiene rule, the rule needs to say what it did.
+  11. **The pricing fetch still spells PSKY, not SKYD.** `efb.e11_prices` carries
+      **PSKY** (4,213 closes) and no SKYD row at all, while the broker has traded the
+      same asset - id `5b47111b-5e0d-4adc-929c-3efae02f747e`, CUSIP 69932A204 - as SKYD
+      since the rename, and the SPY universe already lists SKYD. So SKYD is excluded for
+      want of a price series that exists under its old name (item 9), and the loop
+      cannot size or trade the position it actually holds. `PSKY now trades as SKYD` is
+      also the worked example in item 1 and in Part B's symbol resolution, which is what
+      makes this the same defect one layer down: the *broker* side resolves the rename
+      and the *vendor* side does not. The fix: resolve the rename where the prices are
+      fetched, so the panel carries the broker's symbol, and record the old spelling
+      rather than silently keeping it.
 
-   The exit condition is the six of them fixed or written down here, and the day's
+   The exit condition is the eleven of them fixed or written down here, and the day's
    own numbers as a case in each test rather than a number typed from a message.
 
 ## 4. Rollback
