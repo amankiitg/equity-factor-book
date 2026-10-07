@@ -2193,3 +2193,51 @@ filling it with zeroes when the store cannot be read at all. This entry also cor
 the status line of the PSKY entry above, which says the symbol-resolution branch
 merged on 2026-10-07: it merged on 2026-10-06 (`7be2224`), and the page, the evening
 message and the morning reconciler have carried that change since.
+
+## 2026-10-07: the PSKY position came back as SKYD, so the -3,211.81 was a delay
+
+Decision. The 2026-10-06 entry's PSKY removal is a **timing artifact of the PSKY-to-SKYD
+corporate action, not a permanent loss**. The position is in the account again as of
+2026-10-07 - the same 326.072572039 shares, under the same renamed asset
+`5b47111b-5e0d-4adc-929c-3efae02f747e`, worth $2,864.547545 - so the day's
+`unexplained_adjustment` of **-3,211.814835** recorded an absence that has since ended,
+and the net effect of the whole movement is **-$347.267290**, the price move from $9.85
+to $8.785 across the two sessions. The 2026-10-06 row is not edited: it says what the
+evening saw, and this is the new entry that corrects the reading of it. The pair is
+therefore -3,211.81 out and +2,864.55 in, and only their difference belongs to the
+strategy's results.
+
+Reason. The 2026-10-06 evidence was a position that left with no order, no fill and no
+activity naming it, which is why the evening's own `unexplained_since_last_read` put it
+on the row rather than netting it out of P&L, and why it was written down as a labelled
+adjustment instead of a silent edit. The one explanation that evidence could not see was
+the one that turned out to be true: a corporate action the broker processed late. A
+rename that the broker's feed had already applied (Part B's symbol resolution found
+PSKY resolving to SKYD on 2026-10-06) is exactly the kind of event that can take a
+position out and put it back on the broker's own schedule, and nothing in the account,
+the order history or the activity feed is guaranteed to arrive in the order a reader
+would expect.
+
+Evidence. The account on 2026-10-07 holds SKYD, quantity 326.072572039, asset
+`5b47111b-5e0d-4adc-929c-3efae02f747e`, market value $2,864.547545, average entry
+$9.37. The quantity is identical to the nine decimals the 2026-10-05 broker read
+recorded for PSKY, which is what makes this the same holding rather than a new one. The
+2026-10-06 evening's own account read (188 names) held neither PSKY nor SKYD, and the
+2026-10-06 book (195 names) held neither either, so there was no leg to trade it and no
+order was sent. The 2026-10-07 morning's positions check recorded exactly this as
+`missing_in_store: ['SKYD', 'WBD']` - the account holding a name the store's book does
+not - and the book bridge for the 2026-10-06 close fails its sixth identity by precisely
+this one name (`held_before 188 - exited 25 + opened 32 = 195` against `held_after 196`),
+with all 24 departures explained by a filled close leg and 31 of the 32 arrivals being
+the book's own opened names.
+
+Standing actions. Tonight's 2026-10-07 run may trade it: SKYD is held and in no book, so
+the delta is an ordinary exit (`sell_to_close` of the 326.07 shares, the asset being
+active, tradable and easy to borrow), unless the new book re-includes the name, in which
+case Part B's `broker_renames` matches it by asset id and the run rebalances it against
+the held quantity. Either way it is recorded like any other leg - the fills in
+`efb.fills`, the intent and status in `efb.orders` - and if it instead leaves the account
+again with nothing behind it, the departure detector names it. The November 11 list
+carries the matching gap in the bridge itself: it can express a name that left without
+an order but not one that arrived without one, which is this case, and the term is to be
+added then rather than now (see the "2026-11-11" note in `docs/backport_runbook.md`).
