@@ -63,7 +63,7 @@ Steps 1 to 4 are the ones no default run performs.
 | 7 | State the end date on any further rebuild | `make rebuild END=<last session before the merge>` | `data/VERSION.json` records that session |
 | 8 | Re-record the frozen block baseline if the seed moved a pre-cutoff row | `.venv/bin/python -c "from live import extend; print(extend.incremental_integrity())"` | `tests/test_e11_extend.py` green |
 | 9 | Clear the known reds the refresh exists to fix (the list is `docs/known_test_failures.md`, which the full suite's 55 are measured from) | `.venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"` | 0 failures; anything still red is fixed or written down in that file with its reason, never skipped and never `xfail` (note 9) |
-| 10 | Three figures the live loop reports wrongly, each with the day that exposed it (note 10) | `tests/test_e11_bridge.py`, `tests/test_week1_fills_cron.py`, `tests/test_e11_fills.py` after each change | the bridge has an *arrived* term and 2026-10-06 holds all six identities; the morning's cost line compares realized against the trading half; `reconciliation.filled_notional` holds what filled |
+| 10 | Six things the live loop reports wrongly or omits, each with the day that exposed it (note 10) | `tests/test_e11_bridge.py`, `tests/test_week1_fills_cron.py`, `tests/test_e11_fills.py`, `tests/test_week1_fills_cron.py` again for the skip, and an audit query for the NaN columns | the bridge has an *arrived* term and 2026-10-06 holds all six identities; the morning's cost line compares realized against the trading half; `reconciliation.filled_notional` holds what filled; a morning with no new orders skips and says so; every NOT NULL numeric column is proved unable to hold a NaN; a filled risk estimate is reported rather than discarded |
 
 1. **Read one panel.** At merge, `live/extend.py` must read `returns_clean` as
    well, in the same commit, so the live model fit and `next_descriptor_design`
@@ -136,11 +136,11 @@ Steps 1 to 4 are the ones no default run performs.
    passing** (an id in that file that came back green). A new failure is
    investigated on its own and is never folded into the known list, so a real
    regression cannot hide among them; zero new is the bar for a merge.
-10. **Three figures the live loop reports wrongly.** Each was found by looking at a
-   real day rather than by a failing test, and each is small enough to fix in one
+10. **Six things the live loop reports wrongly or omits.** Each was found by looking at
+   a real day rather than by a failing test, and each is small enough to fix in one
    commit with a test that would have caught it. They are here rather than in
-   `docs/known_test_failures.md` because none of them is red: the suite passes on
-   the wrong number.
+   `docs/known_test_failures.md` because none of them is red: the suite passes on the
+   wrong number, or says nothing about the omission at all.
 
    1. **The bridge cannot say a name arrived.** Its sixth identity is
       `held before - exited + opened = held after + reversals + removed without an
@@ -178,8 +178,59 @@ Steps 1 to 4 are the ones no default run performs.
       written by the morning that knows the number or dropped, so a future reader
       cannot mistake a placeholder for a measurement. `tests/test_e11_fills.py` and
       the reconciliation writer.
+   4. **The morning job reconciles the previous close a second time, and does not say
+      that it is doing so.** `previous_orders` takes the latest close strictly before
+      today, so an evening that sent nothing leaves the day before it as the newest
+      orders in the store. Measured 2026-10-07 on an evening that crashed before
+      submitting: `previous_orders("2026-10-08")` returned the **2026-10-06** close with
+      its 220 rows, `already_ran("fills_reconcile", "2026-10-08")` was `False` because
+      the guard is keyed by date, and the run would therefore re-reconcile 2026-10-06 -
+      rewriting the same fills, sending a **second** 2026-10-06 email two days late,
+      and republishing `latest.json` with a fresh `actual_holdings` block for
+      `close = 2026-10-06` onto a document whose `target_close` is 2026-10-07 (the keys
+      come from the document that is up). Nothing distinguishes "no orders because the
+      evening died" from "nothing to trade". The fix: the morning job compares the
+      close it is about to reconcile with the last close it already reconciled, and
+      when there is nothing new it records the day and says so instead of repeating
+      the work - `tests/test_week1_fills_cron.py`, with the 2026-10-07 state as the
+      case.
+   5. **The NOT NULL NaN audit.** On 2026-10-07 the evening died at
+      `NotNullViolation: null value in column "idio_vol" of relation "positions"`, and
+      the value it was refusing was a NaN that had been a *valid* stored value until
+      that morning: `select float8 'NaN' is not null` is **true** in Postgres, so a
+      `double precision NOT NULL` column accepts a NaN as data and never complains.
+      There are **28** NOT NULL numeric columns in `efb` (eight on `positions` -
+      `weight`, `signed_notional`, `z`, `alpha`, `rank`, `idio_vol`,
+      `previous_weight`, `trade` - fourteen on `proposals`, two each on `orders`,
+      `fills` and `nav`, and one each on `broker_positions` and
+      `e11_corporate_actions`), and every `double precision` one of them is a place a
+      computed NaN can sit as if it were a measurement. The audit: for each column,
+      prove it either cannot receive a NaN (the writer guards it, or the value is an
+      integer type that would raise instead) or is now refused at the store boundary -
+      and record the answer for all 28 in one table, so the next NaN is a known case
+      rather than a new incident. `_null_missing` already converts every NaN, NaT and
+      NA to NULL before the parameters are sent, which turns a silent NaN into a loud
+      refusal; this audit is what makes the loud refusal *named* at each call site.
+      A query over `information_schema.columns` intersected with a scan for
+      `= 'NaN'::float8` is the check, and it currently returns nothing, which is the
+      point: it must stay nothing.
+   6. **A filled risk estimate is never reported.** `ebf/race.py::_specific_for`
+      returns `(aligned, missing)` and `ebf/eval_risk.py::_xs_pieces` binds it as
+      `specific, _missing = ...`, then fills every NaN with
+      `float(np.nanmedian(specific))` - so the count it just computed is discarded and
+      nothing anywhere records that a name's risk was synthesised. Measured
+      2026-10-07: the book carried **Q**, which has no specific-variance row at any
+      date in `efb.e11_specific_var` or in the committed artifact, with
+      `specific_variance` `0.0002948594720242484` - a value shared, to the last bit,
+      with **EQT**, because the median of an odd-length array is one of its elements.
+      The evening then died storing that name, because `store_proposal` reads the same
+      artifact through `trade_reasons.specific_std`, which has no fallback. The
+      engine's median fill stays as it is; what the audit adds is that a filled name
+      is *known* - the count `_missing` is reported instead of dropped, so a reader can
+      see how many names the row rests on a fill. `tests/test_e11_snapshot.py` or the
+      engine's own test file.
 
-   The exit condition is the three of them fixed or written down here, and the day's
+   The exit condition is the six of them fixed or written down here, and the day's
    own numbers as a case in each test rather than a number typed from a message.
 
 ## 4. Rollback
