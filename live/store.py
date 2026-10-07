@@ -264,6 +264,53 @@ def is_supabase() -> bool:
         return False
 
 
+def _null_missing(value: Any) -> Any:
+    """A pandas missing value as SQL NULL, and every other value as itself.
+
+    On 2026-10-07 the morning reconciliation died writing `efb.fills` with
+    `DatatypeMismatch: column "cancel_time" is timestamptz but received double
+    precision`, and no row was written. The value sent was `float('nan')`, and it
+    came from pandas rather than from the job: `live.fills` builds its rows with
+    `None` for a leg the broker never cancelled, but a column that holds *any*
+    string is inferred as pandas 3's `str` dtype, whose own missing value is a
+    float `nan`, so `DataFrame.to_dict("records")` hands back `nan` where the job
+    put `None`. That matters only at this boundary, where the values become
+    parameters: `nan` is a valid double precision and psycopg sends it happily, so
+    the first thing to notice was a `timestamptz` column refusing it.
+
+    A column of nothing but `None` infers `object` and was never a problem, which
+    is why this had not bitten before today: `cancel_time` is empty on every leg
+    of a morning whose orders all filled, and today two of the 192 legs were
+    cancelled, so the column carried strings and the other 190 became `nan`.
+
+    `NaT` in a datetime column and `pd.NA` in a nullable one are the same event
+    with different spellings, so they are caught here too. A non-scalar is left
+    alone: `pd.isna` answers an array for an array, and a list or a dict column is
+    the caller's to serialize.
+    """
+    if value is None or isinstance(value, (str, bytes)):
+        return value
+    try:
+        missing = pd.isna(value)
+    except (TypeError, ValueError):  # pragma: no cover - arrays and the like
+        return value
+    if getattr(missing, "ndim", 0) == 0 and bool(missing):
+        return None
+    return value
+
+
+def _nulls_as_none(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every missing value in every row as `None`, before it becomes a parameter.
+
+    Applied to what is sent to Postgres and not to what is written locally: the
+    parquet fallback stores a frame, where a `nan` and a `None` are the same
+    absence and rewriting them would be churn. The point here is that no pandas
+    missing value can reach a typed column again, whatever a writer put in its
+    dictionary and whatever dtype pandas inferred around it.
+    """
+    return [{key: _null_missing(value) for key, value in row.items()} for row in rows]
+
+
 def _upsert_sql(table: str, columns: list[str]) -> str:
     """The schema-qualified upsert statement for one table's columns."""
     keys = TABLE_KEYS[table]
@@ -289,6 +336,7 @@ def upsert(table: str, rows: list[dict[str, Any]]) -> None:
     if connection is not None:
         if not rows:
             return
+        rows = _nulls_as_none(rows)
         columns = sorted(rows[0].keys())
         statement = _upsert_sql(table, columns)
         values = [tuple(row.get(c) for c in columns) for row in rows]
@@ -350,6 +398,7 @@ def replace_by_date(table: str, on: Any, rows: list[dict[str, Any]]) -> None:
                     (on,),
                 )
                 if rows:
+                    rows = _nulls_as_none(rows)
                     columns = sorted(rows[0].keys())
                     cursor.executemany(
                         _insert_sql(table, columns),

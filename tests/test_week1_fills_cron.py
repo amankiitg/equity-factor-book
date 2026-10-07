@@ -981,3 +981,83 @@ def test_the_service_declares_every_variable_the_job_reads(
     ), f"the run read {unexplained}, which the service does not declare"
     # the store's own key was read, so the watch was watching the right run
     assert "EFB_SUPABASE_DB_URL" in watched.read
+
+
+def test_a_morning_that_cannot_write_the_fills_still_tells_the_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 2026-10-07 failure, in the shape it happened.
+
+    That morning read the account, read all 192 orders back, built the fills frame
+    and then died on its one write: `DatatypeMismatch: column "cancel_time" is
+    timestamptz but received double precision`. The handler recorded the error and
+    stopped there, so the owner was told nothing at all - no message, no snapshot
+    with the day's holdings, and 192 legs with no fills row anywhere. The inbox is
+    the only place a morning failure is visible.
+
+    The message has to carry the close it was reconciling and the error, and it
+    must not carry a count: `0 of 0 order(s) filled` is what the composer would
+    have said from the empty report, and it is the one reading of a crash that is
+    wrong - the morning never got as far as counting.
+    """
+    harness = _install(
+        monkeypatch, tmp_path, broker_orders={"oid-dg": _order("filled")}
+    )
+
+    def refuse(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError(
+            'DatatypeMismatch: column "cancel_time" is timestamptz but received '
+            "double precision"
+        )
+
+    monkeypatch.setattr(store, "replace_by_date", refuse)
+
+    code = reconcile_fills.main([])
+
+    assert code == 1, "a failed morning is a nonzero exit so the cron shows it"
+    assert len(harness.sent) == 1, "the failure has to reach the owner"
+    subject = str(harness.sent[0]["subject"])
+    body = str(harness.sent[0]["text"])
+    assert subject == f"EFB fills {CLOSE} | not reconciled | ERROR"
+    assert (
+        "0 of 0" not in subject and "nothing missed" not in subject
+    ), "a count was reported for a morning that never took one"
+    assert f"EFB fills {CLOSE}: not reconciled" in body
+    assert "DatatypeMismatch" in body, "the body names the error"
+    assert "cancel_time" in body
+    # One message, not one per failure path: the reconciliation's own handler and
+    # the guard around the job must not both speak.
+    assert len(harness.sent) == 1
+
+
+def test_a_morning_that_dies_before_the_reconciliation_still_tells_the_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other half of the same promise: anything that stops it, not just the write.
+
+    The reconciliation is not the only step that can fail: the schema preflight,
+    the exchange calendar, the idempotency record and the read of the evening's
+    orders all run before it, and the run's own `run_status` write runs after it.
+    Each of those used to escape `main` as a traceback with no message, which is a
+    morning the owner learns about by noticing that nothing happened. The close is
+    read back for the message, so the owner can still see which evening is affected.
+    """
+    harness = _install(monkeypatch, tmp_path, broker_orders={})
+
+    def unreachable(day: Any) -> bool:
+        raise RuntimeError("the exchange calendar is unreachable")
+
+    monkeypatch.setattr(staleness, "is_session", unreachable)
+
+    code = reconcile_fills.main([])
+
+    assert code == 1
+    assert len(harness.sent) == 1
+    subject = str(harness.sent[0]["subject"])
+    body = str(harness.sent[0]["text"])
+    assert subject == f"EFB fills {CLOSE} | not reconciled | ERROR"
+    assert f"EFB fills {CLOSE}: not reconciled" in body
+    assert "the exchange calendar is unreachable" in body
+    # Nothing was recorded as done, so tomorrow's morning and today's retry are both
+    # still allowed to run.
+    assert harness.recorded == []
