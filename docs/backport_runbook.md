@@ -63,7 +63,7 @@ Steps 1 to 4 are the ones no default run performs.
 | 7 | State the end date on any further rebuild | `make rebuild END=<last session before the merge>` | `data/VERSION.json` records that session |
 | 8 | Re-record the frozen block baseline if the seed moved a pre-cutoff row | `.venv/bin/python -c "from live import extend; print(extend.incremental_integrity())"` | `tests/test_e11_extend.py` green |
 | 9 | Clear the known reds the refresh exists to fix (the list is `docs/known_test_failures.md`, which the full suite's 55 are measured from) | `.venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"` | 0 failures; anything still red is fixed or written down in that file with its reason, never skipped and never `xfail` (note 9) |
-| 10 | Thirteen things the live loop reports wrongly or omits, each with the day that exposed it (note 10) | `tests/test_e11_bridge.py`, `tests/test_week1_fills_cron.py`, `tests/test_e11_fills.py`, `tests/test_week1_fills_cron.py` again for the skip, an audit query for the NaN columns, and the evening's own proposal build for the universe | the bridge has an *arrived* term and 2026-10-06 holds all six identities; the morning's cost line compares realized against the trading half; `reconciliation.filled_notional` holds what filled; a morning with no new orders skips and says so; every NOT NULL numeric column is proved unable to hold a NaN; a filled risk estimate is reported rather than discarded; a name is sized only when the risk model can measure it; a name with risk but no signal has a stated treatment; `excluded` carries a reason, an age and a way back; DD's absence from the returns panel is explained; the pricing fetch no longer spells PSKY; the floor has a measured entry/exit band rather than a single line; the risk block and the sized universe are the same set of names |
+| 10 | Seventeen things the live loop reports wrongly or omits, each with the day that exposed it (note 10) | `tests/test_e11_bridge.py`, `tests/test_week1_fills_cron.py`, `tests/test_e11_fills.py`, `tests/test_week1_fills_cron.py` again for the skip, an audit query for the NaN columns, and the evening's own proposal build for the universe | the bridge has an *arrived* term and 2026-10-06 holds all six identities; the morning's cost line compares realized against the trading half; `reconciliation.filled_notional` holds what filled; a morning with no new orders skips and says so; every NOT NULL numeric column is proved unable to hold a NaN; a filled risk estimate is reported rather than discarded; a name is sized only when the risk model can measure it; a name with risk but no signal has a stated treatment; `excluded` carries a reason, an age and a way back; DD's absence from the returns panel is explained; the pricing fetch no longer spells PSKY; the floor has a measured entry/exit band rather than a single line; the risk block and the sized universe are the same set of names; the drop and the write read one source; the write refuses a zero as firmly as the drop; the dropped names are on the page; the universe is deduplicated before it is sized |
 
 1. **Read one panel.** At merge, `live/extend.py` must read `returns_clean` as
    well, in the same commit, so the live model fit and `next_descriptor_design`
@@ -136,7 +136,7 @@ Steps 1 to 4 are the ones no default run performs.
    passing** (an id in that file that came back green). A new failure is
    investigated on its own and is never folded into the known list, so a real
    regression cannot hide among them; zero new is the bar for a merge.
-10. **Thirteen things the live loop reports wrongly or omits.** Each was found by looking
+10. **Seventeen things the live loop reports wrongly or omits.** Each was found by looking
    at a real day rather than by a failing test, and each is small enough to fix in one
    commit with a test that would have caught it. They are here rather than in
    `docs/known_test_failures.md` because none of them is red: the suite passes on the
@@ -145,8 +145,10 @@ Steps 1 to 4 are the ones no default run performs.
    Items 4 to 6 were queued on 2026-10-07 from the evening's failure; items 7 to 11 were
    queued the same night from the questions the failure raised about the universe; items
    12 and 13 the night after, from what the three stored manifests of 2026-10-05 to 10-07
-   showed when the same questions were asked of them. Every one of them carries the
-   measurements that raised it.
+   showed when the same questions were asked of them; items 14 to 17 from the review of
+   the commit that landed the fix on 2026-10-08, which is where the asymmetry between
+   the two readers and the two loose ends around them were found. Every one of them
+   carries the measurements that raised it.
 
    1. **The bridge cannot say a name arrived.** Its sixth identity is
       `held before - exited + opened = held after + reversals + removed without an
@@ -282,7 +284,7 @@ Steps 1 to 4 are the ones no default run performs.
       long it has been there**, and the loop has a defined path back - a rebuild
       trigger, or a fetch that fills the gap - so a name cannot sit outside the book
       forever without anyone being told why.
-  10. **Why is DD missing from `processed/returns.parquet`?** DD is in the SPY universe,
+   10. **Why is DD missing from `processed/returns.parquet`?** DD is in the SPY universe,
       has a GICS row (`sectors.parquet`, `as_of` 2026-10-03) and has **4,213 non-null
       closes in a panel of 4,213 sessions** - a complete price series through
       2026-10-02, with no break at 2025-11-03 when Q (Qnity Electronics) was spun off.
@@ -293,7 +295,7 @@ Steps 1 to 4 are the ones no default run performs.
       question to answer: **did `hygiene.clean_returns` or the panel's build drop DD at
       the 2025-11 spin-off**, and if so on what rule? Answer it with the build's own
       record; if the cause is a hygiene rule, the rule needs to say what it did.
-  11. **The pricing fetch still spells PSKY, not SKYD.** `efb.e11_prices` carries
+   11. **The pricing fetch still spells PSKY, not SKYD.** `efb.e11_prices` carries
       **PSKY** (4,213 closes) and no SKYD row at all, while the broker has traded the
       same asset - id `5b47111b-5e0d-4adc-929c-3efae02f747e`, CUSIP 69932A204 - as SKYD
       since the rename, and the SPY universe already lists SKYD. So SKYD is excluded for
@@ -304,7 +306,7 @@ Steps 1 to 4 are the ones no default run performs.
       and the *vendor* side does not. The fix: resolve the rename where the prices are
       fetched, so the panel carries the broker's symbol, and record the old spelling
       rather than silently keeping it.
-  12. **The floor has hysteresis, and nobody has measured it.** The kept set is the
+   12. **The floor has hysteresis, and nobody has measured it.** The kept set is the
       drop-then-admit fixed point on the day's own weights (`floor_rule`
       `drop_then_admit`, `live/construction_table.py`), so a name sitting on the
       20-share line flips in and out as its weight moves a few dollars. Measured on
@@ -323,7 +325,7 @@ Steps 1 to 4 are the ones no default run performs.
       is held at its weight rather than traded) with the band's width set from that
       measurement. `tests/test_construction_table.py` for the band, and the three
       days above as its own case.
-  13. **The risk block carries six names the universe does not.** `efb.e11_specific_var`
+   13. **The risk block carries six names the universe does not.** `efb.e11_specific_var`
       holds 499 names on 2026-10-07 while the sized universe is 496, and the six in
       the block and not in the universe are **BLDR, CTVA, PSKY, TAP, TTD, WBD** - the
       same six the descriptor and specific-return inputs carry too. Two of them are
@@ -341,8 +343,57 @@ Steps 1 to 4 are the ones no default run performs.
       or a superset, and record the answer where the counts are read - and check
       whether the vendor artifact's extra names can carry a stale descriptor row into
       the fit for a name the index has dropped.
+   14. **One source for the specific variance, or two that can disagree.** The drop reads
+      the artifact the evening priced from - the run tree, because `live/runroot.py:180`
+      points `evening_job.DATA_ROOT` at it and `scripts/run_live_daily.py:1626` hands the
+      same tree to `store_proposal` - while `store_proposal` resolves its own root:
+      `Path(data_root) if data_root is not None else ROOT / "data"`
+      (`scripts/run_live_daily.py:236`). On the live path the two agree twice over: same
+      file, and the same block rule on both sides, "the latest artifact date at or before
+      the close" (`efb/race.py:79-90` against `live/trade_reasons.py:208-212`), which was
+      checked by comparing the two readers' verdicts name by name on 2026-10-07's closes
+      and finding them identical (Q, FDXF, HONA, SKYD and DD in both, five of five). What
+      nothing enforces is the file: a caller that omits `data_root` reads the repository's
+      `data/` and can disagree with what the evening dropped, which is the 2026-10-07
+      crash this change exists to remove - and a *refusal* is a crash, not a quiet
+      difference. The fix: give the write one source. Either pass the variance vector the
+      sizing used (or the block's own date) into `store_proposal`, or have it refuse
+      against the manifest's own `dropped_no_risk` instead of re-reading the artifact, so
+      the two cannot be pointed at different files. `tests/test_run_live_daily.py` for the
+      refusal, with a store whose artifact lacks a name the book holds.
+   15. **Zero is asymmetric.** `dropped_for_no_risk` rejects a variance that is not
+      positive (`live/evening_job.py:428`: `value <= 0.0`), and `specific_std_or_refuse`
+      refuses only what is not finite (`scripts/run_live_daily.py:221`), so a variance of
+      exactly `0.0` passes the write's guard as `idio_vol = 0.0` - a name stored with no
+      risk at all, which is the same lie as the NaN and a quieter one. It is unreachable
+      from the live path, because the evening drops such a name before it is sized: that
+      is the point. Two definitions of "has a risk estimate" in the same loop is one too
+      many, so tighten the refusal to non-positive (a negative already arrives as NaN
+      from `live/trade_reasons.py:214`, so only the zero is left) and make the two
+      predicates one function both sides call.
+   16. **`dropped_no_risk` is not on the page.** The manifest carries it
+      (`live/evening_job.py:1438-1439`), the evening's message carries it
+      (`live/notify.py:526-534`), and the store keeps the manifest - but
+      `live/snapshot.py` writes no key for it, so the one fact that says *why* tonight's
+      book is narrower than the index can only be read in that morning's mail or by
+      opening `efb.proposals`. Every other drop the loop makes is on the page: the
+      no-price names through the book's own reason, the excluded ones through the
+      fixtures' counts. Put the dropped names and their reasons on the page beside the
+      counts the manifest already supplies, so a reader of the document does not have to
+      trust that an absence was deliberate.
+   17. **The SPY ticker list is not deduplicated.** `spy_tickers` is
+      `sorted(universe["ticker"].astype(str).str.upper().str.strip())`
+      (`live/evening_job.py:1268`), which keeps a duplicate: the name would be in `names`
+      twice, so it would be sized twice, counted twice in `n_kept`, hedged against
+      itself, and written to `efb.positions` twice - where the natural key would collapse
+      the two rows and leave the row count disagreeing with every count taken off the
+      manifest. Measured on the 2026-09-21 archive: 503 rows, 0 duplicates, and 499
+      unique tickers in the artifact's last block, so this is latent rather than live.
+      The fix is `sorted(set(...))` **with** a warning when it drops one, because a
+      duplicated universe row is a vendor defect the day's report should name rather
+      than absorb.
 
-   The exit condition is the thirteen of them fixed or written down here, and the day's
+   The exit condition is the seventeen of them fixed or written down here, and the day's
    own numbers as a case in each test rather than a number typed from a message.
 
 ## 4. Rollback
