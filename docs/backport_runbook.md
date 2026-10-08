@@ -63,7 +63,7 @@ Steps 1 to 4 are the ones no default run performs.
 | 7 | State the end date on any further rebuild | `make rebuild END=<last session before the merge>` | `data/VERSION.json` records that session |
 | 8 | Re-record the frozen block baseline if the seed moved a pre-cutoff row | `.venv/bin/python -c "from live import extend; print(extend.incremental_integrity())"` | `tests/test_e11_extend.py` green |
 | 9 | Clear the known reds the refresh exists to fix (the list is `docs/known_test_failures.md`, which the full suite's 55 are measured from) | `.venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"` | 0 failures; anything still red is fixed or written down in that file with its reason, never skipped and never `xfail` (note 9) |
-| 10 | Eleven things the live loop reports wrongly or omits, each with the day that exposed it (note 10) | `tests/test_e11_bridge.py`, `tests/test_week1_fills_cron.py`, `tests/test_e11_fills.py`, `tests/test_week1_fills_cron.py` again for the skip, an audit query for the NaN columns, and the evening's own proposal build for the universe | the bridge has an *arrived* term and 2026-10-06 holds all six identities; the morning's cost line compares realized against the trading half; `reconciliation.filled_notional` holds what filled; a morning with no new orders skips and says so; every NOT NULL numeric column is proved unable to hold a NaN; a filled risk estimate is reported rather than discarded; a name is sized only when the risk model can measure it; a name with risk but no signal has a stated treatment; `excluded` carries a reason, an age and a way back; DD's absence from the returns panel is explained; the pricing fetch no longer spells PSKY |
+| 10 | Thirteen things the live loop reports wrongly or omits, each with the day that exposed it (note 10) | `tests/test_e11_bridge.py`, `tests/test_week1_fills_cron.py`, `tests/test_e11_fills.py`, `tests/test_week1_fills_cron.py` again for the skip, an audit query for the NaN columns, and the evening's own proposal build for the universe | the bridge has an *arrived* term and 2026-10-06 holds all six identities; the morning's cost line compares realized against the trading half; `reconciliation.filled_notional` holds what filled; a morning with no new orders skips and says so; every NOT NULL numeric column is proved unable to hold a NaN; a filled risk estimate is reported rather than discarded; a name is sized only when the risk model can measure it; a name with risk but no signal has a stated treatment; `excluded` carries a reason, an age and a way back; DD's absence from the returns panel is explained; the pricing fetch no longer spells PSKY; the floor has a measured entry/exit band rather than a single line; the risk block and the sized universe are the same set of names |
 
 1. **Read one panel.** At merge, `live/extend.py` must read `returns_clean` as
    well, in the same commit, so the live model fit and `next_descriptor_design`
@@ -136,15 +136,17 @@ Steps 1 to 4 are the ones no default run performs.
    passing** (an id in that file that came back green). A new failure is
    investigated on its own and is never folded into the known list, so a real
    regression cannot hide among them; zero new is the bar for a merge.
-10. **Eleven things the live loop reports wrongly or omits.** Each was found by looking
+10. **Thirteen things the live loop reports wrongly or omits.** Each was found by looking
    at a real day rather than by a failing test, and each is small enough to fix in one
    commit with a test that would have caught it. They are here rather than in
    `docs/known_test_failures.md` because none of them is red: the suite passes on the
    wrong number, or says nothing about the omission at all.
 
    Items 4 to 6 were queued on 2026-10-07 from the evening's failure; items 7 to 11 were
-   queued the same night from the questions the failure raised about the universe, and
-   carry the 2026-10-07 measurements that answered them.
+   queued the same night from the questions the failure raised about the universe; items
+   12 and 13 the night after, from what the three stored manifests of 2026-10-05 to 10-07
+   showed when the same questions were asked of them. Every one of them carries the
+   measurements that raised it.
 
    1. **The bridge cannot say a name arrived.** Its sixth identity is
       `held before - exited + opened = held after + reversals + removed without an
@@ -302,8 +304,45 @@ Steps 1 to 4 are the ones no default run performs.
       and the *vendor* side does not. The fix: resolve the rename where the prices are
       fetched, so the panel carries the broker's symbol, and record the old spelling
       rather than silently keeping it.
+  12. **The floor has hysteresis, and nobody has measured it.** The kept set is the
+      drop-then-admit fixed point on the day's own weights (`floor_rule`
+      `drop_then_admit`, `live/construction_table.py`), so a name sitting on the
+      20-share line flips in and out as its weight moves a few dollars. Measured on
+      the three stored manifests of 2026-10-05 to 10-07: **16 of the 39 names that
+      left on 10-07 had been admitted on 10-06** (BIIB, BRO, CTAS, GEHC, GRMN, HPE,
+      LOW, MRK, MTB, O, PNC, RDDT, ROST, TXT, WELL, XYL) and **5 of the 24 that
+      arrived had been dropped on 10-06** (BBY, CMS, CNC, INVH, LHX), with only 140
+      names kept on all three days against 191, 195 and 180 kept. Each round trip is
+      two crossings of the spread and the impact term on a leg that was already at
+      its target size, and on a leg of a few hundred dollars the cost of the two
+      trades is a large fraction of the position. What to do: **measure the
+      round-trip churn at the floor since launch** - names that leave and return
+      within k sessions, the dollars traded twice, and what the two legs cost
+      against the name's own weight - and propose an **entry/exit band** (admit at
+      the floor, release only below some fraction of it, so a name inside the band
+      is held at its weight rather than traded) with the band's width set from that
+      measurement. `tests/test_construction_table.py` for the band, and the three
+      days above as its own case.
+  13. **The risk block carries six names the universe does not.** `efb.e11_specific_var`
+      holds 499 names on 2026-10-07 while the sized universe is 496, and the six in
+      the block and not in the universe are **BLDR, CTVA, PSKY, TAP, TTD, WBD** - the
+      same six the descriptor and specific-return inputs carry too. Two of them are
+      explained and four are not: **PSKY** is SKYD's own old spelling (item 11), and
+      **WBD** was a universe member until 2026-10-05 (the 10-05 universe is 503 names
+      and it is not among the 10-06 503), while BLDR, CTVA, TAP and TTD are names the
+      model still estimates and the index no longer holds. The question is whether
+      this is harmless: the block is a table keyed by ticker, the sizing asks it only
+      for names in `names`, and nothing iterates it - so today it changes no number,
+      which is the definition of harmless *for now*. What it does do is make every
+      count taken off that table wrong by six, and it is the same one-way door as the
+      `excluded` list (item 9): the artifact only grows, nothing prunes it, and a
+      reader comparing "499 estimated" against "496 sized" has to know why. The fix:
+      decide deliberately whether the live risk inputs are the universe's own names
+      or a superset, and record the answer where the counts are read - and check
+      whether the vendor artifact's extra names can carry a stale descriptor row into
+      the fit for a name the index has dropped.
 
-   The exit condition is the eleven of them fixed or written down here, and the day's
+   The exit condition is the thirteen of them fixed or written down here, and the day's
    own numbers as a case in each test rather than a number typed from a message.
 
 ## 4. Rollback
