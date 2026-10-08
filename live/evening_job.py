@@ -56,6 +56,14 @@ MIN_NAMES = 50
 # and needs its rank margin, so 100 priced names is not a diminished book but
 # another one.
 MAX_PRICE_DROPS = 10
+# How many names one evening may lose for having no risk estimate before the run
+# stops and emails instead of sizing the rest. A name with a short history has no
+# estimate until it does: Q, FDXF and HONA were the three on 2026-10-07, all
+# recently listed or spun off, and dropping them is the right answer rather than a
+# failure. A dozen at once is not that, it is the specific-variance artifact having
+# gone missing, stale or truncated, and a book sized from whatever the diagonal did
+# answer for would be a different book, not a smaller one.
+MAX_RISK_DROPS = 10
 
 # the frozen model inputs whose content the proposal is pinned to
 INPUT_ARTIFACTS = (
@@ -388,6 +396,71 @@ def priced_names_or_stop(
             f"it stops: no usable close price for {shown}{rest}"
         )
     return priced, dropped
+
+
+def dropped_for_no_risk(
+    names: list[str], variances: np.ndarray
+) -> tuple[list[str], list[dict[str, str]]]:
+    """The risk-covered names, and the ones the risk model cannot measure.
+
+    A name enters the book through the alpha contract, `alpha_i = IC x sigma_i x
+    z_i x kappa`, so a name with no specific variance has no risk to size it on
+    and a name whose variance is zero has none either. Both are dropped here,
+    before anything is priced, which is what makes the sizing universe the risk
+    universe.
+
+    2026-10-07 is why this exists. `efb.eval_risk._xs_pieces` fills every gap in
+    the diagonal with the cross-sectional median, on purpose and for the research
+    engine, so Q - a name the model has never estimated - was sized on EQT's own
+    specific variance, to the last bit, kept by the share floor at $3,623, and
+    then refused by `efb.positions.idio_vol`, which is `not null`, after the whole
+    book had been priced. The name is the right thing to drop; the median is the
+    wrong thing to size it on. The fill in `efb/` stays as it is.
+
+    The reasons are recorded per name rather than as one list, so the manifest
+    says which of the two rules fired.
+    """
+    covered: list[str] = []
+    dropped: list[dict[str, str]] = []
+    for name, value in zip(names, np.asarray(variances, dtype=float), strict=True):
+        if not math.isfinite(value):
+            dropped.append({"ticker": name, "reason": "no specific variance"})
+        elif value <= 0.0:
+            dropped.append(
+                {
+                    "ticker": name,
+                    "reason": f"specific variance {value:.3g} is not positive",
+                }
+            )
+        else:
+            covered.append(name)
+    return covered, dropped
+
+
+def risk_names_or_stop(
+    names: list[str],
+    variances: np.ndarray,
+    max_drops: int = MAX_RISK_DROPS,
+) -> tuple[list[str], list[dict[str, str]]]:
+    """The drop for no risk estimate, and the count that makes it a stop instead.
+
+    The drop alone would size a book from whatever the diagonal answered for, one
+    name at a time, and a risk artifact that arrived empty or truncated would do it
+    silently: a hundred dropped names leave a book of two. The refusal names the
+    drops it is refusing over, because "too many" without them is a count nobody
+    can act on.
+    """
+    covered, dropped = dropped_for_no_risk(names, variances)
+    if len(dropped) > max_drops:
+        shown = ", ".join(str(entry["ticker"]) for entry in dropped[:10])
+        rest = "" if len(dropped) <= 10 else f" and {len(dropped) - 10} more"
+        raise ValueError(
+            f"{len(dropped)} of {len(names)} names have no specific variance at the "
+            f"proposal close, more than the {max_drops} the evening accepts before "
+            f"it stops: the risk model cannot measure {shown}{rest}, which is the "
+            "diagonal having gone missing rather than a few short histories"
+        )
+    return covered, dropped
 
 
 def merged_no_price(
@@ -1202,6 +1275,14 @@ def build_proposal(
             f"names, below the {MIN_NAMES} floor"
         )
 
+    # The risk universe, before anything is priced: a name the model has no
+    # specific variance for cannot be sized on one, and the reader here is the
+    # same one `_xs_pieces` uses, so the check and the diagonal cannot disagree
+    # about which names have an estimate. `n_names` below is what is left, so the
+    # counts add up as universe = excluded + dropped_no_risk + n_names.
+    variances, _filled = race._specific_for(as_of_ts, names, root)
+    names, dropped_no_risk = risk_names_or_stop(names, variances)
+
     pieces = eval_risk._xs_pieces(as_of_ts, names, root)
     if pieces is None:
         raise ValueError(f"no XS-v1 pieces available at {as_of_ts.date()}")
@@ -1348,6 +1429,15 @@ def build_proposal(
         "n_dropped_no_price": len(dropped_no_price),
         "dropped_no_price": dropped_no_price,
         "max_price_drops": MAX_PRICE_DROPS,
+        # The names the risk model cannot measure, and why, dropped before the
+        # sizing rather than priced on the cross-sectional median. The count is
+        # what the evening can lose without stopping, and the names are said out
+        # loud on the email beside the ones with no price: a book narrower than
+        # the universe is a book nobody can check, and a name sized on a median
+        # that is not its own is a risk nobody chose.
+        "n_dropped_no_risk": len(dropped_no_risk),
+        "dropped_no_risk": dropped_no_risk,
+        "max_risk_drops": MAX_RISK_DROPS,
         "ic": ic,
         "kappa": kappa,
         "factor_neutral_ic_h21": neutral_ic["factor_neutral_ic_h21"],
