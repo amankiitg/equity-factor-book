@@ -432,6 +432,63 @@ def test_a_member_with_no_price_is_named_in_the_message() -> None:
     assert "Dropped for no price" not in notify.compose(**fields)
 
 
+def test_a_name_with_no_risk_estimate_is_named_in_the_message() -> None:
+    """The same statement about the same book, from the risk side.
+
+    These names never reached the sizing, so the book is smaller than the universe
+    for a second reason and the owner has to be able to tell the two apart. The
+    reason travels in the manifest; the line carries the names.
+    """
+    from live import notify
+
+    fields = {
+        "status": "ok",
+        "target_close": "2026-10-07",
+        "dry_run": True,
+        "orders": 3,
+        "gross": 1000.0,
+    }
+    no_risk = [
+        {"ticker": "Q", "reason": "no specific variance"},
+        {"ticker": "FDXF", "reason": "no specific variance"},
+        {"ticker": "HONA", "reason": "no specific variance"},
+    ]
+    message = notify.compose(**fields, no_risk=no_risk)
+
+    assert (
+        "Dropped for no risk estimate: FDXF, HONA, Q (out of the book before sizing)."
+        in message
+    )
+    assert "Dropped for no risk estimate" not in notify.compose(**fields)
+    # an entry with no ticker still composes: the line is a report, not a step
+    assert "Dropped for no risk estimate: ?" in notify.compose(**fields, no_risk=[{}])
+
+
+def test_the_risk_and_price_lines_are_separate_statements() -> None:
+    """A name dropped for both reasons is on both lines, and not deduplicated.
+
+    They are different facts about the same name: one says the diagonal cannot
+    measure it, the other says the vendor had no print. Folding them into one list
+    would lose which of the two is true, which is the thing the reader acts on.
+    """
+    from live import notify
+
+    fields = {
+        "status": "ok",
+        "target_close": "2026-10-07",
+        "dry_run": True,
+        "orders": 0,
+    }
+    message = notify.compose(
+        **fields,
+        no_price=["EA"],
+        no_risk=[{"ticker": "Q", "reason": "no specific variance"}],
+    )
+
+    assert "Dropped for no price: EA." in message
+    assert "Dropped for no risk estimate: Q" in message
+
+
 def test_a_refused_send_keeps_the_reason_and_names_itself(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

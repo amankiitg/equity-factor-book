@@ -384,6 +384,7 @@ def compose(
     fills: dict[str, Any] | None = None,
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
+    no_risk: list[dict[str, Any]] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
@@ -522,6 +523,16 @@ def compose(
         # smaller than the index is a book nobody can check, so the names are said
         # out loud rather than left to be noticed.
         lines.append(f"Dropped for no price: {', '.join(sorted(no_price))}.")
+    if no_risk:
+        # The same statement about the same book, from the other end: these are the
+        # names the risk model cannot measure, so they never reached the sizing.
+        # Until 2026-10-08 they were sized on the cross-sectional median instead -
+        # Q on EQT's own variance - and the run died storing the result. The names
+        # are said out loud for the reason the line above gives.
+        lines.append(
+            f"Dropped for no risk estimate: {_no_risk_names(no_risk)} "
+            "(out of the book before sizing)."
+        )
     if thin_adv:
         # The impact term is a function of each name's dollar volume, and a name
         # whose own ADV is missing or below $1M has that volume filled from the
@@ -777,6 +788,18 @@ def _skipped_minimum_list(rows: list[dict[str, Any]]) -> str:
     if count > MINIMUM_SKIP_NAMES:
         shown += f", and {count - MINIMUM_SKIP_NAMES} more"
     return f"{count} name(s) ({shown})"
+
+
+def _no_risk_names(rows: list[dict[str, Any]]) -> str:
+    """The names the risk model cannot measure, as one comma-separated list.
+
+    The reason travels in the manifest rather than in the line: tonight's reasons
+    are almost always the same one, and a line that repeats it three times is
+    harder to read than the three names beside it. The page and the store carry
+    the reason per name for the reader who needs it.
+    """
+    names = sorted(str(row.get("ticker", "?")) for row in rows)
+    return ", ".join(names)
 
 
 def _thin_adv_list(rows: list[dict[str, Any]]) -> str:
@@ -1208,6 +1231,7 @@ def notify_run(
     fills: dict[str, Any] | None = None,
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
+    no_risk: list[dict[str, Any]] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
@@ -1261,6 +1285,7 @@ def notify_run(
         spinoff_lookup_failed=spinoff_lookup_failed,
         flags=flags,
         no_price=no_price,
+        no_risk=no_risk,
         thin_adv=thin_adv,
         store=store,
         snapshot=snapshot,

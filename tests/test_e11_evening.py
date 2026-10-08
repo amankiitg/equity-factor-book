@@ -932,3 +932,151 @@ def test_an_archive_name_without_a_date_is_refused(tmp_path: Path) -> None:
     (archive / "spy_holdings_backup.parquet").write_bytes(b"not a parquet")
     with pytest.raises(ValueError, match="does not carry a date"):
         ev.load_spy_universe(tmp_path, as_of=pd.Timestamp("2026-09-18"))
+
+
+def _measured(names: list[str], unmeasured: int) -> np.ndarray:
+    """A variance for every name but the first `unmeasured`."""
+    values = np.full(len(names), 4e-04)
+    values[:unmeasured] = np.nan
+    return values
+
+
+def test_a_name_with_no_risk_estimate_is_dropped_before_the_sizing() -> None:
+    """A name the model cannot measure is not a name to size on the median.
+
+    The alpha contract multiplies by the specific volatility, so a name with no
+    specific variance and a name with a variance of zero both leave the book
+    before anything is priced. They come back named, with which of the two rules
+    fired, because the manifest and the message have to say it.
+    """
+    names = ["AAA", "BBB", "QQQ", "ZERO", "DDD"]
+    variances = np.array([4e-04, 9e-04, np.nan, 0.0, 1e-04])
+
+    covered, dropped = ev.dropped_for_no_risk(names, variances)
+
+    assert covered == ["AAA", "BBB", "DDD"]
+    assert dropped == [
+        {"ticker": "QQQ", "reason": "no specific variance"},
+        {"ticker": "ZERO", "reason": "specific variance 0 is not positive"},
+    ]
+    # a negative variance is not a risk either: `trade_reasons.specific_std` maps
+    # one to NaN before it can reach the store, and the sizing must not price it
+    covered, dropped = ev.dropped_for_no_risk(["AAA"], np.array([-1e-04]))
+    assert covered == []
+    assert dropped == [
+        {"ticker": "AAA", "reason": "specific variance -0.0001 is not positive"}
+    ]
+    # the control: a fully measured diagonal drops nothing
+    covered, dropped = ev.dropped_for_no_risk(names[:2], variances[:2])
+    assert covered == names[:2]
+    assert dropped == []
+
+
+def test_the_book_stops_when_more_than_ten_names_have_no_risk_estimate() -> None:
+    """The drop is bounded by a count of names, from the risk side.
+
+    A name with a short history has no estimate until it does, and dropping it is
+    the answer - Q, FDXF and HONA on 2026-10-07 were all that. A diagonal that
+    arrived empty or truncated is not that, and it is the case the stop exists
+    for: the run emails rather than building a book out of whatever the artifact
+    did answer for. The refusal names the drops it is refusing over, because a
+    count nobody can act on is not a message.
+    """
+    names = [f"T{index:03d}" for index in range(499)]
+    assert ev.MAX_RISK_DROPS == 10
+
+    # the boundary: ten unmeasured names still size the other 489
+    covered, dropped = ev.risk_names_or_stop(names, _measured(names, 10))
+    assert len(covered) == 489
+    assert [entry["ticker"] for entry in dropped] == names[:10]
+
+    # and the count is the parameter, so the boundary is testable rather than
+    # asserted: eleven stop, and a rule that allowed eleven would not
+    covered, dropped = ev.risk_names_or_stop(names, _measured(names, 11), max_drops=11)
+    assert len(dropped) == 11
+    with pytest.raises(ValueError, match="more than the 10 the evening accepts"):
+        ev.risk_names_or_stop(names, _measured(names, 11))
+
+    # a diagonal that answered for nothing is the case the rule exists for
+    with pytest.raises(ValueError, match="499 of 499 names have no specific variance"):
+        ev.risk_names_or_stop(names, np.full(len(names), np.nan))
+
+
+@pytest.mark.slow
+def test_build_proposal_sizes_only_the_names_the_risk_model_can_measure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Q case at the book, on the real panel.
+
+    On 2026-10-07 Q was sized on the cross-sectional median - EQT's own specific
+    variance, to the last bit - kept by the share floor at $3,623, and then
+    refused by `efb.positions.idio_vol`, which is `not null`, after the whole book
+    had been priced. The name is the right thing to drop and the median is the
+    wrong thing to size it on, so the names the diagonal does not cover leave
+    before anything is priced, and the counts still add up:
+    universe = excluded + dropped_no_risk + n_names.
+
+    The name taken is the baseline's own largest kept name rather than Q, because
+    the fixture tree's session is not 2026-10-07: what has to hold is the rule, and
+    the rule says a name with no estimate is out of the book and named. Measured on
+    this tree, the three names the real artifact is missing (Q, FDXF, HONA) are all
+    below the share floor, so dropping them moves the sized universe 502 -> 499 and
+    leaves the traded book's 188 names as they were; dropping a *kept* name's
+    estimate on top of that takes the sized universe to 498 and the book to 178.
+    The kept count is therefore asserted to move rather than to fall by one: the
+    book is renormalized without the name, and the names admitted afterwards clear
+    the floor against a different vector.
+    """
+    baseline = ev.build_proposal(store=False)
+    assert baseline["max_risk_drops"] == ev.MAX_RISK_DROPS
+    victim = str(baseline["kept_book"][0]["ticker"])
+
+    # The same reader the sizing uses, so this is the 2026-10-07 shape exactly: a
+    # name the diagonal has no row for, which `_xs_pieces` would fill with the
+    # median before pricing it.
+    real_specific_for = ev.race._specific_for
+
+    def without_the_victim(
+        date: pd.Timestamp, names: list[str], root: Path
+    ) -> tuple[np.ndarray, int]:
+        values, missing = real_specific_for(date, names, root)
+        values = np.array(values, dtype=float, copy=True)
+        if victim in names:
+            values[names.index(victim)] = np.nan
+            missing += 1
+        return values, missing
+
+    monkeypatch.setattr(ev.race, "_specific_for", without_the_victim)
+    manifest = ev.build_proposal(store=False)
+
+    def universe_of(built: dict) -> int:
+        return built["n_names"] + built["n_excluded"] + built["n_dropped_no_risk"]
+
+    dropped = {
+        str(entry["ticker"]): str(entry["reason"])
+        for entry in manifest["dropped_no_risk"]
+    }
+    assert dropped.get(victim) == "no specific variance"
+    assert victim not in {entry["ticker"] for entry in manifest["kept_book"]}
+    # the drop is exactly the names the diagonal cannot measure, and it is taken
+    # out of the sizing rather than out of the universe: the counts still add up
+    assert set(manifest["dropped_no_risk"][0]) == {"ticker", "reason"}
+    assert all(
+        entry["reason"] == "no specific variance"
+        for entry in manifest["dropped_no_risk"]
+    )
+    assert manifest["n_names"] == baseline["n_names"] - 1
+    assert manifest["n_dropped_no_risk"] == baseline["n_dropped_no_risk"] + 1
+    assert universe_of(manifest) == universe_of(baseline)
+    assert manifest["n_kept"] != baseline["n_kept"]
+    assert manifest["n_kept"] != baseline["n_kept"]
+    assert manifest["n_kept"] + manifest["n_dropped"] == manifest["n_names"]
+    assert manifest["floor_search_converged"] is True
+    # every name the book did keep carries a variance of its own: none of them is
+    # the cross-sectional median standing in for a missing row
+    assert all(
+        float(entry["specific_variance"]) > 0.0 for entry in manifest["kept_book"]
+    )
+    assert manifest["kept_gross"] == pytest.approx(1.0)
+    assert manifest["quantization"]["long_targets_rounding_to_zero"] == 0
+    assert manifest["quantization"]["short_targets_rounding_to_zero"] == 0

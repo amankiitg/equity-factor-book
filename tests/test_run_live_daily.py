@@ -929,3 +929,108 @@ def test_the_evening_says_so_when_the_published_book_is_not_its_own(
     )
     assert code == 0
     assert "Page book" not in str(sent[0]["text"])
+
+
+def test_the_store_refuses_a_name_with_no_specific_variance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Q case at the write, and the default that is no longer a NaN.
+
+    On 2026-10-07 the row for Q was written with `float("nan")` as its `idio_vol`
+    and Postgres refused it - `select float8 'NaN' is not null` is true, so the
+    column took the NaN as data and the *NOT NULL* constraint fired on the null
+    the driver sent instead - after the whole book had been priced and with no
+    orders out that night. The default is a refusal now, and it names the ticker:
+    the evening drops such a name before it sizes anything, so reaching here is a
+    caller that built its own book, and it stops rather than inventing a risk.
+    """
+    import json
+
+    import pandas as pd
+
+    proposals = tmp_path / "proposals"
+    proposals.mkdir()
+    manifest = {
+        "signal": "idio_momentum",
+        "as_of": "2026-10-07",
+        "n_names": 2,
+        "n_excluded": 1,
+        "n_kept": 2,
+        "gross": 1.0,
+        "net": 0.0,
+        "kept_gross": 1.0,
+        "kept_net": 0.0,
+        "n_eff_kept": 2.0,
+        "n_eff_full_book": 2.0,
+        "target_annual_vol": 0.10,
+        "achieved_annual_vol": 0.03,
+        "kept_achieved_annual_vol": 0.03,
+        "idio_share_after_fmp": 1.0,
+        "max_abs_exposure_after_fmp": 3.8e-15,
+        "gross_cap_bound": True,
+        "nav": 1_000_000.0,
+        "expected_establishment_cost_bps": 14.5,
+        "cost_breakdown_bps": {"total": 14.5},
+        "notional": 1_000_000.0,
+        "avg_trade_size": 500_000.0,
+        "input_as_of": {},
+        "max_input_staleness_days": 0,
+        "universe_source": "spy_holdings",
+        "universe_as_of": "2026-10-07",
+    }
+    (proposals / "proposal_2026-10-07.json").write_text(json.dumps(manifest))
+    # Q is the kept name the risk diagonal has no row for, which is the row that
+    # failed; EQT is there because it is the name Q's fill came from.
+    pd.DataFrame(
+        {
+            "ticker": ["EOG", "Q"],
+            "weight": [0.5, 0.0036],
+            "side": ["long", "long"],
+            "z": [1.0, 0.0],
+            "alpha": [1e-06, 1e-07],
+        }
+    ).to_parquet(proposals / "proposal_2026-10-07.parquet", index=False)
+    root = tmp_path / "data"
+    (root / "models" / "XS-v1").mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "date": [pd.Timestamp("2026-10-07")],
+            "ticker": ["EOG"],
+            "specific_var": [0.0004],
+        }
+    ).to_parquet(root / "models" / "XS-v1" / "specific_var.parquet", index=False)
+    monkeypatch.setattr(run_live_daily, "PROPOSAL_DIR", proposals)
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+
+    with pytest.raises(ValueError, match="no specific variance for Q at 2026-10-07"):
+        run_live_daily.store_proposal("2026-10-07", data_root=root, dry_run=True)
+
+    # nothing was written: a refusal that stored the book anyway would leave the
+    # page and the store disagreeing about the day
+    assert store.select("positions").empty
+    assert store.select("proposals").empty
+
+    # the control: the same book with every name measured stores, and the row's
+    # idio_vol is a real number rather than a NaN
+    (proposals / "proposal_2026-10-07.parquet").unlink()
+    pd.DataFrame(
+        {
+            "ticker": ["EOG", "EQT"],
+            "weight": [0.5, 0.0036],
+            "side": ["long", "long"],
+            "z": [1.0, 0.0],
+            "alpha": [1e-06, 1e-07],
+        }
+    ).to_parquet(proposals / "proposal_2026-10-07.parquet", index=False)
+    pd.DataFrame(
+        {
+            "date": [pd.Timestamp("2026-10-07")] * 2,
+            "ticker": ["EOG", "EQT"],
+            "specific_var": [0.0004, 2.95e-04],
+        }
+    ).to_parquet(root / "models" / "XS-v1" / "specific_var.parquet", index=False)
+    rows = run_live_daily.store_proposal("2026-10-07", data_root=root, dry_run=True)
+    assert list(rows["ticker"]) == ["EOG", "EQT"]
+    stored = store.select("positions").set_index("ticker")["idio_vol"]
+    assert stored["EQT"] == pytest.approx(2.95e-04**0.5)
+    assert stored.notna().all()

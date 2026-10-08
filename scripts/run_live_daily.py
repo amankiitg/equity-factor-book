@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import sys
 from datetime import UTC, datetime
@@ -203,6 +204,33 @@ def prior_book(
     return frame
 
 
+def specific_std_or_refuse(ticker: str, today_std: pd.Series, as_of: str) -> float:
+    """The name's specific standard deviation, or a refusal that names the name.
+
+    `ebf.positions.idio_vol` is `not null`, and a NaN *satisfies* it on Postgres
+    (`select float8 'NaN' is not null` is true), so until 2026-10-08 this line
+    wrote `float("nan")` for a name with no estimate and let the database decide -
+    which is why 2026-10-07 died here, after the whole book had been priced and
+    with no orders sent. The default is a refusal now, and it names the ticker,
+    because "null value in column idio_vol" without a name is a message nobody can
+    act on.
+
+    In the normal run this is unreachable: the evening drops a name the risk model
+    cannot measure before it sizes anything (`live.evening_job.risk_names_or_stop`),
+    so the two agree by construction. It is kept as a refusal because this function
+    is also called on its own, from the day's own artifacts, and a book cannot be
+    stored against a risk that was invented on the way in.
+    """
+    value = today_std.get(ticker)
+    if value is None or not math.isfinite(float(value)):
+        raise ValueError(
+            f"no specific variance for {ticker} at {as_of}: the store cannot be "
+            "written with a fabricated idio_vol, and the evening drops a name with "
+            "no risk estimate before it sizes the book"
+        )
+    return float(value)
+
+
 def store_proposal(
     as_of: str,
     data_root: Path | None = None,
@@ -277,6 +305,35 @@ def store_proposal(
     )
     ranked = rows["alpha"].abs().rank(ascending=False, method="first").astype(int)
 
+    # The rows are built before either write, and the refusal inside them
+    # (`specific_std_or_refuse`) is why: a proposal row written first would leave
+    # the day half-stored when a name has no risk estimate, and the page reads the
+    # proposal. Both writes go out together or neither does.
+    position_rows: list[dict[str, object]] = []
+    for index, row in enumerate(rows.itertuples(index=False)):
+        ticker = str(row.ticker)
+        weight = float(row.weight)
+        previous_weight = float(previous_weights.get(ticker, 0.0))
+        position_rows.append(
+            {
+                "trade_date": as_of,
+                "ticker": ticker,
+                "weight": weight,
+                "signed_notional": weight * manifest["nav"],
+                "side": row.side,
+                "z": float(row.z),
+                "alpha": float(row.alpha),
+                "rank": int(ranked.iloc[index]),
+                "idio_vol": specific_std_or_refuse(ticker, today_std, as_of),
+                "previous_weight": previous_weight,
+                "trade": weight - previous_weight,
+                "reason": row.reason,
+                # The proposal is the loop's intention, never a holding: a
+                # holding label needs the broker to confirm a fill after
+                # execution, and nothing has executed when this row is written.
+                "kind": "intention",
+            }
+        )
     store.upsert(
         "proposals",
         [
@@ -319,31 +376,6 @@ def store_proposal(
             }
         ],
     )
-    position_rows: list[dict[str, object]] = []
-    for index, row in enumerate(rows.itertuples(index=False)):
-        ticker = str(row.ticker)
-        weight = float(row.weight)
-        previous_weight = float(previous_weights.get(ticker, 0.0))
-        position_rows.append(
-            {
-                "trade_date": as_of,
-                "ticker": ticker,
-                "weight": weight,
-                "signed_notional": weight * manifest["nav"],
-                "side": row.side,
-                "z": float(row.z),
-                "alpha": float(row.alpha),
-                "rank": int(ranked.iloc[index]),
-                "idio_vol": float(today_std.get(ticker, float("nan"))),
-                "previous_weight": previous_weight,
-                "trade": weight - previous_weight,
-                "reason": row.reason,
-                # The proposal is the loop's intention, never a holding: a
-                # holding label needs the broker to confirm a fill after
-                # execution, and nothing has executed when this row is written.
-                "kind": "intention",
-            }
-        )
     store.replace_by_date("positions", as_of, position_rows)
     # The rows, back to the caller, because the snapshot publishes the same book
     # and re-deriving it would let the page and the store disagree. The return was
@@ -796,6 +828,7 @@ def finish_run(
     actual: dict[str, Any] | None = None,
     init: bool = False,
     no_price: list[str] | None = None,
+    no_risk: list[dict[str, Any]] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     poster: Any = None,
     snapshot_poster: Any = None,
@@ -971,6 +1004,7 @@ def finish_run(
         page_book=page_book,
         cross_checks_capped=cross_checks_capped,
         no_price=no_price,
+        no_risk=no_risk,
         thin_adv=thin_adv,
         init=init,
         establishment=establishment,
@@ -1569,6 +1603,25 @@ def main() -> int:
                 ", ".join(merged_dropped),
             )
         no_price = merged_dropped
+        # The other half of the same statement, from the risk side: the names the
+        # model cannot measure never reached the sizing, and the day must say so
+        # for the reason the line above gives. The reasons travel with the names
+        # into the manifest and the message's own line.
+        raw_no_risk = manifest.get("dropped_no_risk")
+        no_risk: list[dict[str, Any]] = (
+            [dict(entry) for entry in raw_no_risk]
+            if isinstance(raw_no_risk, list)
+            else []
+        )
+        if no_risk:
+            logger.warning(
+                "%d name(s) with no risk estimate are out of the book: %s",
+                len(no_risk),
+                ", ".join(
+                    f"{entry.get('ticker')} ({entry.get('reason')})"
+                    for entry in no_risk
+                ),
+            )
         book = store_proposal(
             as_of, run_tree, dry_run=dry_run, previous=prior, prior_settled=True
         )
@@ -1719,6 +1772,7 @@ def main() -> int:
         started_at=started_at,
         cross_checks_capped=capped,
         no_price=no_price,
+        no_risk=no_risk,
         thin_adv=thin_adv,
         init=first_run,
         establishment=bool(morning.get("establishment")),
