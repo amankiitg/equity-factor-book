@@ -510,7 +510,67 @@ Steps 1 to 4 are the ones no default run performs.
       each with its cause - and until then read the file's count as an undercount, not as
       the number of failures to expect.
 
-   The exit condition is the twenty-three of them fixed or written down here, and the
+   24. **The hedge concentrates single-name risk, and the variance cap does not bound the
+      book that trades.** Measured on the 2026-10-08 book by capturing both vectors from
+      one `build_proposal(store=False)`: the cap never clamped - the sized book's largest
+      share was **0.099656** into `sizing.cap_variance_shares` and **0.099656** out of it
+      (HON), so nothing was above the limit and `cap changed it: False`. The projection
+      then rotated the book: **SMCI −0.004320 → +0.011781** (+0.016101, variance share
+      **1.70% → 12.63%**), **MRNA 0.000000 → −0.008545** (a position created with no
+      alpha), COIN +0.015598 (2.47% → 4.99%), CHTR +0.013206 (1.29% → 2.57%), PODD
+      +0.014447, APP +0.013956. The hedge is
+      `unhedged + hedge_exact_robust(design, exposures)` (`live/sizing.py:34`), an exact
+      factor-neutralizing projection with no size penalty, and `cap_variance_shares` sits
+      before it deliberately ("capping afterwards would undo one of the two",
+      `live/sizing.py:95-98`). So the cap is holding on the book it is defined on and the
+      traded book carries 12.63% in one name. Research, on the live books since 2026-10-01
+      (six sessions), measuring hedged vol, max variance share and turnover: **a
+      minimum-variance factor neutralization** - weight the correction by inverse specific
+      variance instead of the unconstrained projection - **versus cap-then-rehedge**, an
+      iteration that re-applies the cap to the hedged vector and re-solves the neutrality
+      until both hold. The second relabel: `variance_share_cap_binds`
+      (`live/evening_job.py:1389-1391`) is computed from `sizing.variance_shares` on the
+      **post-hedge** vector (`:1379`), so it reads `True` for a book the cap never touched
+      and means "a name in the traded book is at or over the cap", not "the cap bound".
+      Name it for the book it reads, or compute the sizing-stage condition beside it.
+   25. **An asset that goes inactive is a corporate action to read from the broker, not a
+      `SYMBOL_NOT_FOUND` skip.** WBD is the case. The broker's own announcement:
+      `ca_type=merger`, `ca_sub_type=merger_completion`, initiating symbol **SKYD**, target
+      **WBD**, `effective_date=2026-10-06`, `cash=31.01667`, `old_rate=1`, `new_rate=0` -
+      an all-cash merger at $31.01667 a share. The asset is now `status=inactive`,
+      `tradable=false`, `shortable=false`, `easy_to_borrow=false` under the same asset id
+      the position carries (`c8899fc1-c3b2-411c-a940-4b9380a09b84`), which is why the
+      evening of 2026-10-08 recorded WBD's `buy_to_close` as `SKIPPED` with
+      `SYMBOL_NOT_FOUND` (`efb.orders`) and why the 2026-10-06 cover
+      (`efb-2026-10-06-WBD-B-...`, accepted by the loop) is `CANCELED` at
+      `2026-10-07T07:01:06Z` (`efb.fills`) with the account still short **228** shares at
+      an average entry of 30.949561 and a market value of −$7,056.60. Nothing in the loop
+      noticed: `efb.e11_corporate_actions` holds one row (the CTVA/VYLR spin-off), and the
+      activity feed over 2026-09-01→10-09 carries 2,762 rows - FILL 2,746, FEE 15, JNLC 1
+      - of which the five WBD rows are all fills, with no corporate-action posting yet. The
+      cost of not reading it is small here and the shape is not: a short that cannot be
+      covered, settled by the broker at a price the loop never saw, and a bridge that
+      reports a position leaving the account with no order behind it (item 22 is the
+      identity that broke on this name; this is the cause it should read). The fix: when a
+      leg is skipped for an asset that is gone, or when the bridge has an exit with no
+      order, read the broker's announcements and the asset's own status, record the event
+      as a corporate action with its price, and settle the position deliberately instead
+      of leaving it to the cash-out. `tests/test_e11_corporate_actions.py` and the bridge's
+      exit term, with WBD 2026-10-06 as the case.
+   26. **`efb.reconciliation.realized_annual_vol` is NaN on every live row.** Measured
+      read-only on the live store: 2026-10-01, 10-02, 10-05 and 10-06 carry `nan` and
+      10-08 carries null. Only `forecast_annual_vol` is populated (0.0272, 0.0248,
+      0.0254, 0.0251, 0.0266), so the store holds the model's own number and nothing
+      beside it - and the VaR panel that should show realized beside predicted has no
+      second series to read. The fix: compute it from the live days' own P&L (E12's
+      `efb.attribution.realized_vol` is `std(P&L)` over a 63-session window, and the
+      attribution rows are what the evening now writes) or drop the column and let the
+      page derive the realized line from the attribution rows it already has, with the
+      day count stated. Six live sessions measure 1.23% annualized against a 2.58%
+      forecast, on a mean daily P&L of −16.4 bp: the drift, not the dispersion, is what
+      those sessions show, and the panel must not paper over either.
+
+   The exit condition is the twenty-six of them fixed or written down here, and the
    day's own numbers as a case in each test rather than a number typed from a message.
 
 ## 4. Rollback
