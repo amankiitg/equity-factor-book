@@ -63,7 +63,7 @@ Steps 1 to 4 are the ones no default run performs.
 | 7 | State the end date on any further rebuild | `make rebuild END=<last session before the merge>` | `data/VERSION.json` records that session |
 | 8 | Re-record the frozen block baseline if the seed moved a pre-cutoff row | `.venv/bin/python -c "from live import extend; print(extend.incremental_integrity())"` | `tests/test_e11_extend.py` green |
 | 9 | Clear the known reds the refresh exists to fix (the list is `docs/known_test_failures.md`, which the full suite's 55 are measured from) | `.venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"` | 0 failures; anything still red is fixed or written down in that file with its reason, never skipped and never `xfail` (note 9) |
-| 10 | Seventeen things the live loop reports wrongly or omits, each with the day that exposed it (note 10) | `tests/test_e11_bridge.py`, `tests/test_week1_fills_cron.py`, `tests/test_e11_fills.py`, `tests/test_week1_fills_cron.py` again for the skip, an audit query for the NaN columns, and the evening's own proposal build for the universe | the bridge has an *arrived* term and 2026-10-06 holds all six identities; the morning's cost line compares realized against the trading half; `reconciliation.filled_notional` holds what filled; a morning with no new orders skips and says so; every NOT NULL numeric column is proved unable to hold a NaN; a filled risk estimate is reported rather than discarded; a name is sized only when the risk model can measure it; a name with risk but no signal has a stated treatment; `excluded` carries a reason, an age and a way back; DD's absence from the returns panel is explained; the pricing fetch no longer spells PSKY; the floor has a measured entry/exit band rather than a single line; the risk block and the sized universe are the same set of names; the drop and the write read one source; the write refuses a zero as firmly as the drop; the dropped names are on the page; the universe is deduplicated before it is sized |
+| 10 | Twenty-two things the live loop reports wrongly or omits, each with the day that exposed it (note 10) | `tests/test_e11_bridge.py`, `tests/test_week1_fills_cron.py`, `tests/test_e11_fills.py`, `tests/test_week1_fills_cron.py` again for the skip, an audit query for the NaN columns, and the evening's own proposal build for the universe | the bridge has an *arrived* term and 2026-10-06 holds all six identities; the morning's cost line compares realized against the trading half; `reconciliation.filled_notional` holds what filled; a morning with no new orders skips and says so; every NOT NULL numeric column is proved unable to hold a NaN; a filled risk estimate is reported rather than discarded; a name is sized only when the risk model can measure it; a name with risk but no signal has a stated treatment; `excluded` carries a reason, an age and a way back; DD's absence from the returns panel is explained; the pricing fetch no longer spells PSKY; the floor has a measured entry/exit band rather than a single line; the risk block and the sized universe are the same set of names; the drop and the write read one source; the write refuses a zero as firmly as the drop; the dropped names are on the page; the universe is deduplicated before it is sized; shortability is known before the book is sized; a refused leg reads INCOMPLETE and exits 0; the evening's retry guard sees a close that already traded; the message's order count is the legs it sent; the bridge can say a name left with no order and does not call a refusal a minimum |
 
 1. **Read one panel.** At merge, `live/extend.py` must read `returns_clean` as
    well, in the same commit, so the live model fit and `next_descriptor_design`
@@ -136,7 +136,7 @@ Steps 1 to 4 are the ones no default run performs.
    passing** (an id in that file that came back green). A new failure is
    investigated on its own and is never folded into the known list, so a real
    regression cannot hide among them; zero new is the bar for a merge.
-10. **Seventeen things the live loop reports wrongly or omits.** Each was found by looking
+10. **Twenty-two things the live loop reports wrongly or omits.** Each was found by looking
    at a real day rather than by a failing test, and each is small enough to fix in one
    commit with a test that would have caught it. They are here rather than in
    `docs/known_test_failures.md` because none of them is red: the suite passes on the
@@ -147,7 +147,9 @@ Steps 1 to 4 are the ones no default run performs.
    12 and 13 the night after, from what the three stored manifests of 2026-10-05 to 10-07
    showed when the same questions were asked of them; items 14 to 17 from the review of
    the commit that landed the fix on 2026-10-08, which is where the asymmetry between
-   the two readers and the two loose ends around them were found. Every one of them
+   the two readers and the two loose ends around them were found; items 18 to 22 from
+   that evening's own run, the first to trade under the fix - a night the loop priced
+   and sent its book and still reported `ERROR` and failed its job. Every one of them
    carries the measurements that raised it.
 
    1. **The bridge cannot say a name arrived.** Its sixth identity is
@@ -392,8 +394,98 @@ Steps 1 to 4 are the ones no default run performs.
       The fix is `sorted(set(...))` **with** a warning when it drops one, because a
       duplicated universe row is a vendor defect the day's report should name rather
       than absorb.
+   18. **Shortability is checked per leg at submit time, never before sizing.** A name the
+      broker will not let the loop short is in the book until the moment its order is
+      built, and then the leg is skipped with its code - `live/alpaca.py:371-374`, the
+      `shortable`/`easy_to_borrow` pair, on `SELL_TO_OPEN` only. Measured 2026-10-08:
+      **SYY** was in the target book as a short of $4,962.08 (weight -0.005011,
+      `efb.positions` for that close) with a $973.70 increase planned, and the leg came
+      back `ASSET_NOT_SHORTABLE` - "SYY reports shortable=false" - so the account ends
+      the day 12.4514 shares short of its own target and the book's net sits $973.70
+      (9.83 bps of NAV) away from the zero the hedge was built to. Nothing upstream knew:
+      the book was priced, hedged, floored and costed with a short it could not open, and
+      the run then spent the evening reporting a leg it should not have had. The fix:
+      check the broker's own flags for the names the sizing would short, **before**
+      sizing, and either leave them out of the book (with the reason on the manifest and
+      in the message, exactly as `dropped_no_risk` does) or keep them and record that
+      their short cannot open tonight, so the book the loop publishes is a book it can
+      actually hold. The flags are a point-in-time read and change without notice, which
+      is why the check belongs where the leg is built as well - but a name the broker
+      will not lend is a fact about the book, not only about the order.
+   19. **A refused leg is reported as ERROR and fails the cron job.** The status word and
+      the exit code both come from the same coarse rule: any status outside
+      `COMPLETED_STATUSES` (`scripts/run_live_daily.py:72`, `{"ok", "market_closed"}`)
+      becomes `ERROR` in the subject (`live/notify.py:879-880`) and `1` from
+      `finish_run` (`scripts/run_live_daily.py:1074`). So 2026-10-08's only fault - one
+      short leg the broker's own feed said was not shortable, which the loop's check
+      caught before any order was sent - reads in the inbox as `EFB ERROR 2026-10-08`,
+      and Render records the job as failed. That is the wrong word and the wrong exit
+      code for a night the book priced, traded and reported: `incomplete` is not an
+      error, and the retry the nonzero code asks for is the retry item 20 is about. The
+      asymmetry with the borrow case is the tell: `REASON_NOT_EASY_TO_BORROW` is in
+      `EXPECTED_SKIP_REASON_CODES` (`live/morning_job.py:101-116`) so it skips and the
+      run is `ok`, while `REASON_NOT_SHORTABLE` is not, and the same class of fact - the
+      broker will not lend this name - makes one night clean and the next a failed job.
+      The fix: a broker refusal of a leg is `INCOMPLETE`, named in the subject as its own
+      word rather than as `ERROR`, and exits 0 - the day is filed, the book is published,
+      the leg is in the message - while a real failure (a halted submit, an unknown
+      state, a leg lost at the broker, a step that raised) still exits nonzero and still
+      leaves the day unfiled so the next tick retries. Move
+      `REASON_NOT_SHORTABLE` into the expected-skip set or give the status its own
+      exit-code rule; do not do both by accident.
+   20. **The evening's own retry guard cannot see a close that already traded.**
+      `already_ran` (`scripts/run_live_daily.py:75-92`, used at `:1256`) counts only
+      `ok` and `market_closed` as finished, deliberately, so that a day which produced
+      nothing is retried rather than filed. On 2026-10-08 that rule met a night whose
+      legs were all out at the broker: `cron_runs` holds **no** `(2026-10-08, live_daily)`
+      row, so a second invocation of that evening would not exit at the guard - it would
+      re-price the book, rewrite the day's proposal, positions and orders rows and send a
+      second email. The orders themselves are safe: every leg's deterministic
+      `client_order_id` is looked up first and an order that already exists is recorded as
+      resolved rather than submitted again (`live/alpaca.py:1246-1248` over
+      `:1080-1097`), which is what "resolve the rerun first" buys. So the exposure is a
+      rewritten day and a duplicate email, not a duplicate trade - and it is exactly the
+      retry `run_cron.py` relies on when it says "a second evening start exits 0 without
+      trading" (which holds only for a day that was filed). The fix: guard on the fact
+      rather than on the mood - refuse an evening whose close already has orders at the
+      broker, or record the close as traded with its own status that keeps the guard
+      closed - so the retry the nonzero exit code asks for is a retry of the *reporting*,
+      never of the pricing.
+   21. **The message's order count is the legs it built, not the legs it sent.** The
+      evening's line reads `Orders: {orders} orders sent` (`live/notify.py:460-462` and
+      the subject's `{orders} sent`, `:899`), and `orders` is
+      `len(target_orders(...))` - every leg of the day, before the guards and before the
+      submit (`live/morning_job.py:519`, `:565`). Measured 2026-10-08: the email said
+      **204 orders sent** while the broker held **202** orders under
+      `efb-2026-10-08-*` and the store held 202 `ACCEPTED` rows beside 25 `SKIPPED` -
+      the two-leg difference being exactly SYY and WBD, refused before submission. The
+      same sentence reports the dollars correctly and self-labellingly
+      ("$496,341 sent of $506,978 sized", `_sized_sent`, `live/notify.py:720-735`), so
+      tonight's message disagrees with itself: 204 sent, and $496,341 which is 202 legs'
+      worth. Latent on any night no leg is refused (2026-10-06: 192 built, 192 sent).
+      The fix: the count comes from the legs with a broker id, which is what
+      `sent_notional` already measures, so the two halves of the sentence cannot disagree.
+   22. **The bridge cannot say a name exited without an order, and folds every no-order
+      leg into "under the minimum".** The evening's fourth identity is
+      `changed + opened + exited = orders sent` (`live/bridge.py:124-126`), and on
+      2026-10-08 it did not hold: **203 vs 202**, by exactly one name - **WBD**, which
+      the account held and the book did not (so it is in `exited`) and whose `buy_to_close`
+      was skipped as `SYMBOL_NOT_FOUND`, so it is in no `orders_sent` count. The block is
+      in the published snapshot with `holds: false` (confirmed in `latest.json` for that
+      close), which is the page's amber line about a bridge that does not add up, on a
+      night nothing was wrong with the bookkeeping: the broker's asset feed simply has no
+      WBD. Item 1 is the mirror of this ("arrived without an order"); this is the
+      departure. The second half is the same field read wrongly:
+      `under_minimum = both - sent` (`live/bridge.py:125`) counted **24** where only 23
+      legs were under the $250 minimum and the twenty-fourth was SYY's shortable refusal
+      (measured from the store's own `reason_code` of each skipped leg), so a reader
+      checking the bridge's arithmetic against the day's records is told the wrong reason
+      for one name. The fix: a third named term for the evening half - an exited or opened
+      name with no order *and* a recorded reason of its own - so the identity holds and
+      the reason travels with it, and `under_minimum` counts only the legs whose code
+      says minimum. `tests/test_e11_bridge.py`, with 2026-10-08 as the case.
 
-   The exit condition is the seventeen of them fixed or written down here, and the day's
+   The exit condition is the twenty-two of them fixed or written down here, and the day's
    own numbers as a case in each test rather than a number typed from a message.
 
 ## 4. Rollback
