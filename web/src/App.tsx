@@ -19,6 +19,7 @@
 import { useEffect, useState } from "react";
 
 import { Alerts } from "./Alerts";
+import { AttributionSection } from "./AttributionSection";
 import { Bridge } from "./Bridge";
 import { Reasons, TopNames } from "./BookSections";
 import { bookFacts } from "./book";
@@ -49,6 +50,8 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
       <Bridge snapshot={snapshot} />
       <div data-columns="true" className="grid gap-3 lg:grid-cols-2">
         <div className="flex flex-col gap-3">
+          <AttributionSection attribution={snapshot.attribution} />
+
           <ExposuresSection snapshot={snapshot} />
           <Reasons facts={facts} />
         </div>

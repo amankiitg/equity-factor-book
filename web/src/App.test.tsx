@@ -210,6 +210,69 @@ describe("the page", () => {
     expect(energy?.getAttribute("data-sign")).toBe("negative");
   });
 
+  it("shows the attribution: the live period, its four terms and the total", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const live = OK.attribution?.live;
+    // The fixture carries the block, and this says so rather than casting: a page
+    // test that reads a block the document does not have is testing nothing.
+    if (!live) throw new Error("the ok fixture carries no live attribution");
+    const cumulative = live.cumulative;
+    // The four terms and the total, in basis points of the book, each with its sign.
+    const bps = (value: number) => `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)} bp`;
+    const card = (name: string) =>
+      document.querySelector(`[data-card='${name}']`)?.textContent ?? "";
+    expect(card("pnl-total")).toContain(bps(cumulative.pnl_total as number));
+    expect(card("pnl-factor")).toContain(bps(cumulative.pnl_factor as number));
+    expect(card("pnl-idio")).toContain(bps(cumulative.pnl_idio as number));
+    expect(card("pnl-cost")).toContain(bps(cumulative.pnl_cost as number));
+    expect(card("pnl-unexplained")).toContain(bps(cumulative.pnl_unexplained as number));
+    // The worst day's residual travels with the sums rather than being asserted
+    // away: a split nobody checked is not a decomposition.
+    expect(screen.getByText(/worst single day's identity residual/)).toBeTruthy();
+    const table = screen.getByRole("table", { name: "attribution by day" });
+    const header = within(table).getAllByRole("columnheader").map((cell) => cell.textContent);
+    expect(header).toEqual(["close", "total", "factor", "idio", "cost", "unexplained", "check"]);
+    // Newest first, so the top row is the last stored day, and its dates are days.
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows.length).toBe(live.daily.length);
+    expect(within(rows[0]).getAllByRole("cell")[0].textContent).toBe(live.last_day);
+    expect(within(rows[0]).getAllByRole("cell")[0].textContent).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("says why the live attribution is empty instead of showing an empty table", () => {
+    const attribution = OK.attribution;
+    if (!attribution?.live) throw new Error("the ok fixture carries no live attribution");
+    const snapshot = {
+      ...OK,
+      attribution: {
+        ...attribution,
+        live: {
+          ...attribution.live,
+          n_days: 0,
+          n_days_carried: 0,
+          daily: [],
+          monthly: [],
+          risk: null,
+          note: "",
+        },
+      },
+    } as unknown as Snapshot;
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    expect(screen.getByText("no live day is attributed yet")).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "attribution by day" })).toBeNull();
+  });
+
+  it("hides the section on a document written before the attribution existed", () => {
+    // Every document already in the bucket has no `attribution` key at all, which
+    // is not the same as an empty one: reading the block's own fields off a missing
+    // block throws and the whole page goes blank.
+    const older: Snapshot = { ...OK };
+    delete older.attribution;
+    render(<SnapshotView snapshot={older} now={NOW} />);
+    expect(screen.queryByRole("heading", { name: "Attribution" })).toBeNull();
+    expect(screen.queryByRole("table", { name: "attribution by day" })).toBeNull();
+  });
+
   it("shows the traded book's gross as the headline, and the full book as a detail", () => {
     // The manifest's own `gross` is the 499-name book before the floor. Publishing
     // it as "the gross" told the owner their book was 96.85% invested when the book
@@ -228,6 +291,9 @@ describe("the page", () => {
   it("breaks the summary into labelled items rather than a pipe run", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     expect(screen.queryByText(/\|/)).toBeNull();
+    // Main's own locator, kept over e12's: the summary is a row of cards with a
+    // `data-card` per label since the page was split into components, and e12's
+    // `[aria-label="the book's summary"]` named a `<dl>` that refactor removed.
     const cards = document.querySelector("[data-cards='true']") as HTMLElement;
     for (const label of ["gross", "net", "n_eff_kept", "n_eff_full_book", "expected cost"]) {
       expect(cards.querySelector(`[data-card="${label}"]`), label).toBeTruthy();

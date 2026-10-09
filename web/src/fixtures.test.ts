@@ -135,7 +135,73 @@ const TOP_LEVEL = [
   "hedge",
   "exposures",
   "reconciliation",
+  "attribution",
 ];
+
+// The attribution block. `live` is the traded book; `backtest` is the seed's own
+// research panel, which nobody traded and which is null on a host with no
+// artifact; `note` is the block's own sentence about either.
+const ATTRIBUTION = ["live", "backtest", "note"];
+
+// One period, live or backtest: the two carry the same keys, so one list covers
+// both. `monthly` is where the backtest's whole 2012-2026 run lives, and `risk` is
+// null on a period with no predicted-variance read.
+const ATTRIBUTION_PERIOD = [
+  "label",
+  "first_day",
+  "last_day",
+  "n_days",
+  "n_days_carried",
+  "cumulative",
+  "by_factor",
+  "daily",
+  "monthly",
+  "cost",
+  "risk",
+  "note",
+];
+
+const ATTRIBUTION_CUMULATIVE = [
+  "pnl_total",
+  "pnl_factor",
+  "pnl_idio",
+  "pnl_cost",
+  "pnl_unexplained",
+  "max_identity_residual",
+  "n_computed_specific",
+];
+
+const ATTRIBUTION_DAY = [
+  "trade_date",
+  "pnl_total",
+  "pnl_factor",
+  "pnl_idio",
+  "pnl_cost",
+  "pnl_unexplained",
+  "pnl_timing",
+  "book_beta",
+  "market_return",
+  "pnl_beta",
+  "realized_vol",
+  "forecast_vol",
+  "factor_var_share",
+  "idio_var_share",
+];
+
+// The backtest's monthly roll-up: one row a month, with no unexplained term
+// because the month does not carry one.
+const ATTRIBUTION_MONTH = [
+  "month",
+  "pnl_total",
+  "pnl_factor",
+  "pnl_idio",
+  "pnl_cost",
+  "n_sessions",
+];
+
+const ATTRIBUTION_RISK = ["as_of", "factor_share", "idio_share", "path"];
+
+const ATTRIBUTION_RISK_DAY = ["trade_date", "factor_share", "idio_share"];
 
 const RUN_STATUS = [
   "status",
@@ -184,6 +250,54 @@ describe("the fixtures and the page's types", () => {
     }
     for (const key of BOOK) {
       expect(Object.keys(fixture.book), `${name}.book is missing ${key}`).toContain(key);
+    }
+    const attribution = fixture.attribution as Record<string, unknown>;
+    for (const key of ATTRIBUTION) {
+      expect(Object.keys(attribution), `${name}.attribution is missing ${key}`).toContain(key);
+    }
+    // `live` is always present; `backtest` is null on a host with no artifact, so
+    // the period keys are only required when it is there.
+    const periods: Array<Record<string, unknown>> = [];
+    if (attribution.live) periods.push(attribution.live as Record<string, unknown>);
+    if (attribution.backtest) periods.push(attribution.backtest as Record<string, unknown>);
+    expect(periods.length, `${name}.attribution carries no live period`).toBeGreaterThan(0);
+    for (const period of periods) {
+      for (const key of ATTRIBUTION_PERIOD) {
+        expect(Object.keys(period), `${name}.attribution period is missing ${key}`).toContain(key);
+      }
+      const cumulative = period.cumulative as Record<string, unknown>;
+      for (const key of ATTRIBUTION_CUMULATIVE) {
+        expect(
+          Object.keys(cumulative),
+          `${name}.attribution.cumulative is missing ${key}`,
+        ).toContain(key);
+      }
+      for (const day of period.daily as Array<Record<string, unknown>>) {
+        for (const key of ATTRIBUTION_DAY) {
+          expect(Object.keys(day), `${name}.attribution.daily[] is missing ${key}`).toContain(key);
+        }
+      }
+      for (const month of period.monthly as Array<Record<string, unknown>>) {
+        for (const key of ATTRIBUTION_MONTH) {
+          expect(Object.keys(month), `${name}.attribution.monthly[] is missing ${key}`).toContain(
+            key,
+          );
+        }
+      }
+      if (period.risk) {
+        const risk = period.risk as Record<string, unknown>;
+        for (const key of ATTRIBUTION_RISK) {
+          expect(Object.keys(risk), `${name}.attribution.risk is missing ${key}`).toContain(key);
+        }
+        for (const point of risk.path as Array<Record<string, unknown>>) {
+          for (const key of ATTRIBUTION_RISK_DAY) {
+            expect(
+              Object.keys(point),
+              `${name}.attribution.risk.path[] is missing ${key}`,
+            ).toContain(key);
+          }
+        }
+      }
     }
   });
 
@@ -361,4 +475,33 @@ describe("the fixtures and the page's types", () => {
       }
     },
   );
+  it("carries attributed days in every state, and a day is a day", () => {
+    // The attribution describes the book, and the book is the same object in all
+    // six states, so every fixture has it. A date with a midnight time stapled to
+    // it is the bug this pins: the page shows these beside `target_close`.
+    for (const name of NAMES) {
+      const attribution = load(name).attribution as {
+        live: { n_days: number; daily: Array<{ trade_date: string }> } | null;
+        backtest: { monthly: Array<{ month: string }> } | null;
+      };
+      const live = attribution.live;
+      expect(live, `${name} has no live period`).toBeTruthy();
+      if (!live) throw new Error(`${name} has no live period`);
+      expect(live.n_days, `${name} has no attributed days`).toBeGreaterThan(0);
+      expect(live.daily.length, `${name} has no daily series`).toBeGreaterThan(0);
+      for (const day of live.daily) {
+        expect(day.trade_date, `${name} has a date with a time in it`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
+      // The backtest's chart is drawn from its monthly roll-up, so a month is a
+      // month too: "2012-02", never with a time.
+      if (attribution.backtest) {
+        expect(attribution.backtest.monthly.length, `${name} has no monthly series`).toBeGreaterThan(
+          0,
+        );
+        for (const month of attribution.backtest.monthly) {
+          expect(month.month, `${name} has a month with a time in it`).toMatch(/^\d{4}-\d{2}$/);
+        }
+      }
+    }
+  });
 });

@@ -389,3 +389,45 @@ enforced on the final weights to a fixed point (E11-F12). The residue
 stands: a later sprint revisiting construction should fold the share floor
 back into E8's own construction stack rather than leaving it only in the
 live path.
+
+## 2026-09-26: the live hedge is one session stale
+
+Owner: E12 or an E11 follow-up. Found answering E12's hedge-timing question,
+and it corrects the answer first written into `sprints/E12/TASKS.md` section 3.
+
+Every descriptor on row `t` of `models/XS-v1/descriptors.parquet` is computed
+from data through the **previous close**, not through `t`. `efb/models/
+fundamental.py` says so in the arithmetic: size is `log(market_cap.shift(1))`,
+beta, residual volatility and liquidity each carry `.shift(1)` on their window,
+and reversal shifts the return series by one, so only momentum reaches further
+back (through `t-21`). Verified on the stored artifact: for 2026-09-21 the size
+descriptor equals log market cap at the 2026-09-18 close exactly, gap 0.000e+00
+for LITE, MRNA and AAPL, and misses the same-day cap by 8.4e-03 to 1.2e-01. So
+the design dated `t` **is** previous-close data, it **is** computable at the
+previous close, and the stored model has no look-ahead: it pairs the design
+dated `t` with the returns dated `t`, and the stored mean R-squared 0.329586
+matches the shift test's lagged figure 0.329462 to 1.2e-04 while the look-ahead
+variant is 0.364005. The `shift_test` docstring describes its own "next
+cross-section" variant, not the stored fit's vintage, and must not be read as
+evidence of look-ahead.
+
+The consequence is that the live hedge is one session stale. The evening of
+close `t` hedges the book with the design dated `t`, which carries data through
+`t-1`, but the book earns its return over `t` to `t+1`, and that exposure is
+described by the design dated `t+1`, which needs only `t`'s close and is
+therefore available in the same evening. E12 measured the drift the stale
+vintage leaves. The two vintages differ on 174 of the seed book's 3,645
+sessions, which are the sessions after a rebalance date: the seed's descriptor
+artifact is a monthly snapshot, so on the other 3,471 sessions the two designs
+are the same object. Over the 174 sessions where it bites, the mean per-factor
+exposure gap is 0.01967, the worst single gap is 0.6258 of the reversal
+exposure, and the timing P&L is +141.4 bp against a total P&L of +520.7 bp on
+those sessions, so it is 27.2 percent of their net P&L (its absolute size is
+15.3 percent of the absolute daily P&L; the denominator is stated because the
+two readings differ). Averaging over all 3,645 sessions divides that by twenty
+and reads as nothing, which is why the number is quoted this way.
+
+The fix is to hedge with the design one session forward. It is deliberately not
+applied before the flip: it moves every stored book, the guard numbers and the
+recorded ex-ante risk, and the rule for the clock is that the loop's behaviour
+does not change under it.

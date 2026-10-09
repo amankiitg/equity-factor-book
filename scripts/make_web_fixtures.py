@@ -58,6 +58,12 @@ STORE_LABEL = "local parquet (live/state/supabase)"
 # rather than typed so the page's bridge is the real evening's arithmetic.
 BRIDGE_SESSION = ROOT / "tests" / "fixtures" / "bridge_2026-10-05.json"
 SPECIFIC = ROOT / "data" / "models" / "XS-v1" / "specific_var.parquet"
+# The E12 attribution artifact: the seed book's own stored attribution, which is
+# the page's backtest view. The live period comes from the recorded live read
+# below, because a fixture is a document and the line it draws is the store's.
+ATTRIBUTION = ROOT / "data" / "attribution" / "daily.parquet"
+ATTRIBUTION_MONTHLY = ROOT / "data" / "attribution" / "monthly.parquet"
+ATTRIBUTION_LIVE = ROOT / "tests" / "fixtures" / "attribution_live.json"
 
 NAMES: tuple[str, ...] = (
     "snapshot_ok.json",
@@ -302,6 +308,26 @@ def fills_report_rejected() -> dict[str, Any]:
         ],
         "unread": [],
     }
+def attribution() -> dict[str, Any]:
+    """The page's attribution block: the live book, and the research panel beside it.
+
+    Both halves go through the same builder the run uses rather than being stubbed
+    by hand, so a change to the builder reaches the page's tests. The live rows are
+    the recorded read of the store (`tests/fixtures/attribution_live.json`); the
+    backtest is the seed's own artifact, which is what its view is for.
+    """
+    live = pd.DataFrame(json.loads(ATTRIBUTION_LIVE.read_text())["rows"])
+    backtest = (
+        (
+            pd.read_parquet(ATTRIBUTION),
+            pd.read_parquet(ATTRIBUTION_MONTHLY)
+            if ATTRIBUTION_MONTHLY.exists()
+            else pd.DataFrame(),
+        )
+        if ATTRIBUTION.exists()
+        else None
+    )
+    return snapshot.attribution_block(live, backtest)
 
 
 def _run(**over: Any) -> dict[str, Any]:
@@ -321,6 +347,9 @@ def _run(**over: Any) -> dict[str, Any]:
         "failures": [],
         "establishment": False,
         "cost_label": "rebalance",
+        # Every variant carries the same attribution, because it describes the
+        # book and the book is the same in all of them.
+        "attribution": attribution(),
     }
     base.update(over)
     return base

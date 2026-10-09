@@ -63,7 +63,10 @@ CALLER_KEYS = (
 def test_the_expected_columns_come_from_the_repo_own_ddl() -> None:
     """One source of truth: the declaration the migration is written in."""
     declared = preflight.declared_columns(DDL)
-    assert len(declared) == 21
+    # The count is the guard that the parse returned the whole file rather than part
+    # of one: 21 tables plus E12's `efb.attribution`, which is the table this sprint
+    # added to the DDL. A table added to the file moves this number.
+    assert len(declared) == 22
     assert "unexplained_adjustment" in declared["reconciliation"]
     assert "position_intent" in declared["fills"]
     # The composite keys and the foreign references are not columns.

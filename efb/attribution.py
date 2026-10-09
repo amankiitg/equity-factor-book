@@ -1,0 +1,876 @@
+"""Sprint E12: holdings-based P&L attribution, one row per book-date.
+
+The question this answers is the one the owner asks after a week of the book
+running: where did the money go, and did the hedge do what it promised. One row per
+session, with the day's P&L split into the factor part, the specific part and the
+cost, and the three summing to the total by construction.
+
+**What is holdings-based here.** The weights that earned a session's return are the
+book dated the session before it, which is the convention the rest of the project
+uses (`test_no_portfolio_uses_a_weight_dated_after_its_own_day`): a weight row dated
+at `start` is applied to every session in `(start, end]`. Nothing is filled
+forward, nothing is re-derived from a target: the weights are the ones the loop
+recorded holding, so an intention is never attributed as a holding.
+
+**The decomposition, and why it is a check rather than a tautology.** For each
+session `s`, with the design the model's own fit used - `race._descriptor_design` at
+`s`, in its **reported** columns: the market column replaced by a column of ones and
+the reference sector's dummy restored, which is the 18-column set the 18 reported
+factor returns belong to - the stored factor returns `f_s` and the stored specific
+returns `u_s`:
+
+    factor P&L = sum_k (w' X_s)_k f_k(s),   idio P&L = sum_i w_i u_i(s),
+    total P&L = sum_i w_i r_i(s) = factor + idio      (to machine precision)
+
+Measured on 2026-09-08, 2026-09-18 and 2026-09-21: `|X f + u - r|` is **median
+0.000e+00 and max 6.9e-18**, so the stored split reconstructs the panel's total
+return exactly and the identity is a real check on the artifacts rather than a
+restatement of how `u` was computed. Two wrong pairings were tried first and are
+recorded in `handoff/LOG.md`: the design dated `t-1` misses the return by 1.0e-3 to
+2.0e-3 in median (so the artifacts pair the design *dated* the session with that
+session's return), and the 17-column design leaves a 1.9e-2 gap on the names whose
+market column is not constant (so the reported columns are the ones `f` belongs
+to). Re-fitting the cross-section with the model's own `wls_fit` on the t-dated
+design with market caps dated `t-1` reproduces the stored R squared to 1.1e-05 to
+6.4e-05 and the stored specific returns to 7.0e-05, which is what lets a session
+after the artifacts' last published date be attributed at all: the row says which
+source it used.
+
+**Two design vintages, both reported.** The split above uses `X_s`, the exposures
+the model's fit paired with `r_s`. The *book's own* exposures during that session
+are the design at the previous close, `X_{s-1}` - the one the hedge actually
+zeroed - so the row carries the book's factor exposure from `X_{s-1}` and the P&L
+those exposures earned at `f_s`. The two differ, and that is the point of
+reporting both: the split describes the return, the exposure check describes the
+hedge.
+
+**Where a non-zero residual comes from, measured.** `identity_residual` is the
+panel's total return minus the sum of the three components, and it is non-zero
+whenever the stored specific return and the panel's return for the same name and
+session disagree. Two causes, both of them the artifacts and not the arithmetic:
+
+- a corporate-action adjustment between the fit and a later recomputation of the
+  panel. `live.extend.extend_returns` recomputes every session's return from the
+  stored prices, so an ex-dividend correction applied after a session was fitted
+  moves `r` for the paying names and leaves their stored `u` where the fit put it.
+  Measured on 2026-10-02: 185 of the 188 held names reproduce to 1e-8, and the
+  three that do not - BMY, SYY, FAST - carry the day's 0.8 bp;
+- the seed's older design vintage. Before the live period the descriptors on
+  file are not the design the 2012-2026 fit used, so the rebuilt `X f` misses the
+  fit's own factor part for names across the whole universe: on 2026-07-30, 497
+  of 606 names differ and the day misses by 88.9 bp, while 2026-07-31 closes to
+  1.6e-16. 174 of the artifact's 3,645 sessions close exactly.
+
+The page shows the residual as its own component - `pnl_unexplained` - so the day's
+four terms sum to the total by construction and the disagreement is visible rather
+than absorbed. It is null on a day that closes.
+
+**The hedge's own P&L.** The traded book is factor-neutral by construction, so its
+factor P&L is near zero: that near-zero is the hedge's promise. What the hedge
+*did* is the factor P&L it removed, which needs the pre-hedge book. That is
+recomputable from what the loop stored - `alpha` and the specific volatility are
+both on the position row, and the cap and the renormalization are deterministic -
+so `pre_hedge_weights` rebuilds it and `hedge_factor_pnl` reports the difference per
+factor.
+
+**The raw market-beta line.** XS-v1's `market` column is a cross-sectional
+identifier, not the book's CAPM beta, and the two are not the same number: a book
+that is market-neutral in the model's sense still carries a realized beta of about
+0.1 against the market, and that P&L sits inside the specific part. The row
+therefore carries the book's beta (from TS-v1's stored raw 252-day CAPM betas, the
+closest row at or before the session) and the P&L that beta explains. It explains
+part of the specific P&L; it is not a fourth component and is never added to the
+other three.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from efb.models.fundamental import FACTOR_NAMES
+
+IDENTITY_ATOL = 1e-10
+
+# The columns `efb.attribution` stores, in the order the table declares them. The
+# schema file and this tuple are checked against each other by the store test, so a
+# line added to a row without a migration fails a test instead of an evening run.
+TABLE_COLUMNS: tuple[str, ...] = (
+    "trade_date",
+    "n_names",
+    "gross",
+    "net",
+    "pnl_total",
+    "pnl_factor",
+    "pnl_idio",
+    "pnl_cost",
+    "identity_residual",
+    "pnl_factor_json",
+    "pnl_timing",
+    "pnl_timing_json",
+    "exposure_json",
+    "book_exposure_json",
+    "n_computed_specific",
+    "book_beta",
+    "market_return",
+    "pnl_beta",
+    "forecast_vol",
+    "pre_hedge_vol",
+    "hedged_vol",
+    "realized_vol",
+    "vol_ratio",
+    "bias_statistic",
+    "factor_var_share",
+    "idio_var_share",
+    "n_missing_specific_var",
+    "expected_cost_bps",
+    "expected_trading_bps",
+    "expected_borrow_bps",
+    "realized_cost_bps",
+    "n_target",
+    "n_filled",
+    "max_fill_gap",
+    "n_missing_return",
+    "missing_return_weight",
+)
+
+# The columns the row is allowed to carry and the table is not asked to hold: the
+# per-factor timing split is a jsonb beside its own total, and `written_at` is the
+# database's clock rather than the run's.
+JSON_COLUMNS: tuple[str, ...] = (
+    "pnl_factor_json",
+    "pnl_timing_json",
+    "exposure_json",
+    "book_exposure_json",
+)
+
+# The book's own realized volatility is measured over a quarter of its own daily
+# P&L, which is the shortest window that can say anything about a 10% target.
+REALIZED_VOL_WINDOW = 63
+TRADING_DAYS = 252.0
+
+
+def daily_weights(books: pd.DataFrame, sessions: pd.Series) -> pd.DataFrame:
+    """The weights that earned each session, from the books dated before it.
+
+    `books` is long: `date`, `ticker`, `weight`. The book dated `d` is the book
+    held from the close of `d`, so the session `s` earns on the last book dated
+    strictly before `s`. A session with no book before it is dropped rather than
+    filled with zeros: a day the loop had not started is not a day of a flat book.
+    """
+    frame = books.loc[:, ["date", "ticker", "weight"]].copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    ordered = pd.DatetimeIndex(sorted(pd.to_datetime(sessions).unique()))
+    out: list[pd.DataFrame] = []
+    for session in ordered:
+        before = frame["date"] < session
+        if not before.any():
+            continue
+        stamp = frame.loc[before, "date"].max()
+        day = frame.loc[frame["date"] == stamp, ["ticker", "weight"]].copy()
+        day["date"] = session
+        # The close the book was built at, which is the vintage the hedge zeroed:
+        # a monthly book held into the next month still carries its own date.
+        day["book_date"] = stamp
+        out.append(day)
+    if not out:
+        return pd.DataFrame(columns=["date", "ticker", "weight", "book_date"])
+    return pd.concat(out, ignore_index=True)
+
+
+def pre_hedge_weights(
+    weights: np.ndarray, alpha: np.ndarray, specific: np.ndarray
+) -> np.ndarray:
+    """The sized and capped book before the hedge, from what the run stored.
+
+    `sized_kept_weights` sizes on `alpha / specific`, caps the variance shares and
+    renormalizes to gross 1.0 before it hedges, and every one of those steps is
+    deterministic in the stored `alpha` and specific volatility. Rebuilding it is
+    what makes the hedge's own contribution measurable: the hedge's factor P&L is
+    the factor P&L of the book it removed.
+    """
+    from efb import size
+    from live import sizing
+
+    sized = size.proportional(alpha, specific)
+    sized = sizing.cap_variance_shares(sized, specific)
+    return sizing.renormalize(sized, gross=1.0)
+
+
+def _pre_hedge_vector(
+    block: pd.DataFrame | None, names: list[str]
+) -> np.ndarray | None:
+    """The book before the hedge, from the position rows' own alpha and sigma.
+
+    `block` is one book-date's slice of the store's `positions` table, which is the
+    only place the sizing inputs survive at: the run stores the `alpha` and the
+    specific volatility it sized on, and the cap and the renormalization are
+    deterministic. A name the rows do not price - or price at a non-positive
+    specific volatility - returns None, because a pre-hedge vector with a hole in it
+    would produce a volatility nobody measured.
+    """
+    if block is None or block.empty:
+        return None
+    indexed = block.set_index("ticker")
+    try:
+        alpha = pd.to_numeric(indexed["alpha"].reindex(names), errors="coerce")
+        specific = pd.to_numeric(indexed["idio_vol"].reindex(names), errors="coerce")
+    except KeyError:
+        return None
+    values_alpha = alpha.to_numpy(dtype=float)
+    values_specific = specific.to_numpy(dtype=float)
+    if not np.isfinite(values_alpha).all() or not np.isfinite(values_specific).all():
+        return None
+    if not (values_specific > 0.0).all():
+        return None
+    # The sizing vector is `alpha / specific`, capped and renormalized: the shape it
+    # is handed is the book's, and it reads nothing else off it.
+    return pre_hedge_weights(np.zeros(len(names)), values_alpha, values_specific)
+
+
+def _variance_parts(
+    weight: np.ndarray,
+    design: np.ndarray,
+    covariance: np.ndarray,
+    specific: np.ndarray,
+) -> tuple[float, float]:
+    """A book's predicted factor and specific variance, in daily units."""
+    clean = np.nan_to_num(weight, nan=0.0)
+    projected = clean @ np.nan_to_num(design, nan=0.0)
+    factor_var = float(projected @ covariance @ projected)
+    idio_var = float(np.nansum(clean**2 * np.nan_to_num(specific, nan=0.0)))
+    return factor_var, idio_var
+
+
+def _annualized_vol(factor_var: float, idio_var: float) -> float | None:
+    """A daily variance as an annualized volatility, or None when it is not one."""
+    total = factor_var + idio_var
+    if not np.isfinite(total) or total <= 0.0:
+        return None
+    return float(math.sqrt(total * TRADING_DAYS))
+
+
+class ModelPanel:
+    """The model artifacts the attribution reads, loaded once.
+
+    One loader for the whole window: the returns panel is millions of rows and the
+    design is built per date, so reading them per row would make a week of
+    attribution slower than the week it describes.
+    """
+
+    def __init__(self, root: Path) -> None:
+        self.root = Path(root)
+        panel = pd.read_parquet(self.root / "processed" / "returns.parquet")
+        self.returns = panel["r"]
+        self.sessions = pd.DatetimeIndex(
+            sorted(self.returns.index.get_level_values("date").unique())
+        )
+        factors = pd.read_parquet(
+            self.root / "models" / "XS-v1" / "factor_returns.parquet"
+        )
+        factors["date"] = pd.to_datetime(factors["date"])
+        self.factor_returns = factors.pivot_table(
+            index="date", columns="factor", values="f"
+        )
+        specific = pd.read_parquet(
+            self.root / "models" / "XS-v1" / "specific_returns.parquet"
+        )
+        specific["date"] = pd.to_datetime(specific["date"])
+        stored = specific.set_index(["date", "ticker"])["specific_return"]
+        # Grouped once: `.loc[date]` on three million rows costs more than the rest
+        # of a session's attribution put together.
+        self.stored_specific = {
+            pd.Timestamp(stamp): group.droplevel("date")
+            for stamp, group in stored.groupby(level="date")
+        }
+        betas = pd.read_parquet(self.root / "models" / "TS-v1" / "beta_history.parquet")
+        betas = betas.loc[betas["method"] == "raw", ["date", "ticker", "beta"]].copy()
+        betas["date"] = pd.to_datetime(betas["date"])
+        self.betas = betas
+
+    def design(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
+        """The hedge's own design for the session, one column per estimated factor."""
+        from efb import race
+
+        return race._descriptor_design(date, names, self.root)
+
+    def factor_names(self, date: pd.Timestamp) -> list[str]:
+        """The reported factors, in the order the reported design's columns are."""
+        return [name for name in FACTOR_NAMES if name in self.factor_returns.columns]
+
+    def raw_design(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
+        """The hedge's design as `race` builds it, before the reported framing."""
+        return self.design(date, names)
+
+    def reported_design(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
+        """The design in the 18 reported columns the reported factors belong to."""
+        return reported_design(self.raw_design(date, names))
+
+    def fit_or_stored(
+        self,
+        date: pd.Timestamp,
+        names: list[str],
+        returns: np.ndarray,
+        raw: np.ndarray,
+    ) -> tuple[pd.Series, np.ndarray, int]:
+        """The session's stored factor and specific returns, or a refusal.
+
+        The live loop appends every session it fits to the XS-v1 artifacts
+        (`live/extend.py`), so a live session has stored values too, and this
+        raises rather than re-estimating when it does not: a re-estimate is
+        reproducible to 7.0e-05 of the stored specifics, which is a measurement
+        about the model and not a licence to attribute a day from a reconstruction
+        the model never published.
+        """
+        if date not in self.factor_returns.index:
+            raise ValueError(
+                f"no stored factor returns for {date.date()}: the model's fit has "
+                "not been extended to this session, so there is nothing to "
+                "attribute it with"
+            )
+        factors = self.factor_returns.loc[date].reindex(self.factor_names(date))
+        stored_day = self.stored_specific.get(date)
+        specific = (
+            stored_day.reindex(names)
+            if stored_day is not None
+            else pd.Series(dtype=float)
+        )
+        # A book can hold a name the model's own cross-section dropped that day, and
+        # it has no stored specific return. Its residual is computed instead, which
+        # is the same number: `u = r - X f` is what the stored value *is*, verified
+        # to 6.9e-18 on the three dates checked, so the two cannot disagree except
+        # by the arithmetic. The count travels on the row, so a growing share of
+        # computed names is visible rather than absorbed.
+        computed = int(specific.isna().sum())
+        if computed:
+            fitted = self.reported_design(date, names) @ factors.to_numpy(dtype=float)
+            rebuilt = returns - fitted
+            specific = specific.where(specific.notna(), rebuilt)
+        return factors, specific.to_numpy(dtype=float), computed
+
+    def betas_at(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
+        """The names' raw CAPM beta as of the last stored row at or before `date`."""
+        frame = self.betas.loc[self.betas["date"] <= date]
+        if frame.empty:
+            return np.full(len(names), np.nan)
+        stamp = frame["date"].max()
+        series = frame.loc[frame["date"] == stamp].set_index("ticker")["beta"]
+        return series.reindex(names).to_numpy(dtype=float)
+
+    def risk_panel(
+        self,
+        book_date: pd.Timestamp,
+        names: list[str],
+        weight: np.ndarray,
+        pre_weight: np.ndarray | None = None,
+    ) -> dict[str, Any]:
+        """The book's predicted variance: the split, and what the hedge removed.
+
+        `Sigma = X F X' + D`, the same decomposition the hedge is built against, so
+        the shares describe the risk the book actually carried rather than a second
+        model. `X` and `F` come from `efb.eval_risk._xs_pieces`, whose design is the
+        row the model dates with the session the book earns - the exposures the book
+        carried into it - and whose covariance is the model's own EWMA strictly
+        before `book_date`.
+
+        The two volatilities are those pieces read at two books: `pre_weight` is the
+        sized book the hedge acted on, rebuilt by `pre_hedge_weights` from the
+        stored `alpha` and specific volatility, and `weight` is the book that was
+        held. Reading both against one covariance is what makes the difference
+        between them the hedge's own effect; a hedge makes no sense as a number of
+        basis points of a forecast nobody can see the other side of. A caller with
+        no pre-hedge vector gets a null for it rather than the hedged number
+        repeated.
+
+        A name the specific-variance artifact does not price contributes no specific
+        risk and is counted rather than given a number nobody measured. Every field
+        is null when the pieces are not available at all, which is the honest answer
+        for a date the risk model cannot reach.
+        """
+        from efb import eval_risk
+
+        pieces = eval_risk._xs_pieces(pd.Timestamp(book_date), list(names), self.root)
+        if pieces is None:
+            return {
+                "factor_var_share": float("nan"),
+                "idio_var_share": float("nan"),
+                "n_missing_specific_var": int(len(names)),
+                "pre_hedge_vol": None,
+                "hedged_vol": None,
+            }
+        design = np.asarray(pieces["design"], dtype=float)
+        covariance = np.asarray(pieces["factor_covariance"], dtype=float)
+        specific = np.asarray(pieces["specific"], dtype=float)
+        factor_var, idio_var = _variance_parts(weight, design, covariance, specific)
+        total = factor_var + idio_var
+        weighted = np.isfinite(total) and total > 0.0
+        return {
+            "factor_var_share": factor_var / total if weighted else float("nan"),
+            "idio_var_share": idio_var / total if weighted else float("nan"),
+            # The pieces fill a name the artifact does not price with the
+            # cross-sectional median, so the count comes from the supplier rather
+            # than from the filled vector, where nothing is missing by then.
+            "n_missing_specific_var": int(pieces.get("missing") or 0),
+            "pre_hedge_vol": (
+                _annualized_vol(
+                    *_variance_parts(pre_weight, design, covariance, specific)
+                )
+                if pre_weight is not None
+                else None
+            ),
+            "hedged_vol": _annualized_vol(factor_var, idio_var),
+        }
+
+
+def reported_factor_names() -> list[str]:
+    """The reported factor names, in the reported design's column order."""
+    return list(FACTOR_NAMES)
+
+
+def reported_design(design: np.ndarray) -> np.ndarray:
+    """The design in its reported columns: ones for the market, all 11 sectors.
+
+    `build_cross_section` reports the market column as a column of ones and adds
+    the reference sector's dummy back, and those 18 columns are the set the 18
+    reported factor returns belong to. Verified rather than assumed: with this
+    framing `X f + u` reproduces the panel's total return to 6.9e-18, and with the
+    design's own 17 columns it misses by 1.9e-2 on the names whose market column is
+    not constant.
+    """
+    sectors = design[:, 7:]
+    reference = 1.0 - sectors.sum(axis=1, keepdims=True)
+    return np.column_stack([np.ones(len(design)), design[:, 1:7], sectors, reference])
+
+
+def attribute_book(
+    holdings: pd.DataFrame,
+    panel: ModelPanel,
+    *,
+    forecasts: dict[pd.Timestamp, dict[str, float]] | None = None,
+    costs: dict[pd.Timestamp, dict[str, float]] | None = None,
+    risk_split: bool = False,
+    sizing: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """One row per session, the day's P&L split and the risk lines beside it.
+
+    `holdings` is the long `date`, `ticker`, `weight` frame `daily_weights` builds.
+    `forecasts` carries the book's own predicted volatility per book-date, and
+    `costs` the expected and realized cost, both keyed by the session they belong
+    to. Missing entries leave the column null rather than zero: a cost nobody
+    measured is not a cost of nothing. `risk_split` adds the factor-versus-specific
+    split of the book's predicted variance, which costs one risk-model read per
+    session and is therefore asked for by the live run rather than by every builder.
+
+    `sizing` is the store's own position rows - `trade_date`, `ticker`, `alpha`,
+    `idio_vol` - and it is what lets the row say what the hedge *removed*: with it,
+    the pre-hedge book is rebuilt from the same inputs the sizing used and read
+    against the same covariance as the book that was held. Without it the two
+    volatility columns stay null rather than repeating one book twice.
+
+    The split uses the **stored** factor and specific returns, which is what makes
+    the identity a check on the model's artifacts. `n_computed_specific` counts the
+    kept names the model's own cross-section dropped that session, whose residual
+    is computed as `r - X f` instead; it is zero for a book inside the model's
+    universe.
+    """
+    forecasts = forecasts or {}
+    costs = costs or {}
+    sizing_by_date: dict[pd.Timestamp, pd.DataFrame] = {}
+    if sizing is not None and not getattr(sizing, "empty", True):
+        needed = {"trade_date", "ticker", "alpha", "idio_vol"}
+        if needed <= set(sizing.columns):
+            block = sizing.loc[:, ["trade_date", "ticker", "alpha", "idio_vol"]].copy()
+            block["trade_date"] = pd.to_datetime(
+                block["trade_date"].astype(str).str.slice(0, 10)
+            ).dt.normalize()
+            sizing_by_date = {
+                stamp: day for stamp, day in block.groupby("trade_date", sort=False)
+            }
+    rows: list[dict[str, Any]] = []
+    for session, day in holdings.groupby("date", sort=True):
+        session = pd.Timestamp(session)
+        names = [str(ticker) for ticker in day["ticker"]]
+        weight = day["weight"].to_numpy(dtype=float)
+        returns = panel.returns.loc[session].reindex(names).to_numpy(dtype=float)
+        missing = ~np.isfinite(returns)
+        design = panel.reported_design(session, names)
+        factor_names = panel.factor_names(session)
+        raw = panel.raw_design(session, names)
+        factor_returns, specific, n_computed = panel.fit_or_stored(
+            session, names, returns, raw
+        )
+        exposure = weight @ np.nan_to_num(design, nan=0.0)
+        per_factor = exposure * factor_returns.to_numpy(dtype=float)
+        # The book's own exposures: the design at the close the book was built, the
+        # one the hedge zeroed. The gap between the two vintages is what the hedge
+        # timing item measures, and the P&L it produces is `(E_s - E_book) f_s`.
+        # A caller that hands over only (date, ticker, weight) has told us nothing
+        # about when the book was built, so the session is the honest reading and
+        # the timing line is then zero rather than a guess.
+        book_stamp = (
+            pd.Timestamp(day["book_date"].iloc[0])
+            if "book_date" in day.columns
+            else session
+        )
+        book_design = panel.reported_design(book_stamp, names)
+        book_exposure = weight @ np.nan_to_num(book_design, nan=0.0)
+        timing = (exposure - book_exposure) * factor_returns.to_numpy(dtype=float)
+        factor_pnl = float(np.nansum(per_factor))
+        # A name with no return that session is not a fallback: its P&L cannot be
+        # measured from this panel, so it contributes zero and its weight is
+        # reported, which is how big the unmeasured part of the day was.
+        gross_pnl = float(np.nansum(np.where(missing, 0.0, weight * returns)))
+        idio_pnl = float(np.nansum(weight * np.asarray(specific, dtype=float)))
+        cost = float(costs.get(session, {}).get("cost_usd", 0.0) or 0.0)
+        total_pnl = gross_pnl + cost
+        beta = panel.betas_at(session, names)
+        book_beta = float(np.nansum(np.where(np.isnan(beta), 0.0, weight * beta)))
+        market = float(factor_returns.get("market", np.nan))
+        predicted = forecasts.get(session, {})
+        # The risk split is asked for by the live run only: it is one risk-model
+        # read per session, and the seed's research dates are only priced by the
+        # monthly specific-variance artifact, so a share there would be a number
+        # nobody measured.
+        risk = (
+            panel.risk_panel(
+                book_stamp,
+                names,
+                weight,
+                _pre_hedge_vector(
+                    sizing_by_date.get(pd.Timestamp(book_stamp).normalize()), names
+                ),
+            )
+            if risk_split
+            else {}
+        )
+        rows.append(
+            {
+                "trade_date": session,
+                "n_names": int((np.abs(weight) > 0).sum()),
+                "gross": float(np.abs(weight).sum()),
+                "net": float(weight.sum()),
+                "pnl_total": total_pnl,
+                "pnl_factor": factor_pnl,
+                "pnl_idio": idio_pnl,
+                "pnl_cost": cost,
+                # The check, not a restatement: the three are computed from
+                # different artifacts - factor returns, specific returns and the
+                # panel's own total returns - so a non-zero residual is a real
+                # disagreement between them.
+                "identity_residual": float(total_pnl - (factor_pnl + idio_pnl + cost)),
+                "pnl_factor_json": {
+                    name: float(value)
+                    for name, value in zip(factor_names, per_factor, strict=True)
+                },
+                "exposure_json": {
+                    name: float(value)
+                    for name, value in zip(factor_names, exposure, strict=True)
+                },
+                "book_exposure_json": {
+                    name: float(value)
+                    for name, value in zip(factor_names, book_exposure, strict=True)
+                },
+                "pnl_timing": float(np.nansum(timing)),
+                "pnl_timing_json": {
+                    name: float(value)
+                    for name, value in zip(factor_names, timing, strict=True)
+                },
+                "n_computed_specific": n_computed,
+                "book_beta": book_beta,
+                "market_return": market,
+                "pnl_beta": book_beta * market if np.isfinite(market) else None,
+                "factor_var_share": risk.get("factor_var_share", float("nan")),
+                "idio_var_share": risk.get("idio_var_share", float("nan")),
+                "n_missing_specific_var": risk.get("n_missing_specific_var", 0),
+                "pre_hedge_vol": risk.get("pre_hedge_vol"),
+                "hedged_vol": risk.get("hedged_vol"),
+                "forecast_vol": predicted.get("forecast_vol"),
+                "expected_cost_bps": predicted.get("expected_cost_bps"),
+                "expected_trading_bps": predicted.get("expected_trading_bps"),
+                "expected_borrow_bps": predicted.get("expected_borrow_bps"),
+                "realized_cost_bps": predicted.get("realized_cost_bps"),
+                "n_target": predicted.get("n_target"),
+                "n_filled": predicted.get("n_filled"),
+                "max_fill_gap": predicted.get("max_fill_gap"),
+                "n_missing_return": int(missing.sum()),
+                "missing_return_weight": float(np.abs(weight[missing]).sum()),
+            }
+        )
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        return frame
+    return _with_risk_lines(frame)
+
+
+def store_rows(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    """The frame as rows `live.store` can write, one per session.
+
+    `TABLE_COLUMNS` and nothing else, the date as an ISO string, and the four
+    per-factor maps as JSON text with no NaN in it. The maps are serialized here
+    rather than handed over as dicts because every other jsonb column in this
+    project goes in as text (`live.staleness.run_status_row` does the same), and a
+    NaN inside one makes `jsonb` refuse the whole row rather than the one number.
+    """
+    columns = [name for name in TABLE_COLUMNS if name in frame.columns]
+    rows: list[dict[str, Any]] = []
+    for record in frame[columns].to_dict("records"):
+        row: dict[str, Any] = {}
+        for key, value in record.items():
+            if key == "trade_date":
+                row[key] = str(pd.Timestamp(value).date())
+            elif key in JSON_COLUMNS:
+                row[key] = json.dumps(
+                    {
+                        str(name): _jsonable(number)
+                        for name, number in (value or {}).items()
+                    },
+                    sort_keys=True,
+                )
+            else:
+                row[key] = _jsonable(value)
+        rows.append(row)
+    return rows
+
+
+def _jsonable(value: Any) -> Any:
+    """A value JSON can hold: NaN and infinity become null, dates become strings."""
+    if value is None:
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, (pd.Timestamp,)) or type(value).__name__ == "datetime":
+        return str(value)[:10]
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return _jsonable(float(value))
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    return value
+
+
+def from_positions(
+    positions: pd.DataFrame,
+    panel: ModelPanel,
+    *,
+    done: set[str] | None = None,
+    costs: dict[pd.Timestamp, dict[str, Any]] | None = None,
+    forecasts: dict[pd.Timestamp, dict[str, Any]] | None = None,
+    risk_split: bool = False,
+    sizing: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """The books a store holds, attributed for every session not already done.
+
+    `positions` is the live store's own table: one row per name per day, in that
+    table's columns. The books are the same point-in-time books `daily_weights`
+    builds for the seed, so the live days and the historical days are attributed
+    by one implementation rather than two.
+
+    The window ends at the newest session the artifacts can price, which is the
+    smaller of the returns panel's last date and the last date the model's fit was
+    extended to: a session with no stored factor returns cannot be attributed, and
+    asking for one is a refusal rather than a zero.
+    """
+    done = done or set()
+    if positions.empty:
+        return pd.DataFrame()
+    books = positions.rename(columns={"trade_date": "date"})[
+        ["date", "ticker", "weight"]
+    ].copy()
+    books["date"] = pd.to_datetime(books["date"].astype(str).str.slice(0, 10))
+    books["weight"] = pd.to_numeric(books["weight"], errors="coerce").astype(float)
+    books = books.dropna(subset=["weight"])
+    if books.empty:
+        return pd.DataFrame()
+    last = min(panel.sessions.max(), panel.factor_returns.index.max())
+    sessions = panel.sessions[
+        (panel.sessions > books["date"].min()) & (panel.sessions <= last)
+    ]
+    holdings = daily_weights(books, pd.Series(sessions))
+    if holdings.empty:
+        return holdings
+    holding_days = holdings["date"].astype(str).str.slice(0, 10)
+    holdings = holdings.loc[~holding_days.isin(done)]
+    if holdings.empty:
+        return pd.DataFrame(columns=holdings.columns)
+    return attribute_book(
+        holdings,
+        panel,
+        forecasts=forecasts,
+        costs=costs,
+        risk_split=risk_split,
+        sizing=sizing,
+    )
+
+
+# The F12.3 rule, in the place that applies it: no skill is claimed unless the
+# t-statistic exceeds two. It is a constant rather than a literal so the memo, the
+# page and this function cannot disagree about the bar.
+DETECTION_T = 2.0
+
+# The information ratios the days-to-detect table is quoted for. One number would
+# beg the question of which edge is being imagined, and the whole point of the
+# table is that a small edge needs years.
+DETECTION_IRS: tuple[float, ...] = (0.25, 0.5, 1.0, 2.0)
+
+
+def skill_test(frame: pd.DataFrame, *, target_t: float = DETECTION_T) -> dict[str, Any]:
+    """Is the book's own P&L distinguishable from zero, and how long would it take?
+
+    Three numbers answer that and they are not interchangeable. The **mean** of the
+    idio P&L is the edge as realized; its **standard error** says how much of that
+    mean is noise at this sample size; the **t-statistic** is the ratio, and it is
+    the only one of the three that can be compared against a bar. The information
+    ratio is the mean over the dispersion, which is the same quantity per unit of
+    risk rather than per unit of time.
+
+    The Sharpe and its two standard errors come from `efb.perf`, the E1 library,
+    rather than being re-derived here: the Lo (2002) correction is what makes the
+    difference between a series whose dispersion is i.i.d. and one whose volatility
+    clusters, and re-implementing it would be a second opinion about the same
+    estimator.
+
+    The days-to-detect table is the number that decides what a thirty-day window
+    can show. For a t-statistic of `target_t`, `t = IR_daily * sqrt(n)`, so
+    `n = (target_t / IR_daily)^2 = (target_t * sqrt(252) / IR_annual)^2`: an
+    annualized information ratio of 1.0 needs four years of daily data before the
+    test reaches the bar, and 0.25 needs sixty-four. That is the honest answer to
+    "is the book good", and it is why the expected verdict is luck.
+    """
+    from efb import perf
+
+    # The days-to-detect table is a property of the bar and the imagined edge, not of
+    # the sample, so it is reported even when there is nothing to test: a one-day
+    # window still needs to say how many days an edge of a given size would need.
+    days = {
+        # Rounded before the ceiling: the closed form lands a few ulps above its own
+        # integer for every round information ratio, so `ceil` alone would report
+        # 1,009 days for an edge that needs 1,008 and read as arithmetic rather than
+        # as the float artefact it is.
+        ir: int(math.ceil(round((target_t * math.sqrt(TRADING_DAYS) / ir) ** 2, 6)))
+        for ir in DETECTION_IRS
+    }
+    if frame.empty or len(frame) < 2:
+        return {
+            "n_days": int(len(frame)),
+            "idio_mean": None,
+            "idio_sd": None,
+            "idio_se": None,
+            "t_stat": None,
+            "ir_annual": None,
+            "ir_se": None,
+            "sharpe_annual": None,
+            "sharpe_se_iid": None,
+            "sharpe_se_lo2002": None,
+            "target_t": target_t,
+            "days_to_detect": days,
+            "skill_claimed": False,
+            "verdict": "too few days to test: nothing is claimed",
+        }
+    idio = frame["pnl_idio"].astype(float).dropna()
+    total = frame["pnl_total"].astype(float).dropna()
+    n = int(len(idio))
+    mean = float(idio.mean())
+    sd = float(idio.std(ddof=1))
+    se = sd / math.sqrt(n) if n and sd > 0 else None
+    t_stat = mean / se if se else None
+    ir_annual = float(mean / sd * math.sqrt(TRADING_DAYS)) if sd > 0 else None
+    # The daily Sharpe's own standard error, annualized. Under i.i.d. it is
+    # sqrt((1 + SR^2/2)/n) at daily frequency, so the annualized form carries the
+    # sqrt(252) the Sharpe itself carries; Lo's version adds the autocorrelation
+    # correction to both the mean and the variance terms.
+    sharpe_annual = float(perf.annualized_sharpe(total)) if len(total) > 1 else None
+    se_iid = (
+        float(perf.sharpe_se_iid(total) * math.sqrt(TRADING_DAYS))
+        if len(total) > 1
+        else None
+    )
+    se_lo = (
+        float(perf.sharpe_se_lo2002(total) * math.sqrt(TRADING_DAYS))
+        if len(total) > 1
+        else None
+    )
+    days = {
+        ir: int(math.ceil(round((target_t * math.sqrt(TRADING_DAYS) / ir) ** 2, 6)))
+        for ir in DETECTION_IRS
+    }
+    claimed = bool(t_stat is not None and abs(t_stat) > target_t)
+    if t_stat is None:
+        verdict = "the idio P&L has no dispersion to test"
+    elif claimed:
+        verdict = (
+            f"t = {t_stat:.2f} over {n} days exceeds {target_t:.1f}, so the number "
+            "clears the bar F12.3 sets"
+        )
+    else:
+        verdict = (
+            f"t = {t_stat:.2f} over {n} days does not exceed {target_t:.1f}, so no "
+            "skill is claimed: the verdict is luck"
+        )
+    return {
+        "n_days": n,
+        "idio_mean": mean,
+        "idio_sd": sd,
+        "idio_se": se,
+        "t_stat": t_stat,
+        "ir_annual": ir_annual,
+        "ir_se": (
+            float(math.sqrt((1.0 + ir_annual**2 / 2.0) / n))
+            if ir_annual is not None
+            else None
+        ),
+        "sharpe_annual": sharpe_annual,
+        "sharpe_se_iid": se_iid,
+        "sharpe_se_lo2002": se_lo,
+        "target_t": target_t,
+        "days_to_detect": days,
+        "skill_claimed": claimed,
+        "verdict": verdict,
+    }
+
+
+def _with_risk_lines(frame: pd.DataFrame) -> pd.DataFrame:
+    """The realized volatility, its ratio to the forecast, and the bias statistic.
+
+    The bias statistic is the daily bias engine's own definition, reused rather
+    than re-implemented: `z` per session is the book's P&L over the volatility the
+    book predicted for it, and the statistic is the dispersion of those `z` over a
+    trailing year. Both are computed from rows at or before the session they are
+    reported on, so a row never reads a number it could not have known.
+    """
+    from efb import eval_risk
+
+    pnl = frame["pnl_total"].to_numpy(dtype=float)
+    vol: list[float] = []
+    bias: list[float | None] = []
+    for position in range(len(pnl)):
+        window = pnl[max(0, position - REALIZED_VOL_WINDOW + 1) : position + 1]
+        if len(window) < 2 or np.nanstd(window, ddof=1) == 0:
+            vol.append(np.nan)
+        else:
+            vol.append(float(np.nanstd(window, ddof=1) * np.sqrt(TRADING_DAYS)))
+        forecast = frame["forecast_vol"].iloc[position]
+        if not vol or not np.isfinite(vol[-1]) or not forecast:
+            bias.append(None)
+            continue
+        z = []
+        for offset in range(position + 1):
+            predicted = frame["forecast_vol"].iloc[offset]
+            if predicted:
+                z.append(pnl[offset] / (predicted / np.sqrt(TRADING_DAYS)))
+        # `bias_statistics` raises below 30 observations, which is its own
+        # contract, so the row carries null until the book has a month of z.
+        bias.append(
+            float(eval_risk.bias_statistics(np.asarray(z))["bias"])
+            if len(z) >= 30
+            else None
+        )
+    frame["realized_vol"] = vol
+    frame["vol_ratio"] = frame["realized_vol"] / frame["forecast_vol"]
+    frame["bias_statistic"] = bias
+    return frame

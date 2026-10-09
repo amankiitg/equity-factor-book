@@ -645,6 +645,18 @@ def store_reconciliation(as_of: str, row: dict, *, holdings: dict[str, Any]) -> 
     )
 
 
+def store_attribution(run_tree: Path) -> dict[str, Any]:
+    """Attribute every stored day without a row, from the run tree's artifacts.
+
+    The run tree is passed rather than read from a module global, because the
+    attribution reads the same extended XS-v1 artifacts the proposal was priced
+    from and a global would be whichever module was adopted last.
+    """
+    from live import attribution_job
+
+    return attribution_job.run(run_tree)
+
+
 def realized_pnl(as_of: str, nav: float) -> float:
     """Tonight's P&L: the change in the account's own equity since the last row.
 
@@ -937,9 +949,25 @@ def finish_run(
         row["full_risk"] = store.json_text(risk["full"])
     snapshot_detail, snapshot_failed = "", False
     written: dict[str, Any] | None = None
+
+    # E12: the attribution block, read from the store. Its own handler, because it
+    # is a section of the page: a store that cannot be read is a page without the
+    # section, never a run that failed.
+    try:
+        attribution = snapshot_module.attribution_block()
+    except Exception as exc:  # noqa: BLE001 - a page section, not a step
+        attribution = snapshot_module.empty_attribution(
+            "the attribution store could not be read"
+        )
+        logger.warning(
+            "the snapshot's attribution block could not be built: %s: %s",
+            type(exc).__name__,
+            notify.scrub(str(exc)),
+        )
+
     try:
         written = snapshot_module.write_snapshot(
-            run={**row, "store": store_name},
+            run={**row, "store": store_name, "attribution": attribution},
             manifest=manifest,
             book=book,
             reconciliation=reconciliation,
@@ -1712,6 +1740,27 @@ def main() -> int:
         row = {**row, "unexplained_adjustment": adjustment}
         store_reconciliation(as_of, row, holdings=holdings)
         store_broker_book(as_of, holdings)
+
+        # E12: attribute every stored day that has no attribution row yet, from the
+        # store's own positions and this run tree's XS-v1 artifacts. It runs after
+        # the reconciliation so the day's cost and forecast are already stored, and
+        # it is wrapped in its own handler because it is a report about the book:
+        # a report that cannot be produced is a bad page, never a reason to leave a
+        # book unheld.
+        try:
+            attributed = store_attribution(run_tree)
+            logger.info(
+                "attribution: %d session(s) stored, %d already attributed",
+                attributed["n_stored"],
+                attributed["n_done"],
+            )
+        except Exception as exc:  # noqa: BLE001 - a report, not a step
+            logger.warning(
+                "attribution failed and the run continues: %s: %s",
+                type(exc).__name__,
+                notify.scrub(str(exc)),
+            )
+
         snapshot_inputs = {
             "manifest": manifest,
             "book": book,

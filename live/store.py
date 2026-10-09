@@ -89,6 +89,12 @@ TABLES: tuple[str, ...] = (
     "decisions",
     "cron_runs",
     "run_status",
+    # E12: one row per attributed session, written by the evening run's
+    # attribution step. Its own table rather than columns on `reconciliation`,
+    # because the attribution is a pure function of stored positions and stored
+    # model artifacts: it can be rebuilt for any past session, which is what
+    # makes it safe to attribute days that were never reconciled.
+    "attribution",
     SEED_MARKER_TABLE,
 )
 
@@ -108,6 +114,9 @@ TABLE_KEYS: dict[str, tuple[str, ...]] = {
     # keyed by the target close rather than the day the job ran, so a re-fire
     # for the same session replaces its row and a missing session stays missing
     "run_status": ("target_close", "job"),
+    # one attributed session, so a re-run replaces the day rather than adding a
+    # second reading of it
+    "attribution": ("trade_date",),
     # one row, keyed by the marker's own name, so the seed is written once and a
     # re-run of the first run replaces it instead of adding a second
     SEED_MARKER_TABLE: ("marker",),
