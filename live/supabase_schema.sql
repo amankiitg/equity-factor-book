@@ -411,6 +411,8 @@ create table if not exists efb.attribution (
   market_return double precision,
   pnl_beta double precision,
   forecast_vol double precision,
+  pre_hedge_vol double precision,
+  hedged_vol double precision,
   realized_vol double precision,
   vol_ratio double precision,
   bias_statistic double precision,
@@ -418,6 +420,8 @@ create table if not exists efb.attribution (
   idio_var_share double precision,
   n_missing_specific_var int,
   expected_cost_bps double precision,
+  expected_trading_bps double precision,
+  expected_borrow_bps double precision,
   realized_cost_bps double precision,
   n_target int,
   n_filled int,
@@ -579,6 +583,18 @@ alter table efb.attribution
   add column if not exists idio_var_share double precision;
 alter table efb.attribution
   add column if not exists n_missing_specific_var int;
+
+-- E12: the hedge's own effect and the expected cost's two halves. Both added
+-- before the first run that writes the table, and both by the same rule as above:
+-- a database that already holds `efb.attribution` needs them by name.
+alter table efb.attribution
+  add column if not exists pre_hedge_vol double precision;
+alter table efb.attribution
+  add column if not exists hedged_vol double precision;
+alter table efb.attribution
+  add column if not exists expected_trading_bps double precision;
+alter table efb.attribution
+  add column if not exists expected_borrow_bps double precision;
 -- Row level security, off, last. Supabase enables row level security on the
 -- tables its SQL editor is asked to create, and an RLS table with no policy
 -- refuses everything: re-applying this file left the writer role unable to write

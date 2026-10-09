@@ -210,6 +210,9 @@ export interface AttributionDay {
   pnl_beta: number | null;
   realized_vol: number | null;
   forecast_vol: number | null;
+  /** Predicted annual vol of the sized book, and of the book the hedge left. */
+  pre_hedge_vol: number | null;
+  hedged_vol: number | null;
   factor_var_share: number | null;
   idio_var_share: number | null;
 }
@@ -227,12 +230,18 @@ export interface AttributionRiskPath {
   trade_date: string | null;
   factor_share: number | null;
   idio_share: number | null;
+  /** Annualized predicted volatility of the sized book the hedge acted on. */
+  pre_hedge_vol: number | null;
+  /** The same forecast at the book that was held: the hedge's own effect. */
+  hedged_vol: number | null;
 }
 
 export interface AttributionRisk {
   as_of: string | null;
   factor_share: number | null;
   idio_share: number | null;
+  pre_hedge_vol: number | null;
+  hedged_vol: number | null;
   path: AttributionRiskPath[];
 }
 
@@ -259,6 +268,14 @@ export interface AttributionPeriod {
   monthly: AttributionMonth[];
   cost: {
     expected_bps: number | null;
+    /**
+     * The expected cost's trading half (spread + impact + commission). This is the
+     * only half a realized fill cost can be measured against: a fill price pays
+     * spread, impact and commission, and it pays no borrow.
+     */
+    expected_trading_bps: number | null;
+    /** The short leg's holding cost over the horizon, shown beside the trading half. */
+    expected_borrow_bps: number | null;
     realized_bps: number | null;
     n_realized: number;
   };

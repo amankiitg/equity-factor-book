@@ -120,6 +120,8 @@ TABLE_COLUMNS: tuple[str, ...] = (
     "market_return",
     "pnl_beta",
     "forecast_vol",
+    "pre_hedge_vol",
+    "hedged_vol",
     "realized_vol",
     "vol_ratio",
     "bias_statistic",
@@ -127,6 +129,8 @@ TABLE_COLUMNS: tuple[str, ...] = (
     "idio_var_share",
     "n_missing_specific_var",
     "expected_cost_bps",
+    "expected_trading_bps",
+    "expected_borrow_bps",
     "realized_cost_bps",
     "n_target",
     "n_filled",
@@ -196,6 +200,59 @@ def pre_hedge_weights(
     sized = size.proportional(alpha, specific)
     sized = sizing.cap_variance_shares(sized, specific)
     return sizing.renormalize(sized, gross=1.0)
+
+
+def _pre_hedge_vector(
+    block: pd.DataFrame | None, names: list[str]
+) -> np.ndarray | None:
+    """The book before the hedge, from the position rows' own alpha and sigma.
+
+    `block` is one book-date's slice of the store's `positions` table, which is the
+    only place the sizing inputs survive at: the run stores the `alpha` and the
+    specific volatility it sized on, and the cap and the renormalization are
+    deterministic. A name the rows do not price - or price at a non-positive
+    specific volatility - returns None, because a pre-hedge vector with a hole in it
+    would produce a volatility nobody measured.
+    """
+    if block is None or block.empty:
+        return None
+    indexed = block.set_index("ticker")
+    try:
+        alpha = pd.to_numeric(indexed["alpha"].reindex(names), errors="coerce")
+        specific = pd.to_numeric(indexed["idio_vol"].reindex(names), errors="coerce")
+    except KeyError:
+        return None
+    values_alpha = alpha.to_numpy(dtype=float)
+    values_specific = specific.to_numpy(dtype=float)
+    if not np.isfinite(values_alpha).all() or not np.isfinite(values_specific).all():
+        return None
+    if not (values_specific > 0.0).all():
+        return None
+    # The sizing vector is `alpha / specific`, capped and renormalized: the shape it
+    # is handed is the book's, and it reads nothing else off it.
+    return pre_hedge_weights(np.zeros(len(names)), values_alpha, values_specific)
+
+
+def _variance_parts(
+    weight: np.ndarray,
+    design: np.ndarray,
+    covariance: np.ndarray,
+    specific: np.ndarray,
+) -> tuple[float, float]:
+    """A book's predicted factor and specific variance, in daily units."""
+    clean = np.nan_to_num(weight, nan=0.0)
+    projected = clean @ np.nan_to_num(design, nan=0.0)
+    factor_var = float(projected @ covariance @ projected)
+    idio_var = float(np.nansum(clean**2 * np.nan_to_num(specific, nan=0.0)))
+    return factor_var, idio_var
+
+
+def _annualized_vol(factor_var: float, idio_var: float) -> float | None:
+    """A daily variance as an annualized volatility, or None when it is not one."""
+    total = factor_var + idio_var
+    if not np.isfinite(total) or total <= 0.0:
+        return None
+    return float(math.sqrt(total * TRADING_DAYS))
 
 
 class ModelPanel:
@@ -305,10 +362,14 @@ class ModelPanel:
         series = frame.loc[frame["date"] == stamp].set_index("ticker")["beta"]
         return series.reindex(names).to_numpy(dtype=float)
 
-    def risk_split(
-        self, book_date: pd.Timestamp, names: list[str], weight: np.ndarray
-    ) -> tuple[float, float, int]:
-        """The book's predicted variance split into its factor and specific parts.
+    def risk_panel(
+        self,
+        book_date: pd.Timestamp,
+        names: list[str],
+        weight: np.ndarray,
+        pre_weight: np.ndarray | None = None,
+    ) -> dict[str, Any]:
+        """The book's predicted variance: the split, and what the hedge removed.
 
         `Sigma = X F X' + D`, the same decomposition the hedge is built against, so
         the shares describe the risk the book actually carried rather than a second
@@ -317,29 +378,53 @@ class ModelPanel:
         carried into it - and whose covariance is the model's own EWMA strictly
         before `book_date`.
 
-        A name the specific-variance artifact does not price contributes no
-        specific risk and is counted in the third element rather than being given a
-        number nobody measured. Returns `(nan, nan, n)` when the pieces are not
-        available at all, which is the honest answer for a date the risk model
-        cannot reach.
+        The two volatilities are those pieces read at two books: `pre_weight` is the
+        sized book the hedge acted on, rebuilt by `pre_hedge_weights` from the
+        stored `alpha` and specific volatility, and `weight` is the book that was
+        held. Reading both against one covariance is what makes the difference
+        between them the hedge's own effect; a hedge makes no sense as a number of
+        basis points of a forecast nobody can see the other side of. A caller with
+        no pre-hedge vector gets a null for it rather than the hedged number
+        repeated.
+
+        A name the specific-variance artifact does not price contributes no specific
+        risk and is counted rather than given a number nobody measured. Every field
+        is null when the pieces are not available at all, which is the honest answer
+        for a date the risk model cannot reach.
         """
         from efb import eval_risk
 
         pieces = eval_risk._xs_pieces(pd.Timestamp(book_date), list(names), self.root)
         if pieces is None:
-            return float("nan"), float("nan"), int(len(names))
+            return {
+                "factor_var_share": float("nan"),
+                "idio_var_share": float("nan"),
+                "n_missing_specific_var": int(len(names)),
+                "pre_hedge_vol": None,
+                "hedged_vol": None,
+            }
         design = np.asarray(pieces["design"], dtype=float)
         covariance = np.asarray(pieces["factor_covariance"], dtype=float)
         specific = np.asarray(pieces["specific"], dtype=float)
-        projected = np.nan_to_num(weight, nan=0.0) @ np.nan_to_num(design, nan=0.0)
-        factor_var = float(projected @ covariance @ projected)
-        priced = np.nan_to_num(specific, nan=0.0)
-        idio_var = float(np.nansum(np.nan_to_num(weight, nan=0.0) ** 2 * priced))
-        missing = int(np.isnan(specific).sum())
+        factor_var, idio_var = _variance_parts(weight, design, covariance, specific)
         total = factor_var + idio_var
-        if not np.isfinite(total) or total <= 0.0:
-            return float("nan"), float("nan"), missing
-        return factor_var / total, idio_var / total, missing
+        weighted = np.isfinite(total) and total > 0.0
+        return {
+            "factor_var_share": factor_var / total if weighted else float("nan"),
+            "idio_var_share": idio_var / total if weighted else float("nan"),
+            # The pieces fill a name the artifact does not price with the
+            # cross-sectional median, so the count comes from the supplier rather
+            # than from the filled vector, where nothing is missing by then.
+            "n_missing_specific_var": int(pieces.get("missing") or 0),
+            "pre_hedge_vol": (
+                _annualized_vol(
+                    *_variance_parts(pre_weight, design, covariance, specific)
+                )
+                if pre_weight is not None
+                else None
+            ),
+            "hedged_vol": _annualized_vol(factor_var, idio_var),
+        }
 
 
 def reported_factor_names() -> list[str]:
@@ -369,6 +454,7 @@ def attribute_book(
     forecasts: dict[pd.Timestamp, dict[str, float]] | None = None,
     costs: dict[pd.Timestamp, dict[str, float]] | None = None,
     risk_split: bool = False,
+    sizing: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """One row per session, the day's P&L split and the risk lines beside it.
 
@@ -380,6 +466,12 @@ def attribute_book(
     split of the book's predicted variance, which costs one risk-model read per
     session and is therefore asked for by the live run rather than by every builder.
 
+    `sizing` is the store's own position rows - `trade_date`, `ticker`, `alpha`,
+    `idio_vol` - and it is what lets the row say what the hedge *removed*: with it,
+    the pre-hedge book is rebuilt from the same inputs the sizing used and read
+    against the same covariance as the book that was held. Without it the two
+    volatility columns stay null rather than repeating one book twice.
+
     The split uses the **stored** factor and specific returns, which is what makes
     the identity a check on the model's artifacts. `n_computed_specific` counts the
     kept names the model's own cross-section dropped that session, whose residual
@@ -388,6 +480,17 @@ def attribute_book(
     """
     forecasts = forecasts or {}
     costs = costs or {}
+    sizing_by_date: dict[pd.Timestamp, pd.DataFrame] = {}
+    if sizing is not None and not getattr(sizing, "empty", True):
+        needed = {"trade_date", "ticker", "alpha", "idio_vol"}
+        if needed <= set(sizing.columns):
+            block = sizing.loc[:, ["trade_date", "ticker", "alpha", "idio_vol"]].copy()
+            block["trade_date"] = pd.to_datetime(
+                block["trade_date"].astype(str).str.slice(0, 10)
+            ).dt.normalize()
+            sizing_by_date = {
+                stamp: day for stamp, day in block.groupby("trade_date", sort=False)
+            }
     rows: list[dict[str, Any]] = []
     for session, day in holdings.groupby("date", sort=True):
         session = pd.Timestamp(session)
@@ -433,10 +536,17 @@ def attribute_book(
         # read per session, and the seed's research dates are only priced by the
         # monthly specific-variance artifact, so a share there would be a number
         # nobody measured.
-        factor_share, idio_share, n_missing_var = (
-            panel.risk_split(book_stamp, names, weight)
+        risk = (
+            panel.risk_panel(
+                book_stamp,
+                names,
+                weight,
+                _pre_hedge_vector(
+                    sizing_by_date.get(pd.Timestamp(book_stamp).normalize()), names
+                ),
+            )
             if risk_split
-            else (float("nan"), float("nan"), 0)
+            else {}
         )
         rows.append(
             {
@@ -474,11 +584,15 @@ def attribute_book(
                 "book_beta": book_beta,
                 "market_return": market,
                 "pnl_beta": book_beta * market if np.isfinite(market) else None,
-                "factor_var_share": factor_share,
-                "idio_var_share": idio_share,
-                "n_missing_specific_var": n_missing_var,
+                "factor_var_share": risk.get("factor_var_share", float("nan")),
+                "idio_var_share": risk.get("idio_var_share", float("nan")),
+                "n_missing_specific_var": risk.get("n_missing_specific_var", 0),
+                "pre_hedge_vol": risk.get("pre_hedge_vol"),
+                "hedged_vol": risk.get("hedged_vol"),
                 "forecast_vol": predicted.get("forecast_vol"),
                 "expected_cost_bps": predicted.get("expected_cost_bps"),
+                "expected_trading_bps": predicted.get("expected_trading_bps"),
+                "expected_borrow_bps": predicted.get("expected_borrow_bps"),
                 "realized_cost_bps": predicted.get("realized_cost_bps"),
                 "n_target": predicted.get("n_target"),
                 "n_filled": predicted.get("n_filled"),
@@ -548,6 +662,7 @@ def from_positions(
     costs: dict[pd.Timestamp, dict[str, Any]] | None = None,
     forecasts: dict[pd.Timestamp, dict[str, Any]] | None = None,
     risk_split: bool = False,
+    sizing: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """The books a store holds, attributed for every session not already done.
 
@@ -584,7 +699,12 @@ def from_positions(
     if holdings.empty:
         return pd.DataFrame(columns=holdings.columns)
     return attribute_book(
-        holdings, panel, forecasts=forecasts, costs=costs, risk_split=risk_split
+        holdings,
+        panel,
+        forecasts=forecasts,
+        costs=costs,
+        risk_split=risk_split,
+        sizing=sizing,
     )
 
 

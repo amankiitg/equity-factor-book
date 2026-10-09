@@ -176,6 +176,117 @@ def test_the_day_carries_the_stored_cost_and_forecast(local_store: Path) -> None
     )
 
 
+def test_the_day_carries_the_expected_cost_split(local_store: Path) -> None:
+    """The four parts the reconciliation stores, summed into the two halves.
+
+    The total alone cannot be compared to a fill: the fills are measured against the
+    half of the cost a fill price pays, which is spread + impact + commission, and
+    borrow is the short leg's holding cost over the horizon. Summing the parts here
+    rather than in the page is what keeps the halves and the total from disagreeing.
+    """
+    store.upsert(
+        "positions",
+        [_position_row(BOOK_DAY, "AAPL", 0.5), _position_row(BOOK_DAY, "MSFT", -0.5)],
+    )
+    store.upsert(
+        "reconciliation",
+        [
+            {
+                "trade_date": SESSION,
+                "forecast_annual_vol": 0.10,
+                "expected_cost_bps": 14.22,
+                "expected_spread_bps": 4.0,
+                "expected_impact_bps": 1.0,
+                "expected_commission_bps": 0.89,
+                "expected_borrow_bps": 8.33,
+                "realized_cost_bps": None,
+            }
+        ],
+    )
+    attribution_job.run(ROOT / "data")
+    row = store.select("attribution").iloc[0]
+    assert float(row["expected_trading_bps"]) == pytest.approx(5.89)
+    assert float(row["expected_borrow_bps"]) == pytest.approx(8.33)
+    # The halves are the total, which is the claim the page reads them as.
+    assert float(row["expected_trading_bps"]) + float(row["expected_borrow_bps"]) == (
+        pytest.approx(14.22)
+    )
+
+
+def test_a_reconciliation_row_with_no_split_leaves_the_halves_null(
+    local_store: Path,
+) -> None:
+    """An older row stores the total and no parts, and the halves stay unmeasured.
+
+    A half nobody computed is not zero: the page compares the realized cost against
+    the trading half, and a zero there would read as a book that traded for free.
+    """
+    store.upsert(
+        "positions",
+        [_position_row(BOOK_DAY, "AAPL", 0.5), _position_row(BOOK_DAY, "MSFT", -0.5)],
+    )
+    store.upsert(
+        "reconciliation",
+        [
+            {
+                "trade_date": SESSION,
+                "forecast_annual_vol": 0.10,
+                "expected_cost_bps": 14.22,
+                "realized_cost_bps": None,
+            }
+        ],
+    )
+    attribution_job.run(ROOT / "data")
+    row = store.select("attribution").iloc[0]
+    assert float(row["expected_cost_bps"]) == pytest.approx(14.22)
+    assert pd.isna(row["expected_trading_bps"])
+    assert pd.isna(row["expected_borrow_bps"])
+
+
+def test_the_day_carries_the_hedge_s_own_effect_on_predicted_vol(
+    local_store: Path,
+) -> None:
+    """The store's own alpha and specific volatility rebuild the pre-hedge book.
+
+    The row says what the hedge left (the factor share) and, from the same
+    covariance, what it removed: the sized book's own predicted volatility is on the
+    row beside the held book's. The stored position rows are the only place those
+    sizing inputs survive, so the two numbers travelling together is the check that
+    the job handed them over.
+    """
+    store.upsert(
+        "positions",
+        [
+            {
+                **_position_row(BOOK_DAY, "AAPL", 0.5),
+                "alpha": 2e-5,
+                "idio_vol": 0.02,
+            },
+            {
+                **_position_row(BOOK_DAY, "MSFT", -0.5),
+                "alpha": -2e-5,
+                "idio_vol": 0.03,
+            },
+        ],
+    )
+    attribution_job.run(ROOT / "data")
+    row = store.select("attribution").iloc[0]
+    pre_hedge = float(row["pre_hedge_vol"])
+    hedged = float(row["hedged_vol"])
+    assert pre_hedge > 0.0
+    assert hedged > 0.0
+    # Two numbers from two books, not one number written twice. Which way the
+    # difference points is not asserted here: it is a property of the covariance and
+    # the design, and on a typed two-name book it can point either way. The direction
+    # is measured where it means something, on the live record, in
+    # `test_e12_snapshot_attribution.py`, in the recorded-live-read test.
+    assert pre_hedge != hedged
+    # Both are annualized volatilities, so they are percentages and not fractions of
+    # a percent: a book of names at 2-3% daily specific risk is tens of percent.
+    assert 0.005 < hedged < 1.0
+    assert 0.005 < pre_hedge < 1.0
+
+
 def test_the_fill_counts_come_from_the_order_rows(local_store: Path) -> None:
     store.upsert(
         "positions",

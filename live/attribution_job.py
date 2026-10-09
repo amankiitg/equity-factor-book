@@ -95,6 +95,12 @@ def session_inputs(
     `orders` table carries the legs the evening *sent* and their submission state
     (`ACCEPTED`), so counting `FILLED` there counted nothing and reported every
     traded day as having filled no leg.
+
+    The expected cost travels split as well as total: `expected_trading_bps` is the
+    half a fill price can be measured against (spread + impact + commission) and
+    `expected_borrow_bps` is the short leg's holding cost, which no fill pays. The
+    two are the reconciliation row's own four parts, summed here so the parts and
+    the total cannot disagree.
     """
     costs: dict[pd.Timestamp, dict[str, Any]] = {}
     forecasts: dict[pd.Timestamp, dict[str, Any]] = {}
@@ -126,9 +132,27 @@ def session_inputs(
             chosen = realized if realized is not None else expected
             if chosen is not None:
                 costs[day] = {"cost_usd": -chosen / 1e4}
+            parts = {
+                name: _number(row.get(column))
+                for name, column in (
+                    ("spread", "expected_spread_bps"),
+                    ("impact", "expected_impact_bps"),
+                    ("commission", "expected_commission_bps"),
+                    ("borrow", "expected_borrow_bps"),
+                )
+            }
+            known_trading = [
+                value
+                for name in ("spread", "impact", "commission")
+                if (value := parts[name]) is not None
+            ]
             forecasts[day] = {
                 "forecast_vol": _number(row.get("forecast_annual_vol")),
                 "expected_cost_bps": expected,
+                "expected_trading_bps": (
+                    float(sum(known_trading)) if known_trading else None
+                ),
+                "expected_borrow_bps": parts["borrow"],
                 "realized_cost_bps": realized,
             }
     if not orders.empty and "trade_date" in orders.columns:
@@ -183,6 +207,10 @@ def run(root: Path, *, panel: attribution.ModelPanel | None = None) -> dict[str,
         costs=costs,
         forecasts=forecasts,
         risk_split=True,
+        # The same rows again, for the `alpha` and specific volatility the sizing
+        # used: they are what the pre-hedge book is rebuilt from, so the row can
+        # say what the hedge removed rather than only what it left.
+        sizing=positions,
     )
     if frame.empty:
         return {

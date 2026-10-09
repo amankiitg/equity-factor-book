@@ -147,12 +147,82 @@ describe("the attribution section", () => {
     expect(document.querySelector("[data-chart='daily']")).toBeTruthy();
   });
 
-  it("says which cost the split uses, expected against realized", () => {
+  it("compares the realized cost against the trading half, with borrow named beside it", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const cost = document.querySelector("[data-cost='line']")?.textContent ?? "";
-    expect(cost).toContain((LIVE_PERIOD.cost.expected_bps as number).toFixed(2));
-    expect(cost).toContain((LIVE_PERIOD.cost.realized_bps as number).toFixed(2));
-    expect(cost).toContain("realized");
+    const split = LIVE_PERIOD.cost;
+    const trading = split.expected_trading_bps as number;
+    const borrow = split.expected_borrow_bps as number;
+    expect(cost).toContain((split.expected_bps as number).toFixed(2));
+    expect(cost).toContain(trading.toFixed(2));
+    expect(cost).toContain(borrow.toFixed(2));
+    expect(cost).toContain((split.realized_bps as number).toFixed(2));
+    expect(cost).toContain("borrow");
+    // The comparison is the trading half and not the total: the total carries
+    // borrow, which is a holding cost and no fill price pays it.
+    expect(trading).toBeLessThan(split.expected_bps as number);
+    expect(cost).toContain(`against the ${trading.toFixed(2)} bp of trading cost expected`);
+    expect(cost).not.toContain(`against the ${(split.expected_bps as number).toFixed(2)} bp`);
+    // The realized number is labelled as what it measures: the move from the
+    // previous close to the fill, which is mostly the overnight gap.
+    expect(cost).toContain("previous close");
+    expect(cost).toContain("overnight gap");
+  });
+
+  it("shows what the hedge removed, not only the split it left", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const risk = LIVE_PERIOD.risk;
+    if (!risk || risk.pre_hedge_vol === null || risk.hedged_vol === null) {
+      throw new Error("the fixture carries no hedge forecast");
+    }
+    const vol = document.querySelector("[data-vol='line']")?.textContent ?? "";
+    expect(risk.pre_hedge_vol).toBeGreaterThan(risk.hedged_vol);
+    expect(vol).toContain(`${(risk.pre_hedge_vol * 100).toFixed(1)}%`);
+    expect(vol).toContain(`${(risk.hedged_vol * 100).toFixed(1)}%`);
+    expect(vol).toContain("the hedge removed");
+    // Two series, and they are not the same line: the upper one is the book the
+    // hedge acted on.
+    const chart = document.querySelector("[data-chart='hedge-vol']");
+    expect(chart).toBeTruthy();
+    const before = chart?.querySelector("[data-series='pre-hedge']")?.getAttribute("points");
+    const after = chart?.querySelector("[data-series='hedged']")?.getAttribute("points");
+    expect(before).toBeTruthy();
+    expect(after).toBeTruthy();
+    expect(before).not.toEqual(after);
+  });
+
+  it("says n/a for the hedge forecast, and draws no such chart, when it is absent", () => {
+    const live = LIVE_PERIOD.risk;
+    if (!live) throw new Error("the fixture carries no risk block");
+    const snapshot = {
+      ...OK,
+      attribution: {
+        ...ATTRIBUTION,
+        live: {
+          ...LIVE_PERIOD,
+          risk: { ...live, pre_hedge_vol: null, hedged_vol: null },
+        },
+      },
+    } as unknown as Snapshot;
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    expect(document.querySelector("[data-vol='line']")?.textContent).toContain("n/a");
+    expect(document.querySelector("[data-chart='hedge-vol']")).toBeNull();
+    // The split itself survives: only the hedge's own effect is missing.
+    expect(document.querySelector("[data-chart='risk']")).toBeTruthy();
+  });
+
+  it("labels the backtest's fourth term as a research-vintage mismatch, and the live one as it was", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    fireEvent.click(screen.getByRole("tab", { name: "the research panel (backtest)" }));
+    expect(card("pnl-unexplained")).toContain("research-vintage mismatch");
+    expect(card("pnl-unexplained")).toContain("descriptors on file differ from the fit's design");
+    const table = screen.getByRole("table", { name: "attribution by day" });
+    expect(within(table).getByText("research-vintage mismatch")).toBeTruthy();
+    // The live book's fourth term is a different thing - a stored artifact not
+    // reproducing the panel - and keeps its own words.
+    fireEvent.click(screen.getByRole("tab", { name: "the live book" }));
+    expect(card("pnl-unexplained")).not.toContain("research-vintage mismatch");
+    expect(card("pnl-unexplained")).toContain("unexplained");
   });
 
   it("prints the raw beta to three places, never as the 0.0 one decimal gave", () => {

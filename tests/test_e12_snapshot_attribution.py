@@ -57,6 +57,8 @@ def _day(
         "market_return": -0.0048,
         "pnl_beta": -0.00011,
         "forecast_vol": 0.0266,
+        "pre_hedge_vol": 0.1023,
+        "hedged_vol": 0.0255,
         "realized_vol": 0.0220,
         "vol_ratio": 0.83,
         "bias_statistic": 0.0,
@@ -64,6 +66,8 @@ def _day(
         "idio_var_share": 0.999858,
         "n_missing_specific_var": 0,
         "expected_cost_bps": 14.23,
+        "expected_trading_bps": 5.89,
+        "expected_borrow_bps": 8.34,
         "realized_cost_bps": -10.24,
         "n_target": 220,
         "n_filled": 190,
@@ -297,6 +301,136 @@ def test_a_cost_row_populates_realized_against_expected() -> None:
     assert live["cost"]["expected_bps"] == pytest.approx(14.23)
     assert live["cost"]["realized_bps"] == pytest.approx(-10.24)
     assert live["cost"]["n_realized"] == 1
+
+
+def test_the_cost_split_travels_beside_the_total_and_sums_to_it() -> None:
+    """The page compares the realized cost against the trading half, not the total.
+
+    The total carries borrow, which is a holding cost over the horizon and no fill
+    price pays it, so the two halves travel as their own numbers. A day whose split
+    the store never recorded leaves the halves as the days that do have one say,
+    rather than averaging a missing day in as zero.
+    """
+    frame = pd.DataFrame(
+        [
+            _day(
+                "2026-10-01",
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                expected_trading_bps=float("nan"),
+                expected_borrow_bps=float("nan"),
+            ),
+            _day(
+                "2026-10-02",
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                expected_cost_bps=10.0,
+                expected_trading_bps=4.0,
+                expected_borrow_bps=6.0,
+            ),
+            _day(
+                "2026-10-05",
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                expected_cost_bps=16.0,
+                expected_trading_bps=8.0,
+                expected_borrow_bps=8.0,
+            ),
+        ]
+    )
+    cost = snapshot.attribution_block(frame)["live"]["cost"]
+    # The total is averaged over every day that has one; the halves over the days
+    # that carry a split, so the first day's missing split is not averaged in as a
+    # free fill.
+    assert cost["expected_bps"] == pytest.approx((14.23 + 10.0 + 16.0) / 3)
+    assert cost["expected_trading_bps"] == pytest.approx(6.0)
+    assert cost["expected_borrow_bps"] == pytest.approx(7.0)
+    assert cost["expected_trading_bps"] + cost["expected_borrow_bps"] == pytest.approx(
+        13.0
+    )
+
+
+def test_a_period_with_no_cost_split_says_nothing_rather_than_zero() -> None:
+    """A half nobody computed is not a half of nothing, and not a free fill."""
+    frame = pd.DataFrame(
+        [
+            _day(
+                "2026-10-01",
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                expected_trading_bps=float("nan"),
+                expected_borrow_bps=float("nan"),
+            )
+        ]
+    )
+    cost = snapshot.attribution_block(frame)["live"]["cost"]
+    assert cost["expected_bps"] == pytest.approx(14.23)
+    assert cost["expected_trading_bps"] is None
+    assert cost["expected_borrow_bps"] is None
+
+
+def test_the_hedge_forecast_travels_with_the_split_it_is_read_beside() -> None:
+    """The two books, so the section can show what the hedge removed.
+
+    A split alone is flat by design on a hedged book: the number that says whether
+    the hedge was worth anything is the volatility before it against the volatility
+    after, read off one covariance.
+    """
+    frame = pd.DataFrame(
+        [
+            _day("2026-10-01", 0.0, 0.0, 0.0, 0.0),
+            _day(
+                "2026-10-02",
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                pre_hedge_vol=0.1111,
+                hedged_vol=0.0262,
+            ),
+        ]
+    )
+    risk = snapshot.attribution_block(frame)["live"]["risk"]
+    assert risk["as_of"] == "2026-10-02"
+    assert risk["pre_hedge_vol"] == pytest.approx(0.1111)
+    assert risk["hedged_vol"] == pytest.approx(0.0262)
+    assert [row["pre_hedge_vol"] for row in risk["path"]] == [0.1023, 0.1111]
+
+
+def test_the_recorded_live_read_shows_the_hedge_removing_risk() -> None:
+    """The live record's own claim, measured on the days it carries.
+
+    This is the number the section exists for: on every live day of the recorded
+    read the sized book carries more predicted volatility than the book that was
+    held, and the cost's two halves are the total the evening expected. Both are
+    read out of the same file the page's fixtures are built from, so a change to
+    either the builder or the recording has to keep the claim true.
+    """
+    recorded = json.loads(
+        (ROOT / "tests" / "fixtures" / "attribution_live.json").read_text()
+    )
+    period = snapshot.attribution_block(pd.DataFrame(recorded["rows"]))["live"]
+    pairs = [
+        (row["pre_hedge_vol"], row["hedged_vol"])
+        for row in period["risk"]["path"]
+        if row["pre_hedge_vol"] is not None and row["hedged_vol"] is not None
+    ]
+    assert len(pairs) >= 5, "the recorded read stopped carrying the hedge forecast"
+    for before, after in pairs:
+        assert before > after, "the hedge adds risk on a day of the recorded read"
+    cost = period["cost"]
+    assert cost["expected_trading_bps"] + cost["expected_borrow_bps"] == pytest.approx(
+        cost["expected_bps"]
+    )
+    assert cost["realized_bps"] < cost["expected_trading_bps"]
 
 
 def test_an_unrealized_cost_is_counted_as_missing_rather_than_zero() -> None:

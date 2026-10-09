@@ -1337,6 +1337,14 @@
               },
               "realized_vol": {"type": ["number", "null"]},
               "forecast_vol": {"type": ["number", "null"]},
+              "pre_hedge_vol": {
+                "type": ["number", "null"],
+                "description": "Annualized predicted volatility of the sized book the hedge acted on, from the same Sigma the hedged number uses. Null when the store's own alpha and specific volatility are not to hand."
+              },
+              "hedged_vol": {
+                "type": ["number", "null"],
+                "description": "The same forecast at the book that was held. It is the number the hedge bought: pre_hedge_vol minus hedged_vol is what the hedge removed, which is what the panel draws rather than a flat line at 100% idiosyncratic."
+              },
               "factor_var_share": {
                 "type": ["number", "null"],
                 "description": "The book's predicted variance that the factors carry, as a fraction, from Sigma = X F X' + D at the book's own exposures. The hedged live book holds these near zero."
@@ -1366,9 +1374,23 @@
         },
         "cost": {
           "type": "object",
-          "required": ["expected_bps", "realized_bps", "n_realized"],
+          "required": [
+            "expected_bps",
+            "expected_trading_bps",
+            "expected_borrow_bps",
+            "realized_bps",
+            "n_realized"
+          ],
           "properties": {
             "expected_bps": {"type": ["number", "null"]},
+            "expected_trading_bps": {
+              "type": ["number", "null"],
+              "description": "The expected cost's trading half (spread + impact + commission), averaged over the days that carry one. This is the only half a realized fill cost can be measured against, because it is the half a fill price pays."
+            },
+            "expected_borrow_bps": {
+              "type": ["number", "null"],
+              "description": "The short leg's holding cost over the horizon, averaged the same way. Shown beside the trading half rather than inside the number it is compared against: no fill price pays a calendar."
+            },
             "realized_bps": {"type": ["number", "null"]},
             "n_realized": {"type": "integer"}
           }
@@ -1377,20 +1399,37 @@
           "oneOf": [
             {
               "type": "object",
-              "required": ["as_of", "factor_share", "idio_share", "path"],
+              "required": [
+                "as_of",
+                "factor_share",
+                "idio_share",
+                "pre_hedge_vol",
+                "hedged_vol",
+                "path"
+              ],
               "properties": {
                 "as_of": {"type": ["string", "null"]},
                 "factor_share": {"type": ["number", "null"]},
                 "idio_share": {"type": ["number", "null"]},
+                "pre_hedge_vol": {"type": ["number", "null"]},
+                "hedged_vol": {"type": ["number", "null"]},
                 "path": {
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "required": ["trade_date", "factor_share", "idio_share"],
+                    "required": [
+                      "trade_date",
+                      "factor_share",
+                      "idio_share",
+                      "pre_hedge_vol",
+                      "hedged_vol"
+                    ],
                     "properties": {
                       "trade_date": {"type": ["string", "null"]},
                       "factor_share": {"type": ["number", "null"]},
-                      "idio_share": {"type": ["number", "null"]}
+                      "idio_share": {"type": ["number", "null"]},
+                      "pre_hedge_vol": {"type": ["number", "null"]},
+                      "hedged_vol": {"type": ["number", "null"]}
                     }
                   }
                 }
@@ -1398,7 +1437,7 @@
             },
             {"type": "null"}
           ],
-          "description": "The share of the book's predicted variance the factors carry, today and over the period, or null when no day of the period carries one."
+          "description": "The share of the book's predicted variance the factors carry, today and over the period, and the forecast volatility before and after the hedge, or null when no day of the period carries one."
         },
         "note": {
           "type": "string",

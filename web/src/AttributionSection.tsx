@@ -41,6 +41,10 @@ const bps = (value: number | null | undefined): string =>
 const costBps = (value: number | null | undefined): string =>
   value === null || value === undefined ? "n/a" : `${value.toFixed(2)} bp`;
 
+/** An annualized volatility, which is a fraction, as a percentage to one place. */
+const volPct = (value: number | null | undefined): string =>
+  value === null || value === undefined ? "n/a" : `${(value * 100).toFixed(1)}%`;
+
 /**
  * The raw book beta to three places.
  *
@@ -77,6 +81,27 @@ const COMPONENTS = [
 ] as const;
 
 type LegendEntry = { key: string; word: string; color: string; dash: string };
+
+/**
+ * What the fourth term is called in each view.
+ *
+ * The live book's fourth term is a stored artifact not reproducing the panel's own
+ * return, and it is a few hundredths of a basis point. On a backtest of the seed it
+ * is the descriptors' vintage: the ones on file are not the design the 2012-2026 fit
+ * was estimated on, so a decade of the same gap accumulates to hundreds of bp.
+ * Labelling that "unexplained" invites it to be read as P&L nobody can account for,
+ * which is the one thing it is not: it is a known data gap, and it is named as one.
+ */
+const UNEXPLAINED_LABEL = {
+  live: {
+    long: "unexplained (the stored artifacts do not reproduce the panel's own return)",
+    short: "unexplained",
+  },
+  backtest: {
+    long: "research-vintage mismatch (descriptors on file differ from the fit's design)",
+    short: "research-vintage mismatch",
+  },
+} as const;
 
 function Legend({ entries }: { entries: LegendEntry[] }) {
   return (
@@ -357,7 +382,15 @@ function DayRow({ day }: { day: AttributionDay }) {
  * row is broken, and a column of "+0.0 bp" beside four numbers invites being read
  * as one of the terms.
  */
-function DayTable({ days, label }: { days: AttributionDay[]; label: string }) {
+function DayTable({
+  days,
+  label,
+  live = true,
+}: {
+  days: AttributionDay[];
+  label: string;
+  live?: boolean;
+}) {
   const [showAll, setShowAll] = useState(false);
   const newest = [...days].reverse();
   const shown = showAll ? newest : newest.slice(0, 10);
@@ -372,7 +405,7 @@ function DayTable({ days, label }: { days: AttributionDay[]; label: string }) {
             <th className="py-1 pr-2">factor</th>
             <th className="py-1 pr-2">idio</th>
             <th className="py-1 pr-2">cost</th>
-            <th className="py-1 pr-2">unexplained</th>
+            <th className="py-1 pr-2">{UNEXPLAINED_LABEL[live ? "live" : "backtest"].short}</th>
             <th className="py-1">check</th>
           </tr>
         </thead>
@@ -397,15 +430,26 @@ function DayTable({ days, label }: { days: AttributionDay[]; label: string }) {
 }
 
 /**
- * Today's predicted-risk split and its path since the period opened.
+ * Today's predicted-risk split and its path since the period opened, and the
+ * hedge's own effect beside it.
  *
  * The hedge drives the traded book's factor exposure to zero, so the factor share
  * of predicted variance is a rounding-error-sized slice and the idio share is
  * nearly all of it; the chart is stacked from the factor share up to the idio
  * share so the two always read as the whole. The prose states what the near-zero
  * factor share means, because a 0.0% on its own reads like a missing number.
+ *
+ * That split is flat by design, which is the point and also its limitation: a
+ * section that only showed it would say nothing about what the hedge bought. The
+ * same forecast is therefore stated and drawn at both books - the sized book the
+ * hedge acted on and the book that was held - so the hedge reads as the difference
+ * it is rather than as a line pinned at 100%.
  */
 function RiskSplit({ risk }: { risk: AttributionRisk }) {
+  const before = risk.pre_hedge_vol;
+  const after = risk.hedged_vol;
+  const removed = before === null || after === null ? null : before - after;
+  const share = removed === null || !before ? null : removed / before;
   return (
     <figure className="mt-3" data-chart="risk">
       <figcaption className="text-xs text-slate-500">
@@ -418,9 +462,95 @@ function RiskSplit({ risk }: { risk: AttributionRisk }) {
       {risk.path.length >= 2 ? <RiskPath path={risk.path} /> : null}
       <p className="mt-1 text-xs text-slate-500">
         The traded book is hedged to be factor-neutral, so the factor share sits near zero - under
-        6% across the live period - and almost all of the predicted risk is idiosyncratic.
+        6% across the live period - and almost all of the predicted risk is idiosyncratic. That is
+        the hedge's residue and not its size: what it removed is the gap between the two books
+        below.
       </p>
+      <p className="mt-2 text-sm tabular-nums" data-vol="line">
+        predicted annual volatility {volPct(after)} after the hedge, from {volPct(before)} before it
+        {removed === null || share === null
+          ? ""
+          : ` - the hedge removed ${(removed * 100).toFixed(1)} points, ${(share * 100).toFixed(
+              0,
+            )}% of the sized book's risk`}
+        .
+      </p>
+      {risk.path.length >= 2 && before !== null && after !== null ? (
+        <HedgeVol path={risk.path} />
+      ) : null}
     </figure>
+  );
+}
+
+/**
+ * The two forecasts the hedge stands between, over the period.
+ *
+ * The upper line is the annualized volatility of the sized book the hedge acted on,
+ * the lower one is the book that was held, and the shaded band between them is the
+ * risk the hedge removed. Both are read off one covariance and one design, which is
+ * what makes the band a measurement rather than a comparison of two vintages.
+ */
+function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
+  const W = 320;
+  const H = 110;
+  const L = 30;
+  const R = 8;
+  const T = 8;
+  const B = 18;
+  const pw = W - L - R;
+  const ph = H - T - B;
+  const before = path.map((point) => point.pre_hedge_vol ?? 0);
+  const after = path.map((point) => point.hedged_vol ?? 0);
+  const top = Math.max(...before, 0.005) * 1.08;
+  const x = (index: number): number =>
+    path.length <= 1 ? L + pw / 2 : L + (index / (path.length - 1)) * pw;
+  const y = (value: number): number => T + (1 - Math.min(value / top, 1)) * ph;
+  const line = (values: number[]): string =>
+    values.map((value, index) => `${x(index)},${y(value)}`).join(" ");
+  const band = [
+    ...before.map((value, index) => `${x(index)},${y(value)}`),
+    ...after.map((value, index) => `${x(index)},${y(value)}`).reverse(),
+  ].join(" ");
+
+  return (
+    <svg
+      className="mt-1 h-auto"
+      viewBox={`0 0 ${W} ${H}`}
+      width="100%"
+      role="img"
+      aria-label="predicted annual volatility before and after the hedge"
+      data-chart="hedge-vol"
+    >
+      {[0, 0.5, 1].map((tick, index) => (
+        <g key={index}>
+          <line x1={L} y1={y(tick * top)} x2={W - R} y2={y(tick * top)} stroke="#e2e8f0" strokeWidth="1" />
+          <text x={L - 4} y={y(tick * top) + 3} textAnchor="end" fontSize="8" fill="#64748b">
+            {`${(tick * top * 100).toFixed(1)}%`}
+          </text>
+        </g>
+      ))}
+      <polygon data-series="removed" points={band} fill="#94a3b8" fillOpacity="0.25" />
+      <polyline
+        data-series="pre-hedge"
+        points={line(before)}
+        fill="none"
+        stroke={COLORS.factor}
+        strokeWidth="1.4"
+      />
+      <polyline
+        data-series="hedged"
+        points={line(after)}
+        fill="none"
+        stroke={COLORS.idio}
+        strokeWidth="1.4"
+      />
+      <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
+        {dateOnly(path[0]?.trade_date) ?? ""}
+      </text>
+      <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#64748b">
+        {dateOnly(path[path.length - 1]?.trade_date) ?? ""}
+      </text>
+    </svg>
   );
 }
 
@@ -497,17 +627,36 @@ function RiskPath({ path }: { path: AttributionRiskPath[] }) {
   );
 }
 
-/** How the cost term is built, which is not the same number every day. */
+/**
+ * How the cost term is built, which is not the same number every day.
+ *
+ * The realized cost is measured from the previous close to the fill, which is the
+ * trade the loop actually made - the leg is sent after one close and fills at the
+ * next open - so most of it *is* the overnight gap rather than the spread. The one
+ * number it can be compared against is the expectation's trading half, because
+ * that is the half of the cost a fill price pays: spread, impact and commission.
+ * Borrow is the short leg's holding cost over the horizon, no execution price pays
+ * a calendar, so it is reported beside the comparison rather than inside it.
+ */
 function CostLine({ period }: { period: AttributionPeriod }) {
   const realized = period.cost.realized_bps;
+  const trading = period.cost.expected_trading_bps;
+  const borrow = period.cost.expected_borrow_bps;
+  const realizedWords =
+    realized === null
+      ? "no realized fill cost is on file"
+      : `the fills paid ${costBps(realized)} from the previous close to the fill (mostly the overnight gap) across ${count(
+          period.cost.n_realized,
+        )} of ${count(period.n_days_carried)} carried day(s)`;
   return (
     <p className="mt-2 text-xs text-slate-500" data-cost="line">
-      cost: the evening predicted {costBps(period.cost.expected_bps)} for the period, and{" "}
-      {realized === null
-        ? "no realized fill cost is on file"
-        : `the fills paid ${costBps(realized)} across ${count(period.cost.n_realized)} of ${count(
-            period.n_days_carried,
-          )} carried day(s), so a favourable fill can carry a negative number`}
+      cost: the evening predicted {costBps(period.cost.expected_bps)} for the period
+      {trading === null ? "" : `, of which ${costBps(trading)} is the trading half (spread, impact and commission, the only half a fill price pays)`}
+      {borrow === null ? "" : ` and ${costBps(borrow)} is borrow, the short leg's holding cost over the horizon`}.{" "}
+      {realizedWords}
+      {realized === null || trading === null
+        ? ""
+        : `, to be read against the ${costBps(trading)} of trading cost expected; a favourable fill can carry a negative number`}
       . The cost term in the split is a day's realized number where it has one and the expected
       number where it does not.
     </p>
@@ -556,7 +705,7 @@ function PeriodView({
           ? "Every row is stored by the evening run: factor P&L is the book's exposure times the factor returns, idio P&L is its positions times the specific returns, and the four terms below are the day's total."
           : `This is a backtest of the seed book, not the live book: nobody traded it, so its cost is exactly zero, and its fourth term, ${bps(
               cumulative.pnl_unexplained,
-            )}, is the stored descriptors' own vintage disagreement rather than a loss anyone took.`}
+            )}, is a research-vintage mismatch - the descriptors on file differ from the fit's design - rather than a loss anyone took.`}
       </p>
       {live ? null : period.note ? (
         <p className="mt-1 text-xs text-slate-500" data-backtest-note="true">
@@ -586,7 +735,7 @@ function PeriodView({
           className="rounded border border-slate-100 bg-slate-50 px-2 py-1"
         >
           <dt className="break-words text-xs uppercase tracking-wide text-slate-500">
-            unexplained (the stored artifacts do not reproduce the panel's own return)
+            {UNEXPLAINED_LABEL[live ? "live" : "backtest"].long}
           </dt>
           <dd className="tabular-nums">{bps(cumulative.pnl_unexplained)}</dd>
         </div>
@@ -602,7 +751,7 @@ function PeriodView({
       <CostLine period={period} />
       {live && period.risk ? <RiskSplit risk={period.risk} /> : null}
 
-      <DayTable days={carried} label="attribution by day" />
+      <DayTable days={carried} label="attribution by day" live={live} />
       {lastDay ? (
         <p className="mt-1 text-xs text-slate-500" data-beta="book">
           the last day, {dateOnly(lastDay.trade_date) ?? "n/a"}: raw beta{" "}

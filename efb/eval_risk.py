@@ -366,6 +366,10 @@ class XsPieces(TypedDict):
     design_vintage: str
     factor_covariance: np.ndarray
     specific: np.ndarray
+    # How many names the diagonal had no row for, filled with the cross-sectional
+    # median by the time the vector above is built. A caller that reports the gap -
+    # E12's risk panel does - can only get it from here.
+    missing: int
 
 
 def _xs_pieces(
@@ -412,6 +416,7 @@ def _xs_pieces(
     specific, _missing = race._specific_for(date, names, root)
     design = np.nan_to_num(design, nan=0.0, posinf=0.0, neginf=0.0)
     median_specific = float(np.nanmedian(specific))
+    n_missing = int(np.isnan(specific).sum())
     specific = np.where(np.isnan(specific), median_specific, specific)
     blocks = (
         ("design", design),
@@ -425,6 +430,10 @@ def _xs_pieces(
         "design_vintage": design_vintage,
         "factor_covariance": factor_covariance,
         "specific": specific,
+        # How many names the filled diagonal had no row for: the median is inside
+        # `specific` by now, so a caller that wants to report the gap can only get
+        # it from here.
+        "missing": n_missing,
     }
 
 

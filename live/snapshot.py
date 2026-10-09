@@ -633,6 +633,15 @@ def _numbers(value: Any) -> dict[str, Any]:
     return {str(key): _number(item) for key, item in value.items()}
 
 
+def _mean(values: list[float]) -> float | None:
+    """The mean of the days that carry a number, or None when none does.
+
+    Over the days that have one rather than over the period: an average that
+    counted a missing day as a zero would report a cost nobody paid.
+    """
+    return _number(sum(values) / len(values)) if values else None
+
+
 # The page shows a month of days. The attribution itself is stored for every day
 # the loop has traded, and the cumulative sums below are over all of them.
 ATTRIBUTION_DAYS = 30
@@ -681,7 +690,13 @@ def _empty_period(note: str) -> dict[str, Any]:
         "by_factor": {},
         "daily": [],
         "monthly": [],
-        "cost": {"expected_bps": None, "realized_bps": None, "n_realized": 0},
+        "cost": {
+            "expected_bps": None,
+            "expected_trading_bps": None,
+            "expected_borrow_bps": None,
+            "realized_bps": None,
+            "n_realized": 0,
+        },
         "risk": None,
         "note": note,
     }
@@ -714,6 +729,19 @@ def _period(
     expected = [
         float(value)
         for value in ordered.get("expected_cost_bps", [])
+        if _number(value) is not None
+    ]
+    # The expected cost's two halves, from the reconciliation row's own parts. They
+    # are averaged over the days that carry one rather than over the period, so a
+    # day whose split the store never recorded cannot drag either half to zero.
+    trading = [
+        float(value)
+        for value in ordered.get("expected_trading_bps", [])
+        if _number(value) is not None
+    ]
+    borrow = [
+        float(value)
+        for value in ordered.get("expected_borrow_bps", [])
         if _number(value) is not None
     ]
     realized = [
@@ -766,6 +794,10 @@ def _period(
                 "pnl_beta": _number(record.get("pnl_beta")),
                 "realized_vol": _number(record.get("realized_vol")),
                 "forecast_vol": _number(record.get("forecast_vol")),
+                # The two books the hedge stands between: the sized book it acted
+                # on, and the book that was held. The difference is what it removed.
+                "pre_hedge_vol": _number(record.get("pre_hedge_vol")),
+                "hedged_vol": _number(record.get("hedged_vol")),
                 "factor_var_share": _number(record.get("factor_var_share")),
                 "idio_var_share": _number(record.get("idio_var_share")),
             }
@@ -773,12 +805,13 @@ def _period(
         ],
         "monthly": _monthly_series(monthly),
         "cost": {
-            "expected_bps": (
-                _number(sum(expected) / len(expected)) if expected else None
-            ),
-            "realized_bps": (
-                _number(sum(realized) / len(realized)) if realized else None
-            ),
+            "expected_bps": _mean(expected),
+            # The half of the expectation a fill price can be measured against, and
+            # the half it cannot: borrow is the short leg's cost over the horizon
+            # and no execution price pays it.
+            "expected_trading_bps": _mean(trading),
+            "expected_borrow_bps": _mean(borrow),
+            "realized_bps": _mean(realized),
             "n_realized": len(realized),
         },
         "risk": _risk_path(ordered) if risk else None,
@@ -816,6 +849,8 @@ def _risk_path(frame: pd.DataFrame) -> dict[str, Any] | None:
             "trade_date": _day(record.get("trade_date")),
             "factor_share": _number(record.get("factor_var_share")),
             "idio_share": _number(record.get("idio_var_share")),
+            "pre_hedge_vol": _number(record.get("pre_hedge_vol")),
+            "hedged_vol": _number(record.get("hedged_vol")),
         }
         for record in frame.to_dict("records")
         if _number(record.get("factor_var_share")) is not None
@@ -826,6 +861,8 @@ def _risk_path(frame: pd.DataFrame) -> dict[str, Any] | None:
         "as_of": rows[-1]["trade_date"],
         "factor_share": rows[-1]["factor_share"],
         "idio_share": rows[-1]["idio_share"],
+        "pre_hedge_vol": rows[-1]["pre_hedge_vol"],
+        "hedged_vol": rows[-1]["hedged_vol"],
         "path": rows,
     }
 
