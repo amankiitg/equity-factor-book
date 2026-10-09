@@ -210,53 +210,55 @@ describe("the page", () => {
     expect(energy?.getAttribute("data-sign")).toBe("negative");
   });
 
-  it("shows the attribution: the three components, the hedge's factor P&L and the beta line", () => {
+  it("shows the attribution: the live period, its four terms and the total", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    const attribution = OK.attribution;
+    const live = OK.attribution?.live;
     // The fixture carries the block, and this says so rather than casting: a page
     // test that reads a block the document does not have is testing nothing.
-    if (!attribution) throw new Error("the ok fixture carries no attribution block");
-    const cumulative = attribution.cumulative;
-    // The three components, in basis points of the book, each with its sign.
+    if (!live) throw new Error("the ok fixture carries no live attribution");
+    const cumulative = live.cumulative;
+    // The four terms and the total, in basis points of the book, each with its sign.
     const bps = (value: number) => `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)} bp`;
-    expect(screen.getByText(`total: ${bps(cumulative.pnl_total as number)}`)).toBeTruthy();
-    expect(screen.getByText(`factor: ${bps(cumulative.pnl_factor as number)}`)).toBeTruthy();
-    expect(screen.getByText(`idio: ${bps(cumulative.pnl_idio as number)}`)).toBeTruthy();
-    expect(screen.getByText(`cost: ${bps(cumulative.pnl_cost as number)}`)).toBeTruthy();
+    const card = (name: string) =>
+      document.querySelector(`[data-card='${name}']`)?.textContent ?? "";
+    expect(card("pnl-total")).toContain(bps(cumulative.pnl_total as number));
+    expect(card("pnl-factor")).toContain(bps(cumulative.pnl_factor as number));
+    expect(card("pnl-idio")).toContain(bps(cumulative.pnl_idio as number));
+    expect(card("pnl-cost")).toContain(bps(cumulative.pnl_cost as number));
+    expect(card("pnl-unexplained")).toContain(bps(cumulative.pnl_unexplained as number));
     // The worst day's residual travels with the sums rather than being asserted
     // away: a split nobody checked is not a decomposition.
-    expect(screen.getByText(/worst day's identity residual/)).toBeTruthy();
+    expect(screen.getByText(/worst single day's identity residual/)).toBeTruthy();
     const table = screen.getByRole("table", { name: "attribution by day" });
     const header = within(table).getAllByRole("columnheader").map((cell) => cell.textContent);
-    expect(header).toEqual([
-      "close",
-      "total",
-      "factor",
-      "idio",
-      "cost",
-      "hedge factor P&L",
-      "raw beta",
-      "beta line",
-    ]);
+    expect(header).toEqual(["close", "total", "factor", "idio", "cost", "unexplained", "check"]);
     // Newest first, so the top row is the last stored day, and its dates are days.
     const rows = within(table).getAllByRole("row").slice(1);
-    expect(rows.length).toBe(attribution.daily.length);
-    expect(within(rows[0]).getAllByRole("cell")[0].textContent).toBe(attribution.last_day);
+    expect(rows.length).toBe(live.daily.length);
+    expect(within(rows[0]).getAllByRole("cell")[0].textContent).toBe(live.last_day);
     expect(within(rows[0]).getAllByRole("cell")[0].textContent).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("says why the attribution is empty instead of showing an empty table", () => {
+  it("says why the live attribution is empty instead of showing an empty table", () => {
+    const attribution = OK.attribution;
+    if (!attribution?.live) throw new Error("the ok fixture carries no live attribution");
     const snapshot = {
       ...OK,
       attribution: {
-        ...OK.attribution,
-        n_days: 0,
-        daily: [],
-        note: "no attributed day is stored yet",
+        ...attribution,
+        live: {
+          ...attribution.live,
+          n_days: 0,
+          n_days_carried: 0,
+          daily: [],
+          monthly: [],
+          risk: null,
+          note: "",
+        },
       },
     } as unknown as Snapshot;
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
-    expect(screen.getByText("no attributed day is stored yet")).toBeTruthy();
+    expect(screen.getByText("no live day is attributed yet")).toBeTruthy();
     expect(screen.queryByRole("table", { name: "attribution by day" })).toBeNull();
   });
 

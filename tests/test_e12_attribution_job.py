@@ -51,24 +51,44 @@ def _position_row(trade_date: str, ticker: str, weight: float) -> dict[str, obje
 def test_a_stored_book_with_no_row_yet_is_attributed_and_stored(
     local_store: Path,
 ) -> None:
-    """One tested session: the store's own book, through the real artifacts."""
+    """One stored book, every session the artifacts can price: the documented work list.
+
+    The job's contract is "the sessions with a book and no row", not "tonight": a
+    day the loop never attributed is filled in by the next run, and a book dated
+    `d` is the book held for every session after it, which is the convention the
+    rest of the project uses. So one stored book dated 2026-09-18 earns every
+    session the artifacts price after it, and each is one row.
+    """
     store.upsert(
         "positions",
         [_position_row(BOOK_DAY, "AAPL", 0.5), _position_row(BOOK_DAY, "MSFT", -0.5)],
     )
     report = attribution_job.run(ROOT / "data")
-
-    assert report["n_stored"] == 1, report
-    assert report["sessions"] == [SESSION]
     stored = store.select("attribution")
-    assert list(stored["trade_date"].astype(str).str.slice(0, 10)) == [SESSION]
+    assert report["n_stored"] == len(stored) > 1
+    assert (
+        SESSION in report["sessions"]
+    ), "the session after the stored book was not attributed"
+    assert report["sessions"] == sorted(
+        report["sessions"]
+    ), "the sessions are out of order"
     row = stored.iloc[0]
     assert row["n_names"] == 2
     assert abs(row["gross"] - 1.0) < 1e-9
-    # The three components are the total: this is the identity, on a live-style
-    # book made of two names the model prices.
-    assert abs(row["pnl_total"] - (row["pnl_factor"] + row["pnl_idio"])) < 1e-12
-    assert abs(row["identity_residual"]) < 1e-10
+    # The four terms are the total: this is the identity, on a live-style book made
+    # of two names the model prices.
+    assert (
+        abs(
+            row["pnl_total"]
+            - (
+                row["pnl_factor"]
+                + row["pnl_idio"]
+                + row["pnl_cost"]
+                + row["identity_residual"]
+            )
+        )
+        < 1e-12
+    )
 
 
 def test_the_identity_closes_on_the_stored_row(local_store: Path) -> None:
@@ -82,8 +102,18 @@ def test_the_identity_closes_on_the_stored_row(local_store: Path) -> None:
     split = json.loads(stored["pnl_factor_json"])
     parts = sum(float(value) for value in split.values())
     assert abs(parts - float(stored["pnl_factor"])) < 1e-12
+    # The four terms, not three: on this vintage the stored factor and specific
+    # returns do not reproduce the panel's own return, and the disagreement is the
+    # row's own `identity_residual` rather than something the reader has to find.
     total = float(stored["pnl_factor"]) + float(stored["pnl_idio"])
-    assert abs(float(stored["pnl_total"]) - (total + float(stored["pnl_cost"]))) < 1e-12
+    assert (
+        abs(
+            float(stored["pnl_total"])
+            - (total + float(stored["pnl_cost"]) + float(stored["identity_residual"]))
+        )
+        < 1e-12
+    )
+    assert abs(float(stored["identity_residual"])) < 1e-1, "the residual grew"
     # The four per-factor maps went in as JSON text, and jsonb would have refused
     # the row had any of them carried a NaN.
     assert "NaN" not in str(stored["exposure_json"])
@@ -100,10 +130,11 @@ def test_a_day_already_attributed_is_not_done_twice(local_store: Path) -> None:
     first = attribution_job.run(ROOT / "data")
     second = attribution_job.run(ROOT / "data")
 
-    assert first["n_stored"] == 1
+    assert first["n_stored"] > 1
     assert second["n_stored"] == 0
-    assert second["n_done"] == 1
-    assert len(store.select("attribution")) == 1, "the day was written twice"
+    assert second["n_done"] == first["n_stored"]
+    written = len(store.select("attribution"))
+    assert written == first["n_stored"], "a day was written twice"
 
 
 def test_the_day_carries_the_stored_cost_and_forecast(local_store: Path) -> None:
@@ -130,7 +161,7 @@ def test_the_day_carries_the_stored_cost_and_forecast(local_store: Path) -> None
     assert float(row["pnl_cost"]) == pytest.approx(-15.0 / 1e4)
     assert float(row["forecast_vol"]) == pytest.approx(0.10)
     assert float(row["expected_cost_bps"]) == pytest.approx(15.0)
-    # And the identity still closes with a cost in it.
+    # And the identity still closes with a cost in it, over the four terms.
     assert (
         abs(
             float(row["pnl_total"])
@@ -138,6 +169,7 @@ def test_the_day_carries_the_stored_cost_and_forecast(local_store: Path) -> None
                 float(row["pnl_factor"])
                 + float(row["pnl_idio"])
                 + float(row["pnl_cost"])
+                + float(row["identity_residual"])
             )
         )
         < 1e-12
@@ -179,12 +211,18 @@ def test_the_fill_counts_come_from_the_order_rows(local_store: Path) -> None:
 
 def test_a_book_with_no_session_after_it_is_not_attributed(local_store: Path) -> None:
     """The last stored book earns a session that has not happened yet."""
+    panel_sessions = pd.DatetimeIndex(
+        pd.read_parquet(
+            ROOT / "data" / "processed" / "returns.parquet", columns=[]
+        ).index.get_level_values("date")
+    )
+    last = str(max(panel_sessions))[:10]
     store.upsert(
         "positions",
-        [_position_row(SESSION, "AAPL", 0.5), _position_row(SESSION, "MSFT", -0.5)],
+        [_position_row(last, "AAPL", 0.5), _position_row(last, "MSFT", -0.5)],
     )
     report = attribution_job.run(ROOT / "data")
-    assert report["n_stored"] == 0
+    assert report["n_stored"] == 0, report
     assert store.select("attribution").empty
 
 

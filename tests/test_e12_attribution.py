@@ -317,7 +317,7 @@ def test_the_pipeline_attributes_the_seed_book_every_session() -> None:
 
 
 def test_the_stored_split_reconstructs_the_return_on_the_current_build() -> None:
-    """The check the sprint's identity rests on, on three dates of the live vintage.
+    """The check the sprint's identity rests on, on the sessions this build produced.
 
     X is the design the model's fit used - `race._descriptor_design` at the session,
     in the 18 reported columns - f the stored factor returns at the session and u
@@ -326,9 +326,17 @@ def test_the_stored_split_reconstructs_the_return_on_the_current_build() -> None
     conclusion cannot be read as luck: the design dated the previous close misses
     the return by ~1e-3 in median, and the 17-column design leaves a few names out
     by ~2e-2.
+
+    The dates are the live vintage's, because that is what "the current build"
+    means: 2026-09-30 and 2026-10-02 are sessions `live/extend.py` fitted with this
+    code and these artifacts, and they close to 1e-17. The seed's September sessions
+    were fitted by an older vintage and no longer reproduce their own panel -
+    2026-09-18 misses by 3.0e-2 in the worst name, 5.4e-3 in the median - which is
+    the disagreement the page carries as `pnl_unexplained` rather than folding into
+    the three components.
     """
     panel = attribution.ModelPanel(ROOT / "data")
-    dates = [pd.Timestamp(day) for day in ("2026-09-08", "2026-09-18", "2026-09-21")]
+    dates = [pd.Timestamp(day) for day in ("2026-09-30", "2026-10-02")]
     for date in dates:
         previous = panel.sessions[panel.sessions < date][-1]
         day = panel.stored_specific[date]
@@ -350,3 +358,20 @@ def test_the_stored_split_reconstructs_the_return_on_the_current_build() -> None
         assert np.nanmax(np.abs(current + u[ok] - r[ok])) < attribution.IDENTITY_ATOL
         assert np.nanmedian(np.abs(lagged + u[ok] - r[ok])) > 1e-4, "the lag misses"
         assert np.nanmax(np.abs(unreported + u[ok] - r[ok])) > 1e-3, "17 columns miss"
+
+    # The seed's September vintage, measured rather than asserted: it is the reason
+    # the section draws `pnl_unexplained` as its own term instead of folding a
+    # disagreement into the components beside it.
+    old = pd.Timestamp("2026-09-18")
+    day = panel.stored_specific[old]
+    names = [str(ticker) for ticker in day.index]
+    u = day.to_numpy(dtype=float)
+    r = panel.returns.loc[old].reindex(names).to_numpy(dtype=float)
+    ok = np.isfinite(r)
+    f = panel.factor_returns.loc[old].reindex(panel.factor_names(old))
+    rebuilt = panel.reported_design(old, names)[ok] @ np.nan_to_num(
+        f.to_numpy(dtype=float), nan=0.0
+    )
+    miss = np.abs(rebuilt + u[ok] - r[ok])
+    assert np.nanmedian(miss) > 1e-3, "the older vintage now reproduces its panel"
+    assert np.nanmax(miss) < 1e-1, "the disagreement grew past what the sprint measured"

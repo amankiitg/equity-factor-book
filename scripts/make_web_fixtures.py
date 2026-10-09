@@ -59,8 +59,11 @@ STORE_LABEL = "local parquet (live/state/supabase)"
 BRIDGE_SESSION = ROOT / "tests" / "fixtures" / "bridge_2026-10-05.json"
 SPECIFIC = ROOT / "data" / "models" / "XS-v1" / "specific_var.parquet"
 # The E12 attribution artifact: the seed book's own stored attribution, which is
-# what the page's section is built from until the live days exist.
+# the page's backtest view. The live period comes from the recorded live read
+# below, because a fixture is a document and the line it draws is the store's.
 ATTRIBUTION = ROOT / "data" / "attribution" / "daily.parquet"
+ATTRIBUTION_MONTHLY = ROOT / "data" / "attribution" / "monthly.parquet"
+ATTRIBUTION_LIVE = ROOT / "tests" / "fixtures" / "attribution_live.json"
 
 NAMES: tuple[str, ...] = (
     "snapshot_ok.json",
@@ -306,19 +309,25 @@ def fills_report_rejected() -> dict[str, Any]:
         "unread": [],
     }
 def attribution() -> dict[str, Any]:
-    """The page's attribution block, from the sprint's stored artifact.
+    """The page's attribution block: the live book, and the research panel beside it.
 
-    Read through the same builder the run uses rather than stubbed by hand, so the
-    fixture that covers the section has real numbers in it and a change to the
-    builder reaches the page's tests. The seed artifact stands in for the live
-    days until the clock has them, which is exactly what the memo and the
-    walkthrough do.
+    Both halves go through the same builder the run uses rather than being stubbed
+    by hand, so a change to the builder reaches the page's tests. The live rows are
+    the recorded read of the store (`tests/fixtures/attribution_live.json`); the
+    backtest is the seed's own artifact, which is what its view is for.
     """
-    if not ATTRIBUTION.exists():
-        return snapshot.empty_attribution(
-            "the seed attribution artifact has not been built"
+    live = pd.DataFrame(json.loads(ATTRIBUTION_LIVE.read_text())["rows"])
+    backtest = (
+        (
+            pd.read_parquet(ATTRIBUTION),
+            pd.read_parquet(ATTRIBUTION_MONTHLY)
+            if ATTRIBUTION_MONTHLY.exists()
+            else pd.DataFrame(),
         )
-    return snapshot.attribution_block(pd.read_parquet(ATTRIBUTION))
+        if ATTRIBUTION.exists()
+        else None
+    )
+    return snapshot.attribution_block(live, backtest)
 
 
 def _run(**over: Any) -> dict[str, Any]:

@@ -44,6 +44,27 @@ those exposures earned at `f_s`. The two differ, and that is the point of
 reporting both: the split describes the return, the exposure check describes the
 hedge.
 
+**Where a non-zero residual comes from, measured.** `identity_residual` is the
+panel's total return minus the sum of the three components, and it is non-zero
+whenever the stored specific return and the panel's return for the same name and
+session disagree. Two causes, both of them the artifacts and not the arithmetic:
+
+- a corporate-action adjustment between the fit and a later recomputation of the
+  panel. `live.extend.extend_returns` recomputes every session's return from the
+  stored prices, so an ex-dividend correction applied after a session was fitted
+  moves `r` for the paying names and leaves their stored `u` where the fit put it.
+  Measured on 2026-10-02: 185 of the 188 held names reproduce to 1e-8, and the
+  three that do not - BMY, SYY, FAST - carry the day's 0.8 bp;
+- the seed's older design vintage. Before the live period the descriptors on
+  file are not the design the 2012-2026 fit used, so the rebuilt `X f` misses the
+  fit's own factor part for names across the whole universe: on 2026-07-30, 497
+  of 606 names differ and the day misses by 88.9 bp, while 2026-07-31 closes to
+  1.6e-16. 174 of the artifact's 3,645 sessions close exactly.
+
+The page shows the residual as its own component - `pnl_unexplained` - so the day's
+four terms sum to the total by construction and the disagreement is visible rather
+than absorbed. It is null on a day that closes.
+
 **The hedge's own P&L.** The traded book is factor-neutral by construction, so its
 factor P&L is near zero: that near-zero is the hedge's promise. What the hedge
 *did* is the factor P&L it removed, which needs the pre-hedge book. That is
@@ -102,6 +123,9 @@ TABLE_COLUMNS: tuple[str, ...] = (
     "realized_vol",
     "vol_ratio",
     "bias_statistic",
+    "factor_var_share",
+    "idio_var_share",
+    "n_missing_specific_var",
     "expected_cost_bps",
     "realized_cost_bps",
     "n_target",
@@ -281,6 +305,42 @@ class ModelPanel:
         series = frame.loc[frame["date"] == stamp].set_index("ticker")["beta"]
         return series.reindex(names).to_numpy(dtype=float)
 
+    def risk_split(
+        self, book_date: pd.Timestamp, names: list[str], weight: np.ndarray
+    ) -> tuple[float, float, int]:
+        """The book's predicted variance split into its factor and specific parts.
+
+        `Sigma = X F X' + D`, the same decomposition the hedge is built against, so
+        the shares describe the risk the book actually carried rather than a second
+        model. `X` and `F` come from `efb.eval_risk._xs_pieces`, whose design is the
+        row the model dates with the session the book earns - the exposures the book
+        carried into it - and whose covariance is the model's own EWMA strictly
+        before `book_date`.
+
+        A name the specific-variance artifact does not price contributes no
+        specific risk and is counted in the third element rather than being given a
+        number nobody measured. Returns `(nan, nan, n)` when the pieces are not
+        available at all, which is the honest answer for a date the risk model
+        cannot reach.
+        """
+        from efb import eval_risk
+
+        pieces = eval_risk._xs_pieces(pd.Timestamp(book_date), list(names), self.root)
+        if pieces is None:
+            return float("nan"), float("nan"), int(len(names))
+        design = np.asarray(pieces["design"], dtype=float)
+        covariance = np.asarray(pieces["factor_covariance"], dtype=float)
+        specific = np.asarray(pieces["specific"], dtype=float)
+        projected = np.nan_to_num(weight, nan=0.0) @ np.nan_to_num(design, nan=0.0)
+        factor_var = float(projected @ covariance @ projected)
+        priced = np.nan_to_num(specific, nan=0.0)
+        idio_var = float(np.nansum(np.nan_to_num(weight, nan=0.0) ** 2 * priced))
+        missing = int(np.isnan(specific).sum())
+        total = factor_var + idio_var
+        if not np.isfinite(total) or total <= 0.0:
+            return float("nan"), float("nan"), missing
+        return factor_var / total, idio_var / total, missing
+
 
 def reported_factor_names() -> list[str]:
     """The reported factor names, in the reported design's column order."""
@@ -308,6 +368,7 @@ def attribute_book(
     *,
     forecasts: dict[pd.Timestamp, dict[str, float]] | None = None,
     costs: dict[pd.Timestamp, dict[str, float]] | None = None,
+    risk_split: bool = False,
 ) -> pd.DataFrame:
     """One row per session, the day's P&L split and the risk lines beside it.
 
@@ -315,7 +376,9 @@ def attribute_book(
     `forecasts` carries the book's own predicted volatility per book-date, and
     `costs` the expected and realized cost, both keyed by the session they belong
     to. Missing entries leave the column null rather than zero: a cost nobody
-    measured is not a cost of nothing.
+    measured is not a cost of nothing. `risk_split` adds the factor-versus-specific
+    split of the book's predicted variance, which costs one risk-model read per
+    session and is therefore asked for by the live run rather than by every builder.
 
     The split uses the **stored** factor and specific returns, which is what makes
     the identity a check on the model's artifacts. `n_computed_specific` counts the
@@ -366,6 +429,15 @@ def attribute_book(
         book_beta = float(np.nansum(np.where(np.isnan(beta), 0.0, weight * beta)))
         market = float(factor_returns.get("market", np.nan))
         predicted = forecasts.get(session, {})
+        # The risk split is asked for by the live run only: it is one risk-model
+        # read per session, and the seed's research dates are only priced by the
+        # monthly specific-variance artifact, so a share there would be a number
+        # nobody measured.
+        factor_share, idio_share, n_missing_var = (
+            panel.risk_split(book_stamp, names, weight)
+            if risk_split
+            else (float("nan"), float("nan"), 0)
+        )
         rows.append(
             {
                 "trade_date": session,
@@ -402,6 +474,9 @@ def attribute_book(
                 "book_beta": book_beta,
                 "market_return": market,
                 "pnl_beta": book_beta * market if np.isfinite(market) else None,
+                "factor_var_share": factor_share,
+                "idio_var_share": idio_share,
+                "n_missing_specific_var": n_missing_var,
                 "forecast_vol": predicted.get("forecast_vol"),
                 "expected_cost_bps": predicted.get("expected_cost_bps"),
                 "realized_cost_bps": predicted.get("realized_cost_bps"),
@@ -472,6 +547,7 @@ def from_positions(
     done: set[str] | None = None,
     costs: dict[pd.Timestamp, dict[str, Any]] | None = None,
     forecasts: dict[pd.Timestamp, dict[str, Any]] | None = None,
+    risk_split: bool = False,
 ) -> pd.DataFrame:
     """The books a store holds, attributed for every session not already done.
 
@@ -507,7 +583,9 @@ def from_positions(
     holdings = holdings.loc[~holding_days.isin(done)]
     if holdings.empty:
         return pd.DataFrame(columns=holdings.columns)
-    return attribute_book(holdings, panel, forecasts=forecasts, costs=costs)
+    return attribute_book(
+        holdings, panel, forecasts=forecasts, costs=costs, risk_split=risk_split
+    )
 
 
 # The F12.3 rule, in the place that applies it: no skill is claimed unless the

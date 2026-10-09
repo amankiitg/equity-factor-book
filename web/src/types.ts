@@ -188,39 +188,87 @@ export interface ActualHoldings {
   exits?: ExitsBlock | null;
 }
 
+/**
+ * The attribution the evening step writes: what the book earned, split into the
+ * four terms that add to its total. Fractions of the book's gross, which is 1.0 of
+ * NAV, so 1e-4 is one basis point.
+ *
+ * `live` is the book that traded and `backtest` is the seed's own research panel,
+ * which nobody traded; the second is null on a host that has no artifact. The two
+ * are different objects and are never summed: the page keeps them behind a switch.
+ */
 export interface AttributionDay {
   trade_date: string | null;
   pnl_total: number | null;
   pnl_factor: number | null;
   pnl_idio: number | null;
   pnl_cost: number | null;
+  pnl_unexplained: number | null;
   pnl_timing: number | null;
   book_beta: number | null;
   market_return: number | null;
   pnl_beta: number | null;
   realized_vol: number | null;
   forecast_vol: number | null;
+  factor_var_share: number | null;
+  idio_var_share: number | null;
 }
 
-export interface Attribution {
-  n_days: number;
+export interface AttributionMonth {
+  month: string | null;
+  pnl_total: number | null;
+  pnl_factor: number | null;
+  pnl_idio: number | null;
+  pnl_cost: number | null;
+  n_sessions: number | null;
+}
+
+export interface AttributionRiskPath {
+  trade_date: string | null;
+  factor_share: number | null;
+  idio_share: number | null;
+}
+
+export interface AttributionRisk {
+  as_of: string | null;
+  factor_share: number | null;
+  idio_share: number | null;
+  path: AttributionRiskPath[];
+}
+
+export interface AttributionPeriod {
+  label: string;
   first_day: string | null;
   last_day: string | null;
+  /** Every session the period holds, whether or not it is in `daily`. */
+  n_days: number;
+  /** How many of them are in `daily`. */
+  n_days_carried: number;
   cumulative: {
     pnl_total: number | null;
     pnl_factor: number | null;
     pnl_idio: number | null;
     pnl_cost: number | null;
+    pnl_unexplained: number | null;
     max_identity_residual: number | null;
     n_computed_specific: number;
   };
   by_factor: Record<string, number | null>;
   daily: AttributionDay[];
+  /** Backtest only: the whole run, one row a month, oldest first. */
+  monthly: AttributionMonth[];
   cost: {
     expected_bps: number | null;
     realized_bps: number | null;
     n_realized: number;
   };
+  risk: AttributionRisk | null;
+  note: string;
+}
+
+export interface Attribution {
+  live: AttributionPeriod | null;
+  backtest: AttributionPeriod | null;
   note: string;
 }
 
@@ -289,10 +337,12 @@ export interface Snapshot {
   // the shape each section expects, and the page's own notes for why).
   risk?: RiskConcentration | null;
   movers?: SessionMovers | null;
-  // What the book earned, split three ways, written by the evening's attribution
-  // step. Absent (not null) on a document written before that step existed, which
-  // is every document already in the bucket: the section hides itself for one
-  // rather than reading a block that is not there.
+  // What the book earned, split into the four terms that add to its total, written
+  // by the evening's attribution step. Absent (not null) on a document written
+  // before that step existed, which is every document already in the bucket: the
+  // section hides itself for one rather than reading a block that is not there. A
+  // present block always carries a `live` period, which may itself be empty; the
+  // `backtest` period is null on a host that has no research artifact.
   attribution?: Attribution | null;
 }
 

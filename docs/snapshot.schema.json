@@ -1207,24 +1207,60 @@
     },
     "attribution": {
       "type": "object",
-      "description": "What the book earned, split into factor, idio and cost, with the hedge's own factor P&L and the raw-beta line beside it. Read from the store's attribution table by scripts/run_live_daily.py, which the evening run fills for every day it has not already attributed. The cumulative sums are over every stored day and the daily series is the most recent window.",
+      "description": "What the book earned, split into factor, idio, cost and the unexplained remainder, with the hedge's own factor P&L, the raw-beta line and the risk split beside it. Two periods of one shape: `live` is the book the loop actually traded, read from the store's attribution table by scripts/run_live_daily.py, which the evening run fills for every day it has not already attributed; `backtest` is the research panel's own seed artifact, a book nobody traded, and is null where the host's seed bundle does not carry it. The page opens on the live period.",
+      "required": ["live", "backtest", "note"],
+      "properties": {
+        "live": {
+          "allOf": [{"$ref": "#/$defs/attribution_period"}],
+          "description": "The live book's own days, from the first day of the live period."
+        },
+        "backtest": {
+          "oneOf": [
+            {"$ref": "#/$defs/attribution_period"},
+            {"type": "null"}
+          ],
+          "description": "The research panel's 2012-2026 attribution, or null when the seed bundle on the host does not carry the artifact."
+        },
+        "note": {
+          "type": "string",
+          "description": "Why no live day is attributed yet, when none is. Empty means the section has something to show."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "attribution_period": {
+      "type": "object",
+      "description": "One attribution period: the days it holds, the sums over all of them, the most recent days themselves, and the risk split. The cumulative sums are over every day the period holds; `daily` is a bounded window of them, newest last, so a period that grows for years does not grow the payload.",
       "required": [
-        "n_days",
+        "label",
         "first_day",
         "last_day",
+        "n_days",
+        "n_days_carried",
         "cumulative",
         "by_factor",
         "daily",
+        "monthly",
         "cost",
+        "risk",
         "note"
       ],
       "properties": {
-        "n_days": {
-          "type": "integer",
-          "description": "Attributed days stored, which is the whole history, not the window below."
+        "label": {
+          "type": "string",
+          "description": "What the period is, in words the page can print: the live book, or the research panel."
         },
         "first_day": {"type": ["string", "null"]},
         "last_day": {"type": ["string", "null"]},
+        "n_days": {
+          "type": "integer",
+          "description": "Days the period holds, which is the whole period, not the window below."
+        },
+        "n_days_carried": {
+          "type": "integer",
+          "description": "How many of those days the `daily` window carries."
+        },
         "cumulative": {
           "type": "object",
           "required": [
@@ -1232,6 +1268,7 @@
             "pnl_factor",
             "pnl_idio",
             "pnl_cost",
+            "pnl_unexplained",
             "max_identity_residual",
             "n_computed_specific"
           ],
@@ -1240,6 +1277,10 @@
             "pnl_factor": {"type": ["number", "null"]},
             "pnl_idio": {"type": ["number", "null"]},
             "pnl_cost": {"type": ["number", "null"]},
+            "pnl_unexplained": {
+              "type": ["number", "null"],
+              "description": "The sum of the stored residuals: the panel's own return minus the three components above. Zero on a period whose artifacts reproduce the panel, and the fourth term the page draws so a day's four components reach its total."
+            },
             "max_identity_residual": {
               "type": ["number", "null"],
               "description": "The worst single day of total minus (factor + idio + cost). Not a sum: the identity is a per-day statement, and its worst day is what makes the split checkable."
@@ -1265,6 +1306,7 @@
               "pnl_factor",
               "pnl_idio",
               "pnl_cost",
+              "pnl_unexplained",
               "pnl_timing",
               "book_beta",
               "market_return",
@@ -1276,13 +1318,17 @@
               "pnl_factor": {"type": ["number", "null"]},
               "pnl_idio": {"type": ["number", "null"]},
               "pnl_cost": {"type": ["number", "null"]},
+              "pnl_unexplained": {
+                "type": ["number", "null"],
+                "description": "The day's own residual, and the term that makes the row add up: total minus (factor + idio + cost), to machine precision. It is the stored artifacts disagreeing with the panel's own return, not a fourth estimate, and the page draws it as its own band so a broken identity is visible."
+              },
               "pnl_timing": {
                 "type": ["number", "null"],
                 "description": "The hedge's own factor P&L for the day: the P&L the exposure gap between the two design vintages produced. On a book whose hedge did its job this is the part that should have been zero."
               },
               "book_beta": {
                 "type": ["number", "null"],
-                "description": "Raw CAPM beta of the book, from the stored beta history, weighted by the day's holdings."
+                "description": "Raw CAPM beta of the book, from the stored beta history, weighted by the day's holdings. Around 0.02 on the hedged live book, so the page prints it to three decimals."
               },
               "market_return": {"type": ["number", "null"]},
               "pnl_beta": {
@@ -1290,7 +1336,31 @@
                 "description": "book_beta times market_return. It explains part of the idio P&L and is never added to the three components."
               },
               "realized_vol": {"type": ["number", "null"]},
-              "forecast_vol": {"type": ["number", "null"]}
+              "forecast_vol": {"type": ["number", "null"]},
+              "factor_var_share": {
+                "type": ["number", "null"],
+                "description": "The book's predicted variance that the factors carry, as a fraction, from Sigma = X F X' + D at the book's own exposures. The hedged live book holds these near zero."
+              },
+              "idio_var_share": {
+                "type": ["number", "null"],
+                "description": "The rest of the predicted variance: the specific diagonal, Sum w_i^2 D_ii."
+              }
+            }
+          }
+        },
+        "monthly": {
+          "type": "array",
+          "description": "The period's month sums, carried by the research panel so its chart is a decade without a decade of daily rows. Empty for the live period.",
+          "items": {
+            "type": "object",
+            "required": ["month", "pnl_total", "pnl_factor", "pnl_idio", "pnl_cost", "n_sessions"],
+            "properties": {
+              "month": {"type": ["string", "null"]},
+              "pnl_total": {"type": ["number", "null"]},
+              "pnl_factor": {"type": ["number", "null"]},
+              "pnl_idio": {"type": ["number", "null"]},
+              "pnl_cost": {"type": ["number", "null"]},
+              "n_sessions": {"type": "integer"}
             }
           }
         },
@@ -1303,9 +1373,36 @@
             "n_realized": {"type": "integer"}
           }
         },
+        "risk": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["as_of", "factor_share", "idio_share", "path"],
+              "properties": {
+                "as_of": {"type": ["string", "null"]},
+                "factor_share": {"type": ["number", "null"]},
+                "idio_share": {"type": ["number", "null"]},
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["trade_date", "factor_share", "idio_share"],
+                    "properties": {
+                      "trade_date": {"type": ["string", "null"]},
+                      "factor_share": {"type": ["number", "null"]},
+                      "idio_share": {"type": ["number", "null"]}
+                    }
+                  }
+                }
+              }
+            },
+            {"type": "null"}
+          ],
+          "description": "The share of the book's predicted variance the factors carry, today and over the period, or null when no day of the period carries one."
+        },
         "note": {
           "type": "string",
-          "description": "Why the block is empty, when it is. Empty means the section has something to show."
+          "description": "What a reader has to know about this period: that it is a backtest, that a few rehearsal sessions were left out, that it is empty."
         }
       }
     }

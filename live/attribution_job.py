@@ -62,28 +62,67 @@ def _number(value: Any) -> float | None:
     return float(value)
 
 
+def nav_equity(nav: pd.DataFrame | None) -> dict[str, float]:
+    """The store's own equity per day, keyed by ISO date, for a cost's denominator."""
+    if nav is None or getattr(nav, "empty", True) or "trade_date" not in nav.columns:
+        return {}
+    out: dict[str, float] = {}
+    for row in nav.to_dict("records"):
+        value = _number(row.get("nav"))
+        if value is not None:
+            out[str(row["trade_date"])[:10]] = float(value)
+    return out
+
+
 def session_inputs(
-    reconciliation: pd.DataFrame, orders: pd.DataFrame
+    reconciliation: pd.DataFrame,
+    orders: pd.DataFrame,
+    *,
+    fills: pd.DataFrame | None = None,
+    nav: pd.DataFrame | None = None,
 ) -> tuple[dict[pd.Timestamp, dict[str, Any]], dict[pd.Timestamp, dict[str, Any]]]:
     """The per-session cost and forecast, from the store's own rows.
 
-    The cost is the **realized** one where the day has it and the expected one
-    otherwise, in basis points of NAV, negated into the P&L units the attribution
-    works in: the book is gross 1.0 of NAV, so a basis point of NAV is a basis
-    point of gross. Both numbers travel on the row, so the page can show the two
-    side by side rather than only the one that was subtracted.
+    The cost is the **realized** one, computed from the day's own fills by
+    `live.fills.realized_cost_bps` - the same function the morning report uses, so
+    the page's cost and the email's cannot disagree - and the day's expected cost is
+    the fallback for a session whose fills are not in yet, which is every evening
+    before its own morning. Both numbers travel on the row, in basis points of NAV,
+    negated into the P&L units the attribution works in: the book is gross 1.0 of
+    NAV, so a basis point of NAV is a basis point of gross.
 
-    The fill counts come from the `orders` table, because "how many legs were
-    intended and how many filled" is a question about orders and not about the
-    book.
+    The fill counts come from `efb.fills`, which is where a fill is recorded: the
+    `orders` table carries the legs the evening *sent* and their submission state
+    (`ACCEPTED`), so counting `FILLED` there counted nothing and reported every
+    traded day as having filled no leg.
     """
     costs: dict[pd.Timestamp, dict[str, Any]] = {}
     forecasts: dict[pd.Timestamp, dict[str, Any]] = {}
+    realized_from_fills: dict[str, float] = {}
+    filled_by_day: dict[str, int] = {}
+    if (
+        fills is not None
+        and not getattr(fills, "empty", True)
+        and "trade_date" in fills.columns
+    ):
+        from live import fills as fills_module
+
+        equity = nav_equity(nav)
+        days = fills["trade_date"].astype(str).str.slice(0, 10)
+        for day, rows in fills.groupby(days):
+            bps = fills_module.realized_cost_bps(rows, equity.get(str(day)))
+            if bps is not None:
+                realized_from_fills[str(day)] = float(bps)
+            filled = rows["status"].astype(str) == "FILLED"
+            filled_by_day[str(day)] = int(filled.sum())
     if not reconciliation.empty and "trade_date" in reconciliation.columns:
         for row in reconciliation.to_dict("records"):
             day = pd.Timestamp(str(row["trade_date"])[:10])
             expected = _number(row.get("expected_cost_bps"))
-            realized = _number(row.get("realized_cost_bps"))
+            stored = _number(row.get("realized_cost_bps"))
+            realized = (
+                stored if stored is not None else realized_from_fills.get(str(day)[:10])
+            )
             chosen = realized if realized is not None else expected
             if chosen is not None:
                 costs[day] = {"cost_usd": -chosen / 1e4}
@@ -100,10 +139,13 @@ def session_inputs(
             filled = pd.to_numeric(group["filled_notional"], errors="coerce")
             status = group["status"].astype(str)
             gap = _number((intended - filled).abs().max())
+            known = filled_by_day.get(str(day)[:10])
             forecasts.setdefault(stamp, {}).update(
                 {
                     "n_target": int(len(group)),
-                    "n_filled": int((status == "FILLED").sum()),
+                    "n_filled": (
+                        known if known is not None else int((status == "FILLED").sum())
+                    ),
                     "max_fill_gap": gap if gap is not None else 0.0,
                 }
             )
@@ -129,10 +171,18 @@ def run(root: Path, *, panel: attribution.ModelPanel | None = None) -> dict[str,
     done = attributed_days()
     panel = panel if panel is not None else attribution.ModelPanel(root)
     costs, forecasts = session_inputs(
-        store.select("reconciliation"), store.select("orders")
+        store.select("reconciliation"),
+        store.select("orders"),
+        fills=store.select("fills"),
+        nav=store.select("nav"),
     )
     frame = attribution.from_positions(
-        books(positions), panel, done=done, costs=costs, forecasts=forecasts
+        books(positions),
+        panel,
+        done=done,
+        costs=costs,
+        forecasts=forecasts,
+        risk_split=True,
     )
     if frame.empty:
         return {

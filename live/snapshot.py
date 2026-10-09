@@ -637,48 +637,73 @@ def _numbers(value: Any) -> dict[str, Any]:
 # the loop has traded, and the cumulative sums below are over all of them.
 ATTRIBUTION_DAYS = 30
 
+# The first day of the live period. The loop was rehearsed on the seed's own books
+# before the flip, so the store holds a few sessions that are not the live book's;
+# they are attributed (the table is a record of what was held) and left out of the
+# view the page opens on.
+LIVE_PERIOD_START = "2026-10-01"
+
+# The research panel's own attribution artifact, built by
+# `scripts/build_attribution.py` from the seed's stored book. It is not in git (the
+# parquet artifacts are ignored), so the backtest view exists only where the seed
+# bundle on the host carries it; without it the view is absent rather than empty.
+DATA_ROOT = Path(__file__).resolve().parents[1] / "data"
+BACKTEST_DAILY = "daily.parquet"
+BACKTEST_MONTHLY = "monthly.parquet"
+
 
 def empty_attribution(note: str) -> dict[str, Any]:
     """The attribution block for a run with nothing to show, and why."""
     return {
-        "n_days": 0,
+        "live": _empty_period("the live book has no attributed day yet"),
+        "backtest": None,
+        "note": note,
+    }
+
+
+def _empty_period(note: str) -> dict[str, Any]:
+    """One period with nothing in it: the same keys, so the page has one shape."""
+    return {
+        "label": "",
         "first_day": None,
         "last_day": None,
+        "n_days": 0,
+        "n_days_carried": 0,
         "cumulative": {
             "pnl_total": None,
             "pnl_factor": None,
             "pnl_idio": None,
             "pnl_cost": None,
+            "pnl_unexplained": None,
             "max_identity_residual": None,
             "n_computed_specific": 0,
         },
         "by_factor": {},
         "daily": [],
+        "monthly": [],
         "cost": {"expected_bps": None, "realized_bps": None, "n_realized": 0},
+        "risk": None,
         "note": note,
     }
 
 
-def attribution_block(frame: pd.DataFrame | None = None) -> dict[str, Any]:
-    """The attribution section: what the book earned, split three ways.
+def _period(
+    frame: pd.DataFrame,
+    *,
+    label: str,
+    note: str,
+    days: int | None = None,
+    monthly: pd.DataFrame | None = None,
+    risk: bool = False,
+) -> dict[str, Any]:
+    """One attribution period: the days it holds, the sums and the risk path.
 
-    Read from the store's `attribution` table, which the evening run fills for
-    every day it has not already attributed, so the page and the memo cannot
-    disagree about a day. The cumulative sums are over every stored day; the
-    per-day series is the most recent window, because a series that grows without
-    bound is not a panel.
-
-    The residual travels with the sums rather than being assumed away: it is the
-    one number that says whether the three components really are the total, and a
-    page that showed the split without it would be showing a decomposition nobody
-    had checked.
+    `frame` is every row of the period, newest last, and `days` bounds only the
+    per-day series that travels in the payload. The cumulative sums are over all of
+    it, so a bounded series never shortens a total.
     """
-    if frame is None:
-        frame = store.select("attribution")
-    if frame.empty or "trade_date" not in frame.columns:
-        return empty_attribution("no attributed day is stored yet")
     ordered = frame.sort_values("trade_date")
-    days = ordered.tail(ATTRIBUTION_DAYS)
+    carried = ordered if days is None else ordered.tail(days)
     by_factor: dict[str, float] = {}
     for record in ordered.to_dict("records"):
         split = _numbers(_json_value(record.get("pnl_factor_json"), {}))
@@ -696,18 +721,27 @@ def attribution_block(frame: pd.DataFrame | None = None) -> dict[str, Any]:
         for value in ordered.get("realized_cost_bps", [])
         if _number(value) is not None
     ]
+    residual = [
+        abs(float(value))
+        for value in ordered.get("identity_residual", [])
+        if _number(value) is not None
+    ]
     return {
-        "n_days": int(len(ordered)),
+        "label": label,
         "first_day": _day(ordered["trade_date"].iloc[0]),
         "last_day": _day(ordered["trade_date"].iloc[-1]),
+        "n_days": int(len(ordered)),
+        "n_days_carried": int(len(carried)),
         "cumulative": {
             "pnl_total": _number(ordered["pnl_total"].sum()),
             "pnl_factor": _number(ordered["pnl_factor"].sum()),
             "pnl_idio": _number(ordered["pnl_idio"].sum()),
             "pnl_cost": _number(ordered["pnl_cost"].sum()),
-            # Not a sum: the identity is a per-day statement, and its worst day is
-            # what a reader needs to judge the split.
-            "max_identity_residual": _number(ordered["identity_residual"].abs().max()),
+            # The fourth displayed term: the panel's own return minus the three
+            # components, which is the stored residual's sum and is zero on a
+            # period whose artifacts reproduce the panel.
+            "pnl_unexplained": _number(ordered["identity_residual"].sum()),
+            "max_identity_residual": _number(max(residual)) if residual else None,
             "n_computed_specific": int(ordered["n_computed_specific"].sum()),
         },
         "by_factor": {
@@ -720,6 +754,9 @@ def attribution_block(frame: pd.DataFrame | None = None) -> dict[str, Any]:
                 "pnl_factor": _number(record.get("pnl_factor")),
                 "pnl_idio": _number(record.get("pnl_idio")),
                 "pnl_cost": _number(record.get("pnl_cost")),
+                # The term that makes the row add up: total minus the three, which
+                # is the stored artifact disagreement rather than a fourth estimate.
+                "pnl_unexplained": _number(record.get("identity_residual")),
                 # The hedge's own factor P&L for the day: the P&L the exposure gap
                 # between the two design vintages produced. On a book whose hedge
                 # did its job this is the part that should have been zero.
@@ -729,9 +766,12 @@ def attribution_block(frame: pd.DataFrame | None = None) -> dict[str, Any]:
                 "pnl_beta": _number(record.get("pnl_beta")),
                 "realized_vol": _number(record.get("realized_vol")),
                 "forecast_vol": _number(record.get("forecast_vol")),
+                "factor_var_share": _number(record.get("factor_var_share")),
+                "idio_var_share": _number(record.get("idio_var_share")),
             }
-            for record in days.to_dict("records")
+            for record in carried.to_dict("records")
         ],
+        "monthly": _monthly_series(monthly),
         "cost": {
             "expected_bps": (
                 _number(sum(expected) / len(expected)) if expected else None
@@ -741,8 +781,140 @@ def attribution_block(frame: pd.DataFrame | None = None) -> dict[str, Any]:
             ),
             "n_realized": len(realized),
         },
-        "note": "",
+        "risk": _risk_path(ordered) if risk else None,
+        "note": note,
     }
+
+
+def _monthly_series(frame: pd.DataFrame | None) -> list[dict[str, Any]]:
+    """The backtest's month sums, so its chart is a decade without a decade of rows."""
+    if frame is None or getattr(frame, "empty", True) or "month" not in frame.columns:
+        return []
+    ordered = frame.sort_values("month")
+    return [
+        {
+            "month": str(record.get("month")),
+            "pnl_total": _number(record.get("pnl_total")),
+            "pnl_factor": _number(record.get("pnl_factor")),
+            "pnl_idio": _number(record.get("pnl_idio")),
+            "pnl_cost": _number(record.get("pnl_cost")),
+            "n_sessions": int(record.get("n_sessions") or 0),
+        }
+        for record in ordered.to_dict("records")
+    ]
+
+
+def _risk_path(frame: pd.DataFrame) -> dict[str, Any] | None:
+    """Today's factor-versus-specific risk split, and the path that led to it.
+
+    Absent when no day of the period carries one: a book whose risk model could not
+    reach the dates is described by the section above it and not by a share of
+    nothing.
+    """
+    rows = [
+        {
+            "trade_date": _day(record.get("trade_date")),
+            "factor_share": _number(record.get("factor_var_share")),
+            "idio_share": _number(record.get("idio_var_share")),
+        }
+        for record in frame.to_dict("records")
+        if _number(record.get("factor_var_share")) is not None
+    ]
+    if not rows:
+        return None
+    return {
+        "as_of": rows[-1]["trade_date"],
+        "factor_share": rows[-1]["factor_share"],
+        "idio_share": rows[-1]["idio_share"],
+        "path": rows,
+    }
+
+
+def attribution_block(
+    frame: pd.DataFrame | None = None,
+    backtest: tuple[pd.DataFrame, pd.DataFrame] | None = None,
+    *,
+    root: Path | None = None,
+) -> dict[str, Any]:
+    """The attribution section: the live book, and the research panel beside it.
+
+    The store's `attribution` table is the live book's own days, which the evening
+    run fills for every day it has not already attributed, so the page and the memo
+    cannot disagree about a day. The page opens on it, from `LIVE_PERIOD_START`: the
+    rehearsal sessions the flip left in the table are attributed but are not the
+    live book, and the note says how many were left out.
+
+    The research panel's 2012-2026 attribution is the seed's own artifact and comes
+    back as a **separate, labelled period**. It is a backtest of a book nobody
+    traded, its cost is zero by construction and its identity is bounded by the
+    vintage of the descriptors on file, so it is not a view to open on.
+
+    A period's residual travels with its sums rather than being assumed away:
+    `pnl_unexplained` is the stored residual and the per-day rows add up to the
+    total by construction, so a decomposition that does not close is visible as its
+    own band rather than absorbed into the terms beside it.
+    """
+    if frame is None:
+        frame = store.select("attribution")
+    live_frame = pd.DataFrame()
+    left_out = 0
+    if not frame.empty and "trade_date" in frame.columns:
+        ordered = frame.sort_values("trade_date").copy()
+        ordered["trade_date"] = pd.to_datetime(ordered["trade_date"])
+        left_out = int((ordered["trade_date"] < pd.Timestamp(LIVE_PERIOD_START)).sum())
+        start = pd.Timestamp(LIVE_PERIOD_START)
+        live_frame = ordered.loc[ordered["trade_date"] >= start]
+    live_note = ""
+    if left_out:
+        live_note = (
+            f"{left_out} rehearsal session(s) before {LIVE_PERIOD_START} are stored "
+            "and are not part of the live book's own period"
+        )
+    live = (
+        _period(
+            live_frame,
+            label=f"the live book, from {LIVE_PERIOD_START}",
+            note=live_note,
+            risk=True,
+        )
+        if not live_frame.empty
+        else _empty_period("no live session is attributed yet")
+    )
+    backtest_frame, monthly_frame = (
+        backtest if backtest is not None else _read_backtest(root)
+    )
+    backtest_period = (
+        _period(
+            backtest_frame,
+            label="the research panel, the seed's own book",
+            note=(
+                "a backtest of the seed book, not the live book: no leg was traded, "
+                "so its cost is zero, and its identity is bounded by the vintage of "
+                "the descriptors on file"
+            ),
+            days=ATTRIBUTION_DAYS,
+            monthly=monthly_frame,
+        )
+        if not backtest_frame.empty
+        else None
+    )
+    return {
+        "live": live,
+        "backtest": backtest_period,
+        "note": "" if not live_frame.empty else "no attributed day is stored yet",
+    }
+
+
+def _read_backtest(root: Path | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The research panel's attribution artifact, or two empty frames."""
+    base = Path(root) if root is not None else DATA_ROOT
+    daily_path = base / "attribution" / BACKTEST_DAILY
+    monthly_path = base / "attribution" / BACKTEST_MONTHLY
+    if not daily_path.exists():
+        return pd.DataFrame(), pd.DataFrame()
+    daily = pd.read_parquet(daily_path)
+    monthly = pd.read_parquet(monthly_path) if monthly_path.exists() else pd.DataFrame()
+    return daily, monthly
 
 
 def _attribution_document(raw: Any) -> dict[str, Any]:
