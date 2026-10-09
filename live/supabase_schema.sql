@@ -424,8 +424,6 @@ create table if not exists efb.attribution (
   written_at timestamptz not null default now()
 );
 
-alter table efb.attribution disable row level security;
-
 -- Additive changes, for a database that was already provisioned from an
 -- earlier version of this file. `create table if not exists` says nothing
 -- about a table that already exists, so a column added to a table above reaches

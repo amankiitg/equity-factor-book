@@ -794,6 +794,8 @@ def test_the_upsert_nulls_missing_values_too(monkeypatch: pytest.MonkeyPatch) ->
     assert by_column["detail"] is None
     assert by_column["n_orders"] == 192, "a count is not a missing value"
     assert by_column["run_date"] == "2026-10-07"
+
+
 def test_the_attribution_table_is_registered_on_the_trade_date() -> None:
     """E12: one attributed session is one row, so a re-run replaces the day."""
     assert "attribution" in store.TABLES
