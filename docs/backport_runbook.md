@@ -485,8 +485,33 @@ Steps 1 to 4 are the ones no default run performs.
       the reason travels with it, and `under_minimum` counts only the legs whose code
       says minimum. `tests/test_e11_bridge.py`, with 2026-10-08 as the case.
 
-   The exit condition is the twenty-two of them fixed or written down here, and the day's
-   own numbers as a case in each test rather than a number typed from a message.
+   23. **Seven ids are red on `main` and are not in `docs/known_test_failures.md`, so
+      "zero new" has been measured against a list that is missing them.** The file's own
+      header says 55 failed on `main` at `0e69f69`; the suite run on `main` at `b7a4c11`
+      on 2026-10-09 gives **59 failed, 1313 passed**, and the four extra ids are not in
+      any group below the header. Measured by name, the seven that are red on both `main`
+      and the merged E12 tree and appear nowhere in that file:
+
+      - `tests/test_alpha.py::test_the_shift_audit_catches_a_leaked_signal`
+      - `tests/test_e11_broker_models.py::test_position_book_takes_the_sign_from_a_real_short_side_enum`
+      - `tests/test_hedge_vintage.py::test_the_book_carries_no_exposure_under_the_published_row`
+      - `tests/test_week2_spinoff.py::test_the_artifact_is_written_only_when_something_was_applied`
+      - `tests/test_week2_spinoff.py::test_a_vendor_read_that_fails_leaves_the_print_and_the_flag`
+      - `tests/test_week2_spinoff.py::test_a_hung_spin_off_read_is_named_in_the_evening_email`
+      - `tests/test_week2_spinoff.py::test_the_read_that_answered_and_found_nothing_is_not_a_failure`
+
+      They are not new failures and they are not a merge bar issue - the E12 merge on
+      2026-10-09 was measured as a strict subset of `main`'s reds - but the list is what
+      the exit condition counts, and its exit condition is zero. The `spinoff` four are
+      order- and cache-dependent inside their own file: run alone they fail in a
+      different combination on `main` than in the full suite, so a refresh has to fix
+      them (or pin their order) rather than delete the file. The fix: refresh the file
+      from a run on `main` with the same suite command the gate uses, one id at a time,
+      each with its cause - and until then read the file's count as an undercount, not as
+      the number of failures to expect.
+
+   The exit condition is the twenty-three of them fixed or written down here, and the
+   day's own numbers as a case in each test rather than a number typed from a message.
 
 ## 4. Rollback
 
