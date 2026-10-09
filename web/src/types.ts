@@ -186,6 +186,8 @@ export interface ActualHoldings {
   names: ActualHoldingName[];
   fills: FillsSummary | null;
   exits?: ExitsBlock | null;
+}
+
 export interface AttributionDay {
   trade_date: string | null;
   pnl_total: number | null;
@@ -287,6 +289,11 @@ export interface Snapshot {
   // the shape each section expects, and the page's own notes for why).
   risk?: RiskConcentration | null;
   movers?: SessionMovers | null;
+  // What the book earned, split three ways, written by the evening's attribution
+  // step. Absent (not null) on a document written before that step existed, which
+  // is every document already in the bucket: the section hides itself for one
+  // rather than reading a block that is not there.
+  attribution?: Attribution | null;
 }
 
 export interface RiskConcentration {
@@ -301,5 +308,4 @@ export interface SessionMovers {
   session?: string | null;
   by_name?: Array<{ ticker: string; contribution: number }> | null;
   by_sector?: Array<{ sector?: string | null; contribution: number }> | null;
-  attribution: Attribution;
 }

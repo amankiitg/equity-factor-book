@@ -24,6 +24,7 @@ import { Reasons, TopNames } from "./BookSections";
 import { bookFacts } from "./book";
 import { DrawerSection } from "./DrawerSection";
 import { ExposuresSection } from "./ExposuresSection";
+import { oneDecimal } from "./format";
 import { Movers, RiskConcentration } from "./FutureSections";
 import { MetricsRow } from "./MetricsRow";
 import { Panel } from "./Panel";
@@ -61,7 +62,11 @@ const costBps = (value: number | null | undefined): string =>
  * and is not one of the three, which is the mistake the section exists to make
  * impossible.
  */
-function AttributionSection({ attribution }: { attribution: Attribution }) {
+function AttributionSection({ attribution }: { attribution?: Attribution | null }) {
+  // A document written before the attribution step carries no block at all, and
+  // one is in the bucket right now: the section hides itself rather than drawing
+  // an empty one, the rule every other section here follows.
+  if (!attribution) return null;
   const cumulative = attribution.cumulative;
   if (!attribution.n_days) {
     return (

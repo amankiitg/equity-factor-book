@@ -212,7 +212,11 @@ describe("the page", () => {
 
   it("shows the attribution: the three components, the hedge's factor P&L and the beta line", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    const cumulative = OK.attribution.cumulative;
+    const attribution = OK.attribution;
+    // The fixture carries the block, and this says so rather than casting: a page
+    // test that reads a block the document does not have is testing nothing.
+    if (!attribution) throw new Error("the ok fixture carries no attribution block");
+    const cumulative = attribution.cumulative;
     // The three components, in basis points of the book, each with its sign.
     const bps = (value: number) => `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)} bp`;
     expect(screen.getByText(`total: ${bps(cumulative.pnl_total as number)}`)).toBeTruthy();
@@ -236,8 +240,8 @@ describe("the page", () => {
     ]);
     // Newest first, so the top row is the last stored day, and its dates are days.
     const rows = within(table).getAllByRole("row").slice(1);
-    expect(rows.length).toBe(OK.attribution.daily.length);
-    expect(within(rows[0]).getAllByRole("cell")[0].textContent).toBe(OK.attribution.last_day);
+    expect(rows.length).toBe(attribution.daily.length);
+    expect(within(rows[0]).getAllByRole("cell")[0].textContent).toBe(attribution.last_day);
     expect(within(rows[0]).getAllByRole("cell")[0].textContent).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
@@ -253,6 +257,17 @@ describe("the page", () => {
     } as unknown as Snapshot;
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
     expect(screen.getByText("no attributed day is stored yet")).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "attribution by day" })).toBeNull();
+  });
+
+  it("hides the section on a document written before the attribution existed", () => {
+    // Every document already in the bucket has no `attribution` key at all, which
+    // is not the same as an empty one: reading the block's own fields off a missing
+    // block throws and the whole page goes blank.
+    const older: Snapshot = { ...OK };
+    delete older.attribution;
+    render(<SnapshotView snapshot={older} now={NOW} />);
+    expect(screen.queryByRole("heading", { name: "Attribution" })).toBeNull();
     expect(screen.queryByRole("table", { name: "attribution by day" })).toBeNull();
   });
 
