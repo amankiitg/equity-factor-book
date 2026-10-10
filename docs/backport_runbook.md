@@ -570,7 +570,62 @@ Steps 1 to 4 are the ones no default run performs.
       forecast, on a mean daily P&L of −16.4 bp: the drift, not the dispersion, is what
       those sessions show, and the panel must not paper over either.
 
-   The exit condition is the twenty-six of them fixed or written down here, and the
+   27. **A new input under `data/` that a live path reads is a seed change, and nothing
+      checks it.** On 2026-10-09 the evening completed `ok` and the page reported "no
+      attributed day is stored yet", with `efb.attribution` empty. The cause was not the
+      arithmetic: `efb/attribution.py:291` reads
+      `models/TS-v1/beta_history.parquet`, no live path had ever read TS-V1 before E12,
+      and the seed manifest - measured from the files the run paths read when it was
+      built on 2026-09-26 - lists 19 files, none under `models/TS-v1/`. So
+      `runroot.prepare` put 19 files in the run tree, `seed.guard` allowlisted exactly
+      those, the read was refused at `live/seed.py:218`
+      (`SeedReadNotAllowed: models/TS-v1/beta_history.parquet is not a file the seed
+      holds`), and the step's own handler at `scripts/run_live_daily.py:1758` logged it
+      and let the run continue. Measured with the run's own recorder
+      (`seed.record_reads`) around the step: it opens seven files under the tree, and
+      **exactly one** is not in the bundle - 4.81 MB. The cost of the gap is a silently
+      empty page section, not a failed run, which is why it survived a full evening.
+      Two fixes, and the second is not optional: a **preflight** that refuses a run
+      whose seed manifest does not cover every file the live paths read - `seed`
+      already has the pieces (`record_reads`, `seed_material`, `manifest_for`) and the
+      run already logs the allowlist size at startup - and a check on the **push** side,
+      because the tree the manifest is measured from is not pristine: on 2026-10-09 the
+      repository's `data/` differed from the bundle in **14 of its 19 files** (for
+      example `processed/returns.parquet` 62,086,841 bytes against the bundle's
+      61,289,827), so a re-push that trusted the local tree would swap artifacts of the
+      running seed. The bundle now holds 20 files
+      (`models/TS-v1/beta_history.parquet`, sha256 `ee50acf9...`, `data_hash`
+      unchanged at `c3e0db6f...`), which is the reference a preflight would compare to.
+   28. **The attribution step's outcome goes nowhere but the log.** On 2026-10-09 the
+      step raised and wrote nothing, and every durable record says the night was clean:
+      `efb.run_status.detail` is `''`, `failures` and `flags` are `[]`, and
+      `efb.cron_runs.detail` is `''`. The exception exists only in the container's
+      stdout, which is what a reader without the Render log cannot see. The handler is
+      at `scripts/run_live_daily.py:1751` (the call) and `:1758` (the `logger.warning`),
+      and the email has no field for it at all: `live/notify.py` does not mention
+      attribution anywhere, and `compose()` (`live/notify.py:361`) has no parameter for
+      it. The fix, in the shape the loop already uses for a leg it could not send: a
+      line in the block of consequence lines at `live/notify.py:640-672` beside "No
+      broker asset, so not sent" and "Under the minimum, left untraded", carrying the
+      step's own report (`n_stored`, `n_done`, the sessions) when it worked and the
+      exception when it did not; and the same fact on the run row, so the page and the
+      dashboard read it rather than only the log. A step whose failure is invisible on a
+      night the page loses a whole section is a step nothing is watching.
+   29. **`beta_history` should be read with a fallback, so a missing optional artifact
+      costs two columns and not the section.** `efb/attribution.py:291` is the only read
+      that needs `models/TS-v1/beta_history.parquet`, and it feeds exactly two columns -
+      `book_beta` and `pnl_beta` - which the module's own docstring describes as a
+      diagnostic that "explains part of the specific P&L; it is not a fourth component
+      and is never added to the other three" (`efb/attribution.py:76-84`). Because the
+      read sits in `ModelPanel.__init__` with no fallback, its absence took the whole
+      report down: ten days of attribution, the risk split and the cost lines, for a
+      cosmetic column. The fix: read it in a `try`/`except FileNotFoundError` and leave
+      `betas` empty, so `betas_at` returns NaN and the two columns are null with the
+      rest of the row intact. That does not replace item 27 - the file belongs in the
+      seed, and the numbers should be complete - but it is the difference between a
+      degraded line and an empty section, and today's failure is the case for it.
+
+   The exit condition is the twenty-nine of them fixed or written down here, and the
    day's own numbers as a case in each test rather than a number typed from a message.
 
 ## 4. Rollback
