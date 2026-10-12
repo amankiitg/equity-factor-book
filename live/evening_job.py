@@ -15,6 +15,7 @@ does not know are excluded and counted, not imputed.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import subprocess
 import time
@@ -44,6 +45,8 @@ GROSS_CAP = 1.0  # the E8 gross cap, a hard ceiling
 PAPER_NAV = 1_000_000.0  # the paper notional the morning job runs
 REFERENCE_AUM = 1e8  # the capacity-curve reference, kept for the E6 finding
 TRADING_DAYS = 252
+logger = logging.getLogger(__name__)
+
 HORIZON = 21  # the rebalance horizon, the E6 and E9 convention
 MIN_NAMES = 50
 # How many names one evening may lose for having no usable close before the run
@@ -1265,7 +1268,24 @@ def build_proposal(
     as_of_ts = pd.Timestamp(as_of) if as_of is not None else wide.index.max()
     universe, spy_path = load_spy_universe(root, as_of=as_of_ts)
     universe_as_of = str(pd.to_datetime(universe["as_of"].iloc[0]).date())
-    spy_tickers = sorted(universe["ticker"].astype(str).str.upper().str.strip())
+    # A duplicated universe row would size the name twice, count it twice in
+    # `n_kept`, hedge it against itself and write it to `efb.positions` twice, where
+    # the natural key would collapse the two rows and leave the row count
+    # disagreeing with every count taken off the manifest. Nothing has ever seen
+    # one (the 2026-09-21 archive: 503 rows, 499 unique), so this is a guard rather
+    # than a fix, and it names what it dropped instead of absorbing it silently.
+    raw_tickers = universe["ticker"].astype(str).str.upper().str.strip()
+    spy_tickers = sorted(set(raw_tickers))
+    duplicates = sorted(
+        {ticker for ticker in raw_tickers if int((raw_tickers == ticker).sum()) > 1}
+    )
+    if duplicates:
+        logger.warning(
+            "the SPY universe lists %d ticker(s) more than once and they are kept "
+            "once: %s",
+            len(duplicates),
+            ", ".join(duplicates),
+        )
     wide_names = [str(column) for column in wide.columns]
     names = [ticker for ticker in spy_tickers if ticker in wide_names]
     excluded = [ticker for ticker in spy_tickers if ticker not in wide_names]

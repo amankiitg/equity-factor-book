@@ -222,11 +222,19 @@ def specific_std_or_refuse(ticker: str, today_std: pd.Series, as_of: str) -> flo
     stored against a risk that was invented on the way in.
     """
     value = today_std.get(ticker)
-    if value is None or not math.isfinite(float(value)):
+    # "Has a risk estimate" is one predicate, shared with the drop: a variance that
+    # is not finite *or* not positive is no estimate. The drop has always rejected
+    # a zero (`live/evening_job.py:428`) while this write accepted it, so a name
+    # could be stored with `idio_vol = 0.0` - the same lie as the NaN, quieter.
+    # Unreachable from the live path, because the drop removes such a name before
+    # it is sized, which is exactly why the two must agree: two definitions of the
+    # same question in one loop is one too many.
+    if value is None or not math.isfinite(float(value)) or float(value) <= 0.0:
         raise ValueError(
             f"no specific variance for {ticker} at {as_of}: the store cannot be "
             "written with a fabricated idio_vol, and the evening drops a name with "
-            "no risk estimate before it sizes the book"
+            "no risk estimate - including a non-positive one - before it sizes the "
+            "book"
         )
     return float(value)
 
