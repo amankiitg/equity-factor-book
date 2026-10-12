@@ -386,6 +386,7 @@ def compose(
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
     no_risk: list[dict[str, Any]] | None = None,
+    missing_var: int | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
@@ -533,6 +534,17 @@ def compose(
         lines.append(
             f"Dropped for no risk estimate: {_no_risk_names(no_risk)} "
             "(out of the book before sizing)."
+        )
+    if missing_var:
+        # The same fact from the diagonal's own side, and the count the sizing
+        # cannot report: how many names in the universe the risk artifact has no
+        # row for. The engine fills those with the cross-sectional median (Q on
+        # EQT's own variance, to the last bit), which is why the drop exists; the
+        # count says how much of the universe the book is blind to, not only which
+        # names left tonight.
+        lines.append(
+            f"Specific variance: {int(missing_var)} universe name(s) have no row in "
+            "the risk artifact and are not sized."
         )
     if thin_adv:
         # The impact term is a function of each name's dollar volume, and a name
@@ -1284,6 +1296,7 @@ def notify_run(
     exits: dict[str, Any] | None = None,
     sent_notional: float | None = None,
     sent_orders: int | None = None,
+    missing_var: int | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -1309,6 +1322,7 @@ def notify_run(
         dry_run=dry_run,
         orders=orders,
         sent_orders=sent_orders,
+        missing_var=missing_var,
         gross=gross,
         worst_input=worst_input,
         worst_sessions_behind=worst_sessions_behind,

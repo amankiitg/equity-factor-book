@@ -850,6 +850,7 @@ def finish_run(
     init: bool = False,
     no_price: list[str] | None = None,
     no_risk: list[dict[str, Any]] | None = None,
+    missing_var: int | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     poster: Any = None,
     snapshot_poster: Any = None,
@@ -1043,6 +1044,7 @@ def finish_run(
         cross_checks_capped=cross_checks_capped,
         no_price=no_price,
         no_risk=no_risk,
+        missing_var=missing_var,
         thin_adv=thin_adv,
         init=init,
         establishment=establishment,
@@ -1813,6 +1815,8 @@ def main() -> int:
             detail = "the run reported itself incomplete"
     else:
         status, detail = "ok", ""
+    raw_missing_var = manifest.get("n_specific_var_missing")
+    missing_var = raw_missing_var if isinstance(raw_missing_var, int) else 0
     return finish_run(
         run_date=run_date,
         result=gate,
@@ -1833,6 +1837,7 @@ def main() -> int:
         cross_checks_capped=capped,
         no_price=no_price,
         no_risk=no_risk,
+        missing_var=missing_var,
         thin_adv=thin_adv,
         init=first_run,
         establishment=bool(morning.get("establishment")),

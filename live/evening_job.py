@@ -1300,7 +1300,7 @@ def build_proposal(
     # same one `_xs_pieces` uses, so the check and the diagonal cannot disagree
     # about which names have an estimate. `n_names` below is what is left, so the
     # counts add up as universe = excluded + dropped_no_risk + n_names.
-    variances, _filled = race._specific_for(as_of_ts, names, root)
+    variances, n_missing_var = race._specific_for(as_of_ts, names, root)
     names, dropped_no_risk = risk_names_or_stop(names, variances)
 
     pieces = eval_risk._xs_pieces(as_of_ts, names, root)
@@ -1458,6 +1458,14 @@ def build_proposal(
         "n_dropped_no_risk": len(dropped_no_risk),
         "dropped_no_risk": dropped_no_risk,
         "max_risk_drops": MAX_RISK_DROPS,
+        # How many names the risk block had no estimate for at all, before the drop
+        # removed them. `_specific_for` has always computed this count and the
+        # caller has always thrown it away, so a reader could see the names that
+        # left the book and not how many the diagonal could not measure. It is the
+        # same number as `n_dropped_no_risk` on a night the drop is what removed
+        # them, and it is smaller when a name is excluded first, which is why both
+        # are recorded rather than one being derived from the other.
+        "n_specific_var_missing": int(n_missing_var),
         "ic": ic,
         "kappa": kappa,
         "factor_neutral_ic_h21": neutral_ic["factor_neutral_ic_h21"],
