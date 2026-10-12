@@ -1,0 +1,1404 @@
+{
+ "closes": [
+  "2026-09-25",
+  "2026-09-29",
+  "2026-09-30",
+  "2026-10-01",
+  "2026-10-02",
+  "2026-10-05",
+  "2026-10-06",
+  "2026-10-08",
+  "2026-10-09"
+ ],
+ "turnover": [
+  {
+   "close": "2026-09-29",
+   "turnover_of_gross": 1.2202494215616122,
+   "traded_notional": 1220254.790659067,
+   "left": 49,
+   "arrived": 74,
+   "held": 175
+  },
+  {
+   "close": "2026-09-30",
+   "turnover_of_gross": 0.42571475829297584,
+   "traded_notional": 425715.8608941998,
+   "left": 32,
+   "arrived": 35,
+   "held": 178
+  },
+  {
+   "close": "2026-10-01",
+   "turnover_of_gross": 0.3964719951690202,
+   "traded_notional": 395909.1555952384,
+   "left": 24,
+   "arrived": 34,
+   "held": 188
+  },
+  {
+   "close": "2026-10-02",
+   "turnover_of_gross": 0.4281981011431589,
+   "traded_notional": 426616.37161338417,
+   "left": 28,
+   "arrived": 44,
+   "held": 204
+  },
+  {
+   "close": "2026-10-05",
+   "turnover_of_gross": 0.4370701237593531,
+   "traded_notional": 434676.5922699085,
+   "left": 42,
+   "arrived": 29,
+   "held": 191
+  },
+  {
+   "close": "2026-10-06",
+   "turnover_of_gross": 0.3671631525333168,
+   "traded_notional": 363850.04848316935,
+   "left": 28,
+   "arrived": 32,
+   "held": 195
+  },
+  {
+   "close": "2026-10-08",
+   "turnover_of_gross": 0.5070861239673772,
+   "traded_notional": 502133.28195219557,
+   "left": 50,
+   "arrived": 30,
+   "held": 175
+  },
+  {
+   "close": "2026-10-09",
+   "turnover_of_gross": 0.3850382740648285,
+   "traded_notional": 380154.9375951983,
+   "left": 35,
+   "arrived": 19,
+   "held": 159
+  }
+ ],
+ "round_trips": [
+  {
+   "ticker": "ABT",
+   "left": "2026-10-01",
+   "returned": "2026-10-05",
+   "sessions_away": 2,
+   "weight_out": 0.00221871209966879,
+   "weight_in": 0.00231987374531983,
+   "dollars_both_ways": 4513.73114193985
+  },
+  {
+   "ticker": "ALL",
+   "left": "2026-10-01",
+   "returned": "2026-10-05",
+   "sessions_away": 2,
+   "weight_out": 0.0100288419851209,
+   "weight_in": 0.00810490378997656,
+   "dollars_both_ways": 18034.43976177183
+  },
+  {
+   "ticker": "AOS",
+   "left": "2026-09-29",
+   "returned": "2026-10-02",
+   "sessions_away": 3,
+   "weight_out": 0.00534270155741939,
+   "weight_in": 0.00246209984274089,
+   "dollars_both_ways": 7775.971088172199
+  },
+  {
+   "ticker": "APA",
+   "left": "2026-09-30",
+   "returned": "2026-10-02",
+   "sessions_away": 2,
+   "weight_out": 0.000848253221458862,
+   "weight_in": 0.00118358997552548,
+   "dollars_both_ways": 2024.3377307621372
+  },
+  {
+   "ticker": "APA",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00118358997552548,
+   "weight_in": 0.00105703421163522,
+   "dollars_both_ways": 2220.4058699953716
+  },
+  {
+   "ticker": "APH",
+   "left": "2026-09-29",
+   "returned": "2026-10-05",
+   "sessions_away": 4,
+   "weight_out": 0.0119169705480896,
+   "weight_in": 0.00178016880219973,
+   "dollars_both_ways": 13622.129569093948
+  },
+  {
+   "ticker": "APH",
+   "left": "2026-10-06",
+   "returned": "2026-10-08",
+   "sessions_away": 1,
+   "weight_out": 0.00178016880219973,
+   "weight_in": 0.00216318229475469,
+   "dollars_both_ways": 3904.8353615191804
+  },
+  {
+   "ticker": "BAC",
+   "left": "2026-09-29",
+   "returned": "2026-10-01",
+   "sessions_away": 2,
+   "weight_out": 0.00119348576141013,
+   "weight_in": 0.00403240350250375,
+   "dollars_both_ways": 5218.470486997042
+  },
+  {
+   "ticker": "BBY",
+   "left": "2026-10-06",
+   "returned": "2026-10-08",
+   "sessions_away": 1,
+   "weight_out": 0.00189726341114054,
+   "weight_in": 0.00588200734195938,
+   "dollars_both_ways": 7703.288593043997
+  },
+  {
+   "ticker": "BDX",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00489164031651818,
+   "weight_in": 0.00594688553747406,
+   "dollars_both_ways": 10823.139265919395
+  },
+  {
+   "ticker": "BDX",
+   "left": "2026-10-02",
+   "returned": "2026-10-08",
+   "sessions_away": 3,
+   "weight_out": 0.00594688553747406,
+   "weight_in": 0.00620762264579231,
+   "dollars_both_ways": 12035.791941668278
+  },
+  {
+   "ticker": "BEN",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00091069832981811,
+   "weight_in": 0.00191991236060753,
+   "dollars_both_ways": 2805.0686182483705
+  },
+  {
+   "ticker": "BIIB",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00441514498528556,
+   "weight_in": 0.00451702158574275,
+   "dollars_both_ways": 8851.566987331304
+  },
+  {
+   "ticker": "BKNG",
+   "left": "2026-10-02",
+   "returned": "2026-10-05",
+   "sessions_away": 1,
+   "weight_out": 0.00524856298738209,
+   "weight_in": 0.00383309124622063,
+   "dollars_both_ways": 9031.9202797067
+  },
+  {
+   "ticker": "BKR",
+   "left": "2026-10-02",
+   "returned": "2026-10-08",
+   "sessions_away": 3,
+   "weight_out": 0.00134373281737243,
+   "weight_in": 0.00144922703391557,
+   "dollars_both_ways": 2765.680286250909
+  },
+  {
+   "ticker": "BR",
+   "left": "2026-09-29",
+   "returned": "2026-10-05",
+   "sessions_away": 4,
+   "weight_out": 0.00332558505287545,
+   "weight_in": 0.00387768306172405,
+   "dollars_both_ways": 7163.820785390838
+  },
+  {
+   "ticker": "BRO",
+   "left": "2026-09-29",
+   "returned": "2026-10-01",
+   "sessions_away": 2,
+   "weight_out": 0.00918675257523594,
+   "weight_in": 0.00124805500246952,
+   "dollars_both_ways": 10419.994116171998
+  },
+  {
+   "ticker": "BRO",
+   "left": "2026-10-02",
+   "returned": "2026-10-06",
+   "sessions_away": 2,
+   "weight_out": 0.00124805500246952,
+   "weight_in": 0.0013539541050633,
+   "dollars_both_ways": 2578.5298263108157
+  },
+  {
+   "ticker": "BXP",
+   "left": "2026-09-30",
+   "returned": "2026-10-02",
+   "sessions_away": 2,
+   "weight_out": 0.00144539327524524,
+   "weight_in": 0.00151824748762147,
+   "dollars_both_ways": 2952.693310979941
+  },
+  {
+   "ticker": "CARR",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.00419727460564185,
+   "weight_in": 0.0073459065254475,
+   "dollars_both_ways": 11396.78208146265
+  },
+  {
+   "ticker": "CCL",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.000832165574486041,
+   "weight_in": 0.000746515867861134,
+   "dollars_both_ways": 1578.6855311321108
+  },
+  {
+   "ticker": "CCL",
+   "left": "2026-10-01",
+   "returned": "2026-10-02",
+   "sessions_away": 1,
+   "weight_out": 0.000746515867861134,
+   "weight_in": 0.0009296493161926,
+   "dollars_both_ways": 1669.973563957054
+  },
+  {
+   "ticker": "CFG",
+   "left": "2026-09-29",
+   "returned": "2026-10-08",
+   "sessions_away": 6,
+   "weight_out": 0.00196981024358707,
+   "weight_in": 0.00130749496534631,
+   "dollars_both_ways": 3245.294916858373
+  },
+  {
+   "ticker": "CHRW",
+   "left": "2026-10-02",
+   "returned": "2026-10-05",
+   "sessions_away": 1,
+   "weight_out": 0.00703664424606401,
+   "weight_in": 0.00658430985382359,
+   "dollars_both_ways": 13546.361532740842
+  },
+  {
+   "ticker": "CMCSA",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.00141659068974122,
+   "weight_in": 0.00206254767120441,
+   "dollars_both_ways": 3479.1473719139844
+  },
+  {
+   "ticker": "CMCSA",
+   "left": "2026-10-02",
+   "returned": "2026-10-05",
+   "sessions_away": 1,
+   "weight_out": 0.00214455854487807,
+   "weight_in": 0.00213049200522929,
+   "dollars_both_ways": 4251.639048029301
+  },
+  {
+   "ticker": "CMS",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.002064705154376,
+   "weight_in": 0.00154817156495785,
+   "dollars_both_ways": 3612.8860766845523
+  },
+  {
+   "ticker": "CPRT",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.00098041038007696,
+   "weight_in": 0.00100033942690776,
+   "dollars_both_ways": 1980.7549371267198
+  },
+  {
+   "ticker": "CPRT",
+   "left": "2026-10-02",
+   "returned": "2026-10-06",
+   "sessions_away": 2,
+   "weight_out": 0.000554620055902453,
+   "weight_in": 0.000622749736013915,
+   "dollars_both_ways": 1166.745772051615
+  },
+  {
+   "ticker": "CRH",
+   "left": "2026-09-30",
+   "returned": "2026-10-02",
+   "sessions_away": 2,
+   "weight_out": 0.00296408633365293,
+   "weight_in": 0.00177427322035492,
+   "dollars_both_ways": 4720.8564328841085
+  },
+  {
+   "ticker": "CRWD",
+   "left": "2026-09-29",
+   "returned": "2026-10-02",
+   "sessions_away": 3,
+   "weight_out": 0.0145199729113715,
+   "weight_in": 0.00650256369668834,
+   "dollars_both_ways": 20944.881039632593
+  },
+  {
+   "ticker": "CRWD",
+   "left": "2026-10-05",
+   "returned": "2026-10-08",
+   "sessions_away": 2,
+   "weight_out": 0.00650256369668834,
+   "weight_in": 0.00608847250180548,
+   "dollars_both_ways": 12468.05627427372
+  },
+  {
+   "ticker": "CSCO",
+   "left": "2026-09-30",
+   "returned": "2026-10-06",
+   "sessions_away": 4,
+   "weight_out": 0.00379491845556841,
+   "weight_in": 0.00431213431617369,
+   "dollars_both_ways": 8033.89861891523
+  },
+  {
+   "ticker": "CSGP",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.00569322930405651,
+   "weight_in": 0.0209635569198155,
+   "dollars_both_ways": 26656.855264948328
+  },
+  {
+   "ticker": "CTAS",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00524519152952791,
+   "weight_in": 0.00464694076114364,
+   "dollars_both_ways": 9802.87043710403
+  },
+  {
+   "ticker": "CTSH",
+   "left": "2026-09-29",
+   "returned": "2026-10-06",
+   "sessions_away": 5,
+   "weight_out": 0.00248069502416584,
+   "weight_in": 0.00153161698529836,
+   "dollars_both_ways": 3976.1068318005596
+  },
+  {
+   "ticker": "CTVA",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00266761401428952,
+   "weight_in": 0.00281388164932402,
+   "dollars_both_ways": 5473.714022739561
+  },
+  {
+   "ticker": "CVNA",
+   "left": "2026-09-30",
+   "returned": "2026-10-05",
+   "sessions_away": 3,
+   "weight_out": 0.00138111745554273,
+   "weight_in": 0.0017348792106675,
+   "dollars_both_ways": 3098.932502507096
+  },
+  {
+   "ticker": "CVX",
+   "left": "2026-10-02",
+   "returned": "2026-10-05",
+   "sessions_away": 1,
+   "weight_out": 0.00634791288948965,
+   "weight_in": 0.00479871117778109,
+   "dollars_both_ways": 11085.581698424905
+  },
+  {
+   "ticker": "DAL",
+   "left": "2026-10-06",
+   "returned": "2026-10-08",
+   "sessions_away": 1,
+   "weight_out": 0.00197698593930457,
+   "weight_in": 0.00296730356893826,
+   "dollars_both_ways": 4895.99734710055
+  },
+  {
+   "ticker": "DG",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00593737634716885,
+   "weight_in": 0.00498278943156753,
+   "dollars_both_ways": 10904.66329299357
+  },
+  {
+   "ticker": "DG",
+   "left": "2026-10-02",
+   "returned": "2026-10-05",
+   "sessions_away": 1,
+   "weight_out": 0.00498278943156753,
+   "weight_in": 0.00479351305327782,
+   "dollars_both_ways": 9722.764421784565
+  },
+  {
+   "ticker": "DHI",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00299766919852633,
+   "weight_in": 0.00279426822617656,
+   "dollars_both_ways": 5739.673761512335
+  },
+  {
+   "ticker": "DLTR",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.00635885593684429,
+   "weight_in": 0.0046257060740841,
+   "dollars_both_ways": 10984.590460943999
+  },
+  {
+   "ticker": "DOV",
+   "left": "2026-10-05",
+   "returned": "2026-10-09",
+   "sessions_away": 3,
+   "weight_out": 0.00503470829406669,
+   "weight_in": 0.00787839234289179,
+   "dollars_both_ways": 12749.327268117107
+  },
+  {
+   "ticker": "EBAY",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00231118958456467,
+   "weight_in": 0.00303234307547277,
+   "dollars_both_ways": 5335.946874202597
+  },
+  {
+   "ticker": "EBAY",
+   "left": "2026-10-02",
+   "returned": "2026-10-06",
+   "sessions_away": 2,
+   "weight_out": 0.00303234307547277,
+   "weight_in": 0.00376272598447473,
+   "dollars_both_ways": 6733.753618383682
+  },
+  {
+   "ticker": "ECL",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00672002808199719,
+   "weight_in": 0.00641815796037712,
+   "dollars_both_ways": 13119.534810704834
+  },
+  {
+   "ticker": "EIX",
+   "left": "2026-10-01",
+   "returned": "2026-10-02",
+   "sessions_away": 1,
+   "weight_out": 0.00383967375339555,
+   "weight_in": 0.00405818062750969,
+   "dollars_both_ways": 7868.680338650527
+  },
+  {
+   "ticker": "EL",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.00588035417064291,
+   "weight_in": 0.0057486078924865,
+   "dollars_both_ways": 11481.475077102497
+  },
+  {
+   "ticker": "ETR",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00283699000923254,
+   "weight_in": 0.00457963155901994,
+   "dollars_both_ways": 7406.092783941757
+  },
+  {
+   "ticker": "EXC",
+   "left": "2026-10-01",
+   "returned": "2026-10-08",
+   "sessions_away": 4,
+   "weight_out": 0.00147470523819135,
+   "weight_in": 0.00239109291354425,
+   "dollars_both_ways": 3828.039896080079
+  },
+  {
+   "ticker": "EXE",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00241699638140651,
+   "weight_in": 0.00518768245524952,
+   "dollars_both_ways": 7536.057865079888
+  },
+  {
+   "ticker": "FIS",
+   "left": "2026-10-01",
+   "returned": "2026-10-02",
+   "sessions_away": 1,
+   "weight_out": 0.00245892970196685,
+   "weight_in": 0.00110781682779327,
+   "dollars_both_ways": 3553.571253418909
+  },
+  {
+   "ticker": "FIS",
+   "left": "2026-10-06",
+   "returned": "2026-10-08",
+   "sessions_away": 1,
+   "weight_out": 0.00246983863063711,
+   "weight_in": 0.00337765884249119,
+   "dollars_both_ways": 5790.383444958913
+  },
+  {
+   "ticker": "FISV",
+   "left": "2026-10-01",
+   "returned": "2026-10-02",
+   "sessions_away": 1,
+   "weight_out": 0.00133925383408594,
+   "weight_in": 0.00121281715569189,
+   "dollars_both_ways": 2542.6438437072698
+  },
+  {
+   "ticker": "FISV",
+   "left": "2026-10-05",
+   "returned": "2026-10-08",
+   "sessions_away": 2,
+   "weight_out": 0.00121281715569189,
+   "weight_in": 0.0018249144758587,
+   "dollars_both_ways": 3008.0613168950113
+  },
+  {
+   "ticker": "FLEX",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00450163179561462,
+   "weight_in": 0.00313896914525349,
+   "dollars_both_ways": 7571.655825466168
+  },
+  {
+   "ticker": "FTV",
+   "left": "2026-09-29",
+   "returned": "2026-10-01",
+   "sessions_away": 2,
+   "weight_out": 0.00128400114200553,
+   "weight_in": 0.0029745394290211,
+   "dollars_both_ways": 4252.4950616611895
+  },
+  {
+   "ticker": "FTV",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.00415129370977749,
+   "weight_in": 0.00455877094519967,
+   "dollars_both_ways": 8599.59725667554
+  },
+  {
+   "ticker": "GDDY",
+   "left": "2026-09-30",
+   "returned": "2026-10-02",
+   "sessions_away": 2,
+   "weight_out": 0.00367031930903759,
+   "weight_in": 0.00298894909456084,
+   "dollars_both_ways": 6634.66959885701
+  },
+  {
+   "ticker": "GEHC",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00184320439233999,
+   "weight_in": 0.00162434640504433,
+   "dollars_both_ways": 3436.2612834131064
+  },
+  {
+   "ticker": "GM",
+   "left": "2026-09-30",
+   "returned": "2026-10-02",
+   "sessions_away": 2,
+   "weight_out": 0.00171073594938053,
+   "weight_in": 0.00405031660682907,
+   "dollars_both_ways": 5739.771688951166
+  },
+  {
+   "ticker": "GM",
+   "left": "2026-10-05",
+   "returned": "2026-10-08",
+   "sessions_away": 2,
+   "weight_out": 0.00405031660682907,
+   "weight_in": 0.00258857259105916,
+   "dollars_both_ways": 6574.045440981264
+  },
+  {
+   "ticker": "HOOD",
+   "left": "2026-09-29",
+   "returned": "2026-10-05",
+   "sessions_away": 4,
+   "weight_out": 0.00957789565692579,
+   "weight_in": 0.0031087349957645,
+   "dollars_both_ways": 12617.154730380655
+  },
+  {
+   "ticker": "HPE",
+   "left": "2026-09-29",
+   "returned": "2026-10-02",
+   "sessions_away": 3,
+   "weight_out": 0.00127928903779349,
+   "weight_in": 0.00251578263088875,
+   "dollars_both_ways": 3781.052977543861
+  },
+  {
+   "ticker": "HPE",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00251578263088875,
+   "weight_in": 0.00304957055425166,
+   "dollars_both_ways": 5515.134109367232
+  },
+  {
+   "ticker": "HSY",
+   "left": "2026-09-30",
+   "returned": "2026-10-09",
+   "sessions_away": 6,
+   "weight_out": 0.00353251371657983,
+   "weight_in": 0.00542251487019088,
+   "dollars_both_ways": 8841.454377062417
+  },
+  {
+   "ticker": "HWM",
+   "left": "2026-09-29",
+   "returned": "2026-10-02",
+   "sessions_away": 3,
+   "weight_out": 0.00871930955877883,
+   "weight_in": 0.0046864311411432,
+   "dollars_both_ways": 13356.220966235773
+  },
+  {
+   "ticker": "IFF",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00378539800144759,
+   "weight_in": 0.00376166775694847,
+   "dollars_both_ways": 7536.351792904125
+  },
+  {
+   "ticker": "INCY",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.00728409408215165,
+   "weight_in": 0.00464750143718367,
+   "dollars_both_ways": 11931.626422167716
+  },
+  {
+   "ticker": "INCY",
+   "left": "2026-10-01",
+   "returned": "2026-10-02",
+   "sessions_away": 1,
+   "weight_out": 0.00464750143718367,
+   "weight_in": 0.00299811092175584,
+   "dollars_both_ways": 7617.370078534576
+  },
+  {
+   "ticker": "INTC",
+   "left": "2026-09-29",
+   "returned": "2026-10-08",
+   "sessions_away": 6,
+   "weight_out": 0.00313981391343962,
+   "weight_in": 0.0126253309296046,
+   "dollars_both_ways": 15611.162574424547
+  },
+  {
+   "ticker": "INVH",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.00372838869910119,
+   "weight_in": 0.00075563475462412,
+   "dollars_both_ways": 4484.035067346055
+  },
+  {
+   "ticker": "INVH",
+   "left": "2026-10-01",
+   "returned": "2026-10-02",
+   "sessions_away": 1,
+   "weight_out": 0.00075563475462412,
+   "weight_in": 0.000531604904033716,
+   "dollars_both_ways": 1282.4846983379266
+  },
+  {
+   "ticker": "INVH",
+   "left": "2026-10-06",
+   "returned": "2026-10-08",
+   "sessions_away": 1,
+   "weight_out": 0.000779713629456035,
+   "weight_in": 0.00090736446902368,
+   "dollars_both_ways": 1670.599968051558
+  },
+  {
+   "ticker": "JBL",
+   "left": "2026-10-02",
+   "returned": "2026-10-09",
+   "sessions_away": 4,
+   "weight_out": 0.00603397758862005,
+   "weight_in": 0.00812320198253136,
+   "dollars_both_ways": 13977.627885088981
+  },
+  {
+   "ticker": "JCI",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00381177969035807,
+   "weight_in": 0.00528752515162886,
+   "dollars_both_ways": 9017.197082759165
+  },
+  {
+   "ticker": "KKR",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00406220030709698,
+   "weight_in": 0.00402654236352815,
+   "dollars_both_ways": 8015.753739361892
+  },
+  {
+   "ticker": "KLAC",
+   "left": "2026-09-30",
+   "returned": "2026-10-02",
+   "sessions_away": 2,
+   "weight_out": 0.00817236612406229,
+   "weight_in": 0.00471160726949804,
+   "dollars_both_ways": 12836.381026562389
+  },
+  {
+   "ticker": "LHX",
+   "left": "2026-10-01",
+   "returned": "2026-10-05",
+   "sessions_away": 2,
+   "weight_out": 0.00765213564605111,
+   "weight_in": 0.00745129859709634,
+   "dollars_both_ways": 15020.723155167358
+  },
+  {
+   "ticker": "LOW",
+   "left": "2026-10-02",
+   "returned": "2026-10-06",
+   "sessions_away": 2,
+   "weight_out": 0.0039879613247109,
+   "weight_in": 0.00373797493472266,
+   "dollars_both_ways": 7656.221119077835
+  },
+  {
+   "ticker": "LUV",
+   "left": "2026-10-05",
+   "returned": "2026-10-08",
+   "sessions_away": 2,
+   "weight_out": 0.00131274263340904,
+   "weight_in": 0.00766690251342942,
+   "dollars_both_ways": 8891.93861798155
+  },
+  {
+   "ticker": "MKC",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00175449848163885,
+   "weight_in": 0.000926399714495696,
+   "dollars_both_ways": 2677.09233943735
+  },
+  {
+   "ticker": "MRK",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00714362305859717,
+   "weight_in": 0.00651003778635061,
+   "dollars_both_ways": 13530.456763240176
+  },
+  {
+   "ticker": "MTB",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00442498424264558,
+   "weight_in": 0.0044247594614052,
+   "dollars_both_ways": 8769.887864742403
+  },
+  {
+   "ticker": "NDAQ",
+   "left": "2026-10-01",
+   "returned": "2026-10-02",
+   "sessions_away": 1,
+   "weight_out": 0.00235802517741651,
+   "weight_in": 0.00276591762626413,
+   "dollars_both_ways": 5105.015368879268
+  },
+  {
+   "ticker": "NDAQ",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.00296894160764041,
+   "weight_in": 0.00451049721922635,
+   "dollars_both_ways": 7384.579123674092
+  },
+  {
+   "ticker": "NEE",
+   "left": "2026-09-29",
+   "returned": "2026-10-01",
+   "sessions_away": 2,
+   "weight_out": 0.00209621241249585,
+   "weight_in": 0.00272466929815133,
+   "dollars_both_ways": 4814.037890553111
+  },
+  {
+   "ticker": "NEE",
+   "left": "2026-10-02",
+   "returned": "2026-10-08",
+   "sessions_away": 3,
+   "weight_out": 0.00272466929815133,
+   "weight_in": 0.00374578805336932,
+   "dollars_both_ways": 6407.258712249436
+  },
+  {
+   "ticker": "NEM",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00405927049813014,
+   "weight_in": 0.00263658501190838,
+   "dollars_both_ways": 6686.349939639359
+  },
+  {
+   "ticker": "NEM",
+   "left": "2026-10-05",
+   "returned": "2026-10-08",
+   "sessions_away": 2,
+   "weight_out": 0.00422200597977981,
+   "weight_in": 0.00369997950745705,
+   "dollars_both_ways": 7844.609395266791
+  },
+  {
+   "ticker": "NFLX",
+   "left": "2026-10-02",
+   "returned": "2026-10-06",
+   "sessions_away": 2,
+   "weight_out": 0.00218601316021349,
+   "weight_in": 0.0016364652586018,
+   "dollars_both_ways": 3787.986208353542
+  },
+  {
+   "ticker": "NFLX",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.0016364652586018,
+   "weight_in": 0.00271623639863089,
+   "dollars_both_ways": 4297.497517343455
+  },
+  {
+   "ticker": "NKE",
+   "left": "2026-09-30",
+   "returned": "2026-10-02",
+   "sessions_away": 2,
+   "weight_out": 0.000882825281459665,
+   "weight_in": 0.00210656408697849,
+   "dollars_both_ways": 2978.3468032622936
+  },
+  {
+   "ticker": "NKE",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.00215653739770949,
+   "weight_in": 0.00431990607187233,
+   "dollars_both_ways": 6394.304485696851
+  },
+  {
+   "ticker": "NRG",
+   "left": "2026-10-02",
+   "returned": "2026-10-05",
+   "sessions_away": 1,
+   "weight_out": 0.00565308105953028,
+   "weight_in": 0.00472078495215755,
+   "dollars_both_ways": 10317.055505509363
+  },
+  {
+   "ticker": "NTRS",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.00375719530061,
+   "weight_in": 0.00468092293669503,
+   "dollars_both_ways": 8331.099861993216
+  },
+  {
+   "ticker": "NWS",
+   "left": "2026-09-29",
+   "returned": "2026-10-02",
+   "sessions_away": 3,
+   "weight_out": 0.00709629406778158,
+   "weight_in": 0.00134471150103302,
+   "dollars_both_ways": 8409.825169523845
+  },
+  {
+   "ticker": "NWSA",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.00582416363427333,
+   "weight_in": 0.000680972830822757,
+   "dollars_both_ways": 6505.153313399532
+  },
+  {
+   "ticker": "NWSA",
+   "left": "2026-10-06",
+   "returned": "2026-10-08",
+   "sessions_away": 1,
+   "weight_out": 0.00150085761496108,
+   "weight_in": 0.00333893167632603,
+   "dollars_both_ways": 4792.517810933893
+  },
+  {
+   "ticker": "O",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00173097144930575,
+   "weight_in": 0.0015023043972549,
+   "dollars_both_ways": 3204.100317293693
+  },
+  {
+   "ticker": "OMC",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.00168348989739505,
+   "weight_in": 0.0026379022792079,
+   "dollars_both_ways": 4321.403369008687
+  },
+  {
+   "ticker": "OMC",
+   "left": "2026-10-01",
+   "returned": "2026-10-05",
+   "sessions_away": 2,
+   "weight_out": 0.0026379022792079,
+   "weight_in": 0.00304754038454856,
+   "dollars_both_ways": 5654.307417242504
+  },
+  {
+   "ticker": "ORCL",
+   "left": "2026-09-29",
+   "returned": "2026-10-08",
+   "sessions_away": 6,
+   "weight_out": 0.00657600517287533,
+   "weight_in": 0.00323253443343187,
+   "dollars_both_ways": 9712.7370497521
+  },
+  {
+   "ticker": "ORLY",
+   "left": "2026-10-05",
+   "returned": "2026-10-08",
+   "sessions_away": 2,
+   "weight_out": 0.00218164258573161,
+   "weight_in": 0.00245909836973695,
+   "dollars_both_ways": 4595.41363196385
+  },
+  {
+   "ticker": "OTIS",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.00294959973858239,
+   "weight_in": 0.00705561041553598,
+   "dollars_both_ways": 10005.236067612668
+  },
+  {
+   "ticker": "OTIS",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.00539770512009955,
+   "weight_in": 0.00794633231490612,
+   "dollars_both_ways": 13174.7986111076
+  },
+  {
+   "ticker": "PAYX",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.0048355083198275,
+   "weight_in": 0.00287272389691997,
+   "dollars_both_ways": 7610.47078876516
+  },
+  {
+   "ticker": "PFG",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.00319123698949374,
+   "weight_in": 0.00447988077203848,
+   "dollars_both_ways": 7573.827046164503
+  },
+  {
+   "ticker": "PKG",
+   "left": "2026-09-30",
+   "returned": "2026-10-06",
+   "sessions_away": 4,
+   "weight_out": 0.00492447202089638,
+   "weight_in": 0.00604947056300169,
+   "dollars_both_ways": 10874.918993513413
+  },
+  {
+   "ticker": "PKG",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.00604947056300169,
+   "weight_in": 0.00604100722595623,
+   "dollars_both_ways": 11937.137523589568
+  },
+  {
+   "ticker": "PNC",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00550759246288077,
+   "weight_in": 0.00519060238860899,
+   "dollars_both_ways": 10601.659476283445
+  },
+  {
+   "ticker": "PNR",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00395226433546276,
+   "weight_in": 0.00143732119230724,
+   "dollars_both_ways": 5381.934364363067
+  },
+  {
+   "ticker": "PNR",
+   "left": "2026-10-02",
+   "returned": "2026-10-05",
+   "sessions_away": 1,
+   "weight_out": 0.00143732119230724,
+   "weight_in": 0.00109437968736212,
+   "dollars_both_ways": 2517.836500825018
+  },
+  {
+   "ticker": "RDDT",
+   "left": "2026-10-01",
+   "returned": "2026-10-06",
+   "sessions_away": 3,
+   "weight_out": 0.00715286034766321,
+   "weight_in": 0.00586002802351242,
+   "dollars_both_ways": 12895.466312700559
+  },
+  {
+   "ticker": "REG",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00210510981142039,
+   "weight_in": 0.00200552109591597,
+   "dollars_both_ways": 4104.795373487687
+  },
+  {
+   "ticker": "REG",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00205779491681109,
+   "weight_in": 0.00145232927485547,
+   "dollars_both_ways": 3478.450515820573
+  },
+  {
+   "ticker": "SBUX",
+   "left": "2026-09-30",
+   "returned": "2026-10-02",
+   "sessions_away": 2,
+   "weight_out": 0.00677843821307639,
+   "weight_in": 0.00540535324588563,
+   "dollars_both_ways": 12138.785508015932
+  },
+  {
+   "ticker": "SLB",
+   "left": "2026-09-30",
+   "returned": "2026-10-02",
+   "sessions_away": 2,
+   "weight_out": 0.0020002471328724,
+   "weight_in": 0.00313546031587935,
+   "dollars_both_ways": 5116.736556292657
+  },
+  {
+   "ticker": "SO",
+   "left": "2026-09-29",
+   "returned": "2026-09-30",
+   "sessions_away": 1,
+   "weight_out": 0.00233417932207757,
+   "weight_in": 0.00351409505258916,
+   "dollars_both_ways": 5848.28952169736
+  },
+  {
+   "ticker": "SO",
+   "left": "2026-10-01",
+   "returned": "2026-10-02",
+   "sessions_away": 1,
+   "weight_out": 0.00351409505258916,
+   "weight_in": 0.0020267829827073,
+   "dollars_both_ways": 5520.410475104318
+  },
+  {
+   "ticker": "SOLV",
+   "left": "2026-09-29",
+   "returned": "2026-10-02",
+   "sessions_away": 3,
+   "weight_out": 0.00199210370105036,
+   "weight_in": 0.0034287892980907,
+   "dollars_both_ways": 5400.868654073673
+  },
+  {
+   "ticker": "SPG",
+   "left": "2026-10-06",
+   "returned": "2026-10-08",
+   "sessions_away": 1,
+   "weight_out": 0.00820978337297782,
+   "weight_in": 0.00759551425488519,
+   "dollars_both_ways": 15650.92317655429
+  },
+  {
+   "ticker": "STZ",
+   "left": "2026-09-30",
+   "returned": "2026-10-02",
+   "sessions_away": 2,
+   "weight_out": 0.00453107935411723,
+   "weight_in": 0.00450791637892948,
+   "dollars_both_ways": 9005.606405928493
+  },
+  {
+   "ticker": "STZ",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.00366483874687392,
+   "weight_in": 0.00403799831270129,
+   "dollars_both_ways": 7605.144056914623
+  },
+  {
+   "ticker": "SWKS",
+   "left": "2026-10-01",
+   "returned": "2026-10-05",
+   "sessions_away": 2,
+   "weight_out": 0.00350019298945967,
+   "weight_in": 0.0022120612668757,
+   "dollars_both_ways": 5680.972181228857
+  },
+  {
+   "ticker": "SWKS",
+   "left": "2026-10-06",
+   "returned": "2026-10-08",
+   "sessions_away": 1,
+   "weight_out": 0.0022120612668757,
+   "weight_in": 0.00185828714188221,
+   "dollars_both_ways": 4030.5922575589852
+  },
+  {
+   "ticker": "SYY",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00379680538567878,
+   "weight_in": 0.00328859102507302,
+   "dollars_both_ways": 7075.337840299168
+  },
+  {
+   "ticker": "T",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.000497405295748758,
+   "weight_in": 0.000643642355236328,
+   "dollars_both_ways": 1139.4277969187945
+  },
+  {
+   "ticker": "TECH",
+   "left": "2026-09-29",
+   "returned": "2026-10-02",
+   "sessions_away": 3,
+   "weight_out": 0.00455527805985531,
+   "weight_in": 0.00199826016078465,
+   "dollars_both_ways": 6529.329974735974
+  },
+  {
+   "ticker": "TRMB",
+   "left": "2026-10-01",
+   "returned": "2026-10-08",
+   "sessions_away": 4,
+   "weight_out": 0.00237475671639644,
+   "weight_in": 0.00127805283714507,
+   "dollars_both_ways": 3617.1316129015863
+  },
+  {
+   "ticker": "TSCO",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.000750810074372872,
+   "weight_in": 0.000969085939212066,
+   "dollars_both_ways": 1717.4544148061327
+  },
+  {
+   "ticker": "TSN",
+   "left": "2026-09-29",
+   "returned": "2026-10-01",
+   "sessions_away": 2,
+   "weight_out": 0.00134102709453973,
+   "weight_in": 0.00301347938956998,
+   "dollars_both_ways": 4348.324739614738
+  },
+  {
+   "ticker": "TXT",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.0028571302471284,
+   "weight_in": 0.00463921089577927,
+   "dollars_both_ways": 7428.69775867782
+  },
+  {
+   "ticker": "UAL",
+   "left": "2026-10-06",
+   "returned": "2026-10-08",
+   "sessions_away": 1,
+   "weight_out": 0.00334567452497366,
+   "weight_in": 0.00223418146026546,
+   "dollars_both_ways": 5525.356081068732
+  },
+  {
+   "ticker": "VLTO",
+   "left": "2026-09-29",
+   "returned": "2026-10-08",
+   "sessions_away": 6,
+   "weight_out": 0.00543893540910244,
+   "weight_in": 0.00384321663621676,
+   "dollars_both_ways": 9191.490852933035
+  },
+  {
+   "ticker": "VMRK",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.00126044152833451,
+   "weight_in": 0.00143844942036811,
+   "dollars_both_ways": 2695.0595491340227
+  },
+  {
+   "ticker": "VMRK",
+   "left": "2026-10-05",
+   "returned": "2026-10-08",
+   "sessions_away": 2,
+   "weight_out": 0.00161092435801235,
+   "weight_in": 0.00183884714265303,
+   "dollars_both_ways": 3416.0766854777908
+  },
+  {
+   "ticker": "VST",
+   "left": "2026-10-08",
+   "returned": "2026-10-09",
+   "sessions_away": 1,
+   "weight_out": 0.00676334331440682,
+   "weight_in": 0.00586081042166713,
+   "dollars_both_ways": 12464.045002760833
+  },
+  {
+   "ticker": "VZ",
+   "left": "2026-10-02",
+   "returned": "2026-10-05",
+   "sessions_away": 1,
+   "weight_out": 0.000984477416892227,
+   "weight_in": 0.00102255411348191,
+   "dollars_both_ways": 1996.0404035340339
+  },
+  {
+   "ticker": "WDC",
+   "left": "2026-09-30",
+   "returned": "2026-10-01",
+   "sessions_away": 1,
+   "weight_out": 0.0151051350389453,
+   "weight_in": 0.0142841493779287,
+   "dollars_both_ways": 29347.562800930118
+  },
+  {
+   "ticker": "WDC",
+   "left": "2026-10-02",
+   "returned": "2026-10-09",
+   "sessions_away": 4,
+   "weight_out": 0.0142841493779287,
+   "weight_in": 0.0123292860721852,
+   "dollars_both_ways": 26275.90443392768
+  },
+  {
+   "ticker": "WSM",
+   "left": "2026-10-01",
+   "returned": "2026-10-08",
+   "sessions_away": 4,
+   "weight_out": 0.00534338026265521,
+   "weight_in": 0.00546930524870521,
+   "dollars_both_ways": 10707.075200672729
+  },
+  {
+   "ticker": "XOM",
+   "left": "2026-10-02",
+   "returned": "2026-10-06",
+   "sessions_away": 2,
+   "weight_out": 0.0057573179502221,
+   "weight_in": 0.00557336589223761,
+   "dollars_both_ways": 11228.441190193598
+  },
+  {
+   "ticker": "XYL",
+   "left": "2026-09-29",
+   "returned": "2026-10-02",
+   "sessions_away": 3,
+   "weight_out": 0.00334422627058454,
+   "weight_in": 0.00297164235353686,
+   "dollars_both_ways": 6292.538310693385
+  },
+  {
+   "ticker": "XYL",
+   "left": "2026-10-05",
+   "returned": "2026-10-06",
+   "sessions_away": 1,
+   "weight_out": 0.00297164235353686,
+   "weight_in": 0.00563662762060304,
+   "dollars_both_ways": 8530.59307786285
+  }
+ ]
+}
