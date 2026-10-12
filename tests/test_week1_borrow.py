@@ -125,15 +125,22 @@ def test_a_borrow_skip_does_not_make_the_run_incomplete() -> None:
     An incomplete day is not filed and the next tick retries it. A name whose
     borrow is not there would be retried every tick to the same answer, and the
     evening would never be recorded as done, so the borrow skip is an expected
-    skip -- while a name that is not tradable or not shortable stays a data
-    problem that must not be filed.
+    skip -- while a name that is not tradable stays a leg the run could not place.
     """
     records = _flag_rows([alpaca.REASON_NOT_EASY_TO_BORROW])
     assert morning_job.incomplete_legs(records) == []
 
     # the negative control: the same leg, refused for a reason that is not a skip
-    for code in (alpaca.REASON_NOT_TRADABLE, alpaca.REASON_NOT_SHORTABLE):
+    for code in (alpaca.REASON_NOT_TRADABLE, alpaca.REASON_SUBMIT_UNKNOWN):
         assert morning_job.incomplete_legs(_flag_rows([code])), code
+
+    # Item 19 moved the *shortability* refusal to its own list. The status is
+    # `incomplete` either way - the book is a leg short of its target and the message
+    # says so - and the two lists are what decide whether the day is filed, which is
+    # why the refusal is not in this one.
+    refused = _flag_rows([alpaca.REASON_NOT_SHORTABLE])
+    assert morning_job.incomplete_legs(refused) == []
+    assert [row["ticker"] for row in morning_job.refused_legs(refused)] == ["AA00"]
 
 
 def test_the_refused_short_is_recorded_and_reported_by_name() -> None:

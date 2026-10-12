@@ -377,7 +377,7 @@ def test_a_submitted_leg_is_never_polled_for_a_fill() -> None:
     assert fills[0].filled_notional == 0.0
 
 
-def test_a_dry_run_is_complete_and_a_refusal_is_not() -> None:
+def test_a_dry_run_is_complete_and_a_rejection_is_unconfirmed() -> None:
     dry = pd.DataFrame(
         {"ticker": ["AAA"], "status": ["DRY_RUN"], "reason_code": ["DRY_RUN"]}
     )
@@ -391,8 +391,12 @@ def test_a_dry_run_is_complete_and_a_refusal_is_not() -> None:
         }
     )
     legs = morning_job.incomplete_legs(live)
-    assert [leg["ticker"] for leg in legs] == ["CCC", "DDD", "EEE"]
-    # An accepted order stays accepted until the open, and that is complete.
+    # A rejected or canceled leg is unconfirmed - the next tick may resolve it - and
+    # an accepted order stays accepted until the open, which is complete. CCC is the
+    # shortability refusal: item 19 gives it its own list, because nothing was sent
+    # and a retry would be told the same thing.
+    assert [leg["ticker"] for leg in legs] == ["DDD", "EEE"]
+    assert [row["ticker"] for row in morning_job.refused_legs(live)] == ["CCC"]
     assert not any(leg["ticker"] in {"AAA", "BBB"} for leg in legs)
 
 
@@ -491,13 +495,15 @@ def test_a_live_run_with_a_refused_short_skips_it_and_names_it(
     assert "Not easy to borrow, so not opened: BBB $50,000" in text
 
 
-def test_a_live_run_with_a_not_shortable_leg_is_incomplete(
+def test_a_live_run_with_a_not_shortable_leg_is_incomplete_and_filed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The negative control: a data problem still stops the day being filed.
+    """The refusal lands in its own list, and the run is still `incomplete`.
 
-    A name the universe should never have priced as a short is not the borrow
-    answering a question, so it stays an incomplete run with the leg named.
+    Item 19: the status says the book is a leg short of its target and the message
+    names it, but nothing was sent for that leg and a retry would be told the same
+    thing, so the *day* is filed - which is what `refused_legs` and the unconfirmed
+    count decide, rather than the status word.
     """
     proposal = pd.DataFrame(
         {"ticker": ["AAA", "BBB"], "weight": [0.05, -0.05], "alpha": [0.0, 0.0]}
@@ -511,9 +517,12 @@ def test_a_live_run_with_a_not_shortable_leg_is_incomplete(
 
     summary = morning_job.run_morning("2026-09-25", nav=NAV, dry_run=False)
 
-    assert summary["complete"] is False
-    assert [leg["ticker"] for leg in summary["incomplete_legs"]] == ["BBB"]
-    assert summary["incomplete_legs"][0]["reason_code"] == alpaca.REASON_NOT_SHORTABLE
+    # No leg was left unconfirmed, so the summary is `complete` for the caller's
+    # filing decision, and the refused leg is named in its own list.
+    assert summary["complete"] is True
+    assert summary["incomplete_legs"] == []
+    assert [leg["ticker"] for leg in summary["refused_legs"]] == ["BBB"]
+    assert summary["refused_legs"][0]["reason_code"] == alpaca.REASON_NOT_SHORTABLE
     assert summary["skipped_borrow"] == []
 
 
