@@ -416,6 +416,36 @@ def _reconcile(argv: list[str] | None = None) -> int:
         if len(frame):
             store.replace_by_date("fills", close, frame.to_dict("records"))
             filled_notional = float(frame["filled_notional"].abs().sum())
+        # The evening's reconciliation row is written before its orders settle, so
+        # `filled_notional` is a placeholder zero on it and `realized_annual_vol` has
+        # no window to be measured over. This is the run that knows both: the fills
+        # above, and the attribution rows the evening has already stored. It replaces
+        # those two columns and leaves every other one the evening wrote.
+        try:
+            from live import reconcile as reconcile_module
+
+            attribution_rows = store.select("attribution")
+        except Exception as exc:  # noqa: BLE001 - the day's row keeps what it has
+            logger.warning(
+                "could not read the attribution rows to back-fill %s (%s)",
+                close,
+                type(exc).__name__,
+            )
+            attribution_rows = None
+        try:
+            reconcile_module.backfill(
+                close,
+                filled_notional=filled_notional,
+                realized_annual_vol=reconcile_module.realized_annual_vol_for(
+                    close, attribution_rows
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - a back-fill never fails the morning
+            logger.warning(
+                "could not back-fill the reconciliation row for %s (%s)",
+                close,
+                type(exc).__name__,
+            )
         # What left the account since the evening last read it, and what explains
         # it: a filled close from this very reconciliation, or an activity of the
         # broker's own. Read here because this is where the account is read and

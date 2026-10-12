@@ -11,9 +11,11 @@ State lives on EFB artifacts under `live/state/`, never Supabase.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from live import state, store
@@ -22,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
 PROPOSAL_DIR = ROOT / "live" / "proposals"
 EXECUTION_LOG_DIR = ROOT / "live" / "logs"
+
+logger = logging.getLogger(__name__)
 
 RECONCILIATION_COLUMNS = [
     "trade_date",
@@ -236,6 +240,98 @@ def daily_record(
     frame = frame.loc[frame["trade_date"] != as_of]
     pd.concat([frame, pd.DataFrame([row])], ignore_index=True).to_parquet(
         path, index=False
+    )
+    return row
+
+
+def realized_annual_vol_for(as_of: str, rows: Any) -> float | None:
+    """The book's realized volatility through `as_of`, from the attribution rows.
+
+    The same measurement E12 publishes for a session - the standard deviation of the
+    book's own daily P&L over a rolling quarter, annualized - read from the stored
+    attribution rows rather than recomputed from the execution log, so the column and
+    the page's own realized line cannot disagree. `None` until two sessions exist: a
+    dispersion of one number is not a volatility, and a zero would read as a flat
+    book.
+    """
+    from efb import attribution
+
+    if (
+        rows is None
+        or len(rows) == 0
+        or "trade_date" not in getattr(rows, "columns", [])
+    ):
+        return None
+    frame = rows.copy()
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"])
+    frame = frame.loc[frame["trade_date"] <= pd.Timestamp(as_of)]
+    frame = frame.sort_values("trade_date")
+    if "pnl_total" not in frame.columns:
+        return None
+    pnl = pd.to_numeric(frame["pnl_total"], errors="coerce").to_numpy(dtype=float)
+    pnl = pnl[np.isfinite(pnl)]
+    window = pnl[-attribution.REALIZED_VOL_WINDOW :]
+    if len(window) < 2:
+        return None
+    dispersion = float(np.std(window, ddof=1))
+    if dispersion == 0.0:
+        return None
+    return dispersion * float(np.sqrt(attribution.TRADING_DAYS))
+
+
+def backfill(
+    as_of: str,
+    *,
+    filled_notional: float | None = None,
+    realized_annual_vol: float | None = None,
+) -> dict[str, Any] | None:
+    """The morning's half of the day's reconciliation row.
+
+    The evening writes the row before its orders settle, so `filled_notional` is a
+    placeholder zero on every row it writes - measured: seven rows from 2026-09-25
+    to 2026-10-06 all `0.0`, including the 2026-10-05 close whose 197 of 199 legs
+    filled - and `realized_annual_vol` has no window to be measured over. Nothing
+    back-filled them, and the column read as a measurement rather than as a
+    placeholder, which is the one thing a stored zero must never do.
+
+    The morning knows both. It reads the day's row, replaces only those two columns
+    and upserts the whole row back, so nothing the evening recorded is lost and a
+    later reader cannot tell which run wrote which field except by which of them
+    could know it.
+    """
+    from live import store
+
+    try:
+        frame = store.select("reconciliation")
+    except Exception as exc:  # noqa: BLE001 - the row keeps what it has
+        logger.warning("could not read the day's row (%s)", type(exc).__name__)
+        return None
+    if frame is None or len(frame) == 0 or "trade_date" not in frame.columns:
+        return None
+    days = frame["trade_date"].astype(str).str.slice(0, 10)
+    rows = frame.loc[days == str(as_of)[:10]]
+    if rows.empty:
+        return None
+    row = {str(key): value for key, value in rows.iloc[-1].to_dict().items()}
+    changed = False
+    if filled_notional is not None:
+        row["filled_notional"] = float(filled_notional)
+        changed = True
+    if realized_annual_vol is not None:
+        row["realized_annual_vol"] = float(realized_annual_vol)
+        changed = True
+    if not changed:
+        return None
+    row = {
+        key: (None if isinstance(value, float) and pd.isna(value) else value)
+        for key, value in row.items()
+    }
+    store.upsert("reconciliation", [row])
+    logger.info(
+        "reconciliation %s back-filled: filled_notional %s, realized_annual_vol %s",
+        as_of,
+        filled_notional,
+        realized_annual_vol,
     )
     return row
 
