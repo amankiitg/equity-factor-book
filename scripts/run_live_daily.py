@@ -990,17 +990,60 @@ def traded_run(run_date: str, counts: dict[str, int]) -> int:
     )
 
 
-def _excluded_rows(manifest: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """The manifest's `excluded_detail` as rows, or nothing when it carries none.
+def shortable_flags(*, dry_run: bool) -> dict[str, bool] | None:
+    """The broker's lending flag per symbol, when item 18's precheck is on.
+
+    `None` - the default, and the whole of the off state - means the proposal build
+    behaves exactly as it always has: no name is dropped before the sizing, and the
+    leg-time check remains the only guard. With `EFB_SHORTABILITY_PRECHECK=true` the
+    whole active US-equity feed is read once (one request, not one per name) and the
+    mapping is handed to the build, which leaves out the names it would short and the
+    broker will not lend.
+
+    A read that fails, or a dry run, returns `None` rather than an empty mapping: an
+    absent flag keeps a name, so the failure direction is the one the book already
+    has, and a rehearsal does not call the broker to find out what it may not short.
+    """
+    from live import alpaca, evening_job, notify
+
+    if not evening_job.resolve_shortability_precheck(
+        os.environ.get(evening_job.SHORTABILITY_ENV)
+    ):
+        return None
+    if dry_run:
+        logger.info(
+            "%s is on and this is a dry run: the lending flags are not read",
+            evening_job.SHORTABILITY_ENV,
+        )
+        return None
+    try:
+        resolver = alpaca.SymbolResolver(alpaca.connect(dry_run=False))
+        return alpaca.shortable_map(resolver, None)
+    except Exception as exc:  # noqa: BLE001 - the book is priced either way
+        logger.warning(
+            "the broker's lending flags could not be read, so no name is dropped "
+            "before the sizing: %s: %s",
+            type(exc).__name__,
+            notify.scrub(str(exc)),
+        )
+        return None
+
+
+def _rows(manifest: dict[str, Any] | None, key: str) -> list[dict[str, Any]]:
+    """One of the manifest's own step lists as rows, or nothing when it has none.
 
     The manifest is a JSON document, so the entries arrive as whatever was
     serialised; this is the one place that decides they are a list of objects, which
     keeps a malformed one out of the message rather than into it.
     """
-    raw = (manifest or {}).get("excluded_detail")
+    raw = (manifest or {}).get(key)
     if not isinstance(raw, list):
         return []
     return [dict(entry) for entry in raw if isinstance(entry, dict)]
+
+
+def _excluded_rows(manifest: dict[str, Any] | None) -> list[dict[str, Any]]:
+    return _rows(manifest, "excluded_detail")
 
 
 def previous_close_reversals(as_of: Any) -> list[str] | None:
@@ -1042,6 +1085,7 @@ def finish_run(
     refused_legs: list[dict[str, Any]] | None = None,
     unconfirmed_legs: int | None = None,
     excluded: list[dict[str, Any]] | None = None,
+    no_short: list[dict[str, Any]] | None = None,
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
@@ -1243,6 +1287,7 @@ def finish_run(
         refused_legs=refused_legs,
         unconfirmed_legs=unconfirmed_legs,
         excluded=excluded,
+        no_short=no_short,
         worst_input=result.get("worst_input"),
         worst_sessions_behind=result.get("worst_sessions_behind"),
         failures=result.get("failures") or [],
@@ -1878,6 +1923,7 @@ def main() -> int:
             previous=prior_weights,
             nav=float(holdings["nav"]),
             nav_source=str(holdings["nav_source"]),
+            shortable=shortable_flags(dry_run=dry_run),
         )
         as_of = str(manifest["as_of"])
         # The build drops a kept name it cannot quantize, and the day must not pass
@@ -2131,6 +2177,7 @@ def main() -> int:
         # The names that never reached the book, with the reason and the age:
         # recorded on the manifest and said in the message (item 9).
         excluded=_excluded_rows(manifest),
+        no_short=_rows(manifest, "dropped_no_short"),
         thin_adv=thin_adv,
         init=first_run,
         establishment=bool(morning.get("establishment")),

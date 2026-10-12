@@ -86,6 +86,64 @@ FLOOR_RELEASE_OFF = 1.0
 FLOOR_RELEASE_MIN = 0.5
 
 
+# Item 18's precheck, off by default: with it on, the run reads the broker's own
+# `shortable` flag for the universe *before* the sizing and leaves out the names the
+# broker will not lend, so the book it publishes is one it can hold. Off, the flags are
+# read where they always were - as each short leg is built - and the book can carry a
+# name whose short will be refused.
+#
+# It changes the book, so it is a flag and not a fix: with it on, a name the broker
+# will not lend leaves the book before the hedge and the floor, which moves the
+# published book, its breadth and its forecast. Everything else about the run is
+# unchanged, and `/tests/test_nov11_shortability.py` proves the off direction is
+# identity: no source injected, no name dropped, the book identical weight for weight.
+SHORTABILITY_ENV = "EFB_SHORTABILITY_PRECHECK"
+
+
+def resolve_shortability_precheck(value: str | None) -> bool:
+    """Whether the run checks the broker's lending flags before it sizes.
+
+    Opens only on the exact string "true", the same convention as the trading
+    window's override and for the same reason: a missing, empty or mistyped variable
+    must leave the book exactly as it is rather than silently change which names it
+    holds.
+    """
+    return value == "true"
+
+
+def drop_not_shortable(
+    names: list[str], weights: np.ndarray, shortable: dict[str, bool]
+) -> tuple[np.ndarray, list[dict[str, object]]]:
+    """Which names to keep, and the ones the broker will not lend, to be dropped.
+
+    A name is dropped when the sizing puts it on the **short** side and the broker's
+    own flag says it cannot be shorted. Three cases are kept, and each matters:
+
+    - a name the sizing puts *long*: its own shortability is irrelevant tonight;
+    - a ticker **absent** from the mapping: the feed did not answer for it, and an
+      unanswered read is not a refusal - the leg-time check still guards it;
+    - a flag of `True` that is wrong by tomorrow: the flags are a point-in-time read,
+      which is why the leg-time check stays where it is.
+    """
+    keep = np.ones(len(names), dtype=bool)
+    dropped: list[dict[str, object]] = []
+    for index, name in enumerate(names):
+        ticker = str(name)
+        if weights[index] >= 0:
+            continue
+        if shortable.get(ticker, True):
+            continue
+        keep[index] = False
+        dropped.append(
+            {
+                "ticker": ticker,
+                "reason": "the broker's feed reports shortable=false",
+                "weight": float(weights[index]),
+            }
+        )
+    return keep, dropped
+
+
 def resolve_floor_release(value: str | None) -> float:
     """The band's release fraction from the environment, or `1.0` when unset.
 
@@ -1498,6 +1556,7 @@ def build_proposal(
     previous: pd.Series | None = None,
     nav_source: str | None = None,
     floor_release: float | None = None,
+    shortable: dict[str, bool] | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
@@ -1511,6 +1570,14 @@ def build_proposal(
     `previous` is the last book the loop held, keyed by ticker. The impact term
     is the cost of trading to this book rather than of owning it, so it needs
     that book; from flat (the establishment day) every previous weight is zero.
+
+    `shortable` is item 18's precheck: the broker's own lending flag per ticker,
+    injected by the caller that read it (so this module never calls the broker and a
+    test can pass a recorded fixture). `None` is off - the default - and then no name
+    is dropped and the leg-time check remains the only guard. With a mapping, a name
+    the sizing puts on the short side whose flag is `False` is dropped before the
+    hedge and the floor, with the reason on the manifest and in the message. A ticker
+    absent from the mapping is *not* dropped: an unanswered read is not a refusal.
 
     `floor_release` is item 12's band, and `None` reads it from the environment
     (`EFB_FLOOR_RELEASE`), where unset is off: at `1.0` the floor is released exactly
@@ -1623,6 +1690,35 @@ def build_proposal(
     # in-model FMPs. The hedge drives every factor exposure, styles and
     # sectors included, to zero to machine precision.
     weights = size.procedure_6_3(alpha_vec, design, factor_covariance, specific)
+    # Item 18, when the caller injected the broker's lending flags: a name the sizing
+    # puts short and the broker will not lend leaves the book *here*, before the hedge
+    # and the floor, so the published book, its breadth and its forecast are the book
+    # the loop can actually hold rather than one it will report a refused leg for. The
+    # aligned arrays are filtered together, because a name dropped from `names` and
+    # left in `design` would size the wrong row against the wrong name.
+    dropped_no_short: list[dict[str, object]] = []
+    if shortable is not None:
+        keep_names, dropped_no_short = drop_not_shortable(names, weights, shortable)
+        if not keep_names.all():
+            if int(keep_names.sum()) < MIN_NAMES:
+                raise ValueError(
+                    f"the broker's lending flags leave only "
+                    f"{int(keep_names.sum())} name(s), below the {MIN_NAMES} floor: "
+                    "the feed's answer is the fetch having broken, not a market "
+                    "with nothing to short"
+                )
+            names = [name for name, keep in zip(names, keep_names, strict=True) if keep]
+            design = design[keep_names]
+            specific = specific[keep_names]
+            z = z[keep_names]
+            alpha_vec = alpha_vec[keep_names]
+            weights = weights[keep_names]
+            logger.warning(
+                "%d name(s) left the book before sizing because the broker's feed "
+                "will not lend them: %s",
+                len(dropped_no_short),
+                ", ".join(str(row["ticker"]) for row in dropped_no_short),
+            )
     weights, gross_cap_bound = _scale_to_target(
         weights, design, factor_covariance, specific
     )
@@ -1754,6 +1850,10 @@ def build_proposal(
         "n_names": len(names),
         "n_excluded": len(excluded),
         "excluded": excluded,
+        # The names the broker will not lend, dropped before the sizing when the
+        # precheck is on, and the count beside them so the two cannot disagree.
+        "n_dropped_no_short": len(dropped_no_short),
+        "dropped_no_short": dropped_no_short,
         # Which floor rule built this book: `1.0` is the release-at-the-floor rule the
         # loop has always used, and a fraction below it is item 12's band. A row read
         # back months later has to say which of the two its book came from.

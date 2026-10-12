@@ -583,6 +583,37 @@ class SymbolResolver:
         return out
 
 
+def shortable_map(resolver: Any, tickers: Any = None) -> dict[str, bool]:
+    """The broker's own `shortable` flag for each ticker the feed carries.
+
+    Item 18: the sizing shorts about half the book, and a name the broker will not
+    lend is in the book until the moment its leg is built, when it comes back
+    `ASSET_NOT_SHORTABLE` and the account ends the day short of its own target. This
+    is the read that lets the book be one the loop can hold.
+
+    Two properties matter. It is the *feed's* answer rather than a per-symbol call,
+    because `SymbolResolver` reads the whole active US-equity feed once and 499
+    single-symbol reads before sizing would be 499 requests. And a ticker the feed
+    does not carry is **absent** from the mapping rather than `False`: an unresolved
+    name is not a name the broker refused, and the caller must not drop it on the
+    strength of a read that did not answer.
+    """
+    loader = getattr(resolver, "_load", None)
+    if loader is not None:
+        loader()
+    by_symbol = getattr(resolver, "_by_symbol", None)
+    if not isinstance(by_symbol, dict):
+        return {}
+    symbols = list(by_symbol) if tickers is None else [str(t) for t in tickers]
+    out: dict[str, bool] = {}
+    for ticker in symbols:
+        asset = by_symbol.get(str(ticker))
+        if asset is None:
+            continue
+        out[str(ticker)] = bool(getattr(asset, "shortable", False))
+    return out
+
+
 def connect(dry_run: bool = DRY_RUN_DEFAULT):
     """The Alpaca paper client, or None in dry run.
 

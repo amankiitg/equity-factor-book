@@ -390,6 +390,7 @@ def compose(
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
     no_risk: list[dict[str, Any]] | None = None,
+    no_short: list[dict[str, Any]] | None = None,
     missing_var: int | None = None,
     refused_legs: list[dict[str, Any]] | None = None,
     unconfirmed_legs: int | None = None,
@@ -563,6 +564,17 @@ def compose(
         lines.append(
             f"Dropped for no risk estimate: {_no_risk_names(no_risk)} "
             "(out of the book before sizing)."
+        )
+    if no_short:
+        # Item 18's precheck, on a night it is on: the broker's own lending flag took
+        # these names out of the book *before* the sizing, so the published book is one
+        # the loop can hold rather than one that will report a refused leg. The names
+        # and the flag are both stated, because the flag is a point-in-time read and
+        # the next night may answer differently.
+        names = _no_risk_names(no_short)
+        lines.append(
+            f"Dropped before sizing, the broker will not lend: {names} "
+            "(out of the book before the hedge)."
         )
     if missing_var:
         # The same fact from the diagonal's own side, and the count the sizing
@@ -1404,6 +1416,7 @@ def notify_run(
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
     no_risk: list[dict[str, Any]] | None = None,
+    no_short: list[dict[str, Any]] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
@@ -1453,6 +1466,7 @@ def notify_run(
         refused_legs=refused_legs,
         unconfirmed_legs=unconfirmed_legs,
         excluded=excluded,
+        no_short=no_short,
         gross=gross,
         worst_input=worst_input,
         worst_sessions_behind=worst_sessions_behind,
