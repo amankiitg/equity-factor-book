@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pathlib
 from pathlib import Path
 from typing import Any
 
@@ -202,3 +203,60 @@ def test_the_manifest_carries_the_details(tmp_path: Path) -> None:
             evening_job.EXCLUDED_NO_GICS_NO_PRICES,
             evening_job.EXCLUDED_NO_RETURNS,
         )
+
+
+@pytest.mark.slow
+def test_the_reasons_cannot_stop_the_evening(monkeypatch: pytest.MonkeyPatch) -> None:
+    """FIX 3: a broken read behind the reasons costs the reasons, not the evening.
+
+    The block reads `processed/sectors.parquet` and the index of `raw/prices.parquet`
+    to say *why* a name is out. The name is already out by then - `excluded` is off the
+    universe and `wide`, both of which the sizing needs anyway - so the reason is a
+    note, and the note must not be able to stop a run before it sizes anything.
+
+    The prices read is patched to raise, and the book that comes back is compared with
+    the unpatched build name for name and weight for weight: an identity proof for the
+    wrap, in the same shape as the e12 sizing proof.
+    """
+    path = pathlib.Path(__file__).resolve().parents[1] / "data"
+    as_of = pd.Timestamp("2026-09-21")
+    plain = evening_job.build_proposal(data_root=path, as_of=as_of, store=False)
+
+    real = evening_job.pd.read_parquet
+
+    def failing(where: object, *args: Any, **kwargs: Any) -> Any:
+        name = str(where)
+        # Exactly the call the reason block makes: the index-only read of the price
+        # panel. Everything else in the build goes through untouched.
+        if name.endswith("raw/prices.parquet") and kwargs.get("columns") == []:
+            raise OSError("the price panel is unreadable")
+        return real(where, *args, **kwargs)
+
+    monkeypatch.setattr(evening_job.pd, "read_parquet", failing)
+    degraded = evening_job.build_proposal(data_root=path, as_of=as_of, store=False)
+
+    # The book is the same book: the wrap changed the note and nothing else.
+    kept_plain = pd.DataFrame(plain["kept_book"]).set_index("ticker")["weight"]
+    kept_degraded = pd.DataFrame(degraded["kept_book"]).set_index("ticker")["weight"]
+    assert list(kept_plain.index) == list(kept_degraded.index)
+    assert float((kept_plain - kept_degraded).abs().max()) == 0.0
+    assert plain["kept_gross"] == degraded["kept_gross"]
+    assert plain["n_kept"] == degraded["n_kept"]
+    assert plain["excluded"] == degraded["excluded"]
+    assert plain["n_excluded"] == degraded["n_excluded"]
+    assert plain["n_dropped_no_risk"] == degraded["n_dropped_no_risk"]
+    # And the note degraded rather than vanished: every name is still named, its
+    # reason says so, and no age is invented for it.
+    assert [row["ticker"] for row in degraded["excluded_detail"]] == sorted(
+        degraded["excluded"]
+    )
+    for row in degraded["excluded_detail"]:
+        assert row["reason"] == evening_job.EXCLUDED_NOT_DETERMINED
+        assert row["sessions"] is None
+        assert row["since"] is None
+    # The unpatched build still determines them, so the test is not asserting the
+    # degraded path against a build that also failed to read the files.
+    assert all(
+        row["reason"] != evening_job.EXCLUDED_NOT_DETERMINED
+        for row in plain["excluded_detail"]
+    )

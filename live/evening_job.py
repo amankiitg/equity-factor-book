@@ -1376,6 +1376,10 @@ def _cost_decomposition(
 EXCLUDED_NO_GICS = "no GICS row"
 EXCLUDED_NO_GICS_NO_PRICES = "no GICS row and no price rows"
 EXCLUDED_NO_RETURNS = "in the sectors file but absent from the processed returns panel"
+# What the detail says when the artifacts behind the reasons could not be read. The
+# *names* are the run's own (`excluded`, off the universe and the wide panel), and the
+# reason is the only part that needs the files, so this is the field that degrades.
+EXCLUDED_NOT_DETERMINED = "not determined"
 
 
 def exclusion_reason(
@@ -1628,28 +1632,57 @@ def build_proposal(
     # which is what the rule itself uses.
     excluded_detail: list[dict[str, object]] = []
     if excluded:
-        sectors_names = {
-            str(name)
-            for name in pd.read_parquet(root / "processed" / "sectors.parquet")[
-                "ticker"
-            ].astype(str)
-        }
-        # The index alone: the panel is 3.6M rows and the question is only which
-        # tickers it carries.
-        price_names = {
-            str(name)
-            for name in pd.read_parquet(root / "raw" / "prices.parquet", columns=[])
-            .index.get_level_values("ticker")
-            .unique()
-        }
-        excluded_detail = exclusion_details(
-            excluded,
-            in_sectors=sectors_names,
-            in_returns=set(wide_names),
-            in_prices=price_names,
-            history=excluded_history(str(as_of_ts.date())),
-            as_of=str(as_of_ts.date()),
-        )
+        # The reason and the age are a note about a name that is already out of the
+        # book: the drop itself happened above, off the universe and `wide`. So this
+        # block cannot be allowed to stop the evening - a fetch that broke, a panel
+        # that moved or a store that will not answer is a reason string, not a failed
+        # run - and every failure here degrades the *reasons* while `excluded` and
+        # `n_excluded` stay exactly what the rule computed.
+        try:
+            sectors_names = {
+                str(name)
+                for name in pd.read_parquet(root / "processed" / "sectors.parquet")[
+                    "ticker"
+                ].astype(str)
+            }
+            # The index alone: the panel is 3.6M rows and the question is only which
+            # tickers it carries. `index.names` is `['date', 'ticker']`, so `ticker`
+            # is a level of the frame's index and not a column.
+            price_names = {
+                str(name)
+                for name in pd.read_parquet(root / "raw" / "prices.parquet", columns=[])
+                .index.get_level_values("ticker")
+                .unique()
+            }
+            excluded_detail = exclusion_details(
+                excluded,
+                in_sectors=sectors_names,
+                in_returns=set(wide_names),
+                in_prices=price_names,
+                history=excluded_history(str(as_of_ts.date())),
+                as_of=str(as_of_ts.date()),
+            )
+        except Exception as exc:  # noqa: BLE001 - a note, never the book
+            logger.warning(
+                "the excluded names' reasons could not be determined (%s: %s), so "
+                "they are published as %r with no age: %s",
+                type(exc).__name__,
+                exc,
+                EXCLUDED_NOT_DETERMINED,
+                ", ".join(str(name) for name in excluded),
+            )
+            excluded_detail = [
+                {
+                    "ticker": str(name),
+                    "reason": EXCLUDED_NOT_DETERMINED,
+                    # No age and no date: `history` is what carries them, and this
+                    # path did not get that far.
+                    "sessions": None,
+                    "since": None,
+                    "as_of": str(as_of_ts.date()),
+                }
+                for name in sorted(excluded)
+            ]
     if len(names) < MIN_NAMES:
         raise ValueError(
             f"the SPY universe overlaps the frozen model on only {len(names)} "
