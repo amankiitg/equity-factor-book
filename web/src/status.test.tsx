@@ -11,7 +11,8 @@ import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { SnapshotView, runTone } from "./App";
-import type { Snapshot } from "./types";
+import type { BridgeBlock, Snapshot } from "./types";
+import brokenFixture from "../fixtures/snapshot_bridge_broken.json";
 import closed from "../fixtures/snapshot_market_closed.json";
 import errored from "../fixtures/snapshot_error.json";
 import expired from "../fixtures/snapshot_expired.json";
@@ -22,6 +23,8 @@ import withActual from "../fixtures/snapshot_actual_holdings.json";
 
 const OK = ok as unknown as Snapshot;
 const ACTUAL = withActual as unknown as Snapshot;
+const BROKEN = brokenFixture as unknown as Snapshot;
+const BROKEN_BRIDGE = BROKEN.bridge as BridgeBlock;
 const NONE = noBook as unknown as Snapshot;
 const NOW = new Date("2026-09-21T23:00:00Z");
 const LATE = new Date("2027-01-01T00:00:00Z");
@@ -74,21 +77,80 @@ describe("severity", () => {
     expect(alerts()).toEqual([]);
   });
 
-  it("paints a routine positions drift amber, not red", () => {
+  it("keeps a mismatch the document explains out of amber, and its count visible", () => {
+    // The brief's rule: only the unexpected names turn amber. This snapshot's
+    // mismatch is exactly its own deferred reversals, so the reconciliation reads
+    // clean-with-explained, the names are collapsed into one line, and the run's own
+    // panel is untouched by it.
+    const snapshot: Snapshot = {
+      ...OK,
+      bridge: {
+        close: "2026-09-21",
+        seen_by: "evening",
+        book: 150,
+        held_before: 150,
+        in_both: 149,
+        opened: 1,
+        exited: 1,
+        changed: 10,
+        under_minimum: 0,
+        orders_sent: 11,
+        filled: null,
+        did_not_fill: null,
+        held_after: null,
+        under_minimum_usd: 250,
+        // The document's own list, which is what classifies the name below.
+        reversals_pending: ["ZZZZ"],
+        removed_without_order: [],
+        unexplained: [],
+        identities: [
+          { name: "in both + opened = the book", left: 150, right: 150, holds: true },
+        ],
+        holds: true,
+      },
+      positions: {
+        ...OK.positions,
+        matches: false,
+        missing_at_broker: ["ZZZZ"],
+        missing_in_store: [],
+        note: "mismatch: the account holds 2 name(s) and the store 150",
+      },
+    };
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const reconciled = panel("reconciliation");
+    expect(reconciled.getAttribute("data-tone")).toBe("good");
+    expect(reconciled.textContent).toContain("clean, with explained mismatches");
+    // The writer's own sentence is kept: the page classifies the names, it does not
+    // paraphrase what the run said about them.
+    expect(reconciled.textContent).toContain("mismatch: the account holds 2 name(s)");
+    const expected = reconciled.querySelector("[data-expected='true']") as HTMLElement;
+    expect(expected).toBeTruthy();
+    expect(expected.textContent).toContain("1 expected: deferred reversal");
+    expect(expected.textContent).toContain("ZZZZ");
+    expect(reconciled.querySelector("[data-alert='positions']")).toBeNull();
+    expect(panel("run").getAttribute("data-tone")).toBe("good");
+    expect(alerts()).toEqual([]);
+  });
+
+  it("paints a mismatch nothing explains amber, and names it", () => {
     const snapshot: Snapshot = {
       ...OK,
       positions: {
         ...OK.positions,
         matches: false,
+        missing_at_broker: ["QQQQ"],
+        missing_in_store: [],
         note: "mismatch: the account holds 2 name(s) and the store 150",
       },
     };
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
-    const positions = panel("positions");
-    expect(positions.getAttribute("data-tone")).toBe("warn");
-    expect(positions.textContent).toContain("mismatch: the account holds 2 name(s)");
-    // The clean run itself is not an alert, and the drift is not one either.
-    expect(panel("run").getAttribute("data-tone")).toBe("good");
+    const reconciled = panel("reconciliation");
+    expect(reconciled.getAttribute("data-tone")).toBe("warn");
+    const unexpected = reconciled.querySelector("[data-alert='positions']") as HTMLElement;
+    expect(unexpected.getAttribute("data-tone")).toBe("warn");
+    expect(unexpected.textContent).toContain("QQQQ");
+    expect(unexpected.textContent).toContain("nothing on the page explains");
+    // Amber, not red: a mismatch is a fact to read, not a broken loop.
     expect(alerts()).toEqual([]);
   });
 
@@ -150,14 +212,33 @@ describe("a missing value", () => {
   it("says n/a on the metrics row rather than zero", () => {
     const snapshot: Snapshot = {
       ...OK,
-      book: { ...OK.book, gross: null, gross_notional: null, net: null, expected_cost_bps: null, full_book_gross: null },
+      book: {
+        ...OK.book,
+        gross: null,
+        gross_notional: null,
+        net: null,
+        expected_cost_bps: null,
+        full_book_gross: null,
+        full_book_net: null,
+        full_book_achieved_annual_vol: null,
+      },
       breadth: { ...OK.breadth, n_eff_kept: null, n_eff_full_book: null },
     };
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
     const cards = document.querySelector("[data-cards='true']") as HTMLElement;
     const card = (label: string): HTMLElement =>
       cards.querySelector(`[data-card='${label}']`) as HTMLElement;
-    for (const label of ["gross", "net", "n_eff_kept", "n_eff_full_book", "expected cost", "full book before the floor"]) {
+    for (const label of [
+      "gross",
+      "net",
+      "n_eff_kept",
+      "turnover",
+      "expected-expense",
+      "n_eff_full_book",
+      "full-book-gross",
+      "full-book-net",
+      "full-book-vol",
+    ]) {
       expect(card(label).textContent, label).toContain("n/a");
       // Not a zero wearing a sign, and not a rounding artefact.
       expect(card(label).textContent, label).not.toMatch(/0\.00|-\$0|\$0\b/);
@@ -238,5 +319,138 @@ describe("the actual-holdings table", () => {
     const byDrift = order();
     fireEvent.click(document.querySelector("[data-sort='ticker']") as HTMLElement);
     expect(order()).toEqual([...byDrift].sort((a, b) => a.localeCompare(b)));
+  });
+});
+
+describe("the two claims the strip separates", () => {
+  /** A snapshot whose account-versus-store check fails with the names of 10-09. */
+  const mismatched: Snapshot = {
+    ...OK,
+    positions: {
+      matches: false,
+      max_abs_drift: 976.94,
+      missing_at_broker: ["BEN", "F", "VZ", "ZTS"],
+      missing_in_store: ["WBD"],
+      n_broker: 172,
+      n_store: 175,
+      note: "mismatch: the account holds 172 name(s) and the store 175",
+      source: "alpaca paper account",
+    },
+    bridge: {
+      ...BROKEN_BRIDGE,
+      reversals_pending: ["INVH"],
+      removed_without_order: [],
+      identities: (BROKEN.bridge?.identities ?? []).map((identity) => ({
+        ...identity,
+        holds: true,
+      })),
+    },
+  };
+
+  it("paints the reconciliation pill, not the proposal pill, for a mismatch", () => {
+    render(<SnapshotView snapshot={mismatched} now={NOW} />);
+    const strip = document.querySelector("[data-strip='status']") as HTMLElement;
+    // The proposal run is clean and says so: a failing reconciliation is not a
+    // failing run, and reading one as the other is the mistake the split fixes.
+    const proposal = document.querySelector("[data-pill='status']") as HTMLElement;
+    expect(proposal.textContent).toContain("proposal run");
+    expect(proposal.getAttribute("data-tone")).toBe("good");
+    const reconciled = document.querySelector("[data-pill='reconciliation']") as HTMLElement;
+    expect(reconciled.getAttribute("data-tone")).toBe("warn");
+    expect(reconciled.getAttribute("data-reconciliation")).toBe("fail");
+    expect(reconciled.textContent).toContain("1 unresolved");
+    // And the strip's own colour is the worse of the two, because that is the
+    // element read without reading.
+    expect(strip.getAttribute("data-tone")).toBe("warn");
+  });
+
+  it("counts the two kinds of mismatch apart, on both tabs", () => {
+    render(<SnapshotView snapshot={mismatched} now={NOW} />);
+    const count = document.querySelector("[data-flag='exceptions']") as HTMLElement;
+    expect(count.textContent).toBe("5 unexpected mismatches");
+    const panel_ = panel("reconciliation");
+    // Every name is listed with its direction, because the two directions are
+    // different failures: the store holding what the account does not is the
+    // dangerous one.
+    for (const ticker of ["BEN", "F", "VZ", "ZTS", "WBD"]) {
+      expect(panel_.textContent).toContain(ticker);
+    }
+    expect(panel_.textContent).toContain("the store holds it and the account does not");
+    expect(panel_.textContent).toContain("the account holds it and the store does not");
+    // The classes the document cannot decide are stated as such rather than
+    // silently dropped.
+    expect(
+      (document.querySelector("[data-unchecked='true']") as HTMLElement).textContent,
+    ).toContain("previous close's bridge.reversals_pending");
+  });
+
+  it("collapses a mismatch every name of which the document explains", () => {
+    const explained: Snapshot = {
+      ...mismatched,
+      positions: {
+        ...mismatched.positions,
+        missing_at_broker: ["ZTS"],
+        missing_in_store: [],
+        n_broker: 174,
+        n_store: 175,
+      },
+      bridge: {
+        ...(mismatched.bridge as BridgeBlock),
+        reversals_pending: ["ZTS"],
+      },
+    };
+    render(<SnapshotView snapshot={explained} now={NOW} />);
+    const strip = document.querySelector("[data-strip='status']") as HTMLElement;
+    expect(strip.getAttribute("data-tone")).toBe("good");
+    expect(document.querySelector("[data-alert='positions']")).toBeNull();
+    const line = document.querySelector("[data-expected='true']") as HTMLElement;
+    expect(line.textContent).toContain("1 expected: deferred reversal");
+    expect(line.textContent).toContain("ZTS");
+  });
+
+  it("says which account read is on the page, and what it certifies", () => {
+    // The evening reads the account before it sends, so an evening snapshot
+    // cannot certify the fills; the morning's can. A reader who mistakes the
+    // first for the second reads a plan as a position.
+    render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    const line = document.querySelector("[data-flag='account-read']") as HTMLElement;
+    expect(line).toBeTruthy();
+    const read = ACTUAL.actual_holdings?.read_by ?? "";
+    expect(line.textContent).toContain(read === "morning" ? "morning, after the fills" : "evening");
+    if (read === "morning") {
+      expect(line.textContent).toContain("the fills exist");
+      expect(line.textContent).toContain(String(ACTUAL.actual_holdings?.close).slice(0, 10));
+    }
+
+    document.body.innerHTML = "";
+    const evening: Snapshot = {
+      ...ACTUAL,
+      actual_holdings: {
+        ...(ACTUAL.actual_holdings as NonNullable<Snapshot["actual_holdings"]>),
+        read_by: "evening",
+        fills: null,
+      },
+    };
+    render(<SnapshotView snapshot={evening} now={NOW} />);
+    const stated = document.querySelector("[data-flag='account-read']") as HTMLElement;
+    expect(stated.textContent).toContain("evening, before the orders");
+    expect(stated.textContent).toContain("cannot certify the fills");
+  });
+
+  it("calls the account paper, and never live", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    // The fixture is a dry run, and a dry run says the louder thing.
+    expect((document.querySelector("[data-flag='mode']") as HTMLElement).textContent).toContain(
+      "DRY RUN",
+    );
+    document.body.innerHTML = "";
+    render(<SnapshotView snapshot={{ ...OK, dry_run: false }} now={NOW} />);
+    const mode = document.querySelector("[data-flag='mode']") as HTMLElement;
+    expect(mode.textContent).toContain("PAPER");
+    expect(mode.textContent).toContain("paper account");
+    // "live" is the word the redesign removed: it claims real capital.
+    for (const element of Array.from(document.querySelectorAll("[data-strip='status'] *"))) {
+      expect(element.textContent ?? "").not.toContain("live");
+    }
   });
 });

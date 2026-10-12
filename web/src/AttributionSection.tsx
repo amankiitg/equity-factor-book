@@ -22,6 +22,7 @@
 
 import { useState } from "react";
 
+import { Details } from "./Details";
 import { count, dateOnly, percent } from "./format";
 import type {
   Attribution,
@@ -31,15 +32,15 @@ import type {
   AttributionRiskPath,
 } from "./types";
 
-/** A P&L in basis points of the book, signed to one place. */
+/** A P&L in basis points of NAV, signed to one place. */
 const bps = (value: number | null | undefined): string =>
   value === null || value === undefined
     ? "n/a"
-    : `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)} bp`;
+    : `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)} bp of NAV`;
 
-/** A cost already quoted in basis points, to two places; a good fill is negative. */
+/** A cost already quoted in basis points of NAV; a favourable fill is negative. */
 const costBps = (value: number | null | undefined): string =>
-  value === null || value === undefined ? "n/a" : `${value.toFixed(2)} bp`;
+  value === null || value === undefined ? "n/a" : `${value.toFixed(2)} bp of NAV`;
 
 /** An annualized volatility, which is a fraction, as a percentage to one place. */
 const volPct = (value: number | null | undefined): string =>
@@ -180,7 +181,7 @@ function CumulativeChart({ points }: { points: CumulativePoint[] }) {
 
   return (
     <figure className="mt-3" data-chart="cumulative">
-      <figcaption className="text-xs text-slate-500">cumulative, bp of the book</figcaption>
+      <figcaption className="text-xs text-slate-500">cumulative, bp of NAV</figcaption>
       <svg
         className="h-auto"
         viewBox={`0 0 ${W} ${H}`}
@@ -270,7 +271,7 @@ function DailyBars({ days }: { days: AttributionDay[] }) {
   return (
     <figure className="mt-3" data-chart="daily">
       <figcaption className="text-xs text-slate-500">
-        each bar is one live day, its four terms stacked, bp of the book
+        each bar is one live day, its four terms stacked, bp of NAV
       </figcaption>
       <svg
         className="h-auto"
@@ -656,11 +657,211 @@ function CostLine({ period }: { period: AttributionPeriod }) {
       {realizedWords}
       {realized === null || trading === null
         ? ""
-        : `, to be read against the ${costBps(trading)} of trading cost expected; a favourable fill can carry a negative number`}
-      . The cost term in the split is a day's realized number where it has one and the expected
-      number where it does not.
+        : `, one session against the ${costBps(trading)} of trading cost the evening expected for the same session - the only like-for-like comparison, since borrow is a holding cost over a horizon no fill price pays`}
+      . The cost contribution in the split is a day&apos;s realized number where it has one and the
+      expected number where it does not, so a period total mixes the two and is read as an
+      estimate rather than as a measurement.
     </p>
   );
+}
+
+/**
+ * What each factor contributed, over the period.
+ *
+ * The four cards say how much of the total came from the modelled factors; this says
+ * which of them, which is the question that follows immediately and that the page
+ * could not answer before even though the document has carried `by_factor` all along.
+ * On the live book the hedge drives the traded exposures to zero, so these are the
+ * hedge's own residue rather than a set of bets - small, and it is the *size* that is
+ * the reading, not the sign.
+ *
+ * Sorted by absolute contribution, because a table in factor-name order puts the
+ * largest move wherever the alphabet decides, and the sum is printed at the foot:
+ * these are components of the factor P&L card above, so a reader must be able to add
+ * them up and get it.
+ */
+function FactorTable({ period }: { period: AttributionPeriod }) {
+  const entries = Object.entries(period.by_factor ?? {})
+    .filter(([, value]) => value !== null && value !== undefined)
+    .map(([factor, value]) => ({ factor, value: value as number }))
+    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+  const timing = period.daily.reduce((total, day) => total + (day.pnl_timing ?? 0), 0);
+  if (entries.length === 0) return null;
+  const total = entries.reduce((sum, entry) => sum + entry.value, 0);
+  const widest = Math.max(...entries.map((entry) => Math.abs(entry.value)), 1e-12);
+
+  return (
+    <div data-panel="by-factor" className="mt-3">
+      <h3 className="text-sm font-semibold">By factor</h3>
+      <p className="mt-1 text-xs text-slate-600">
+        Cumulative contribution of each modelled factor over {count(period.n_days)} session(s), in
+        bp of NAV, largest first. These sum to the factor card above.
+      </p>
+      <table aria-label="by factor" className="mt-1 w-full text-xs">
+        <tbody>
+          {entries.map((entry) => (
+            <tr key={entry.factor} data-factor={entry.factor} className="border-b border-slate-100">
+              <td className="py-0.5 pr-2 font-mono">{entry.factor}</td>
+              <td className="py-0.5 pr-2">
+                <span
+                  data-factor-bar="true"
+                  className={`inline-block h-2 rounded-sm ${
+                    entry.value >= 0 ? "bg-emerald-600" : "bg-rose-500"
+                  }`}
+                  style={{
+                    width: `${Math.max(2, (Math.abs(entry.value) / widest) * 90)}px`,
+                  }}
+                />
+              </td>
+              <td className="py-0.5 text-right tabular-nums">{bps(entry.value)}</td>
+            </tr>
+          ))}
+          <tr data-factor="total" className="text-slate-700">
+            <td className="py-1 pr-2 font-semibold">total</td>
+            <td className="py-1 pr-2" />
+            <td className="py-1 text-right font-semibold tabular-nums">{bps(total)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="mt-1 text-xs text-slate-500">
+        The hedge&apos;s own timing residue over the period — the P&amp;L the gap between the two
+        design vintages produced — is {bps(timing)}.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Realized against forecast volatility, session by session.
+ *
+ * The one question about risk the page could not answer from its charts: the predicted
+ * split and the pre/post-hedge forecast are both *model* output, so a reader could see
+ * what the model believed and never whether the book did what the model said. The
+ * evidence is per session and the document already carries it - `realized_vol` is the
+ * book's own P&L over a rolling quarter, `forecast_vol` the model's, both annualized.
+ *
+ * Two things are stated rather than implied. The session count, because a volatility
+ * comparison on seven sessions is an anecdote and the reader has to be able to see
+ * that; and the gap's own sign, because "realized below forecast" is the reassuring
+ * direction and a reader should not have to work out which is which from the lines.
+ * A session with no forecast is drawn as a gap rather than as zero, because an
+ * unmeasured session is not a quiet one.
+ */
+function VolatilityPanel({ period }: { period: AttributionPeriod }) {
+  const rows = period.daily;
+  const pairs = rows.filter(
+    (day) =>
+      day.realized_vol !== null &&
+      day.realized_vol !== undefined &&
+      day.forecast_vol !== null &&
+      day.forecast_vol !== undefined,
+  );
+  const withRealized = rows.filter(
+    (day) => day.realized_vol !== null && day.realized_vol !== undefined,
+  );
+  if (withRealized.length === 0) {
+    return (
+      <div data-panel="volatility" className="mt-3">
+        <h3 className="text-sm font-semibold">Realized against forecast volatility</h3>
+        <p className="mt-1 text-xs text-slate-600" data-vol="absent">
+          no session of this period carries a realized volatility yet: the measure needs a
+          quarter of the book&apos;s own daily P&amp;L, so it is absent on a book that has not
+          been running that long rather than zero.
+        </p>
+      </div>
+    );
+  }
+
+  const W = 320;
+  const H = 120;
+  const L = 34;
+  const R = 8;
+  const T = 8;
+  const B = 18;
+  const pw = W - L - R;
+  const ph = H - T - B;
+  const values = pairs.flatMap((day) => [day.realized_vol as number, day.forecast_vol as number]);
+  const top = Math.max(...values, 0.01) * 1.1;
+  const x = (index: number): number =>
+    pairs.length <= 1 ? L + pw / 2 : L + (index / (pairs.length - 1)) * pw;
+  const y = (value: number): number => T + (1 - Math.min(value / top, 1)) * ph;
+  const line = (pick: (day: AttributionDay) => number): string =>
+    pairs.map((day, index) => `${x(index)},${y(pick(day))}`).join(" ");
+  const last = pairs[pairs.length - 1];
+
+  return (
+    <div data-panel="volatility" className="mt-3">
+      <h3 className="text-sm font-semibold">Realized against forecast volatility</h3>
+      <p className="mt-1 text-xs text-slate-600">
+        Annualized, per session, from <code>attribution.live.daily</code>. {count(pairs.length)} of{" "}
+        {count(period.n_days)} session(s) carry both; the realized line is the book&apos;s own
+        P&amp;L over a rolling quarter and the forecast is the model&apos;s.
+      </p>
+      <svg
+        className="mt-1 h-auto"
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        role="img"
+        aria-label="realized and forecast annualized volatility by session"
+      >
+        {[0, 0.5, 1].map((tick, index) => (
+          <g key={index}>
+            <line
+              x1={L}
+              y1={y(tick * top)}
+              x2={W - R}
+              y2={y(tick * top)}
+              stroke="#e2e8f0"
+              strokeWidth="1"
+            />
+            <text x={L - 4} y={y(tick * top) + 3} textAnchor="end" fontSize="8" fill="#64748b">
+              {`${(tick * top * 100).toFixed(1)}%`}
+            </text>
+          </g>
+        ))}
+        <polyline
+          data-series="forecast"
+          points={line((day) => day.forecast_vol as number)}
+          fill="none"
+          stroke={COLORS.factor}
+          strokeWidth="1.4"
+        />
+        <polyline
+          data-series="realized"
+          points={line((day) => day.realized_vol as number)}
+          fill="none"
+          stroke={COLORS.idio}
+          strokeWidth="1.4"
+        />
+        <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
+          {dateOnly(pairs[0]?.trade_date) ?? ""}
+        </text>
+        <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#64748b">
+          {dateOnly(last?.trade_date) ?? ""}
+        </text>
+      </svg>
+      <p className="mt-1 text-sm tabular-nums" data-vol="last">
+        the last session with both, {dateOnly(last?.trade_date) ?? "n/a"}: realized{" "}
+        {volPct(last?.realized_vol)} against {volPct(last?.forecast_vol)} forecast
+        {biasSentence(pairs)}
+      </p>
+      <p className="mt-1 text-xs text-slate-500">
+        {count(pairs.length)} session(s) is not enough to judge the model: E11&apos;s risk test
+        wants thirty live days before a bias band means anything, and a page that drew a verdict
+        on seven would be inventing one.
+      </p>
+    </div>
+  );
+}
+
+/** How the realized line has sat against the forecast, stated rather than left to the eye. */
+function biasSentence(pairs: AttributionDay[]): string {
+  const ratios = pairs.map((day) => (day.realized_vol as number) / (day.forecast_vol as number));
+  const mean = ratios.reduce((total, value) => total + value, 0) / ratios.length;
+  if (!Number.isFinite(mean)) return "";
+  if (mean > 1.05) return `; realized has run ${((mean - 1) * 100).toFixed(0)}% above forecast on average`;
+  if (mean < 0.95) return `; realized has run ${((1 - mean) * 100).toFixed(0)}% below forecast on average`;
+  return "; the two have tracked each other on average";
 }
 
 function PeriodView({
@@ -727,7 +928,9 @@ function PeriodView({
           <dd className="tabular-nums">{bps(cumulative.pnl_idio)}</dd>
         </div>
         <div data-card="pnl-cost" className="rounded border border-slate-100 bg-slate-50 px-2 py-1">
-          <dt className="break-words text-xs uppercase tracking-wide text-slate-500">cost</dt>
+          <dt className="break-words text-xs uppercase tracking-wide text-slate-500">
+            cost contribution to P&amp;L
+          </dt>
           <dd className="tabular-nums">{bps(cumulative.pnl_cost)}</dd>
         </div>
         <div
@@ -749,7 +952,9 @@ function PeriodView({
       {points.length >= 1 ? <CumulativeChart points={points} /> : null}
       {live ? <DailyBars days={carried} /> : null}
       <CostLine period={period} />
+      {live ? <VolatilityPanel period={period} /> : null}
       {live && period.risk ? <RiskSplit risk={period.risk} /> : null}
+      <FactorTable period={period} />
 
       <DayTable days={carried} label="attribution by day" live={live} />
       {lastDay ? (
@@ -788,13 +993,28 @@ export function AttributionSection({ attribution }: { attribution?: Attribution 
     >
       <h2 className="text-lg font-semibold">Attribution</h2>
       <p className="mt-1 text-sm text-slate-600">
-        What the book earned, split into the four terms that add to its total: the hedge's factor
-        P&L, the names' idiosyncratic P&L, what the fills cost, and the unexplained remainder. In
-        basis points of the book's gross.
+        What the book earned, split into the four terms that add to its total: the hedge&apos;s
+        factor P&amp;L, the names&apos; idiosyncratic P&amp;L, the cost contribution to P&amp;L,
+        and the unexplained remainder. Every figure is in bp of NAV.
       </p>
-      {attribution.note ? (
-        <p className="mt-1 text-xs text-slate-500">{attribution.note}</p>
-      ) : null}
+      <Details
+        hook="attribution-method"
+        summary={<>how these four terms are computed, and what they are not</>}
+      >
+        <p className="text-xs text-slate-500">
+          Every row is stored by the evening run: factor P&amp;L is the book&apos;s exposure times
+          the factor returns, idio P&amp;L is its positions times the specific returns, and the
+          four terms sum to the day&apos;s total by construction - a row that does not add up is a
+          stored day that does not decompose, which is what the check column in the table is for.
+          The fourth term is not a fourth estimate: it is the stored artifacts disagreeing with the
+          panel&apos;s own return, and on the live book it is a few hundredths of a bp. On the
+          research panel it is the descriptors&apos; vintage and it accumulates to hundreds of bp
+          over a decade, which is why the two views label it differently.
+        </p>
+        {attribution.note ? (
+          <p className="mt-1 text-xs text-slate-500">{attribution.note}</p>
+        ) : null}
+      </Details>
 
       {/* The switch only exists when there are two objects to switch between: a
           second tab that opens nothing is worse than no tab. */}

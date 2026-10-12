@@ -25,6 +25,11 @@ if (!BACKTEST) throw new Error("the ok fixture carries no backtest period");
 const LIVE_PERIOD = LIVE;
 const BACKTEST_PERIOD = BACKTEST;
 
+/** The section is on the Attribution tab, which is where these tests read it. */
+const openAttribution = (): void => {
+  fireEvent.click(screen.getByRole("tab", { name: "Attribution" }));
+};
+
 const bps = (value: number | null): string =>
   `${(value ?? 0) >= 0 ? "+" : ""}${((value ?? 0) * 1e4).toFixed(1)} bp`;
 
@@ -39,6 +44,7 @@ const view = (): string | null =>
 describe("the attribution section", () => {
   it("opens on the live book, not the research panel", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     expect(view()).toBe("live");
     // The live period's own label is on screen; the backtest's note is not, because
     // the two are different objects and only one of them is the book.
@@ -48,6 +54,7 @@ describe("the attribution section", () => {
 
   it("prints the four terms and the total for the live period, in bp and signed", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     const cumulative = LIVE_PERIOD.cumulative;
     expect(card("pnl-total")).toContain(bps(cumulative.pnl_total));
     expect(card("pnl-factor")).toContain(bps(cumulative.pnl_factor));
@@ -67,6 +74,7 @@ describe("the attribution section", () => {
 
   it("renders every live day's four terms so that they add to the day's total", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     const table = screen.getByRole("table", { name: "attribution by day" });
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows.length).toBe(LIVE_PERIOD.daily.length);
@@ -87,6 +95,7 @@ describe("the attribution section", () => {
 
   it("draws the cumulative and daily charts for the live book only", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     expect(document.querySelector("[data-chart='cumulative']")).toBeTruthy();
     expect(document.querySelector("[data-chart='daily']")).toBeTruthy();
     // Every series carries a word in the legend as well as a colour.
@@ -99,6 +108,7 @@ describe("the attribution section", () => {
 
   it("reveals the backtest behind the switch, with its own note and a zero cost", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     fireEvent.click(screen.getByRole("tab", { name: "the research panel (backtest)" }));
     expect(view()).toBe("backtest");
     expect(screen.getByText(BACKTEST_PERIOD.note, { exact: false })).toBeTruthy();
@@ -117,6 +127,7 @@ describe("the attribution section", () => {
 
   it("opens a long period on its ten newest days, with the rest behind a toggle", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     fireEvent.click(screen.getByRole("tab", { name: "the research panel (backtest)" }));
     const table = screen.getByRole("table", { name: "attribution by day" });
     expect(within(table).getAllByRole("row").slice(1).length).toBe(10);
@@ -128,6 +139,7 @@ describe("the attribution section", () => {
 
   it("draws the live risk split when it is there, and nothing when it is not", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     expect(document.querySelector("[data-chart='risk']")).toBeTruthy();
     const factor = document.querySelector("[data-var-share='factor']")?.textContent ?? "";
     // The traded book's factor share is under 6% of predicted variance; one decimal
@@ -142,6 +154,7 @@ describe("the attribution section", () => {
       attribution: { ...ATTRIBUTION, live: { ...LIVE_PERIOD, risk: null } },
     } as unknown as Snapshot;
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    openAttribution();
     expect(document.querySelector("[data-chart='risk']")).toBeNull();
     // The rest of the section survives an absent risk read.
     expect(document.querySelector("[data-chart='daily']")).toBeTruthy();
@@ -149,6 +162,7 @@ describe("the attribution section", () => {
 
   it("compares the realized cost against the trading half, with borrow named beside it", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     const cost = document.querySelector("[data-cost='line']")?.textContent ?? "";
     const split = LIVE_PERIOD.cost;
     const trading = split.expected_trading_bps as number;
@@ -161,8 +175,12 @@ describe("the attribution section", () => {
     // The comparison is the trading half and not the total: the total carries
     // borrow, which is a holding cost and no fill price pays it.
     expect(trading).toBeLessThan(split.expected_bps as number);
-    expect(cost).toContain(`against the ${trading.toFixed(2)} bp of trading cost expected`);
+    expect(cost).toContain(
+      `against the ${trading.toFixed(2)} bp of NAV of trading cost the evening expected for the same session`,
+    );
     expect(cost).not.toContain(`against the ${(split.expected_bps as number).toFixed(2)} bp`);
+    // Every figure in the block carries its denominator.
+    expect(cost).toContain("bp of NAV");
     // The realized number is labelled as what it measures: the move from the
     // previous close to the fill, which is mostly the overnight gap.
     expect(cost).toContain("previous close");
@@ -171,6 +189,7 @@ describe("the attribution section", () => {
 
   it("shows what the hedge removed, not only the split it left", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     const risk = LIVE_PERIOD.risk;
     if (!risk || risk.pre_hedge_vol === null || risk.hedged_vol === null) {
       throw new Error("the fixture carries no hedge forecast");
@@ -205,6 +224,7 @@ describe("the attribution section", () => {
       },
     } as unknown as Snapshot;
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    openAttribution();
     expect(document.querySelector("[data-vol='line']")?.textContent).toContain("n/a");
     expect(document.querySelector("[data-chart='hedge-vol']")).toBeNull();
     // The split itself survives: only the hedge's own effect is missing.
@@ -213,6 +233,7 @@ describe("the attribution section", () => {
 
   it("labels the backtest's fourth term as a research-vintage mismatch, and the live one as it was", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     fireEvent.click(screen.getByRole("tab", { name: "the research panel (backtest)" }));
     expect(card("pnl-unexplained")).toContain("research-vintage mismatch");
     expect(card("pnl-unexplained")).toContain("descriptors on file differ from the fit's design");
@@ -227,6 +248,7 @@ describe("the attribution section", () => {
 
   it("prints the raw beta to three places, never as the 0.0 one decimal gave", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     const beta = document.querySelector("[data-beta='book']")?.textContent ?? "";
     const value = LIVE_PERIOD.daily[LIVE_PERIOD.daily.length - 1].book_beta as number;
     expect(Math.abs(value)).toBeGreaterThan(0);
@@ -247,5 +269,31 @@ describe("the attribution section", () => {
   it("hides itself when handed no attribution at all", () => {
     const { container } = render(<AttributionSection attribution={undefined} />);
     expect(container.querySelector("[data-section='attribution']")).toBeNull();
+  });
+});
+
+describe("the attribution tab when the document has no attribution", () => {
+  it("says the document carries none, rather than opening a blank screen", () => {
+    // The 2026-10-08 document in the bucket is one of these: it was published before
+    // the step ran. The section hides itself, which is right on a page read top to
+    // bottom, so the tab has to state the absence or it reads as a broken page.
+    const without: Snapshot = { ...OK, attribution: null };
+    render(<SnapshotView snapshot={without} now={NOW} />);
+    openAttribution();
+    const note = document.querySelector("[data-attribution='absent']") as HTMLElement;
+    expect(note).toBeTruthy();
+    expect(note.textContent).toContain("carries no attribution block");
+    expect(document.querySelector("[data-section='attribution']")).toBeNull();
+    // The book monitor is untouched by the absence.
+    fireEvent.click(screen.getByRole("tab", { name: "Book monitor" }));
+    expect(document.querySelector("[data-section='hedge']")).toBeTruthy();
+    expect(document.querySelector("[data-attribution='absent']")).toBeNull();
+  });
+
+  it("says nothing of the sort when the block is there", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
+    expect(document.querySelector("[data-attribution='absent']")).toBeNull();
+    expect(document.querySelector("[data-section='attribution']")).toBeTruthy();
   });
 });

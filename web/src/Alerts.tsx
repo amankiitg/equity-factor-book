@@ -1,58 +1,139 @@
 // What needs a look, in the order the reader asks it.
 //
-// The run's own state first: that is the one that must never be missed, and it is
-// the only thing on this page allowed to be red. Then the account against the
-// store, which is the failure that makes every number below it wrong, and which is
-// amber: a drift is a fact to read, not a broken loop. Then the legs the broker did
-// not fill, one line each, because the count alone leaves the reader to open the
-// store to find out which name did not happen.
+// The two jobs first, as two panels: the proposal run's own state (the one thing on
+// the page allowed to be red) and then whether the book reconciled - the checks the
+// strip's second pill summarises. The account-versus-store comparison is one of
+// those checks rather than a panel of its own, because a mismatch is a fact about
+// reconciliation and reading it beside the two other checks is what stops it being
+// taken for the whole answer.
 //
-// A position that left the account with nothing behind it is amber for the same
-// reason, and it is the one line here that no other number on the page implies:
-// the book, the orders and the fill count can all be right while a name has walked
-// out of the account, which is what happened to PSKY on 2026-10-06. It is drawn
-// with its own dollars, so the reader has the size of the adjustment in front of
-// them rather than having to difference two books to find it.
+// The mismatches are then split. A name the document explains - a deferred reversal,
+// a removal the bridge itemised - is not an exception, and listing four of them
+// beside a real break is how a page teaches its reader to skim the list. They go in
+// one line under the count. Only the unexplained ones are drawn in amber, and the
+// panel says which of the brief's classes it could not check at all, because a page
+// that found nothing and a page that could not look are different answers.
 //
-// Deferred legs are amber by the same rule. The snapshot carries no deferral list
-// (`run_status` has status, failures, splits, flags and the cost label, and the
-// evening's own message is where the deferrals are named), so this page has none to
-// show and says nothing rather than inferring one from a missing leg.
+// The legs the broker did not fill keep their own panel, one line each, and so does a
+// position that left the account with nothing behind it: that last one is the line no
+// other number on the page implies, which is what happened to PSKY on 2026-10-06.
 
-import { Panel } from "./Panel";
+import { exceptionText, type Exceptions, type Mismatch } from "./exceptions";
 import { dollars, shares } from "./format";
-import type { RunState } from "./status";
+import { Panel } from "./Panel";
+import type { Reconciliation, RunState } from "./status";
 import type { ExitsBlock, Snapshot } from "./types";
 
 /** How many miss lines the strip lists before it counts the rest. */
 const MISS_LINES = 6;
 
-export function Alerts({ snapshot, state }: { snapshot: Snapshot; state: RunState }) {
-  const positions = snapshot.positions;
+/** The expected names, grouped by the class that explains them, in one line each. */
+function expectedLines(mismatches: Mismatch[]): string[] {
+  const groups = new Map<string, string[]>();
+  for (const entry of mismatches) {
+    const list = groups.get(entry.why) ?? [];
+    list.push(entry.ticker);
+    groups.set(entry.why, list);
+  }
+  return [...groups.entries()].map(
+    ([why, tickers]) => `${tickers.length} expected: ${why} — ${[...tickers].sort().join(", ")}`,
+  );
+}
+
+function checkClass(state: Reconciliation["checks"][number]["state"]): string {
+  return state === "unresolved" ? "font-semibold text-amber-900" : "text-slate-700";
+}
+
+function ReconciliationPanel({
+  reconciled,
+  exceptions,
+}: {
+  reconciled: Reconciliation;
+  exceptions: Exceptions;
+}) {
+  const expected = expectedLines(exceptions.expected);
+  return (
+    <section
+      data-alert="reconciliation"
+      data-tone={reconciled.tone}
+      role="status"
+      className={`border-l-4 px-3 py-2 ${
+        reconciled.unresolved > 0
+          ? "border-amber-400 bg-amber-50 text-amber-900"
+          : "border-slate-300 bg-slate-50 text-slate-800"
+      }`}
+    >
+      <p className="font-semibold">{reconciled.headline}</p>
+      <ul className="mt-1 text-sm">
+        {reconciled.checks.map((check) => (
+          <li key={check.name} data-check={check.state} className={checkClass(check.state)}>
+            <span className="font-medium">{check.name}</span>
+            {check.state === "not_run" ? " (not run)" : ""}
+            {check.state === "unresolved" ? " (unresolved)" : ""}
+            {check.state === "explained" ? " (explained)" : ""}: {check.detail}
+          </li>
+        ))}
+      </ul>
+
+      {exceptions.unexpected.length > 0 ? (
+        <div data-alert="positions" data-tone="warn" className="mt-2">
+          <p className="font-semibold">
+            {exceptions.unexpected.length} mismatch
+            {exceptions.unexpected.length === 1 ? "" : "es"} nothing on the page explains
+          </p>
+          <ul className="text-sm">
+            {exceptions.unexpected.map((entry) => (
+              <li key={`${entry.side}-${entry.ticker}`}>
+                <span className="font-mono">{entry.ticker}</span> — {entry.why}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {expected.length > 0 ? (
+        <ul data-expected="true" className="mt-2 text-sm text-slate-600">
+          {expected.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {exceptions.unchecked.length > 0 ? (
+        <ul data-unchecked="true" className="mt-1 text-xs text-slate-500">
+          {exceptions.unchecked.map((entry) => (
+            <li key={entry.what}>
+              not checked here: {entry.what} — this snapshot does not carry it, so the page
+              cannot classify it. It needs {entry.needs}.
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+export function Alerts({
+  snapshot,
+  state,
+  reconciled,
+  exceptions,
+}: {
+  snapshot: Snapshot;
+  state: RunState;
+  reconciled: Reconciliation;
+  exceptions: Exceptions;
+}) {
   const misses = snapshot.actual_holdings?.fills?.unfilled ?? [];
   const notSent = snapshot.actual_holdings?.fills?.not_sent_lines ?? [];
-  const exits = snapshot.actual_holdings?.exits ?? null;
+  const exits: ExitsBlock | null = snapshot.actual_holdings?.exits ?? null;
   const gone = exits?.names ?? [];
 
   return (
     <div data-alerts="true" className="flex flex-col gap-2">
-      <Panel
-        hook="run"
-        tone={state.tone}
-        title={state.headline}
-        detail={state.detail}
-      />
+      <Panel hook="run" tone={state.tone} title={state.headline} detail={state.detail} />
 
-      {positions ? (
-        <Panel
-          hook="positions"
-          tone={
-            positions.matches === true ? "good" : positions.matches === null ? "info" : "warn"
-          }
-          title="positions against the store"
-          detail={positions.note ?? "not read"}
-        />
-      ) : null}
+      <ReconciliationPanel reconciled={reconciled} exceptions={exceptions} />
 
       {gone.length > 0 ? (
         <section
@@ -69,9 +150,9 @@ export function Alerts({ snapshot, state }: { snapshot: Snapshot; state: RunStat
           <ul className="text-sm">
             {gone.map((name) => (
               <li key={name.ticker}>
-                <span className="font-mono">{name.ticker}</span>{" "}
-                {shares(name.quantity)} shares ({dollars(name.notional)}) — no closing order
-                filled{exits?.feed === "read" ? " and no activity of the broker's" : ""}
+                <span className="font-mono">{name.ticker}</span> {shares(name.quantity)} shares
+                ({dollars(name.notional)}) — no closing order filled
+                {exits?.feed === "read" ? " and no activity of the broker's" : ""}
               </li>
             ))}
           </ul>

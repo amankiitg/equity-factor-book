@@ -138,3 +138,198 @@ export function runState(snapshot: Snapshot, now: Date): RunState {
   const pill = pillFor(snapshot, now);
   return { ...health(snapshot, now), pill, tone: runTone(pill) };
 }
+
+/**
+ * One reconciliation check, and whether the document lets it be decided at all.
+ *
+ * `not_run` is a real third state and not a soft failure: the evening reads the
+ * account before the orders go out, so "the fills have not been reconciled yet" is
+ * the ordinary condition of every evening snapshot, and a page that painted that
+ * amber would be amber every night. What it must not do is call it clean.
+ */
+export type CheckState = "clean" | "explained" | "unresolved" | "not_run";
+
+export interface ReconciliationCheck {
+  /** The panel's own name for the check. */
+  name: string;
+  state: CheckState;
+  detail: string;
+}
+
+export interface Reconciliation {
+  checks: ReconciliationCheck[];
+  /** Unresolved checks: what the reader has to act on, and what colours the pill. */
+  unresolved: number;
+  pass: boolean;
+  tone: Tone;
+  headline: string;
+  detail: string;
+}
+
+/**
+ * Whether the book the page is showing was reconciled, as distinct from proposed.
+ *
+ * The two halves of the loop are separate jobs and the page used to answer them in
+ * one label: a successful proposal run for the 2026-10-09 close rendered as a green
+ * "clean run" while the account-versus-store check failed and a bridge identity did
+ * not add up. A proposal that priced a book and a book that reconciles against the
+ * account are different claims, and the morning question is the second one.
+ *
+ * Three checks, each from a key that states it, and none of them inferred:
+ *
+ * - **account against the store**, `positions.matches`; a mismatch whose every name
+ *   is a class the document explains (a deferred reversal, a removal the bridge
+ *   itemised) is `explained`, and one unexplained name makes it `unresolved`;
+ * - **the bridge's identities**, `bridge.holds`, with the failing identity named
+ *   from `bridge.identities`;
+ * - **the fills**, `actual_holdings.fills`, unresolved when `fills.n_unfilled` is
+ *   non-zero, `not_run` when the snapshot is the evening's own read.
+ *
+ * `explained` does not fail the pill and `not_run` does not pass it: the reader sees
+ * which of the three is which, and green means every check that could be run was
+ * clean.
+ */
+export function reconciliation(
+  snapshot: Snapshot,
+  expected: number,
+  unexpected: number,
+): Reconciliation {
+  const positions = snapshot.positions ?? null;
+  const bridge = snapshot.bridge ?? null;
+  const read = snapshot.actual_holdings ?? null;
+  const fills = read?.fills ?? null;
+  const checks: ReconciliationCheck[] = [];
+
+  if (!positions || positions.matches === null) {
+    checks.push({
+      name: "account against the store",
+      state: "not_run",
+      detail: "the account has not been read against the stored positions",
+    });
+  } else if (positions.matches) {
+    checks.push({
+      name: "account against the store",
+      state: "clean",
+      detail: positions.note ?? `${positions.n_store ?? "?"} name(s) on both sides`,
+    });
+  } else if (unexpected === 0) {
+    checks.push({
+      name: "account against the store",
+      state: "explained",
+      // The writer's own sentence is kept rather than paraphrased: the page's job is
+      // to classify the names, not to restate what the run said about them.
+      detail: `${expected} mismatch(es), every one of them a class the document explains${
+        positions.note ? ` — ${positions.note}` : ""
+      }`,
+    });
+  } else {
+    checks.push({
+      name: "account against the store",
+      state: "unresolved",
+      detail: `${unexpected} unexplained mismatch(es) and ${expected} explained${
+        positions.note ? ` — ${positions.note}` : ""
+      }`,
+    });
+  }
+
+  if (!bridge) {
+    checks.push({
+      name: "the bridge",
+      state: "not_run",
+      detail: "no bridge for this close",
+    });
+  } else {
+    // A block with no identities is a block that did not check itself, which is not
+    // the same answer as a block whose identities hold: the writer always publishes
+    // them, and a page that read their absence as a pass would be reading a truncated
+    // document as a clean one.
+    const identities = bridge.identities ?? [];
+    if (identities.length === 0) {
+      checks.push({
+        name: "the bridge",
+        state: "not_run",
+        detail: "the bridge carries no identity to check",
+      });
+    } else {
+      const broken = identities.filter((identity) => !identity.holds);
+      checks.push({
+        name: "the bridge",
+        state: broken.length === 0 ? "clean" : "unresolved",
+        detail:
+          broken.length === 0
+            ? `${identities.length} identit${identities.length === 1 ? "y" : "ies"} hold`
+            : broken
+                .map(
+                  (identity) =>
+                    `${identity.name}: ${identity.left} against ${identity.right}`,
+                )
+                .join("; "),
+      });
+    }
+  }
+
+  if (!read) {
+    checks.push({
+      name: "the fills",
+      state: "not_run",
+      detail: "the account has not been read, so no fill was reconciled",
+    });
+  } else if (!fills) {
+    checks.push({
+      name: "the fills",
+      state: "not_run",
+      detail:
+        read.read_by === "evening"
+          ? "the account was read before the orders went out, so there is nothing to reconcile yet"
+          : "the account was read without a fill reconciliation",
+    });
+  } else if ((fills.n_unfilled ?? 0) > 0) {
+    checks.push({
+      name: "the fills",
+      state: "unresolved",
+      detail: `${fills.n_unfilled} order(s) did not fill${
+        (fills.not_sent ?? 0) > 0 ? `, and ${fills.not_sent} leg(s) were never sent` : ""
+      }`,
+    });
+  } else {
+    checks.push({
+      name: "the fills",
+      state: "clean",
+      detail: `${fills.n_filled ?? 0} of ${fills.n_orders ?? 0} sent order(s) filled${
+        (fills.not_sent ?? 0) > 0 ? `, ${fills.not_sent} leg(s) never sent` : ""
+      }`,
+    });
+  }
+
+  const unresolved = checks.filter((check) => check.state === "unresolved").length;
+  const explained = checks.filter((check) => check.state === "explained").length;
+  const notRun = checks.filter((check) => check.state === "not_run").length;
+  const headline =
+    unresolved > 0
+      ? "reconciliation: unresolved"
+      : notRun === checks.length
+        ? "reconciliation: not run"
+        : explained > 0
+          ? "reconciliation: clean, with explained mismatches"
+          : "reconciliation: clean";
+  return {
+    checks,
+    unresolved,
+    pass: unresolved === 0,
+    tone: unresolved > 0 ? "warn" : notRun === checks.length ? "info" : "good",
+    headline,
+    detail: checks.map((check) => `${check.name}: ${check.detail}`).join("; "),
+  };
+}
+
+/**
+ * The two jobs on one line: proposal generation, and whether the book reconciled.
+ *
+ * Green only when both are: the run proposing a book says nothing about whether the
+ * last one is what the account holds, and the strip's colour is the one thing a
+ * reader takes without reading the sentence beside it.
+ */
+export function overallTone(proposal: Tone, reconciled: Tone): Tone {
+  const rank: Record<Tone, number> = { bad: 3, warn: 2, info: 1, good: 0 };
+  return rank[proposal] >= rank[reconciled] ? proposal : reconciled;
+}

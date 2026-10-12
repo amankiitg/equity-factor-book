@@ -6,6 +6,7 @@
 // after column is expected to be flat. A bar that is not there is a factor the hedge
 // has taken out, and a reader who cannot see the flatness cannot see the hedge.
 
+import { Details } from "./Details";
 import { dollars, exposure, percent } from "./format";
 import type { Snapshot } from "./types";
 
@@ -109,7 +110,20 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
 
   return (
     <section data-section="exposures" className="rounded border border-slate-200 bg-white p-3">
-      <h2 className="text-base font-semibold">Factor exposures, before and after the hedge</h2>
+      <h2 className="text-base font-semibold">The hedge</h2>
+      <p className="mt-1 text-sm" data-hedge-verdict="true">
+        worst residual factor exposure after the hedge:{" "}
+        <span className="font-mono tabular-nums">
+          {exposure(snapshot.hedge?.max_abs_exposure_after_fmp)}
+        </span>{" "}
+        of a unit exposure — the hedge is exact, so every factor&apos;s after value is zero to
+        machine precision, and the eighteen rows behind the disclosure below are the audit of
+        that rather than a reading in themselves.
+      </p>
+      <Details
+        hook="exposures"
+        summary={<>every factor, before and after the hedge — {rows.length} row(s)</>}
+      >
       <div className="overflow-x-auto">
         {/* Every column states its own width. The value columns are only as wide as
             their widest number otherwise, so "after" and "before / after" touch and
@@ -156,11 +170,11 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
         </table>
       </div>
       <p className="mt-1 text-xs text-slate-500">
-        The hedge is exact, so every factor's after value is zero to machine precision. The bars are
-        on one scale, the largest exposure on the page: a bar that is not there is a factor the
-        hedge has taken out. {REFERENCE_SECTOR} is the reference sector and has no column of its
-        own, so the ten sectors above are measured against it.
+        The bars are on one scale, the largest exposure on the page: a bar that is not there is a
+        factor the hedge has taken out. {REFERENCE_SECTOR} is the reference sector and has no
+        column of its own, so the ten sectors above are measured against it.
       </p>
+      </Details>
       <dl className="mt-2 flex flex-wrap gap-x-6 text-sm text-slate-600">
         <div className="flex gap-2">
           <dt className="font-medium">the hedge</dt>

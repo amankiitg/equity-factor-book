@@ -1,85 +1,283 @@
-// By sector: one diverging bar per GICS sector, long gross right, short left.
+// By sector: what the account holds against what the target asks for.
 //
-// The book is grouped with the bundled map, and a name the map does not carry falls
-// into an Unmapped row rather than a guessed sector. The bars share one scale, the
-// largest side on the page, so a sector that is twice another's is drawn twice as
-// long; a bar per row scaled to its own maximum would make every sector look the
-// same size.
+// The old panel led with long gross to the right and short gross to the left, which is
+// a true picture of a book that is neutral by construction and therefore says almost
+// nothing: every sector's two bars sit within a fraction of a percent of each other
+// because that is the design, so the chart is eleven rows of the same shape. The
+// question a reader actually has is *where is the account away from its target*, and
+// that is a signed dollar difference per sector.
 //
-// The long and short gross totals used to sit under the last row. They are on the
-// metrics row now, once, with the same two numbers: the footer repeated the row above
-// it, and a summary repeated in two places is a summary nobody knows which of the two
-// to believe.
+// So the delta leads: account net minus target net, in dollars, sorted by absolute
+// size, with the sign kept and the sector's own long/short gross behind a disclosure
+// where it is still available to anyone checking the shape. The account side is the
+// read the strip names, and on an evening snapshot that read is taken before the orders
+// go out - so the deltas describe the book the account held going into the session, not
+// the outcome of the orders the page is showing.
+//
+// A sector the bundled map does not carry is its own row rather than a guessed one, and
+// the panel says how many names it could not place: an unmapped name is still a
+// position, and a delta computed without it would be a delta of the book the page can
+// see rather than of the book.
 
-import type { SectorBucket } from "./book";
-import { dollars, signedDollars } from "./format";
+import { Details } from "./Details";
+import { count, dollars, percent, signedDollars } from "./format";
+import { UNMAPPED, sectorCodeFor } from "./sectors";
+import type { BookFacts, SectorBucket } from "./book";
+import type { Snapshot } from "./types";
 
-function SectorRow({ bucket, scale }: { bucket: SectorBucket; scale: number }) {
-  const longShare = scale > 0 ? bucket.longNotional / scale : 0;
-  const shortShare = scale > 0 ? bucket.shortNotional / scale : 0;
+/** One sector's account-against-target difference, in dollars and names. */
+interface SectorDelta {
+  code: number | null;
+  label: string;
+  /** Account net minus target net, signed: what the account has that the target does not. */
+  delta: number;
+  targetNet: number;
+  accountNet: number;
+  /** Names held, wanted, and the two sets' difference in count. */
+  accountNames: number;
+  targetNames: number;
+  /** The sector's gross on each side, from the target, for the detail disclosure. */
+  bucket: SectorBucket;
+}
+
+/**
+ * The sectors' account-to-target differences.
+ *
+ * The target side is turned into dollars with the book's own per-unit NAV, and the
+ * account side is the broker's own notionals, which are dollars already. That is the
+ * one place the two are comparable: the target's weights are fractions of the NAV the
+ * evening sized from, and the account's weights are fractions of its own equity, which
+ * is the same number to within the day's P&L.
+ */
+export function sectorDeltas(snapshot: Snapshot, sectors: SectorBucket[]): SectorDelta[] {
+  const target = new Map<string, SectorBucket>();
+  for (const bucket of sectors) {
+    target.set(bucket.code === null ? UNMAPPED : String(bucket.code), bucket);
+  }
+
+  const account = new Map<string, { net: number; names: number }>();
+  for (const name of snapshot.actual_holdings?.names ?? []) {
+    if (name.notional === null || name.notional === undefined) continue;
+    const code = sectorCodeFor(name.ticker);
+    const key = code === null ? UNMAPPED : String(code);
+    const entry = account.get(key) ?? { net: 0, names: 0 };
+    // A row the read did not price is skipped rather than read as zero: a position
+    // with no notional is not a flat position.
+    entry.net += name.notional;
+    entry.names += 1;
+    account.set(key, entry);
+  }
+
+  const keys = new Set([...target.keys(), ...account.keys()]);
+  const out: SectorDelta[] = [];
+  for (const key of keys) {
+    const bucket = target.get(key) ?? null;
+    const held = account.get(key) ?? { net: 0, names: 0 };
+    out.push({
+      code: bucket?.code ?? null,
+      label: bucket?.label ?? key,
+      delta: held.net - (bucket?.netNotional ?? 0),
+      targetNet: bucket?.netNotional ?? 0,
+      accountNet: held.net,
+      accountNames: held.names,
+      targetNames: bucket === null ? 0 : bucket.nLong + bucket.nShort,
+      bucket:
+        bucket ??
+        ({
+          code: null,
+          label: key,
+          longNotional: 0,
+          shortNotional: 0,
+          netNotional: 0,
+          nLong: 0,
+          nShort: 0,
+        } satisfies SectorBucket),
+    });
+  }
+  return out.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+}
+
+function DeltaRow({ row, scale }: { row: SectorDelta; scale: number }) {
+  const share = scale > 0 ? Math.min(1, Math.abs(row.delta) / scale) : 0;
+  const over = row.delta >= 0;
   return (
     <div
-      className="grid grid-cols-[8rem_1fr] items-center gap-x-3 gap-y-1 border-b border-slate-100 py-1"
-      data-sector={bucket.code === null ? "unmapped" : String(bucket.code)}
+      data-sector={row.code === null ? "unmapped" : String(row.code)}
+      data-delta={row.delta.toFixed(2)}
+      className="grid grid-cols-[7rem_1fr_6rem] items-center gap-x-2 border-b border-slate-100 py-1"
     >
-      <div className="truncate text-sm font-medium" title={bucket.label}>
-        {bucket.label}
+      <div className="truncate text-sm font-medium" title={row.label}>
+        {row.label}
       </div>
       <div className="relative h-3 w-full rounded-sm bg-slate-100">
-        {/* The zero line, at the middle, so a negative bar is visibly negative. */}
         <span className="absolute left-1/2 top-0 h-full w-px bg-slate-300" />
         <span
-          data-side="short"
-          title={`short gross ${dollars(bucket.shortNotional)}`}
-          className="absolute top-0 h-full rounded-sm bg-rose-500"
-          style={{ right: "50%", width: `${Math.min(50, shortShare * 50)}%` }}
-        />
-        <span
-          data-side="long"
-          title={`long gross ${dollars(bucket.longNotional)}`}
-          className="absolute top-0 h-full rounded-sm bg-emerald-600"
-          style={{ left: "50%", width: `${Math.min(50, longShare * 50)}%` }}
+          data-side={over ? "over" : "under"}
+          title={`account ${signedDollars(row.accountNet)} against target ${signedDollars(
+            row.targetNet,
+          )}`}
+          className={`absolute top-0 h-full rounded-sm ${over ? "bg-sky-600" : "bg-violet-500"}`}
+          style={
+            over
+              ? { left: "50%", width: `${share * 50}%` }
+              : { right: "50%", width: `${share * 50}%` }
+          }
         />
       </div>
-      <div className="col-span-2 flex flex-wrap items-baseline gap-x-3 text-xs text-slate-600">
-        <span data-counts="names">
-          {bucket.nLong}L / {bucket.nShort}S
-        </span>
-        <span data-net="sector" className="font-mono tabular-nums">
-          {signedDollars(bucket.netNotional)}
-        </span>
-      </div>
+      <div className="text-right font-mono text-xs tabular-nums">{signedDollars(row.delta)}</div>
     </div>
   );
 }
 
-export function SectorSection({ sectors }: { sectors: SectorBucket[] }) {
+export function SectorSection({
+  snapshot,
+  sectors,
+  facts: _facts,
+}: {
+  snapshot: Snapshot;
+  sectors: SectorBucket[];
+  facts?: BookFacts;
+}) {
+  const read = snapshot.actual_holdings ?? null;
   if (sectors.length === 0) return null;
-  const scale = Math.max(
-    ...sectors.map((bucket) => Math.max(bucket.longNotional, bucket.shortNotional)),
-    1,
-  );
+  if (!read) {
+    // With no account read there is no difference to draw, and drawing the target
+    // against nothing would render every sector as a full-size short. The target's own
+    // signed net is still a reading - it says where the book is tilted before the
+    // hedge is applied to the book as a whole - so the panel falls back to it and says
+    // which of the two views it is showing. That is a narrower view than the delta, and
+    // a reader can see it is narrower rather than wondering where the account went.
+    const scale = Math.max(...sectors.map((bucket) => Math.abs(bucket.netNotional)), 1);
+    return (
+      <section data-section="sector" className="rounded border border-slate-200 bg-white p-3">
+        <h2 className="text-base font-semibold">By sector</h2>
+        <p data-sector-deltas="no-account" className="mt-1 text-xs text-slate-600">
+          the account has not been read for this close, so there is no account-against-target
+          difference. The target&apos;s own signed net is shown instead: it is a narrower
+          reading, and not the one the panel exists for.
+        </p>
+        <div className="mt-2" data-sector-net="true">
+          {[...sectors]
+            .sort((a, b) => Math.abs(b.netNotional) - Math.abs(a.netNotional))
+            .map((bucket) => (
+              <div
+                key={bucket.code === null ? "unmapped" : String(bucket.code)}
+                data-sector={bucket.code === null ? "unmapped" : String(bucket.code)}
+                className="grid grid-cols-[7rem_1fr_6rem] items-center gap-x-2 border-b border-slate-100 py-1"
+              >
+                <div className="truncate text-sm font-medium" title={bucket.label}>
+                  {bucket.label}
+                </div>
+                <div className="relative h-3 w-full rounded-sm bg-slate-100">
+                  <span className="absolute left-1/2 top-0 h-full w-px bg-slate-300" />
+                  <span
+                    data-side={bucket.netNotional >= 0 ? "over" : "under"}
+                    className={`absolute top-0 h-full rounded-sm ${
+                      bucket.netNotional >= 0 ? "bg-sky-600" : "bg-violet-500"
+                    }`}
+                    style={
+                      bucket.netNotional >= 0
+                        ? {
+                            left: "50%",
+                            width: `${(Math.abs(bucket.netNotional) / scale) * 50}%`,
+                          }
+                        : {
+                            right: "50%",
+                            width: `${(Math.abs(bucket.netNotional) / scale) * 50}%`,
+                          }
+                    }
+                  />
+                </div>
+                <div className="text-right font-mono text-xs tabular-nums">
+                  {signedDollars(bucket.netNotional)}
+                </div>
+              </div>
+            ))}
+        </div>
+      </section>
+    );
+  }
+
+  const rows = sectorDeltas(snapshot, sectors);
+  const scale = Math.max(...rows.map((row) => Math.abs(row.delta)), 1);
+  const worst = rows[0];
+  const unmapped = rows.filter((row) => row.code === null);
+  const nav = snapshot.book?.gross_notional ?? null;
 
   return (
     <section data-section="sector" className="rounded border border-slate-200 bg-white p-3">
-      <h2 className="text-base font-semibold">By sector</h2>
+      <h2 className="text-base font-semibold">By sector: account against target</h2>
       <p className="mt-1 text-xs text-slate-600">
-        Long gross to the right, short gross to the left, one scale across the rows. Net is the
-        sector's own. Name counts are the long and short counts in that sector.
+        Signed dollars, sorted by size: blue where the account holds more net than the target
+        asks for, violet where it holds less. The two books are turned into dollars with the
+        same NAV
+        {nav === null ? "" : ` (${dollars(nav)})`}, and the account side is the read the strip
+        names.
       </p>
-      <div className="mt-2" data-sector-bars="true">
-        {sectors.map((bucket) => (
-          <SectorRow
-            key={bucket.code === null ? "unmapped" : bucket.code}
-            bucket={bucket}
+      {worst ? (
+        <p data-sector-largest="true" className="mt-1 text-sm">
+          largest difference: <span className="font-medium">{worst.label}</span>{" "}
+          <span className="font-mono tabular-nums">{signedDollars(worst.delta)}</span>
+          {nav === null ? "" : ` (${percent(worst.delta / nav)} of NAV)`}
+        </p>
+      ) : null}
+      <div className="mt-2" data-sector-deltas="true">
+        {rows.map((row) => (
+          <DeltaRow
+            key={row.code === null ? "unmapped" : String(row.code)}
+            row={row}
             scale={scale}
           />
         ))}
       </div>
-      <p className="mt-1 text-xs text-slate-500">
-        The sector with no code is the one the bundled map does not carry, and it is drawn rather
-        than dropped: an unmapped name is still a position.
-      </p>
+
+      <Details
+        hook="sector-gross"
+        summary={<>the target&apos;s long and short gross by sector — {count(rows.length)} sector(s)</>}
+      >
+        <p className="text-xs text-slate-500">
+          The book is neutral by construction, so each sector&apos;s long and short gross sit
+          within a fraction of a percent of each other and the bars are all the same shape. It
+          is here for the reader checking the shape, not as the decision view.
+        </p>
+        <table aria-label="sector gross" className="mt-1 w-full text-xs">
+          <thead>
+            <tr className="text-left text-slate-500">
+              <th className="py-1 pr-2">sector</th>
+              <th className="py-1 pr-2">long gross</th>
+              <th className="py-1 pr-2">short gross</th>
+              <th className="py-1 pr-2">target net</th>
+              <th className="py-1 pr-2">account net</th>
+              <th className="py-1">names</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={`gross-${row.code ?? "unmapped"}`}>
+                <td className="py-1 pr-2">{row.label}</td>
+                <td className="py-1 pr-2 tabular-nums">{dollars(row.bucket.longNotional)}</td>
+                <td className="py-1 pr-2 tabular-nums">{dollars(row.bucket.shortNotional)}</td>
+                <td className="py-1 pr-2 tabular-nums">{signedDollars(row.targetNet)}</td>
+                <td className="py-1 pr-2 tabular-nums">{signedDollars(row.accountNet)}</td>
+                <td className="py-1 tabular-nums">
+                  {row.targetNames} target / {row.accountNames} held
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Details>
+
+      {unmapped.length > 0 ? (
+        <p className="mt-1 text-xs text-slate-500">
+          {unmapped.reduce(
+            (total, row) => total + row.accountNames + row.targetNames,
+            0,
+          )}{" "}
+          name(s) in {unmapped.length} row(s) the bundled map does not carry: they are drawn
+          rather than dropped, because an unmapped name is still a position.
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -16,9 +16,10 @@ import { describe, expect, it } from "vitest";
 
 import { SnapshotView } from "./App";
 import { bookFacts } from "./book";
+import { sectorDeltas } from "./SectorSection";
 import { dateOnly, dollars, percent, signedDollars, signedPercent } from "./format";
 import { sectorCodeFor, sectorLabel, UNMAPPED } from "./sectors";
-import type { Snapshot } from "./types";
+import type { AttributionPeriod, Snapshot } from "./types";
 import noBook from "../fixtures/snapshot_no_book.json";
 import ok from "../fixtures/snapshot_ok.json";
 import rejected from "../fixtures/snapshot_fills_rejected.json";
@@ -29,6 +30,11 @@ const NONE = noBook as unknown as Snapshot;
 const ACTUAL = withActual as unknown as Snapshot;
 const REJECTED = rejected as unknown as Snapshot;
 const NOW = new Date("2026-09-21T23:00:00Z");
+
+/** The risk and mover panels are the weekly read, so they are on their own tab. */
+function openAttributionTab(): void {
+  fireEvent.click(document.querySelector("[data-view='attribution']") as HTMLElement);
+}
 
 /** The drawer is shut until a tab is asked for, which is half of what it is for. */
 function openDrawer(tab: "book" | "actual"): HTMLElement {
@@ -54,24 +60,31 @@ describe("the metrics row", () => {
     expect(card("net").textContent).toContain(percent(OK.book.net));
     // The name counts carry each side's dollars, which is where the long and
     // short gross live now that the sector footer is gone.
-    expect(card("long names").textContent).toContain(String(facts.nLong));
-    expect(card("long names").textContent).toContain(dollars(facts.longNotional));
-    expect(card("short names").textContent).toContain(String(facts.nShort));
-    expect(card("short names").textContent).toContain(dollars(facts.shortNotional));
+    expect(card("long-names").textContent).toContain(String(facts.nLong));
+    expect(card("long-names").textContent).toContain(dollars(facts.longNotional));
+    expect(card("short-names").textContent).toContain(String(facts.nShort));
+    expect(card("short-names").textContent).toContain(dollars(facts.shortNotional));
     expect(card("n_eff_kept").textContent).toContain(
       (OK.breadth.n_eff_kept as number).toFixed(1),
     );
     expect(card("n_eff_kept").textContent).toContain(OK.breadth.kept_label);
+    // The pre-floor telemetry is behind the construction disclosure now: still
+    // addressable, and no longer on the row a reader scans in the morning.
+    const construction = document.querySelector("[data-details='construction']") as HTMLElement;
+    expect(construction).toBeTruthy();
     expect(card("n_eff_full_book").textContent).toContain(
       (OK.breadth.n_eff_full_book as number).toFixed(1),
     );
-    expect(card("largest position").textContent).toContain(facts.largest?.ticker as string);
+    expect(construction.textContent).toContain(
+      (OK.breadth.n_eff_full_book as number).toFixed(1),
+    );
+    expect(card("largest-position").textContent).toContain(facts.largest?.ticker as string);
     // The ten largest weights as a share of the book's absolute weight.
-    expect(card("top 10 share of gross").textContent).toContain(percent(facts.top10Share));
-    expect(card("full book before the floor").textContent).toContain(
+    expect(card("top10-share").textContent).toContain(percent(facts.top10Share));
+    expect(card("full-book-gross").textContent).toContain(
       percent(OK.book.full_book_gross),
     );
-    const cost = card("expected cost").textContent ?? "";
+    const cost = card("expected-expense").textContent ?? "";
     expect(cost).toContain((OK.book.expected_cost_bps as number).toFixed(2));
     // And the split: the trading half summed from its own three parts, and the
     // borrow that no fill price can be measured against. A total alone leaves the
@@ -79,9 +92,9 @@ describe("the metrics row", () => {
     const split = OK.book.expected_cost_split as NonNullable<
       typeof OK.book.expected_cost_split
     >;
-    expect(cost).toContain(`trading ${(split.trading as number).toFixed(2)} bps`);
+    expect(cost).toContain(`trading ${(split.trading as number).toFixed(2)} bp of NAV`);
     expect(cost).toContain(`spread ${(split.spread as number).toFixed(2)}`);
-    expect(cost).toContain(`borrow ${(split.borrow as number).toFixed(2)} bps of holding cost`);
+    expect(cost).toContain(`borrow ${(split.borrow as number).toFixed(2)} bp of NAV of holding cost`);
     // The fills card is the account's own, and this fixture has no account read.
     expect(OK.actual_holdings).toBeUndefined();
     expect(cards.querySelector("[data-card='fills']")).toBeNull();
@@ -112,7 +125,7 @@ describe("the metrics row", () => {
       typeof ACTUAL.book.expected_cost_split
     >;
     expect(realized).toContain(
-      `against ${(split.trading as number).toFixed(2)} bps of trading cost expected`,
+      `against ${(split.trading as number).toFixed(2)} bp of NAV of trading cost expected`,
     );
   });
 
@@ -132,7 +145,7 @@ describe("the metrics row", () => {
     };
     render(<SnapshotView snapshot={averaged} now={NOW} />);
     const card = document.querySelector("[data-card='fills']") as HTMLElement;
-    expect(card.textContent).toContain("4.31 bps average over 7 reconciled days");
+    expect(card.textContent).toContain("averages 4.31 bp of NAV across 7 session(s)");
   });
 
   it("says one day in the singular", () => {
@@ -148,7 +161,7 @@ describe("the metrics row", () => {
     render(<SnapshotView snapshot={one} now={NOW} />);
     expect(
       (document.querySelector("[data-card='fills']") as HTMLElement).textContent,
-    ).toContain("6.42 bps average over 1 reconciled day");
+    ).toContain("averages 6.42 bp of NAV across 1 session(s)");
   });
 
   it("says the day's own number and no average when no day has been priced", () => {
@@ -164,7 +177,7 @@ describe("the metrics row", () => {
     render(<SnapshotView snapshot={none} now={NOW} />);
     const text =
       (document.querySelector("[data-card='fills']") as HTMLElement).textContent ?? "";
-    expect(text).not.toContain("average over");
+    expect(text).not.toContain("averages");
     expect(text).toContain("from the previous close to the fill");
   });
 
@@ -184,12 +197,12 @@ describe("the metrics row", () => {
       },
     };
     render(<SnapshotView snapshot={older} now={NOW} />);
-    const cost = (document.querySelector("[data-card='expected cost']") as HTMLElement)
+    const cost = (document.querySelector("[data-card='expected-expense']") as HTMLElement)
       .textContent ?? "";
     expect(cost).toContain("14.54");
     expect(cost).not.toContain("trading");
     const fills = (document.querySelector("[data-card='fills']") as HTMLElement).textContent ?? "";
-    expect(fills).toContain("against 14.54 bps expected");
+    expect(fills).toContain("against 14.54 bp of NAV expected for the same one session");
     expect(fills).not.toContain("trading cost expected");
   });
 
@@ -235,25 +248,49 @@ describe("the metrics row", () => {
 });
 
 describe("by sector", () => {
-  it("draws a row per sector the book holds, long to the right and short to the left", () => {
-    const facts = bookFacts(OK);
+  it("leads with the account-against-target difference, one row per sector", () => {
+    // The account's own read is what the section differences against the target, so
+    // this is the fixture that carries one. The old long/short bars are still on the
+    // page, in the disclosure, because a neutral book's two sides are the same shape
+    // and the decision view is the difference.
+    const facts = bookFacts(ACTUAL);
+    render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
+    const section = document.querySelector("[data-section='sector']") as HTMLElement;
+    expect(section).toBeTruthy();
+    const deltas = sectorDeltas(ACTUAL, facts.sectors);
+    expect(deltas.length).toBeGreaterThan(1);
+    for (const row of deltas) {
+      const key = row.code === null ? "unmapped" : String(row.code);
+      const node = section.querySelector(`[data-sector="${key}"]`) as HTMLElement;
+      expect(node, `no row for ${row.label}`).toBeTruthy();
+      expect(node.getAttribute("data-delta")).toBe(row.delta.toFixed(2));
+      // The sign is drawn, not only labelled: over the target is one side of the
+      // zero line and under it is the other.
+      expect(node.querySelector(`[data-side="${row.delta >= 0 ? "over" : "under"}"]`)).toBeTruthy();
+      expect(node.textContent).toContain(signedDollars(row.delta));
+    }
+    // Sorted by absolute size, largest first: the reader's first question is which
+    // sector is furthest from its target.
+    const sizes = deltas.map((row) => Math.abs(row.delta));
+    expect(sizes).toEqual([...sizes].sort((a, b) => b - a));
+    // And the target's gross is still there for anyone checking the shape.
+    const gross = document.querySelector("[data-details='sector-gross']") as HTMLElement;
+    expect(gross).toBeTruthy();
+    expect(gross.textContent).toContain(dollars(facts.sectors[0].longNotional));
+  });
+
+  it("says which comparison it cannot make when the account has not been read", () => {
+    // No account read means no difference to draw; the panel falls back to the
+    // target's own net and says so rather than drawing the target against nothing,
+    // which would render every sector as a full-size short.
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const section = document.querySelector("[data-section='sector']") as HTMLElement;
     expect(section).toBeTruthy();
-    expect(facts.sectors.length).toBeGreaterThan(1);
-    for (const bucket of facts.sectors) {
-      const key = bucket.code === null ? "unmapped" : String(bucket.code);
-      const row = section.querySelector(`[data-sector="${key}"]`) as HTMLElement;
-      expect(row, `no row for ${bucket.label}`).toBeTruthy();
-      expect(row.querySelector("[data-side='long']")).toBeTruthy();
-      expect(row.querySelector("[data-side='short']")).toBeTruthy();
-      expect(row.querySelector("[data-counts='names']")?.textContent).toContain(
-        `${bucket.nLong}L`,
-      );
-      expect(row.querySelector("[data-net='sector']")?.textContent).toContain(
-        signedDollars(bucket.netNotional),
-      );
-    }
+    const note = section.querySelector("[data-sector-deltas='no-account']") as HTMLElement;
+    expect(note).toBeTruthy();
+    expect(note.textContent).toContain("account has not been read");
+    expect(section.querySelector("[data-sector-net='true']")).toBeTruthy();
+    expect(section.querySelector("[data-delta]")).toBeNull();
   });
 
   it("renders Unmapped for a name the bundled map does not carry", () => {
@@ -277,7 +314,6 @@ describe("by sector", () => {
     const row = document.querySelector("[data-sector='unmapped']") as HTMLElement;
     expect(row).toBeTruthy();
     expect(row.textContent).toContain(UNMAPPED);
-    expect(row.querySelector("[data-counts='names']")?.textContent).toContain("1L");
     const holdings = openDrawer("book");
     const cells = Array.from(
       holdings.querySelector("[data-ticker='ZZZZ']")?.querySelectorAll("td") ?? [],
@@ -290,22 +326,52 @@ describe("by sector", () => {
     expect(mapped[2]).toBe(sectorLabel(sectorCodeFor("MU")));
   });
 
-  it("puts the largest side on the page at half the track, so the bars share one scale", () => {
-    const facts = bookFacts(OK);
-    render(<SnapshotView snapshot={OK} now={NOW} />);
-    const bars = Array.from(
-      document.querySelectorAll("[data-side='long'], [data-side='short']"),
-    ) as HTMLElement[];
+  it("puts the largest difference on the page at half the track, so the rows share one scale", () => {
+    // The committed fixtures cannot exercise this: their account block is a mock
+    // built from the target, so it is sector-neutral to the last bit and every delta
+    // is float noise. The real 2026-10-09 account is not neutral by a long way
+    // (Communication Services -$8,149 against a target of exactly zero), so the
+    // snapshot here is built with the account the section exists to difference.
+    const snapshot: Snapshot = {
+      ...OK,
+      actual_holdings: {
+        as_of: "2026-10-09T22:47:37+00:00",
+        close: null,
+        read_by: "evening",
+        n_names: 3,
+        gross_notional: 90_000,
+        net_notional: 0,
+        names: [
+          { ticker: "GOOGL", side: "short", notional: -60_000, weight: -0.6 },
+          { ticker: "KO", side: "long", notional: 18_000, weight: 0.18 },
+          { ticker: "AAPL", side: "long", notional: 12_000, weight: 0.12 },
+        ],
+        fills: null,
+      },
+    };
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const section = document.querySelector("[data-sector-deltas='true']") as HTMLElement;
+    const bars = Array.from(section.querySelectorAll("[data-side]")) as HTMLElement[];
     expect(bars.length).toBeGreaterThan(0);
     const widths = bars.map((bar) => parseFloat(bar.style.width));
+    const deltas = sectorDeltas(snapshot, bookFacts(snapshot).sectors).map((row) =>
+      Math.abs(row.delta),
+    );
+    const largest = Math.max(...deltas, 1);
+    const smallest = Math.min(...deltas.filter((value) => value > 0));
+    // Half the track is the largest, and every other row is drawn against it.
     expect(Math.max(...widths)).toBeCloseTo(50, 5);
-    const largest = Math.max(
-      ...facts.sectors.map((bucket) => Math.max(bucket.longNotional, bucket.shortNotional)),
-    );
-    const smallest = Math.min(
-      ...facts.sectors.map((bucket) => Math.max(bucket.longNotional, bucket.shortNotional)),
-    );
     expect(Math.min(...widths)).toBeCloseTo((smallest / largest) * 50, 5);
+  });
+
+  it("reads the difference as the account's own drift, because the target is exactly neutral", () => {
+    // The point of the panel: sector neutrality is a property of the *target*, so a
+    // difference against it is the account's own per-sector net. Saying that on the
+    // page is what stops the reader looking for a tilt in the target that is not
+    // there.
+    const facts = bookFacts(ACTUAL);
+    const target = facts.sectors.map((bucket) => Math.abs(bucket.netNotional));
+    expect(Math.max(...target)).toBeLessThan(1e-6);
   });
 
   it("renders Unmapped exactly for the names the bundled map does not carry", () => {
@@ -437,7 +503,7 @@ describe("trades by reason", () => {
     // names themselves.
     const facts = bookFacts(OK);
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    const card = document.querySelector("[data-card='largest position']") as HTMLElement;
+    const card = document.querySelector("[data-card='largest-position']") as HTMLElement;
     expect(card.textContent).toContain(facts.largest?.ticker as string);
     expect(card.textContent).toContain(percent(facts.largest?.weight));
     expect(document.querySelector("[data-largest='names']")).toBeNull();
@@ -465,6 +531,7 @@ describe("risk concentration", () => {
       },
     };
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    openAttributionTab();
     const section = document.querySelector("[data-section='risk']") as HTMLElement;
     expect(section).toBeTruthy();
     expect(section.querySelectorAll("[data-concentration]").length).toBe(3);
@@ -502,6 +569,7 @@ describe("movers", () => {
       },
     };
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    openAttributionTab();
     const section = document.querySelector("[data-section='movers']") as HTMLElement;
     expect(section).toBeTruthy();
     // The best five and the worst five of fourteen, and no name in both.
@@ -843,14 +911,17 @@ describe("a snapshot with no book", () => {
     for (const label of [
       "gross",
       "net",
-      "long names",
-      "short names",
+      "long-names",
+      "short-names",
       "n_eff_kept",
+      "turnover",
+      "largest-position",
+      "expected-expense",
+      "top10-share",
       "n_eff_full_book",
-      "largest position",
-      "expected cost",
-      "top 10 share of gross",
-      "full book before the floor",
+      "full-book-gross",
+      "full-book-net",
+      "full-book-vol",
     ]) {
       expect(card(label), label).toBeTruthy();
       expect(card(label).textContent, label).toContain("n/a");
@@ -867,5 +938,180 @@ describe("a snapshot with no book", () => {
     expect(text).not.toContain("$0");
     expect(text).not.toContain("0.00%");
     expect(text).not.toContain("T00:00:00");
+  });
+});
+
+describe("the hedge's footprint", () => {
+  const moved = OK.book.names.filter((name) => name.reason === "the hedge moved");
+  const SHARES = [
+    { ticker: "SMCI", variance_share: 0.14197 },
+    { ticker: "WDC", variance_share: 0.06447 },
+    { ticker: "INTC", variance_share: 0.04605 },
+  ];
+  const withRisk = (snapshot: Snapshot): Snapshot => ({
+    ...snapshot,
+    reconciliation: {
+      ...snapshot.reconciliation,
+      traded_risk: {
+        forecast_annual_vol: 0.02765,
+        gross: 1.0,
+        n_eff: 122.88,
+        max_weight: 0.01793,
+        top_variance_shares: SHARES,
+      },
+    },
+  });
+
+  it("states how many names the hedge moved, and the legs it built for them", () => {
+    expect(moved.length).toBeGreaterThan(0);
+    render(<SnapshotView snapshot={withRisk(OK)} now={NOW} />);
+    const panel = document.querySelector("[data-section='hedge']") as HTMLElement;
+    expect(panel).toBeTruthy();
+    // Counted from the book's own reason column rather than typed, so a
+    // regenerated fixture cannot leave this asserting a number nobody wrote.
+    expect(panel.textContent).toContain(`${moved.length} of ${OK.book.names.length}`);
+    const notional = moved.reduce(
+      (total, name) => total + Math.abs(name.traded_notional ?? 0),
+      0,
+    );
+    expect(panel.textContent).toContain(dollars(notional));
+    // The label says which claim is the proxy: the reason is the loop's own
+    // record, and what it cannot say is that the hedge created the position.
+    expect(panel.textContent).toContain("A proxy.");
+    expect(panel.textContent).toContain("pre-hedge and post-hedge target");
+  });
+
+  it("draws the concentration behind the hedge from the reconciliation's own shares", () => {
+    render(<SnapshotView snapshot={withRisk(OK)} now={NOW} />);
+    const shares = document.querySelector("[data-details='hedge-shares']") as HTMLElement;
+    expect(shares).toBeTruthy();
+    for (const entry of SHARES) {
+      const row = document.querySelector(
+        `[data-variance-share='${entry.ticker}']`,
+      ) as HTMLElement;
+      expect(row).toBeTruthy();
+      expect(row.textContent).toContain(percent(entry.variance_share, 2));
+    }
+    // The largest share is stated in the summary, so collapsing the disclosure
+    // cannot hide the one number it exists to show.
+    const summary = shares.querySelector("summary") as HTMLElement;
+    expect(summary.textContent).toContain(SHARES[0].ticker);
+    expect(summary.textContent).toContain(percent(SHARES[0].variance_share, 1));
+  });
+
+  it("says the shares are absent rather than drawing a share of nothing", () => {
+    // The fixture carries no traded risk, which is the state a close whose
+    // reconciliation did not run leaves behind.
+    expect(OK.reconciliation?.traded_risk ?? null).toBeNull();
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    expect(document.querySelector("[data-details='hedge-shares']")).toBeNull();
+    const absent = document.querySelector("[data-hedge-shares='absent']") as HTMLElement;
+    expect(absent).toBeTruthy();
+    expect(absent.textContent).toContain("not shown rather than drawn as zero");
+  });
+});
+
+describe("the turnover card", () => {
+  it("reads every leg the evening built, and says so beside the per-name column", () => {
+    const intended = 379430.49;
+    const snapshot: Snapshot = {
+      ...OK,
+      reconciliation: { ...OK.reconciliation, intended_notional: intended },
+    };
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const card = document.querySelector("[data-card='turnover']") as HTMLElement;
+    const nav = (OK.book.gross_notional as number) / (OK.book.gross as number);
+    expect(card.textContent).toContain(percent(intended / nav));
+    expect(card.textContent).toContain(dollars(intended));
+    // The distinction the correction rests on: the per-name column drops the legs
+    // of names that left the book, so the two numbers must not be conflated.
+    const note = document.querySelector("[data-flag='turnover-note']") as HTMLElement;
+    expect(note.textContent).toContain("reconciliation.intended_notional");
+    expect(note.textContent).toContain("whether or not it was sent");
+    expect(note.textContent).toContain("is not published in this document");
+  });
+
+  it("says n/a when the reconciliation carries no intended notional", () => {
+    expect(OK.reconciliation?.intended_notional ?? null).toBeNull();
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const card = document.querySelector("[data-card='turnover']") as HTMLElement;
+    expect(card.textContent).toContain("n/a");
+    expect(card.textContent).toContain("no intended notional");
+    // And no fabricated zero beside it.
+    expect(document.querySelector("[data-flag='turnover-note']")?.textContent).not.toContain(
+      "totals $0",
+    );
+  });
+});
+
+describe("the attribution tab's own panels", () => {
+  const BY_FACTOR = { market: 5.9e-18, size: -0.0006073612, beta: 2.56e-5, momentum: 3.2e-5 };
+  /** The fixture's live period, which is the block both panels read. */
+  const LIVE = OK.attribution?.live as AttributionPeriod;
+  const withLive = (live: AttributionPeriod): Snapshot => ({
+    ...OK,
+    attribution: { ...(OK.attribution as NonNullable<Snapshot["attribution"]>), live },
+  });
+  const withFactors = withLive({ ...LIVE, by_factor: BY_FACTOR });
+
+  it("adds the factors up to the factor card, largest contribution first", () => {
+    render(<SnapshotView snapshot={withFactors} now={NOW} />);
+    openAttributionTab();
+    const panel = document.querySelector("[data-panel='by-factor']") as HTMLElement;
+    expect(panel).toBeTruthy();
+    const order = Array.from(panel.querySelectorAll("[data-factor]")).map((row) =>
+      row.getAttribute("data-factor"),
+    );
+    expect(order).toEqual([
+      ...Object.entries(BY_FACTOR)
+        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+        .map(([name]) => name),
+      "total",
+    ]);
+    for (const [factor, value] of Object.entries(BY_FACTOR)) {
+      const row = panel.querySelector(`[data-factor='${factor}']`) as HTMLElement;
+      expect(row.textContent).toContain((value * 1e4).toFixed(1));
+    }
+    const total = Object.values(BY_FACTOR).reduce((sum, value) => sum + value, 0);
+    expect(
+      (panel.querySelector("[data-factor='total']") as HTMLElement).textContent,
+    ).toContain((total * 1e4).toFixed(1));
+  });
+
+  it("is absent when the document carries no by-factor split", () => {
+    expect(Object.keys(LIVE.by_factor).length).toBe(0);
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttributionTab();
+    expect(document.querySelector("[data-panel='by-factor']")).toBeNull();
+  });
+
+  it("puts realized beside forecast volatility, and counts the sessions", () => {
+    const daily = LIVE.daily;
+    const both = daily.filter(
+      (day) => day.realized_vol != null && day.forecast_vol != null,
+    );
+    // The fixture deliberately has a session with no forecast, which is the case
+    // the count exists for.
+    expect(both.length).toBeLessThan(daily.length);
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttributionTab();
+    const panel = document.querySelector("[data-panel='volatility']") as HTMLElement;
+    expect(panel.textContent).toContain(`${both.length} of ${daily.length} session(s) carry both`);
+    expect(panel.querySelector("svg")).toBeTruthy();
+    // A session with no forecast is a gap, never a zero.
+    expect(panel.textContent).not.toContain("0.00% realized");
+  });
+
+  it("says no session has a realized volatility yet rather than drawing zero", () => {
+    const none = withLive({
+      ...LIVE,
+      daily: LIVE.daily.map((day) => ({ ...day, realized_vol: null })),
+    });
+    render(<SnapshotView snapshot={none} now={NOW} />);
+    openAttributionTab();
+    const panel = document.querySelector("[data-panel='volatility']") as HTMLElement;
+    expect(panel).toBeTruthy();
+    expect(panel.textContent).toContain("no session of this period carries a realized volatility");
+    expect(panel.querySelector("svg")).toBeNull();
   });
 });
