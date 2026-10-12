@@ -86,6 +86,7 @@ other three.
 from __future__ import annotations
 
 import json
+import logging
 import math
 from pathlib import Path
 from typing import Any
@@ -152,6 +153,8 @@ JSON_COLUMNS: tuple[str, ...] = (
 # The book's own realized volatility is measured over a quarter of its own daily
 # P&L, which is the shortest window that can say anything about a 10% target.
 REALIZED_VOL_WINDOW = 63
+logger = logging.getLogger(__name__)
+
 TRADING_DAYS = 252.0
 
 
@@ -288,10 +291,34 @@ class ModelPanel:
             pd.Timestamp(stamp): group.droplevel("date")
             for stamp, group in stored.groupby(level="date")
         }
-        betas = pd.read_parquet(self.root / "models" / "TS-v1" / "beta_history.parquet")
+        # The one optional artifact this panel reads, and it feeds exactly two
+        # columns - `book_beta` and `pnl_beta` - which the module's own docstring
+        # calls a diagnostic that is never added to the other three terms. On
+        # 2026-10-09 its absence from the seed took the whole report down: ten days
+        # of attribution, the risk split and the cost lines, for two columns. A
+        # missing file now leaves `betas` empty, `betas_at` returns NaN and the two
+        # columns are null while the rest of the row is intact. This does not
+        # replace the seed holding the file - item 27 of the November 11 list is
+        # that the preflight checks every path a live step reads - it is the
+        # difference between a degraded line and an empty section.
+        betas = self._read_betas()
+        self.betas = betas
+
+    def _read_betas(self) -> pd.DataFrame:
+        """The raw beta history, or an empty frame when the artifact is absent."""
+        path = self.root / "models" / "TS-v1" / "beta_history.parquet"
+        try:
+            betas = pd.read_parquet(path)
+        except FileNotFoundError:
+            logger.warning(
+                "no beta history at %s: book_beta and pnl_beta will be null for "
+                "every row of this report",
+                path,
+            )
+            return pd.DataFrame(columns=["date", "ticker", "beta"])
         betas = betas.loc[betas["method"] == "raw", ["date", "ticker", "beta"]].copy()
         betas["date"] = pd.to_datetime(betas["date"])
-        self.betas = betas
+        return betas
 
     def design(self, date: pd.Timestamp, names: list[str]) -> np.ndarray:
         """The hedge's own design for the session, one column per estimated factor."""
