@@ -81,12 +81,6 @@ export interface Exceptions {
  */
 const UNCHECKED: Unchecked[] = [
   {
-    what: "legs under the $250 minimum",
-    needs:
-      "a ticker list beside bridge.under_minimum, which carries the count (and " +
-      "bridge.under_minimum_usd, the floor) but no names",
-  },
-  {
     // The class the brief expected to be decidable, and the reason it is not: the
     // lists are one session apart. `bridge.reversals_pending` names what *this*
     // morning closed, which is absent from *tomorrow's* read; the names missing from
@@ -111,12 +105,19 @@ const UNCHECKED: Unchecked[] = [
 /**
  * The mismatches, split into the explained and the unexplained.
  *
- * The two classes that can be decided page-only, and the one key each rests on:
+ * The three classes that can be decided page-only, and the one key each rests on:
  *
  * - **deferred reversals**, `bridge.reversals_pending`: the names the evening closed
  *   tonight so the other side can open tomorrow. On 2026-10-08 that list is exactly
  *   BEN, F, VZ and ZTS, which is also that morning's four missing-at-broker names -
  *   the loop closed them, so the account not holding them is the intended state;
+ * - **a leg the $250 floor left untraded**, `bridge.under_minimum_tickers`: the names
+ *   the floor's count (`bridge.under_minimum`) is taken from. The count alone left the
+ *   class undecidable - a reader could see that 21 legs went untraded and not which -
+ *   and a name the floor skipped is the loop's own decision, not a break. It explains
+ *   one side only: the target asking for a position the run chose not to open. A name
+ *   the *account* holds and the store does not is the break this panel exists to
+ *   show, and a leg that was never sent does not explain a position being there;
  * - **a position removed with no order**, `bridge.removed_without_order`: a name
  *   that left the account and which the bridge has already itemised as explained by
  *   the record it keeps.
@@ -136,6 +137,7 @@ export function classify(snapshot: Snapshot): Exceptions {
   const positions = snapshot.positions;
   const bridge = snapshot.bridge;
   const reversals = new Set(bridge?.reversals_pending ?? []);
+  const underMinimum = new Set(bridge?.under_minimum_tickers ?? []);
   const removals = new Set(
     (bridge?.removed_without_order ?? []).map((entry) => entry.ticker),
   );
@@ -147,6 +149,14 @@ export function classify(snapshot: Snapshot): Exceptions {
         side,
         why: "deferred reversal: closed tonight, reopening tomorrow",
         key: "bridge.reversals_pending",
+      };
+    }
+    if (underMinimum.has(ticker) && side === "targeted_not_held") {
+      return {
+        ticker,
+        side,
+        why: "the $250 floor left its leg untraded, so the book is short a position it chose not to open",
+        key: "bridge.under_minimum_tickers",
       };
     }
     if (removals.has(ticker)) {

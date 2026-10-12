@@ -20,6 +20,7 @@ function doc(parts: {
   inStore?: string[];
   reversals?: string[];
   removed?: string[];
+  underMinimum?: string[];
   matches?: boolean | null;
 }): Snapshot {
   return {
@@ -31,6 +32,7 @@ function doc(parts: {
     bridge: {
       reversals_pending: parts.reversals ?? [],
       removed_without_order: (parts.removed ?? []).map((ticker) => ({ ticker })),
+      under_minimum_tickers: parts.underMinimum ?? [],
     },
   } as unknown as Snapshot;
 }
@@ -72,6 +74,37 @@ const MORNING: Snapshot = {
   },
   bridge: { reversals_pending: ["INVH"], removed_without_order: [] },
 } as unknown as Snapshot;
+
+/**
+ * A morning read in miniature: a target book, the account, and the bridge keys.
+ *
+ * `target` names are in the book and not in the account, `held` the other way round,
+ * and the bridge carries the two ticker lists the classifier reads.
+ */
+function targetRead(parts: {
+  target?: string[];
+  held?: string[];
+  underMinimum?: string[];
+  reversals?: string[];
+}): Snapshot {
+  return {
+    book: {
+      gross: 1,
+      gross_notional: 1_000_000,
+      names: (parts.target ?? []).map((ticker) => ({ ticker, weight: 0.01, side: "long" })),
+    },
+    actual_holdings: {
+      read_by: "morning",
+      names: (parts.held ?? []).map((ticker) => ({ ticker, notional: 10_000 })),
+    },
+    positions: { matches: false, missing_at_broker: [], missing_in_store: [] },
+    bridge: {
+      reversals_pending: parts.reversals ?? [],
+      removed_without_order: [],
+      under_minimum_tickers: parts.underMinimum ?? [],
+    },
+  } as unknown as Snapshot;
+}
 
 describe("the classification", () => {
   it("files a name the document's own reversal list names as expected", () => {
@@ -155,11 +188,39 @@ describe("the classification", () => {
     expect(report.expected.every((entry) => entry.key !== "")).toBe(true);
   });
 
+  it("files a leg the floor left untraded as expected, by ticker", () => {
+    // The count alone said 21 legs of 2026-10-09 went untraded and not which, so the
+    // class was listed as one the page could not check. The tickers are published
+    // beside the count now, and the target asking for a position whose leg the floor
+    // skipped is the loop's own decision: on a morning read it is the target that
+    // asks and the account that does not hold it.
+    const report = classify(targetRead({ target: ["PSKY", "SLB"], underMinimum: ["PSKY"] }));
+    expect(report.source).toBe("target");
+    expect(report.expected.map((entry) => entry.ticker)).toEqual(["PSKY"]);
+    expect(report.expected[0].key).toBe("bridge.under_minimum_tickers");
+    expect(report.expected[0].side).toBe("targeted_not_held");
+    expect(report.expected[0].why).toContain("the $250 floor left its leg untraded");
+    // A name the floor did not skip is still the reader's to explain.
+    expect(report.unexpected.map((entry) => entry.ticker)).toEqual(["SLB"]);
+  });
+
+  it("does not let a skipped leg explain a position the account holds", () => {
+    // The hard direction: a name the account holds and the target does not is the
+    // break the panel exists to show, and "its leg was under the minimum" is not an
+    // explanation for a position being there.
+    const report = classify(
+      targetRead({ target: [], held: ["SLB"], underMinimum: ["SLB"] }),
+    );
+    expect(report.expected).toEqual([]);
+    expect(report.unexpected.map((entry) => entry.ticker)).toEqual(["SLB"]);
+    expect(report.unexpected[0].side).toBe("held_not_targeted");
+  });
+
   it("names the classes it cannot check at all, with the key each one needs", () => {
     const report = classify(doc({}));
     const needs = report.unchecked.map((entry) => entry.needs).join(" ");
-    expect(report.unchecked).toHaveLength(3);
-    expect(needs).toContain("bridge.under_minimum");
+    expect(report.unchecked).toHaveLength(2);
+    expect(needs).not.toContain("bridge.under_minimum,");
     expect(needs).toContain("efb.e11_corporate_actions");
     // The one the brief expected to be decidable: the list is one session out.
     expect(needs).toContain("previous close's bridge.reversals_pending");
