@@ -364,6 +364,7 @@ def compose(
     target_close: str | None,
     dry_run: bool = True,
     orders: int | None = None,
+    sent_orders: int | None = None,
     gross: float | None = None,
     worst_input: str | None = None,
     worst_sessions_behind: int | None = None,
@@ -426,6 +427,7 @@ def compose(
         qualifiers.append("first run, the store was seeded")
     if qualifiers:
         label = f"{label} ({', '.join(qualifiers)})"
+    sent = int(sent_orders if sent_orders is not None else (orders or 0))
     store_line = store if store is not None else live_store.store_label()
     if init:
         store_line = f"{store_line}, first run"
@@ -439,7 +441,7 @@ def compose(
             )
         else:
             lines.append(
-                f"Orders: {int(orders or 0)} orders sent, "
+                f"Orders: {sent} orders sent, "
                 f"{_sized_sent(gross, sent_notional)}"
             )
     elif status == "stale_stopped":
@@ -458,7 +460,7 @@ def compose(
         # beside a booked day is the message's own false statement, and the owner
         # reading it would look for a failure before sizing that never happened.
         lines.append(
-            f"Orders: {int(orders or 0)} orders sent, "
+            f"Orders: {sent} orders sent, "
             f"{_sized_sent(gross, sent_notional)}, at least one leg not confirmed"
         )
     elif status == "error" and orders:
@@ -470,7 +472,7 @@ def compose(
         # re-run the close, because the legs are at the broker and a re-run after the
         # open is a different book.
         lines.append(
-            f"Orders: {int(orders)} orders sent for the close of {close}, "
+            f"Orders: {sent} orders sent for the close of {close}, "
             f"{_sized_sent(gross, sent_notional)}."
         )
         lines.append("The run failed after they were sent: do not re-run this close.")
@@ -845,6 +847,7 @@ def subject_text(
     target_close: str | None,
     dry_run: bool = True,
     orders: int | None = None,
+    sent_orders: int | None = None,
     worst_input: str | None = None,
     worst_sessions_behind: int | None = None,
     splits: list[str] | None = None,
@@ -886,17 +889,23 @@ def subject_text(
         qualifiers.append("first run")
     if qualifiers:
         word = f"{word} ({', '.join(qualifiers)})"
+    # "Sent" means sent. `orders` is every leg the run built, which is the right
+    # count for a dry run and the wrong one for the inbox: on 2026-10-08 the subject
+    # said 204 sent while 202 orders reached the broker, the difference being the
+    # legs refused before submission. A caller that does not pass `sent_orders` gets
+    # the old reading rather than a silent zero.
+    sent = int(sent_orders if sent_orders is not None else (orders or 0))
     if status == "ok":
         middle = (
             f"{int(orders or 0)} proposed, none sent"
             if dry_run
-            else f"{int(orders or 0)} sent"
+            else f"{sent} sent"
         )
     elif orders:
         # An error is not the same as an empty evening. The orders a failed run sent
         # are counted on the inbox line, because "none proposed" beside 192 sent
         # orders is the line that decides whether the owner looks.
-        middle = f"{int(orders)} sent"
+        middle = f"{sent} sent"
     else:
         middle = "none proposed"
     if status == "error":
@@ -1247,6 +1256,7 @@ def notify_run(
     renames: dict[str, str] | None = None,
     exits: dict[str, Any] | None = None,
     sent_notional: float | None = None,
+    sent_orders: int | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -1256,6 +1266,7 @@ def notify_run(
         target_close=target_close,
         dry_run=dry_run,
         orders=orders,
+        sent_orders=sent_orders,
         worst_input=worst_input,
         worst_sessions_behind=worst_sessions_behind,
         splits=splits,
@@ -1270,6 +1281,7 @@ def notify_run(
         target_close=target_close,
         dry_run=dry_run,
         orders=orders,
+        sent_orders=sent_orders,
         gross=gross,
         worst_input=worst_input,
         worst_sessions_behind=worst_sessions_behind,

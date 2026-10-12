@@ -563,6 +563,10 @@ def run_morning(
         "executed": True,
         "dry_run": dry_run,
         "orders": int(len(orders)),
+        # The legs that became orders, which is what the message's "sent" claims.
+        # Equal to `orders` on any night no leg is refused, and different by exactly
+        # the refused legs on the nights that matter.
+        "sent_orders": sent_orders(records),
         "passed": int((records["status"] == guards.PASSED).sum())
         + int((records["status"] == "DRY_RUN").sum()),
         "rejected_cap": int((records["status"] == guards.REJECTED_CAP).sum()),
@@ -625,6 +629,22 @@ def run_morning(
     }
 
 
+def sent_orders(records: pd.DataFrame) -> int:
+    """The legs that became orders at the broker, counted the way the dollars are.
+
+    `"orders"` in the summary is every leg the run built, which is the right count
+    for a dry run and the wrong one for the message: on 2026-10-08 the evening said
+    "204 orders sent" while the broker held 202 and the store held 202 `ACCEPTED`
+    rows beside 25 `SKIPPED` - the two-leg difference being exactly the legs that
+    were refused before submission. The predicate is the one `sent_notional` uses,
+    a non-empty `broker_order_id`, so the count and the dollars in the same
+    sentence cannot disagree.
+    """
+    if records.empty or "broker_order_id" not in records.columns:
+        return 0
+    return int((records["broker_order_id"].astype(str).str.len() > 0).sum())
+
+
 def sent_notional(records: pd.DataFrame) -> float:
     """The dollars the legs that were actually sent moved, absolute.
 
@@ -661,6 +681,7 @@ def not_executed_summary(
         "dry_run": dry_run,
         "reason": reason,
         "orders": 0,
+        "sent_orders": 0,
         "passed": 0,
         "rejected_cap": 0,
         "rejected_brake": 0,
