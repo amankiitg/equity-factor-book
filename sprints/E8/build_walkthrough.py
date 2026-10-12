@@ -87,7 +87,13 @@ CELLS: list[tuple[str, str]] = [
         "code",
         'table = stored["criteria"]["F8.5"]["stored_numbers"]\n'
         "for construction, block in table.items():\n"
+        "    # F8.5 stores the traded book beside the scored table, as a flat\n"
+        "    # block of its own numbers rather than a construction by rho\n"
+        "    if not isinstance(block, dict):\n"
+        "        continue\n"
         "    for rho, numbers in block.items():\n"
+        "        if not isinstance(numbers, dict):\n"
+        "            continue\n"
         '        print(construction, rho, "IR", round(numbers["realized_ir"], 3),\n'
         '              "TC_neff", round(numbers["transfer_coefficient_neff"], 3),\n'
         '              "TC_n", round(numbers["transfer_coefficient_n"], 3))',

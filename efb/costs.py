@@ -32,6 +32,10 @@ IMPACT_K = 0.5  # square-root impact coefficient, uncertainty [0.25, 1.0]
 COMMISSION = 1e-4  # 1 bp per dollar traded, one side
 BORROW_RATE = 0.02  # 2% per year on short notional, the E6 provisional
 ANNUAL = 252
+# E11's own trading constraints, so the research measurement can mirror them:
+# the smallest leg the morning sends (`live/alpaca.py::DELTA_MIN_NOTIONAL`) and
+# the horizon the borrow is charged over (`costs.HORIZON`).
+ALPACA_MIN_NOTIONAL = 250.0
 
 # The chosen half-spread schedule by size decile, stated as an assumption.
 # The free estimators measure volatility rather than the spread on daily
@@ -728,6 +732,159 @@ def spread_sensitivity(data_root: Path = DATA_ROOT, store: bool = True) -> pd.Da
     return frame
 
 
+def e11_constraint_effects(
+    data_root: Path = DATA_ROOT,
+    store: bool = True,
+    rho: float = 0.02,
+    seeds: tuple[int, ...] = SEEDS,
+    tested_aum: float = 1e6,
+    reference_aum: float = 1e8,
+) -> pd.DataFrame:
+    """The E9 book under E11's three trading constraints, and what borrow can be.
+
+    E11's evening charges borrow on the short leg at `BORROW_RATE` (the same
+    constant the live path reads, `live/evening_job.py`), does not send a leg
+    under `ALPACA_MIN_NOTIONAL`, and closes a reversal tonight rather than
+    crossing zero in one order. The vendor's easy-to-borrow flag has no history,
+    so borrow availability cannot be replayed: the only available proxy is size,
+    and it is labelled as a proxy rather than measured. Stored beside the scored
+    E9 numbers, not scored: this is a measurement, not a criterion.
+    """
+    root = Path(data_root)
+    prices = pd.read_parquet(root / "raw" / "prices.parquet")
+    spread = spread_schedule(prices, root)
+    adv = _adv_per_ticker(prices)
+    deciles = size_deciles(prices, root)
+    specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_returns.parquet")
+    sigma_map = specific.groupby("ticker")["specific_return"].std(ddof=1)
+    raw = pd.read_parquet(root / "portfolios" / "proportional.parquet")
+
+    def book_for(seed: int) -> pd.DataFrame:
+        frame = raw.loc[(raw["rho"] == rho) & (raw["seed"] == seed)]
+        wide = frame.pivot_table(index="date", columns="ticker", values="weight")
+        return wide.div(wide.abs().sum(axis=1), axis=0)
+
+    def walk(
+        book: pd.DataFrame,
+        aum: float,
+        min_notional: float = 0.0,
+        split_reversals: bool = False,
+        exclude_from_shorts: pd.Index | None = None,
+    ) -> dict[str, float]:
+        names = list(book.columns)
+        spread_map = spread.reindex(names).fillna(spread.median()).to_numpy(float)
+        adv_map = adv.reindex(names).fillna(adv.median()).to_numpy(float)
+        sigma_np = sigma_map.reindex(names).fillna(sigma_map.median()).to_numpy(float)
+        excluded = (
+            np.array([name in exclude_from_shorts for name in names])
+            if exclude_from_shorts is not None
+            else np.zeros(len(names), dtype=bool)
+        )
+        held = np.zeros(len(names))
+        held_rows: dict[pd.Timestamp, pd.Series] = {}
+        legs = skipped_legs = reversals = 0
+        turnover = skipped_turnover = reversal_turnover = 0.0
+        cost = borrow = 0.0
+        for date, row in book.iterrows():
+            target = row.reindex(names).fillna(0.0).to_numpy(float)
+            if excluded.any():
+                target = np.where(excluded & (target < 0.0), 0.0, target)
+                gross = np.abs(target).sum()
+                if gross > 0:
+                    target = target * (
+                        row.reindex(names).fillna(0.0).abs().sum() / gross
+                    )
+            delta = target - held
+            moved = np.abs(delta)
+            legs += int((moved > 0).sum())
+            turnover += float(moved.sum())
+            if min_notional > 0.0:
+                small = (moved * aum < min_notional) & (moved > 0.0)
+                skipped_legs += int(small.sum())
+                skipped_turnover += float(moved[small].sum())
+                delta = np.where(small, 0.0, delta)
+            if split_reversals:
+                flips = held * target < 0.0
+                reversals += int(flips.sum())
+                reversal_turnover += float(
+                    (np.abs(held[flips]) + np.abs(target[flips])).sum()
+                )
+                # tonight the name is closed; the impact leg is charged twice,
+                # which is sqrt(2) of one full trade
+                delta = np.where(flips, -held, delta)
+            cost += _trade_cost(delta, spread_map, sigma_np, adv_map, aum, IMPACT_K)
+            new = held + delta
+            borrow += float(np.abs(np.where(new < 0.0, new, 0.0)).sum())
+            held = new
+            held_rows[date] = pd.Series(held, index=names)
+        actual = pd.DataFrame(held_rows).T
+        net = _realized_returns(actual, root)
+        ir = (
+            float(net.mean() / net.std(ddof=1))
+            if len(net) >= 10 and net.std(ddof=1) != 0
+            else float("nan")
+        )
+        return {
+            "ir": ir,
+            "cost": cost,
+            "legs": float(legs),
+            "skipped_legs": float(skipped_legs),
+            "skipped_turnover_share": skipped_turnover / turnover if turnover else 0.0,
+            "reversals": float(reversals),
+            "reversal_turnover_share": (
+                reversal_turnover / turnover if turnover else 0.0
+            ),
+            "mean_names": float((actual != 0).sum(axis=1).mean()),
+            "short_gross": borrow / max(len(actual), 1),
+        }
+
+    rows = []
+    for seed in seeds:
+        book = book_for(seed)
+        base = walk(book, reference_aum)
+        reference = walk(book, reference_aum, split_reversals=True)
+        tested = walk(book, tested_aum, min_notional=ALPACA_MIN_NOTIONAL)
+        row0 = deciles.index[deciles <= 0]
+        rows.append(
+            {
+                "seed": seed,
+                "reference_ir": base["ir"],
+                "reference_cost": base["cost"],
+                "short_gross": base["short_gross"],
+                "borrow_cost_share": (
+                    BORROW_RATE
+                    * base["short_gross"]
+                    * (HORIZON / ANNUAL)
+                    / base["cost"]
+                ),
+                "tested_aum": tested_aum,
+                "min_notional_skipped_legs_share": tested["skipped_legs"]
+                / base["legs"],
+                "min_notional_skipped_turnover_share": tested["skipped_turnover_share"],
+                "min_notional_ir_ratio": tested["ir"] / base["ir"],
+                "reversal_legs_share": reference["reversals"] / base["legs"],
+                "reversal_turnover_share": reference["reversal_turnover_share"],
+                "reversal_ir_upper_bound_ratio": reference["ir"] / base["ir"],
+                "size_proxy_ir_ratio": (
+                    walk(book, reference_aum, exclude_from_shorts=row0)["ir"]
+                    / base["ir"]
+                ),
+            }
+        )
+    frame = pd.DataFrame(rows).set_index("seed")
+    summary = pd.DataFrame([frame.mean(numeric_only=True)])
+    summary["borrow_rate"] = BORROW_RATE
+    summary["min_notional"] = ALPACA_MIN_NOTIONAL
+    summary["borrow_availability_history"] = 0.0  # the flag has no history
+    summary["borrow_availability_proxy"] = 1.0  # size, labelled as a proxy
+    summary["seeds"] = float(len(rows))
+    if store:
+        directory = root / "costs"
+        directory.mkdir(parents=True, exist_ok=True)
+        summary.to_parquet(directory / "e11_constraints.parquet")
+    return summary
+
+
 def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, pd.DataFrame]:
     """The full E9 pipeline: the probe, cost curves, capacity and trade-off."""
     probe = spread_probe(data_root, store=store)
@@ -735,6 +892,7 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, pd.DataFra
     capacity = capacity_curve(data_root, store=store)
     tradeoff = turnover_tradeoff(data_root, store=store)
     sensitivity = spread_sensitivity(data_root, store=store)
+    constraints = e11_constraint_effects(data_root, store=store)
     capacity_phi = pd.DataFrame()
     persistent = Path(data_root) / "portfolios" / "persistent_proportional.parquet"
     if persistent.exists():
@@ -746,4 +904,5 @@ def run(data_root: Path = DATA_ROOT, store: bool = True) -> dict[str, pd.DataFra
         "turnover_tradeoff": tradeoff,
         "spread_sensitivity": sensitivity,
         "capacity_phi": capacity_phi,
+        "e11_constraints": constraints,
     }

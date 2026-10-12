@@ -293,3 +293,53 @@ def test_exclusions_split_drops_from_truncations() -> None:
     dropped, truncated = identity.exclusions(table)
     assert dropped == ["CPWR", "EP", "MI", "POM"]
     assert truncated == {"XYZ": pd.Timestamp("2020-01-02")}
+
+
+def test_a_series_that_does_not_overlap_the_member_stint_is_dropped() -> None:
+    """The name check cannot see this one, which is why coverage is the trigger.
+
+    BBBY's revived listing is spelled the same as the member's, so `reused` is
+    False and the reused-symbol rule never fires. S, SLE, SE, SHLD, SPLS, STI,
+    SUN and TE have no holder name at all to compare. In both cases the series
+    the vendor serves carries no history of the member, and the overlap test is
+    what says so.
+    """
+    prices = _span("BBBY", "2026-07-01", "2026-09-03", 5.0)
+    members = pd.DataFrame(
+        {"BBBY": True}, index=pd.bdate_range("2010-01-04", "2017-07-25")
+    )
+    frame = identity.identity_table(
+        _changes([("2017-07-26", "BBBY", "Bed Bath & Beyond Inc")]),
+        prices,
+        _names([("BBBY", "Bed Bath & Beyond, Inc.")]),
+        members=members,
+    )
+    row = frame.iloc[0]
+    assert bool(row["reused"]) is False
+    assert row["action"] == "drop"
+    assert "does not overlap the member stint" in row["note"]
+    assert row["member_first_date"] == pd.Timestamp("2010-01-04")
+    assert row["member_last_date"] == pd.Timestamp("2017-07-25")
+    assert row["last_valid_date"] == pd.Timestamp("2026-09-03")
+
+
+def test_a_late_listing_whose_series_overlaps_its_stint_is_kept() -> None:
+    """The control: coverage, not lateness, is what the rule tests.
+
+    A name that listed after the panel started is an ordinary member - the
+    membership grid carries its stint back to the panel start, so the prints
+    overlap it - and the rule must leave it alone.
+    """
+    prices = _span("META", "2012-05-18", "2026-09-03", 40.0)
+    members = pd.DataFrame(
+        {"META": True}, index=pd.bdate_range("2010-01-04", "2026-09-03")
+    )
+    frame = identity.identity_table(
+        _changes([("2012-05-17", "META", "Meta Platforms Inc")]),
+        prices,
+        _names([("META", "Meta Platforms, Inc.")]),
+        members=members,
+    )
+    row = frame.iloc[0]
+    assert row["action"] == "keep"
+    assert row["note"] == "name matches the current holder"

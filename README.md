@@ -22,20 +22,20 @@
 ## What it found, honestly
 
 - **The survivorship cost is real.** Buying today's index members and assuming
-  they were always members earns **365.10 bp a year** more than a point-in-time
-  universe (E1, F1.5), because only 44.79 percent of deleted members have
+  they were always members earns **359.58 bp a year** more than a point-in-time
+  universe (E1, F1.5), because only 40.96 percent of deleted members have
   recoverable history against a 70 percent bar.
 - **The risk machinery catches a false positive.** The raw idio-momentum
-  signal looks significant, with an IC of 0.0121 (t 5.04) at horizon 1, but
+  signal looks significant, with an IC of 0.0125 (t 5.22) at horizon 1, but
   neutralized against the risk model's own factors it is a factor bet in
-  disguise: the factor-neutral IC is **-0.0031** (t -0.51) at horizon 21. All
+  disguise: the factor-neutral IC is **-0.0045** (t -0.77) at horizon 21. All
   six candidate signals are NULL once the factors are removed, and the gate said
   so before any of them traded.
 - **The champion model is provisional.** XS-v1 wins the pre-registered champion
   rule, but F5.1 failed: no version is calibrated across all portfolio families,
-  and the stress haircut is 1.8471.
+  and the stress haircut is 1.8401.
 - **The data layer is measurable even where the edge is not.** The equal-weight
-  universe return correlates with the French market return at 0.9564 (E1, F1.3),
+  universe return correlates with the French market return at 0.9573 (E1, F1.3),
   and the survivorship measurement above is the single most consequential number
   the project produced.
 - **Equity costs cannot be measured on free data.** Free daily OHLC cannot

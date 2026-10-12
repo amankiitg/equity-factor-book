@@ -44,7 +44,14 @@ def _transfer_table(results: dict) -> str:
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for construction, block in stored.items():
+        if not isinstance(block, dict):
+            # F8.5 stores blocks beside the scored numbers, and the traded book
+            # is one of them: a flat block of its own numbers, not a
+            # construction by rho. It has no row in this table.
+            continue
         for rho, numbers in block.items():
+            if not isinstance(numbers, dict):
+                continue
             lines.append(
                 f"| {construction} | {rho} | {numbers['realized_ic']:.3f} | "
                 f"{numbers['n_names']:.0f} | {numbers['n_eff']:.1f} | "

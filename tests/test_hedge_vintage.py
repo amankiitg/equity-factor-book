@@ -24,10 +24,33 @@ session's own prices, which do not exist yet. So:
 The bound is per book and per pair; the run records the realized number for the
 traded book in the proposal manifest (`previous_book_exposure_vs_published`),
 which is the only place the real number exists, one session after the hedge.
+
+Which tree this runs against, and why it fails rather than skips. The vintage is a
+*live* property: it is about the row the model will date with the next session, which
+only exists in a tree the live loop has extended one session at a time. A research
+tree built by `make rebuild-e3` publishes descriptors at month ends plus the final
+session (`build._descriptor_frame`), so it has no row for the session after a month
+end and cannot exercise any of this. These tests therefore read a live-shaped run
+root, taken from `EFB_RUN_ROOT` - the same variable `live/runroot.py` materialises a
+run into - and **fail rather than skip** when there is none, because a silently
+skipped vintage check is how the September pairs above stopped existing without any
+test noticing.
+
+The 2026-11-11 pre-merge check runs this file against the regenerated seed:
+
+    EFB_RUN_ROOT=<the run root> python -m pytest tests/test_hedge_vintage.py
+
+Two of the eight compare the row built here against the row the model published
+for the same session, so they are green only on a tree whose published rows were
+built from the panel this branch fits on. On a tree the live loop extended from
+the *raw* panel they fail by construction: measured on 2026-10-02, six pass and
+those two fail on `/tmp/efb-repair/data`, and the reason is the one the runbook's
+merge checklist exists to remove.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -38,7 +61,72 @@ from efb import eval_risk, race
 from live import sizing
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "data"
+REPO_DATA = ROOT / "data"
+
+
+def _is_live_shaped(root: Path) -> bool:
+    """Whether the descriptors carry a row per session, which is what is needed."""
+    path = root / "models" / "XS-v1" / "descriptors.parquet"
+    returns_path = root / "processed" / "returns.parquet"
+    if not path.exists() or not returns_path.exists():
+        return False
+    published = pd.DatetimeIndex(
+        sorted(pd.to_datetime(pd.read_parquet(path)["date"]).unique())
+    )
+    sessions = pd.DatetimeIndex(
+        sorted(pd.read_parquet(returns_path).index.get_level_values("date").unique())
+    )
+    # a live-shaped tree has at least one published row whose session is the
+    # session after the previous published row
+    return any(
+        int(sessions.searchsorted(later)) - int(sessions.searchsorted(earlier)) == 1
+        for earlier, later in zip(published, published[1:], strict=False)
+    )
+
+
+def _live_tree() -> Path:
+    """The run root these tests read, or a failure naming what is missing.
+
+    Never a skip. A skipped vintage check reads as a passing suite, and this file
+    exists because a hard-coded pair stopped existing without one.
+    """
+    candidates: list[Path] = []
+    env = os.environ.get("EFB_RUN_ROOT")
+    if env:
+        candidates.append(Path(env))
+    candidates.append(REPO_DATA)
+    for root in candidates:
+        if _is_live_shaped(root):
+            return root
+    pytest.fail(
+        "these tests need a live-shaped run root: one descriptor row per session, "
+        "which only a tree the live loop has extended has. Set EFB_RUN_ROOT to a "
+        "materialised run root (`live/runroot.py prepare`) and re-run. Looked at: "
+        + ", ".join(str(candidate) for candidate in candidates)
+    )
+
+
+DATA: Path | None = None
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _live_run_root() -> None:
+    """Resolve the run root at first use rather than at import.
+
+    At import it failed *collection*, which took the whole suite down even when
+    these tests were deselected: a marker can deselect a test, it cannot try to
+    re-import a module. Failing here makes the eight tests below fail, each with
+    this reason, and leaves every other test alone.
+    """
+    global DATA
+    DATA = _live_tree()
+
+
+def _root() -> Path:
+    """The resolved run root, once the fixture above has run."""
+    assert DATA is not None, "the run root fixture has not run"
+    return DATA
+
 
 # A published pair per case: two ordinary sessions and the one that spans Labor
 # Day, which is the only pair in the published daily window whose priced set
@@ -58,7 +146,7 @@ HOLIDAY_PAIR = ("2026-09-04", "2026-09-08")
 EXACT = 1e-10
 HOLIDAY_BOUND = 5e-3
 
-pytestmark = pytest.mark.timeout(300)
+pytestmark = [pytest.mark.timeout(300), pytest.mark.requires_live_tree]
 
 
 def _trimmed_root(cut: pd.Timestamp, base: Path) -> Path:
@@ -72,17 +160,17 @@ def _trimmed_root(cut: pd.Timestamp, base: Path) -> Path:
     dest = base / str(cut.date())
     (dest / "processed").mkdir(parents=True, exist_ok=True)
     (dest / "raw").mkdir(parents=True, exist_ok=True)
-    returns = pd.read_parquet(DATA / "processed" / "returns.parquet")
+    returns = pd.read_parquet(_root() / "processed" / "returns.parquet")
     dates = pd.DatetimeIndex(sorted(returns.index.get_level_values("date").unique()))
     keep = set(dates[dates <= cut][-race.NEXT_DESIGN_WINDOW :])
     returns.loc[returns.index.get_level_values("date").isin(keep)].to_parquet(
         dest / "processed" / "returns.parquet"
     )
-    prices = pd.read_parquet(DATA / "raw" / "prices.parquet")
+    prices = pd.read_parquet(_root() / "raw" / "prices.parquet")
     prices.loc[prices.index.get_level_values("date").isin(keep)].to_parquet(
         dest / "raw" / "prices.parquet"
     )
-    shares = pd.read_parquet(DATA / "raw" / "shares_history.parquet")
+    shares = pd.read_parquet(_root() / "raw" / "shares_history.parquet")
     shares.loc[pd.to_datetime(shares["date"]) <= cut].to_parquet(
         dest / "raw" / "shares_history.parquet"
     )
@@ -92,12 +180,12 @@ def _trimmed_root(cut: pd.Timestamp, base: Path) -> Path:
         "models/XS-v1/descriptors.parquet",
     ):
         (dest / rel).parent.mkdir(parents=True, exist_ok=True)
-        (dest / rel).symlink_to((DATA / rel).resolve())
+        (dest / rel).symlink_to((_root() / rel).resolve())
     return dest
 
 
 def _published_names(following: pd.Timestamp) -> list[str]:
-    descriptors = pd.read_parquet(DATA / "models" / "XS-v1" / "descriptors.parquet")
+    descriptors = pd.read_parquet(_root() / "models" / "XS-v1" / "descriptors.parquet")
     day = descriptors.loc[pd.to_datetime(descriptors["date"]) == following]
     return sorted(str(ticker) for ticker in day["ticker"].unique())
 
@@ -136,8 +224,8 @@ def designs(tmp_path_factory: pytest.TempPathFactory) -> dict[tuple[str, str], d
         out[(cut, following)] = {
             "built": matrix,
             "label": label,
-            "published": race._descriptor_design(following_ts, names, DATA),
-            "stale": race._descriptor_design(cut_ts, names, DATA),
+            "published": race._descriptor_design(following_ts, names, _root()),
+            "stale": race._descriptor_design(cut_ts, names, _root()),
             "names": names,
         }
     return out
@@ -225,21 +313,21 @@ def test_a_published_next_session_row_is_used_as_it_stands() -> None:
     so it is used rather than rebuilt, and the label says so.
     """
     names = _published_names(pd.Timestamp("2026-09-18"))
-    built = race.next_descriptor_design(pd.Timestamp("2026-09-17"), names, DATA)
+    built = race.next_descriptor_design(pd.Timestamp("2026-09-17"), names, _root())
     assert built is not None
     matrix, label = built
     assert label.startswith("published 2026-09-18")
-    expected = race._descriptor_design(pd.Timestamp("2026-09-18"), names, DATA)
+    expected = race._descriptor_design(pd.Timestamp("2026-09-18"), names, _root())
     assert np.array_equal(matrix, expected)
 
 
 def test_the_hedge_is_handed_the_next_sessions_row() -> None:
     """The call site: `_xs_pieces` is what the live run hedges with."""
     names = _published_names(pd.Timestamp("2026-09-18"))
-    pieces = eval_risk._xs_pieces(pd.Timestamp("2026-09-17"), names, DATA)
+    pieces = eval_risk._xs_pieces(pd.Timestamp("2026-09-17"), names, _root())
     assert pieces is not None
     assert str(pieces["design_vintage"]).startswith("published 2026-09-18")
-    expected = race._descriptor_design(pd.Timestamp("2026-09-18"), names, DATA)
+    expected = race._descriptor_design(pd.Timestamp("2026-09-18"), names, _root())
     assert np.array_equal(pieces["design"], expected)
 
 
@@ -273,9 +361,9 @@ def test_a_sparse_replay_keeps_the_row_dated_the_close() -> None:
     """
     date = pd.Timestamp("2026-09-01")
     names = ["AAPL", "MSFT"]
-    matrix, label = race.next_descriptor_design(date, names, DATA)
-    stale = race.descriptor_stamp(date, DATA)
+    matrix, label = race.next_descriptor_design(date, names, _root())
+    stale = race.descriptor_stamp(date, _root())
     assert stale is not None
     assert label.startswith(f"stale {stale.date()}")
     assert "published no row for" in label
-    assert np.array_equal(matrix, race._descriptor_design(date, names, DATA))
+    assert np.array_equal(matrix, race._descriptor_design(date, names, _root()))

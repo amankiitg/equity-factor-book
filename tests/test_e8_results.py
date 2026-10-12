@@ -59,7 +59,16 @@ def test_the_transfer_coefficient_table_is_stored() -> None:
     payload = _results()
     stored = payload["criteria"]["F8.5"]["stored_numbers"]
     assert stored
-    for _construction, block in stored.items():
+    # the traded-book figures sit beside the transfer table (item 2 of the
+    # back-port); they are a flat block, not a construction row
+    traded = stored.get("traded_book")
+    assert traded, "the traded-book figures are stored beside the transfer table"
+    assert {"kept_sharpe", "full_book_sharpe", "kept_n_names", "full_book_n_names"} <= (
+        set(traded)
+    )
+    for construction, block in stored.items():
+        if construction == "traded_book":
+            continue
         for _rho, numbers in block.items():
             assert {
                 "realized_ir",

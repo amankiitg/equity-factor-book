@@ -1,9 +1,9 @@
 # E7 Signal Report: idio_momentum
 
 Verdict against the RG-Signal checklist: **NULL**. The number that
-decided it: neutral out-of-sample t -0.534,
-out-of-sample spread Sharpe 0.395, break-even
-cost 6.07 bp per rebalance
+decided it: neutral out-of-sample t -0.936,
+out-of-sample spread Sharpe 0.532, break-even
+cost 8.00 bp per rebalance
 against a realistic 5 bp.
 
 ## Hypothesis and economic rationale
@@ -20,32 +20,32 @@ NaN, never filled.
 
 | horizon | mean IC |
 | --- | --- |
-| ic_h1 | 0.012102 |
-| ic_h5 | 0.012435 |
+| ic_h1 | 0.012538 |
+| ic_h5 | 0.012855 |
 | ic_h21 | 0.008334 |
-| ic_h63 | 0.007081 |
+| ic_h63 | 0.004385 |
 
 ## Factor-neutral IC
 
 The signal is residualized on the champion design at each rebalance date,
-s_perp = s - X (X'X)^-1 X' s. Mean neutral IC -0.003094,
-out-of-sample mean -0.005413 with t
--0.534.
+s_perp = s - X (X'X)^-1 X' s. Mean neutral IC -0.004506,
+out-of-sample mean -0.009297 with t
+-0.936.
 
 ## Regime IC
 
 | regime | mean IC | n days |
 | --- | --- | --- |
-| pooled | 0.012102 | 3690 |
-| vix_low | 0.009297 | 1233 |
-| vix_mid | 0.016132 | 1227 |
-| vix_high | 0.010894 | 1230 |
+| pooled | 0.012538 | 3710 |
+| vix_low | 0.009274 | 1233 |
+| vix_mid | 0.016181 | 1230 |
+| vix_high | 0.011155 | 1232 |
 
 ## Quantile spread
 
-Hit rate 0.3513, turnover share per rebalance
-0.3829, out-of-sample spread Sharpe
-0.395.
+Hit rate 0.5294, turnover share per rebalance
+0.3853, out-of-sample spread Sharpe
+0.532.
 
 ## RG-Signal answers
 

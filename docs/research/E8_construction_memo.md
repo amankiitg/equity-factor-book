@@ -24,27 +24,27 @@ travels with every number in this memo.
 
 | construction | rho | realized IR | idio share after FMP |
 | --- | --- | --- | --- |
-| combined | 0.02 | 0.558 | 1.000 |
-| combined | 0.05 | 0.896 | 1.000 |
-| combined | 0.1 | 0.659 | 1.000 |
-| mv_constrained | 0.02 | 0.278 | 1.000 |
-| mv_constrained | 0.05 | 0.650 | 1.000 |
-| mv_constrained | 0.1 | 1.193 | 1.000 |
-| mv_unconstrained | 0.02 | 0.390 | 1.000 |
-| mv_unconstrained | 0.05 | 0.936 | 1.000 |
-| mv_unconstrained | 0.1 | 1.776 | 1.000 |
-| procedure_6_3 | 0.02 | 0.378 | 1.000 |
-| procedure_6_3 | 0.05 | 0.905 | 1.000 |
-| procedure_6_3 | 0.1 | 1.722 | 1.000 |
-| proportional | 0.02 | 0.399 | 1.000 |
-| proportional | 0.05 | 0.832 | 1.000 |
-| proportional | 0.1 | 0.866 | 1.000 |
-| sharpe | 0.02 | 0.399 | 1.000 |
-| sharpe | 0.05 | 0.832 | 1.000 |
-| sharpe | 0.1 | 0.866 | 1.000 |
-| shrunk | 0.02 | 0.399 | 1.000 |
-| shrunk | 0.05 | 0.832 | 1.000 |
-| shrunk | 0.1 | 0.866 | 1.000 |
+| combined | 0.02 | 0.464 | 1.000 |
+| combined | 0.05 | 0.491 | 1.000 |
+| combined | 0.1 | 0.387 | 1.000 |
+| mv_constrained | 0.02 | 0.269 | 1.000 |
+| mv_constrained | 0.05 | 0.669 | 1.000 |
+| mv_constrained | 0.1 | 1.282 | 1.000 |
+| mv_unconstrained | 0.02 | 0.409 | 1.000 |
+| mv_unconstrained | 0.05 | 0.980 | 1.000 |
+| mv_unconstrained | 0.1 | 1.884 | 1.000 |
+| procedure_6_3 | 0.02 | 0.391 | 1.000 |
+| procedure_6_3 | 0.05 | 0.939 | 1.000 |
+| procedure_6_3 | 0.1 | 1.813 | 1.000 |
+| proportional | 0.02 | 0.393 | 1.000 |
+| proportional | 0.05 | 0.551 | 1.000 |
+| proportional | 0.1 | 0.456 | 1.000 |
+| sharpe | 0.02 | 0.393 | 1.000 |
+| sharpe | 0.05 | 0.551 | 1.000 |
+| sharpe | 0.1 | 0.456 | 1.000 |
+| shrunk | 0.02 | 0.393 | 1.000 |
+| shrunk | 0.05 | 0.551 | 1.000 |
+| shrunk | 0.1 | 0.456 | 1.000 |
 
 ## The transfer coefficient table
 
@@ -55,27 +55,27 @@ sprint's decision table.
 
 | construction | rho | realized IC | N | N_eff | predicted IR (N_eff) | realized IR | TC over N_eff | TC over N |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| combined | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.558 | 2.597 | 1.379 |
-| combined | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.896 | 1.728 | 0.917 |
-| combined | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 0.659 | 0.644 | 0.342 |
-| mv_constrained | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.278 | 1.295 | 0.688 |
-| mv_constrained | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.650 | 1.255 | 0.666 |
-| mv_constrained | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 1.193 | 1.165 | 0.618 |
-| mv_unconstrained | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.390 | 1.815 | 0.964 |
-| mv_unconstrained | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.936 | 1.806 | 0.959 |
-| mv_unconstrained | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 1.776 | 1.734 | 0.921 |
-| procedure_6_3 | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.378 | 1.761 | 0.935 |
-| procedure_6_3 | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.905 | 1.746 | 0.927 |
-| procedure_6_3 | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 1.722 | 1.682 | 0.893 |
-| proportional | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.399 | 1.859 | 0.987 |
-| proportional | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.832 | 1.605 | 0.852 |
-| proportional | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 0.866 | 0.846 | 0.449 |
-| sharpe | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.399 | 1.859 | 0.987 |
-| sharpe | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.832 | 1.605 | 0.852 |
-| sharpe | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 0.866 | 0.846 | 0.449 |
-| shrunk | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.399 | 1.859 | 0.987 |
-| shrunk | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.832 | 1.605 | 0.852 |
-| shrunk | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 0.866 | 0.846 | 0.449 |
+| combined | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.464 | 2.158 | 1.146 |
+| combined | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.491 | 0.948 | 0.503 |
+| combined | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 0.387 | 0.378 | 0.201 |
+| mv_constrained | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.269 | 1.251 | 0.664 |
+| mv_constrained | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.669 | 1.290 | 0.685 |
+| mv_constrained | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 1.282 | 1.252 | 0.664 |
+| mv_unconstrained | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.409 | 1.906 | 1.012 |
+| mv_unconstrained | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.980 | 1.890 | 1.004 |
+| mv_unconstrained | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 1.884 | 1.840 | 0.977 |
+| procedure_6_3 | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.391 | 1.820 | 0.966 |
+| procedure_6_3 | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.939 | 1.813 | 0.962 |
+| procedure_6_3 | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 1.813 | 1.771 | 0.940 |
+| proportional | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.393 | 1.830 | 0.971 |
+| proportional | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.551 | 1.062 | 0.564 |
+| proportional | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 0.456 | 0.445 | 0.236 |
+| sharpe | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.393 | 1.830 | 0.971 |
+| sharpe | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.551 | 1.062 | 0.564 |
+| sharpe | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 0.456 | 0.445 | 0.236 |
+| shrunk | 0.02 | 0.019 | 457 | 128.7 | 0.215 | 0.393 | 1.830 | 0.971 |
+| shrunk | 0.05 | 0.046 | 457 | 128.7 | 0.518 | 0.551 | 1.062 | 0.564 |
+| shrunk | 0.1 | 0.090 | 457 | 128.7 | 1.024 | 0.456 | 0.445 | 0.236 |
 
 ## The constraint set and its rationale
 
@@ -100,7 +100,7 @@ rho:
 ## The stored criteria
 
 - F8.1 (fail): the max absolute weight difference between unconstrained
-  mean-variance and Procedure 6.3 is 0.00846251, above the 1e-6 the identity
+  mean-variance and Procedure 6.3 is 0.00918738, above the 1e-6 the identity
   would require, because the standardized specific return is orthogonal to
   the design only up to the sigma_e standardization and D is not scalar.
   The roadmap's falsification clause says which this is: D is mis-specified
@@ -108,7 +108,7 @@ rho:
 - F8.2 (verdict pass): the proportional book's mean
   idio share after the FMP hedge is 1.0000.
 - F8.3 (verdict pass): the worst constraint
-  violation is 3.95e-09; the solver fell back to a zero book on
+  violation is 3.77e-09; the solver fell back to a zero book on
   0 dates (0.0000% of the constrained solves).
 - F8.4 (verdict fail): the resampling dispersion
   is about 141% at every rho, and no shrinkage on the ridge grid reduces

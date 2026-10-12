@@ -523,7 +523,7 @@ def test_e1_reference_values_recompute_from_the_artifacts() -> None:
             assert stored[key] == pytest.approx(value, rel=1e-12), key
         else:
             assert stored[key] == value, key
-    assert stored["sharpe_annualized"] == pytest.approx(0.7601, abs=5e-5)
+    assert stored["sharpe_annualized"] == pytest.approx(0.7661, abs=5e-5)
     assert stored["se_lo2002_annualized"] < stored["se_iid_annualized"]
     assert stored["lag1_autocorrelation_ff_market"] < 0
 
@@ -547,7 +547,7 @@ def test_e1_walkthrough_asserts_against_the_stored_reference_block() -> None:
     assert "RESULTS.json" in source
     # No reference value may be typed into a code cell: they come from the
     # results file, which is what makes the notebook survive a correction.
-    for literal in ("0.7601", "0.9220", "0.2460", "0.2268", "0.1029"):
+    for literal in ("0.7661", "0.9229", "0.2454", "0.2265", "0.1023"):
         assert literal not in source, f"{literal} is hardcoded in the notebook"
     stored = json.loads((ROOT / "sprints" / "E1" / "RESULTS.json").read_text())[
         "reference_values"
