@@ -212,3 +212,39 @@ about the code, not about which day's returns are on file. Before any of these
 levels is quoted as a live expectation it should be re-measured on the
 regenerated seed, which is step 3 of the merge checklist and is blocked on a seed
 push.
+
+## The floor band as built, and what it does not do
+
+Item 12 asks for an entry/exit band at the floor: admit at the floor, release only
+below a fraction of it, so a name **inside the band is held at its weight rather than
+traded**. `live/evening_job.py` now carries that as a default-off flag
+(`EFB_FLOOR_RELEASE`, unset = `1.0` = the release-at-the-floor rule the loop has always
+used), with `tests/test_nov11_floor_band.py` proving the identity the hard rule
+requires: with the flag off the kept book is identical name for name and weight for
+weight.
+
+Measured on the live construction of 2026-09-21, taking its own default book as the
+previous book (so the two builds differ in the flag and in nothing else):
+
+| | kept | legs | traded notional | gross |
+|---|---|---|---|---|
+| band off (`1.0`) | 204 | 0 | 0.0% | 1.0000 |
+| band on (`0.75`) | 200 | 218 | 15.6% | 1.0000 |
+
+The band on is **not** the same book with fewer legs, which is what the item's shape
+assumes. Keeping the names whose size sits inside the band changes the kept set (14
+names in, 18 out of a 204-name book), and because the sizing renormalizes the kept set
+to gross 1.0 and re-hedges it, the extra names take weight from the rest and push
+eighteen of them below their own floor. The band then trades a book the default did not
+trade at all, because the default's own fixed point is exactly the book being held.
+
+So the honest reading of the measurement is that the *fixed-point* band is the wrong
+place for this rule. What the item describes - a name inside the band held at its
+current size rather than traded - is a **no-trade band on the leg**, not on the kept
+set: the target book keeps being computed exactly as it is, and the order path
+suppresses the closing leg of a position whose weight is inside the band (and the
+opening leg of one whose delta is inside it), which is the same family as the $250
+delta minimum that already exists. That leaves the position slightly off target, which
+the bridge and the page already report as its own line, and it is a trading change, so
+it is the owner's to choose. The flag as built is left in place, off, because it is the
+measured half of the answer and because turning it on is reversible in one variable.

@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import subprocess
 import time
 from collections.abc import Mapping
@@ -49,6 +50,68 @@ logger = logging.getLogger(__name__)
 
 HORIZON = 21  # the rebalance horizon, the E6 and E9 convention
 MIN_NAMES = 50
+
+# The floor's release band, off by default (`1.0` is "release at the floor", which is
+# the rule the book has always used).
+#
+# The kept set is the drop-then-admit fixed point on tonight's own weights, so a name
+# sitting on the floor line flips in and out as its weight moves a few dollars: of the
+# 39 names that left on 2026-10-07, 16 had been admitted on 10-06, and 5 of the 24
+# that arrived had been dropped the day before (item 12). Each round trip is two
+# crossings of the spread and the impact on a leg that was already at its target size.
+# With the band on, a name the book *holds* is released only below `release` of its
+# floor, and a name being admitted still has to clear the whole floor: entry at the
+# floor, exit below it.
+#
+# Item 12's measurement (docs/research/nov11_turnover.md) is that the floor's own churn
+# was 147 round trips in nine closes, 84 of which returned the next session, costing
+# 6.6 bp of NAV against a 0.67 bp per-session gross edge - so the band is worth
+# building, and its width is the owner's to set rather than this module's.
+#
+# Measured before shipping, on the live construction of 2026-09-21 with the previous
+# book its own default book (`tests/test_nov11_floor_band.py` builds it): switching the
+# band on at 0.75 does **not** hold the same book with fewer legs. Keeping the names
+# inside the band changes the kept set - 200 kept against 204, 14 names in and 18 out -
+# and the renormalization that follows pushes other names below their own floor, so the
+# book trades 15.6% of gross where the default trades none at all. The band therefore
+# is not by itself the churn cut the item expects; the shape that is (a no-trade band at
+# the *leg* stage, which leaves the target alone and suppresses the closing leg of a
+# position inside the band) is a decision for the owner, recorded in the report and in
+# the research note. It stays off until then, and the identity proof is that off the
+# book is identical weight for weight.
+FLOOR_RELEASE_ENV = "EFB_FLOOR_RELEASE"
+FLOOR_RELEASE_OFF = 1.0
+# Below half the floor a "held" name is not a position, it is a rounding error: the
+# band exists to stop trading a name that is at its size, not to keep a stub forever.
+FLOOR_RELEASE_MIN = 0.5
+
+
+def resolve_floor_release(value: str | None) -> float:
+    """The band's release fraction from the environment, or `1.0` when unset.
+
+    Unset is off, and so is any value that cannot be read as a fraction in
+    `[0.5, 1.0)` - the safe direction for a switch that changes which names the book
+    holds: a mistyped variable must leave the book exactly as it is, not silently pick
+    a band. A value of exactly `1.0` is off as well, and is the same as unset.
+    """
+    if value is None or not str(value).strip():
+        return FLOOR_RELEASE_OFF
+    try:
+        parsed = float(str(value).strip())
+    except ValueError:
+        logger.warning("ignoring %s=%r: not a number", FLOOR_RELEASE_ENV, value)
+        return FLOOR_RELEASE_OFF
+    if not math.isfinite(parsed) or parsed < FLOOR_RELEASE_MIN or parsed > 1.0:
+        logger.warning(
+            "ignoring %s=%r: outside [%s, 1.0]",
+            FLOOR_RELEASE_ENV,
+            value,
+            FLOOR_RELEASE_MIN,
+        )
+        return FLOOR_RELEASE_OFF
+    return parsed
+
+
 # How many names one evening may lose for having no usable close before the run
 # stops and emails instead of pricing the rest. One or a few is normal: a name can
 # halt, delist or be missed by the vendor on the night, and the book drops it and
@@ -645,6 +708,8 @@ def enforce_floor_on_final_weights(
     dollar_floor: float,
     share_floor: int,
     max_passes: int = 30,
+    sticky: np.ndarray | None = None,
+    release: float = 1.0,
 ) -> tuple[np.ndarray, dict[str, Any], int, bool]:
     """Enforce the floor on the final weights, iterated to a fixed point.
 
@@ -668,14 +733,52 @@ def enforce_floor_on_final_weights(
         )
         shares = np.asarray(finalize["shares"], dtype=int)
         prices = np.asarray(finalize["prices"], dtype=float)
+        idx = np.asarray(finalize["idx"], dtype=int)
         below = below_floor(shares, prices, dollar_floor, share_floor)
+        below = _releasable(
+            below, idx, shares, prices, sticky, release, dollar_floor, share_floor
+        )
         if not below.any():
             return keep, finalize, passes, True
-        idx = np.asarray(finalize["idx"], dtype=int)
         keep[idx[below]] = False
         if not keep.any():
             return keep, finalize, passes, False
     return keep, finalize, max_passes, False
+
+
+def _releasable(
+    below: np.ndarray,
+    idx: np.ndarray,
+    shares: np.ndarray,
+    prices: np.ndarray,
+    sticky: np.ndarray | None,
+    release: float,
+    dollar_floor: float,
+    share_floor: int,
+) -> np.ndarray:
+    """Which below-floor names are released, under the band.
+
+    `release` at or above 1.0 is the rule the book has always used, and the mask
+    comes back untouched: the band changes what trades by nothing unless it is on.
+    With it on, a name the book already *holds* (`sticky`, over the full name list)
+    is released only if it is below `release` of its own floor, so a name inside the
+    band stays at its size instead of being traded out and back.
+    """
+    if sticky is None or release >= FLOOR_RELEASE_OFF:
+        return below
+    held = np.asarray(sticky, dtype=bool)
+    if held.size <= int(idx.max()):
+        raise ValueError(
+            f"the held-position mask has {held.size} entries and the book's last "
+            f"kept index is {int(idx.max())}, so they cannot be aligned"
+        )
+    inside = below_floor(
+        shares,
+        prices,
+        dollar_floor * release,
+        max(1, int(share_floor * release)),
+    )
+    return below & ~(held[idx] & ~inside)
 
 
 def floor_thresholds(
@@ -842,6 +945,8 @@ def enforce_floor_by_drop_then_admit(
     order: np.ndarray | None = None,
     start: np.ndarray | None = None,
     max_cycles: int = 10,
+    sticky: np.ndarray | None = None,
+    release: float = 1.0,
 ) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
     """Drop, then admit, repeated until a full cycle changes nothing (E11-F13R).
 
@@ -894,6 +999,8 @@ def enforce_floor_by_drop_then_admit(
             nav,
             dollar_floor,
             share_floor,
+            sticky=sticky,
+            release=release,
         )
     )
     keep = drop_keep.copy()
@@ -936,6 +1043,8 @@ def enforce_floor_by_drop_then_admit(
             nav,
             dollar_floor,
             share_floor,
+            sticky=sticky,
+            release=release,
         )
         if int(checked.sum()) == int(keep.sum()):
             converged = True
@@ -1388,6 +1497,7 @@ def build_proposal(
     appendix: dict[str, Any] | None = None,
     previous: pd.Series | None = None,
     nav_source: str | None = None,
+    floor_release: float | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
@@ -1401,6 +1511,14 @@ def build_proposal(
     `previous` is the last book the loop held, keyed by ticker. The impact term
     is the cost of trading to this book rather than of owning it, so it needs
     that book; from flat (the establishment day) every previous weight is zero.
+
+    `floor_release` is item 12's band, and `None` reads it from the environment
+    (`EFB_FLOOR_RELEASE`), where unset is off: at `1.0` the floor is released exactly
+    where it always was, and a fraction below it keeps a name the book already holds
+    until its size falls below that fraction of its own floor. A name being *admitted*
+    always clears the whole floor, so the band can only ever hold a position that is
+    already there. The default book is therefore unchanged, weight for weight, and
+    `tests/test_nov11_floor_band.py` proves it on the live construction.
     """
     if nav is None or not math.isfinite(nav) or nav <= 0:
         raise ValueError(
@@ -1527,6 +1645,24 @@ def build_proposal(
     # having broken rather than names delisting, and that stops the run.
     priced, dropped_no_price = priced_names_or_stop(names, close)
     started = time.perf_counter()
+    release = (
+        resolve_floor_release(os.environ.get(FLOOR_RELEASE_ENV))
+        if floor_release is None
+        else float(floor_release)
+    )
+    # The names the book already holds with a real position, which are the only ones
+    # the band can hold: a name not held has nothing to keep, and a zero weight is
+    # not a position.
+    sticky: np.ndarray | None = None
+    if release < FLOOR_RELEASE_OFF and previous is not None and len(previous):
+        held = {
+            str(ticker): float(weight)
+            for ticker, weight in previous.items()
+            if float(weight) != 0.0
+        }
+        sticky = np.array(
+            [held.get(str(name), 0.0) != 0.0 for name in names], dtype=bool
+        )
     enforced_keep, finalize, search = enforce_floor_by_drop_then_admit(
         names,
         alpha_vec,
@@ -1539,6 +1675,8 @@ def build_proposal(
         dollar_floor=construction["dollar_floor"],
         share_floor=construction["share_floor"],
         start=priced,
+        sticky=sticky,
+        release=release,
     )
     floor_search_seconds = time.perf_counter() - started
     violations = floor_book_violations(
@@ -1616,6 +1754,10 @@ def build_proposal(
         "n_names": len(names),
         "n_excluded": len(excluded),
         "excluded": excluded,
+        # Which floor rule built this book: `1.0` is the release-at-the-floor rule the
+        # loop has always used, and a fraction below it is item 12's band. A row read
+        # back months later has to say which of the two its book came from.
+        "floor_release": float(release),
         # The same names with their reason and their age: the list itself is what
         # downstream reads, and this is what the message and the owner read.
         "excluded_detail": excluded_detail,
