@@ -625,7 +625,59 @@ Steps 1 to 4 are the ones no default run performs.
       seed, and the numbers should be complete - but it is the difference between a
       degraded line and an empty section, and today's failure is the case for it.
 
-   The exit condition is the twenty-nine of them fixed or written down here, and the
+   30. **Publish the previous close's deferred reversals, so the page can tell a
+      reversal from a break.** The account-versus-store comparison is made against the
+      **previous** close's book (`positions.n_store` 175 on 2026-10-09, which is the
+      10-08 bridge's own `book`), and the names it reports as missing are the ones that
+      close's morning closed as deferred reversals - but the only reversal list in the
+      document is `bridge.reversals_pending` for **this** evening, which names the gap
+      in **tomorrow's** read. On 2026-10-09 the two lists are disjoint: `missing_at_broker`
+      is BEN, F, VZ, ZTS and `reversals_pending` is `['INVH']`, and a scan of all twenty
+      published keys finds BEN, F, VZ and ZTS in no other key at all (the four are the
+      10-08 document's `reversals_pending`, exactly). The `completed()` half builds
+      `pending` from the evening's list **plus its own**
+      (`live/bridge.py:163-170`), so the list is always one session ahead of the
+      mismatch it would explain, and the evening's half is seeded from the morning's
+      own deferrals (`scripts/run_live_daily.py:1704`). The page's honest options are
+      today's: show four routine names amber every night they occur (five unexpected on
+      10-09, which is exactly the routine amber that teaches a reader to skim), or
+      classify on a hunch. The fix is a key: publish the previous close's
+      `reversals_pending` (the evening already reads the previous close's block to
+      build the bridge) beside this close's, and let `bridge.*` name both. Then the
+      page's deferred-reversal class is decidable from one document rather than two,
+      and it can be checked rather than guessed.
+   31. **Publish the sent-only notional, so turnover is turnover.** On 2026-10-09 the
+      evening built **193 legs for $388,402.25** (`reconciliation.intended_notional`)
+      and **sent 171 for $379,430.49** - `sent_orders`, the legs with a
+      `broker_order_id` (`scripts/run_live_daily.py:428-454`) - and only the first is
+      published. The page's per-name column cannot stand in for either: `with_traded`
+      (`:478-497`) joins the ticker→dollars map onto the target book's rows, so it
+      drops the 34 legs that closed names leaving the book (-$121,383.69) and picks up
+      $1,915.16 of never-sent legs of names still in it, summing to $267,018.56
+      against a true turnover of $379,430.49. The card now reads the intended figure
+      and says which legs it counts, which is honest and is not the number the
+      question asks for. The fix is one field on the reconciliation row and the
+      snapshot: `sent_notional` (and `unsent_notional` beside it, which is the same
+      8,971.76 the never-sent lines already account for leg by leg).
+   32. **Publish the under-minimum tickers, not only the count.** `bridge.under_minimum`
+      is a count - 21 on 2026-10-09, 24 on 10-08 - and `under_minimum_usd` is the $250
+      floor, so the page can say how many legs the floor left untraded and not which
+      ones (it lists that as a class it cannot check). The tickers are in hand where the
+      count is made: `live/bridge.py:125` is `len(both - sent)`, a set of names, and the
+      morning's own `skipped_reasons` already carries a code per leg. Publishing the
+      names turns a count a reader has to reconcile by hand into the list the page can
+      collapse into one "expected: under the $250 minimum - A, B, C" line.
+   33. **`reconciliation.filled_notional` is `0.0` on every live row.** Both the
+      2026-10-08 and the 2026-10-09 rows carry a literal `0.0` while 202 of 202 legs
+      filled, which is the same family as item 26 and worse than its NaN: a null is a
+      missing measurement, and a zero is a claim that nothing filled. Nothing reads it
+      today - the page's turnover card falls back to `intended_notional` - so the choice
+      is to write it from the fills the morning already reconciles, or drop the column.
+      Whichever, it should not sit in the published row reading zero on a night that
+      filled every leg, because the first reader who trusts it will be wrong about the
+      book.
+
+   The exit condition is the thirty-three of them fixed or written down here, and the
    day's own numbers as a case in each test rather than a number typed from a message.
 
 ## 4. Rollback
