@@ -39,8 +39,11 @@ export const signedDollars = (value: number | null | undefined): string => {
 };
 
 /** A date as the day it is, never with a midnight time stapled to it. */
-export const dateOnly = (value: string | null | undefined): string | null =>
-  value === null || value === undefined || value === "" ? null : value.slice(0, 10);
+export const dateOnly = (value: string | Date | null | undefined): string | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const text = typeof value === "string" ? value : value.toISOString();
+  return text.slice(0, 10);
+};
 
 /**
  * A timestamp as its day and its time in UTC, for the one place the time matters.
@@ -72,10 +75,10 @@ export const dateTime = (value: string | null | undefined): string | null => {
  * named on the face of it rather than left implied, and the UTC form stays
  * available for anyone matching the page against the logs.
  */
-export const etDateTime = (value: string | null | undefined): string | null => {
+export const etDateTime = (value: string | Date | null | undefined): string | null => {
   if (value === null || value === undefined || value === "") return null;
   const at = new Date(value);
-  if (Number.isNaN(at.getTime())) return dateOnly(value);
+  if (Number.isNaN(at.getTime())) return dateOnly(String(value));
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
     year: "numeric",
@@ -93,6 +96,22 @@ export const etDateTime = (value: string | null | undefined): string | null => {
   // and printing "00:00 ET" would claim an instant nobody recorded.
   if (time === "00:00" || time === "24:00") return `${day} ET`;
   return `${day} ${time} ET`;
+};
+
+/**
+ * An instant in the form the logs carry it: UTC, to the second, with a Z.
+ *
+ * This is the one thing on the page that exists to be matched against another
+ * document rather than read, so it is the run's own instant in the run's own zone
+ * rather than a local rendering of it. Sub-second digits are dropped: the logs are
+ * read by the second, and the writer's microsecond tail reads as precision nobody
+ * is comparing.
+ */
+export const utcInstant = (value: string | Date | null | undefined): string | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return String(value);
+  return `${at.toISOString().slice(0, 19)}Z`;
 };
 
 /** One decimal place: an effective breadth of 70.59213 is 70.6 names, not 70.59. */
