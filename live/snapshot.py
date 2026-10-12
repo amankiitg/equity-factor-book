@@ -283,6 +283,22 @@ def build(
             "n_eff_full_book": _number(proposal.get("n_eff_full_book")),
             "kept_label": breadth.BOOK_LABEL,
             "full_book_label": breadth.FULL_BOOK_LABEL,
+            # The names the risk model could not measure, which never reached the
+            # sizing, with the reason each one left. The manifest has carried them
+            # and their count since the drop was written and only the evening's
+            # message ever saw them, so a page reader could see a book of 180 names
+            # and not which names the book was short of. The count comes with them
+            # because the two are one statement: `universe = excluded + these +
+            # the book`.
+            "n_dropped_no_risk": _number(proposal.get("n_dropped_no_risk")),
+            "dropped_no_risk": [
+                {
+                    "ticker": str(entry.get("ticker")),
+                    "reason": str(entry.get("reason") or ""),
+                }
+                for entry in (proposal.get("dropped_no_risk") or [])
+                if isinstance(entry, dict) and entry.get("ticker")
+            ],
         },
         "book": {
             "n_names": len(names),

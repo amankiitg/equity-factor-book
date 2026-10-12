@@ -360,6 +360,14 @@ export interface Snapshot {
     n_eff_full_book: number | null;
     kept_label: string;
     full_book_label: string;
+    /**
+     * The names the risk model had no specific variance for, which never reached the
+     * sizing, each with the reason it left. The manifest has carried them since the
+     * drop was written; they were published on 2026-11 and are absent from every
+     * document written before that.
+     */
+    n_dropped_no_risk?: number | null;
+    dropped_no_risk?: { ticker: string; reason: string }[] | null;
   };
   book: {
     n_names: number;

@@ -1116,6 +1116,45 @@ describe("the hedge's footprint", () => {
   });
 });
 
+describe("the names the risk model could not measure", () => {
+  it("lists them, with the reason each left, under the construction telemetry", () => {
+    const snapshot: Snapshot = {
+      ...OK,
+      breadth: {
+        ...OK.breadth,
+        n_dropped_no_risk: 3,
+        dropped_no_risk: [
+          { ticker: "AAA", reason: "no specific variance" },
+          { ticker: "BBB", reason: "no specific variance" },
+          { ticker: "CCC", reason: "short history" },
+        ],
+      },
+    };
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const line = document.querySelector("[data-flag='dropped-no-risk']") as HTMLElement;
+    expect(line).toBeTruthy();
+    expect(line.textContent).toContain("3 name(s) never reached the book");
+    expect(line.textContent).toContain("AAA (no specific variance)");
+    expect(line.textContent).toContain("CCC (short history)");
+  });
+
+  it("draws nothing when the document carries none, old or empty alike", () => {
+    // Absent is a document written before the evening published them; an empty list is
+    // an evening that dropped none. Both mean the reader has nothing to see here.
+    const { n_dropped_no_risk: _count, dropped_no_risk: _names, ...restBreadth } = OK.breadth;
+    render(
+      <SnapshotView snapshot={{ ...OK, breadth: restBreadth as typeof OK.breadth }} now={NOW} />,
+    );
+    expect(document.querySelector("[data-flag='dropped-no-risk']")).toBeNull();
+    const empty: Snapshot = {
+      ...OK,
+      breadth: { ...OK.breadth, n_dropped_no_risk: 0, dropped_no_risk: [] },
+    };
+    render(<SnapshotView snapshot={empty} now={NOW} />);
+    expect(document.querySelector("[data-flag='dropped-no-risk']")).toBeNull();
+  });
+});
+
 describe("the turnover card", () => {
   it("reads every leg the evening built, and says so beside the per-name column", () => {
     const intended = 379430.49;

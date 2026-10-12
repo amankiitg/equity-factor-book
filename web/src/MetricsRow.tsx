@@ -117,6 +117,9 @@ export function realizedLine(
   return `${day}. Separately, the fill history averages ${avg.toFixed(2)} bp of NAV across ${days} session(s)`;
 }
 
+/** How many dropped-for-no-risk names the coverage line lists before counting. */
+const DROPPED_LINES = 6;
+
 export function MetricsRow({
   snapshot,
   facts,
@@ -132,6 +135,11 @@ export function MetricsRow({
   const nav = facts.nav;
   const intended = snapshot.reconciliation?.intended_notional ?? null;
   const sentNotional = snapshot.reconciliation?.sent_notional ?? null;
+  // The names the risk model could not measure, published under the breadth block.
+  // Absent on a document written before the evening published them, and an empty list
+  // on an evening that dropped none: the two say the same thing to a reader (nothing
+  // was dropped), so both draw nothing.
+  const droppedNoRisk = breadth?.dropped_no_risk ?? [];
   const unsentNotional = snapshot.reconciliation?.unsent_notional ?? null;
 
   // The day's legs, against NAV. The card stands on the legs the broker was sent,
@@ -264,6 +272,23 @@ export function MetricsRow({
           and the index-sized book it started from. Nothing in the morning route reads the
           second, which is why it is here rather than on the row above.
         </p>
+        {droppedNoRisk.length > 0 ? (
+          <p data-flag="dropped-no-risk" className="mt-2 text-xs text-slate-600">
+            {count(breadth?.n_dropped_no_risk ?? droppedNoRisk.length)} name(s) never reached the
+            book because the risk model has no specific variance for them, and a name is not sized
+            on a median that is not its own:{" "}
+            <span className="font-mono">
+              {droppedNoRisk
+                .slice(0, DROPPED_LINES)
+                .map((entry) => (entry.reason ? `${entry.ticker} (${entry.reason})` : entry.ticker))
+                .join(", ")}
+              {droppedNoRisk.length > DROPPED_LINES
+                ? ` and ${droppedNoRisk.length - DROPPED_LINES} more`
+                : ""}
+            </span>
+            .
+          </p>
+        ) : null}
         <dl className="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div data-card="n_eff_full_book">
             <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
