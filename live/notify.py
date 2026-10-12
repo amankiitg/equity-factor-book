@@ -603,8 +603,25 @@ def compose(
         # run goes on either way, and this is the line that stops the run reading as
         # a clean evening: nobody else is looking for that session.
         lines.append(spinoff_lookup_failed.strip().rstrip(".") + ".")
-    if flags:
-        lines.append(f"Large moves: {_flag_list(flags)}.")
+    moves = _move_flags(flags)
+    if moves:
+        lines.append(f"Large moves: {_flag_list(moves)}.")
+    for flag in flags or []:
+        if str(flag.get("kind") or "") != "attribution":
+            continue
+        # The step whose failure costs the page a whole section and leaves no other
+        # trace. It is a consequence line rather than a large move, so it is
+        # filtered out of that list and said here in its own words.
+        if flag.get("outcome") == "failed":
+            lines.append(
+                "Attribution: the step failed and the page's attribution section "
+                f"is not being written ({flag.get('error') or 'no reason recorded'})."
+            )
+        else:
+            lines.append(
+                f"Attribution: {int(flag.get('n_stored') or 0)} session(s) stored"
+                f", {int(flag.get('n_done') or 0)} already attributed."
+            )
     # The day's kind, in the owner's own terms. An establishment day creates the
     # book, so its ceiling is the book itself and the throughput brake is not yet
     # the instrument in force; from the second trading day it is. The cost label
@@ -841,6 +858,17 @@ def _thin_adv_list(rows: list[dict[str, Any]]) -> str:
     )
 
 
+def _move_flags(flags: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """The session's large-move flags, without the outcome flags beside them.
+
+    A flag whose `kind` is set is a statement about a *step* (the attribution run,
+    so far), not about a name's move, and both the subject's count and the body's
+    "Large moves" line mean the second kind. Reading the two together would put a
+    step's failure in the same field as a 40% print.
+    """
+    return [flag for flag in (flags or []) if str(flag.get("kind") or "") == ""]
+
+
 def _flag_list(flags: list[dict[str, Any]]) -> str:
     parts = []
     for flag in flags:
@@ -934,7 +962,8 @@ def subject_text(
     parts = [f"EFB {word} {close}", middle, tail]
     if splits:
         parts.append(_split_short(splits))
-    unexplained = [flag for flag in flags or [] if flag.get("explained_by") is None]
+    moves = _move_flags(flags)
+    unexplained = [flag for flag in moves if flag.get("explained_by") is None]
     if unexplained:
         parts.append(f"flag {len(unexplained)}")
     return " | ".join(parts)

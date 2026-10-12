@@ -1759,6 +1759,13 @@ def main() -> int:
         # it is wrapped in its own handler because it is a report about the book:
         # a report that cannot be produced is a bad page, never a reason to leave a
         # book unheld.
+        # The step's outcome is recorded rather than only logged. On 2026-10-09 it
+        # raised and wrote nothing and every durable record said the night was
+        # clean - `efb.run_status.detail` empty, `failures` and `flags` empty - so
+        # the only trace was the container's stdout, and the page lost a whole
+        # section while nothing watched it. The outcome travels as a flag, which is
+        # a JSONB column the row already has, so nothing about the schema moves.
+        attribution_flags: list[dict[str, Any]] = []
         try:
             attributed = store_attribution(run_tree)
             logger.info(
@@ -1766,11 +1773,26 @@ def main() -> int:
                 attributed["n_stored"],
                 attributed["n_done"],
             )
+            attribution_flags.append(
+                {
+                    "kind": "attribution",
+                    "outcome": "stored",
+                    "n_stored": int(attributed["n_stored"]),
+                    "n_done": int(attributed["n_done"]),
+                }
+            )
         except Exception as exc:  # noqa: BLE001 - a report, not a step
             logger.warning(
                 "attribution failed and the run continues: %s: %s",
                 type(exc).__name__,
                 notify.scrub(str(exc)),
+            )
+            attribution_flags.append(
+                {
+                    "kind": "attribution",
+                    "outcome": "failed",
+                    "error": f"{type(exc).__name__}: {notify.scrub(str(exc))}"[:200],
+                }
             )
 
         snapshot_inputs = {
@@ -1832,7 +1854,7 @@ def main() -> int:
         spinoff_missing=spinoff_missing,
         spinoff_unusable=spinoff_unusable,
         spinoff_lookup_failed=spinoff_lookup_failed,
-        flags=flags,
+        flags=[*flags, *attribution_flags],
         started_at=started_at,
         cross_checks_capped=capped,
         no_price=no_price,
