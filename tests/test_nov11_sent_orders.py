@@ -19,7 +19,9 @@ def records(rows: list[tuple[str, float, str]]) -> pd.DataFrame:
 def test_the_count_and_the_dollars_use_one_predicate():
     # 2026-10-08 in miniature: three legs built, two sent, one refused before
     # submission. The message said 204 sent while the broker held 202.
-    frame = records([("AAA", 100.0, "id-1"), ("BBB", 200.0, "id-2"), ("SYY", 300.0, "")])
+    frame = records(
+        [("AAA", 100.0, "id-1"), ("BBB", 200.0, "id-2"), ("SYY", 300.0, "")]
+    )
     assert morning_job.sent_orders(frame) == 2
     assert morning_job.sent_notional(frame) == 300.0
 

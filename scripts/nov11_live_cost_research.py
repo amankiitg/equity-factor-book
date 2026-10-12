@@ -22,7 +22,17 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import nov11_turnover_research as research  # noqa: E402
+# The sibling research script, loaded from its own path so that mypy (which does
+# not treat scripts/ as a package) has nothing to resolve.
+import importlib.util
+
+_spec = importlib.util.spec_from_file_location(
+    "nov11_turnover_research", ROOT / "scripts" / "nov11_turnover_research.py"
+)
+if _spec is None or _spec.loader is None:  # pragma: no cover - the file is here
+    raise ImportError("scripts/nov11_turnover_research.py is missing")
+research = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(research)
 
 
 def main() -> None:
@@ -43,9 +53,15 @@ def main() -> None:
     proposals = store.select("proposals")[["trade_date", "nav"]].dropna()
     proposals["trade_date"] = pd.to_datetime(proposals["trade_date"])
     nav_map = dict(zip(proposals["trade_date"], proposals["nav"], strict=False))
-    nav = float(np.nanmedian([float(value) for value in nav_map.values()])) if nav_map else 1_000_000.0
-    print(f"live book: {len(book)} closes {book.index[0].date()} -> {book.index[-1].date()}, "
-          f"{book.shape[1]} tickers, NAV ${nav:,.0f}")
+    nav = (
+        float(np.nanmedian([float(value) for value in nav_map.values()]))
+        if nav_map
+        else 1_000_000.0
+    )
+    print(
+        f"live book: {len(book)} closes {book.index[0].date()} -> {book.index[-1].date()}, "
+        f"{book.shape[1]} tickers, NAV ${nav:,.0f}"
+    )
 
     spread, adv = research.cost_inputs()
     previous = book.shift(1).dropna(how="all")
@@ -73,14 +89,21 @@ def main() -> None:
 
     per_year = research.TRADING_DAYS / research.HORIZON
     print("\n## annualized the way every other trading number in the project is\n")
-    for label, frame in (("research engine (no borrow)", engine), ("live, spread on the trade", traded),
-                         ("live as written (spread on the held book)", held)):
+    for label, frame in (
+        ("research engine (no borrow)", engine),
+        ("live, spread on the trade", traded),
+        ("live as written (spread on the held book)", held),
+    ):
         annual = float(frame["total_bps"].mean()) * per_year
         trading = float(frame["trading_bps"].mean()) * per_year
         borrow = float(frame["borrow_bps"].mean()) * per_year
-        print(f"  {label:44s} total {annual:7.0f} bp/yr   trading {trading:7.0f}   borrow {borrow:7.0f}")
-    print(f"  turnover {float(held['turnover'].mean()) * per_year * 100:,.0f}% of gross per year "
-          f"({float(held['turnover'].mean()) * 100:.1f}% per session)")
+        print(
+            f"  {label:44s} total {annual:7.0f} bp/yr   trading {trading:7.0f}   borrow {borrow:7.0f}"
+        )
+    print(
+        f"  turnover {float(held['turnover'].mean()) * per_year * 100:,.0f}% of gross per year "
+        f"({float(held['turnover'].mean()) * 100:.1f}% per session)"
+    )
 
     out = ROOT / "docs" / "research" / "nov11_live_cost_numbers.json"
     out.write_text(table.to_json(orient="index", indent=1))

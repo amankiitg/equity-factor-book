@@ -441,8 +441,7 @@ def compose(
             )
         else:
             lines.append(
-                f"Orders: {sent} orders sent, "
-                f"{_sized_sent(gross, sent_notional)}"
+                f"Orders: {sent} orders sent, " f"{_sized_sent(gross, sent_notional)}"
             )
     elif status == "stale_stopped":
         lines.append(
@@ -897,9 +896,7 @@ def subject_text(
     sent = int(sent_orders if sent_orders is not None else (orders or 0))
     if status == "ok":
         middle = (
-            f"{int(orders or 0)} proposed, none sent"
-            if dry_run
-            else f"{sent} sent"
+            f"{int(orders or 0)} proposed, none sent" if dry_run else f"{sent} sent"
         )
     elif orders:
         # An error is not the same as an empty evening. The orders a failed run sent
@@ -1053,11 +1050,41 @@ def fills_message(
                 lines.append(line)
         realized = data.get("realized_cost_bps")
         expected = data.get("expected_cost_bps")
-        against = (
-            f" against {float(expected):.2f} bps expected"
-            if expected is not None
-            else ""
-        )
+        trading = data.get("expected_trading_bps")
+        borrow = data.get("expected_borrow_bps")
+        # The realized side can only ever contain trading cost: the leg is sized after
+        # one close and fills at the next open, so no fill price pays a holding cost.
+        # Comparing it against the full expectation is wrong in the flattering
+        # direction on every borrow-heavy day - 2026-10-07 printed "against 14.22 bps"
+        # where the trading half was 5.89 and 8.33 of the 14.22 was borrow - so the
+        # comparison names the half it is against, and the borrow is stated beside it
+        # rather than added to the number the fills are measured against.
+        if trading is not None:
+            against = (
+                f" against {float(trading):.2f} bps of trading cost "
+                "for the same one session"
+            )
+            if borrow is not None:
+                total = (
+                    f"the {float(expected):.2f} bps total adds "
+                    if expected is not None
+                    else "separate from "
+                )
+                against += (
+                    f" ({total}{float(borrow):.2f} bps of borrow, which no fill "
+                    "price pays)"
+                    if expected is not None
+                    else (
+                        f" (borrow is {float(borrow):.2f} bps, which no fill "
+                        "price pays)"
+                    )
+                )
+        else:
+            against = (
+                f" against {float(expected):.2f} bps expected"
+                if expected is not None
+                else ""
+            )
         if realized is not None:
             lines.append(f"Realized cost: {float(realized):.2f} bps of NAV{against}.")
         elif expected is not None:

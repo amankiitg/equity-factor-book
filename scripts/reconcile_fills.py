@@ -445,10 +445,20 @@ def _reconcile(argv: list[str] | None = None) -> int:
             detail += f"; {len(exits['exits'])} position(s) left with no order"
 
         expected = None
+        expected_trading = None
+        expected_borrow = None
         published: dict[str, Any] = {}
         try:
             published = json.loads(snapshot.get_object_text(snapshot.LATEST_KEY))
-            expected = (published.get("book") or {}).get("expected_cost_bps")
+            book = published.get("book") or {}
+            expected = book.get("expected_cost_bps")
+            split = book.get("expected_cost_split") or {}
+            # The realized cost can only ever contain the trading half, so that is
+            # what the morning's line measures against; the borrow travels beside it
+            # rather than into the number being beaten.
+            expected_trading = split.get("trading")
+            if expected_trading is not None:
+                expected_borrow = split.get("borrow")
         except Exception as exc:  # noqa: BLE001 - the cost pair is not the job
             logger.warning("could not read the published book: %s", type(exc).__name__)
         # The bridge's second half: the fills, the account as it stands now, and the
@@ -491,6 +501,8 @@ def _reconcile(argv: list[str] | None = None) -> int:
             close=close,
             report=report,
             expected_cost_bps=expected,
+            expected_trading_bps=expected_trading,
+            expected_borrow_bps=expected_borrow,
             # This run is the morning: the book it read is what the evening's
             # orders left behind, which is why the fills travel with it and why
             # `close` is the evening they settled for.
@@ -540,7 +552,12 @@ def _reconcile(argv: list[str] | None = None) -> int:
             message = notify.notify_fills(
                 status=status,
                 target_close=close,
-                fills={**report, "expected_cost_bps": expected},
+                fills={
+                    **report,
+                    "expected_cost_bps": expected,
+                    "expected_trading_bps": expected_trading,
+                    "expected_borrow_bps": expected_borrow,
+                },
                 detail=message_detail,
                 store=store.store_label(),
                 snapshot=", ".join(keys) if keys else None,

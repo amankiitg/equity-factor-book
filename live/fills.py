@@ -459,6 +459,8 @@ def actual_holdings(
     close: Any = None,
     report: dict[str, Any] | None = None,
     expected_cost_bps: float | None = None,
+    expected_trading_bps: float | None = None,
+    expected_borrow_bps: float | None = None,
     read_by: str | None = None,
     exits: dict[str, Any] | None = None,
     realized_average: dict[str, Any] | None = None,
@@ -521,6 +523,11 @@ def actual_holdings(
             "realized_cost_avg_bps": (realized_average or {}).get("avg_bps"),
             "realized_cost_days": (realized_average or {}).get("days"),
             "expected_cost_bps": expected_cost_bps,
+            # The two halves of that figure. The realized cost can only contain the
+            # trading half, so the comparison the message draws is against `trading`
+            # and the borrow travels beside it.
+            "expected_trading_bps": expected_trading_bps,
+            "expected_borrow_bps": expected_borrow_bps,
             "unfilled": list(report.get("unfilled") or []),
             "not_sent_lines": list(report.get("not_sent_lines") or []),
             "unread": list(report.get("unread") or []),

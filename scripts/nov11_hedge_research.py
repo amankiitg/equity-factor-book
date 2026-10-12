@@ -34,6 +34,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -63,7 +64,7 @@ def live_books() -> tuple[pd.DataFrame, pd.DataFrame]:
     frame = store.select("positions")
     frame["trade_date"] = pd.to_datetime(frame["trade_date"])
     frame = frame.loc[frame["trade_date"] >= pd.Timestamp(LIVE_START)]
-    rows: list[dict[str, object]] = []
+    rows: list[dict[str, Any]] = []
     for stamp, group in frame.groupby("trade_date", sort=True):
         group = group.dropna(subset=["alpha", "idio_vol"])
         group = group.loc[group["idio_vol"] > 0]
@@ -100,7 +101,7 @@ def backtest_books() -> pd.DataFrame:
     return frame.loc[:, ["date", "ticker", "weight"]]
 
 
-def pieces_at(stamp: pd.Timestamp, names: list[str]) -> dict[str, object] | None:
+def pieces_at(stamp: pd.Timestamp, names: list[str]) -> dict[str, Any] | None:
     """Design, factor covariance and specific variance for one close.
 
     `efb.eval_risk._xs_pieces` is the live loop's own supplier and is used whenever
@@ -117,10 +118,14 @@ def pieces_at(stamp: pd.Timestamp, names: list[str]) -> dict[str, object] | None
     from efb.models import fundamental as fx
 
     try:
-        return eval_risk._xs_pieces(pd.Timestamp(stamp), names, DATA)
+        pieces = eval_risk._xs_pieces(pd.Timestamp(stamp), names, DATA)
     except KeyError:
-        pass
-    factor_returns = pd.read_parquet(DATA / "models" / "XS-v1" / "factor_returns.parquet")
+        pieces = None
+    if pieces is not None:
+        return {str(key): value for key, value in pieces.items()}
+    factor_returns = pd.read_parquet(
+        DATA / "models" / "XS-v1" / "factor_returns.parquet"
+    )
     factor_returns = factor_returns.loc[pd.to_datetime(factor_returns["date"]) < stamp]
     if factor_returns["date"].nunique() < 126:
         return None
@@ -143,7 +148,9 @@ def pieces_at(stamp: pd.Timestamp, names: list[str]) -> dict[str, object] | None
     }
 
 
-def variants(u: np.ndarray, design: np.ndarray, specific: np.ndarray) -> dict[str, np.ndarray]:
+def variants(
+    u: np.ndarray, design: np.ndarray, specific: np.ndarray
+) -> dict[str, np.ndarray]:
     """The three hedged books, all from the same sized vector."""
     from live import sizing
 
@@ -186,7 +193,7 @@ def run(scope: str) -> dict[str, object]:
     dates = sorted(pd.to_datetime(frames["date"].unique()))
     print(f"{scope}: {len(dates)} dates {dates[0].date()} -> {dates[-1].date()}")
     previous: dict[str, pd.Series] = {}
-    rows: list[dict[str, object]] = []
+    rows: list[dict[str, Any]] = []
     for stamp in dates:
         block = frames.loc[frames["date"] == stamp]
         names = [str(ticker) for ticker in block["ticker"]]
@@ -212,8 +219,12 @@ def run(scope: str) -> dict[str, object]:
             prior = previous.get(label)
             turnover = (
                 float(
-                    (series.reindex(series.index.union(prior.index)).fillna(0.0)
-                     - prior.reindex(series.index.union(prior.index)).fillna(0.0)).abs().sum()
+                    (
+                        series.reindex(series.index.union(prior.index)).fillna(0.0)
+                        - prior.reindex(series.index.union(prior.index)).fillna(0.0)
+                    )
+                    .abs()
+                    .sum()
                 )
                 if prior is not None
                 else float("nan")
@@ -221,19 +232,22 @@ def run(scope: str) -> dict[str, object]:
             previous[label] = series
             held = np.abs(u) > 1e-4
             significant = np.abs(weight) > 1e-3
-            stats.update(
+            stats_any: dict[str, Any] = dict(stats)
+            stats_any.update(
                 {
                     "date": str(stamp.date()),
                     "variant": label,
                     "turnover": turnover,
                     "created": int((~held & significant).sum()),
-                    "flipped": int((held & significant & (np.sign(weight) != np.sign(u))).sum()),
+                    "flipped": int(
+                        (held & significant & (np.sign(weight) != np.sign(u))).sum()
+                    ),
                     "n_names": int(significant.sum()),
                     "gross": gross_raw,
                     "gross_normalized": float(np.abs(weight).sum()),
                 }
             )
-            rows.append(stats)
+            rows.append(stats_any)
         pre = measure(u, design, covariance, specific)
         # The pre-hedge book's own turnover is the baseline the hedge's own turnover
         # is read against: the difference between a construction's turnover and this
@@ -242,8 +256,12 @@ def run(scope: str) -> dict[str, object]:
         prior_u = previous.get("pre_hedge")
         u_turnover = (
             float(
-                (u_series.reindex(u_series.index.union(prior_u.index)).fillna(0.0)
-                 - prior_u.reindex(u_series.index.union(prior_u.index)).fillna(0.0)).abs().sum()
+                (
+                    u_series.reindex(u_series.index.union(prior_u.index)).fillna(0.0)
+                    - prior_u.reindex(u_series.index.union(prior_u.index)).fillna(0.0)
+                )
+                .abs()
+                .sum()
             )
             if prior_u is not None
             else float("nan")
@@ -271,7 +289,10 @@ def run(scope: str) -> dict[str, object]:
         .agg(
             vol=("vol", "mean"),
             factor_share=("factor_share", "mean"),
-            factor_share_p95=("factor_share", lambda series: float(np.nanpercentile(series, 95))),
+            factor_share_p95=(
+                "factor_share",
+                lambda series: float(np.nanpercentile(series, 95)),
+            ),
             max_variance_share=("max_variance_share", "mean"),
             max_variance_share_max=("max_variance_share", "max"),
             exposure_abs_max=("exposure_abs_max", "max"),
@@ -284,7 +305,10 @@ def run(scope: str) -> dict[str, object]:
         )
         .reset_index()
     )
-    print("\n" + summary.to_string(index=False, float_format=lambda value: f"{value:,.5f}"))
+    print(
+        "\n"
+        + summary.to_string(index=False, float_format=lambda value: f"{value:,.5f}")
+    )
     worst = (
         table.loc[table["variant"] == "exact"]
         .nlargest(6, "max_variance_share")
@@ -293,7 +317,13 @@ def run(scope: str) -> dict[str, object]:
     print("\nworst single-name variance shares, exact hedge:")
     print(worst.to_string(index=False, float_format=lambda value: f"{value:,.5f}"))
     out = ROOT / "docs" / "research" / f"nov11_hedge_{scope}_numbers.json"
-    out.write_text(json.dumps({"summary": summary.to_dict("records"), "rows": rows}, indent=1, default=float))
+    out.write_text(
+        json.dumps(
+            {"summary": summary.to_dict("records"), "rows": rows},
+            indent=1,
+            default=float,
+        )
+    )
     print(f"\nwrote {out.relative_to(ROOT)}")
     return {"summary": summary.to_dict("records")}
 
