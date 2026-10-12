@@ -1061,3 +1061,70 @@ def test_a_morning_that_dies_before_the_reconciliation_still_tells_the_owner(
     # Nothing was recorded as done, so tomorrow's morning and today's retry are both
     # still allowed to run.
     assert harness.recorded == []
+
+
+def test_a_morning_with_nothing_new_reconciles_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Item 4: the newest orders before today are not a new close.
+
+    2026-10-07's evening crashed before submitting, so on 10-08 the newest orders in
+    the store were 10-06's and the date-keyed guard said no. That morning would have
+    reconciled 10-06 a second time - rewriting the same fills, sending a second 10-06
+    email two days late and republishing the page's block for it over a document whose
+    own close is 10-07. The comparison is against the newest close this job has already
+    reconciled, read from its own output.
+    """
+    harness = _install(monkeypatch, tmp_path, broker_orders={})
+    store.replace_by_date(
+        "fills",
+        CLOSE,
+        [
+            {
+                "trade_date": CLOSE,
+                "ticker": "DG",
+                "order_id": "oid-dg",
+                "filled_notional": 512.42,
+                "filled_quantity": -41.0,
+            }
+        ],
+    )
+
+    assert reconcile_fills.main([]) == 0
+
+    # The day is recorded, so the guard closes and a later tick does not try again.
+    assert harness.recorded == [(reconcile_fills.JOB, TODAY, "ok")]
+    # And nothing was done: no broker read, no fill written, no message, no page.
+    assert harness.broker.asked == []
+    # The one write is the test's own setup row; the job added none.
+    assert harness.written == ["fills"]
+    assert harness.sent == []
+    assert harness.published == []
+
+
+def test_a_new_close_is_reconciled_as_it_always_was(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard is about repeats, not about running: a close with no fills is new."""
+    broker_orders = {"oid-dg": _order("filled", order_id="oid-dg", filled_qty="41")}
+    harness = _install(monkeypatch, tmp_path, broker_orders=broker_orders)
+    store.replace_by_date(
+        "fills",
+        "2026-09-30",
+        [
+            {
+                "trade_date": "2026-09-30",
+                "ticker": "AAA",
+                "order_id": "oid-aaa",
+                "filled_notional": 100.0,
+                "filled_quantity": 5.0,
+            }
+        ],
+    )
+
+    assert reconcile_fills.main([]) == 0
+
+    assert harness.broker.asked == ["oid-dg"]
+    # The setup row, the reconciled close, and the day's own row.
+    assert harness.written == ["fills", "fills", "run_status"]
+    assert harness.recorded == [(reconcile_fills.JOB, TODAY, "ok")]
