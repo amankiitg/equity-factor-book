@@ -990,14 +990,69 @@ def test_the_recorded_run_states_both_books_risk_figures(
     assert traded["top_variance_shares"] == [{"ticker": "AAA", "variance_share": 0.031}]
 
 
-def test_an_incomplete_run_is_not_ok_and_is_not_marked_done(
+def test_a_refused_leg_is_incomplete_and_the_day_is_filed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A refused or rejected leg leaves the day unfinished.
+    """2026-10-08: one short leg the shortability check refused, before any order.
 
-    The run is not ok: at least one leg was not confirmed, so no `cron_runs` row is
-    written and the next tick retries. The run_status row and the message still go
-    out, naming the leg and the code, so the owner can see what happened.
+    Item 19. The book was priced, the legs that could be sent went out, and the one
+    that could not was refused by the loop's own check - a fact about the name that a
+    retry would be told again. So the inbox reads `EFB INCOMPLETE` rather than
+    `EFB ERROR`, the day is filed, and the run exits 0; the refused leg is named in
+    the message, which is where the owner learns the book is a leg short of its
+    target.
+    """
+    sent: list[dict[str, Any]] = []
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        morning_job,
+        "run_morning",
+        lambda *a, **k: {
+            "orders": 1,
+            "intended_notional": 50_000.0,
+            "complete": True,
+            "incomplete_legs": [],
+            "refused_legs": [
+                {
+                    "ticker": "SYY",
+                    "status": "SKIPPED",
+                    "reason_code": "ASSET_NOT_SHORTABLE",
+                }
+            ],
+        },
+    )
+    monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
+    monkeypatch.setenv(notify.TO_ENV, FAKE_TO)
+    monkeypatch.setattr(
+        notify, "post", lambda url, payload, headers=None: sent.append(payload)
+    )
+
+    assert run_live_daily.main() == 0
+
+    row = store.select("run_status").iloc[0]
+    assert row["status"] == "incomplete"
+    assert "SYY" in str(row["detail"]) and "ASSET_NOT_SHORTABLE" in str(row["detail"])
+    body = str(sent[0]["text"])
+    assert str(sent[0]["subject"]).startswith("EFB INCOMPLETE 2026-09-22")
+    assert "a leg the broker refused or one that was not confirmed" in body
+    assert "Refused by the broker, so not sent: SYY (ASSET_NOT_SHORTABLE)" in body
+    assert "Filed: no leg was left unconfirmed" in body
+    # Filed, because a retry would be told the same thing.
+    filed = store.select("cron_runs")
+    assert len(filed) == 1
+    assert str(filed.iloc[0]["status"]) == "incomplete"
+
+
+def test_an_unconfirmed_leg_is_incomplete_and_the_day_is_not_filed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other half of item 19: a leg lost at the broker is a retry, not a record.
+
+    `SKIPPED_AFTER_HALT` is the submit path losing the leg, which the next tick may
+    resolve. The status word is the same, and the exit code, the cron_runs row and
+    the message's own line are not: the day is left unfiled so the evening runs again.
     """
     sent: list[dict[str, Any]] = []
     _no_work(monkeypatch)
@@ -1014,9 +1069,10 @@ def test_an_incomplete_run_is_not_ok_and_is_not_marked_done(
                 {
                     "ticker": "BBB",
                     "status": "SKIPPED",
-                    "reason_code": "ASSET_NOT_SHORTABLE",
+                    "reason_code": "SKIPPED_AFTER_HALT",
                 }
             ],
+            "refused_legs": [],
         },
     )
     monkeypatch.setenv(notify.API_KEY_ENV, FAKE_KEY)
@@ -1029,10 +1085,13 @@ def test_an_incomplete_run_is_not_ok_and_is_not_marked_done(
 
     row = store.select("run_status").iloc[0]
     assert row["status"] == "incomplete"
-    assert "BBB" in str(row["detail"]) and "ASSET_NOT_SHORTABLE" in str(row["detail"])
+    assert "BBB" in str(row["detail"]) and "SKIPPED_AFTER_HALT" in str(row["detail"])
     # the day is not done: the next tick retries it
     assert store.select("cron_runs").empty
-    assert "incomplete, a leg was not confirmed" in str(sent[0]["text"])
+    body = str(sent[0]["text"])
+    assert str(sent[0]["subject"]).startswith("EFB INCOMPLETE 2026-09-22")
+    assert "Not filed: 1 leg(s) were not confirmed" in body
+    assert "Filed:" not in body
 
 
 def test_a_refused_snapshot_upload_fails_the_run_and_is_named_in_the_email(

@@ -97,7 +97,7 @@ STATUS_LABELS: dict[str, str] = {
     "error": "error, the run failed",
     # At least one leg was halted, left in an unknown state, refused or rejected.
     # The day is not done and will be retried, so it is neither ok nor a failure.
-    "incomplete": "incomplete, a leg was not confirmed",
+    "incomplete": "incomplete, a leg the broker refused or one that was not confirmed",
     # The exchange was shut: there was no close to price, so the run did nothing
     # and said so. Not a failure, and not a silent evening either.
     "market_closed": "market_closed, the exchange was shut",
@@ -387,6 +387,8 @@ def compose(
     no_price: list[str] | None = None,
     no_risk: list[dict[str, Any]] | None = None,
     missing_var: int | None = None,
+    refused_legs: list[dict[str, Any]] | None = None,
+    unconfirmed_legs: int | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
@@ -463,6 +465,22 @@ def compose(
             f"Orders: {sent} orders sent, "
             f"{_sized_sent(gross, sent_notional)}, at least one leg not confirmed"
         )
+        # Which of the two incomplete kinds it was decides whether the day is done,
+        # and only this message can say it: a leg the shortability check or the
+        # broker refused is a fact about the book that a retry would be told again,
+        # so the day is filed; a leg that is merely unconfirmed is tonight's
+        # connection to the broker, which the next tick may resolve.
+        unconfirmed = int(unconfirmed_legs or 0)
+        if unconfirmed:
+            lines.append(
+                f"Not filed: {unconfirmed} leg(s) were not confirmed, so the next "
+                "tick runs this close again."
+            )
+        else:
+            lines.append(
+                "Filed: no leg was left unconfirmed. A leg the broker refused is "
+                "not a failure of the run, and the day is done."
+            )
     elif status == "error" and orders:
         # An error is not the same as an empty evening. On 2026-10-06 the evening
         # sent 192 orders and then died on a missing column, and this line said
@@ -681,6 +699,14 @@ def compose(
             f"Not easy to borrow, so not opened: "
             f"{_borrow_skip_list(skipped_borrow)}."
         )
+    if refused_legs:
+        # The legs the shortability check or the broker refused. The same kind of
+        # fact as "not easy to borrow", and the reason the run is incomplete without
+        # being a failure: the book is one leg short of its own target and nothing
+        # else in the message would say which one.
+        lines.append(
+            f"Refused by the broker, so not sent: {_refused_list(refused_legs)}."
+        )
     if no_asset:
         # A ticker the broker's feed carries under no symbol under any spelling.
         # The leg is skipped rather than sent, because an order under a symbol the
@@ -793,6 +819,25 @@ def _borrow_skip_list(rows: list[dict[str, Any]]) -> str:
         f"{str(row.get('ticker'))} "
         f"{_money(abs(float(row.get('intended_notional') or 0.0)))}"
         + (f" ({str(row.get('reason'))})" if row.get("reason") else "")
+        for row in sorted(rows, key=lambda item: str(item.get("ticker")))
+    ]
+    count = len(named)
+    shown = "; ".join(named[:MINIMUM_SKIP_NAMES])
+    if count > MINIMUM_SKIP_NAMES:
+        shown += f"; and {count - MINIMUM_SKIP_NAMES} more"
+    return shown
+
+
+def _refused_list(rows: list[dict[str, Any]]) -> str:
+    """The legs the shortability check or the broker refused, with the code.
+
+    The code is the actionable part - "ASSET_NOT_SHORTABLE" and
+    "SHORT_CHECK_FAILED" are two different things to go and look at - and the ticker
+    is which name the book is short of.
+    """
+    named = [
+        f"{str(row.get('ticker'))} "
+        f"({row.get('reason_code') or row.get('status') or 'refused'})"
         for row in sorted(rows, key=lambda item: str(item.get("ticker")))
     ]
     count = len(named)
@@ -918,6 +963,12 @@ def subject_text(
         word = "STALE"
     elif status == "market_closed":
         word = "CLOSED"
+    elif status == "incomplete":
+        # Its own word rather than ERROR: the book was priced, the legs that could
+        # be sent were sent and the message says which leg was not. On 2026-10-08 the
+        # inbox read `EFB ERROR` and Render recorded the job as failed over one short
+        # leg the shortability check refused before any order left (item 19).
+        word = "INCOMPLETE"
     else:
         word = "ERROR"
     caught_up = len(catch_up_sessions or [])
@@ -1326,6 +1377,8 @@ def notify_run(
     sent_notional: float | None = None,
     sent_orders: int | None = None,
     missing_var: int | None = None,
+    refused_legs: list[dict[str, Any]] | None = None,
+    unconfirmed_legs: int | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -1352,6 +1405,8 @@ def notify_run(
         orders=orders,
         sent_orders=sent_orders,
         missing_var=missing_var,
+        refused_legs=refused_legs,
+        unconfirmed_legs=unconfirmed_legs,
         gross=gross,
         worst_input=worst_input,
         worst_sessions_behind=worst_sessions_behind,

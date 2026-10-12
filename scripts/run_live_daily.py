@@ -70,7 +70,15 @@ def _now() -> str:
 # The status a run carries when it finished its work and told the owner. Only that
 # marks the day done, so a failure retries on the next tick instead of being told
 # it already ran on a day nothing was produced.
-COMPLETED_STATUSES = frozenset({"ok", "market_closed"})
+#
+# `incomplete` is here and is still not automatically filed: a leg that was *not
+# confirmed* leaves the day unfiled and the next tick retries it, which `finish_run`
+# decides from the count rather than from the status. What the status means is that
+# the day traded and the message names what is missing, and on 2026-10-08 the only
+# gap was one short leg the shortability check refused before any order left - a
+# retry would be told the same thing - so that night belongs in the inbox as
+# INCOMPLETE and in the record as a day that is done (item 19).
+COMPLETED_STATUSES = frozenset({"ok", "market_closed", "incomplete"})
 
 
 def already_ran(job: str, run_date: str) -> bool:
@@ -939,6 +947,8 @@ def finish_run(
     orders: int | None = None,
     sent_orders: int | None = None,
     gross: float | None = None,
+    refused_legs: list[dict[str, Any]] | None = None,
+    unconfirmed_legs: int | None = None,
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
@@ -1137,6 +1147,8 @@ def finish_run(
         orders=orders,
         sent_orders=sent_orders,
         gross=gross,
+        refused_legs=refused_legs,
+        unconfirmed_legs=unconfirmed_legs,
         worst_input=result.get("worst_input"),
         worst_sessions_behind=result.get("worst_sessions_behind"),
         failures=result.get("failures") or [],
@@ -1196,7 +1208,17 @@ def finish_run(
     elif notified["status"] == notify.STATUS_SKIPPED:
         # On the row and on the dashboard; not noise in the cron's own line.
         logger.warning("no notification channel: %s", notified["detail"])
-    completed = status in COMPLETED_STATUSES and delivered and not snapshot_failed
+    # A leg that was not confirmed is the one thing that keeps an `incomplete` day
+    # from being done, and it is a *count* rather than the status: the status cannot
+    # tell a refused leg from an unconfirmed one, and the two want opposite answers
+    # (item 19). Everything else that makes a day unfinished is already here.
+    unconfirmed = int(unconfirmed_legs or 0)
+    completed = (
+        status in COMPLETED_STATUSES
+        and not unconfirmed
+        and delivered
+        and not snapshot_failed
+    )
     try:
         # The same condition the exit code uses: the run finished its work, the
         # message went out and the snapshot is up. Nothing else marks the day done,
@@ -1221,7 +1243,7 @@ def finish_run(
             notify.scrub(f"{type(exc).__name__}: {exc}"),
         )
     logger.info("run recorded as %s, notification %s", status, notified["status"])
-    if not delivered or store_failed or snapshot_failed:
+    if not delivered or store_failed or snapshot_failed or unconfirmed:
         return 1
     return 0 if status in COMPLETED_STATUSES else 1
 
@@ -1505,9 +1527,7 @@ def main() -> int:
         # step's read was refused by the allowlist above and the evening continued to a
         # page with no attribution section - and this says so while stopping is still
         # free.
-        logger.info(
-            "seed inputs: %s path(s) checked", seed.preflight_inputs(run_tree)
-        )
+        logger.info("seed inputs: %s path(s) checked", seed.preflight_inputs(run_tree))
         # The proposal files move with the tree, so a local run does not add a
         # proposal to the repository either.
         global PROPOSAL_DIR
@@ -1941,19 +1961,31 @@ def main() -> int:
             actual=actual,
         )
 
-    # A leg that was halted, left in an unknown state, refused or rejected makes
-    # the run incomplete. The day is not done and must not be filed: the status is
-    # not ok, no `cron_runs` row is written (`finish_run`), and the next tick
-    # retries. The snapshot and the message still go out, so the owner sees which
-    # leg and why.
+    # A leg that was halted, left in an unknown state or rejected leaves the run
+    # incomplete. The day is not done and must not be filed: the status is not ok,
+    # no `cron_runs` row is written (`finish_run`), and the next tick retries. The
+    # snapshot and the message still go out, so the owner sees which leg and why.
+    #
+    # A leg the shortability check or the broker *refused* is the same status word
+    # and a different consequence: nothing was sent for it, a retry would be told
+    # the same thing, so the day is filed and the run exits 0 (item 19). The two are
+    # told apart by which list the leg is in, not by the status, which is why
+    # `finish_run` takes the unconfirmed count.
     incomplete = morning.get("incomplete_legs") or []
-    if morning.get("complete") is False or incomplete:
+    refused = morning.get("refused_legs") or []
+    if morning.get("complete") is False or incomplete or refused:
         status = "incomplete"
         if incomplete:
             detail = f"{len(incomplete)} leg(s) not confirmed: " + ", ".join(
                 f"{leg.get('ticker')} "
                 f"({leg.get('reason_code') or leg.get('status') or 'unknown'})"
                 for leg in incomplete[:6]
+            )
+        elif refused:
+            detail = f"{len(refused)} leg(s) refused by the broker: " + ", ".join(
+                f"{leg.get('ticker')} "
+                f"({leg.get('reason_code') or leg.get('status') or 'refused'})"
+                for leg in refused[:6]
             )
         else:
             detail = "the run reported itself incomplete"
@@ -1982,6 +2014,11 @@ def main() -> int:
         no_price=no_price,
         no_risk=no_risk,
         missing_var=missing_var,
+        # The two halves of the incomplete status (item 19): the legs the broker
+        # refused, which name the book's own gap, and the count that was not
+        # confirmed, which decides whether the day is filed.
+        refused_legs=refused,
+        unconfirmed_legs=len(incomplete),
         thin_adv=thin_adv,
         init=first_run,
         establishment=bool(morning.get("establishment")),

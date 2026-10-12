@@ -570,12 +570,19 @@ def test_a_failed_row_still_allows_a_retry(
 ) -> None:
     """Only a completed status marks the day done.
 
-    A row left by a failed or incomplete attempt is exactly what the next tick has
-    to retry. Counting any row as "already ran" would file a day nothing was
-    produced on as finished; the earlier `already_ran` did exactly that.
+    A row left by a failed attempt is exactly what the next tick has to retry.
+    Counting any row as "already ran" would file a day nothing was produced on as
+    finished; the earlier `already_ran` did exactly that.
+
+    `incomplete` is deliberately not in that list and is asserted separately below.
+    Since item 19 it is a *completed* status for the nights whose only fault was a
+    leg the shortability check or the broker refused: the book was priced, the legs
+    that could be sent went out, and a retry would be told the same thing. A night
+    with a leg that was not *confirmed* writes no row at all, so it still retries -
+    that is the count `finish_run` decides on, not the status.
     """
     monkeypatch.setattr(store, "LOCAL_DIR", tmp_path)
-    for status in ("failed", "error", "incomplete", "stale_stopped"):
+    for status in ("failed", "error", "stale_stopped"):
         store.upsert(
             "cron_runs",
             [
@@ -599,6 +606,23 @@ def test_a_failed_row_still_allows_a_retry(
                 "job": "live_daily",
                 "status": "ok",
                 "detail": "",
+                "started_at": "",
+                "finished_at": "",
+            }
+        ],
+    )
+    assert run_live_daily.already_ran("live_daily", "2026-09-23") is True
+
+    # Item 19: a filed incomplete night - a refused leg, nothing unconfirmed - is a
+    # day that is done, and the guard closes on it.
+    store.upsert(
+        "cron_runs",
+        [
+            {
+                "run_date": "2026-09-23",
+                "job": "live_daily",
+                "status": "incomplete",
+                "detail": "1 leg(s) refused by the broker: SYY (ASSET_NOT_SHORTABLE)",
                 "started_at": "",
                 "finished_at": "",
             }
