@@ -990,6 +990,19 @@ def traded_run(run_date: str, counts: dict[str, int]) -> int:
     )
 
 
+def _excluded_rows(manifest: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The manifest's `excluded_detail` as rows, or nothing when it carries none.
+
+    The manifest is a JSON document, so the entries arrive as whatever was
+    serialised; this is the one place that decides they are a list of objects, which
+    keeps a malformed one out of the message rather than into it.
+    """
+    raw = (manifest or {}).get("excluded_detail")
+    if not isinstance(raw, list):
+        return []
+    return [dict(entry) for entry in raw if isinstance(entry, dict)]
+
+
 def previous_close_reversals(as_of: Any) -> list[str] | None:
     """The previous close's deferral list, from the document that is up.
 
@@ -1028,6 +1041,7 @@ def finish_run(
     gross: float | None = None,
     refused_legs: list[dict[str, Any]] | None = None,
     unconfirmed_legs: int | None = None,
+    excluded: list[dict[str, Any]] | None = None,
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
@@ -1228,6 +1242,7 @@ def finish_run(
         gross=gross,
         refused_legs=refused_legs,
         unconfirmed_legs=unconfirmed_legs,
+        excluded=excluded,
         worst_input=result.get("worst_input"),
         worst_sessions_behind=result.get("worst_sessions_behind"),
         failures=result.get("failures") or [],
@@ -2113,6 +2128,9 @@ def main() -> int:
         # confirmed, which decides whether the day is filed.
         refused_legs=refused,
         unconfirmed_legs=len(incomplete),
+        # The names that never reached the book, with the reason and the age:
+        # recorded on the manifest and said in the message (item 9).
+        excluded=_excluded_rows(manifest),
         thin_adv=thin_adv,
         init=first_run,
         establishment=bool(morning.get("establishment")),

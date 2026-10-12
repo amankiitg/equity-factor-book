@@ -393,6 +393,7 @@ def compose(
     missing_var: int | None = None,
     refused_legs: list[dict[str, Any]] | None = None,
     unconfirmed_legs: int | None = None,
+    excluded: list[dict[str, Any]] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
@@ -709,6 +710,14 @@ def compose(
             f"Not easy to borrow, so not opened: "
             f"{_borrow_skip_list(skipped_borrow)}."
         )
+    if excluded:
+        # The SPY names that never reached the sizing, each with the cause and how
+        # long it has been out. The list is a rule over the artifacts, so it only
+        # ever grows (4 names on 2026-09-25, 7 by 2026-10-06), and until this line
+        # nothing in the message said the book was short of them at all: a name
+        # outside the book for a fortnight is not the same fact as one excluded
+        # tonight, and the owner is the only one who can fix either.
+        lines.append(f"Excluded from the universe: {_excluded_list(excluded)}.")
     if refused_legs:
         # The legs the shortability check or the broker refused. The same kind of
         # fact as "not easy to borrow", and the reason the run is incomplete without
@@ -831,6 +840,29 @@ def _borrow_skip_list(rows: list[dict[str, Any]]) -> str:
         + (f" ({str(row.get('reason'))})" if row.get("reason") else "")
         for row in sorted(rows, key=lambda item: str(item.get("ticker")))
     ]
+    count = len(named)
+    shown = "; ".join(named[:MINIMUM_SKIP_NAMES])
+    if count > MINIMUM_SKIP_NAMES:
+        shown += f"; and {count - MINIMUM_SKIP_NAMES} more"
+    return shown
+
+
+def _excluded_list(rows: list[dict[str, Any]]) -> str:
+    """Each excluded name with its reason and its age, or the reason alone.
+
+    The age is an absence when the store could not be read: the exclusion is then
+    stated without it rather than with a nought, which would read as "since today".
+    """
+    named = []
+    for row in sorted(rows, key=lambda item: str(item.get("ticker"))):
+        reason = str(row.get("reason") or "no reason recorded")
+        sessions = row.get("sessions")
+        since = row.get("since")
+        age = ""
+        if isinstance(sessions, int) and sessions > 0:
+            age = f", {sessions} stored session(s)"
+            age += f" since {since}" if since else ""
+        named.append(f"{str(row.get('ticker'))} ({reason}{age})")
     count = len(named)
     shown = "; ".join(named[:MINIMUM_SKIP_NAMES])
     if count > MINIMUM_SKIP_NAMES:
@@ -1391,6 +1423,7 @@ def notify_run(
     missing_var: int | None = None,
     refused_legs: list[dict[str, Any]] | None = None,
     unconfirmed_legs: int | None = None,
+    excluded: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -1419,6 +1452,7 @@ def notify_run(
         missing_var=missing_var,
         refused_legs=refused_legs,
         unconfirmed_legs=unconfirmed_legs,
+        excluded=excluded,
         gross=gross,
         worst_input=worst_input,
         worst_sessions_behind=worst_sessions_behind,

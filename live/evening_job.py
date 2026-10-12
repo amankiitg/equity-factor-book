@@ -1200,6 +1200,152 @@ def _cost_decomposition(
     )
 
 
+# Why a name in the SPY universe is not in the book. The three are collapsed into
+# one list today and are three different things to go and fix: a GICS row that the
+# vendor's file does not carry, a price history that stops, and a name that is
+# priced and mapped but absent from the processed returns panel (DD, item 10). The
+# reader of an `excluded` entry is the owner, and "excluded" with no reason is a
+# name they cannot act on.
+EXCLUDED_NO_GICS = "no GICS row"
+EXCLUDED_NO_GICS_NO_PRICES = "no GICS row and no price rows"
+EXCLUDED_NO_RETURNS = "in the sectors file but absent from the processed returns panel"
+
+
+def exclusion_reason(
+    ticker: str,
+    *,
+    in_sectors: bool,
+    in_returns: bool,
+    in_prices: bool,
+) -> str:
+    """Which of the three causes kept this name out of the sized universe."""
+    if in_returns:
+        # In `wide` at all means it was sized; this function is only called on the
+        # names that are not.
+        return "in the universe"
+    if in_sectors:
+        return EXCLUDED_NO_RETURNS
+    return EXCLUDED_NO_GICS if in_prices else EXCLUDED_NO_GICS_NO_PRICES
+
+
+def excluded_history(as_of: str) -> dict[str, dict[str, object]] | None:
+    """How long each excluded name has been excluded, from the stored manifests.
+
+    The loop's own manifests are the record, not the artifacts: the list has only
+    ever grown (4 entries on 2026-09-25, 5 on 2026-10-01, 7 on 2026-10-06) because
+    nothing rebuilds the files the exclusion rule reads, so the trailing run of
+    stored sessions a name appears in *is* its age. A name that left the list and
+    came back starts again, which is why the run is counted backwards from the
+    newest stored manifest rather than from the first date the name ever appeared.
+
+    Each entry is `stored_sessions` (how many of the stored manifests ending with
+    the newest carry it), `since` (the first day of that run) and `current`
+    (whether the newest stored manifest carries it, which is what tells the caller
+    whether tonight continues the run or starts one).
+
+    `None` when the store cannot be read at all, which is a different answer from an
+    empty dict: an empty dict is a history that was read and holds no exclusions, and
+    a name absent from it was excluded for the first time tonight. The caller
+    publishes no age at all off a `None`, because a nought would read as "since
+    today" on a name that has been out for a fortnight.
+    """
+    from live import store
+
+    try:
+        frame = store.select("proposals")
+    except Exception as exc:  # noqa: BLE001 - the age is detail, not the book
+        logger.warning("could not read the stored proposals: %s", type(exc).__name__)
+        return None
+    if frame.empty or "manifest" not in frame.columns:
+        return {}
+    order = "trade_date" if "trade_date" in frame.columns else None
+    if order is not None:
+        frame = frame.sort_values(order)
+    days: list[str] = []
+    listed: dict[str, set[str]] = {}
+    for row in frame.itertuples(index=False):
+        manifest = row.manifest
+        if isinstance(manifest, str):
+            try:
+                manifest = json.loads(manifest)
+            except ValueError:
+                continue
+        if not isinstance(manifest, dict):
+            continue
+        day = str(manifest.get("as_of") or getattr(row, "trade_date", "") or "")[:10]
+        if not day or (days and day <= days[-1]):
+            # One manifest per close, and only forward: a row out of order would
+            # make a trailing run of nothing.
+            if days and day == days[-1]:
+                continue
+        days.append(day)
+        for ticker in manifest.get("excluded") or []:
+            listed.setdefault(str(ticker), set()).add(day)
+    history: dict[str, dict[str, object]] = {}
+    for ticker, appeared in listed.items():
+        sessions = 0
+        since = ""
+        for day in reversed(days):
+            if day not in appeared:
+                break
+            sessions += 1
+            since = day
+        history[ticker] = {
+            "stored_sessions": sessions,
+            "since": since,
+            "current": bool(days and days[-1] in appeared),
+        }
+    return history
+
+
+def exclusion_details(
+    excluded: list[str],
+    *,
+    in_sectors: set[str],
+    in_returns: set[str],
+    in_prices: set[str],
+    history: dict[str, dict[str, object]] | None,
+    as_of: str,
+) -> list[dict[str, object]]:
+    """One row per excluded name: its ticker, why, and how long it has been out.
+
+    The age counts tonight: the name is excluded on the manifest this run is
+    writing, so a name first excluded tonight reads one session, and a name the
+    newest stored manifest also carries reads its stored run plus tonight.
+
+    `None` for the age when the store could not be read - the message renders that
+    as an absence rather than as a nought, which would read as "since today" on a
+    name that has been out for a fortnight. A history that *was* read and does not
+    carry the name is the name's first exclusion, which reads one session.
+    """
+    details: list[dict[str, object]] = []
+    for ticker in sorted(excluded):
+        name = str(ticker)
+        entry = (history or {}).get(name) or {}
+        stored = entry.get("stored_sessions")
+        current = bool(entry.get("current"))
+        sessions: int | None = None
+        since: str | None = None
+        if history is not None:
+            sessions = (int(stored) if isinstance(stored, int) and current else 0) + 1
+            since = str(entry.get("since")) if current and entry.get("since") else as_of
+        details.append(
+            {
+                "ticker": name,
+                "reason": exclusion_reason(
+                    name,
+                    in_sectors=name in in_sectors,
+                    in_returns=name in in_returns,
+                    in_prices=name in in_prices,
+                ),
+                "sessions": sessions,
+                "since": since,
+                "as_of": as_of,
+            }
+        )
+    return details
+
+
 def previous_book_exposure(
     as_of_ts: pd.Timestamp, previous: pd.Series | None, data_root: Path
 ) -> dict[str, object] | None:
@@ -1289,6 +1435,36 @@ def build_proposal(
     wide_names = [str(column) for column in wide.columns]
     names = [ticker for ticker in spy_tickers if ticker in wide_names]
     excluded = [ticker for ticker in spy_tickers if ticker not in wide_names]
+    # Why each one is out, and for how long: the three causes are three different
+    # things to go and fix, and a name that has been outside the book for a
+    # fortnight is not the same fact as one excluded tonight (item 9). The three
+    # memberships are read from the same artifacts the rule reads, so the reason
+    # cannot disagree with the exclusion: `in_returns` is membership in `wide`,
+    # which is what the rule itself uses.
+    excluded_detail: list[dict[str, object]] = []
+    if excluded:
+        sectors_names = {
+            str(name)
+            for name in pd.read_parquet(root / "processed" / "sectors.parquet")[
+                "ticker"
+            ].astype(str)
+        }
+        # The index alone: the panel is 3.6M rows and the question is only which
+        # tickers it carries.
+        price_names = {
+            str(name)
+            for name in pd.read_parquet(root / "raw" / "prices.parquet", columns=[])
+            .index.get_level_values("ticker")
+            .unique()
+        }
+        excluded_detail = exclusion_details(
+            excluded,
+            in_sectors=sectors_names,
+            in_returns=set(wide_names),
+            in_prices=price_names,
+            history=excluded_history(str(as_of_ts.date())),
+            as_of=str(as_of_ts.date()),
+        )
     if len(names) < MIN_NAMES:
         raise ValueError(
             f"the SPY universe overlaps the frozen model on only {len(names)} "
@@ -1440,6 +1616,9 @@ def build_proposal(
         "n_names": len(names),
         "n_excluded": len(excluded),
         "excluded": excluded,
+        # The same names with their reason and their age: the list itself is what
+        # downstream reads, and this is what the message and the owner read.
+        "excluded_detail": excluded_detail,
         # The names tonight's book lost for having no usable close, and the count
         # that would have stopped the run: one or a few is a name the vendor did not
         # answer for, ten at once is the fetch having broken. They are named in the
