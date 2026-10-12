@@ -1499,6 +1499,15 @@ def main() -> int:
         # the loop needs and the seed does not hold. Better a refusal that names
         # the path here than a crash on Render the message cannot explain.
         logger.info("seed allowlist: %s path(s) allowed", seed.guard(run_tree))
+        # And the artifacts the live steps read, checked against the tree the seed
+        # supplied before anything reads or trades. A step whose input the seed does not
+        # hold would otherwise fail inside its own work - on 2026-10-09 the attribution
+        # step's read was refused by the allowlist above and the evening continued to a
+        # page with no attribution section - and this says so while stopping is still
+        # free.
+        logger.info(
+            "seed inputs: %s path(s) checked", seed.preflight_inputs(run_tree)
+        )
         # The proposal files move with the tree, so a local run does not add a
         # proposal to the repository either.
         global PROPOSAL_DIR

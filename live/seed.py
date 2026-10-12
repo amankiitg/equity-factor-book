@@ -61,6 +61,37 @@ SEED_ENVS = (
 SEED_REGION = "auto"
 SEED_ENDPOINT_TEMPLATE = "https://{account}.r2.cloudflarestorage.com"
 CHUNK = 1 << 20
+# The artifacts the live paths read, by the step that reads them.
+#
+# The seed manifest is measured from the files the run paths read, so an input a new
+# step reads and the bundle does not hold is a read the *allowlist* refuses - at the
+# read, after the step has started. On 2026-10-09 that cost the page a whole section:
+# `efb/attribution.py` reads `models/TS-v1/beta_history.parquet`, no live path had read
+# TS-V1 before E12, the bundle held 19 files none of them under `models/TS-v1/`, and
+# the step's own handler logged the refusal and let the evening continue to a page that
+# said no day was attributed (`docs/backport_runbook.md`, item 27).
+#
+# This is the declaration the preflight below checks, and it is deliberately a list of
+# paths rather than a discovery: a step that adds an input has to say so here, which is
+# the point - a new `data/` input under a live path is a seed change. The
+# `tests/test_nov11_seed_preflight.py` case records a live step's own reads and requires
+# every one of them to be covered, so the list cannot quietly fall behind.
+LIVE_INPUTS: dict[str, tuple[str, ...]] = {
+    # The two the run cannot start without, which `runroot.prepare` already refuses on.
+    "prices": ("raw/prices.parquet", "models/XS-v1/descriptors.parquet"),
+    # The evening's own sizing and hedge inputs.
+    "evening": (
+        "processed/returns.parquet",
+        "processed/sectors.parquet",
+        "models/XS-v1/factor_returns.parquet",
+        "models/XS-v1/specific_returns.parquet",
+        "models/XS-v1/specific_var.parquet",
+    ),
+    # The attribution block, which the page's section is built from.
+    "attribution": ("models/TS-v1/beta_history.parquet",),
+    # The morning's reconciliation and the bridge's price reads.
+    "morning": ("processed/returns.parquet", "raw/prices.parquet"),
+}
 
 
 class SeedNotConfigured(RuntimeError):
@@ -170,6 +201,63 @@ def _relative_under(path: Any, tree: Path) -> str | None:
         return candidate.resolve().relative_to(Path(tree).resolve()).as_posix()
     except ValueError:
         return None
+
+
+def live_inputs() -> list[str]:
+    """Every declared input, deduplicated and sorted."""
+    return sorted({rel for rels in LIVE_INPUTS.values() for rel in rels})
+
+
+def preflight_inputs(
+    tree: Path, *, required: dict[str, tuple[str, ...]] | None = None
+) -> int:
+    """Refuse a tree that does not hold an artifact a live step reads.
+
+    Called once, after `guard` and before anything is read or traded, so a seed that
+    cannot supply a step's input is a run that refuses with a message naming the step
+    and the file rather than a step that fails halfway through its own work. The count
+    returned is what the run logs, so the reader can see what was checked rather than
+    only that nothing was found.
+
+    `required` is the caller's own map, for a test or a repair path; the default is the
+    declaration above.
+    """
+    root = Path(tree)
+    wanted = required if required is not None else LIVE_INPUTS
+    missing = {
+        step: [rel for rel in rels if not (root / rel).exists()]
+        for step, rels in wanted.items()
+    }
+    gaps = {step: rels for step, rels in missing.items() if rels}
+    if gaps:
+        named = "; ".join(
+            f"{step} needs {', '.join(rels)}" for step, rels in gaps.items()
+        )
+        raise SeedUnavailable(
+            f"the seed does not cover every file a live path reads: {named}. A new "
+            f"input under data/ read by a live path is a seed change: push the file "
+            f"into the seed bundle ({DEFAULT_BUCKET}) and its manifest, or the step "
+            f"that reads it cannot run."
+        )
+    return len(live_inputs())
+
+
+def undeclared_reads(
+    tree: Path,
+    opened: Reads,
+    *,
+    declared: dict[str, tuple[str, ...]] | None = None,
+) -> list[str]:
+    """The reads a live step made that no step declares.
+
+    The declaration above keeps the *preflight* honest only if it keeps up with the
+    code, so this is the other direction: given the reads a real step recorded
+    (`record_reads` around it), the paths inside the tree that no step claims. The
+    test uses it so a step that starts reading a new artifact fails the suite rather
+    than waiting for an evening to be refused.
+    """
+    known = {rel for rels in (declared or LIVE_INPUTS).values() for rel in rels}
+    return [rel for rel in relative_reads(tree, opened) if rel not in known]
 
 
 def _was_written(path: Any, opened: Reads) -> bool:
