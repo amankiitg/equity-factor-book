@@ -31,6 +31,50 @@ const ACTUAL = withActual as unknown as Snapshot;
 const REJECTED = rejected as unknown as Snapshot;
 const NOW = new Date("2026-09-21T23:00:00Z");
 
+/**
+ * A morning read whose account is away from its target in the three ways that matter.
+ *
+ * Small enough that every number in it can be read at a glance: the target asks for
+ * KO, SMCI and INVH at $200,000, $150,000 and -$20,000, and the account holds KO and
+ * SMCI at $180,000 and $120,000, plus a short in WBD the target has dropped and no
+ * INVH at all. The five sectors it touches are the ones the map carries, so a driver
+ * line can be read against a sector the test names.
+ */
+const MORNING: Snapshot = {
+  generated_at: "2026-10-09T22:50:01Z",
+  book_as_of: "2026-10-09T00:00:00",
+  target_close: "2026-10-09T00:00:00",
+  expected_next_by: "2026-10-12T22:30:00Z",
+  dry_run: false,
+  book: {
+    gross: 1,
+    gross_notional: 1_000_000,
+    net: 0,
+    n_names: 3,
+    n_long: 2,
+    n_short: 1,
+    names: [
+      { ticker: "KO", weight: 0.2, side: "long", reason: "no trade", z: 1, alpha: 0 },
+      { ticker: "SMCI", weight: 0.15, side: "long", reason: "risk moved", z: 1, alpha: 0 },
+      { ticker: "INVH", weight: -0.02, side: "short", reason: "alpha moved", z: -1, alpha: 0 },
+    ],
+  },
+  actual_holdings: {
+    as_of: "2026-10-12T15:31:15+00:00",
+    close: "2026-10-09",
+    read_by: "morning",
+    n_names: 3,
+    gross_notional: 1_000_000,
+    net_notional: 0,
+    names: [
+      { ticker: "KO", side: "long", notional: 180_000, weight: 0.18 },
+      { ticker: "SMCI", side: "long", notional: 120_000, weight: 0.12 },
+      { ticker: "WBD", side: "short", notional: -70_000, weight: -0.07 },
+    ],
+    fills: null,
+  },
+} as unknown as Snapshot;
+
 /** The risk and mover panels are the weekly read, so they are on their own tab. */
 function openAttributionTab(): void {
   fireEvent.click(document.querySelector("[data-view='attribution']") as HTMLElement);
@@ -372,6 +416,67 @@ describe("by sector", () => {
     const facts = bookFacts(ACTUAL);
     const target = facts.sectors.map((bucket) => Math.abs(bucket.netNotional));
     expect(Math.max(...target)).toBeLessThan(1e-6);
+  });
+
+  it("names each sector's drivers, in the dollars the delta is made of", () => {
+    // A sector total the reader cannot decompose is a number they have to take on
+    // trust: -$70,000 in Communication Services is a different morning depending on
+    // whether it is nine hundred names a few dollars out or one name that should not
+    // be held at all. So the row names its own drivers.
+    const facts = bookFacts(MORNING);
+    render(<SnapshotView snapshot={MORNING} now={NOW} />);
+    const rows = sectorDeltas(MORNING, facts.sectors);
+    const worst = rows[0];
+    expect(worst.label).toBe("Communication Services");
+
+    const drivers = document.querySelector(
+      `[data-drivers="${worst.code}"]`,
+    ) as HTMLElement;
+    expect(drivers).toBeTruthy();
+    expect(drivers.textContent).toContain("of which WBD -$70,000 (held, not targeted)");
+
+    // The other direction is named as the other direction: a name the target asks for
+    // and the account does not hold is not the same finding as one held and dropped.
+    const held = document.querySelector("[data-drivers='60']") as HTMLElement;
+    expect(held.textContent).toContain("INVH +$20,000 (targeted, not held)");
+    // A name both books carry is a drift, and is not given a one-sided class.
+    const drift = document.querySelector("[data-drivers='45']") as HTMLElement;
+    expect(drift.textContent).toContain("SMCI -$30,000");
+    expect(drift.textContent).not.toContain("(");
+
+    // The line is the row's own total decomposed, not a second opinion about it.
+    for (const row of rows) {
+      const line = document.querySelector(`[data-drivers="${row.code}"]`) as HTMLElement | null;
+      if (!line) continue;
+      const shown = row.drivers.reduce((total, driver) => total + driver.delta, 0);
+      expect(shown, row.label).toBeCloseTo(row.delta, 6);
+    }
+  });
+
+  it("puts the largest sector's own driver on the largest-difference line", () => {
+    // The one line a reader takes without reading the panel: "Communication Services
+    // -$7,598" says nothing about whether to act; "of which WBD -$7,057 (held, not
+    // targeted)" says it.
+    render(<SnapshotView snapshot={MORNING} now={NOW} />);
+    const line = document.querySelector("[data-sector-largest='true']") as HTMLElement;
+    expect(line.textContent).toContain(
+      "largest difference: Communication Services -$70,000, of which WBD -$70,000 (held, not targeted)",
+    );
+    expect(line.textContent).toContain("of NAV");
+  });
+
+  it("says which read the difference is against", () => {
+    render(<SnapshotView snapshot={MORNING} now={NOW} />);
+    const section = document.querySelector("[data-section='sector']") as HTMLElement;
+    expect(section.textContent).toContain("after the fills");
+    document.body.innerHTML = "";
+    const evening = {
+      ...MORNING,
+      actual_holdings: { ...MORNING.actual_holdings, read_by: "evening" },
+    } as Snapshot;
+    render(<SnapshotView snapshot={evening} now={NOW} />);
+    const other = document.querySelector("[data-section='sector']") as HTMLElement;
+    expect(other.textContent).toContain("before the orders went out");
   });
 
   it("renders Unmapped exactly for the names the bundled map does not carry", () => {

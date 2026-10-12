@@ -14,17 +14,30 @@
 // when it was taken, how old the document is on a clock a person keeps, and how many
 // mismatches there are with the split between the explained ones and the rest.
 //
+// The age is the age of the document's latest write, which on a weekday morning is
+// the account read rather than the book: the file is written by the evening and
+// rewritten by the morning, and a page that aged it from `generated_at` alone called
+// a file updated at 11:31 that morning three days old. So the strip names the run
+// that made the latest write and puts the evening's own time beside it, and the age
+// counts from the same instant the name does.
+//
 // The account read is a line of its own because it is the difference between "the
 // intended book" and "the book the account holds": the evening reads the account
 // before it sends anything, so an evening snapshot cannot certify the fills, and a
 // morning snapshot can. A reader who mistakes the first for the second reads a
 // plan as a position.
 
-import { dateOnly, etDateTime } from "./format";
+import { dateOnly, etDateTime, utcInstant } from "./format";
 import { exceptionText, type Exceptions } from "./exceptions";
 import { pillClass } from "./Panel";
-import { ageText, type Reconciliation, type RunState, type Tone } from "./status";
+import { ageText, freshness, type Reconciliation, type RunState, type Tone } from "./status";
 import type { Snapshot } from "./types";
+
+/** How the run that last wrote the document is named on the strip. */
+const WRITER: Record<"evening" | "morning", string> = {
+  evening: "the evening run",
+  morning: "the morning run",
+};
 
 /**
  * The strip's own accent, one left edge for the two claims together.
@@ -80,7 +93,7 @@ export function StatusStrip({
   reconciled: Reconciliation;
   exceptions: Exceptions;
 }) {
-  const generated = new Date(snapshot.generated_at);
+  const written = freshness(snapshot);
   const close = dateOnly(snapshot.target_close);
   const bookClose = dateOnly(snapshot.book_as_of);
   const staleBook = Boolean(bookClose && close && bookClose !== close);
@@ -137,11 +150,24 @@ export function StatusStrip({
           {exceptionText(exceptions)}
         </span>
         <span data-flag="snapshot" className="text-slate-600">
-          snapshot {etDateTime(snapshot.generated_at) ?? close ?? "unknown"}
-          {Number.isNaN(generated.getTime()) ? "" : ` (${ageText(generated, now)})`}
+          {written.at === null ? (
+            "no write recorded on this document"
+          ) : (
+            <>
+              updated by{" "}
+              {written.by === null ? "a run that did not name itself" : WRITER[written.by]}{" "}
+              {etDateTime(written.at) ?? close ?? "unknown"} ({ageText(written.at, now)})
+              {written.by === "evening" || written.evening === null
+                ? ""
+                : `; the evening run wrote ${etDateTime(written.evening)}`}
+            </>
+          )}
         </span>
         <span data-flag="snapshot-utc" className="text-xs text-slate-500">
-          {snapshot.generated_at} UTC
+          {utcInstant(written.at) ?? "no write recorded"} UTC
+          {written.by === "evening" || written.evening === null
+            ? ""
+            : ` (the evening's own ${utcInstant(written.evening)})`}
         </span>
       </div>
       {read ? (

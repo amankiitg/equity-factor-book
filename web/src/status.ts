@@ -10,6 +10,7 @@
 // amber that never clears is what teaches a reader to ignore red.
 
 import { dateOnly } from "./format";
+import type { Exceptions } from "./exceptions";
 import type { Snapshot } from "./types";
 
 export type Tone = "good" | "info" | "warn" | "bad";
@@ -98,12 +99,12 @@ export function health(snapshot: Snapshot, now: Date): Health {
   }
   return {
     ok: true,
-    // No detail: the notification status is not the page's to report here. The
-    // snapshot is written before the message goes out, so what it carries is
-    // `pending` on every evening; the strip states the one case the owner has to
-    // see, which is the evening whose message never went out.
-    headline: `clean run for the ${dateOnly(snapshot.target_close) ?? "latest"} close`,
-    detail: "",
+    // The proposal run's own answer, and only that: this headline used to read
+    // "clean run", which the reader takes as the account being reconciled. A
+    // successful proposal and a reconciled book are separate claims, and on
+    // 2026-10-12 the first is true while the second is not.
+    headline: `proposal run: ok for the ${dateOnly(snapshot.target_close) ?? "latest"} close`,
+    detail: "the run priced a book; what the account holds is the reconciliation below",
   };
 }
 
@@ -137,6 +138,46 @@ export function runTone(pill: string): Tone {
 export function runState(snapshot: Snapshot, now: Date): RunState {
   const pill = pillFor(snapshot, now);
   return { ...health(snapshot, now), pill, tone: runTone(pill) };
+}
+
+/** Which run wrote the document the page is showing. */
+export type Writer = "evening" | "morning" | null;
+
+/**
+ * When the page's document was last written, and by which run.
+ *
+ * The document is written twice on a weekday: the evening writes the book, and the
+ * morning writes the account read back into the same file. `generated_at` is only
+ * the first of those, so a page that aged the document from it called a file
+ * rewritten at 11:31 this morning three days old. The later of the two instants is
+ * the document's age, and the run that made it is named beside it - the reader's
+ * question is not only "how fresh is this" but "how fresh is the thing I am reading
+ * that came from this run".
+ */
+export interface Freshness {
+  /** The latest write of the two. */
+  at: Date | null;
+  /** The run that made that write. Null when the document does not name one. */
+  by: Writer;
+  /** The evening's own write, when a later read has been written over it. */
+  evening: Date | null;
+}
+
+function instant(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const at = new Date(value);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+export function freshness(snapshot: Snapshot): Freshness {
+  const written = instant(snapshot.generated_at);
+  const read = instant(snapshot.actual_holdings?.as_of);
+  if (read && (!written || read.getTime() > written.getTime())) {
+    return { at: read, by: snapshot.actual_holdings?.read_by ?? null, evening: written };
+  }
+  // The evening's own write, and a read that came with the evening's shipment
+  // seconds later is still the evening's: there is no second run to name.
+  return { at: written, by: written ? "evening" : null, evening: null };
 }
 
 /**
@@ -177,9 +218,14 @@ export interface Reconciliation {
  *
  * Three checks, each from a key that states it, and none of them inferred:
  *
- * - **account against the store**, `positions.matches`; a mismatch whose every name
- *   is a class the document explains (a deferred reversal, a removal the bridge
- *   itemised) is `explained`, and one unexplained name makes it `unresolved`;
+ * - **the account against the book**, on the read the snapshot carries. The morning
+ *   read holds the account after the fills, so the check is the account against the
+ *   *target*: the names held and not wanted, the names wanted and not held - each
+ *   classified from the same keys as ever - and the drift on the names both books
+ *   carry. The evening read holds the account before the orders, so the check is the
+ *   account against the *store*, `positions.matches`, and a mismatch whose every name
+ *   is a class the document explains is `explained` while one unexplained name makes
+ *   it `unresolved`;
  * - **the bridge's identities**, `bridge.holds`, with the failing identity named
  *   from `bridge.identities`;
  * - **the fills**, `actual_holdings.fills`, unresolved when `fills.n_unfilled` is
@@ -189,18 +235,58 @@ export interface Reconciliation {
  * which of the three is which, and green means every check that could be run was
  * clean.
  */
-export function reconciliation(
-  snapshot: Snapshot,
-  expected: number,
-  unexpected: number,
-): Reconciliation {
+export function reconciliation(snapshot: Snapshot, exceptions: Exceptions): Reconciliation {
   const positions = snapshot.positions ?? null;
   const bridge = snapshot.bridge ?? null;
   const read = snapshot.actual_holdings ?? null;
   const fills = read?.fills ?? null;
+  const unexpected = exceptions.unexpected.length;
+  const expected = exceptions.expected.length;
+  const target = exceptions.compare;
   const checks: ReconciliationCheck[] = [];
 
-  if (!positions || positions.matches === null) {
+  if (target) {
+    // The morning read's own check. The account is compared with the book the
+    // orders were built from, so the names on one side only are the finding and the
+    // drift on the rest is the reading; the store comparison is not consulted here,
+    // because a store that agrees with the account says nothing about the target.
+    const heldNot = target.heldNotTargeted.length;
+    const targetedNot = target.targetedNotHeld.length;
+    const missing: string[] = [];
+    if (heldNot > 0) {
+      missing.push(`${heldNot} name${heldNot === 1 ? "" : "s"} the account holds and the target does not`);
+    }
+    if (targetedNot > 0) {
+      missing.push(`${targetedNot} the target asks for and the account does not hold`);
+    }
+    const both = target.drifts.length;
+    if (!target.read) {
+      checks.push({
+        name: "account against the target",
+        state: "not_run",
+        detail:
+          "the read names no book to compare with the target, or the target names nothing to compare with the read",
+      });
+    } else if (missing.length === 0) {
+      checks.push({
+        name: "account against the target",
+        state: "clean",
+        detail: `the account holds the target's ${both} name(s) and nothing else`,
+      });
+    } else if (unexpected === 0) {
+      checks.push({
+        name: "account against the target",
+        state: "explained",
+        detail: `${missing.join(", ")}; every one of them a class the document explains`,
+      });
+    } else {
+      checks.push({
+        name: "account against the target",
+        state: "unresolved",
+        detail: `${missing.join(", ")}; ${unexpected} of them nothing on the page explains`,
+      });
+    }
+  } else if (!positions || positions.matches === null) {
     checks.push({
       name: "account against the store",
       state: "not_run",

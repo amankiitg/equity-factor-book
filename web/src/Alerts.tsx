@@ -2,10 +2,17 @@
 //
 // The two jobs first, as two panels: the proposal run's own state (the one thing on
 // the page allowed to be red) and then whether the book reconciled - the checks the
-// strip's second pill summarises. The account-versus-store comparison is one of
-// those checks rather than a panel of its own, because a mismatch is a fact about
-// reconciliation and reading it beside the two other checks is what stops it being
-// taken for the whole answer.
+// strip's second pill summarises. Which comparison the reconciliation is made of
+// follows the read: the morning's account read holds the account after the fills, so
+// the check is the account against the target, and the evening's account-versus-store
+// comparison is kept beside it under a label that says when it was taken, because a
+// comparison the reader might mistake for today's answer is worse than one they have
+// to open.
+//
+// Under the account-against-target check are the largest drifts, name by name: the
+// check says how many names are on one side only, and the drift is what the rest of
+// the book is doing, which is the number that says whether a mismatch is one break
+// or a book that was never filled.
 //
 // The mismatches are then split. A name the document explains - a deferred reversal,
 // a removal the bridge itemised - is not an exception, and listing four of them
@@ -18,14 +25,19 @@
 // position that left the account with nothing behind it: that last one is the line no
 // other number on the page implies, which is what happened to PSKY on 2026-10-06.
 
+import { Details } from "./Details";
 import { exceptionText, type Exceptions, type Mismatch } from "./exceptions";
-import { dollars, shares } from "./format";
+import { dollars, shares, signedDollars } from "./format";
 import { Panel } from "./Panel";
 import type { Reconciliation, RunState } from "./status";
 import type { ExitsBlock, Snapshot } from "./types";
 
 /** How many miss lines the strip lists before it counts the rest. */
 const MISS_LINES = 6;
+
+/** How many drifts, and how many one-sided names, before the counts take over. */
+const DRIFT_LINES = 3;
+const MISMATCH_LINES = 8;
 
 /** The expected names, grouped by the class that explains them, in one line each. */
 function expectedLines(mismatches: Mismatch[]): string[] {
@@ -44,14 +56,60 @@ function checkClass(state: Reconciliation["checks"][number]["state"]): string {
   return state === "unresolved" ? "font-semibold text-amber-900" : "text-slate-700";
 }
 
+/**
+ * The evening's own comparison, kept where it cannot be read as today's.
+ *
+ * The evening reads the account before it sends anything, so what it compared was
+ * the account against the positions the loop had written down - neither the target
+ * nor the fills. It is not dropped on a morning read: a name the store holds and the
+ * account does not is a fact about the loop's own record. It is collapsed under a
+ * label that says which comparison it is and when it was taken, so a reader scanning
+ * for the morning answer does not find the evening's.
+ */
+function EveningCompare({ snapshot, evening }: { snapshot: Snapshot; evening: Mismatch[] }) {
+  const positions = snapshot.positions ?? null;
+  if (!positions || evening.length === 0) return null;
+  return (
+    <Details
+      hook="evening-compare"
+      summary={<>evening, before the orders — the account against the store: {evening.length} name(s)</>}
+    >
+      <p className="text-xs text-slate-600">
+        Read before the orders went out, so this compares the account with the positions the loop
+        had written down, not with the target and not after the fills. It is how the stored book
+        and the account differed going into the session.
+        {positions.note ? ` The run's own note: ${positions.note}.` : ""}
+      </p>
+      <ul className="mt-1 text-sm">
+        {evening.map((entry) => (
+          <li key={`${entry.side}-${entry.ticker}`} data-evening-mismatch={entry.side}>
+            <span className="font-mono">{entry.ticker}</span> —{" "}
+            {entry.side === "at_broker"
+              ? "the store holds it and the account does not"
+              : "the account holds it and the store does not"}
+            {entry.key === "" ? " — nothing on the page explains it" : ` — ${entry.why}`}
+          </li>
+        ))}
+      </ul>
+      {positions.source ? (
+        <p className="mt-1 text-xs text-slate-500">read against {positions.source}</p>
+      ) : null}
+    </Details>
+  );
+}
+
 function ReconciliationPanel({
+  snapshot,
   reconciled,
   exceptions,
 }: {
+  snapshot: Snapshot;
   reconciled: Reconciliation;
   exceptions: Exceptions;
 }) {
   const expected = expectedLines(exceptions.expected);
+  const drifts = exceptions.compare?.drifts ?? [];
+  const overnight = exceptions.evening ?? [];
   return (
     <section
       data-alert="reconciliation"
@@ -75,18 +133,40 @@ function ReconciliationPanel({
         ))}
       </ul>
 
+      {drifts.length > 0 ? (
+        <ul data-drifts="true" className="mt-1 text-xs text-slate-600">
+          {drifts.slice(0, DRIFT_LINES).map((row) => (
+            <li key={row.ticker}>
+              drift{" "}
+              <span className="font-mono font-medium">{row.ticker}</span>{" "}
+              <span className="font-mono tabular-nums">{signedDollars(row.delta)}</span>: the
+              account holds {dollars(row.held)} against the target&apos;s {dollars(row.target)}
+            </li>
+          ))}
+          {drifts.length > DRIFT_LINES ? (
+            <li>
+              and {drifts.length - DRIFT_LINES} other name(s) both books carry, none of them by
+              more than {dollars(Math.abs(drifts[DRIFT_LINES].delta))}
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+
       {exceptions.unexpected.length > 0 ? (
-        <div data-alert="positions" data-tone="warn" className="mt-2">
+        <div data-alert="mismatches" data-tone="warn" className="mt-2">
           <p className="font-semibold">
             {exceptions.unexpected.length} mismatch
             {exceptions.unexpected.length === 1 ? "" : "es"} nothing on the page explains
           </p>
           <ul className="text-sm">
-            {exceptions.unexpected.map((entry) => (
+            {exceptions.unexpected.slice(0, MISMATCH_LINES).map((entry) => (
               <li key={`${entry.side}-${entry.ticker}`}>
                 <span className="font-mono">{entry.ticker}</span> — {entry.why}
               </li>
             ))}
+            {exceptions.unexpected.length > MISMATCH_LINES ? (
+              <li>and {exceptions.unexpected.length - MISMATCH_LINES} more</li>
+            ) : null}
           </ul>
         </div>
       ) : null}
@@ -109,6 +189,8 @@ function ReconciliationPanel({
           ))}
         </ul>
       ) : null}
+
+      <EveningCompare snapshot={snapshot} evening={overnight} />
     </section>
   );
 }
@@ -133,7 +215,7 @@ export function Alerts({
     <div data-alerts="true" className="flex flex-col gap-2">
       <Panel hook="run" tone={state.tone} title={state.headline} detail={state.detail} />
 
-      <ReconciliationPanel reconciled={reconciled} exceptions={exceptions} />
+      <ReconciliationPanel snapshot={snapshot} reconciled={reconciled} exceptions={exceptions} />
 
       {gone.length > 0 ? (
         <section

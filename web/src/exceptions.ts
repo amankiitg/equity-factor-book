@@ -7,6 +7,14 @@
 // So each mismatch is classified, and only the unexplained ones are drawn as
 // exceptions.
 //
+// The mismatches themselves follow the read. An evening snapshot holds the account
+// as it was *before* the orders went out, so the only comparison it supports is the
+// account against the positions the loop had written down. A morning snapshot holds
+// the account *after* the fills, so it supports the one that matters then: the
+// account against the target the orders were built from. The store comparison is not
+// deleted on a morning read - it is a fact about the loop's own record - but it is
+// kept as the evening's, never as the current answer.
+//
 // Every class here is a *fact stated in the document*, named with the key that
 // states it, and nothing is inferred from a name merely looking familiar. Where the
 // document does not carry the fact - and for two of the three classes the brief
@@ -14,10 +22,15 @@
 // would carry it, rather than guessed at. A page that classified a name as
 // "expected" on a hunch would be worse than one that shows it amber and says why.
 
+import { compareAccount, type AccountCompare } from "./account";
 import type { Snapshot } from "./types";
 
-/** Which side of the account-versus-store comparison a name is on. */
-export type MismatchSide = "at_broker" | "in_store";
+/** Which comparison a mismatch came out of, and on which side. */
+export type MismatchSide =
+  | "at_broker"
+  | "in_store"
+  | "held_not_targeted"
+  | "targeted_not_held";
 
 export interface Mismatch {
   ticker: string;
@@ -39,8 +52,20 @@ export interface Exceptions {
   expected: Mismatch[];
   unexpected: Mismatch[];
   unchecked: Unchecked[];
-  /** Whether the comparison ran at all: a read that named no names is not a pass. */
+  /** Whether the current comparison ran at all: a read that named no names is not a pass. */
   read: boolean;
+  /**
+   * Which comparison the two lists above came out of.
+   *
+   * `target` is the morning read's own comparison - the account against the book the
+   * orders were built from - `store` is the evening's account against the stored
+   * positions, and `none` is a document with neither.
+   */
+  source: "target" | "store" | "none";
+  /** The account-against-target comparison itself, when that is the current one. */
+  compare: AccountCompare | null;
+  /** The evening's account-against-store mismatches, kept but never shown as current. */
+  evening: Mismatch[] | null;
 }
 
 /**
@@ -99,6 +124,13 @@ const UNCHECKED: Unchecked[] = [
  * Everything else is unexplained until someone looks. That is deliberately the
  * hard direction: a page that filed a real break under "expected" is a page that
  * hid the thing it exists to show.
+ *
+ * Which names are compared at all is the read's business, and the classes above are
+ * the same either way: the document states them, not the direction of the
+ * comparison. On 2026-10-12 the morning read holds WBD short and the target does not
+ * ask for it - a name nothing in the document explains - and the target asks for INVH
+ * while the account does not hold it, which is that document's own
+ * `bridge.reversals_pending`.
  */
 export function classify(snapshot: Snapshot): Exceptions {
   const positions = snapshot.positions;
@@ -131,23 +163,42 @@ export function classify(snapshot: Snapshot): Exceptions {
       why:
         side === "at_broker"
           ? "the store holds it and the account does not, and nothing in this document explains it"
-          : "the account holds it and the store does not, and nothing in the document explains it",
+          : side === "in_store"
+            ? "the account holds it and the store does not, and nothing in the document explains it"
+            : side === "held_not_targeted"
+              ? "the account holds it and the target does not, and nothing in this document explains it"
+              : "the target asks for it and the account does not hold it, and nothing in this document explains it",
       key: "",
     };
   };
 
-  const all = [
+  // The evening's own comparison, always built when the document carries one: on a
+  // morning read it is the collapsed line beside the current check, and on an
+  // evening read it is the current check itself.
+  const store = [
     ...(positions?.missing_at_broker ?? []).map((t) => classifyOne(t, "at_broker")),
     ...(positions?.missing_in_store ?? []).map((t) => classifyOne(t, "in_store")),
   ];
+  const storeRead = positions !== undefined && positions !== null && positions.matches !== null;
 
+  const compare = compareAccount(snapshot);
+  const targetRead = snapshot.actual_holdings?.read_by === "morning";
+  const target = targetRead
+    ? [
+        ...compare.heldNotTargeted.map((row) => classifyOne(row.ticker, "held_not_targeted")),
+        ...compare.targetedNotHeld.map((row) => classifyOne(row.ticker, "targeted_not_held")),
+      ]
+    : [];
+
+  const current = targetRead ? target : store;
   return {
-    expected: all.filter((entry) => entry.key !== ""),
-    unexpected: all.filter((entry) => entry.key === ""),
+    expected: current.filter((entry) => entry.key !== ""),
+    unexpected: current.filter((entry) => entry.key === ""),
     unchecked: UNCHECKED,
-    // A read that answered with no names at all is a read that found nothing, which
-    // is not the same as a comparison nobody ran: `matches === null` is the latter.
-    read: positions !== undefined && positions !== null && positions.matches !== null,
+    read: targetRead ? compare.read : storeRead,
+    source: targetRead ? "target" : storeRead ? "store" : "none",
+    compare: targetRead ? compare : null,
+    evening: targetRead ? store : null,
   };
 }
 
@@ -159,7 +210,13 @@ export function classify(snapshot: Snapshot): Exceptions {
  * appeared would tell the reader nothing about whether anything is wrong.
  */
 export function exceptionText(report: Exceptions): string {
-  if (!report.read) return "account not compared with the store";
+  if (!report.read) {
+    // Which comparison did not run is worth the words: on a morning read the store
+    // is the evening's comparison and its silence is not the day's answer.
+    return report.source === "target"
+      ? "the account has not been compared with the target"
+      : "account not compared with the store";
+  }
   const unexpected = report.unexpected.length;
   const expected = report.expected.length;
   // Two counts, two statements, and no trailing noun when both are present: "2
