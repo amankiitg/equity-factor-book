@@ -89,8 +89,25 @@ LIVE_INPUTS: dict[str, tuple[str, ...]] = {
     ),
     # The attribution block, which the page's section is built from.
     "attribution": ("models/TS-v1/beta_history.parquet",),
-    # The morning's reconciliation and the bridge's price reads.
-    "morning": ("processed/returns.parquet", "raw/prices.parquet"),
+    # The order-submission path: `live/morning_job.py::run_morning`, which the
+    # *evening* calls (`scripts/run_live_daily.py`) and `scripts/push_seed.py`
+    # rehearses under the name "morning". Its only read under `data/` is the price
+    # panel, for the close of the proposal it quantises against; measured with
+    # `seed.record_reads` around a real `run_morning` in
+    # `tests/test_nov11_seed_preflight.py`.
+    #
+    # It used to declare `processed/returns.parquet` as well, and nothing in that
+    # path reads it: `live/morning_job.py` reads the prices and the proposal parquet
+    # (`live/proposals/`, which is not seed material) and nothing else. The returns
+    # panel is read by the evening and by the attribution step, both of which declare
+    # it themselves, so dropping it here leaves the union of declared paths - what
+    # the preflight checks the seed against - exactly as it was.
+    #
+    # The name is the path and not the hour: `scripts/reconcile_fills.py`, the job
+    # that actually runs in the morning, reads no artifact under `data/` at all (no
+    # `DATA_ROOT`, no `runroot`, no `read_parquet`), so no entry here would describe
+    # it.
+    "submission": ("raw/prices.parquet",),
 }
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pathlib
 from pathlib import Path
 
 import pytest
@@ -69,3 +70,82 @@ def test_the_declaration_is_a_list_of_paths_and_not_a_discovery() -> None:
         for rel in rels:
             assert not rel.startswith("/"), f"{step} declares {rel}"
             assert rel.endswith(".parquet"), f"{step} declares {rel}"
+
+
+def test_the_submission_path_reads_exactly_what_it_declares(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIX 1: the declaration names the files this path reads, and no others.
+
+    The entry called `morning` describes `live/morning_job.py::run_morning`, which the
+    *evening* calls (`scripts/run_live_daily.py`) and `scripts/push_seed.py` rehearses
+    under that name. It is not `scripts/reconcile_fills.py`: that job reads no artifact
+    under `data/` at all - no `DATA_ROOT`, no `runroot`, no `read_parquet` - which is
+    why the preflight's one call site, in the evening, is the only place the entry is
+    checked.
+
+    The read set is recorded rather than asserted from reading the code, so a change to
+    what the path opens fails here instead of at an evening's refusal.
+    """
+    from live import morning_job, state
+
+    proposal_dir = tmp_path / "proposals"
+    state_dir = tmp_path / "state"
+    log_dir = tmp_path / "logs"
+    _write_proposal(proposal_dir, {"AAA": 0.05, "BBB": -0.05})
+    monkeypatch.setattr(morning_job, "PROPOSAL_DIR", proposal_dir)
+    monkeypatch.setattr(morning_job, "EXECUTION_LOG_DIR", log_dir)
+    write_positions = state.write_positions
+    monkeypatch.setattr(
+        morning_job.state,
+        "write_positions",
+        lambda trade_date, rows: write_positions(trade_date, rows, state_dir=state_dir),
+    )
+    data = pathlib.Path(__file__).resolve().parents[1] / "data"
+    with seed.record_reads() as opened:
+        summary = morning_job.run_morning("2026-09-22", nav=100_000.0, data_root=data)
+    assert summary["executed"] is True
+    assert seed.relative_reads(data, opened) == [
+        "raw/prices.parquet"
+    ], "the submission path reads exactly what its entry declares"
+    declared = sorted({rel for rels in seed.LIVE_INPUTS.values() for rel in rels})
+    assert declared == seed.live_inputs()
+    assert seed.undeclared_reads(data, opened) == []
+
+
+def _write_proposal(proposal_dir: pathlib.Path, weights: dict[str, float]) -> None:
+    import pandas as pd
+
+    proposal_dir.mkdir(parents=True, exist_ok=True)
+    frame = pd.DataFrame(
+        {
+            "ticker": list(weights),
+            "weight": [weights[ticker] for ticker in weights],
+            "side": ["long" if weights[ticker] >= 0 else "short" for ticker in weights],
+            "z": [0.0] * len(weights),
+            "alpha": [0.0] * len(weights),
+        }
+    )
+    frame.to_parquet(proposal_dir / "proposal_2026-09-22.parquet", index=False)
+
+
+def test_the_declaration_still_covers_the_eight_live_inputs() -> None:
+    # FIX 1 corrected one *entry* - the submission path does not read the returns
+    # panel - and the union of declared paths, which is what the preflight checks the
+    # seed against, is unchanged: eight files, the ones the production manifest holds.
+    assert seed.live_inputs() == [
+        "models/TS-v1/beta_history.parquet",
+        "models/XS-v1/descriptors.parquet",
+        "models/XS-v1/factor_returns.parquet",
+        "models/XS-v1/specific_returns.parquet",
+        "models/XS-v1/specific_var.parquet",
+        "processed/returns.parquet",
+        "processed/sectors.parquet",
+        "raw/prices.parquet",
+    ]
+    assert sorted(seed.LIVE_INPUTS) == [
+        "attribution",
+        "evening",
+        "prices",
+        "submission",
+    ]
