@@ -127,7 +127,7 @@ describe("severity", () => {
     expect(expected).toBeTruthy();
     expect(expected.textContent).toContain("1 expected: deferred reversal");
     expect(expected.textContent).toContain("ZZZZ");
-    expect(reconciled.querySelector("[data-alert='positions']")).toBeNull();
+    expect(reconciled.querySelector("[data-alert='mismatches']")).toBeNull();
     expect(panel("run").getAttribute("data-tone")).toBe("good");
     expect(alerts()).toEqual([]);
   });
@@ -146,7 +146,7 @@ describe("severity", () => {
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
     const reconciled = panel("reconciliation");
     expect(reconciled.getAttribute("data-tone")).toBe("warn");
-    const unexpected = reconciled.querySelector("[data-alert='positions']") as HTMLElement;
+    const unexpected = reconciled.querySelector("[data-alert='mismatches']") as HTMLElement;
     expect(unexpected.getAttribute("data-tone")).toBe("warn");
     expect(unexpected.textContent).toContain("QQQQ");
     expect(unexpected.textContent).toContain("nothing on the page explains");
@@ -347,6 +347,62 @@ describe("the two claims the strip separates", () => {
     },
   };
 
+  /**
+   * The published 2026-10-12 document, at a size a test can read.
+   *
+   * The evening wrote the book on 10-09 at 22:50 UTC, and the morning wrote the
+   * account read back into the same file at 15:31 UTC on 10-12 - the two writes whose
+   * mesh made the page call a fresh document three days old. The book and the account
+   * differ in the three ways that matter: WBD is held and not wanted, INVH is wanted
+   * and not held, and the two names both books carry are a long way apart.
+   */
+  const morning: Snapshot = {
+    ...mismatched,
+    generated_at: "2026-10-09T22:50:01Z",
+    target_close: "2026-10-09T00:00:00",
+    // The deadline the next evening's run is due by, which is what makes this
+    // document current rather than late: an old `generated_at` under a fresh read
+    // is the weekday morning's ordinary state.
+    expected_next_by: "2026-10-12T22:30:00Z",
+    book: {
+      ...mismatched.book,
+      gross: 1,
+      gross_notional: 1_000_000,
+      names: [
+        { ticker: "KO", weight: 0.2, side: "long", reason: "no trade", z: 1, alpha: 0 },
+        { ticker: "SMCI", weight: 0.15, side: "long", reason: "risk moved", z: 1, alpha: 0 },
+        { ticker: "INVH", weight: -0.02, side: "short", reason: "alpha moved", z: -1, alpha: 0 },
+      ],
+    },
+    actual_holdings: {
+      as_of: "2026-10-12T15:31:15+00:00",
+      close: "2026-10-09",
+      read_by: "morning",
+      n_names: 3,
+      gross_notional: 1_000_000,
+      net_notional: 0,
+      names: [
+        { ticker: "KO", side: "long", notional: 180_000, weight: 0.18 },
+        { ticker: "SMCI", side: "long", notional: 120_000, weight: 0.12 },
+        { ticker: "WBD", side: "short", notional: -70_000, weight: -0.07 },
+      ],
+      fills: {
+        trade_date: "2026-10-09",
+        n_orders: 12,
+        n_filled: 12,
+        n_unfilled: 0,
+        not_sent: 0,
+        realized_cost_bps: 4.2,
+        realized_cost_avg_bps: 5.1,
+        realized_cost_days: 6,
+        expected_cost_bps: 14.2,
+        unfilled: [],
+        unread: [],
+      },
+    },
+  };
+  const NOW_MORNING = new Date("2026-10-12T18:34:00Z");
+
   it("paints the reconciliation pill, not the proposal pill, for a mismatch", () => {
     render(<SnapshotView snapshot={mismatched} now={NOW} />);
     const strip = document.querySelector("[data-strip='status']") as HTMLElement;
@@ -402,7 +458,7 @@ describe("the two claims the strip separates", () => {
     render(<SnapshotView snapshot={explained} now={NOW} />);
     const strip = document.querySelector("[data-strip='status']") as HTMLElement;
     expect(strip.getAttribute("data-tone")).toBe("good");
-    expect(document.querySelector("[data-alert='positions']")).toBeNull();
+    expect(document.querySelector("[data-alert='mismatches']")).toBeNull();
     const line = document.querySelector("[data-expected='true']") as HTMLElement;
     expect(line.textContent).toContain("1 expected: deferred reversal");
     expect(line.textContent).toContain("ZTS");
@@ -452,5 +508,111 @@ describe("the two claims the strip separates", () => {
     for (const element of Array.from(document.querySelectorAll("[data-strip='status'] *"))) {
       expect(element.textContent ?? "").not.toContain("live");
     }
+  });
+
+  it("ages the document from its latest write, and names the run that made it", () => {
+    // The file is written twice on a weekday. The page used to age it from
+    // `generated_at`, so on 2026-10-12 it called a document rewritten that morning
+    // three days old. The age, the name and the time are all the same instant now,
+    // and the evening's own write sits beside it.
+    render(<SnapshotView snapshot={morning} now={NOW_MORNING} />);
+    const line = document.querySelector("[data-flag='snapshot']") as HTMLElement;
+    expect(line.textContent).toContain("updated by the morning run 2026-10-12 11:31 ET");
+    expect(line.textContent).toContain("3 hours ago");
+    expect(line.textContent).toContain("the evening run wrote 2026-10-09 18:50 ET");
+    expect(line.textContent).not.toContain("days ago");
+    const utc = document.querySelector("[data-flag='snapshot-utc']") as HTMLElement;
+    expect(utc.textContent).toContain("2026-10-12T15:31:15Z UTC");
+    expect(utc.textContent).toContain("2026-10-09T22:50:01Z");
+  });
+
+  it("ages an evening-only document from the evening's write, in one time", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const line = document.querySelector("[data-flag='snapshot']") as HTMLElement;
+    expect(line.textContent).toContain("updated by the evening run");
+    expect(line.textContent).toContain("19 minutes ago");
+    // Nothing has been written over it, so there is no second time to print.
+    expect(line.textContent).not.toContain("the evening run wrote");
+  });
+
+  it("never calls the run clean, and says the two claims apart", () => {
+    // The old headline was "clean run for the 2026-10-09 close", which a reader
+    // takes as the account being reconciled. This document's proposal run is fine
+    // and its reconciliation is not, so the word cannot appear beside a run state.
+    render(<SnapshotView snapshot={morning} now={NOW_MORNING} />);
+    const run = panel("run");
+    expect(run.textContent).toContain("proposal run: ok for the 2026-10-09 close");
+    expect(run.textContent).not.toContain("clean");
+    expect(run.textContent).toContain("what the account holds is the reconciliation below");
+    // And the reconciliation panel below it is the one that says so.
+    const reconciled = panel("reconciliation");
+    expect(reconciled.textContent).toContain("reconciliation: unresolved");
+    expect(run.getAttribute("data-tone")).toBe("good");
+    expect(reconciled.getAttribute("data-tone")).toBe("warn");
+  });
+
+  it("makes the morning's check the account against the target", () => {
+    render(<SnapshotView snapshot={morning} now={NOW_MORNING} />);
+    const reconciled = panel("reconciliation");
+    const check = reconciled.querySelector("[data-check='unresolved']") as HTMLElement;
+    expect(check.textContent).toContain("account against the target");
+    expect(check.textContent).toContain("1 name the account holds and the target does not");
+    expect(check.textContent).toContain("1 the target asks for and the account does not hold");
+    // The store comparison is not one of the current checks any more.
+    expect(reconciled.textContent).not.toContain("account against the store (unresolved)");
+    // The two names, each with the direction that matters.
+    expect(reconciled.textContent).toContain("WBD");
+    expect(reconciled.textContent).toContain("the account holds it and the target does not");
+    const expected = reconciled.querySelector("[data-expected='true']") as HTMLElement;
+    expect(expected.textContent).toContain("1 expected: deferred reversal");
+    expect(expected.textContent).toContain("INVH");
+    // The count is the morning comparison's, not the evening's five names.
+    expect((document.querySelector("[data-flag='exceptions']") as HTMLElement).textContent).toBe(
+      "1 unexpected, 1 expected",
+    );
+  });
+
+  it("lists the largest drifts under the check, name by name", () => {
+    render(<SnapshotView snapshot={morning} now={NOW_MORNING} />);
+    const drifts = document.querySelector("[data-drifts='true']") as HTMLElement;
+    expect(drifts).toBeTruthy();
+    const lines = Array.from(drifts.querySelectorAll("li")).map((line) => line.textContent ?? "");
+    expect(lines[0]).toContain("SMCI");
+    expect(lines[0]).toContain("-$30,000");
+    expect(lines[0]).toContain("$120,000 against the target's $150,000");
+    expect(lines[1]).toContain("KO");
+    expect(lines[1]).toContain("-$20,000");
+  });
+
+  it("keeps the evening's comparison, under a label that says when it was taken", () => {
+    render(<SnapshotView snapshot={morning} now={NOW_MORNING} />);
+    const evening = document.querySelector("[data-details='evening-compare']") as HTMLElement;
+    expect(evening).toBeTruthy();
+    expect(evening.querySelector("summary")?.textContent).toContain(
+      "evening, before the orders",
+    );
+    expect(evening.querySelector("summary")?.textContent).toContain("5 name(s)");
+    // Collapsed, and inside it the evening's own names with their directions.
+    expect((evening as HTMLDetailsElement).open).toBe(false);
+    expect(evening.textContent).toContain("BEN");
+    expect(evening.textContent).toContain("WBD");
+    expect(evening.textContent).toContain("the store holds it and the account does not");
+    expect(evening.textContent).toContain("the account holds it and the store does not");
+  });
+
+  it("leaves an evening read's checks as they were", () => {
+    // The read decides the check, so an evening snapshot keeps the comparison it
+    // has always made: the account against the store, as the current check.
+    const evening = {
+      ...morning,
+      actual_holdings: { ...morning.actual_holdings, read_by: "evening" },
+    } as Snapshot;
+    render(<SnapshotView snapshot={evening} now={NOW_MORNING} />);
+    const reconciled = panel("reconciliation");
+    const check = reconciled.querySelector("[data-check='unresolved']") as HTMLElement;
+    expect(check.textContent).toContain("account against the store");
+    expect(check.textContent).not.toContain("account against the target");
+    expect(reconciled.querySelector("[data-details='evening-compare']")).toBeNull();
+    expect(document.querySelector("[data-drifts='true']")).toBeNull();
   });
 });

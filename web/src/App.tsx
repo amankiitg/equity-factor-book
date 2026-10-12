@@ -50,11 +50,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
   const state = runState(snapshot, now);
   const facts = bookFacts(snapshot);
   const exceptions = classify(snapshot);
-  const reconciled = reconciliation(
-    snapshot,
-    exceptions.expected.length,
-    exceptions.unexpected.length,
-  );
+  const reconciled = reconciliation(snapshot, exceptions);
   const [view, setView] = useState<View>("book");
   const tabClass = (active: boolean): string =>
     `rounded px-3 py-1 text-sm font-semibold ${

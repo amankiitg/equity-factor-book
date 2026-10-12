@@ -35,6 +35,44 @@ function doc(parts: {
   } as unknown as Snapshot;
 }
 
+/**
+ * The published 2026-10-12 document, at a size a test can read.
+ *
+ * A morning read: the account after the fills, one name the target has dropped (WBD),
+ * one the target asks for that the account does not hold (INVH, which this document's
+ * own bridge lists as the deferred reversal), and two names both books carry at a
+ * different size. Beside it, the evening's account-versus-store comparison still fails
+ * on the same two books, which is the comparison the morning read replaced.
+ */
+const MORNING: Snapshot = {
+  generated_at: "2026-10-09T22:50:01Z",
+  book: {
+    gross: 1,
+    gross_notional: 1_000_000,
+    names: [
+      { ticker: "KO", weight: 0.2, side: "long" },
+      { ticker: "SMCI", weight: 0.15, side: "long" },
+      { ticker: "INVH", weight: -0.02, side: "short" },
+    ],
+  },
+  actual_holdings: {
+    as_of: "2026-10-12T15:31:15+00:00",
+    close: "2026-10-09",
+    read_by: "morning",
+    names: [
+      { ticker: "KO", notional: 180_000 },
+      { ticker: "SMCI", notional: 120_000 },
+      { ticker: "WBD", notional: -70_000 },
+    ],
+  },
+  positions: {
+    matches: false,
+    missing_at_broker: ["BEN"],
+    missing_in_store: ["WBD"],
+  },
+  bridge: { reversals_pending: ["INVH"], removed_without_order: [] },
+} as unknown as Snapshot;
+
 describe("the classification", () => {
   it("files a name the document's own reversal list names as expected", () => {
     // 2026-10-08's bridge names exactly these four, which is also that morning's
@@ -125,6 +163,57 @@ describe("the classification", () => {
     expect(needs).toContain("efb.e11_corporate_actions");
     // The one the brief expected to be decidable: the list is one session out.
     expect(needs).toContain("previous close's bridge.reversals_pending");
+  });
+});
+
+describe("the classification follows the read", () => {
+  it("compares the morning read with the target, not with the store", () => {
+    const report = classify(MORNING);
+    expect(report.source).toBe("target");
+    expect(report.read).toBe(true);
+    // WBD is held and not wanted, and nothing in the document names it.
+    expect(report.unexpected.map((entry) => entry.ticker)).toEqual(["WBD"]);
+    expect(report.unexpected[0].side).toBe("held_not_targeted");
+    expect(report.unexpected[0].why).toContain("the account holds it and the target does not");
+    // INVH is wanted and not held, and the document's own list explains it.
+    expect(report.expected.map((entry) => entry.ticker)).toEqual(["INVH"]);
+    expect(report.expected[0].key).toBe("bridge.reversals_pending");
+    expect(report.expected[0].side).toBe("targeted_not_held");
+    expect(exceptionText(report)).toBe("1 unexpected, 1 expected");
+    // The drift is on the names both books carry, largest first.
+    expect(report.compare?.drifts.map((row) => row.ticker)).toEqual(["SMCI", "KO"]);
+  });
+
+  it("keeps the evening's account-versus-store comparison beside it, never as the current one", () => {
+    const report = classify(MORNING);
+    expect(report.evening?.map((entry) => entry.ticker).sort()).toEqual(["BEN", "WBD"]);
+    expect(report.evening?.map((entry) => entry.side).sort()).toEqual(["at_broker", "in_store"]);
+    // Neither name is in the current comparison's lists, so a reader cannot read the
+    // evening's findings as this morning's answer.
+    const current = [...report.expected, ...report.unexpected].map((entry) => entry.ticker);
+    expect(current.sort()).toEqual(["INVH", "WBD"]);
+  });
+
+  it("compares an evening read with the store, as it always did", () => {
+    const evening = {
+      ...MORNING,
+      actual_holdings: { ...MORNING.actual_holdings, read_by: "evening" },
+    } as Snapshot;
+    const report = classify(evening);
+    expect(report.source).toBe("store");
+    expect(report.compare).toBeNull();
+    expect(report.evening).toBeNull();
+    expect(report.unexpected.map((entry) => entry.ticker).sort()).toEqual(["BEN", "WBD"]);
+    expect(exceptionText(report)).toBe("2 unexpected mismatches");
+  });
+
+  it("says which comparison did not run when the morning read carries no book", () => {
+    const report = classify({
+      actual_holdings: { read_by: "morning", names: [] },
+    } as unknown as Snapshot);
+    expect(report.source).toBe("target");
+    expect(report.read).toBe(false);
+    expect(exceptionText(report)).toBe("the account has not been compared with the target");
   });
 });
 
