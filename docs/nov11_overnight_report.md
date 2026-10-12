@@ -68,10 +68,15 @@ Then the build queue, one commit per item, in the order given:
 
 ## Background processes
 
-None. The two long runs of this batch (the gate suite on `main` in a throwaway worktree
-and on `nov11`) were waited on. `/tmp/efb-main-run` is a `git worktree` of `main`: it is
-**not** part of the branch and can be removed with
-`git worktree remove /tmp/efb-main-run`; nothing was committed there.
+None running, nothing detached and no stash. Three gate-suite runs were waited on - the
+merge, the mid-batch check and the final one - and the throwaway `git worktree` of `main`
+used to ask whether `main` itself was red was removed (`git worktree list` shows only the
+checkout). One thing the next session should know about asking that question: the
+worktree run **is not comparable** to the checkout's, because `live/state/` is git-ignored
+and a fresh worktree has no store mirror, so dozens of tests fail on the mirror's absence
+rather than on the code. `main` was measured instead by checking the checkout out
+temporarily; `main` is red on the artifact-vintage ids this file records, and it is back
+at `37b0287` with the branch checked out again.
 
 ## What the next session must know
 
