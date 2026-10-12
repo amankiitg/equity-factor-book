@@ -78,7 +78,11 @@ def _now() -> str:
 # gap was one short leg the shortability check refused before any order left - a
 # retry would be told the same thing - so that night belongs in the inbox as
 # INCOMPLETE and in the record as a day that is done (item 19).
-COMPLETED_STATUSES = frozenset({"ok", "market_closed", "incomplete"})
+#
+# `traded` is the status of a second start on a close whose legs are already at the
+# broker: no pricing, no orders, no second book email (item 20).
+COMPLETED_STATUSES = frozenset({"ok", "market_closed", "incomplete", "traded"})
+TRADED_STATUS = "traded"
 
 
 def already_ran(job: str, run_date: str) -> bool:
@@ -911,6 +915,81 @@ def evening_bridge(
     )
 
 
+def traded_close(as_of: str) -> dict[str, int] | None:
+    """The close's own leg rows when the broker already holds them, or None.
+
+    `already_ran` counts only a filed day, deliberately, so a day that produced
+    nothing is retried. On 2026-10-08 that rule met a night whose legs were all out at
+    the broker with no `cron_runs` row: a second invocation would not exit at the
+    guard, and it would re-price the book, rewrite the day's proposal, positions and
+    orders rows and send a second email. The orders themselves are safe - every leg's
+    deterministic `client_order_id` is looked up first, so a resubmit is a no-op - so
+    the exposure is a rewritten day and a duplicate email, which is what this reads
+    for (item 20).
+
+    `None` when the close has no leg at the broker, which is the ordinary first run
+    and every run whose submission failed before anything left. Otherwise the counts,
+    including how many legs were left *unconfirmed*: a night with a halted or unknown
+    leg has something for the next tick to try, so the caller keeps today's behaviour
+    and runs - a guard that refused it would leave the leg unsent forever.
+    """
+    from live import morning_job, store
+
+    try:
+        frame = store.select("orders")
+    except Exception as exc:  # noqa: BLE001 - the guard is a refusal, not a write
+        logger.warning("could not read the day's orders: %s", type(exc).__name__)
+        return None
+    if frame.empty or not {"trade_date", "broker_order_id"} <= set(frame.columns):
+        return None
+    days = frame["trade_date"].astype(str).str.slice(0, 10)
+    day = frame.loc[days == str(as_of)[:10]]
+    if day.empty:
+        return None
+    sent = day.loc[day["broker_order_id"].astype(str).str.len() > 0]
+    if sent.empty:
+        return None
+    unconfirmed = 0
+    for row in sent.itertuples(index=False):
+        if morning_job._leg_incomplete(
+            getattr(row, "status", ""), getattr(row, "reason_code", "")
+        ):
+            unconfirmed += 1
+    return {"legs": int(len(day)), "sent": int(len(sent)), "unconfirmed": unconfirmed}
+
+
+def traded_run(run_date: str, counts: dict[str, int]) -> int:
+    """A second start on a close that already traded: no pricing, no orders.
+
+    The day is recorded under its own status so the guard stays closed and no later
+    tick re-prices it, and the message says the one thing the owner needs: this close
+    is already at the broker and this run did nothing. The snapshot is written like
+    every other run's, because the page keys off it - and it is the *same* document
+    the first attempt wrote, since nothing here rebuilds a book.
+    """
+    from live import notify, staleness, store
+
+    dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
+    detail = (
+        f"this close already has {counts['sent']} of {counts['legs']} leg(s) at the "
+        "broker, and no leg is unconfirmed: the day traded, so it was not re-priced"
+    )
+    logger.info("%s, exit 0", detail)
+    result = staleness.error_result(detail, target=run_date)
+    result["status"] = TRADED_STATUS
+    return finish_run(
+        run_date=run_date,
+        result=result,
+        status=TRADED_STATUS,
+        dry_run=dry_run,
+        detail=detail,
+        orders=counts["legs"],
+        sent_orders=counts["sent"],
+        catch_up_sessions=[],
+        actual=None,
+    )
+
+
 def previous_close_reversals(as_of: Any) -> list[str] | None:
     """The previous close's deferral list, from the document that is up.
 
@@ -1430,6 +1509,21 @@ def main() -> int:
     if already_ran("live_daily", run_date):
         logger.info("already ran for %s, exit 0 (idempotent)", run_date)
         return 0
+    # And the guard the filed-check cannot be: a close whose legs are already at the
+    # broker has traded, whatever the day's own row says. Only a close with nothing
+    # unconfirmed is refused here; one with a halted or unknown leg is the retry the
+    # nonzero exit code asks for, and it runs as it always did.
+    traded = traded_close(run_date)
+    if traded is not None and not traded["unconfirmed"]:
+        return traded_run(run_date, traded)
+    if traded is not None:
+        logger.warning(
+            "this close already has %d leg(s) at the broker and %d of them is/are "
+            "unconfirmed, so the evening runs again: a resubmit of a leg with an "
+            "order id is resolved by the broker, never doubled",
+            traded["sent"],
+            traded["unconfirmed"],
+        )
     dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
     from live import appendix as appendix_mod
     from live import preflight, runroot, seed

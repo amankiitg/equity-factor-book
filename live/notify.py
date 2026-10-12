@@ -98,6 +98,10 @@ STATUS_LABELS: dict[str, str] = {
     # At least one leg was halted, left in an unknown state, refused or rejected.
     # The day is not done and will be retried, so it is neither ok nor a failure.
     "incomplete": "incomplete, a leg the broker refused or one that was not confirmed",
+    # A second start on a close whose legs are already at the broker. It does no
+    # work: the day traded, and re-pricing it would rewrite the day's own rows and
+    # send a second book email (item 20).
+    "traded": "traded, the close already has legs at the broker",
     # The exchange was shut: there was no close to price, so the run did nothing
     # and said so. Not a failure, and not a silent evening either.
     "market_closed": "market_closed, the exchange was shut",
@@ -506,6 +510,12 @@ def compose(
     else:
         lines.append(
             "Orders: none. The run failed before sizing, so no book was priced."
+        )
+    if status == "traded":
+        lines.append(
+            "Orders: none from this run. The close already has legs at the broker, "
+            "so the evening was not re-priced and no order was sent; the day's own "
+            "row and snapshot are the ones the first attempt wrote."
         )
     if status == "incomplete" and scrub(detail).strip():
         # Which leg and why: the count alone leaves the owner to open the store to
@@ -963,6 +973,8 @@ def subject_text(
         word = "STALE"
     elif status == "market_closed":
         word = "CLOSED"
+    elif status == "traded":
+        word = "TRADED"
     elif status == "incomplete":
         # Its own word rather than ERROR: the book was priced, the legs that could
         # be sent were sent and the message says which leg was not. On 2026-10-08 the
