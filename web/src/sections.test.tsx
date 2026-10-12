@@ -1132,8 +1132,36 @@ describe("the turnover card", () => {
     // of names that left the book, so the two numbers must not be conflated.
     const note = document.querySelector("[data-flag='turnover-note']") as HTMLElement;
     expect(note.textContent).toContain("reconciliation.intended_notional");
-    expect(note.textContent).toContain("whether or not it was sent");
-    expect(note.textContent).toContain("is not published in this document");
+    expect(note.textContent).toContain("predates the sent-only key");
+  });
+
+  it("stands on the legs sent once the document carries them, and keeps the built figure", () => {
+    // 2026-10-09's own pair: $379,430.49 sent against $388,402.25 built, of which
+    // $8,971.76 was never sent. The card must read the first, which is turnover.
+    const built = 388402.25;
+    const sent = 379430.49;
+    const snapshot: Snapshot = {
+      ...OK,
+      reconciliation: {
+        ...OK.reconciliation,
+        intended_notional: built,
+        sent_notional: sent,
+        unsent_notional: built - sent,
+      },
+    };
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const card = document.querySelector("[data-card='turnover']") as HTMLElement;
+    const nav = (OK.book.gross_notional as number) / (OK.book.gross as number);
+    expect(card.textContent).toContain("legs sent");
+    expect(card.textContent).toContain(percent(sent / nav));
+    expect(card.textContent).toContain(dollars(sent));
+    expect(card.textContent).toContain(dollars(built));
+    expect(card.textContent).toContain("$8,972 was never sent");
+    expect(card.textContent).not.toContain(percent(built / nav));
+    const note = document.querySelector("[data-flag='turnover-note']") as HTMLElement;
+    expect(note.textContent).toContain("reconciliation.sent_notional");
+    expect(note.textContent).toContain("broker was sent");
+    expect(note.textContent).not.toContain("predates the sent-only key");
   });
 
   it("says n/a when the reconciliation carries no intended notional", () => {
@@ -1141,7 +1169,7 @@ describe("the turnover card", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const card = document.querySelector("[data-card='turnover']") as HTMLElement;
     expect(card.textContent).toContain("n/a");
-    expect(card.textContent).toContain("no intended notional");
+    expect(card.textContent).toContain("no notional for this close");
     // And no fabricated zero beside it.
     expect(document.querySelector("[data-flag='turnover-note']")?.textContent).not.toContain(
       "totals $0",

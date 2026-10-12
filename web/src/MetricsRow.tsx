@@ -131,11 +131,31 @@ export function MetricsRow({
   const sent = fills?.n_orders ?? null;
   const nav = facts.nav;
   const intended = snapshot.reconciliation?.intended_notional ?? null;
+  const sentNotional = snapshot.reconciliation?.sent_notional ?? null;
+  const unsentNotional = snapshot.reconciliation?.unsent_notional ?? null;
 
-  // The day's legs, against NAV. The reconciliation states the notional of every leg
-  // the run built, which is the figure that measured the day's trading; the per-name
-  // column the book carries totals less than it, because a name that left the book has
-  // no row to attach its closing leg to.
+  // The day's legs, against NAV. The card stands on the legs the broker was sent,
+  // which is what turnover means; the run's own figure for every leg it built is
+  // stated beside it, and the two are never the same number. On 2026-10-09 the legs
+  // sent were $379,430.49 against $388,402.25 built, and the card read the second.
+  // A document written before the evening published the sent half has only the
+  // built half, and there the card says which one it is standing on.
+  const turnover = sentNotional ?? intended;
+  const turnoverDetail =
+    turnover === null
+      ? "the reconciliation carries no notional for this close"
+      : sentNotional !== null
+        ? `${dollars(sentNotional)} sent of NAV${
+            intended === null || unsentNotional === null
+              ? ""
+              : `, and ${dollars(intended)} built, of which ${dollars(
+                  unsentNotional,
+                )} was never sent`
+          }`
+        : `${dollars(intended ?? 0)} of every leg built (the sent figure is not in this document), of NAV`;
+
+  // The per-name column the book carries totals less than either figure, because a
+  // name that left the book has no row to attach its closing leg to.
   const perNameTotal = (book?.names ?? []).reduce(
     (total, name) => total + Math.abs(name.traded_notional ?? 0),
     0,
@@ -169,13 +189,13 @@ export function MetricsRow({
         />
         <Card
           hook="turnover"
-          label="turnover, order-leg notional"
-          value={percent(nav === null || intended === null ? null : intended / nav)}
-          detail={
-            intended === null
-              ? "the reconciliation carries no intended notional for this close"
-              : `${dollars(intended)} of every leg built, of NAV`
+          label={
+            sentNotional === null
+              ? "turnover, order-leg notional"
+              : "turnover, legs sent"
           }
+          value={percent(nav === null || turnover === null ? null : turnover / nav)}
+          detail={turnoverDetail}
         />
         <Card
           hook="n_eff_kept"
@@ -273,15 +293,21 @@ export function MetricsRow({
           </div>
         </dl>
         <div data-flag="turnover-note" className="mt-2 text-xs text-slate-500">
-          Turnover on the card is <code>reconciliation.intended_notional</code>, every leg the
-          evening built for this close, whether or not it was sent.
+          Turnover on the card is{" "}
+          <code>
+            {sentNotional === null
+              ? "reconciliation.intended_notional"
+              : "reconciliation.sent_notional"}
+          </code>
+          ,{" "}
+          {sentNotional === null
+            ? "every leg the evening built for this close, whether or not it was sent — this document predates the sent-only key, so the card states the built figure and says so."
+            : "the legs the broker was sent for this close; the legs the run built and never sent are stated beside it."}
           {perNameTotal > 0
             ? ` The book's own per-name column totals ${dollars(
                 perNameTotal,
               )} here, and the difference is not an error in either: a name that left the book has no row for its closing leg, so the per-name figure counts the trading of the names the book still holds.`
-            : ""}{" "}
-          The sent-only notional is in the evening&apos;s email and is not published in this
-          document.
+            : ""}
         </div>
       </Details>
     </section>

@@ -320,6 +320,14 @@ export interface TradedRisk {
 export interface Reconciliation {
   expected_cost_bps?: number | null;
   intended_notional?: number | null;
+  /**
+   * The legs the broker was actually sent, and the ones it was not, both in dollars.
+   * `intended_notional` less these two is the figure the page's turnover card used to
+   * stand on alone, and on 2026-10-09 it read $388,402.25 where $379,430.49 was sent.
+   * Absent on every document written before the evening published them.
+   */
+  sent_notional?: number | null;
+  unsent_notional?: number | null;
   filled_notional?: number | null;
   realized_annual_vol?: number | null;
   unexplained_adjustment?: number | null;

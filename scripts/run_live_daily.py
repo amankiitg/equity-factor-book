@@ -462,6 +462,42 @@ def sent_orders(as_of: str) -> tuple[int, float, float]:
     return int(sent.sum()), float(values[sent].sum()), float(values.sum())
 
 
+def _with_sent_halves(
+    reconciliation: dict[str, Any] | None,
+    *,
+    sent_notional: float | None,
+    built: float | None,
+) -> dict[str, Any]:
+    """The day's reconciliation with the sent-only halves of its notional added.
+
+    `intended_notional` is every leg the run built; the page asked it the turnover
+    question, and on 2026-10-09 that read $388,402.25 where $379,430.49 was sent
+    (`docs/backport_runbook.md`, item 31). The two halves are added here rather than
+    written to the day's row because the row has no column for them and a new column
+    is a migration; the snapshot is the page's own document and this is where the
+    question is answered.
+
+    Nothing is published when the two cannot be reconciled: a sent figure larger
+    than the built one is a bookkeeping break, and a null half names it as unknown
+    rather than printing a negative "never sent".
+    """
+    block = dict(reconciliation or {})
+    if sent_notional is None or built is None:
+        return block
+    unsent = float(built) - float(sent_notional)
+    if unsent < -1e-6:
+        logger.warning(
+            "the sent notional ($%.2f) exceeds the built notional ($%.2f): the two "
+            "halves of the turnover are not published",
+            float(sent_notional),
+            float(built),
+        )
+        return block
+    block["sent_notional"] = float(sent_notional)
+    block["unsent_notional"] = max(0.0, unsent)
+    return block
+
+
 def traded_by_name(execution: pd.DataFrame) -> dict[str, float]:
     """{ticker: dollars traded tonight}, the leg's own absolute notional.
 
@@ -980,7 +1016,9 @@ def finish_run(
             run={**row, "store": store_name, "attribution": attribution},
             manifest=manifest,
             book=book,
-            reconciliation=reconciliation,
+            reconciliation=_with_sent_halves(
+                reconciliation, sent_notional=sent_notional, built=gross
+            ),
             construction=snapshot_module.chosen_row(manifest),
             book_reason=book_reason,
             actual=actual,

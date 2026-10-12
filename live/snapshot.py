@@ -350,6 +350,15 @@ def build(
             key: _number((reconciliation or {}).get(key))
             for key in (
                 "intended_notional",
+                # The two halves of the figure above, split by what the broker was
+                # actually sent: a leg with no broker id never left the run, so the
+                # sized figure and the sent one are different questions and the page
+                # asked the first while the email answered the second. Read from the
+                # caller's own summary because the day's row has no column for them;
+                # absent (null) on a document whose writer did not know them, which is
+                # every snapshot published before this key existed.
+                "sent_notional",
+                "unsent_notional",
                 "filled_notional",
                 "realized_annual_vol",
                 "expected_cost_bps",
