@@ -1,3 +1,114 @@
+# Resume here
+
+**Branch `nov11`, pushed to `origin/nov11` at `9c3268d`.** `main` is untouched at
+`1e405be`. Nothing is deployed, nothing was merged to `main`, no live database, R2
+bucket or broker was written, and no secret was printed. Working tree clean (only
+the untracked `artifacts/` folder from the page review).
+
+## Done, with commits
+
+| commit | what |
+|---|---|
+| `4c1d52d` | the setup merge: `origin/backport` into `nov11`, `--no-ff`, twelve conflicts none of them in `live/`, `scripts/` or `efb/` (two docs unions, seven regenerated fixtures) |
+| `0e218be` | the triage table for all thirty-three items (section 2 below) |
+| `c21cbd4` | research: turnover and cost (section 3) |
+| `7318552` | research: the hedge's concentration (section 3) |
+| `05e4896` | BUILD item 21: the message's order count is the legs sent |
+| `cd1d2e9` | BUILD item 2: the morning compares the fills against the trading half |
+| `2fe6753` | BUILD item 29: a missing `beta_history` costs two columns, not the section |
+| `8be4db6` | BUILD items 17 and 15: the universe is deduplicated; a zero variance is refused on both sides |
+| `e155072` | BUILD item 6: the count of names the risk block cannot measure is reported |
+| `9c3268d` | BUILD items 1 and 22: the bridge names the legs it did not send and the position nobody ordered (this is also the item that was finished at the pause) |
+
+**Two commits bundle two small items each** (`17`+`15`, and `1`+`22`): the pairs share
+one file and one test module, and splitting them would have meant two commits
+touching the same lines. Every other item is its own commit.
+
+## Item in progress at the pause
+
+None: items 1 and 22 were finished, tested and committed as `9c3268d` before the
+pause. Nothing is left uncommitted and there is no stash.
+
+## Next items, in the order they were being worked
+
+The research is done; this is the build queue from here, highest value first:
+
+1. **item 3 / 33** - `reconciliation.filled_notional` is `0.0` on every live row.
+   Write it from the fills the morning already reconciles (or drop the column).
+   `live/reconcile.py:202` writes `float("nan")` for `realized_annual_vol`; the
+   `filled_notional` placeholder is written by the same row builder.
+2. **item 26** - `realized_annual_vol` NaN on every row; compute it from the live
+   P&L the loop now stores, or drop it. Same file as 33, so read them together.
+3. **item 28** - the attribution step's outcome goes on the run row and in the
+   evening email (`scripts/run_live_daily.py:1751`/`:1758`, `live/notify.py:640-672`).
+4. **item 31, 32, 16** - publish `sent_notional`, the under-minimum tickers, and
+   `dropped_no_risk` on the page. Cheap: one key each, plus the page-side render for
+   16 (the page is a separate, deployed artefact - the key can land first).
+5. **item 30** - publish the previous close's `bridge.reversals_pending`.
+6. **item 14** - one source for the specific variance: `store_proposal` refuses
+   against the manifest's own `dropped_no_risk` instead of re-reading a root.
+7. **item 27** - the seed preflight over `seed.record_reads`/`manifest_for`.
+8. **item 4, 20, 19** - the morning's double reconcile, the evening's retry guard,
+   and INCOMPLETE exiting 0 on a refused leg.
+9. **item 9** - `excluded` gains a reason and an age.
+10. **item 5** - the 28-column NOT NULL NaN audit (read-only `SELECT`s).
+11. **FLAG items**, each with a default-off flag and an identity proof: **18**
+    (shortability before sizing), **11** (the PSKY/SKYD rename at the fetch), **12**
+    (the floor's entry/exit band), and the **cap-then-rehedge hedge** that the
+    section 3 research recommends - that last one is a trading change and needs the
+    owner's approval even behind a flag.
+12. **item 23** at the finish: refresh `docs/known_test_failures.md` from a run on
+    `main` with the gate's command, one id at a time, each with its cause.
+
+## Background processes
+
+None running. The overnight research runs (three research scripts) and the baseline
+test suite all completed; the two long ones (`nov11_turnover_research.py`,
+`nov11_hedge_research.py --scope backtest`) were waited on and their outputs are in
+`docs/research/*.json`. No server, watcher or detached process was left behind.
+
+## What the next session must know
+
+1. **The baseline on the merge commit is `7 failed, 1462 passed`** with the gate's
+   own command (`.venv/bin/python -m pytest tests/ -q -m "not slow and not
+   requires_live_tree and not merge_guard"`). The seven are the four
+   `test_week2_spinoff` ids that item 23 lists as missing from the known-failures
+   file, two in `test_e13_design_note` (a new test on the backport branch: the
+   module map does not know the merged tree's modules), and
+   `test_e11_corporate_actions.py::test_the_aph_split_is_reproduced_from_the_real_rows`.
+   `tests/test_e12_attribution.py::test_the_pipeline_attributes_the_seed_book_every_session`
+   is **borderline against pytest-timeout**: 89.9s alone against a 120s limit, and it
+   timed out once when the machine was loaded. Treat a timeout there as load, not as
+   a regression, and re-run it alone.
+2. **`tests/test_e11_snapshot.py::test_the_hedge_drives_the_exposures_to_zero` is red
+   in a targeted run and green inside the full suite** - item 23 says so, and it
+   reproduced exactly that way tonight. It is not a regression from this branch.
+3. **The merged tree's fixtures were regenerated** and that moved `book.gross` to
+   `0.9999999999999999` for a book that is exactly invested, which broke a page test
+   pinned with `toBe(1)`. Fixed in `9c3268d` with `toBeCloseTo(1, 12)`. Any further
+   writer change needs `PYTHONPATH=. .venv/bin/python scripts/make_web_fixtures.py`
+   and `npx vitest run` in `web/`.
+4. **The two research conclusions in five lines each** are in section 3; their
+   headline is that the research cost model charges no borrow at all while the live
+   model's borrow is 99 bp a year against a 169 bp gross return, and that the live
+   loop trades 40-50% of the book's gross every session against the panel's 35.6%
+   once a month - about 25x the turnover per unit of time.
+5. **The cost model's horizon is the decision that unblocks the rest.** The live
+   model charges spread, commission and borrow as 21-session holding costs at a
+   frequency of one session, so at the live loop's own frequency the borrow
+   overstates the annual cost by 21x. Every "expected cost" the loop prints, and
+   every judgement about whether a night's trading was worth it, rests on that until
+   it is settled. It is decision 1 in section 7.
+6. **`live/evening_job.py` gained a module logger** (`logger = logging.getLogger`)
+   in `8be4db6`; it previously logged through nothing, which is why item 17's
+   duplicate warning needed it.
+7. **Read-only live reads used tonight**: `efb.positions`, `efb.proposals`,
+   `efb.orders` via `live/store.py`. The `.env` file is only ever read through
+   code, never echoed. The store's live rows lag the committed research tree
+   (the committed panel ends 2026-10-02), so research scripts fall back to the
+   artifact's own last block for live closes after that - stated in
+   `scripts/nov11_hedge_research.py::pieces_at`.
+
 # The November 11 list, worked overnight
 
 Branch `nov11`, cut from `origin/main` (`1e405be`) with `origin/backport`
