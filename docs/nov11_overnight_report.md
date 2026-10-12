@@ -1,113 +1,96 @@
 # Resume here
 
-**Branch `nov11`, pushed to `origin/nov11` at `9c3268d`.** `main` is untouched at
-`1e405be`. Nothing is deployed, nothing was merged to `main`, no live database, R2
-bucket or broker was written, and no secret was printed. Working tree clean (only
-the untracked `artifacts/` folder from the page review).
+**Branch `nov11`, pushed to `origin/nov11`.** `main` is untouched at `37b0287` (the
+page-v3 merge; it was `1e405be` when this batch was cut). Nothing is deployed, nothing
+was merged to `main`, neither R2 bucket nor the broker was called, the live database was
+only ever read (and only through `live/store.py`), and no secret was printed. Working
+tree clean apart from the untracked `artifacts/` folder from the page review.
 
-## Done, with commits
+## What this batch did, in the order it was asked for
 
-| commit | what |
-|---|---|
-| `4c1d52d` | the setup merge: `origin/backport` into `nov11`, `--no-ff`, twelve conflicts none of them in `live/`, `scripts/` or `efb/` (two docs unions, seven regenerated fixtures) |
-| `0e218be` | the triage table for all thirty-three items (section 2 below) |
-| `c21cbd4` | research: turnover and cost (section 3) |
-| `7318552` | research: the hedge's concentration (section 3) |
-| `05e4896` | BUILD item 21: the message's order count is the legs sent |
-| `cd1d2e9` | BUILD item 2: the morning compares the fills against the trading half |
-| `2fe6753` | BUILD item 29: a missing `beta_history` costs two columns, not the section |
-| `8be4db6` | BUILD items 17 and 15: the universe is deduplicated; a zero variance is refused on both sides |
-| `e155072` | BUILD item 6: the count of names the risk block cannot measure is reported |
-| `9c3268d` | BUILD items 1 and 22: the bridge names the legs it did not send and the position nobody ordered (this is also the item that was finished at the pause) |
+STEP 0, the page-v3 merge onto `nov11`: **completed with no conflicts** (`2613dc2`,
+parents `eac1aad` + `37b0287`). `main`'s page-v3 touched `web/src` only, so both sides
+survive by construction - page-v3's morning account-vs-target check, freshness clock and
+sector drivers, and this branch's new bridge terms. The fixture writer did not change, so
+the fixtures were not regenerated; `tests/test_e11_web_fixtures.py` passes 34/34, the web
+suite is **207 passed** (was 186 before page-v3 arrived) and the full Python suite on the
+merged tree is the same seven reds as the pre-merge baseline.
 
-**Two commits bundle two small items each** (`17`+`15`, and `1`+`22`): the pairs share
-one file and one test module, and splitting them would have meant two commits
-touching the same lines. Every other item is its own commit.
+Then the build queue, one commit per item, in the order given:
 
-## Item in progress at the pause
+| order | item | commit | what landed |
+|---|---|---|---|
+| 1 | 3 / 33 (+ the write half of 26) | `9f68c89` | the morning back-fills `filled_notional` and `realized_annual_vol` |
+| 2 | 28 | `8a4c709` | the attribution step's outcome reaches the run row and the message |
+| 3 | 31 | `6dbd0c1` | the sent-only notional is published and the turnover card stands on it |
+| 4 | 32 | `1bad999` | a floor-skipped leg classifies by ticker, not by count |
+| 5 | 16 | `4d54469` | the names the risk model could not measure are published and drawn |
+| 6 | 30 | `90a87ed` | the previous close's deferral list is republished, and decides the class |
+| 7 | 14 | `ac22681` | one source for the specific variance: the manifest's own drop record |
+| 8 | 27 | `8a1b368` | the evening refuses a seed that does not cover every live input |
+| 9 | 19 | `1aaca52` | a refused leg is INCOMPLETE and the day is filed; an unconfirmed one retries |
+| 10 | 20 | `f072f2e` | a close whose legs are at the broker is not priced again |
+| 11 | 4 | `23e6b5d` | the morning reconciles a close once |
+| 12 | 9 | `b60e263` | an excluded name carries a reason and an age |
+| 13 | 5 | `fb36ca0` | the NOT NULL NaN audit, and the seven columns it could not read |
+| 14 | 12 | `c17a40f` | the floor band as a default-off flag, with a measured negative result |
+| 15 | 18 | `82cb4a6` | the broker's lending flags, read before the sizing, behind a flag |
+| 16 | cadence | `65945a1` | the memo, and why the switch is not built |
+| 17 | 23 | this commit | the known-failures refresh, from the gate's own command |
 
-None: items 1 and 22 were finished, tested and committed as `9c3268d` before the
-pause. Nothing is left uncommitted and there is no stash.
+## What is NOT done, and why (the next session starts here)
 
-## Next items, in the order they were being worked
-
-The research is done; this is the build queue from here, highest value first:
-
-1. **item 3 / 33** - `reconciliation.filled_notional` is `0.0` on every live row.
-   Write it from the fills the morning already reconciles (or drop the column).
-   `live/reconcile.py:202` writes `float("nan")` for `realized_annual_vol`; the
-   `filled_notional` placeholder is written by the same row builder.
-2. **item 26** - `realized_annual_vol` NaN on every row; compute it from the live
-   P&L the loop now stores, or drop it. Same file as 33, so read them together.
-3. **item 28** - the attribution step's outcome goes on the run row and in the
-   evening email (`scripts/run_live_daily.py:1751`/`:1758`, `live/notify.py:640-672`).
-4. **item 31, 32, 16** - publish `sent_notional`, the under-minimum tickers, and
-   `dropped_no_risk` on the page. Cheap: one key each, plus the page-side render for
-   16 (the page is a separate, deployed artefact - the key can land first).
-5. **item 30** - publish the previous close's `bridge.reversals_pending`.
-6. **item 14** - one source for the specific variance: `store_proposal` refuses
-   against the manifest's own `dropped_no_risk` instead of re-reading a root.
-7. **item 27** - the seed preflight over `seed.record_reads`/`manifest_for`.
-8. **item 4, 20, 19** - the morning's double reconcile, the evening's retry guard,
-   and INCOMPLETE exiting 0 on a refused leg.
-9. **item 9** - `excluded` gains a reason and an age.
-10. **item 5** - the 28-column NOT NULL NaN audit (read-only `SELECT`s).
-11. **FLAG items**, each with a default-off flag and an identity proof: **18**
-    (shortability before sizing), **11** (the PSKY/SKYD rename at the fetch), **12**
-    (the floor's entry/exit band), and the **cap-then-rehedge hedge** that the
-    section 3 research recommends - that last one is a trading change and needs the
-    owner's approval even behind a flag.
-12. **item 23** at the finish: refresh `docs/known_test_failures.md` from a run on
-    `main` with the gate's command, one id at a time, each with its cause.
+1. **Item 11 (the PSKY/SKYD rename at the pricing fetch)** - not built. It changes the
+   sized universe (SKYD becomes sizeable), and *applying* it needs a fetch that writes
+   `efb.e11_prices`, which is the owner's. The flag is straightforward once the fetch is
+   allowed: resolve the rename where the prices are read, behind a default-off flag, with
+   the identity proof on the current tree. The evidence is in the runbook (item 11) and
+   in `docs/research/nov11_hedge.md`'s PSKY note.
+2. **The cap-then-rehedge hedge** - not built. The research recommends it
+   (`docs/research/nov11_hedge.md`: it holds both the 10% cap and exact neutrality at
+   lower vol, same turnover), and it is a trading change the owner has to approve even
+   behind a flag. The next step is the flag in `live/evening_job.py`'s hedge step with
+   the same two-build identity proof the floor band got.
+3. **Item 5's live half**: the audit tool is committed and it runs, but this session has
+   no `EFB_SUPABASE_DB_URL`, so seven columns read `not read`. Running
+   `.venv/bin/python scripts/nov11_notnull_audit.py --out docs/nov11_notnull_audit.md`
+   with the URL set closes it.
+4. **Item 26's historical rows**: the write half is in (`9f68c89`), so every row written
+   from now on carries a measured `realized_annual_vol`. The nine rows already stored
+   keep their NaN until someone runs the back-fill over them, which is a live write.
+5. **Items 10 and 13** (why DD is missing from the returns panel; the six names the risk
+   block carries that the universe does not) were RESEARCH items and were not in the
+   queue this batch was given. Not attempted.
+6. **Item 24's relabel** (`variance_share_cap_binds` is computed on the traded book, not
+   the sizing stage): the research is done, the relabel itself is one comment and one
+   label in `live/reconcile.py`/the page, and it is not done.
+7. **Item 23** is done in the same commit as this report: see section 6.
 
 ## Background processes
 
-None running. The overnight research runs (three research scripts) and the baseline
-test suite all completed; the two long ones (`nov11_turnover_research.py`,
-`nov11_hedge_research.py --scope backtest`) were waited on and their outputs are in
-`docs/research/*.json`. No server, watcher or detached process was left behind.
+None. The two long runs of this batch (the gate suite on `main` in a throwaway worktree
+and on `nov11`) were waited on. `/tmp/efb-main-run` is a `git worktree` of `main`: it is
+**not** part of the branch and can be removed with
+`git worktree remove /tmp/efb-main-run`; nothing was committed there.
 
 ## What the next session must know
 
-1. **The baseline on the merge commit is `7 failed, 1462 passed`** with the gate's
-   own command (`.venv/bin/python -m pytest tests/ -q -m "not slow and not
-   requires_live_tree and not merge_guard"`). The seven are the four
-   `test_week2_spinoff` ids that item 23 lists as missing from the known-failures
-   file, two in `test_e13_design_note` (a new test on the backport branch: the
-   module map does not know the merged tree's modules), and
-   `test_e11_corporate_actions.py::test_the_aph_split_is_reproduced_from_the_real_rows`.
-   `tests/test_e12_attribution.py::test_the_pipeline_attributes_the_seed_book_every_session`
-   is **borderline against pytest-timeout**: 89.9s alone against a 120s limit, and it
-   timed out once when the machine was loaded. Treat a timeout there as load, not as
-   a regression, and re-run it alone.
-2. **`tests/test_e11_snapshot.py::test_the_hedge_drives_the_exposures_to_zero` is red
-   in a targeted run and green inside the full suite** - item 23 says so, and it
-   reproduced exactly that way tonight. It is not a regression from this branch.
-3. **The merged tree's fixtures were regenerated** and that moved `book.gross` to
-   `0.9999999999999999` for a book that is exactly invested, which broke a page test
-   pinned with `toBe(1)`. Fixed in `9c3268d` with `toBeCloseTo(1, 12)`. Any further
-   writer change needs `PYTHONPATH=. .venv/bin/python scripts/make_web_fixtures.py`
-   and `npx vitest run` in `web/`.
-4. **The two research conclusions in five lines each** are in section 3; their
-   headline is that the research cost model charges no borrow at all while the live
-   model's borrow is 99 bp a year against a 169 bp gross return, and that the live
-   loop trades 40-50% of the book's gross every session against the panel's 35.6%
-   once a month - about 25x the turnover per unit of time.
-5. **The cost model's horizon is the decision that unblocks the rest.** The live
-   model charges spread, commission and borrow as 21-session holding costs at a
-   frequency of one session, so at the live loop's own frequency the borrow
-   overstates the annual cost by 21x. Every "expected cost" the loop prints, and
-   every judgement about whether a night's trading was worth it, rests on that until
-   it is settled. It is decision 1 in section 7.
-6. **`live/evening_job.py` gained a module logger** (`logger = logging.getLogger`)
-   in `8be4db6`; it previously logged through nothing, which is why item 17's
-   duplicate warning needed it.
-7. **Read-only live reads used tonight**: `efb.positions`, `efb.proposals`,
-   `efb.orders` via `live/store.py`. The `.env` file is only ever read through
-   code, never echoed. The store's live rows lag the committed research tree
-   (the committed panel ends 2026-10-02), so research scripts fall back to the
-   artifact's own last block for live closes after that - stated in
-   `scripts/nov11_hedge_research.py::pieces_at`.
+1. **The seven reds are pre-existing** and are listed with causes in
+   `docs/known_test_failures.md` (refreshed, section 6). Item 23's list is now the file's.
+2. **Two flags are in the tree, both off**: `EFB_FLOOR_RELEASE` (item 12, with a
+   measured negative result - read the note before turning it on) and
+   `EFB_SHORTABILITY_PRECHECK` (item 18, unverified against the live broker).
+3. **The floor band's measurement is a finding, not a bug**: on 2026-09-21's construction
+   the band changes the kept set rather than holding it. `docs/research/nov11_turnover.md`
+   has the table and the reason.
+4. **`_rows()` in `scripts/run_live_daily.py`** is the one place manifest step-lists are
+   turned into message rows; items 9/16/18 all use it.
+5. **The page changed too**: `web/src/exceptions.ts` now has four expected classes and
+   only two `UNCHECKED` ones, and `web/src/MetricsRow.tsx` stands the turnover card on
+   `sent_notional` when the document carries it. The web suite is 207 tests; run
+   `npx vitest run` in `web/` after any further `live/snapshot.py` shape change, and
+   regenerate fixtures with `PYTHONPATH=. .venv/bin/python scripts/make_web_fixtures.py`
+   whenever the snapshot writer changes (this batch did, twice).
 
 # The November 11 list, worked overnight
 
@@ -181,22 +164,182 @@ Order of work: the research first (section 3), then the builds one commit each
 (section 4), then the flags (section 5), then the gate and the known-failures
 refresh (section 6).
 
+### Status per item, at the end of this batch
+
+| item | status | where |
+|---|---|---|
+| 1, 2, 3, 4, 5, 6, 9, 14, 15, 16, 17, 18, 19, 20, 21, 22, 26, 27, 28, 29, 30, 31, 32, 33 | **done** (two with a live-only half) | section 4 |
+| 7 | **done on main before this batch**; the triage's numbers were re-checked against `risk_names_or_stop`/`MAX_RISK_DROPS` and hold | `live/evening_job.py` |
+| 8 | **partly**: the count is reported (item 6); a name with risk and no signal still has no stated treatment, which is a trading decision | - |
+| 10, 13 | **not attempted** - research questions that were not in the queue this batch was given | - |
+| 11 | **not built** - applying it writes `efb.e11_prices`, which is the owner's | section 5 |
+| 12 | **built and off**, with a measured negative result | section 5 |
+| 23 | **done** - `docs/known_test_failures.md` refreshed with the branch's seven | section 6 |
+| 24 | research done; the `variance_share_cap_binds` relabel is **not done** | section 3 |
+| 25 | the bridge term is in (item 22); reading the broker's announcements is **blocked** (broker calls) | section 4 |
+| cap-then-rehedge | **not built** - a trading change the owner has to approve | section 5 |
+| cadence | **memo only**, and the memo says why | `docs/research/nov11_cadence.md` |
+
 ## 3. Research
 
-(to be completed)
+Two notes, each with its numbers beside it in a JSON file, written before any code in
+this batch.
+
+**`docs/research/nov11_turnover.md`** - cost and turnover. The research engine charges
+**no borrow at all**; the live cost model charges spread, commission and borrow as
+21-session holding costs at a *1-session* frequency, so borrow is overstated 21x and it
+is 99 bp of the 169 bp gross return - the design book's net Sharpe is 0.93 on the
+engine's convention and **0.30 on the live one**. The live loop trades 40-50% of gross
+every session against the panel's 35.6% once a month, about 25x the turnover per unit of
+time, for 6.5-7.8% of NAV a year against a 1.7% gross edge. The floor's own churn is 147
+round trips in nine closes, 84 returning the next session: **6.6 bp of NAV against a 0.67
+bp per-session gross edge**, so the round-trip churn at the floor costs more than the
+book's entire gross edge before any signal-driven trading is counted. Recommendation: fix
+the cost model's horizon and add borrow to the engine before touching frequency.
+
+**`docs/research/nov11_hedge.md`** - the hedge's concentration. The exact hedge leaves
+20.4% mean and 28.8% worst single-name variance share on the live books since 2026-10-01
+(SMCI 12.6% and MRNA created with no alpha on 2026-10-08, after a cap that held at 9.97%
+pre-hedge). **Cap-then-rehedge holds both the 10% cap and exact factor neutrality at
+lower vol and the same turnover** - recommended; minimum-variance factor neutralisation
+has the lowest vol but 4.9% more gross and 81 flips; on the 176-month panel the three are
+indistinguishable because the cap never binds there.
+
+**`docs/research/nov11_cadence.md`** (written in this batch) - the three cadence shapes
+side by side, why "run nightly, trade monthly" is a store/page design question rather
+than a switch, and what the numbers say to settle first (the horizon, then the engine's
+missing borrow).
 
 ## 4. Builds
 
-(to be completed)
+One commit per item; two commits bundle two items each where the pair shares a file and a
+test module (17+15, 1+22), which is disclosed here and in the commit messages.
+
+| item | commit | the change | tests |
+|---|---|---|---|
+| 21 | `05e4896` | the message's order count is the legs with a broker id | `tests/test_nov11_sent_orders.py` |
+| 2 | `cd1d2e9` | the morning compares realized cost against the trading half, borrow beside it | `tests/test_e11_notify.py` |
+| 29 | `2fe6753` | a missing `beta_history` costs two columns, not the section | `tests/test_nov11_beta_fallback.py` |
+| 17 + 15 | `8be4db6` | the universe is deduplicated; a zero variance is refused on both sides | `tests/test_nov11_universe_and_zero.py` |
+| 6 | `e155072` | the count of names the risk block cannot measure is reported | `tests/test_nov11_missing_var.py` |
+| 1 + 22 | `9c3268d` | the bridge names the legs it did not send and the position nobody ordered | `tests/test_e11_bridge.py` |
+| 3 + 33 | `9f68c89` | the morning back-fills `filled_notional` and `realized_annual_vol` | `tests/test_nov11_reconcile_backfill.py` |
+| 28 | `8a4c709` | the attribution step's outcome is a run-row flag and a message line | `tests/test_nov11_attribution_flag.py` |
+| 31 | `6dbd0c1` | `reconciliation.sent_notional`/`unsent_notional` published; the card stands on the sent half | `tests/test_nov11_sent_notional_snapshot.py`, `web/src/sections.test.tsx` |
+| 32 | `1bad999` | a floor-skipped leg is classified by ticker; the class leaves `UNCHECKED` | `web/src/exceptions.test.ts` |
+| 16 | `4d54469` | `breadth.dropped_no_risk` published and drawn under the construction telemetry | `tests/test_nov11_breadth_drops.py`, `web/src/sections.test.tsx` |
+| 30 | `90a87ed` | `bridge.previous_reversals_pending`, read from the document that is up, decides the class | `tests/test_nov11_previous_reversals.py`, `web/src/exceptions.test.ts` |
+| 14 | `ac22681` | the write refuses against the manifest's own drop record, not a second artifact read | `tests/test_nov11_universe_and_zero.py`, `tests/test_run_live_daily.py` |
+| 27 | `8a1b368` | `seed.preflight_inputs` refuses a tree that does not hold every declared live input | `tests/test_nov11_seed_preflight.py` |
+| 19 | `1aaca52` | a refused leg is INCOMPLETE, named, filed, exit 0; an unconfirmed leg still retries | `tests/test_e11_notify.py`, `tests/test_run_live_daily.py` |
+| 20 | `f072f2e` | the evening reads the close's own legs and refuses to re-price a traded close | `tests/test_nov11_retry_guards.py` |
+| 4 | `23e6b5d` | the morning compares the close with the newest close it has reconciled | `tests/test_week1_fills_cron.py` |
+| 9 | `b60e263` | `excluded_detail`: a reason per cause and an age from the stored manifests | `tests/test_nov11_excluded.py` |
+| 5 | `fb36ca0` | `scripts/nov11_notnull_audit.py`, read-only, plus the mirror's answer | `tests/test_nov11_notnull_audit.py` |
+| 12 | `c17a40f` | `EFB_FLOOR_RELEASE`: the band, off, with the identity proof and a measured negative result | `tests/test_nov11_floor_band.py` |
+| 18 | `82cb4a6` | `EFB_SHORTABILITY_PRECHECK`: the broker's lending flags before the sizing | `tests/test_nov11_shortability.py` |
+| cadence | `65945a1` | the memo; the switch is not built, and it says why | - |
+| 23 | this commit | `docs/known_test_failures.md` refreshed from the gate's own command | the suite itself |
+
+Six of the twelve web fixtures changed in this batch, and only because the snapshot
+writer did: `reconciliation.sent_notional`/`unsent_notional` (item 31),
+`bridge.previous_reversals_pending` (item 30) and `breadth.dropped_no_risk` (item 16) are
+new keys on every document, all null or empty on the fixtures because the fixture writer
+passes no source for them. Nothing else moved.
 
 ## 5. Flags
 
-(to be completed)
+| flag | item | default | the identity proof | verified |
+|---|---|---|---|---|
+| `EFB_FLOOR_RELEASE` | 12 | unset = `1.0` = release at the floor | two builds of the live construction, kept book identical name for name and weight for weight (`tests/test_nov11_floor_band.py::test_the_default_book_is_identical_weight_for_weight`) | **built and off**, with a negative measurement attached |
+| `EFB_SHORTABILITY_PRECHECK` | 18 | unset = off; only the exact word `true` opens it | no source injected means no name dropped: two builds, identical weight for weight (`tests/test_nov11_shortability.py`) | **built and off**; the read is exercised against a recorded feed shape, not the live broker |
+
+**Not built, and why**: item 11's rename flag (applying it needs a fetch that writes
+artifacts - the owner's), and the cap-then-rehedge hedge (a trading change the owner has
+to approve even behind a flag; the research recommends it and the identity proof is the
+same two-build pattern).
+
+**The cadence flag**: not built either, and `docs/research/nov11_cadence.md` is the reason
+rather than an excuse. "Run nightly, trade monthly" needs the loop to distinguish the book
+it *publishes* from the book it *holds*, and today `efb.positions`, the snapshot's `book`,
+the bridge's kept side and the page's sector deltas are one object; a switch wired into
+the submission path alone would leave the positions check, the bridge's identities and the
+page's exception count amber every non-cadence night with nothing wrong.
 
 ## 6. Tests
 
-(to be completed)
+The gate command, run three times in this batch:
+
+```
+.venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"
+```
+
+| run | tree | result | what it proved |
+|---|---|---|---|
+| the page-v3 merge | `nov11` at `2613dc2` | 7 failed, 1483 passed | the merge itself added no red |
+| mid-batch | `nov11` at `65945a1` | **14 failed**, 1531 passed | seven *new* reds, all of them tests the batch's own behaviour changes had written over |
+| final | `nov11` at `d3d8a56` | **7 failed, 1538 passed, 1 skipped, 47 deselected** (11m48s) | zero new against the baseline |
+
+The seven fixed between the second and third runs are the reason the per-item runs are
+not enough, and they are listed in `d3d8a56`: item 19 moved the shortability refusal out
+of `incomplete_legs` (`test_week1_borrow`, `test_e11_execution`, `test_e11_preflip_fixes`
+asserted the old shape) and item 27's preflight refuses a tree that does not hold a
+declared live input (`test_e11_staleness`'s synthetic tree wrote "all nine artifacts" and
+now writes the tenth). Every one of the four is a *test* updated to the behaviour the
+item asked for, not a behaviour reverted to make a test pass.
+
+`docs/known_test_failures.md` is refreshed with the branch's own seven, each with its
+cause (item 23): the four `test_week2_spinoff` ids are one CTVA back-adjustment refusal,
+the two `test_e13_design_note` ids are the module-map enumeration (mechanical when a
+branch adds modules), and the APH split is artifact vintage. The file's older 55-id
+measurement on `main` is kept below them as the record of what the backport cleared.
+
+Per-item tests, all green: `tests/test_nov11_sent_orders.py`,
+`tests/test_nov11_sent_notional_snapshot.py`, `tests/test_nov11_breadth_drops.py`,
+`tests/test_nov11_previous_reversals.py`, `tests/test_nov11_universe_and_zero.py`,
+`tests/test_nov11_seed_preflight.py`, `tests/test_nov11_attribution_flag.py`,
+`tests/test_nov11_reconcile_backfill.py`, `tests/test_nov11_retry_guards.py`,
+`tests/test_nov11_excluded.py`, `tests/test_nov11_notnull_audit.py`,
+`tests/test_nov11_floor_band.py`, `tests/test_nov11_shortability.py`, plus
+`tests/test_e11_bridge.py`, `tests/test_e11_notify.py`, `tests/test_run_live_daily.py`,
+`tests/test_week1_fills_cron.py`, `tests/test_e11_web_fixtures.py` and the web suite
+(`npx vitest run` in `web/`: **207 passed**). `make lint` is clean (ruff, mypy on
+`efb`/`live`/`scripts`, black).
+
+The two ``slow`` identity proofs are marked `slow` and deselected by the gate command, so
+they were run explicitly: `tests/test_nov11_floor_band.py -m slow` (12.1s) and the
+`test_nov11_shortability.py` identity case (11.1s), both green.
 
 ## 7. Decisions only the owner can make
 
-(to be completed)
+Ranked by what unblocks the most, and each one is a decision rather than a task.
+
+1. **The cost model's horizon** (`docs/research/nov11_turnover.md`). The live loop trades
+   every session while the model charges spread, commission and borrow on a 21-session
+   horizon, so its largest term is overstated 21x. Every expected cost, every breakeven
+   and every "was this trade worth it" answer rests on it. This is the one decision that
+   changes what other decisions mean.
+2. **Borrow in the research engine** (`efb/costs.py::_trade_cost` charges none). The
+   design book was selected, and its Sharpe reported as ~1.0, on a cost model that omits
+   the term that is 99 bp of its 169 bp live gross return; on the live model the same
+   book's net Sharpe is 0.30. Adding it re-opens the E8 construction choice.
+3. **The hedge**: cap-then-rehedge is recommended by `docs/research/nov11_hedge.md` and is
+   not built; approving it is a trading decision, and the flag and its identity proof are
+   a bounded piece of work once approved.
+4. **The rebalance cadence** (`docs/research/nov11_cadence.md`): nightly, monthly, or
+   run-nightly-trade-monthly. The third needs the published book and the held book to
+   become two objects in the store, the bridge and the page - a design decision, not a
+   switch.
+5. **Whether to open `EFB_SHORTABILITY_PRECHECK`** (item 18). It changes the book, its
+   breadth and its forecast by leaving out names the broker will not lend; the flag is
+   built, off, and unverified against the live broker by design.
+6. **Whether to open `EFB_FLOOR_RELEASE`** (item 12) - and to read the measurement first:
+   on the live construction the band changes the kept set rather than holding it, so the
+   shape that reduces churn is a no-trade band on the *leg*, which is its own decision.
+7. **The three live-only halves**: running the NaN audit with `EFB_SUPABASE_DB_URL` set
+   (item 5), back-filling `realized_annual_vol`/`filled_notional` on the nine stored rows
+   (items 26/33), and the seed push that closes item 27's push side.
+8. **Item 11's rename fetch**: applying it writes `efb.e11_prices`, so it is the owner's
+   even though the flag is small.
+9. **Items 10, 13 and 24's relabel**: two research questions left unanswered and one
+   label to move. All three are cheap and none is blocking.

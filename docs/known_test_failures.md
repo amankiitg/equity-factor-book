@@ -1,5 +1,40 @@
 # The known test failures, and what a report has to do with them
 
+## The list a report compares against: seven ids, measured on this branch
+
+Measured on `nov11` at `d3d8a56` on 2026-10-12, with the gate's own command:
+
+```
+.venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"
+```
+
+**7 failed, 1538 passed, 1 skipped, 47 deselected** in 11m48s. These seven are the
+list: the backport branch cleared 48 of the 55 in the older measurement below, and
+these are what is still red. A report names them as known and counts nothing else as
+anything but new.
+
+| id | cause |
+|---|---|
+| `tests/test_week2_spinoff.py::test_the_artifact_is_written_only_when_something_was_applied` | `ValueError: CTVA: the vendor back-adjusted the last stored session (ratio 0.150038) with no split record behind it, so the run stops rather than guessing what happened`. The vendor's series carries a 6.7x back-adjustment on the last stored session that no split record explains, and the spin-off rule refuses to apply it. All four ids in this file are that one refusal raised from four different entry points: the artifact write, the failing vendor read, the hung read and the read that answered with nothing |
+| `tests/test_week2_spinoff.py::test_a_vendor_read_that_fails_leaves_the_print_and_the_flag` | the same CTVA refusal |
+| `tests/test_week2_spinoff.py::test_a_hung_spin_off_read_is_named_in_the_evening_email` | the same CTVA refusal |
+| `tests/test_week2_spinoff.py::test_the_read_that_answered_and_found_nothing_is_not_a_failure` | the same CTVA refusal |
+| `tests/test_e13_design_note.py::test_every_module_in_the_repository_appears_in_the_map` | 26 modules are not in the port map: `live/bridge.py`, `live/preflight.py`, this branch's five `scripts/nov11_*` research and audit scripts, and 18 `web/src/*` files. This test enumerates the repository, so it grows every time a module lands and is re-recorded with the map, never mid-work |
+| `tests/test_e13_design_note.py::test_the_stored_module_count_is_the_count_this_test_measures` | the same enumeration: 105 stored against 135 measured |
+| `tests/test_e11_corporate_actions.py::test_the_aph_split_is_reproduced_from_the_real_rows` | the split reproduction recovers 82.78 from the real `data/raw` rows and the stored row expects 82.07 at a 10% bound, so the split the test reproduces is not the one the real rows now carry |
+
+The CTVA refusal and the APH split are **artifact vintage**: the stored expectations
+predate the current `data/` bytes, and both clear by re-recording from the refreshed
+rows, not by changing the rule. The two `test_e13_design_note` ids are **mechanical**:
+they follow from this branch adding modules and web sources, and they clear by
+re-recording the map at the merge. Neither group is a defect in the code the branch
+changes, and the branch's own suite - 1,538 tests - is green.
+
+The older measurement below is kept as the record of what the backport cleared, and it
+is *not* the list to compare against: 48 of its 55 ids now pass.
+
+## The measurement this file was written from
+
 Measured on `main` at `0e69f69` on 2026-10-06, with the suite the merge gate
 runs (every marker except `slow`, `requires_live_tree` and `merge_guard`):
 
