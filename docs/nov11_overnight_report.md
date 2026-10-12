@@ -6,6 +6,10 @@ was merged to `main`, neither R2 bucket nor the broker was called, the live data
 only ever read (and only through `live/store.py`), and no secret was printed. Working
 tree clean apart from the untracked `artifacts/` folder from the page review.
 
+The owner's review produced three follow-ups, all in and pushed: `ad5c403`, `6fb75d0`
+and `1d29dad`. See **Review follow-up** below for the FIX 1 table and what each one
+found.
+
 ## What this batch did, in the order it was asked for
 
 STEP 0, the page-v3 merge onto `nov11`: **completed with no conflicts** (`2613dc2`,
@@ -37,6 +41,94 @@ Then the build queue, one commit per item, in the order given:
 | 15 | 18 | `82cb4a6` | the broker's lending flags, read before the sizing, behind a flag |
 | 16 | cadence | `65945a1` | the memo, and why the switch is not built |
 | 17 | 23 | this commit | the known-failures refresh, from the gate's own command |
+
+## Review follow-up
+
+Three fixes from the owner's review of this batch, one commit each, each with tests.
+
+### FIX 1 - item 27's preflight against the production seed (`ad5c403`)
+
+The declaration had only ever been checked against the repository's `data/`, which the
+runbook measures as differing from the production seed in 14 of 19 files. The seed
+manifest was read from the `efb-seed` bucket - **one GET, no writes** - and compared path
+by path with `seed.live_inputs()`. The manifest holds **20 files**, `data_hash
+c3e0db6f...`, written `2026-09-26T04:03:14+00:00`:
+
+| declared path | in the production manifest | the manifest's own path if the name differs |
+|---|---|---|
+| `raw/prices.parquet` | yes | - |
+| `models/XS-v1/descriptors.parquet` | yes | - |
+| `models/XS-v1/factor_returns.parquet` | yes | - |
+| `models/XS-v1/specific_returns.parquet` | yes | - |
+| `models/XS-v1/specific_var.parquet` | yes | - |
+| `processed/returns.parquet` | yes | - |
+| `processed/sectors.parquet` | yes | - |
+| `models/TS-v1/beta_history.parquet` | yes | - |
+
+**Nothing is missing, so there is no blocker for the November 11 merge from this
+direction**, and the seed was not touched. The manifest also holds twelve files the
+declaration does not name (`VERSION.json`, `alpha/summary.parquet`,
+`models/XS-v1/factor_cov.parquet`, `models/XS-v1/xs_r2.parquet`, `models/registry.json`,
+`processed/ticker_identity*.parquet`, `processed/universe_membership.parquet`,
+`raw/factors_ff.parquet`, `raw/shares_history.parquet`, the two `spy_holdings` archives),
+which is the safe direction: the seed may hold more than the declaration names, and the
+preflight only fails on a declared path the tree lacks.
+
+One **entry** was wrong, and it is case (a) - the declaration named a file this path does
+not read. `morning` declared `processed/returns.parquet` and `raw/prices.parquet`; the
+path it describes is `live/morning_job.py::run_morning`, which the *evening* calls
+(`scripts/run_live_daily.py`) and `scripts/push_seed.py` rehearses under the name
+"morning", and its only read under `data/` is the price panel. That is measured, not
+assumed: `tests/test_nov11_seed_preflight.py` wraps a real `run_morning` in
+`seed.record_reads` and requires the read set to equal the entry, so it fails if the path
+ever opens something else. The returns panel is read by the evening and by the
+attribution step, which declare it themselves, so the **union of declared paths - what the
+preflight checks the seed against - is unchanged at eight files**, and the entry is
+renamed `submission` because the name is the path and not the hour.
+
+**The preflight runs only in the evening**: `seed.preflight_inputs` has exactly one call
+site, `scripts/run_live_daily.py` after `seed.guard`, before anything is read. And the
+`morning`/`submission` entry **is** checked - the preflight walks every entry, and the
+evening is what calls it - but nothing checks it when the actual morning job runs, because
+`scripts/reconcile_fills.py` reads no artifact under `data/` at all (no `DATA_ROOT`, no
+`runroot`, no `read_parquet`); that is why no entry would describe it and why the rename
+matters for the next reader.
+
+### FIX 2 - a traded rerun was replacing the page (`6fb75d0`)
+
+Traced: `traded_run` -> `finish_run` -> `snapshot.write_snapshot` with no manifest and no
+book, and the writer puts the document under `keys_for(target_close)`. Measured with a
+recording put: **`latest.json` and `snapshots/<the traded close>.json`** - the very keys
+the first attempt wrote - carrying a document whose `target_close` is that close,
+`book.names` empty, every figure null, no `bridge` block, and a `run_status.status` of
+`traded`. So yes: a second start replaced the full page with a thin document about a run
+that did nothing.
+
+`finish_run` now takes `publish_snapshot`, and `traded_run` passes False: neither the
+writer nor the uploader is reached, and the attribution block is not even read (it is a
+page section and nothing else uses it). The `run_status` row and the `cron_runs` row are
+still written - the guard and the reader need them - and the row's own `snapshot` field
+says the page was left as it was. The message keeps the TRADED subject, no longer claims
+the legs ("none proposed" rather than "N sent", because the legs at the broker are the
+first attempt's), names the close's counts, and says no orders were sent and the page was
+left as it was. The test patches the writer *and* the uploader to fail if they are
+reached.
+
+### FIX 3 - the reasons behind `excluded` cannot stop the evening (`1d29dad`)
+
+The index question first: `data/raw/prices.parquet` is a long frame whose **`index.names`
+are `['date', 'ticker']`** - 3,610,541 rows, 4,213 dates, 857 tickers - so `ticker` is a
+level of the index and `index.get_level_values("ticker")` is the right read. The code
+comment now carries those numbers.
+
+The reason block reads `processed/sectors.parquet` and that index to say *why* a name is
+out, inside `build_proposal` and before the sizing, with no error handling: a fetch that
+broke could kill an evening over a note about a name that is already out. It is wrapped
+now - any exception logs a warning naming the names and publishes `excluded_detail` with
+`reason = "not determined"`, no age and no date, while `excluded` and `n_excluded` keep
+exactly the values the rule computed. The identity proof is the e12 shape: with the prices
+read patched to raise, the kept book is compared with the unpatched build name for name
+and weight for weight, and `n_kept`, `kept_gross`, `excluded` and `n_excluded` are equal.
 
 ## What is NOT done, and why (the next session starts here)
 
@@ -284,6 +376,7 @@ The gate command, run three times in this batch:
 | the page-v3 merge | `nov11` at `2613dc2` | 7 failed, 1483 passed | the merge itself added no red |
 | mid-batch | `nov11` at `65945a1` | **14 failed**, 1531 passed | seven *new* reds, all of them tests the batch's own behaviour changes had written over |
 | final | `nov11` at `d3d8a56` | **7 failed, 1538 passed, 1 skipped, 47 deselected** (11m48s) | zero new against the baseline |
+| after the review fixes | `nov11` at `1d29dad` | **7 failed, 1541 passed, 1 skipped, 48 deselected** (12m20s) | the same seven reds, the three new fix tests in the 1,541, and one more deselected because `tests/test_nov11_excluded.py`'s new identity proof is marked `slow` |
 
 The seven fixed between the second and third runs are the reason the per-item runs are
 not enough, and they are listed in `d3d8a56`: item 19 moved the shortability refusal out
@@ -311,9 +404,11 @@ Per-item tests, all green: `tests/test_nov11_sent_orders.py`,
 (`npx vitest run` in `web/`: **207 passed**). `make lint` is clean (ruff, mypy on
 `efb`/`live`/`scripts`, black).
 
-The two ``slow`` identity proofs are marked `slow` and deselected by the gate command, so
-they were run explicitly: `tests/test_nov11_floor_band.py -m slow` (12.1s) and the
-`test_nov11_shortability.py` identity case (11.1s), both green.
+The three ``slow`` identity proofs are marked `slow` and deselected by the gate command, so
+they were run explicitly: `tests/test_nov11_floor_band.py -m slow` (12.1s), the
+`test_nov11_shortability.py` identity case (11.1s) and the FIX 3 identity proof in
+`tests/test_nov11_excluded.py` (which `pytest tests/test_nov11_excluded.py` runs in full,
+8 tests, 14.9s), all green.
 
 ## 7. Decisions only the owner can make
 
