@@ -959,20 +959,25 @@ def traded_close(as_of: str) -> dict[str, int] | None:
 
 
 def traded_run(run_date: str, counts: dict[str, int]) -> int:
-    """A second start on a close that already traded: no pricing, no orders.
+    """A second start on a close that already traded: no pricing, no orders, no page.
 
     The day is recorded under its own status so the guard stays closed and no later
     tick re-prices it, and the message says the one thing the owner needs: this close
-    is already at the broker and this run did nothing. The snapshot is written like
-    every other run's, because the page keys off it - and it is the *same* document
-    the first attempt wrote, since nothing here rebuilds a book.
+    is already at the broker, this run did nothing and the page was left as it was.
+
+    **Nothing is published.** The page's document for this close is the first
+    attempt's, and it is the one that carries the book, the bridge and the
+    attribution; a second document built by this run would have none of them, so a
+    rerun would replace a full page with a thin one about a run that did nothing. The
+    message, the `run_status` row and the `cron_runs` row are written, which is what
+    the guard and the reader need.
     """
     from live import notify, staleness, store
 
     dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
     detail = (
-        f"this close already has {counts['sent']} of {counts['legs']} leg(s) at the "
-        "broker, and no leg is unconfirmed: the day traded, so it was not re-priced"
+        f"The close already has {counts['sent']} of {counts['legs']} leg(s) at the "
+        "broker and no leg is unconfirmed: the day traded, so it was not re-priced"
     )
     logger.info("%s, exit 0", detail)
     result = staleness.error_result(detail, target=run_date)
@@ -983,10 +988,13 @@ def traded_run(run_date: str, counts: dict[str, int]) -> int:
         status=TRADED_STATUS,
         dry_run=dry_run,
         detail=detail,
-        orders=counts["legs"],
-        sent_orders=counts["sent"],
+        # No counts on the subject line: "N sent" would credit this run with the
+        # first attempt's legs, and the message says "none proposed" instead. The
+        # close's own counts travel in the detail line.
         catch_up_sessions=[],
         actual=None,
+        # The page is the first attempt's, and this run has nothing to add to it.
+        publish_snapshot=False,
     )
 
 
@@ -1086,6 +1094,7 @@ def finish_run(
     unconfirmed_legs: int | None = None,
     excluded: list[dict[str, Any]] | None = None,
     no_short: list[dict[str, Any]] | None = None,
+    publish_snapshot: bool = True,
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
@@ -1217,48 +1226,66 @@ def finish_run(
     snapshot_detail, snapshot_failed = "", False
     written: dict[str, Any] | None = None
 
-    # E12: the attribution block, read from the store. Its own handler, because it
-    # is a section of the page: a store that cannot be read is a page without the
-    # section, never a run that failed.
-    try:
-        attribution = snapshot_module.attribution_block()
-    except Exception as exc:  # noqa: BLE001 - a page section, not a step
-        attribution = snapshot_module.empty_attribution(
-            "the attribution store could not be read"
+    # The publish switch, and the one caller that uses it: `traded_run`, a second
+    # start on a close the broker already holds. The document that is up is not that
+    # run's to replace - it did not price a book - so it must not overwrite the first
+    # attempt's book, bridge and attribution with a thin document about a run that did
+    # nothing. The page keeps what the first attempt wrote, and the run row says so,
+    # because that row is the only place the reader can learn this start did not
+    # publish.
+    if not publish_snapshot:
+        snapshot_detail = (
+            "snapshot: left as it was (this run did not price a book, so it does not "
+            "own the page's document)"
         )
-        logger.warning(
-            "the snapshot's attribution block could not be built: %s: %s",
-            type(exc).__name__,
-            notify.scrub(str(exc)),
-        )
-
-    try:
-        written = snapshot_module.write_snapshot(
-            run={**row, "store": store_name, "attribution": attribution},
-            manifest=manifest,
-            book=book,
-            reconciliation=_with_sent_halves(
-                reconciliation, sent_notional=sent_notional, built=gross
-            ),
-            construction=snapshot_module.chosen_row(manifest),
-            book_reason=book_reason,
-            actual=actual,
-            bridge_block=bridge_block,
-            dry_run=dry_run,
-            poster=snapshot_poster,
-        )
-        snapshot_detail = str(written["detail"])
         row["snapshot"] = snapshot_detail
-    except Exception as exc:  # noqa: BLE001 - recorded, and it fails the run
-        snapshot_failed = True
-        snapshot_detail = notify.scrub(f"snapshot failed: {type(exc).__name__}: {exc}")
-        row["snapshot"] = snapshot_detail
-        logger.error("%s", snapshot_detail)
-        if status == "ok":
-            # With the switch on, a snapshot that cannot be uploaded is a failure
-            # of the run, exactly as a message that cannot be sent is.
-            status, detail = "error", snapshot_detail
-            row["status"], row["detail"] = status, detail
+        logger.info("%s", snapshot_detail)
+    else:
+        # E12: the attribution block, read from the store, and only when a document is
+        # being built - it is a section of the page and nothing else reads it, so a run
+        # that publishes nothing does not read the attribution table either. Its own
+        # handler, because it is a page section: a store that cannot be read is a page
+        # without the section, never a run that failed.
+        try:
+            attribution = snapshot_module.attribution_block()
+        except Exception as exc:  # noqa: BLE001 - a page section, not a step
+            attribution = snapshot_module.empty_attribution(
+                "the attribution store could not be read"
+            )
+            logger.warning(
+                "the snapshot's attribution block could not be built: %s: %s",
+                type(exc).__name__,
+                notify.scrub(str(exc)),
+            )
+        try:
+            written = snapshot_module.write_snapshot(
+                run={**row, "store": store_name, "attribution": attribution},
+                manifest=manifest,
+                book=book,
+                reconciliation=_with_sent_halves(
+                    reconciliation, sent_notional=sent_notional, built=gross
+                ),
+                construction=snapshot_module.chosen_row(manifest),
+                book_reason=book_reason,
+                actual=actual,
+                bridge_block=bridge_block,
+                dry_run=dry_run,
+                poster=snapshot_poster,
+            )
+            snapshot_detail = str(written["detail"])
+            row["snapshot"] = snapshot_detail
+        except Exception as exc:  # noqa: BLE001 - recorded, and it fails the run
+            snapshot_failed = True
+            snapshot_detail = notify.scrub(
+                f"snapshot failed: {type(exc).__name__}: {exc}"
+            )
+            row["snapshot"] = snapshot_detail
+            logger.error("%s", snapshot_detail)
+            if status == "ok":
+                # With the switch on, a snapshot that cannot be uploaded is a failure
+                # of the run, exactly as a message that cannot be sent is.
+                status, detail = "error", snapshot_detail
+                row["status"], row["detail"] = status, detail
     # The per-name list is the one thing the page carries that is not a number out
     # of the manifest, so it is the one thing that can go missing while the page
     # still looks right: the 2026-10-01 evening published an empty book beside a

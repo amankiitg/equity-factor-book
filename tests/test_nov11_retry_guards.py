@@ -154,3 +154,63 @@ def test_a_partly_unconfirmed_close_is_repriced_as_it_always_was(
     # The run goes on to the gate, which these helpers pass; the point of the test is
     # that it did not stop at the guard.
     assert run_live_daily.main() in (0, 1)
+
+
+def test_traded_run_publishes_nothing_and_keeps_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIX 2: a second start on a traded close must not replace the page.
+
+    The document for that close is the first attempt's, and it is the one carrying the
+    book, the bridge and the attribution. A snapshot built by a run that did nothing
+    would have none of them, so the publish path is patched to fail the test if it is
+    reached at all - the writer and the uploader both - and the two rows the guard
+    needs are asserted instead.
+    """
+    from live import notify as notify_module
+    from live import snapshot
+
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setattr(
+        snapshot,
+        "write_snapshot",
+        lambda **kwargs: pytest.fail("a traded run published a snapshot"),
+    )
+    monkeypatch.setattr(
+        snapshot,
+        "put_object",
+        lambda *args, **kwargs: pytest.fail("a traded run wrote to R2"),
+    )
+    sent: list[dict[str, Any]] = []
+    monkeypatch.setenv(notify_module.API_KEY_ENV, "re_" + "test-key-value")
+    monkeypatch.setenv(notify_module.TO_ENV, "owner@example.com")
+    monkeypatch.setattr(
+        notify_module,
+        "post",
+        lambda url, payload, headers=None: sent.append(payload),
+    )
+
+    counts = {"legs": 3, "sent": 3, "unconfirmed": 0}
+    assert run_live_daily.traded_run(SESSION, counts) == 0
+
+    # The message: TRADED, no orders from this run, and the page untouched.
+    assert str(sent[0]["subject"]).startswith("EFB TRADED 2026-09-22")
+    body = str(sent[0]["text"])
+    assert "Orders: none from this run" in body
+    assert "The page was left as it was" in body
+    assert "3 of 3 leg(s) at the broker" in body
+    assert "none proposed" in str(sent[0]["subject"])
+
+    # The two rows the guard and the reader need, both written.
+    status = store.select("run_status")
+    assert len(status) == 1
+    row = status.iloc[0]
+    assert row["status"] == "traded"
+    assert str(row["target_close"])[:10] == SESSION
+    assert "left as it was" in str(row["snapshot"])
+    runs = store.select("cron_runs")
+    assert len(runs) == 1
+    assert str(runs.iloc[0]["status"]) == "traded"
+    assert str(runs.iloc[0]["run_date"])[:10] == SESSION

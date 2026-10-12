@@ -487,6 +487,13 @@ def compose(
                 "Filed: no leg was left unconfirmed. A leg the broker refused is "
                 "not a failure of the run, and the day is done."
             )
+    elif status == "traded":
+        # This start sent nothing, and the legs the *close* has are the first
+        # attempt's. Saying "N sent" here would credit this run with them.
+        lines.append(
+            "Orders: none from this run. The close already has legs at the broker, "
+            "so this start did not re-price the book and sent nothing."
+        )
     elif status == "error" and orders:
         # An error is not the same as an empty evening. On 2026-10-06 the evening
         # sent 192 orders and then died on a missing column, and this line said
@@ -514,10 +521,15 @@ def compose(
             "Orders: none. The run failed before sizing, so no book was priced."
         )
     if status == "traded":
+        # What the close already holds, and the two things this run did instead of
+        # trading: it said so, and it left the page alone.
+        if scrub(detail).strip():
+            lines.append(f"{scrub(detail).strip().rstrip('.')}.")
         lines.append(
-            "Orders: none from this run. The close already has legs at the broker, "
-            "so the evening was not re-priced and no order was sent; the day's own "
-            "row and snapshot are the ones the first attempt wrote."
+            "The page was left as it was: the document for this close is the first "
+            "attempt's, and this run did not publish over it. The day's own row and "
+            "the cron record were written, which is what keeps a later tick from "
+            "re-pricing the close."
         )
     if status == "incomplete" and scrub(detail).strip():
         # Which leg and why: the count alone leaves the owner to open the store to
