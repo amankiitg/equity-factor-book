@@ -24,6 +24,11 @@ const ACTUAL = withActual as unknown as Snapshot;
 const REMOVAL = withRemoval as unknown as Snapshot;
 const NOW = new Date("2026-09-21T23:00:00Z");
 
+/** The page's two jobs are on two tabs; the attribution is the second one. */
+function openAttribution(): void {
+  fireEvent.click(document.querySelector("[data-view='attribution']") as HTMLElement);
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -125,7 +130,9 @@ describe("the page", () => {
     // second tab to open.
     expect(OK.actual_holdings).toBeUndefined();
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    expect(screen.getByText(/the account has not been read/)).toBeTruthy();
+    // Two lines say it, and both should: the strip says why there is no table, and the
+    // sector panel says which comparison it therefore cannot make.
+    expect(screen.getAllByText(/the account has not been read/).length).toBeGreaterThan(0);
     const drawer = document.querySelector("[data-section='drawer']") as HTMLElement;
     expect(drawer.querySelector("[data-tab='actual']")).toBeNull();
   });
@@ -212,13 +219,15 @@ describe("the page", () => {
 
   it("shows the attribution: the live period, its four terms and the total", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
     const live = OK.attribution?.live;
     // The fixture carries the block, and this says so rather than casting: a page
     // test that reads a block the document does not have is testing nothing.
     if (!live) throw new Error("the ok fixture carries no live attribution");
     const cumulative = live.cumulative;
-    // The four terms and the total, in basis points of the book, each with its sign.
-    const bps = (value: number) => `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)} bp`;
+    // The four terms and the total, in bp of NAV, each with its sign and its unit.
+    const bps = (value: number) =>
+      `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)} bp of NAV`;
     const card = (name: string) =>
       document.querySelector(`[data-card='${name}']`)?.textContent ?? "";
     expect(card("pnl-total")).toContain(bps(cumulative.pnl_total as number));
@@ -258,7 +267,8 @@ describe("the page", () => {
       },
     } as unknown as Snapshot;
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
-    expect(screen.getByText("no live day is attributed yet")).toBeTruthy();
+    openAttribution();
+    expect(screen.getByText(/no live day is attributed yet|no live session is attributed yet/)).toBeTruthy();
     expect(screen.queryByRole("table", { name: "attribution by day" })).toBeNull();
   });
 
@@ -283,7 +293,7 @@ describe("the page", () => {
     const gross = document.querySelector("[data-card='gross']") as HTMLElement;
     expect(gross.textContent).toContain("100.00%");
     expect(gross.textContent).toContain("$1,000,000");
-    const full = document.querySelector("[data-card='full book before the floor']") as HTMLElement;
+    const full = document.querySelector("[data-card='full-book-gross']") as HTMLElement;
     expect(full).toBeTruthy();
     expect(full.textContent).toContain(`${((OK.book.full_book_gross ?? 0) * 100).toFixed(2)}%`);
   });
@@ -295,7 +305,7 @@ describe("the page", () => {
     // `data-card` per label since the page was split into components, and e12's
     // `[aria-label="the book's summary"]` named a `<dl>` that refactor removed.
     const cards = document.querySelector("[data-cards='true']") as HTMLElement;
-    for (const label of ["gross", "net", "n_eff_kept", "n_eff_full_book", "expected cost"]) {
+    for (const label of ["gross", "net", "n_eff_kept", "n_eff_full_book", "expected-expense"]) {
       expect(cards.querySelector(`[data-card="${label}"]`), label).toBeTruthy();
     }
   });
@@ -319,8 +329,10 @@ describe("the page", () => {
     expect(text).not.toContain("T00:00:00");
     // 22:41 generated, 23:00 now.
     expect(text).toContain("19 minutes ago");
-    expect(text).toContain("target close 2026-09-21");
-    expect(text).toContain("snapshot generated 2026-09-21");
+    // The close is named as a close, and the snapshot's own instant is stated in
+    // the reader's zone with the UTC form beside it for matching against the logs.
+    expect(text).toContain("close 2026-09-21");
+    expect(text).toContain("2026-09-21T22:41:00Z UTC");
   });
 
   it("says a snapshot of a day or more in days, not in hours", () => {

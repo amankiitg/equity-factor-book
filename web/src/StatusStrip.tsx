@@ -1,44 +1,105 @@
-// The top strip: one line that answers "what am I looking at" without scrolling.
+// The top strip: the two things the run did, and what they read.
 //
-// It carries the run's own state (the pill), whether anything is trading, when the
-// snapshot was written and how old that is, and the close the book is priced from.
-// It says nothing about the notification unless the notification failed: the
-// snapshot is written before the message is sent, so a status read off it is
-// `pending` on every evening, and the one status worth a line is the one where the
-// owner was never told. The one line under it is the honest version of the most
-// dangerous state the page has: a book that is not tonight's. A reader who
-// misses that reads a stale book as a current one, so it is stated in words rather
-// than left to a date they have to compare.
+// A successful proposal and a reconciled book are two claims, and the page used to
+// make one of them: a green "clean run" for the 2026-10-09 close sat above an
+// account-versus-store mismatch and a bridge identity that did not add up. So the
+// strip carries two pills, "proposal run" and "reconciliation", and green is the
+// answer to both. The strip's colour is the one thing a reader takes without
+// reading the sentence beside it, which is why it is the colour of the worse of the
+// two rather than of the run that happens to have written the document.
+//
+// The rest of the line answers "what am I looking at" without scrolling: that this
+// is the PAPER account (nothing here is real capital, which the word "live" quietly
+// claims), the close the book is priced from, which account read is on the page and
+// when it was taken, how old the document is on a clock a person keeps, and how many
+// mismatches there are with the split between the explained ones and the rest.
+//
+// The account read is a line of its own because it is the difference between "the
+// intended book" and "the book the account holds": the evening reads the account
+// before it sends anything, so an evening snapshot cannot certify the fills, and a
+// morning snapshot can. A reader who mistakes the first for the second reads a
+// plan as a position.
 
-import { dateOnly, dateTime } from "./format";
-import { ageText, type RunState } from "./status";
+import { dateOnly, etDateTime } from "./format";
+import { exceptionText, type Exceptions } from "./exceptions";
 import { pillClass } from "./Panel";
+import { ageText, type Reconciliation, type RunState, type Tone } from "./status";
 import type { Snapshot } from "./types";
+
+/**
+ * The strip's own accent, one left edge for the two claims together.
+ *
+ * The pills say what each job did and are coloured one at a time; this says what
+ * the pair of them amounts to, and it is the element a reader takes without
+ * reading, so it takes the worse of the two. A strip that painted the proposal
+ * pill with the reconciliation's colour would report a failed check as a failed
+ * run, which is a different and more alarming claim.
+ */
+const ACCENT: Record<Tone, string> = {
+  bad: "border-l-red-500",
+  warn: "border-l-amber-400",
+  info: "border-l-slate-400",
+  good: "border-l-emerald-400",
+};
+
+/** How the account read is described: which run took it and what it can certify. */
+function readLabel(snapshot: Snapshot): { text: string; note: string } | null {
+  const read = snapshot.actual_holdings;
+  if (!read) return null;
+  const at = etDateTime(read.as_of) ?? "at an unrecorded time";
+  if (read.read_by === "morning") {
+    return {
+      text: `account read ${at} (morning, after the fills)`,
+      note: `the fills exist, so this compares what the account holds with the target${
+        read.close ? ` for the ${dateOnly(read.close)} close` : ""
+      }`,
+    };
+  }
+  if (read.read_by === "evening") {
+    return {
+      text: `account read ${at} (evening, before the orders)`,
+      note: "taken before the orders went out, so it cannot certify the fills",
+    };
+  }
+  return { text: `account read ${at}`, note: "no run recorded against this read" };
+}
 
 export function StatusStrip({
   snapshot,
   now,
   state,
+  tone,
+  reconciled,
+  exceptions,
 }: {
   snapshot: Snapshot;
   now: Date;
   state: RunState;
+  /** The worse of the two claims, and the only thing the strip's own colour says. */
+  tone: Tone;
+  reconciled: Reconciliation;
+  exceptions: Exceptions;
 }) {
   const generated = new Date(snapshot.generated_at);
   const close = dateOnly(snapshot.target_close);
   const bookClose = dateOnly(snapshot.book_as_of);
   const staleBook = Boolean(bookClose && close && bookClose !== close);
   const reason = snapshot.book?.reason;
+  const read = readLabel(snapshot);
   // The evening writes its snapshot before it sends its message, so the document
-  // itself says `pending` on an evening whose email went out; the morning reads
-  // the evening's own row and rewrites this field with what actually happened.
-  // Only a failure is worth a line: `pending` is the writer's ordering and
-  // `sent` is the ordinary case, and a strip that reports either on every clean
-  // evening is a strip nobody reads. `failed` is the one the owner has to know.
+  // itself says `pending` on an evening whose email went out; the morning reads the
+  // evening's own row and rewrites this field with what actually happened. Only a
+  // failure is worth a line: `pending` is the writer's ordering and `sent` is the
+  // ordinary case, and a strip that reports either on every clean evening is a strip
+  // nobody reads.
   const notifyFailed = snapshot.run_status?.notify_status === "failed";
 
   return (
-    <header data-strip="status" className="rounded border border-slate-300 bg-white px-3 py-2">
+    <header
+      data-strip="status"
+      data-tone={tone}
+      className={`rounded border border-slate-300 border-l-4 bg-white px-3 py-2 ${ACCENT[tone]}`}
+    >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
         <span
           data-pill="status"
@@ -47,29 +108,55 @@ export function StatusStrip({
             state.tone,
           )}`}
         >
-          {state.pill}
+          proposal run: {state.pill}
+        </span>
+        <span
+          data-pill="reconciliation"
+          data-tone={reconciled.tone}
+          data-reconciliation={reconciled.pass ? "pass" : "fail"}
+          className={`rounded px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${pillClass(
+            reconciled.tone,
+          )}`}
+        >
+          reconciliation:{" "}
+          {reconciled.unresolved > 0
+            ? `${reconciled.unresolved} unresolved`
+            : reconciled.tone === "info"
+              ? "not run"
+              : "clean"}
         </span>
         <span data-flag="mode" className="font-medium">
-          {snapshot.dry_run ? "DRY RUN: no orders are sent" : "live"}
-        </span>
-        <span data-flag="snapshot" className="text-slate-600">
-          snapshot generated{" "}
-          {dateTime(snapshot.generated_at) ?? dateOnly(snapshot.generated_at) ?? "unknown"}
-          {Number.isNaN(generated.getTime()) ? "" : ` (${ageText(generated, now)})`}
+          {snapshot.dry_run
+            ? "DRY RUN: no orders are sent"
+            : "PAPER: orders go to the paper account"}
         </span>
         <span data-flag="close" className="text-slate-600">
-          target close {close ?? "unknown"}
+          close {close ?? "unknown"}
+        </span>
+        <span data-flag="exceptions" className="text-slate-600">
+          {exceptionText(exceptions)}
+        </span>
+        <span data-flag="snapshot" className="text-slate-600">
+          snapshot {etDateTime(snapshot.generated_at) ?? close ?? "unknown"}
+          {Number.isNaN(generated.getTime()) ? "" : ` (${ageText(generated, now)})`}
+        </span>
+        <span data-flag="snapshot-utc" className="text-xs text-slate-500">
+          {snapshot.generated_at} UTC
         </span>
       </div>
+      {read ? (
+        <p data-flag="account-read" className="mt-1 text-xs text-slate-600">
+          {read.text} — {read.note}
+        </p>
+      ) : null}
       {notifyFailed ? (
         <p data-note="notify-failed" className="mt-1 text-sm font-medium text-amber-800">
-          the owner was never told: the message for the {close ?? "last"} close
-          failed to send
+          the owner was never told: the message for the {close ?? "last"} close failed to send
         </p>
       ) : null}
       {staleBook ? (
         <p data-note="older-book" className="mt-1 text-sm font-medium text-amber-800">
-          the book is the {bookClose} close, not tonight's {close}: the run did not price
+          the book is the {bookClose} close, not tonight&apos;s {close}: the run did not price
           tonight
         </p>
       ) : null}

@@ -6,6 +6,7 @@
 // one derived quantity is the book in dollars, from the traded gross and the traded
 // notional the snapshot states.
 
+import { Details } from "./Details";
 import type { BookFacts } from "./book";
 import { dollars, percent } from "./format";
 import type { BookName } from "./types";
@@ -43,10 +44,17 @@ export function TopNames({ facts }: { facts: BookFacts }) {
   return (
     <section data-section="top-names" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">The largest longs and shorts</h2>
-      <div className="mt-2 grid gap-4 sm:grid-cols-2">
-        {panel("Longs", facts.topLongs, "longs")}
-        {panel("Shorts", facts.topShorts, "shorts")}
-      </div>
+      <p className="mt-1 text-sm text-slate-600">
+        the largest position is {facts.largest?.ticker ?? "n/a"}
+        {facts.largest ? ` at ${percent(facts.largest.weight)} of NAV` : ""}; the two lists of ten
+        are below.
+      </p>
+      <Details hook="top-names" summary={<>the ten largest on each side</>}>
+        <div className="mt-1 grid gap-4 sm:grid-cols-2">
+          {panel("Longs", facts.topLongs, "longs")}
+          {panel("Shorts", facts.topShorts, "shorts")}
+        </div>
+      </Details>
     </section>
   );
 }
@@ -90,11 +98,10 @@ export function Reasons({ facts }: { facts: BookFacts }) {
       </table>
       <p className="mt-1 text-xs text-slate-500">
         The count and the held dollars are the positions carrying each reason: what the run keeps
-        under it. The traded dollars are the legs it built for those same names, so the two columns
-        answer different questions about one reason - a name the book keeps because the hedge moved
-        is a holding with an order behind it, and the hedge's own reason is many names with little
-        trading. Turnover is the traded column; the held column is not a difference between two
-        books.
+        under it. The traded column is the legs it built for those same names, so it answers where
+        the trading came from rather than how much of it there was: a name that left the book has no
+        row here for its closing leg, which is why this column sums to less than the day&apos;s
+        turnover on the metrics row. The held column is not a difference between two books.
       </p>
     </section>
   );

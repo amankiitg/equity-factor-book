@@ -1,20 +1,25 @@
-// The live book monitor. One screen, from one JSON document.
+// The live book monitor. One screen, from one JSON document, in two tabs.
 //
-// The order is the reading order of a question: what happened (the strip), what
-// needs a look (the alerts), the numbers (the metrics), then the detail, with the
-// name-by-name tables behind a drawer at the bottom. Status first because the one
-// thing a monitor must never do is show an old book as though it were current: a run
-// that stopped, errored, never happened or is late takes the colour of the strip, and
-// a book that is not tonight's says so in words underneath it.
+// The page answers two different jobs and used to answer them in one column: whether
+// the loop is working (what happened overnight, does the account match the book, must
+// I act today) and what the book earned (attribution, cost, risk against forecast).
+// The first is a thirty-second read every morning; the second is a few minutes once a
+// week. So the strip - both run states, the mode, the close, the account read and the
+// exception count - sits above the tabs and is visible from either, and the tabs
+// below it hold the two jobs. The book monitor is the default because it is the one
+// that is read every day.
 //
-// Two columns on a laptop and one on a phone. The left column is the hedge and where
-// the trades came from, the right is the book's shape and its largest names, which puts
-// two long panels against two long panels and keeps the columns close in height. On a
-// phone the single column reads in the same order: the hedge, the trades, then the
-// book's shape, with the tables behind the drawer at the bottom. Nothing here is
-// duplicated between the two: the sector totals live on the metrics row, the long and
-// short dollars beside the name counts, and the largest names in their own panel rather
-// than in a second list.
+// Within the book monitor the order is the reading order of the morning question:
+// the numbers (metrics), then the arithmetic between the three books (bridge), then
+// two columns - where the trading went and what the book looks like - with the
+// name-by-name tables behind the drawer at the bottom. Nothing is duplicated between
+// the columns: the sector totals live on the metrics row, the long and short dollars
+// beside the name counts, and the largest names in their own panel.
+//
+// Behind the tabs, the rule the redesign added: what is a diagnostic is behind a
+// disclosure, and what answers the morning question is not. The full exposure table,
+// the construction's telemetry and the derivation prose are behind `Details`; the
+// check on the identity, the sector deltas and the exception names are not.
 
 import { useEffect, useState } from "react";
 
@@ -26,43 +31,122 @@ import { bookFacts } from "./book";
 import { DrawerSection } from "./DrawerSection";
 import { ExposuresSection } from "./ExposuresSection";
 import { Movers, RiskConcentration } from "./FutureSections";
+import { HedgePanel } from "./HedgePanel";
 import { MetricsRow } from "./MetricsRow";
 import { Panel } from "./Panel";
 import { SectorSection } from "./SectorSection";
 import { StatusStrip } from "./StatusStrip";
-import { runState } from "./status";
+import { classify } from "./exceptions";
+import { overallTone, reconciliation, runState } from "./status";
 import type { Snapshot } from "./types";
 
 // Re-exported for the page's own tests, which ask what the page says about a
 // snapshot without rendering it.
 export { health, pillFor, runState, runTone } from "./status";
 
+type View = "book" | "attribution";
+
 export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date }) {
   const state = runState(snapshot, now);
   const facts = bookFacts(snapshot);
+  const exceptions = classify(snapshot);
+  const reconciled = reconciliation(
+    snapshot,
+    exceptions.expected.length,
+    exceptions.unexpected.length,
+  );
+  const [view, setView] = useState<View>("book");
+  const tabClass = (active: boolean): string =>
+    `rounded px-3 py-1 text-sm font-semibold ${
+      active ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-800 hover:bg-slate-200"
+    }`;
 
   return (
     <main className="mx-auto flex max-w-[88rem] flex-col gap-3 p-3 sm:p-4">
-      <h1 className="text-xl font-bold">EFB live book</h1>
-      <StatusStrip snapshot={snapshot} now={now} state={state} />
-      <Alerts snapshot={snapshot} state={state} />
-      <MetricsRow snapshot={snapshot} facts={facts} />
-      <Bridge snapshot={snapshot} />
-      <div data-columns="true" className="grid gap-3 lg:grid-cols-2">
-        <div className="flex flex-col gap-3">
-          <AttributionSection attribution={snapshot.attribution} />
-
-          <ExposuresSection snapshot={snapshot} />
-          <Reasons facts={facts} />
-        </div>
-        <div className="flex flex-col gap-3">
-          <SectorSection sectors={facts.sectors} />
-          <TopNames facts={facts} />
-          <RiskConcentration snapshot={snapshot} />
-          <Movers snapshot={snapshot} />
-        </div>
+      <h1 className="text-xl font-bold">EFB paper book</h1>
+      <StatusStrip
+        snapshot={snapshot}
+        now={now}
+        state={state}
+        tone={overallTone(state.tone, reconciled.tone)}
+        reconciled={reconciled}
+        exceptions={exceptions}
+      />
+      {/* The tabs switch the body, not the strip: the run's state and the exception
+          count are what a reader came for, and neither belongs to one job. */}
+      <div className="flex flex-wrap gap-1" role="tablist" aria-label="view">
+        <button
+          type="button"
+          role="tab"
+          data-view="book"
+          aria-selected={view === "book"}
+          onClick={() => setView("book")}
+          className={tabClass(view === "book")}
+        >
+          Book monitor
+        </button>
+        <button
+          type="button"
+          role="tab"
+          data-view="attribution"
+          aria-selected={view === "attribution"}
+          onClick={() => setView("attribution")}
+          className={tabClass(view === "attribution")}
+        >
+          Attribution
+        </button>
       </div>
-      <DrawerSection snapshot={snapshot} facts={facts} />
+
+      {view === "book" ? (
+        <>
+          <Alerts
+            snapshot={snapshot}
+            state={state}
+            reconciled={reconciled}
+            exceptions={exceptions}
+          />
+          <MetricsRow snapshot={snapshot} facts={facts} />
+          <Bridge snapshot={snapshot} />
+          <div data-columns="true" className="grid gap-3 lg:grid-cols-2">
+            <div className="flex flex-col gap-3">
+              <HedgePanel snapshot={snapshot} facts={facts} />
+              <ExposuresSection snapshot={snapshot} />
+              <Reasons facts={facts} />
+            </div>
+            <div className="flex flex-col gap-3">
+              <SectorSection snapshot={snapshot} sectors={facts.sectors} />
+              <TopNames facts={facts} />
+            </div>
+          </div>
+          <DrawerSection snapshot={snapshot} facts={facts} />
+        </>
+      ) : (
+        <>
+          {/* The section hides itself when the document carries no attribution block,
+              which is the right rule for a page read top to bottom and the wrong one
+              behind a tab the reader has just asked for: a tab that opens a blank
+              screen reads as a broken page. So the tab states the absence instead. */}
+          {snapshot.attribution ? null : (
+            <p
+              data-attribution="absent"
+              className="rounded border border-slate-200 bg-white p-3 text-sm text-slate-600"
+            >
+              this snapshot carries no attribution block, so there is nothing to attribute
+              here: it was published before the attribution step ran, or the step wrote no
+              day for its close. The book monitor is unaffected.
+            </p>
+          )}
+          <AttributionSection attribution={snapshot.attribution} />
+          <div data-columns="true" className="grid gap-3 lg:grid-cols-2">
+            <div className="flex flex-col gap-3">
+              <RiskConcentration snapshot={snapshot} />
+            </div>
+            <div className="flex flex-col gap-3">
+              <Movers snapshot={snapshot} />
+            </div>
+          </div>
+        </>
+      )}
     </main>
   );
 }
@@ -116,11 +200,7 @@ export function App({ now = () => new Date() }: { now?: () => Date }) {
   if (load.kind === "error") {
     return (
       <div className="p-6">
-        <Panel
-          tone="bad"
-          title="the snapshot could not be read"
-          detail={`${load.detail}. A missing token or a missing bucket shows here first.`}
-        />
+        <Panel tone="bad" title="the snapshot could not be read" detail={load.detail} />
       </div>
     );
   }

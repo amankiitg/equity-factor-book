@@ -289,6 +289,44 @@ export interface Attribution {
   note: string;
 }
 
+/** One name's share of the book's predicted specific variance, largest first. */
+export interface VarianceShare {
+  ticker: string;
+  variance_share: number | null;
+}
+
+/**
+ * The traded book's own risk figures, as the evening computed them.
+ *
+ * Published by the reconciliation because they describe the book that trades: gross,
+ * net, the effective breadth, the forecast, and the shares of predicted specific
+ * variance that say which names carry the risk the hedge cannot remove. The page
+ * shows them rather than recomputing a second set, so the two cannot disagree about
+ * the same book. It is not the 499-name book beside it (`full_risk`), which the
+ * floor has not finished with.
+ */
+export interface TradedRisk {
+  forecast_annual_vol?: number | null;
+  gross?: number | null;
+  net?: number | null;
+  n_eff?: number | null;
+  max_weight?: number | null;
+  idio_share?: number | null;
+  max_abs_exposure?: number | null;
+  top_variance_shares?: VarianceShare[] | null;
+}
+
+/** The day's reconciliation row: what the orders intended, and what they did. */
+export interface Reconciliation {
+  expected_cost_bps?: number | null;
+  intended_notional?: number | null;
+  filled_notional?: number | null;
+  realized_annual_vol?: number | null;
+  unexplained_adjustment?: number | null;
+  traded_risk?: TradedRisk | null;
+  full_risk?: TradedRisk | null;
+}
+
 export interface Snapshot {
   schema_version: number;
   generated_at: string;
@@ -315,6 +353,8 @@ export interface Snapshot {
     gross: number | null;
     gross_notional: number | null;
     full_book_gross: number | null;
+    full_book_net: number | null;
+    full_book_achieved_annual_vol: number | null;
     net: number | null;
     max_kept_weight: number | null;
     achieved_annual_vol: number | null;
@@ -337,7 +377,7 @@ export interface Snapshot {
     post_hedge_max_abs_exposure: number | null;
   };
   exposures: Record<string, number | null>;
-  reconciliation: Record<string, number | null>;
+  reconciliation: Reconciliation;
   // The account's own book, published by the evening run from its own account
   // read and rewritten by the morning reconciliation. Absent (not null) when
   // nobody read the account, which is why the section says so in one line rather

@@ -62,6 +62,39 @@ export const dateTime = (value: string | null | undefined): string | null => {
   return time === "00:00" ? day : `${day} ${time} UTC`;
 };
 
+/**
+ * A timestamp as its day and time in New York, for the reader who is in one.
+ *
+ * The run's own instants are UTC, which is the right way to store them and the
+ * wrong way to read them: a close at 16:00 ET is 20:00 UTC or 21:00 UTC depending
+ * on the month, so a reader comparing "when was this written" against "when do I
+ * look at it" is doing the conversion in their head every morning. The zone is
+ * named on the face of it rather than left implied, and the UTC form stays
+ * available for anyone matching the page against the logs.
+ */
+export const etDateTime = (value: string | null | undefined): string | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return dateOnly(value);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(at);
+  const grab = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
+  const day = `${grab("year")}-${grab("month")}-${grab("day")}`;
+  const time = `${grab("hour")}:${grab("minute")}`;
+  // Intl renders midnight as 24:00 in some locales and 00:00 in others; a stock
+  // close is never midnight, but a midnight stamp is a date with no clock on it,
+  // and printing "00:00 ET" would claim an instant nobody recorded.
+  if (time === "00:00" || time === "24:00") return `${day} ET`;
+  return `${day} ${time} ET`;
+};
+
 /** One decimal place: an effective breadth of 70.59213 is 70.6 names, not 70.59. */
 export const oneDecimal = (value: number | null | undefined): string =>
   value === null || value === undefined ? "n/a" : value.toFixed(1);
