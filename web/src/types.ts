@@ -63,7 +63,16 @@ export interface BridgeBlock {
   did_not_fill: number | null;
   held_after: number | null;
   under_minimum_usd: number | null;
+  /** The tickers the $250 floor's count is taken from, so the class is decidable. */
+  under_minimum_tickers?: string[] | null;
   reversals_pending: string[];
+  /**
+   * The *previous* close's deferral list, read from the document that carried it.
+   * Null is "not known" - the evening could not read the document that is up - and
+   * an empty list is "the previous close deferred nothing"; the page must not read
+   * the first as the second. Absent on documents written before the key existed.
+   */
+  previous_reversals_pending?: string[] | null;
   removed_without_order: BridgeRemoval[];
   unexplained: string[];
   identities: BridgeIdentity[];

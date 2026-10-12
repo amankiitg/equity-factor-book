@@ -825,6 +825,7 @@ def evening_bridge(
     book: pd.DataFrame | None,
     legs: pd.DataFrame | None,
     reversals: list[dict[str, Any]],
+    previous_reversals: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """The evening's half of the book bridge, or None on a dry run.
 
@@ -852,7 +853,37 @@ def evening_bridge(
         reversals=[
             item.get("ticker") for item in reversals or [] if item.get("ticker")
         ],
+        # The previous close's deferral list, or None when the document that carries
+        # it could not be read: the two are different statements and the page reads
+        # them differently.
+        previous_reversals=previous_reversals,
     )
+
+
+def previous_close_reversals(as_of: Any) -> list[str] | None:
+    """The previous close's deferral list, from the document that is up.
+
+    The names missing from tonight's account are the ones the previous close's
+    evening closed to reopen the other side, and that list was published in the
+    previous close's own document. `None` when the document cannot be read, when it
+    names this close (a rerun of an evening already published, whose list is this
+    close's own and not the previous one's) or when it carries no bridge: an unknown
+    the page states, rather than an empty list a reader would take for "nothing was
+    deferred".
+    """
+    from live import snapshot
+
+    try:
+        close, bridge = snapshot.published_bridge()
+    except Exception as exc:  # noqa: BLE001 - the bridge's own term, not the run
+        logger.warning("the previous close's deferrals: %s", type(exc).__name__)
+        return None
+    if bridge is None or close is None or close == str(as_of)[:10]:
+        return None
+    names = bridge.get("reversals_pending")
+    if not isinstance(names, list):
+        return None
+    return [str(name) for name in names]
 
 
 def finish_run(
@@ -1752,6 +1783,7 @@ def main() -> int:
             book=book,
             legs=legs,
             reversals=morning.get("deferred_reversals") or [],
+            previous_reversals=previous_close_reversals(as_of),
         )
         if bridge_block is not None and not bridge_block["holds"]:
             logger.warning(

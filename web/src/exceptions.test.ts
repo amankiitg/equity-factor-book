@@ -19,6 +19,7 @@ function doc(parts: {
   atBroker?: string[];
   inStore?: string[];
   reversals?: string[];
+  previousReversals?: string[] | null;
   removed?: string[];
   underMinimum?: string[];
   matches?: boolean | null;
@@ -31,6 +32,8 @@ function doc(parts: {
     },
     bridge: {
       reversals_pending: parts.reversals ?? [],
+      previous_reversals_pending:
+        parts.previousReversals === undefined ? null : parts.previousReversals,
       removed_without_order: (parts.removed ?? []).map((ticker) => ({ ticker })),
       under_minimum_tickers: parts.underMinimum ?? [],
     },
@@ -216,12 +219,51 @@ describe("the classification", () => {
     expect(report.unexpected[0].side).toBe("held_not_targeted");
   });
 
+  it("files the previous close's deferrals as expected, from the republished list", () => {
+    // 2026-10-09: four names the account does not hold - BEN, F, VZ, ZTS - and all
+    // four are the previous close's deferred reversals. The list travelled in the
+    // 2026-10-08 document; the evening republishes it beside this close's own, and
+    // that is the key that decides the class.
+    const report = classify(
+      doc({ atBroker: ["BEN", "F", "VZ", "ZTS"], previousReversals: ["BEN", "F", "VZ", "ZTS"] }),
+    );
+    expect(report.expected.map((entry) => entry.ticker)).toEqual(["BEN", "F", "VZ", "ZTS"]);
+    expect(report.unexpected).toEqual([]);
+    for (const entry of report.expected) {
+      expect(entry.key).toBe("bridge.previous_reversals_pending");
+      expect(entry.why).toContain("deferred reversal of the previous close");
+    }
+    expect(report.unchecked.map((entry) => entry.what)).not.toContain(
+      "a name the account does not hold because a previous close's morning closed it as a deferred reversal",
+    );
+  });
+
+  it("keeps the class on the cannot-check list when the previous list is null", () => {
+    // An empty list is "the previous close deferred nothing" and decides the class;
+    // null is the evening having been unable to read that document, and the page
+    // says which one it is reading rather than filing a break as expected.
+    expect(classify(doc({ previousReversals: [] })).unchecked.map((e) => e.what)).not.toContain(
+      "a name the account does not hold because a previous close's morning closed it as a deferred reversal",
+    );
+    const unknown = classify(doc({ previousReversals: null }));
+    expect(unknown.unchecked.map((entry) => entry.what)).toContain(
+      "a name the account does not hold because a previous close's morning closed it as a deferred reversal",
+    );
+    expect(unknown.unchecked[0].needs).toContain("bridge.reversals_pending");
+    // And nothing is filed as expected off a list that was never read.
+    const report = classify(doc({ atBroker: ["BEN"], previousReversals: null }));
+    expect(report.expected).toEqual([]);
+  });
+
   it("names the classes it cannot check at all, with the key each one needs", () => {
     const report = classify(doc({}));
     const needs = report.unchecked.map((entry) => entry.needs).join(" ");
     expect(report.unchecked).toHaveLength(2);
-    expect(needs).not.toContain("bridge.under_minimum,");
+    expect(needs).not.toContain("no names");
     expect(needs).toContain("efb.e11_corporate_actions");
+    // The one the page now decides, listed back only because this document has no
+    // previous-close key at all.
+    expect(needs).toContain("previous close's bridge.reversals_pending");
     // The one the brief expected to be decidable: the list is one session out.
     expect(needs).toContain("previous close's bridge.reversals_pending");
   });

@@ -81,20 +81,6 @@ export interface Exceptions {
  */
 const UNCHECKED: Unchecked[] = [
   {
-    // The class the brief expected to be decidable, and the reason it is not: the
-    // lists are one session apart. `bridge.reversals_pending` names what *this*
-    // morning closed, which is absent from *tomorrow's* read; the names missing from
-    // the account tonight were closed by the previous close's morning, whose list
-    // travelled in that close's own document. On 2026-10-09, four names are in this
-    // position - BEN, F, VZ, ZTS, all four exactly the deferred reversals of the
-    // previous close - and no key in the 2026-10-09 document names them.
-    what: "a name the account does not hold because a previous close's morning closed it as a deferred reversal",
-    needs:
-      "the previous close's bridge.reversals_pending, beside this one: this " +
-      "document's list names the deferrals made today, which are the gap in " +
-      "tomorrow's read, and the page fetches latest.json only",
-  },
-  {
     what: "an asset that went inactive or was taken out by a corporate action",
     needs:
       "an asset-status or corporate-action field; the loop records the events in " +
@@ -103,14 +89,38 @@ const UNCHECKED: Unchecked[] = [
 ];
 
 /**
+ * The one class whose key can be present and still undecided.
+ *
+ * `bridge.previous_reversals_pending` is this page's own fix for the class that used
+ * to sit in `UNCHECKED`: the names missing from tonight's account are the ones the
+ * previous close's evening closed, and the previous close's document - not tonight's -
+ * is where that list lives. A null is the evening having been unable to read that
+ * document, which is a page that could not look and has to say so; an empty list is
+ * the previous close having deferred nothing, which decides the class.
+ */
+const PREVIOUS_REVERSALS: Unchecked = {
+  what: "a name the account does not hold because a previous close's morning closed it as a deferred reversal",
+  needs:
+    "the previous close's bridge.reversals_pending: the evening reads the document " +
+    "that is up and republishes that list, and it is null when the read could not be " +
+    "made (this document was written before the key existed, or the evening could not " +
+    "fetch it)",
+};
+
+/**
  * The mismatches, split into the explained and the unexplained.
  *
- * The three classes that can be decided page-only, and the one key each rests on:
+ * The four classes that can be decided page-only, and the one key each rests on:
  *
  * - **deferred reversals**, `bridge.reversals_pending`: the names the evening closed
  *   tonight so the other side can open tomorrow. On 2026-10-08 that list is exactly
  *   BEN, F, VZ and ZTS, which is also that morning's four missing-at-broker names -
  *   the loop closed them, so the account not holding them is the intended state;
+ * - **the previous close's deferrals**, `bridge.previous_reversals_pending`: the same
+ *   names one session later, read out of the previous close's document and
+ *   republished beside this close's own list, which is the key that decides the class
+ *   that used to be listed as one the page could not check. Null there is a page that
+ *   could not look, and the class goes back on the list;
  * - **a leg the $250 floor left untraded**, `bridge.under_minimum_tickers`: the names
  *   the floor's count (`bridge.under_minimum`) is taken from. The count alone left the
  *   class undecidable - a reader could see that 21 legs went untraded and not which -
@@ -138,6 +148,8 @@ export function classify(snapshot: Snapshot): Exceptions {
   const bridge = snapshot.bridge;
   const reversals = new Set(bridge?.reversals_pending ?? []);
   const underMinimum = new Set(bridge?.under_minimum_tickers ?? []);
+  const previousReversals = bridge?.previous_reversals_pending ?? null;
+  const deferred = new Set(previousReversals ?? []);
   const removals = new Set(
     (bridge?.removed_without_order ?? []).map((entry) => entry.ticker),
   );
@@ -149,6 +161,14 @@ export function classify(snapshot: Snapshot): Exceptions {
         side,
         why: "deferred reversal: closed tonight, reopening tomorrow",
         key: "bridge.reversals_pending",
+      };
+    }
+    if (deferred.has(ticker)) {
+      return {
+        ticker,
+        side,
+        why: "deferred reversal of the previous close: closed then, reopening now",
+        key: "bridge.previous_reversals_pending",
       };
     }
     if (underMinimum.has(ticker) && side === "targeted_not_held") {
@@ -204,7 +224,8 @@ export function classify(snapshot: Snapshot): Exceptions {
   return {
     expected: current.filter((entry) => entry.key !== ""),
     unexpected: current.filter((entry) => entry.key === ""),
-    unchecked: UNCHECKED,
+    unchecked:
+      previousReversals === null ? [PREVIOUS_REVERSALS, ...UNCHECKED] : UNCHECKED,
     read: targetRead ? compare.read : storeRead,
     source: targetRead ? "target" : storeRead ? "store" : "none",
     compare: targetRead ? compare : null,

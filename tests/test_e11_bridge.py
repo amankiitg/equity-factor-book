@@ -358,6 +358,7 @@ def test_the_evening_publishes_its_half_under_bridge(
         "in_both",
         "opened",
         "exited",
+        "previous_reversals_pending",
         "changed",
         "under_minimum",
         "orders_sent",

@@ -95,6 +95,7 @@ def evening(
     book: Any,
     orders: Any,
     reversals: Any = (),
+    previous_reversals: Any | None = None,
 ) -> dict[str, Any]:
     """The evening's half of the bridge, from the run's own read and its own legs.
 
@@ -168,6 +169,17 @@ def evening(
         "did_not_fill": None,
         "held_after": None,
         "reversals_pending": sorted(_tickers(reversals)),
+        # The previous close's own deferral list, read from the document that is up.
+        # This close's list explains the gap in the *next* read; the names missing
+        # from tonight's read are the ones the previous close's evening closed, and
+        # that list travelled in the previous close's document. On 2026-10-09 exactly
+        # four names - BEN, F, VZ, ZTS - were in this position and no key in the
+        # 2026-10-09 document named them. `None` is "not known", which is a different
+        # statement from `[]`, "the previous close deferred nothing": the page has to
+        # be able to tell a class it has decided from one it could not look at.
+        "previous_reversals_pending": (
+            None if previous_reversals is None else sorted(_tickers(previous_reversals))
+        ),
         "removed_without_order": [],
         "unexplained": [],
         "unread": 0,

@@ -44,6 +44,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import math
 import os
 from collections.abc import Callable
@@ -54,6 +55,8 @@ from typing import Any
 import pandas as pd
 
 from live import breadth, construction_table, staleness, store
+
+logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 SNAPSHOT_ENV = "EFB_SNAPSHOT"
@@ -565,6 +568,15 @@ def _bridge_block(raw: Any) -> dict[str, Any]:
         "reversals_pending": [
             str(name) for name in (block.get("reversals_pending") or [])
         ],
+        # The previous close's deferral list, and null when the writer could not read
+        # the document that carries it. The list itself is passed through when it is
+        # one - including empty, which is the previous close having deferred nothing -
+        # so the page can tell "no deferrals" from "not read".
+        "previous_reversals_pending": (
+            None
+            if block.get("previous_reversals_pending") is None
+            else [str(name) for name in (block.get("previous_reversals_pending") or [])]
+        ),
         "removed_without_order": [
             {
                 "ticker": str(item.get("ticker")),
@@ -1100,6 +1112,43 @@ PAGE_BOOK_MATCH = "match"
 PAGE_BOOK_EMPTY = "empty"
 PAGE_BOOK_SHORT = "short"
 PAGE_BOOK_UNREAD = "unread"
+
+
+def published_bridge(
+    *,
+    key: str = LATEST_KEY,
+    settings: dict[str, str] | None = None,
+    getter: Callable[..., Any] | None = None,
+) -> tuple[str | None, dict[str, Any] | None]:
+    """The close and the bridge block of the document that is up, or no document.
+
+    The evening's own deferral list explains the gap in the *next* read: the names
+    missing from tonight's account were closed by the previous close's evening, and
+    that list was published in the previous close's own document. The snapshot for
+    tonight carries this close's list, so the previous one is read here and republished
+    beside it rather than reconstructed from a date.
+
+    Returns `(target_close, bridge)`. A read that cannot be made is `(None, None)`,
+    which the caller publishes as an unknown rather than as an empty list: a page that
+    could not look is not a page that found nothing.
+    """
+    try:
+        payload = json.loads(get_object_text(key, settings=settings, getter=getter))
+    except Exception as exc:  # noqa: BLE001 - the caller publishes the unknown
+        logger.warning(
+            "the published document could not be read: %s", type(exc).__name__
+        )
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    bridge = payload.get("bridge")
+    close = payload.get("target_close")
+    # The date as the document writes it, not through `_iso`: the caller compares it
+    # with the close it is publishing, and a document whose close is "2026-10-08"
+    # must compare equal to that string rather than to a timestamp of it.
+    return (str(close)[:10] if close else None), (
+        bridge if isinstance(bridge, dict) else None
+    )
 
 
 def check_published_book(
