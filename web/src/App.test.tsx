@@ -289,7 +289,9 @@ describe("the page", () => {
     // that trades is 100% and $1,000,000. The full book's own number is read from
     // the fixture rather than typed in, so regenerating it cannot break this.
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    expect(OK.book.gross).toBe(1);
+    // The writer's own value to machine precision: the merged tree's regenerated
+    // fixture carries 0.9999999999999999, which is one, and the page prints 100.00%.
+    expect(OK.book.gross).toBeCloseTo(1, 12);
     const gross = document.querySelector("[data-card='gross']") as HTMLElement;
     expect(gross.textContent).toContain("100.00%");
     expect(gross.textContent).toContain("$1,000,000");

@@ -109,6 +109,29 @@ def evening(
     sized = _tickers(book)
     both = held & sized
     sent, skipped = _leg_sets(orders)
+    # A name that left the book (or entered it) with no leg sent: the broker's feed
+    # has no symbol for it, or the run refused its leg. On 2026-10-08 this was WBD
+    # alone, and it is why the fourth identity read 203 against 202 - the name is in
+    # `exited` and in no `orders_sent` count, so the identity could not hold while
+    # the bookkeeping was perfect. Naming the term is the fix: the identity subtracts
+    # what was not traded rather than assuming everything was.
+    exited_no_order = sorted((held - sized) & set(skipped))
+    opened_no_order = sorted((sized - held) & set(skipped))
+    # `under_minimum` is the legs the $250 floor left untraded and *only* those. It
+    # used to be `both - sent`, which counted every skipped leg of a continuing name:
+    # on 2026-10-08 that was 24 where 23 legs were under the minimum and the
+    # twenty-fourth was SYY's shortable refusal, so the bridge told a reader the
+    # wrong reason for one name.
+    minimum_code = alpaca.REASON_BELOW_MIN_NOTIONAL
+    not_sent_continuing = sorted(both - sent)
+    under_minimum = sorted(
+        name for name in not_sent_continuing if skipped.get(name) == minimum_code
+    )
+    skipped_continuing = [
+        {"ticker": name, "reason": skipped.get(name, "")}
+        for name in not_sent_continuing
+        if name not in set(under_minimum)
+    ]
     block: dict[str, Any] = {
         "close": str(close)[:10],
         "seen_by": "evening",
@@ -122,7 +145,24 @@ def evening(
         "opened": len(sized - held),
         "exited": len(held - sized),
         "changed": len(both & sent),
-        "under_minimum": len(both - sent),
+        # Every continuing name with no leg sent, which is the third term of the
+        # identity, and the `under_minimum` subset of it that the $250 floor
+        # explains. The two are separate because on 2026-10-08 they were 24 and 23:
+        # the twenty-fourth was SYY's shortable refusal, and a reader checking the
+        # bridge's arithmetic against the day's records was told the wrong reason for
+        # one name. Anything not explained by the minimum is itemised with its code.
+        "not_sent_continuing": len(not_sent_continuing),
+        "under_minimum": len(under_minimum),
+        "under_minimum_tickers": under_minimum,
+        "skipped_continuing": skipped_continuing,
+        "exited_without_order": [
+            {"ticker": name, "reason": skipped.get(name, "")}
+            for name in exited_no_order
+        ],
+        "opened_without_order": [
+            {"ticker": name, "reason": skipped.get(name, "")}
+            for name in opened_no_order
+        ],
         "orders_sent": len(sent),
         "filled": None,
         "did_not_fill": None,
@@ -173,6 +213,13 @@ def completed(
     removed_now = _tickers(item["ticker"] for item in gone)
     after = _tickers(held_after)
     gap = sorted(_tickers(book) - after)
+    # The mirror of `removed_without_order`: a name the account holds that the book
+    # does not and that the loop never opened - a position that arrived without an
+    # order of the loop's. On 2026-10-06 the 2026-10-06 close's SKYD was exactly
+    # this: the PSKY position, returned by the broker's late processing of the
+    # rename, with neither the evening's read nor the book holding it, which read as
+    # `195 vs 196` on a day whose bookkeeping was otherwise perfect.
+    arrived = sorted(after - _tickers(book) - pending - removed_now)
     block.update(
         {
             "seen_by": "morning",
@@ -183,6 +230,7 @@ def completed(
             "unread": int(unread),
             "reversals_pending": sorted(pending),
             "removed_without_order": gone,
+            "arrived_without_order": [{"ticker": name} for name in arrived],
             "unexplained": [
                 name for name in gap if name not in pending and name not in removed_now
             ],
@@ -194,7 +242,12 @@ def completed(
 def gap_names(block: dict[str, Any]) -> list[str]:
     """The names the book has and the account does not, in the order the page lists."""
     names: list[str] = []
-    for key in ("reversals_pending", "removed_without_order", "unexplained"):
+    for key in (
+        "reversals_pending",
+        "removed_without_order",
+        "arrived_without_order",
+        "unexplained",
+    ):
         for item in block.get(key) or ():
             names.append(
                 str(item.get("ticker")) if isinstance(item, dict) else str(item)
@@ -228,14 +281,16 @@ def identities(block: dict[str, Any]) -> list[dict[str, Any]]:
             count("held_before"),
         ),
         _identity(
-            "changed + under the minimum = in both",
-            count("changed") + count("under_minimum"),
+            "changed + the continuing legs not sent = in both",
+            count("changed") + count("not_sent_continuing"),
             count("in_both"),
         ),
         _identity(
-            "changed + opened + exited = orders sent",
+            "changed + opened + exited - the legs not sent = orders sent",
             count("changed") + count("opened") + count("exited"),
-            count("orders_sent"),
+            count("orders_sent")
+            + len(block.get("exited_without_order") or ())
+            + len(block.get("opened_without_order") or ()),
         ),
     ]
     if block.get("held_after") is not None:
@@ -254,11 +309,13 @@ def identities(block: dict[str, Any]) -> list[dict[str, Any]]:
         # could never fail.
         checks.append(
             _identity(
-                "held before - exited + opened - reversals and removals = held after",
+                "held before - exited + opened - reversals and removals + arrived "
+                "= held after",
                 count("held_before") - count("exited") + count("opened"),
                 count("held_after")
                 + len(block.get("reversals_pending") or ())
-                + len(block.get("removed_without_order") or ()),
+                + len(block.get("removed_without_order") or ())
+                - len(block.get("arrived_without_order") or ()),
             )
         )
     return checks

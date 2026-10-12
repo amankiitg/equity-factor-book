@@ -516,7 +516,38 @@ def _bridge_block(raw: Any) -> dict[str, Any]:
         "opened": _number(block.get("opened")),
         "exited": _number(block.get("exited")),
         "changed": _number(block.get("changed")),
+        # The continuing legs with nothing sent, and the `under_minimum` subset of
+        # them the $250 floor explains: separate, because on 2026-10-08 they were 24
+        # and 23 and the twenty-fourth was a broker refusal. `skipped_continuing`
+        # itemises the ones the floor does not explain, with the broker's code.
+        "not_sent_continuing": _number(block.get("not_sent_continuing")),
         "under_minimum": _number(block.get("under_minimum")),
+        "under_minimum_tickers": [
+            str(name) for name in (block.get("under_minimum_tickers") or [])
+        ],
+        "skipped_continuing": [
+            {"ticker": str(item.get("ticker")), "reason": str(item.get("reason") or "")}
+            for item in (block.get("skipped_continuing") or [])
+            if isinstance(item, dict) and item.get("ticker")
+        ],
+        # A name that left the book with no leg sent, and one that entered it, each
+        # with the code the run recorded - the two terms that make the bridge's
+        # arithmetic hold on a night the broker refused a leg or dropped a symbol.
+        "exited_without_order": [
+            {"ticker": str(item.get("ticker")), "reason": str(item.get("reason") or "")}
+            for item in (block.get("exited_without_order") or [])
+            if isinstance(item, dict) and item.get("ticker")
+        ],
+        "opened_without_order": [
+            {"ticker": str(item.get("ticker")), "reason": str(item.get("reason") or "")}
+            for item in (block.get("opened_without_order") or [])
+            if isinstance(item, dict) and item.get("ticker")
+        ],
+        "arrived_without_order": [
+            {"ticker": str(item.get("ticker"))}
+            for item in (block.get("arrived_without_order") or [])
+            if isinstance(item, dict) and item.get("ticker")
+        ],
         "orders_sent": _number(block.get("orders_sent")),
         "filled": _number(block.get("filled")),
         "did_not_fill": _number(block.get("did_not_fill")),
