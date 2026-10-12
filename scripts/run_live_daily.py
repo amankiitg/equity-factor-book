@@ -41,6 +41,7 @@ import logging
 import math
 import os
 import sys
+from collections.abc import Collection
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -204,7 +205,13 @@ def prior_book(
     return frame
 
 
-def specific_std_or_refuse(ticker: str, today_std: pd.Series, as_of: str) -> float:
+def specific_std_or_refuse(
+    ticker: str,
+    today_std: pd.Series,
+    as_of: str,
+    *,
+    dropped_by_risk: Collection[str] = (),
+) -> float:
     """The name's specific standard deviation, or a refusal that names the name.
 
     `ebf.positions.idio_vol` is `not null`, and a NaN *satisfies* it on Postgres
@@ -220,6 +227,12 @@ def specific_std_or_refuse(ticker: str, today_std: pd.Series, as_of: str) -> flo
     so the two agree by construction. It is kept as a refusal because this function
     is also called on its own, from the day's own artifacts, and a book cannot be
     stored against a risk that was invented on the way in.
+
+    `dropped_by_risk` is the manifest's own record of the names the sizing dropped,
+    which is the one source both this write and the sizing answer to (item 14). The
+    refusal reads that record rather than the artifact a second time: a name the
+    manifest dropped and a name this read cannot measure are two different faults,
+    and which one it is decides whether the file or the row is wrong.
     """
     value = today_std.get(ticker)
     # "Has a risk estimate" is one predicate, shared with the drop: a variance that
@@ -230,9 +243,16 @@ def specific_std_or_refuse(ticker: str, today_std: pd.Series, as_of: str) -> flo
     # it is sized, which is exactly why the two must agree: two definitions of the
     # same question in one loop is one too many.
     if value is None or not math.isfinite(float(value)) or float(value) <= 0.0:
+        where = (
+            "the manifest names it among the names it dropped for no risk estimate, "
+            "so a row for it should not exist"
+            if ticker in set(dropped_by_risk)
+            else "the manifest does not name it among the names it dropped, so this "
+            "write and the sizing read different artifacts"
+        )
         raise ValueError(
-            f"no specific variance for {ticker} at {as_of}: the store cannot be "
-            "written with a fabricated idio_vol, and the evening drops a name with "
+            f"no specific variance for {ticker} at {as_of}: {where}; the store cannot "
+            "be written with a fabricated idio_vol, and the evening drops a name with "
             "no risk estimate - including a non-positive one - before it sizes the "
             "book"
         )
@@ -269,6 +289,27 @@ def store_proposal(
     proposal_paths = sorted(PROPOSAL_DIR.glob("proposal_*.parquet"))
     if previous is None and not prior_settled:
         previous = previous_book(as_of, proposal_paths)
+
+    # The manifest's own record of the names the sizing dropped for no risk estimate,
+    # which is the one source this write and the sizing both answer to. The artifact
+    # read below is a second reader of the same file, and a second reader that omitted
+    # `data_root` - the caller's option - would answer for the repository's `data/`
+    # while the sizing answered for the run tree. That is the 2026-10-07 crash this
+    # check removes the reachability of: a name the sizing dropped and this write then
+    # refused is a row that should not exist, and one this write cannot measure while
+    # the manifest does not name it is a different file, not a different name.
+    dropped_by_risk = {
+        str(entry.get("ticker"))
+        for entry in (manifest.get("dropped_no_risk") or [])
+        if isinstance(entry, dict) and str(entry.get("ticker") or "")
+    }
+    still_held = sorted({str(name) for name in rows["ticker"]} & dropped_by_risk)
+    if still_held:
+        raise ValueError(
+            f"{len(still_held)} name(s) the manifest dropped for no risk estimate are "
+            f"still in the book it was written with: {', '.join(still_held)}. The "
+            "proposal and its own drop disagree, so neither is written."
+        )
 
     specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_var.parquet")
     as_of_ts = pd.Timestamp(as_of)
@@ -332,7 +373,9 @@ def store_proposal(
                 "z": float(row.z),
                 "alpha": float(row.alpha),
                 "rank": int(ranked.iloc[index]),
-                "idio_vol": specific_std_or_refuse(ticker, today_std, as_of),
+                "idio_vol": specific_std_or_refuse(
+                    ticker, today_std, as_of, dropped_by_risk=dropped_by_risk
+                ),
                 "previous_weight": previous_weight,
                 "trade": weight - previous_weight,
                 "reason": row.reason,

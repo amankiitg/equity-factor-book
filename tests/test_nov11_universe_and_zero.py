@@ -35,3 +35,28 @@ def test_a_positive_variance_still_passes() -> None:
         "AAA", {"AAA": 1e-4}, pd.Timestamp("2026-09-21")
     )
     assert value == pytest.approx(1e-4)
+
+
+def test_the_refusal_reads_the_manifest_s_own_drop_record() -> None:
+    # Item 14: the write and the sizing must answer to one source. A name the manifest
+    # dropped *and* this read cannot measure is a row that should not exist; a name this
+    # read cannot measure while the manifest does not name it is a different file.
+    with pytest.raises(ValueError, match="should not exist"):
+        run_live_daily.specific_std_or_refuse(
+            "Q",
+            {"EOG": 4e-4},
+            pd.Timestamp("2026-10-07"),
+            dropped_by_risk={"Q"},
+        )
+    with pytest.raises(ValueError, match="read different artifacts"):
+        run_live_daily.specific_std_or_refuse(
+            "Q",
+            {"EOG": 4e-4},
+            pd.Timestamp("2026-10-07"),
+            dropped_by_risk={"AAA"},
+        )
+    # No record at all still refuses, and says which of the two its message can claim.
+    with pytest.raises(ValueError, match="read different artifacts"):
+        run_live_daily.specific_std_or_refuse(
+            "Q", {"EOG": 4e-4}, pd.Timestamp("2026-10-07")
+        )

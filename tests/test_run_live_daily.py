@@ -931,6 +931,63 @@ def test_the_evening_says_so_when_the_published_book_is_not_its_own(
     assert "Page book" not in str(sent[0]["text"])
 
 
+def test_the_store_refuses_a_book_its_own_drop_record_denies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Item 14: the write and the sizing answer to one source, the manifest's drop.
+
+    A name the manifest says it dropped for no risk estimate cannot be in the book the
+    same manifest was written with, and the check reads that record rather than the
+    artifact a second time - the two readers of `specific_var.parquet` can be pointed at
+    different files, and this one is not the one that decides.
+    """
+    import json
+
+    import pandas as pd
+
+    from live import store
+
+    proposals = tmp_path / "proposals"
+    proposals.mkdir()
+    manifest = {
+        "as_of": "2026-10-07",
+        "n_names": 2,
+        "nav": 1_000_000.0,
+        "n_kept": 2,
+        "kept_book": [{"ticker": "EOG", "weight": 0.5}],
+        # The record the drop wrote: these names never reached the sizing.
+        "n_dropped_no_risk": 1,
+        "dropped_no_risk": [{"ticker": "Q", "reason": "no specific variance"}],
+    }
+    (proposals / "proposal_2026-10-07.json").write_text(json.dumps(manifest))
+    pd.DataFrame(
+        {
+            "ticker": ["EOG", "Q"],
+            "weight": [0.5, 0.0036],
+            "side": ["long", "long"],
+            "z": [1.0, 0.0],
+            "alpha": [1e-06, 1e-07],
+        }
+    ).to_parquet(proposals / "proposal_2026-10-07.parquet", index=False)
+    root = tmp_path / "data"
+    (root / "models" / "XS-v1").mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "date": [pd.Timestamp("2026-10-07")] * 2,
+            "ticker": ["EOG", "Q"],
+            "specific_var": [0.0004, 0.0004],
+        }
+    ).to_parquet(root / "models" / "XS-v1" / "specific_var.parquet", index=False)
+    monkeypatch.setattr(run_live_daily, "PROPOSAL_DIR", proposals)
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+
+    refused = "dropped for no risk estimate are still in the book"
+    with pytest.raises(ValueError, match=refused):
+        run_live_daily.store_proposal("2026-10-07", data_root=root, dry_run=True)
+    assert store.select("positions").empty
+    assert store.select("proposals").empty
+
+
 def test_the_store_refuses_a_name_with_no_specific_variance(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
