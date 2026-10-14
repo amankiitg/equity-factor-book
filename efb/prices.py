@@ -220,6 +220,11 @@ def download_prices(
     """
     use_private_tz_cache(cache_root)
     unique = sorted({t for t in tickers})
+    if not unique:
+        # yfinance refuses an empty symbol list outright (`ValueError: No objects to
+        # concatenate`), and the answer to "no tickers" is an empty frame in the
+        # shape every caller selects from rather than a vendor error.
+        return empty_long_frame()
     if prewarm:
         prewarm_tz_cache(unique)
     symbol_of = {yf_ticker(t): t for t in unique}
@@ -238,7 +243,21 @@ def download_prices(
 
 
 def wide_to_long(wide: pd.DataFrame) -> pd.DataFrame:
-    """Convert a yfinance wide download (Ticker x Price columns) to long."""
+    """Convert a yfinance wide download (Ticker x Price columns) to long.
+
+    The action columns are reindexed in, never selected: the vendor omits
+    `Dividends` and `Stock Splits` from a ticker it answered no rows for, so a
+    frame that came back empty carries the six price columns and selecting
+    `FIELDS` from it is a `KeyError` on `dividend` and `split_factor` instead of
+    the empty frame the caller can handle. That is what stopped the 2026-10-14
+    evening run: the warrant `SKYD/WS` was the only name the single-threaded
+    retry asked about, the vendor answered 404 with no rows, and the missing
+    columns raised before anything could see that the name simply had no prices.
+
+    A partial answer is the same shape: the missing fields arrive as NaN and the
+    column order is always `FIELDS`, so the tickers that did come back are the
+    rows that are present and nothing else has to change to read them.
+    """
     if not isinstance(wide.columns, pd.MultiIndex):
         raise ValueError("expected a MultiIndex of (ticker, field) columns")
     frame = wide.copy()
@@ -246,8 +265,22 @@ def wide_to_long(wide: pd.DataFrame) -> pd.DataFrame:
     long_df = frame.stack(level="ticker", future_stack=True)
     long_df = long_df.rename(columns=RENAME)
     long_df.index.names = ["date", "ticker"]
-    long_df = long_df[FIELDS].sort_index()
+    long_df = long_df.reindex(columns=FIELDS).sort_index()
     return long_df
+
+
+def empty_long_frame() -> pd.DataFrame:
+    """A long frame with no rows and every `FIELDS` column, in `FIELDS` order.
+
+    What the download returns when there is no answer to shape: an empty symbol
+    list is refused before the vendor is asked, and a symbol the vendor cannot
+    price comes back with no rows. Both are answers, and a caller that has to
+    select from them cannot be handed a frame missing a column.
+    """
+    index = pd.MultiIndex.from_arrays(
+        [pd.DatetimeIndex([]), pd.Index([], dtype=object)], names=["date", "ticker"]
+    )
+    return pd.DataFrame(index=index, columns=FIELDS, dtype=float)
 
 
 def clean_prices(long_df: pd.DataFrame, start: str = "2010-01-04") -> pd.DataFrame:
