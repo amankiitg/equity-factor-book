@@ -9,6 +9,7 @@ frozen as-of.
 
 from __future__ import annotations
 
+import logging
 import math
 from pathlib import Path
 
@@ -250,6 +251,63 @@ def test_a_name_the_bulk_fetch_missed_is_retried_once_single_threaded(
     ]
     closes = frame.xs(pd.Timestamp("2026-09-28"), level="date")["adj_close"]
     assert not pd.isna(closes["LIVE2"]) and pd.isna(closes["DELISTED"])
+
+
+def test_a_ticker_the_vendor_answers_nothing_for_stays_missing_and_is_named(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The retry leaves a name the vendor will not price missing, and says so.
+
+    The 2026-10-14 evening at this seam: the bulk pass answered for 503 names and
+    not for the SPY holdings warrant `SKYD/WS`, the single-threaded retry asked for
+    that name alone, and the vendor answered with no rows and no action columns.
+    The retry has to hand the name back as still missing - the book's drop rule is
+    what sees it next - and the run's log has to carry the name, because a frame
+    with no rows is the only other place that fact appears and a KeyError there
+    stopped the evening before sizing on 2026-10-14.
+    """
+    days = pd.bdate_range("2026-10-13", "2026-10-14")
+    price_fields = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
+    calls: list[tuple[list[str], object]] = []
+
+    def _download(symbols, **kwargs):  # noqa: ANN001
+        calls.append((list(symbols), kwargs.get("threads")))
+        answered = [symbol for symbol in symbols if symbol != "SKYD/WS"]
+        if not answered:
+            # nothing priced at all: no rows, and the action columns the vendor
+            # only sends with the rows
+            return pd.DataFrame(
+                columns=pd.MultiIndex.from_product([list(symbols), price_fields])
+            )
+        return pd.DataFrame(
+            1.0,
+            index=days,
+            columns=pd.MultiIndex.from_product([answered, list(prices.RENAME)]),
+        )
+
+    monkeypatch.setattr(extend.prices.yf, "download", _download)
+    with caplog.at_level(logging.WARNING):
+        frame, report = extend.retry_missing_closes(
+            _long_frame(["AAPL", "SKYD/WS"], days, blank=["SKYD/WS"]),
+            ["AAPL", "SKYD/WS"],
+            start="2026-10-13",
+            end="2026-10-15",
+            session="2026-10-14",
+        )
+
+    assert calls == [(["SKYD/WS"], False)], calls
+    assert report == {
+        "requested": 2,
+        "session": "2026-10-14",
+        "missing": ["SKYD/WS"],
+        "recovered": [],
+        "still_missing": ["SKYD/WS"],
+    }
+    assert "no prices from the vendor: SKYD/WS" in caplog.text
+    assert prices.missing_tickers(frame, ["AAPL"], session="2026-10-14") == []
+    assert prices.missing_tickers(frame, ["SKYD/WS"], session="2026-10-14") == [
+        "SKYD/WS"
+    ]
 
 
 def test_a_name_that_answered_for_the_earlier_sessions_is_retried_for_the_close(
