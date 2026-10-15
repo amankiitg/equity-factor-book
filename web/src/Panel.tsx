@@ -53,3 +53,36 @@ export function Panel({
     </section>
   );
 }
+
+
+/**
+ * The three words the page uses, defined once.
+ *
+ * "Account", "target" and "store" are three different books and the page leans on all
+ * three; a reader who takes them for one word reads the morning's comparison as the
+ * evening's and cannot tell which number is wrong. Three definitions, no more: a
+ * glossary that grows is one nobody opens.
+ */
+const WORDS: Array<[string, string]> = [
+  ["account", "what the broker says we hold right now"],
+  ["target", "what tonight's run wants us to hold after the next fills"],
+  ["store", "the loop's own record of what it last asked for"],
+];
+
+export function Glossary() {
+  return (
+    <details data-glossary="true" className="rounded border border-slate-200 bg-white">
+      <summary className="cursor-pointer px-2 py-1 text-xs font-medium text-slate-700">
+        What the words mean
+      </summary>
+      <dl className="grid gap-1 px-2 pb-2 text-xs sm:grid-cols-3">
+        {WORDS.map(([word, meaning]) => (
+          <div key={word}>
+            <dt className="font-mono font-semibold">{word}</dt>
+            <dd className="text-slate-600">{meaning}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
+}

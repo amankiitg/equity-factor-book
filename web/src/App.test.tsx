@@ -240,7 +240,16 @@ describe("the page", () => {
     expect(screen.getByText(/worst single day's identity residual/)).toBeTruthy();
     const table = screen.getByRole("table", { name: "attribution by day" });
     const header = within(table).getAllByRole("columnheader").map((cell) => cell.textContent);
-    expect(header).toEqual(["close", "total", "factor", "idio", "cost", "unexplained", "check"]);
+    // The unit sits in the header, once, rather than in every cell of the column.
+    expect(header).toEqual([
+      "close",
+      "total, bp of NAV",
+      "factor",
+      "idio",
+      "cost",
+      "unexplained",
+      "check",
+    ]);
     // Newest first, so the top row is the last stored day, and its dates are days.
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows.length).toBe(live.daily.length);
@@ -317,7 +326,13 @@ describe("the page", () => {
     const card = (label: string): HTMLElement =>
       document.querySelector(`[data-card='${label}']`) as HTMLElement;
     expect(card("n_eff_kept").textContent).toContain(kept.toFixed(1));
-    expect(card("n_eff_kept").textContent).toContain(OK.breadth.kept_label);
+    // The subtitle says what the number means rather than naming the statistic: the
+    // effective breadth is the book behaving like this many equal-sized positions.
+    expect(card("n_eff_kept").textContent).toContain("spread like about");
+    expect(card("n_eff_kept").textContent).toContain(
+      `about ${Math.round(OK.breadth.n_eff_kept as number)} equal positions`,
+    );
+    expect(card("n_eff_kept").textContent).toContain(`out of ${OK.book.n_names}`);
     expect(card("n_eff_full_book").textContent).toContain(full.toFixed(1));
     // The stored value to seventeen places is not on the page.
     expect(screen.queryByText(String(kept))).toBeNull();

@@ -125,7 +125,7 @@ describe("severity", () => {
     expect(reconciled.textContent).toContain("mismatch: the account holds 2 name(s)");
     const expected = reconciled.querySelector("[data-expected='true']") as HTMLElement;
     expect(expected).toBeTruthy();
-    expect(expected.textContent).toContain("1 expected: deferred reversal");
+    expect(expected.textContent).toContain("1 name already settled");
     expect(expected.textContent).toContain("ZZZZ");
     expect(reconciled.querySelector("[data-alert='mismatches']")).toBeNull();
     expect(panel("run").getAttribute("data-tone")).toBe("good");
@@ -149,7 +149,10 @@ describe("severity", () => {
     const unexpected = reconciled.querySelector("[data-alert='mismatches']") as HTMLElement;
     expect(unexpected.getAttribute("data-tone")).toBe("warn");
     expect(unexpected.textContent).toContain("QQQQ");
-    expect(unexpected.textContent).toContain("nothing on the page explains");
+    // The label says what to do about it, and the sentence beside it says nothing
+    // here explains the name - the two halves of "must I act today".
+    expect(unexpected.textContent).toContain("look at this");
+    expect(unexpected.textContent).toContain("nothing in this document explains it");
     // Amber, not red: a mismatch is a fact to read, not a broken loop.
     expect(alerts()).toEqual([]);
   });
@@ -437,7 +440,7 @@ describe("the two claims the strip separates", () => {
     // silently dropped.
     expect(
       (document.querySelector("[data-unchecked='true']") as HTMLElement).textContent,
-    ).toContain("previous close's bridge.reversals_pending");
+    ).toContain("the previous close's deferred-reversal list");
   });
 
   it("collapses a mismatch every name of which the document explains", () => {
@@ -460,7 +463,7 @@ describe("the two claims the strip separates", () => {
     expect(strip.getAttribute("data-tone")).toBe("good");
     expect(document.querySelector("[data-alert='mismatches']")).toBeNull();
     const line = document.querySelector("[data-expected='true']") as HTMLElement;
-    expect(line.textContent).toContain("1 expected: deferred reversal");
+    expect(line.textContent).toContain("1 name already settled");
     expect(line.textContent).toContain("ZTS");
   });
 
@@ -564,7 +567,7 @@ describe("the two claims the strip separates", () => {
     expect(reconciled.textContent).toContain("WBD");
     expect(reconciled.textContent).toContain("the account holds it and the target does not");
     const expected = reconciled.querySelector("[data-expected='true']") as HTMLElement;
-    expect(expected.textContent).toContain("1 expected: deferred reversal");
+    expect(expected.textContent).toContain("1 name already settled");
     expect(expected.textContent).toContain("INVH");
     // The count is the morning comparison's, not the evening's five names.
     expect((document.querySelector("[data-flag='exceptions']") as HTMLElement).textContent).toBe(
@@ -589,15 +592,19 @@ describe("the two claims the strip separates", () => {
     const evening = document.querySelector("[data-details='evening-compare']") as HTMLElement;
     expect(evening).toBeTruthy();
     expect(evening.querySelector("summary")?.textContent).toContain(
-      "evening, before the orders",
+      "last night's check, before the orders",
     );
-    expect(evening.querySelector("summary")?.textContent).toContain("5 name(s)");
+    expect(evening.querySelector("summary")?.textContent).toContain("5 still open");
     // Collapsed, and inside it the evening's own names with their directions.
     expect((evening as HTMLDetailsElement).open).toBe(false);
     expect(evening.textContent).toContain("BEN");
     expect(evening.textContent).toContain("WBD");
-    expect(evening.textContent).toContain("the store holds it and the account does not");
-    expect(evening.textContent).toContain("the account holds it and the store does not");
+    expect(evening.textContent).toContain(
+      "the loop&apos;s own record has it and the account does not",
+    );
+    expect(evening.textContent).toContain(
+      "the account has it and the loop&apos;s own record does not",
+    );
   });
 
   it("leaves an evening read's checks as they were", () => {

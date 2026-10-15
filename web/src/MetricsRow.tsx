@@ -131,6 +131,12 @@ export function MetricsRow({
   const sent = fills?.n_orders ?? null;
   const nav = facts.nav;
   const intended = snapshot.reconciliation?.intended_notional ?? null;
+  const sentNotional = snapshot.reconciliation?.sent_notional ?? null;
+  const unsentNotional = snapshot.reconciliation?.unsent_notional ?? null;
+  // The card stands on the legs the broker was sent, which is what turnover means; the
+  // legs the run built are stated beside it when the document carries both, and the
+  // built figure alone when it predates the split.
+  const turnover = sentNotional ?? intended;
 
   // The day's legs, against NAV. The reconciliation states the notional of every leg
   // the run built, which is the figure that measured the day's trading; the per-name
@@ -169,19 +175,30 @@ export function MetricsRow({
         />
         <Card
           hook="turnover"
-          label="turnover, order-leg notional"
-          value={percent(nav === null || intended === null ? null : intended / nav)}
+          label={sentNotional === null ? "turnover, order-leg notional" : "turnover, legs sent"}
+          value={percent(nav === null || turnover === null ? null : turnover / nav)}
           detail={
-            intended === null
-              ? "the reconciliation carries no intended notional for this close"
-              : `${dollars(intended)} of every leg built, of NAV`
+            turnover === null
+              ? "the reconciliation carries no notional for this close"
+              : sentNotional === null || intended === null || unsentNotional === null
+                ? `${dollars(turnover)} of every leg built, of NAV`
+                : `${dollars(sentNotional)} sent of NAV, and ${dollars(intended)} built, of which ${dollars(unsentNotional)} was never sent`
           }
         />
         <Card
           hook="n_eff_kept"
           label="n_eff_kept"
           value={oneDecimal(breadth?.n_eff_kept)}
-          detail={breadth?.kept_label || "the book's effective breadth"}
+          detail={
+            // What the number means, not its name: an effective breadth of 130 is
+            // the book behaving like 130 equally sized positions, which is the only
+            // way to read it without knowing the statistics.
+            breadth === null || breadth === undefined
+              ? "the book&apos;s effective breadth"
+              : `spread like about ${Math.round(breadth.n_eff_kept ?? 0)} equal positions (out of ${count(
+                  book?.n_names,
+                )})`
+          }
         />
         <Card
           hook="largest-position"
@@ -239,11 +256,21 @@ export function MetricsRow({
           </>
         }
       >
-        <p className="text-xs text-slate-500">
-          The sizing publishes two books: the one that trades, after the floor and the hedge,
-          and the index-sized book it started from. Nothing in the morning route reads the
-          second, which is why it is here rather than on the row above.
-        </p>
+        <ul className="text-xs text-slate-600" data-telemetry="true">
+          <li>
+            The sizing starts wider than it trades: before dropping positions too small to trade,
+            the ideal book was spread like about {Math.round(breadth?.n_eff_full_book ?? 0)} equal
+            names at {percent(book?.full_book_achieved_annual_vol, 1)} predicted volatility.
+          </li>
+          <li>
+            The floor keeps {count(book?.n_names)} names, which spread like about{" "}
+            {Math.round(breadth?.n_eff_kept ?? 0)} equal names.
+          </li>
+          <li>
+            Nothing in the morning route reads this: it says how much of the idea the floor
+            costs.
+          </li>
+        </ul>
         <dl className="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div data-card="n_eff_full_book">
             <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
@@ -273,12 +300,20 @@ export function MetricsRow({
           </div>
         </dl>
         <div data-flag="turnover-note" className="mt-2 text-xs text-slate-500">
-          Turnover on the card is <code>reconciliation.intended_notional</code>, every leg the
-          evening built for this close, whether or not it was sent.
+          Turnover on the card is{" "}
+          <code>
+            {sentNotional === null
+              ? "reconciliation.intended_notional"
+              : "reconciliation.sent_notional"}
+          </code>
+          ,{" "}
+          {sentNotional === null
+            ? "every leg the evening built for this close, whether or not it was sent — this document predates the sent-only figure, so the card stands on the built one."
+            : "the legs the broker was sent for this close; the legs built and never sent are stated beside it."}
           {perNameTotal > 0
-            ? ` The book's own per-name column totals ${dollars(
+            ? ` The book's own per-name rows total ${dollars(
                 perNameTotal,
-              )} here, and the difference is not an error in either: a name that left the book has no row for its closing leg, so the per-name figure counts the trading of the names the book still holds.`
+              )} here, and the difference is not an error in either: a name that left the book has no row for its closing leg, so the trades-by-reason table carries that row itself.`
             : ""}{" "}
           The sent-only notional is in the evening&apos;s email and is not published in this
           document.

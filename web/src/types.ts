@@ -63,7 +63,16 @@ export interface BridgeBlock {
   did_not_fill: number | null;
   held_after: number | null;
   under_minimum_usd: number | null;
+  /** The tickers the $250 floor's count is taken from, so the class is decidable. */
+  under_minimum_tickers?: string[] | null;
   reversals_pending: string[];
+  /**
+   * The *previous* close's deferral list, read from the document that carried it.
+   * Null is "not known" - the evening could not read the document that is up - and
+   * an empty list is "the previous close deferred nothing"; the page must not read
+   * the first as the second. Absent on documents written before the key existed.
+   */
+  previous_reversals_pending?: string[] | null;
   removed_without_order: BridgeRemoval[];
   unexplained: string[];
   identities: BridgeIdentity[];
@@ -320,6 +329,14 @@ export interface TradedRisk {
 export interface Reconciliation {
   expected_cost_bps?: number | null;
   intended_notional?: number | null;
+  /**
+   * The legs the broker was actually sent, and the ones it was not, both in dollars.
+   * `intended_notional` less these two is the figure the page's turnover card used to
+   * stand on alone, and on 2026-10-09 it read $388,402.25 where $379,430.49 was sent.
+   * Absent on every document written before the evening published them.
+   */
+  sent_notional?: number | null;
+  unsent_notional?: number | null;
   filled_notional?: number | null;
   realized_annual_vol?: number | null;
   unexplained_adjustment?: number | null;
@@ -343,6 +360,13 @@ export interface Snapshot {
     n_eff_full_book: number | null;
     kept_label: string;
     full_book_label: string;
+    /**
+     * The names the risk model had no specific variance for, which never reached the
+     * sizing, each with the reason it left. Absent on every document written before
+     * the evening published them.
+     */
+    n_dropped_no_risk?: number | null;
+    dropped_no_risk?: { ticker: string; reason: string }[] | null;
   };
   book: {
     n_names: number;

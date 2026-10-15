@@ -9,7 +9,7 @@
 import { Details } from "./Details";
 import type { BookFacts } from "./book";
 import { dollars, percent } from "./format";
-import type { BookName } from "./types";
+import type { BookName, Snapshot } from "./types";
 
 function NameRow({ name, nav }: { name: BookName; nav: number | null }) {
   const weight = name.weight ?? 0;
@@ -59,9 +59,32 @@ export function TopNames({ facts }: { facts: BookFacts }) {
   );
 }
 
-/** Where the trades came from: one row per reason the run recorded. */
-export function Reasons({ facts }: { facts: BookFacts }) {
+/**
+ * Where the trades came from: one row per reason the run recorded, and it adds up.
+ *
+ * The per-name rows are the legs of the names the book still holds, and a name that
+ * left the book has no row for the closing leg that took it out, so the rows summed
+ * to less than the day's turnover and the reader had to notice. The closing legs are
+ * one row of their own - the difference between the turnover card and these rows -
+ * and every row carries its share of the turnover, so the column totals 100%.
+ *
+ * The basis is the card's own: the legs the broker was sent when the document
+ * carries that figure, and every leg the run built when it does not.
+ */
+export function Reasons({ facts, snapshot }: { facts: BookFacts; snapshot: Snapshot }) {
   if (!facts.hasBook) return null;
+  const reconciliation = snapshot.reconciliation ?? null;
+  const turnover = reconciliation?.sent_notional ?? reconciliation?.intended_notional ?? null;
+  const perName = facts.reasons.reduce((total, bucket) => total + bucket.traded, 0);
+  // The closing legs of the names that left, which no per-name row can carry. Zero
+  // rather than a negative when the per-name column already exceeds the card: the
+  // difference is the loop's arithmetic, not a row of the table.
+  const exited = turnover === null ? null : Math.max(0, turnover - perName);
+  const total = turnover === null ? perName : turnover;
+  const share = (amount: number): string =>
+    total > 0 ? percent(amount / total, 1) : "n/a";
+  const sent = reconciliation?.sent_notional ?? null;
+
   return (
     <section data-section="reasons" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">Trades by reason</h2>
@@ -72,6 +95,7 @@ export function Reasons({ facts }: { facts: BookFacts }) {
             <th className="py-1 text-right">names</th>
             <th className="py-1 text-right">held</th>
             <th className="py-1 text-right">traded</th>
+            <th className="py-1 text-right">share</th>
           </tr>
         </thead>
         <tbody>
@@ -92,16 +116,47 @@ export function Reasons({ facts }: { facts: BookFacts }) {
               >
                 {dollars(bucket.traded)}
               </td>
+              <td className="py-1 text-right font-mono tabular-nums">{share(bucket.traded)}</td>
             </tr>
           ))}
+          {exited !== null ? (
+            <tr data-reason="exited" className="border-b border-slate-100">
+              <td className="py-1">exited (closing legs of names that left)</td>
+              <td className="py-1 text-right font-mono tabular-nums">—</td>
+              <td className="py-1 text-right font-mono tabular-nums">—</td>
+              <td className="py-1 text-right font-mono tabular-nums" data-traded="exited">
+                {dollars(exited)}
+              </td>
+              <td className="py-1 text-right font-mono tabular-nums">{share(exited)}</td>
+            </tr>
+          ) : null}
         </tbody>
+        <tfoot>
+          <tr data-total="true" className="border-t border-slate-300 font-medium">
+            <td className="py-1">total</td>
+            <td className="py-1" />
+            <td className="py-1 text-right font-mono tabular-nums">
+              {dollars(facts.reasons.reduce((total_, bucket) => total_ + bucket.notional, 0))}
+            </td>
+            <td className="py-1 text-right font-mono tabular-nums" data-traded-total="true">
+              {turnover === null ? dollars(perName) : dollars(turnover)}
+            </td>
+            <td className="py-1 text-right font-mono tabular-nums">
+              {turnover === null ? "n/a" : percent(1, 0)}
+            </td>
+          </tr>
+        </tfoot>
       </table>
       <p className="mt-1 text-xs text-slate-500">
-        The count and the held dollars are the positions carrying each reason: what the run keeps
-        under it. The traded column is the legs it built for those same names, so it answers where
-        the trading came from rather than how much of it there was: a name that left the book has no
-        row here for its closing leg, which is why this column sums to less than the day&apos;s
-        turnover on the metrics row. The held column is not a difference between two books.
+        Traded is the day&apos;s turnover by reason: the legs the broker was{" "}
+        {sent === null ? "built" : "sent"} for the close
+        {sent === null ? " (this document predates the sent figure)" : ""}. The names and held
+        columns are the positions carrying each reason, not a difference between two books. The
+        exited row is computed here as the turnover card less the per-name rows
+        {turnover === null || exited === null
+          ? ""
+          : ` (${dollars(turnover)} − ${dollars(perName)} = ${dollars(exited)})`}
+        , because a name that left the book has no row for its closing leg.
       </p>
     </section>
   );

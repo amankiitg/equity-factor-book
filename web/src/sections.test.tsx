@@ -22,6 +22,7 @@ import { sectorCodeFor, sectorLabel, UNMAPPED } from "./sectors";
 import type { AttributionPeriod, Snapshot } from "./types";
 import noBook from "../fixtures/snapshot_no_book.json";
 import ok from "../fixtures/snapshot_ok.json";
+import today from "../fixtures/snapshot_2026-10-14_morning.json";
 import rejected from "../fixtures/snapshot_fills_rejected.json";
 import withActual from "../fixtures/snapshot_actual_holdings.json";
 
@@ -40,6 +41,8 @@ const NOW = new Date("2026-09-21T23:00:00Z");
  * INVH at all. The five sectors it touches are the ones the map carries, so a driver
  * line can be read against a sector the test names.
  */
+const TODAY = today as unknown as Snapshot;
+
 const MORNING: Snapshot = {
   generated_at: "2026-10-09T22:50:01Z",
   book_as_of: "2026-10-09T00:00:00",
@@ -111,7 +114,13 @@ describe("the metrics row", () => {
     expect(card("n_eff_kept").textContent).toContain(
       (OK.breadth.n_eff_kept as number).toFixed(1),
     );
-    expect(card("n_eff_kept").textContent).toContain(OK.breadth.kept_label);
+    // The subtitle says what the number means rather than naming the statistic: the
+    // effective breadth is the book behaving like this many equal-sized positions.
+    expect(card("n_eff_kept").textContent).toContain("spread like about");
+    expect(card("n_eff_kept").textContent).toContain(
+      `about ${Math.round(OK.breadth.n_eff_kept as number)} equal positions`,
+    );
+    expect(card("n_eff_kept").textContent).toContain(`out of ${OK.book.n_names}`);
     // The pre-floor telemetry is behind the construction disclosure now: still
     // addressable, and no longer on the row a reader scans in the morning.
     const construction = document.querySelector("[data-details='construction']") as HTMLElement;
@@ -527,7 +536,9 @@ describe("trades by reason", () => {
     const facts = bookFacts(OK);
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const table = screen.getByRole("table", { name: "trades by reason" });
-    const rows = within(table).getAllByRole("row").slice(1);
+    // The per-reason rows only: the body has one row per reason, and the foot
+    // carries the total the column has to add up to.
+    const rows = Array.from(table.querySelectorAll("tbody tr")) as HTMLElement[];
     expect(rows.length).toBe(facts.reasons.length);
     rows.forEach((row, index) => {
       const bucket = facts.reasons[index];
@@ -547,7 +558,7 @@ describe("trades by reason", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const table = screen.getByRole("table", { name: "trades by reason" });
     const headers = within(table).getAllByRole("columnheader").map((cell) => cell.textContent);
-    expect(headers).toEqual(["reason", "names", "held", "traded"]);
+    expect(headers).toEqual(["reason", "names", "held", "traded", "share"]);
 
     for (const bucket of facts.reasons) {
       const cell = document.querySelector(
@@ -585,7 +596,43 @@ describe("trades by reason", () => {
       ) as HTMLElement;
       expect(cell.textContent).toBe(dollars(0));
     }
-    expect(within(table).getAllByRole("row").length).toBe(facts.reasons.length + 1);
+    // One row per reason, and no exited row: this document carries no turnover to
+    // take the closing legs out of, and a row of nothing would be a number nobody
+    // measured.
+    expect(table.querySelectorAll("tbody tr").length).toBe(facts.reasons.length);
+    expect(document.querySelector("[data-traded='exited']")).toBeNull();
+  });
+
+  it("adds up to the turnover card, with the closing legs of the names that left", () => {
+    // The rows are the legs of the names the book still holds, so on a real
+    // document they summed to less than the card and the reader had to notice. The
+    // exited row is the difference and the foot is the card, so the column totals.
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const table = screen.getByRole("table", { name: "trades by reason" });
+    // The real 2026-10-13 document, whose card stands on the legs the run built.
+    document.body.innerHTML = "";
+    const turnover =
+      TODAY.reconciliation?.sent_notional ?? TODAY.reconciliation?.intended_notional ?? null;
+    expect(turnover).not.toBeNull();
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    const real = screen.getByRole("table", { name: "trades by reason" });
+    const perName = bookFacts(TODAY).reasons.reduce((sum, bucket) => sum + bucket.traded, 0);
+    const exited = document.querySelector("[data-traded='exited']") as HTMLElement;
+    expect(exited).toBeTruthy();
+    // The closing legs of the names that left, computed as card less per-name rows:
+    // $447,195.23 - $288,236.54 on the real document.
+    expect(exited.textContent).toBe(dollars((turnover as number) - perName));
+    expect(turnover as number).toBeGreaterThan(perName);
+    const foot = document.querySelector("[data-traded-total='true']") as HTMLElement;
+    expect(foot.textContent).toBe(dollars(turnover as number));
+    // The shares are of the same total, so the column sums to 100%.
+    const shares = Array.from(real.querySelectorAll("tbody tr td:last-child")).map((cell) =>
+      parseFloat(cell.textContent ?? "0"),
+    );
+    expect(shares.reduce((sum, value) => sum + value, 0)).toBeCloseTo(100, 0);
+    // And the footnote says the row is computed rather than stored, with the sum.
+    expect(real.parentElement?.textContent).toContain("exited row is computed here");
+    expect(table).toBeTruthy();
   });
 
   it("reads a book published without the traded column as nothing traded", () => {
@@ -1141,7 +1188,7 @@ describe("the turnover card", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const card = document.querySelector("[data-card='turnover']") as HTMLElement;
     expect(card.textContent).toContain("n/a");
-    expect(card.textContent).toContain("no intended notional");
+    expect(card.textContent).toContain("no notional for this close");
     // And no fabricated zero beside it.
     expect(document.querySelector("[data-flag='turnover-note']")?.textContent).not.toContain(
       "totals $0",
@@ -1218,5 +1265,85 @@ describe("the attribution tab's own panels", () => {
     expect(panel).toBeTruthy();
     expect(panel.textContent).toContain("no session of this period carries a realized volatility");
     expect(panel.querySelector("svg")).toBeNull();
+  });
+});
+
+describe("the four words, the labels and the arithmetic", () => {
+  it("defines exactly the three books the page leans on", () => {
+    // Three definitions and no more: a glossary that grows is one nobody opens, and
+    // these are the three the page compares against each other.
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    const glossary = document.querySelector("[data-glossary='true']") as HTMLElement;
+    expect(glossary).toBeTruthy();
+    const terms = Array.from(glossary.querySelectorAll("dt")).map((node) => node.textContent);
+    expect(terms).toEqual(["account", "target", "store"]);
+    expect(glossary.textContent).toContain("what the broker says we hold right now");
+    expect(glossary.textContent).toContain("what tonight's run wants us to hold");
+    expect(glossary.textContent).toContain("the loop's own record of what it last asked for");
+  });
+
+  it("counts the kinds of gap it cannot check, behind a toggle, in one line each", () => {
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    const toggle = document.querySelector("[data-details='unchecked']") as HTMLElement;
+    expect(toggle).toBeTruthy();
+    // Today's document carries no previous-close reversals list, so that class is
+    // still one the page cannot check: three, and the count is the honest one.
+    expect(toggle.querySelector("summary")?.textContent).toContain(
+      "3 kinds of gap this page cannot check yet",
+    );
+    // The long paragraphs are gone: one sentence per item, inside the toggle.
+    expect((toggle as HTMLDetailsElement).open).toBe(false);
+    const items = Array.from(toggle.querySelectorAll("li")).map((node) => node.textContent ?? "");
+    expect(items).toHaveLength(3);
+    // One sentence each, and the key names stay out of the default view: the
+    // toggle says what the page cannot see, not which field would fix it.
+    for (const item of items) expect(item.length).toBeLessThan(190);
+  });
+
+  it("names each name's label and what happens next", () => {
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    // Today's two names are the run's own deferrals: settled, labelled in transit.
+    const settled = document.querySelector("[data-expected='true']") as HTMLElement;
+    expect(settled.textContent).toContain("PCG");
+    expect(settled.textContent).toContain("PYPL");
+    expect(settled.textContent).toContain("nothing to do");
+  });
+
+  it("puts the bridge's arithmetic behind a toggle, every step checked", () => {
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    const toggle = document.querySelector("[data-bridge-arithmetic='toggle']") as HTMLElement;
+    expect(toggle).toBeTruthy();
+    const steps = Array.from(toggle.querySelectorAll("[data-identity]"));
+    // Every identity the writer computed is printed, with its own verdict.
+    expect(steps).toHaveLength(TODAY.bridge?.identities.length ?? 0);
+    for (const step of steps) {
+      const holds = step.getAttribute("data-holds") === "true";
+      expect(step.textContent).toContain(holds ? "✓" : "✗");
+    }
+    // The night's own chain, in plain words with the numbers and their unit.
+    expect(toggle.textContent).toContain(
+      "resized + opened + exited = orders sent: 191 = 191 orders ✓",
+    );
+    expect(toggle.textContent).toContain("kept + opened = in the target: 171 = 171 names ✓");
+    expect(toggle.textContent).toContain("held before - exited + opened - closed and removed");
+  });
+
+  it("opens the hedge with one sentence naming the day's trading", () => {
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    const opening = document.querySelector("[data-hedge='opening']") as HTMLElement;
+    expect(opening).toBeTruthy();
+    const moved = (TODAY.book?.names ?? []).filter((name) => name.reason === "the hedge moved");
+    const notional = moved.reduce((total, name) => total + Math.abs(name.traded_notional ?? 0), 0);
+    expect(opening.textContent).toContain(`it moved ${moved.length} names`);
+    expect(opening.textContent).toContain(dollars(notional));
+    expect(opening.textContent).toContain("re-weights the stocks we already hold");
+  });
+
+  it("reads the largest drift as a share of the position, with the reason", () => {
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    const drifts = document.querySelector("[data-drifts='true']") as HTMLElement;
+    const first = drifts.querySelector("li") as HTMLElement;
+    expect(first.textContent).toContain("of the position");
+    expect(first.textContent).toContain("price moved since the close");
   });
 });

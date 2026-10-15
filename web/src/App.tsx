@@ -33,7 +33,7 @@ import { ExposuresSection } from "./ExposuresSection";
 import { Movers, RiskConcentration } from "./FutureSections";
 import { HedgePanel } from "./HedgePanel";
 import { MetricsRow } from "./MetricsRow";
-import { Panel } from "./Panel";
+import { Glossary, Panel } from "./Panel";
 import { SectorSection } from "./SectorSection";
 import { StatusStrip } from "./StatusStrip";
 import { classify } from "./exceptions";
@@ -68,6 +68,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
         reconciled={reconciled}
         exceptions={exceptions}
       />
+      <Glossary />
       {/* The tabs switch the body, not the strip: the run's state and the exception
           count are what a reader came for, and neither belongs to one job. */}
       <div className="flex flex-wrap gap-1" role="tablist" aria-label="view">
@@ -107,7 +108,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
             <div className="flex flex-col gap-3">
               <HedgePanel snapshot={snapshot} facts={facts} />
               <ExposuresSection snapshot={snapshot} />
-              <Reasons facts={facts} />
+              <Reasons facts={facts} snapshot={snapshot} />
             </div>
             <div className="flex flex-col gap-3">
               <SectorSection snapshot={snapshot} sectors={facts.sectors} />
@@ -132,7 +133,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
               day for its close. The book monitor is unaffected.
             </p>
           )}
-          <AttributionSection attribution={snapshot.attribution} />
+          <AttributionSection attribution={snapshot.attribution} snapshot={snapshot} />
           <div data-columns="true" className="grid gap-3 lg:grid-cols-2">
             <div className="flex flex-col gap-3">
               <RiskConcentration snapshot={snapshot} />

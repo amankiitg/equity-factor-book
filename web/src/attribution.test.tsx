@@ -163,28 +163,30 @@ describe("the attribution section", () => {
   it("compares the realized cost against the trading half, with borrow named beside it", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     openAttribution();
-    const cost = document.querySelector("[data-cost='line']")?.textContent ?? "";
+    const line = document.querySelector("[data-cost='line']")?.textContent ?? "";
     const split = LIVE_PERIOD.cost;
     const trading = split.expected_trading_bps as number;
     const borrow = split.expected_borrow_bps as number;
-    expect(cost).toContain((split.expected_bps as number).toFixed(2));
-    expect(cost).toContain(trading.toFixed(2));
-    expect(cost).toContain(borrow.toFixed(2));
-    expect(cost).toContain((split.realized_bps as number).toFixed(2));
-    expect(cost).toContain("borrow");
+    // The three figures the paragraph exists for, each with its denominator named
+    // once: the expectation, its two halves, and what the fills actually paid.
+    expect(line).toContain((split.expected_bps as number).toFixed(2));
+    expect(line).toContain(`${trading.toFixed(1)} bp of trading`);
+    expect(line).toContain(`${borrow.toFixed(1)} bp of borrow`);
+    expect(line).toContain("bp of NAV");
+    expect(line).toContain("shorts");
     // The comparison is the trading half and not the total: the total carries
     // borrow, which is a holding cost and no fill price pays it.
     expect(trading).toBeLessThan(split.expected_bps as number);
-    expect(cost).toContain(
-      `against the ${trading.toFixed(2)} bp of NAV of trading cost the evening expected for the same session`,
-    );
-    expect(cost).not.toContain(`against the ${(split.expected_bps as number).toFixed(2)} bp`);
-    // Every figure in the block carries its denominator.
-    expect(cost).toContain("bp of NAV");
-    // The realized number is labelled as what it measures: the move from the
-    // previous close to the fill, which is mostly the overnight gap.
-    expect(cost).toContain("previous close");
-    expect(cost).toContain("overnight gap");
+    const today = OK.actual_holdings?.fills?.realized_cost_bps ?? null;
+    if (today !== null) {
+      expect(line).toContain(`The fills cost ${today.toFixed(1)} bp against the ${trading.toFixed(1)} bp of trading`);
+    }
+    // The measured number is labelled as what it measures: the move from the
+    // previous close to the fill, which is mostly the overnight gap and can be a gain.
+    expect(line).toContain("previous close");
+    expect(line).toContain("can be positive");
+    // At most the two short paragraphs the brief allows: three lines of meaning.
+    expect((document.querySelector("[data-cost='line']") as HTMLElement).querySelectorAll("p").length).toBe(2);
   });
 
   it("shows what the hedge removed, not only the split it left", () => {
