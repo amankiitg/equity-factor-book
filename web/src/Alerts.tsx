@@ -100,6 +100,7 @@ function EveningCompare({
               ? "the loop&apos;s own record has it and the account does not"
               : "the account has it and the loop&apos;s own record does not"}
             {entry.key === "" ? ", and nothing here explains it" : ` — ${entry.why}`}
+            {entry.key === "" ? "" : `; ${NEXT_STEP[entry.label]}`}
           </li>
         ))}
       </ul>

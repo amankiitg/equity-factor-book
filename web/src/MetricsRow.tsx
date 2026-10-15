@@ -28,6 +28,9 @@ import { count, dollars, oneDecimal, percent } from "./format";
 import type { BookFacts } from "./book";
 import type { Snapshot } from "./types";
 
+/** How many dropped-for-no-risk names the coverage line lists before counting the rest. */
+const DROPPED_LINES = 6;
+
 function Card({
   hook,
   label,
@@ -137,6 +140,10 @@ export function MetricsRow({
   // legs the run built are stated beside it when the document carries both, and the
   // built figure alone when it predates the split.
   const turnover = sentNotional ?? intended;
+  // The names the risk model could not measure, published under the breadth block.
+  // Absent on a document written before the evening published them, and an empty list
+  // on a night that dropped none: both mean nothing to report, so both draw nothing.
+  const droppedNoRisk = breadth?.dropped_no_risk ?? [];
 
   // The day's legs, against NAV. The reconciliation states the notional of every leg
   // the run built, which is the figure that measured the day's trading; the per-name
@@ -256,6 +263,23 @@ export function MetricsRow({
           </>
         }
       >
+        {droppedNoRisk.length > 0 ? (
+          <p data-flag="dropped-no-risk" className="mt-2 text-xs text-slate-600">
+            {count(breadth?.n_dropped_no_risk ?? droppedNoRisk.length)} name(s) never reached the
+            book at all: the risk model has no specific risk for them, and a position is not sized
+            on a median that is not its own.{" "}
+            <span className="font-mono">
+              {droppedNoRisk
+                .slice(0, DROPPED_LINES)
+                .map((entry) => (entry.reason ? `${entry.ticker} (${entry.reason})` : entry.ticker))
+                .join(", ")}
+              {droppedNoRisk.length > DROPPED_LINES
+                ? ` and ${droppedNoRisk.length - DROPPED_LINES} more`
+                : ""}
+            </span>
+            .
+          </p>
+        ) : null}
         <ul className="text-xs text-slate-600" data-telemetry="true">
           <li>
             The sizing starts wider than it trades: before dropping positions too small to trade,

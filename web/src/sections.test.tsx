@@ -1347,3 +1347,84 @@ describe("the four words, the labels and the arithmetic", () => {
     expect(first.textContent).toContain("price moved since the close");
   });
 });
+
+describe("the basis the turnover card stands on, and the last of nov11's keys", () => {
+  it("stands on the legs the broker was sent when the document carries them", () => {
+    // nov11's key. The card's own words move with it: the label, the figure and the
+    // note all say which half of the day's legs the number is.
+    const built = TODAY.reconciliation?.intended_notional as number;
+    const sent = 379_430.49;
+    const snapshot = {
+      ...TODAY,
+      reconciliation: {
+        ...(TODAY.reconciliation as NonNullable<Snapshot["reconciliation"]>),
+        sent_notional: sent,
+        unsent_notional: built - sent,
+      },
+    } as Snapshot;
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const card = document.querySelector("[data-card='turnover']") as HTMLElement;
+    const nav = (TODAY.book?.gross_notional as number) / (TODAY.book?.gross as number);
+    expect(card.textContent).toContain("turnover, legs sent");
+    expect(card.textContent).toContain(percent(sent / nav));
+    expect(card.textContent).toContain(`and ${dollars(built)} built`);
+    expect(card.textContent).toContain(`of which ${dollars(built - sent)} was never sent`);
+    expect(card.textContent).toContain(`${dollars(sent)} sent of NAV`);
+    const note = document.querySelector("[data-flag='turnover-note']") as HTMLElement;
+    expect(note.textContent).toContain("reconciliation.sent_notional");
+    expect(note.textContent).not.toContain("reconciliation.intended_notional");
+    // And the trades-by-reason table adds up to the same figure, not to the other one.
+    const total = document.querySelector("[data-traded-total='true']") as HTMLElement;
+    expect(total.textContent).toBe(dollars(sent));
+  });
+
+  it("names the names the risk model could not measure, and nothing when there are none", () => {
+    // The last of nov11's keys. A name dropped for want of a risk figure is the one
+    // class of absence nothing else on the page implies, so it is named; a document
+    // that predates the key says nothing rather than "0 names".
+    const withDrops = {
+      ...TODAY,
+      breadth: {
+        ...(TODAY.breadth as NonNullable<Snapshot["breadth"]>),
+        n_dropped_no_risk: 3,
+        dropped_no_risk: [
+          { ticker: "ZZZZ", reason: "no specific variance" },
+          { ticker: "YYYY", reason: "no specific variance" },
+          { ticker: "XXXX", reason: "" },
+        ],
+      },
+    } as Snapshot;
+    render(<SnapshotView snapshot={withDrops} now={NOW} />);
+    const line = document.querySelector("[data-flag='dropped-no-risk']") as HTMLElement;
+    expect(line).toBeTruthy();
+    expect(line.textContent).toContain("3 name(s) never reached the book");
+    expect(line.textContent).toContain("ZZZZ (no specific variance)");
+    expect(line.textContent).toContain("XXXX");
+    document.body.innerHTML = "";
+    // Absent, and empty: both draw nothing.
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    expect(document.querySelector("[data-flag='dropped-no-risk']")).toBeNull();
+    document.body.innerHTML = "";
+    const empty = {
+      ...TODAY,
+      breadth: {
+        ...(TODAY.breadth as NonNullable<Snapshot["breadth"]>),
+        n_dropped_no_risk: 0,
+        dropped_no_risk: [],
+      },
+    } as Snapshot;
+    render(<SnapshotView snapshot={empty} now={NOW} />);
+    expect(document.querySelector("[data-flag='dropped-no-risk']")).toBeNull();
+  });
+
+  it("words the largest variance share as a share of the book's predicted risk", () => {
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    const toggle = document.querySelector("[data-details='hedge-shares']") as HTMLElement;
+    const top = TODAY.reconciliation?.traded_risk?.top_variance_shares?.[0];
+    expect(top).toBeTruthy();
+    expect(toggle.querySelector("summary")?.textContent).toContain(
+      `${top?.ticker} carries ${percent(top?.variance_share, 1)} of the book's predicted stock-specific risk`,
+    );
+    expect(toggle.textContent).toContain("share of the book's predicted specific risk");
+  });
+});

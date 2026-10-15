@@ -45,10 +45,28 @@ describe("health", () => {
     expect(state.detail).not.toBe("");
   });
 
-  it("fails an errored run", () => {
+  it("fails an errored run, and says plainly when nothing was priced", () => {
     const state = health(errored as unknown as Snapshot, NOW);
     expect(state.ok).toBe(false);
+    // This document's book is the previous close's, so the top of the page makes the
+    // claim a reader needs in words rather than in a status word...
+    expect(state.headline).toBe("no book was priced for the 2026-09-25 close");
+    // ...and keeps the run's own sentence beside it, because that is what someone
+    // fixing the loop needs.
+    expect(state.detail).toContain("no usable close price for 3 kept names");
+    expect(state.detail).toContain("still the 2026-10-02 close");
+  });
+
+  it("keeps the raw status word when an errored run did price tonight's book", () => {
+    // A run that failed after sizing has a book of its own, and calling that night
+    // "no book was priced" would be false.
+    const failed = {
+      ...(errored as unknown as Snapshot),
+      book_as_of: (errored as unknown as Snapshot).target_close,
+    } as Snapshot;
+    const state = health(failed, NOW);
     expect(state.headline).toContain("error");
+    expect(state.detail).toContain("no usable close price");
   });
 
   it("fails a snapshot past the instant the next one was due", () => {

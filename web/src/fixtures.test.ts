@@ -35,6 +35,10 @@ const NAMES = [
   // page's morning path is what they exercise.
   "snapshot_2026-10-14_morning.json",
   "snapshot_2026-10-13_evening.json",
+  // The 2026-10-14 evening, which stopped before it sized a book: `status: error`,
+  // the previous close's book left standing, and no account read, no bridge. Fetched
+  // read-only on 2026-10-15 11:46 UTC, before the morning job rewrote it.
+  "snapshot_2026-10-14_error.json",
 ];
 
 // The fixtures that carry an `actual_holdings` block, which is every document a
