@@ -1,0 +1,127 @@
+{
+ "snapshot_2026-10-14_morning.json": {
+  "390": {
+   "viewport": {
+    "width": 390,
+    "height": 844
+   },
+   "scrollHeight": 4365,
+   "scrollWidth": 390,
+   "clientWidth": 390,
+   "sideways": false,
+   "tables": [
+    {
+     "name": "top variance shares",
+     "width": 322,
+     "container": 338,
+     "overflows": false
+    },
+    {
+     "name": "factor exposures",
+     "width": 351,
+     "container": 322,
+     "overflows": true
+    },
+    {
+     "name": "trades by reason",
+     "width": 340,
+     "container": 364,
+     "overflows": false
+    },
+    {
+     "name": "sector gross",
+     "width": 352,
+     "container": 338,
+     "overflows": true
+    }
+   ],
+   "overflowingTables": [
+    "factor exposures",
+    "sector gross"
+   ],
+   "widestElements": [],
+   "sections": [
+    "bridge",
+    "hedge",
+    "exposures",
+    "reasons",
+    "sector",
+    "top-names",
+    "drawer"
+   ],
+   "headline": {
+    "top": 438,
+    "bottom": 486,
+    "height": 48
+   },
+   "headlineInFirstScreen": true,
+   "suspects": [],
+   "runPanel": {
+    "text": "proposal run: ok for the 2026-10-13 closethe run priced a book; what the account holds is the reconciliation below",
+    "tone": "good"
+   },
+   "consoleErrors": [],
+   "fixture": "/Users/amankesarwani/PycharmProjects/efb-page-v4/web/fixtures/snapshot_2026-10-14_morning.json"
+  },
+  "1440": {
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scrollHeight": 2081,
+   "scrollWidth": 1440,
+   "clientWidth": 1440,
+   "sideways": false,
+   "tables": [
+    {
+     "name": "top variance shares",
+     "width": 638,
+     "container": 654,
+     "overflows": false
+    },
+    {
+     "name": "factor exposures",
+     "width": 638,
+     "container": 638,
+     "overflows": false
+    },
+    {
+     "name": "trades by reason",
+     "width": 656,
+     "container": 680,
+     "overflows": false
+    },
+    {
+     "name": "sector gross",
+     "width": 638,
+     "container": 654,
+     "overflows": false
+    }
+   ],
+   "overflowingTables": [],
+   "widestElements": [],
+   "sections": [
+    "bridge",
+    "hedge",
+    "exposures",
+    "reasons",
+    "sector",
+    "top-names",
+    "drawer"
+   ],
+   "headline": {
+    "top": 266,
+    "bottom": 290,
+    "height": 24
+   },
+   "headlineInFirstScreen": true,
+   "suspects": [],
+   "runPanel": {
+    "text": "proposal run: ok for the 2026-10-13 closethe run priced a book; what the account holds is the reconciliation below",
+    "tone": "good"
+   },
+   "consoleErrors": [],
+   "fixture": "/Users/amankesarwani/PycharmProjects/efb-page-v4/web/fixtures/snapshot_2026-10-14_morning.json"
+  }
+ }
+}

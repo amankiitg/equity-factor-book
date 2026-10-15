@@ -19,7 +19,7 @@
 // panel says so instead of drawing a share of nothing.
 
 import { Details } from "./Details";
-import { count, dollars, percent } from "./format";
+import { count, dateOnly, dollars, percent } from "./format";
 import type { BookFacts } from "./book";
 import type { Snapshot } from "./types";
 
@@ -40,12 +40,22 @@ export function HedgePanel({
     0,
   );
   const risk = snapshot.reconciliation?.traded_risk ?? null;
+  // The hedge's legs as a share of the day's turnover, against the card's own basis.
+  const turnover =
+    snapshot.reconciliation?.sent_notional ?? snapshot.reconciliation?.intended_notional ?? null;
+  const shareOfTurnover = turnover === null || turnover === 0 ? null : movedNotional / turnover;
   const shares = risk?.top_variance_shares ?? [];
   if (names.length === 0) return null;
 
   return (
     <section data-section="hedge" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">The hedge's own footprint</h2>
+      <p className="mt-1 text-sm text-slate-700" data-hedge="opening">
+        The hedge re-weights the stocks we already hold so the book does not move with the market,
+        sectors or style factors. On {dateOnly(snapshot.target_close) ?? "this"} close it moved{" "}
+        {count(moved.length)} names, {dollars(movedNotional)} of trading
+        {shareOfTurnover === null ? "" : ` (${percent(shareOfTurnover, 0)} of the day's turnover)`}.
+      </p>
       <p className="mt-1 text-xs text-slate-600">
         <span className="font-medium">A proxy.</span> The names below carry the loop's own
         record that the hedge moved them, and the notional of the leg it built; the shares
@@ -89,8 +99,8 @@ export function HedgePanel({
           hook="hedge-shares"
           summary={
             <>
-              the largest shares of predicted specific variance — {shares[0]?.ticker}{" "}
-              {percent(shares[0]?.variance_share, 1)}
+              {shares[0]?.ticker} carries {percent(shares[0]?.variance_share, 1)} of the
+              book&apos;s predicted stock-specific risk
             </>
           }
         >
@@ -98,7 +108,7 @@ export function HedgePanel({
             <thead>
               <tr className="text-left text-slate-500">
                 <th className="py-1 pr-2">name</th>
-                <th className="py-1 pr-2">share of predicted specific variance</th>
+                <th className="py-1 pr-2">share of the book&apos;s predicted specific risk</th>
                 <th className="py-1">weight</th>
               </tr>
             </thead>

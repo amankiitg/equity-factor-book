@@ -45,10 +45,28 @@ describe("health", () => {
     expect(state.detail).not.toBe("");
   });
 
-  it("fails an errored run", () => {
+  it("fails an errored run, and says plainly when nothing was priced", () => {
     const state = health(errored as unknown as Snapshot, NOW);
     expect(state.ok).toBe(false);
+    // This document's book is the previous close's, so the top of the page makes the
+    // claim a reader needs in words rather than in a status word...
+    expect(state.headline).toBe("no book was priced for the 2026-09-25 close");
+    // ...and keeps the run's own sentence beside it, because that is what someone
+    // fixing the loop needs.
+    expect(state.detail).toContain("no usable close price for 3 kept names");
+    expect(state.detail).toContain("still the 2026-10-02 close");
+  });
+
+  it("keeps the raw status word when an errored run did price tonight's book", () => {
+    // A run that failed after sizing has a book of its own, and calling that night
+    // "no book was priced" would be false.
+    const failed = {
+      ...(errored as unknown as Snapshot),
+      book_as_of: (errored as unknown as Snapshot).target_close,
+    } as Snapshot;
+    const state = health(failed, NOW);
     expect(state.headline).toContain("error");
+    expect(state.detail).toContain("no usable close price");
   });
 
   it("fails a snapshot past the instant the next one was due", () => {
@@ -240,7 +258,16 @@ describe("the page", () => {
     expect(screen.getByText(/worst single day's identity residual/)).toBeTruthy();
     const table = screen.getByRole("table", { name: "attribution by day" });
     const header = within(table).getAllByRole("columnheader").map((cell) => cell.textContent);
-    expect(header).toEqual(["close", "total", "factor", "idio", "cost", "unexplained", "check"]);
+    // The unit sits in the header, once, rather than in every cell of the column.
+    expect(header).toEqual([
+      "close",
+      "total, bp of NAV",
+      "factor",
+      "idio",
+      "cost",
+      "unexplained",
+      "check",
+    ]);
     // Newest first, so the top row is the last stored day, and its dates are days.
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows.length).toBe(live.daily.length);
@@ -317,7 +344,13 @@ describe("the page", () => {
     const card = (label: string): HTMLElement =>
       document.querySelector(`[data-card='${label}']`) as HTMLElement;
     expect(card("n_eff_kept").textContent).toContain(kept.toFixed(1));
-    expect(card("n_eff_kept").textContent).toContain(OK.breadth.kept_label);
+    // The subtitle says what the number means rather than naming the statistic: the
+    // effective breadth is the book behaving like this many equal-sized positions.
+    expect(card("n_eff_kept").textContent).toContain("spread like about");
+    expect(card("n_eff_kept").textContent).toContain(
+      `about ${Math.round(OK.breadth.n_eff_kept as number)} equal positions`,
+    );
+    expect(card("n_eff_kept").textContent).toContain(`out of ${OK.book.n_names}`);
     expect(card("n_eff_full_book").textContent).toContain(full.toFixed(1));
     // The stored value to seventeen places is not on the page.
     expect(screen.queryByText(String(kept))).toBeNull();

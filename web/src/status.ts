@@ -29,6 +29,12 @@ export interface RunState extends Health {
 
 const MINUTE = 60_000;
 
+/** The close the document's book is priced from, as a day. */
+const bookClose = (snapshot: Snapshot): string | null => dateOnly(snapshot.book_as_of);
+
+/** The close tonight's run was for, as a day. */
+const closeOf = (snapshot: Snapshot): string | null => dateOnly(snapshot.target_close);
+
 function minutesBetween(from: Date, to: Date): number {
   return Math.round((to.getTime() - from.getTime()) / MINUTE);
 }
@@ -64,16 +70,34 @@ export function health(snapshot: Snapshot, now: Date): Health {
     const failing = (snapshot.run_status?.failing_inputs ?? [])
       .map((item) => `${item.input} ${item.sessions_behind ?? "no date"}`)
       .join("; ");
-    const detail =
+    const reason =
       snapshot.run_status?.detail ||
       (failing ? `failing inputs: ${failing}` : "no reason recorded");
+    // A run that stopped before it sized anything leaves the previous close's book
+    // standing in the document, so the page's own book and the close it names do not
+    // agree. That is the one case where the top of the page can say the plain thing a
+    // reader needs: nothing was priced tonight, and the book below is not tonight's.
+    // The run's own words are kept beside it - they are what someone fixing the loop
+    // needs - rather than replaced by a sentence that reads better.
+    const stale = Boolean(
+      bookClose(snapshot) && closeOf(snapshot) && bookClose(snapshot) !== closeOf(snapshot),
+    );
+    if (status === "error" && stale) {
+      return {
+        ok: false,
+        headline: `no book was priced for the ${closeOf(snapshot)} close`,
+        detail: `The run stopped on an error before it sized anything, and the book below is still the ${bookClose(
+          snapshot,
+        )} close. The run's own words: ${reason}`,
+      };
+    }
     return {
       ok: false,
       headline:
         status === "stale_stopped"
           ? "STALE STOP: the run refused to price a book"
           : `the run recorded ${status}`,
-      detail,
+      detail: reason,
     };
   }
   if (isLate(snapshot, now)) {

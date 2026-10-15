@@ -20,12 +20,16 @@ import noBook from "../fixtures/snapshot_no_book.json";
 import ok from "../fixtures/snapshot_ok.json";
 import stale from "../fixtures/snapshot_stale_stopped.json";
 import withActual from "../fixtures/snapshot_actual_holdings.json";
+import failed from "../fixtures/snapshot_2026-10-14_error.json";
+import today from "../fixtures/snapshot_2026-10-14_morning.json";
 
 const OK = ok as unknown as Snapshot;
 const ACTUAL = withActual as unknown as Snapshot;
 const BROKEN = brokenFixture as unknown as Snapshot;
 const BROKEN_BRIDGE = BROKEN.bridge as BridgeBlock;
 const NONE = noBook as unknown as Snapshot;
+const FAILED = failed as unknown as Snapshot;
+const TODAY = today as unknown as Snapshot;
 const NOW = new Date("2026-09-21T23:00:00Z");
 const LATE = new Date("2027-01-01T00:00:00Z");
 
@@ -125,7 +129,7 @@ describe("severity", () => {
     expect(reconciled.textContent).toContain("mismatch: the account holds 2 name(s)");
     const expected = reconciled.querySelector("[data-expected='true']") as HTMLElement;
     expect(expected).toBeTruthy();
-    expect(expected.textContent).toContain("1 expected: deferred reversal");
+    expect(expected.textContent).toContain("1 name already settled");
     expect(expected.textContent).toContain("ZZZZ");
     expect(reconciled.querySelector("[data-alert='mismatches']")).toBeNull();
     expect(panel("run").getAttribute("data-tone")).toBe("good");
@@ -149,7 +153,10 @@ describe("severity", () => {
     const unexpected = reconciled.querySelector("[data-alert='mismatches']") as HTMLElement;
     expect(unexpected.getAttribute("data-tone")).toBe("warn");
     expect(unexpected.textContent).toContain("QQQQ");
-    expect(unexpected.textContent).toContain("nothing on the page explains");
+    // The label says what to do about it, and the sentence beside it says nothing
+    // here explains the name - the two halves of "must I act today".
+    expect(unexpected.textContent).toContain("look at this");
+    expect(unexpected.textContent).toContain("nothing in this document explains it");
     // Amber, not red: a mismatch is a fact to read, not a broken loop.
     expect(alerts()).toEqual([]);
   });
@@ -437,7 +444,7 @@ describe("the two claims the strip separates", () => {
     // silently dropped.
     expect(
       (document.querySelector("[data-unchecked='true']") as HTMLElement).textContent,
-    ).toContain("previous close's bridge.reversals_pending");
+    ).toContain("the previous close's deferred-reversal list");
   });
 
   it("collapses a mismatch every name of which the document explains", () => {
@@ -460,7 +467,7 @@ describe("the two claims the strip separates", () => {
     expect(strip.getAttribute("data-tone")).toBe("good");
     expect(document.querySelector("[data-alert='mismatches']")).toBeNull();
     const line = document.querySelector("[data-expected='true']") as HTMLElement;
-    expect(line.textContent).toContain("1 expected: deferred reversal");
+    expect(line.textContent).toContain("1 name already settled");
     expect(line.textContent).toContain("ZTS");
   });
 
@@ -564,7 +571,7 @@ describe("the two claims the strip separates", () => {
     expect(reconciled.textContent).toContain("WBD");
     expect(reconciled.textContent).toContain("the account holds it and the target does not");
     const expected = reconciled.querySelector("[data-expected='true']") as HTMLElement;
-    expect(expected.textContent).toContain("1 expected: deferred reversal");
+    expect(expected.textContent).toContain("1 name already settled");
     expect(expected.textContent).toContain("INVH");
     // The count is the morning comparison's, not the evening's five names.
     expect((document.querySelector("[data-flag='exceptions']") as HTMLElement).textContent).toBe(
@@ -589,15 +596,19 @@ describe("the two claims the strip separates", () => {
     const evening = document.querySelector("[data-details='evening-compare']") as HTMLElement;
     expect(evening).toBeTruthy();
     expect(evening.querySelector("summary")?.textContent).toContain(
-      "evening, before the orders",
+      "last night's check, before the orders",
     );
-    expect(evening.querySelector("summary")?.textContent).toContain("5 name(s)");
+    expect(evening.querySelector("summary")?.textContent).toContain("5 still open");
     // Collapsed, and inside it the evening's own names with their directions.
     expect((evening as HTMLDetailsElement).open).toBe(false);
     expect(evening.textContent).toContain("BEN");
     expect(evening.textContent).toContain("WBD");
-    expect(evening.textContent).toContain("the store holds it and the account does not");
-    expect(evening.textContent).toContain("the account holds it and the store does not");
+    expect(evening.textContent).toContain(
+      "the loop&apos;s own record has it and the account does not",
+    );
+    expect(evening.textContent).toContain(
+      "the account has it and the loop&apos;s own record does not",
+    );
   });
 
   it("leaves an evening read's checks as they were", () => {
@@ -614,5 +625,87 @@ describe("the two claims the strip separates", () => {
     expect(check.textContent).not.toContain("account against the target");
     expect(reconciled.querySelector("[data-details='evening-compare']")).toBeNull();
     expect(document.querySelector("[data-drifts='true']")).toBeNull();
+  });
+});
+
+describe("the night the run stopped before it sized", () => {
+  it("renders the failed document and says at the top that no book was priced", () => {
+    // The 2026-10-14 evening: a KeyError before sizing, the 2026-10-13 book left
+    // standing, no account read and no bridge. The page must draw it - the reader's
+    // morning answer is that nothing ran - and must say plainly which book they are
+    // looking at.
+    render(<SnapshotView snapshot={FAILED} now={new Date("2026-10-15T12:00:00Z")} />);
+    const run = panel("run");
+    expect(run.getAttribute("data-tone")).toBe("bad");
+    expect(run.textContent).toContain("no book was priced for the 2026-10-14 close");
+    expect(run.textContent).toContain("still the 2026-10-13 close");
+    // The run's own words are kept, not replaced.
+    expect(run.textContent).toContain("not in index");
+    // And the strip carries the same warning, because a stale book is the thing a
+    // reader would otherwise take for tonight's.
+    const strip = document.querySelector("[data-strip='status']") as HTMLElement;
+    expect(strip.textContent).toContain("the book is the 2026-10-13 close");
+    // Nothing on the page fabricated a number for a book that was not priced.
+    const text = document.body.textContent ?? "";
+    expect(text).not.toContain("NaN");
+    expect(text).not.toContain("undefined");
+    // No bridge and no account read: those sections are absent rather than empty.
+    expect(document.querySelector("[data-section='bridge']")).toBeNull();
+    expect(document.querySelector("[data-section='actual-holdings']")).toBeNull();
+    expect(strip.textContent).toContain("the account has not been read");
+  });
+});
+
+describe("the wording the report left untested", () => {
+  it("collapses the evening panel to resolved names when the previous list is present", () => {
+    // The key nov11 publishes: F and T are the previous close's deferrals, so the
+    // collapsed line says both are settled rather than leaving them open.
+    const snapshot = {
+      ...TODAY,
+      positions: {
+        matches: false,
+        max_abs_drift: 10,
+        missing_at_broker: ["F", "T"],
+        missing_in_store: [],
+        n_broker: 185,
+        n_store: 187,
+        note: "mismatch: 2 name(s) the store holds and the account does not (F, T)",
+        source: "alpaca paper account",
+      },
+      bridge: { ...(TODAY.bridge as NonNullable<Snapshot["bridge"]>), previous_reversals_pending: ["F", "T"] },
+    } as Snapshot;
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const evening = document.querySelector("[data-details='evening-compare']") as HTMLElement;
+    const summary = evening.querySelector("summary")?.textContent ?? "";
+    expect(summary).toContain("last night's check, before the orders (F, T)");
+    expect(summary).toContain("2 names, both settled since");
+    // And the names are filed as in transit inside the panel.
+    expect(evening.textContent).toContain("deferred reversal of the previous close");
+    expect(evening.textContent).toContain("nothing to do");
+  });
+
+  it("says how many of the evening panel's names are still open", () => {
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    const summary =
+      (document.querySelector("[data-details='evening-compare'] summary") as HTMLElement)
+        ?.textContent ?? "";
+    // Today's document carries no previous-close list, so its two names are still
+    // open and the line names them rather than claiming they are settled.
+    expect(summary).toContain("2 still open: F, T");
+  });
+
+  it("states the construction telemetry in three plain lines", () => {
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    const telemetry = document.querySelector("[data-telemetry='true']") as HTMLElement;
+    expect(telemetry).toBeTruthy();
+    const lines = Array.from(telemetry.querySelectorAll("li")).map((line) => line.textContent ?? "");
+    expect(lines).toHaveLength(3);
+    const breadth = TODAY.breadth as NonNullable<Snapshot["breadth"]>;
+    expect(lines[0]).toContain(`about ${Math.round(breadth.n_eff_full_book as number)} equal names`);
+    expect(lines[1]).toContain(`keeps ${TODAY.book?.n_names} names`);
+    for (const line of lines) expect(line.length).toBeLessThan(200);
+    // The key names stay out of the default view.
+    expect(telemetry.textContent).not.toContain("n_eff");
+    expect(telemetry.textContent).not.toContain("full_book");
   });
 });

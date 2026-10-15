@@ -17,17 +17,21 @@
 // The mismatches are then split. A name the document explains - a deferred reversal,
 // a removal the bridge itemised - is not an exception, and listing four of them
 // beside a real break is how a page teaches its reader to skim the list. They go in
-// one line under the count. Only the unexplained ones are drawn in amber, and the
-// panel says which of the brief's classes it could not check at all, because a page
-// that found nothing and a page that could not look are different answers.
+// one line under the count. Each name that stays carries a plain label and what
+// happens next, so a reader does not have to work out whether a name means action:
+// "in transit", "stuck", "too small" or "look at this". Only the last is drawn
+// amber, and the panel says how many kinds of gap it could not check at all behind a
+// toggle, because a page that found nothing and a page that could not look are
+// different answers - and because the reader who wants the key names is the one who
+// knows to open a toggle.
 //
 // The legs the broker did not fill keep their own panel, one line each, and so does a
 // position that left the account with nothing behind it: that last one is the line no
 // other number on the page implies, which is what happened to PSKY on 2026-10-06.
 
 import { Details } from "./Details";
-import { exceptionText, type Exceptions, type Mismatch } from "./exceptions";
-import { dollars, shares, signedDollars } from "./format";
+import { NEXT_STEP, exceptionText, type Exceptions, type Mismatch } from "./exceptions";
+import { dollars, percent, shares, signedDollars } from "./format";
 import { Panel } from "./Panel";
 import type { Reconciliation, RunState } from "./status";
 import type { ExitsBlock, Snapshot } from "./types";
@@ -39,19 +43,6 @@ const MISS_LINES = 6;
 const DRIFT_LINES = 3;
 const MISMATCH_LINES = 8;
 
-/** The expected names, grouped by the class that explains them, in one line each. */
-function expectedLines(mismatches: Mismatch[]): string[] {
-  const groups = new Map<string, string[]>();
-  for (const entry of mismatches) {
-    const list = groups.get(entry.why) ?? [];
-    list.push(entry.ticker);
-    groups.set(entry.why, list);
-  }
-  return [...groups.entries()].map(
-    ([why, tickers]) => `${tickers.length} expected: ${why} — ${[...tickers].sort().join(", ")}`,
-  );
-}
-
 function checkClass(state: Reconciliation["checks"][number]["state"]): string {
   return state === "unresolved" ? "font-semibold text-amber-900" : "text-slate-700";
 }
@@ -62,38 +53,57 @@ function checkClass(state: Reconciliation["checks"][number]["state"]): string {
  * The evening reads the account before it sends anything, so what it compared was
  * the account against the positions the loop had written down - neither the target
  * nor the fills. It is not dropped on a morning read: a name the store holds and the
- * account does not is a fact about the loop's own record. It is collapsed under a
- * label that says which comparison it is and when it was taken, so a reader scanning
- * for the morning answer does not find the evening's.
+ * account does not is a fact about the loop's own record.
+ *
+ * The morning replaced it, so the line says that first and answers the only question
+ * left about it: are its names still open? A name the document explains - the
+ * previous close's deferred reversals, a leg the broker would not take - is done
+ * with, and the line says so rather than making the reader count. A name nothing
+ * explains is named on the line, because that is the morning this panel exists for.
  */
-function EveningCompare({ snapshot, evening }: { snapshot: Snapshot; evening: Mismatch[] }) {
+function EveningCompare({
+  snapshot,
+  evening,
+  resolved,
+}: {
+  snapshot: Snapshot;
+  evening: Mismatch[];
+  resolved: number;
+}) {
   const positions = snapshot.positions ?? null;
   if (!positions || evening.length === 0) return null;
+  const open = evening.filter((entry) => entry.key === "");
+  const names = evening.map((entry) => entry.ticker).sort();
+  const verdict =
+    open.length === 0
+      ? `${evening.length} name${evening.length === 1 ? "" : "s"}, ${evening.length === 1 ? "it is" : "both"} settled since`
+      : `${open.length} still open: ${open.map((entry) => entry.ticker).join(", ")}`;
   return (
     <Details
       hook="evening-compare"
-      summary={<>evening, before the orders — the account against the store: {evening.length} name(s)</>}
+      summary={
+        <>
+          last night&apos;s check, before the orders ({names.join(", ")}) — {verdict}
+        </>
+      }
     >
       <p className="text-xs text-slate-600">
-        Read before the orders went out, so this compares the account with the positions the loop
-        had written down, not with the target and not after the fills. It is how the stored book
-        and the account differed going into the session.
-        {positions.note ? ` The run's own note: ${positions.note}.` : ""}
+        The evening read the account before it sent anything, so this compares it with the
+        positions the loop had written down — not with the target, and not after the fills. The
+        morning&apos;s read above replaced it{resolved > 0 ? `; ${resolved} name(s) here are ones it has already settled` : ""}.
       </p>
       <ul className="mt-1 text-sm">
         {evening.map((entry) => (
           <li key={`${entry.side}-${entry.ticker}`} data-evening-mismatch={entry.side}>
             <span className="font-mono">{entry.ticker}</span> —{" "}
             {entry.side === "at_broker"
-              ? "the store holds it and the account does not"
-              : "the account holds it and the store does not"}
-            {entry.key === "" ? " — nothing on the page explains it" : ` — ${entry.why}`}
+              ? "the loop&apos;s own record has it and the account does not"
+              : "the account has it and the loop&apos;s own record does not"}
+            {entry.key === "" ? ", and nothing here explains it" : ` — ${entry.why}`}
+            {entry.key === "" ? "" : `; ${NEXT_STEP[entry.label]}`}
           </li>
         ))}
       </ul>
-      {positions.source ? (
-        <p className="mt-1 text-xs text-slate-500">read against {positions.source}</p>
-      ) : null}
     </Details>
   );
 }
@@ -107,9 +117,14 @@ function ReconciliationPanel({
   reconciled: Reconciliation;
   exceptions: Exceptions;
 }) {
-  const expected = expectedLines(exceptions.expected);
   const drifts = exceptions.compare?.drifts ?? [];
   const overnight = exceptions.evening ?? [];
+  // One label per class, and the class's own words once: a list of four names all
+  // "in transit" does not need the sentence four times.
+  const left = exceptions.unexpected;
+  const settled = exceptions.expected;
+  const settledLabels = [...new Set(settled.map((entry) => `${entry.label}: ${NEXT_STEP[entry.label]}`))];
+  const settledEvening = overnight.filter((entry) => entry.key !== "").length;
   return (
     <section
       data-alert="reconciliation"
@@ -139,8 +154,12 @@ function ReconciliationPanel({
             <li key={row.ticker}>
               drift{" "}
               <span className="font-mono font-medium">{row.ticker}</span>{" "}
-              <span className="font-mono tabular-nums">{signedDollars(row.delta)}</span>: the
-              account holds {dollars(row.held)} against the target&apos;s {dollars(row.target)}
+              <span className="font-mono tabular-nums">{signedDollars(row.delta)}</span>
+              {row.target === null || row.target === 0
+                ? ""
+                : ` (${percent(row.delta / Math.abs(row.target), 1)} of the position)`}
+              : the account holds {dollars(row.held)} against the target&apos;s{" "}
+              {dollars(row.target)} — price moved since the close
             </li>
           ))}
           {drifts.length > DRIFT_LINES ? (
@@ -152,45 +171,57 @@ function ReconciliationPanel({
         </ul>
       ) : null}
 
-      {exceptions.unexpected.length > 0 ? (
+      {left.length > 0 ? (
         <div data-alert="mismatches" data-tone="warn" className="mt-2">
           <p className="font-semibold">
-            {exceptions.unexpected.length} mismatch
-            {exceptions.unexpected.length === 1 ? "" : "es"} nothing on the page explains
+            {left.length} name{left.length === 1 ? "" : "s"} to look at
           </p>
           <ul className="text-sm">
-            {exceptions.unexpected.slice(0, MISMATCH_LINES).map((entry) => (
-              <li key={`${entry.side}-${entry.ticker}`}>
-                <span className="font-mono">{entry.ticker}</span> — {entry.why}
+            {left.slice(0, MISMATCH_LINES).map((entry) => (
+              <li key={`${entry.side}-${entry.ticker}`} data-label={entry.label}>
+                <span className="font-mono font-semibold">{entry.ticker}</span>{" "}
+                <span className="rounded bg-amber-100 px-1 text-xs font-semibold uppercase tracking-wide text-amber-900">
+                  {entry.label}
+                </span>{" "}
+                — {entry.why}; {NEXT_STEP[entry.label]}.
               </li>
             ))}
-            {exceptions.unexpected.length > MISMATCH_LINES ? (
-              <li>and {exceptions.unexpected.length - MISMATCH_LINES} more</li>
-            ) : null}
+            {left.length > MISMATCH_LINES ? <li>and {left.length - MISMATCH_LINES} more</li> : null}
           </ul>
         </div>
       ) : null}
 
-      {expected.length > 0 ? (
+      {settled.length > 0 ? (
         <ul data-expected="true" className="mt-2 text-sm text-slate-600">
-          {expected.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
+          <li>
+            {settled.length} name{settled.length === 1 ? "" : "s"} already settled, nothing to do:{" "}
+            {settled.map((entry) => entry.ticker).sort().join(", ")}
+          </li>
+          {settledLabels.length > 0 ? <li className="text-xs">{settledLabels.join("; ")}</li> : null}
         </ul>
       ) : null}
 
       {exceptions.unchecked.length > 0 ? (
-        <ul data-unchecked="true" className="mt-1 text-xs text-slate-500">
-          {exceptions.unchecked.map((entry) => (
-            <li key={entry.what}>
-              not checked here: {entry.what} — this snapshot does not carry it, so the page
-              cannot classify it. It needs {entry.needs}.
-            </li>
-          ))}
-        </ul>
+        <Details
+          hook="unchecked"
+          summary={
+            <>
+              {exceptions.unchecked.length} kind{exceptions.unchecked.length === 1 ? "" : "s"} of
+              gap this page cannot check yet
+            </>
+          }
+        >
+          <ul data-unchecked="true" className="text-xs text-slate-600">
+            {exceptions.unchecked.map((entry) => (
+              <li key={entry.what}>
+                {entry.what}: the page would need {entry.needs}.
+              </li>
+            ))}
+          </ul>
+        </Details>
       ) : null}
 
-      <EveningCompare snapshot={snapshot} evening={overnight} />
+      <EveningCompare snapshot={snapshot} evening={overnight} resolved={settledEvening} />
     </section>
   );
 }

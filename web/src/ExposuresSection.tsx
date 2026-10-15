@@ -88,7 +88,7 @@ function ExposureBars({
   scale: number;
 }) {
   return (
-    <div className="flex w-28 flex-col gap-[2px]" data-factor-bars="true">
+    <div className="flex w-full flex-col gap-[2px]" data-factor-bars="true">
       <ExposureBar value={before} scale={scale} tone="before" />
       <ExposureBar value={after} scale={scale} tone="after" />
     </div>
@@ -128,13 +128,20 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
         {/* Every column states its own width. The value columns are only as wide as
             their widest number otherwise, so "after" and "before / after" touch and
             read as one label, and the bars column is the width of the bars it holds. */}
-        <table className="mt-2 w-full border-collapse text-sm" aria-label="factor exposures">
+        {/* Fixed layout with percentage columns, so the table is exactly as wide as
+            the box it sits in at any width: a phone must not scroll sideways to read
+            a table, and a factor name that needs two lines is the cheap half of that
+            trade. */}
+        <table
+          className="mt-2 w-full table-fixed border-collapse text-xs"
+          aria-label="factor exposures"
+        >
           <thead>
             <tr className="border-b border-slate-300 text-left">
-              <th className="py-1 pr-2">factor</th>
-              <th className="w-16 py-1 pr-2 text-right whitespace-nowrap">before</th>
-              <th className="w-16 py-1 pr-2 text-right whitespace-nowrap">after</th>
-              <th className="w-28 py-1 pl-1 whitespace-nowrap">before / after</th>
+              <th className="w-[36%] py-1 pr-1">factor</th>
+              <th className="w-[15%] py-1 text-right">before</th>
+              <th className="w-[15%] py-1 text-right">after</th>
+              <th className="w-[34%] py-1 pl-1">before / after</th>
             </tr>
           </thead>
           <tbody>
@@ -149,14 +156,14 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
                     key.startsWith("sector_") ? "bg-slate-50" : ""
                   } ${startOfSectors ? "border-t-2 border-t-slate-300" : ""}`}
                 >
-                  <td className="py-1 pr-2">{label}</td>
-                  <td className="w-16 py-1 pr-2 text-right font-mono tabular-nums">
+                  <td className="break-words py-1 pr-1">{label}</td>
+                  <td className="py-1 text-right font-mono tabular-nums">
                     {exposure(before[key])}
                   </td>
-                  <td className="w-16 py-1 pr-2 text-right font-mono tabular-nums">
+                  <td className="py-1 text-right font-mono tabular-nums">
                     {exposure(after[key])}
                   </td>
-                  <td className="w-28 py-1 pl-1">
+                  <td className="py-1 pl-1">
                     <ExposureBars
                       before={before[key] ?? 0}
                       after={after[key] ?? 0}
