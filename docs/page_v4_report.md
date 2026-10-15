@@ -2,8 +2,9 @@
 
 ## Final state (2026-10-15)
 
-`main` = `2947eaa` (the merge of `page-v4`), pushed at 12:35 UTC, deployed at
-12:37 UTC.
+`main` = `3a2ece8` (the merge of `page-v4`, then the accidental `web/node_modules`
+symlink untracked), pushed at 12:35 and 13:0x UTC; deployed at 12:37 UTC from the
+merge.
 
 - **Deployed version id: `a8fc0f88-f6cf-4a99-902e-4c6b7394d7de`** (100% of traffic,
   created 2026-10-15T12:37:42Z), via the documented path
@@ -17,7 +18,12 @@
 
   `7adf883d-b4de-4f4e-a566-a62663cb5d81` was the version at 100% immediately before
   this deploy, re-read with `npx wrangler deployments status` at 12:36 UTC.
-- `page-v4` = `3ec9837`; `origin/nov11` = `6903912`; the trial merge left no
+
+One cleanup after the deploy: `web/node_modules` (a symlink to this machine's copy)
+was committed by accident in `054b9af` when `git add web` was used, and it was
+untracked on both branches (`0c40c96`, `3a2ece8`) the moment it was noticed.
+`.gitignore` had excluded it all along.
+- `page-v4` = `0c40c96`; `origin/nov11` = `6903912`; the trial merge left no
   worktree behind.
 
 Nothing outside `web/`, `docs/` and `artifacts/` was touched, no Python was
