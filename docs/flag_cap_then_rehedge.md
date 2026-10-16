@@ -131,6 +131,24 @@ Reading it honestly:
   2.6498 -> 2.5456, 2.7479 -> 2.8249): the cap is a concentration rule, not a vol rule,
   and on 2026-10-15 the book it produces is a little less diversified in dollars.
 
+### The names that differ, close by close
+
+Counted against the flag-off book on the same close. A name that "left" was in the
+flag-off book and is not in the flag's; one that "joined" is the other way round; every
+other kept name kept its place with a changed weight.
+
+### 2026-10-13
+left the book (22): AMT, APP, APTV, CBRE, CMCSA, CRH, CVNA, CVS, DAL, DIS, GEHC, LRCX, MKC, NFLX, NRG, PYPL, REG, SCHW, SWKS, TMUS, VZ, WELL
+joined the book (42): ABNB, AIG, ARE, BRO, BXP, CCL, CLX, CMS, CTSH, CVX, DHI, DVA, EBAY, EQT, FIS, GRMN, HPQ, IBKR, ICE, INCY, L, LUV, MTB, NDAQ, NEE, NEM, O, OKE, ORLY, OTIS, PEG, PFG, PODD, SPGI, STZ, SYY, TECH, TRGP, TSCO, TXT, XYZ, ZTS
+
+### 2026-10-14
+left the book (12): BSX, CBOE, CCI, COR, CRH, IBKR, LNT, MKC, NWS, VRT, WDAY, XYL
+joined the book (23): APH, BRO, CARR, CFG, DAL, DXCM, EXPD, GDDY, GEHC, HII, IRM, KKR, L, LRCX, MRVL, NEM, ORCL, ORLY, PFG, PKG, STZ, UAL, VMRK
+
+### 2026-10-15
+left the book (16): APA, BKR, CBRE, CCL, CMS, CNC, CVX, FRT, HSY, IRM, L, LUV, ORCL, PKG, SOLV, TXT
+joined the book (18): AEP, AVY, BEN, BSX, CVNA, DIS, DXCM, HSIC, IBKR, IR, KKR, MRVL, NWS, PLD, TECH, VLTO, VMRK, WEC
+
 ## The research's input was the pre-hedge book, not the traded one
 
 The question the ETF study left open: in `scripts/etf_overlay_research.py:live_books()`
