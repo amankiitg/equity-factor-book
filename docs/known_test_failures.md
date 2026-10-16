@@ -43,10 +43,12 @@ the merge resolved, and none of them is new: every one is red on `origin/nov11` 
 `origin/main` as well.
 
 What the merge *cleared* is the other half of the picture: 45 of `origin/main`'s 60
-ids are green here, including the five `test_hedge_vintage` ids (the row the hedge is
-handed versus the row the model publishes — nov11's `efb/race.py` fix is what turns
-them green), the web-fixture vintage ids, the research artifacts and memos, and the
-sector map.
+ids are gone from this list. Eleven of them are deselections rather than fixes:
+`tests/test_hedge_vintage.py` and the other live-tree-only files carry
+`pytest.mark.requires_live_tree` on this branch (main's copies do not), and the gate
+expression excludes that marker, which is why this run deselects 49 where main
+deselects 37. The rest are nov11 fixing main's vintage failures: the web fixtures, the
+research artifacts and the memos, and the sector map.
 
 ## The measurement this file was written from
 

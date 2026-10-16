@@ -15,6 +15,8 @@ as F5.0, and both readings are kept.
 from __future__ import annotations
 
 import json
+import logging
+import os
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +27,76 @@ from efb.models import fundamental as fx
 
 ROOT = Path(__file__).resolve().parents[1]
 MIN_NAMES = 50
+
+logger = logging.getLogger(__name__)
+
+# Which panel `next_descriptor_design` standardises its built row over.
+#
+# The two frames `probes.load_panel` returns differ only where the hygiene flags
+# mask a row, and the choice is a live behaviour change rather than a tidy-up: on
+# the 2026-10-13 close the masked cells inside the 400-session window are two
+# (`ECHO`, `MRNA`), and because every descriptor is standardised across the
+# cross-section those two move 1,477 of the 8,534 design cells, so the hedge
+# solves a different cross-section and the kept book changes (171 -> 186 names).
+#
+# `raw` is the file's own rows and the behaviour the loop has always had; `clean`
+# is the same panel with the flagged rows masked, which is what the published
+# descriptors are fitted on, so a row built here agrees with the row the model
+# will publish. Unset and `raw` are the same thing, and any other value warns once
+# and falls back to `raw`, because a typo must never change the book.
+DESIGN_RETURNS_ENV = "EFB_DESIGN_RETURNS"
+DESIGN_RETURNS_RAW = "raw"
+DESIGN_RETURNS_CLEAN = "clean"
+_DESIGN_RETURNS_CACHE: str | None = None
+
+
+def design_returns() -> str:
+    """Which panel the built design row comes from, from `EFB_DESIGN_RETURNS`.
+
+    `raw` for unset, empty, `raw` (any case) and for anything unrecognised, so the
+    default path is the panel the loop has always used and a typo cannot move a
+    book. `clean` is the one other value the loop reacts to. The requested string
+    is read once per process and the decision is logged, because the value that
+    built a book is the thing a later reader has to know; `EFB_DESIGN_RETURNS=clean`
+    is the setting the 2026-11-11 seed regeneration wants, and it is not the
+    default until the owner asks for it.
+    """
+    global _DESIGN_RETURNS_CACHE
+    if _DESIGN_RETURNS_CACHE is None:
+        requested = os.environ.get(DESIGN_RETURNS_ENV, "").strip().lower()
+        if not requested or requested == DESIGN_RETURNS_RAW:
+            _DESIGN_RETURNS_CACHE = DESIGN_RETURNS_RAW
+        elif requested == DESIGN_RETURNS_CLEAN:
+            _DESIGN_RETURNS_CACHE = DESIGN_RETURNS_CLEAN
+            logger.warning(
+                "%s=%s: the design row is built from the cleaned panel, which is not "
+                "the default",
+                DESIGN_RETURNS_ENV,
+                DESIGN_RETURNS_CLEAN,
+            )
+        else:
+            logger.warning(
+                "%s=%r is not a panel: the raw panel is used, because a typo must "
+                "never change the book",
+                DESIGN_RETURNS_ENV,
+                os.environ.get(DESIGN_RETURNS_ENV, ""),
+            )
+            _DESIGN_RETURNS_CACHE = DESIGN_RETURNS_RAW
+    return _DESIGN_RETURNS_CACHE
+
+
+def design_panel(panel: dict[str, object]) -> pd.DataFrame:
+    """The frame the built row is standardised over, per `design_returns()`.
+
+    The one line the flag controls, in one place, so the choice can be tested
+    without a tree: `panel["returns_clean"]` under `clean`, `panel["returns"]`
+    otherwise.
+    """
+    key = "returns_clean" if design_returns() == DESIGN_RETURNS_CLEAN else "returns"
+    frame = panel[key]
+    assert isinstance(frame, pd.DataFrame)
+    return frame
+
 
 # The model needs this much published factor history before a point-in-time
 # covariance exists. Windows behind this are skipped for the XS-v1 row only.
@@ -266,15 +338,15 @@ def next_descriptor_design(
         )
 
     panel = probes.load_panel(root)
-    # The *cleaned* panel, because that is what the published rows were built from.
-    # A row built here from the raw file would disagree with the row the model
-    # publishes for the same session, and the hedge would then be solving for a
-    # cross-section that does not exist: measured, every hedge-vintage comparison
-    # failed once the published descriptors started coming from the cleaned panel
-    # and this builder had not been changed to match. The priced set is read off the
-    # same frame the model reads it off, so the two agree on who is in the
-    # cross-section as well as on the numbers.
-    frame = panel["returns_clean"]
+    # Which panel this row is built from is `EFB_DESIGN_RETURNS`'s decision, in
+    # `design_panel`. The *cleaned* panel is what the published rows are fitted on,
+    # so a row built from it agrees with the row the model will publish; the raw
+    # panel is what the loop has always used and is the default, because the
+    # difference is a live behaviour change (two masked cells move 1,477 design
+    # cells on the 2026-10-13 close, and the kept book with them) and the owner
+    # asked for it to be opt-in. Either way the priced set is read off the frame the
+    # cross-section is taken over, so the two cannot disagree about who is in it.
+    frame = design_panel(panel)
     close = panel["close"]
     volume = panel["volume"]
     shares = panel["shares"]

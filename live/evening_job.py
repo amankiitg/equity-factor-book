@@ -2034,6 +2034,11 @@ def build_proposal(
         "min_position_dollars": construction["dollar_floor"],
         "min_position_pct_of_nav": construction["dollar_floor"] / nav if nav else 0.0,
         "construction": construction["construction"],
+        # Which panel the design row behind this book was built from: `raw` for the
+        # loop's own history and the default, `clean` when EFB_DESIGN_RETURNS asked
+        # for the cleaned one. Recorded rather than inferred, because two books that
+        # differ only in their design panel are otherwise indistinguishable.
+        "design_returns": race.design_returns(),
         # Which hedge built this book: `exact` for the loop's own hedge and the
         # default, `cap_then_rehedge` when EFB_HEDGE_MODE asked for the research
         # construction. Recorded rather than inferred, because two books that differ

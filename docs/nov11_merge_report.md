@@ -220,9 +220,14 @@ So: **every item the merge brings is inert with the flags unset except nov11's d
 fix; main's contributions (the 2026-10-14 and SKYD incident fixes, `EFB_HEDGE_MODE`
 and its two call sites, the SKYD reader) are present and inert; and the merged branch
 equals `origin/nov11` exactly as it stands.** The five `test_hedge_vintage` ids that
-are red on main (its own test file for exactly this question — the row the hedge is
-handed versus the row the model publishes) are green on the merged branch: the
-behaviour change is the fix for a known red, not a regression.
+are in main's red list are **deselected** on the merged branch, not fixed by it: that
+file is `pytest.mark.requires_live_tree` on nov11 (main's copy carries only the
+timeout marker), because it needs a run root the loop has extended one session at a
+time and cannot run here at all — `EFB_RUN_ROOT=<run root> python -m pytest
+tests/test_hedge_vintage.py` is the deliberate check, and the file's own docstring says
+which two of its eight are green only on a tree whose published rows came from the
+panel this branch fits on. So the design change is *consistent* with that file's
+subject; it is not what removes those ids from the list.
 
 **Operational consequence, stated plainly because it is the owner's call.** Merging
 puts this design fix live on the first evening run after the merge, which the brief
@@ -285,9 +290,12 @@ merge_guard"`, each code tree given the same copy of the repository's `data/`:
   two sorted id lists: empty in that direction).
 - **Nothing that passes on `origin/nov11` fails on the merged branch.** The merged
   tree's set is *identical* to nov11's 14 ids, id for id.
-- The merge **clears 45 of main's 60**: the five `test_hedge_vintage` ids (see A1),
-  the web-fixture vintage ids, the research-artifact and memo ids, the sector map and
-  the two `test_web_sector_map` ids, and more.
+- The merge **clears 45 of main's 60**. Eleven of those are *deselections* rather
+  than fixes — nov11 marks `tests/test_hedge_vintage.py` (5 ids) and other
+  live-tree-only files `requires_live_tree`, which the gate expression excludes (37
+  deselected on main, 49 on the merged tree) — and the rest are nov11 fixing main's
+  vintage failures: the web fixtures, the research artifacts and memos, the sector map
+  and the two `test_web_sector_map` ids.
 - The 14 remaining are the same list nov11 already carried, `docs/known_test_failures.md`
   rewritten in A5.
 
