@@ -187,21 +187,25 @@ def daily_weights(books: pd.DataFrame, sessions: pd.Series) -> pd.DataFrame:
 
 
 def pre_hedge_weights(
-    weights: np.ndarray, alpha: np.ndarray, specific: np.ndarray
+    weights: np.ndarray, alpha: np.ndarray, specific_var: np.ndarray
 ) -> np.ndarray:
     """The sized and capped book before the hedge, from what the run stored.
 
-    `sized_kept_weights` sizes on `alpha / specific`, caps the variance shares and
+    `sized_kept_weights` sizes on `alpha / specific_var`, caps the variance shares and
     renormalizes to gross 1.0 before it hedges, and every one of those steps is
-    deterministic in the stored `alpha` and specific volatility. Rebuilding it is
-    what makes the hedge's own contribution measurable: the hedge's factor P&L is
-    the factor P&L of the book it removed.
+    deterministic in the stored `alpha` and the specific *variance*. The variance is
+    the unit both steps want: `size.proportional` divides by `sigma^2` and
+    `sizing.cap_variance_shares` reads `w^2 s^2`, so the second argument is the model's
+    `specific_var` and never its square root. `efb.positions.idio_vol` is the square
+    root, which is why its only caller squares it first. Rebuilding the book is what
+    makes the hedge's own contribution measurable: the hedge's factor P&L is the factor
+    P&L of the book it removed.
     """
     from efb import size
     from live import sizing
 
-    sized = size.proportional(alpha, specific)
-    sized = sizing.cap_variance_shares(sized, specific)
+    sized = size.proportional(alpha, specific_var)
+    sized = sizing.cap_variance_shares(sized, specific_var)
     return sizing.renormalize(sized, gross=1.0)
 
 
@@ -212,10 +216,19 @@ def _pre_hedge_vector(
 
     `block` is one book-date's slice of the store's `positions` table, which is the
     only place the sizing inputs survive at: the run stores the `alpha` and the
-    specific volatility it sized on, and the cap and the renormalization are
-    deterministic. A name the rows do not price - or price at a non-positive
-    specific volatility - returns None, because a pre-hedge vector with a hole in it
-    would produce a volatility nobody measured.
+    specific *volatility* it sized on, and the cap and the renormalization are
+    deterministic. A name the rows do not price - or price at a non-positive specific
+    volatility - returns None, because a pre-hedge vector with a hole in it would
+    produce a volatility nobody measured.
+
+    The square is load-bearing. `size.proportional` sizes on `alpha / sigma^2`, and the
+    live run hands it the model's own `specific_var`: the two agree only when this
+    vector is built from the variance. SMCI's 2026-10-13 row stores `idio_vol` 0.0499164
+    against an `e11_specific_var` of 0.0024916, and sizing on the square root instead of
+    the variance is the same as multiplying each name's correct weight by its own sigma
+    before renormalizing, so the reconstruction handed more of the book to the most
+    volatile names and reported a pre-hedge volatility and hedge effect the run never
+    had.
     """
     if block is None or block.empty:
         return None
@@ -231,9 +244,9 @@ def _pre_hedge_vector(
         return None
     if not (values_specific > 0.0).all():
         return None
-    # The sizing vector is `alpha / specific`, capped and renormalized: the shape it
-    # is handed is the book's, and it reads nothing else off it.
-    return pre_hedge_weights(np.zeros(len(names)), values_alpha, values_specific)
+    return pre_hedge_weights(
+        np.zeros(len(names)), values_alpha, np.square(values_specific)
+    )
 
 
 def _variance_parts(
