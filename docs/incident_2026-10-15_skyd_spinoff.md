@@ -15,7 +15,7 @@ and no specific variance in the model inputs, so it is in the proposal's *exclud
 list and no book changed at any point. What was damaged is a return cell in the run
 tree, one stored corporate-action row, and every later rebuild.
 
-Fixed in `live/corporate_actions.py` with tests, on the `fix-skyd-spinoff` branch.
+Fixed in `live/corporate_actions.py` with tests, on `fix-skyd-spinoff` (`68f1fe7`), merged to `main` in `7f9983a` (the merge of `68f1fe7`).
 
 ## 1. Which rule fired for SKYD -> SKYD.WS, and on what inputs
 
