@@ -1,5 +1,31 @@
 # The nov11 merge into main: what happened, what the proofs say, PART B's list
 
+## Resume here (only while the merge is still pending)
+
+Written 2026-10-16 ~13:10 UTC, before the PART A window opened. `origin/nov11-into-main`
+is pushed at `0abc2b3` and everything in §A0–A6 is done and recorded below. What is
+left, in order:
+
+1. **The PART A merge**, which may only happen between **15:45 and 20:30 UTC on Friday
+   2026-10-16**: `git -C ../efb-nov11-merge merge --no-ff nov11-into-main` on a
+   checkout of `main`, then `git push origin main`. Nothing has to be re-run first —
+   the tree at `0abc2b3` is the one A1–A6 were measured on. If the push is rejected,
+   fetch, merge the new `origin/main` in, re-run the A1 substitution proof and the
+   touched tests, then retry once and stop.
+2. **PART B**, one branch and one commit set per item, each cut from the post-PART-A
+   `main`, each merged separately under the PART B rule (after 23:00 UTC on Friday,
+   only if a read-only `select` of `efb.run_status` for the 2026-10-16 evening shows
+   the run priced a book and sent orders; deadline 20:30 UTC Monday 2026-10-19).
+   B1 reconcile-once, B2 `traded_run`, B3 the shortability check on the final
+   weights, B4 the `pre_hedge_weights` audit, B5 the catch-up pill plus its Worker
+   deploy, B6 the NOT NULL audit. Each item's status, branch and merge sha is
+   appended below under **PART B**.
+
+If this is read after 20:30 UTC on 2026-10-16 with the merge still pending, PART A was
+missed: push the branch (already done) and hand the merge to the owner rather than
+merging late, because the window is the owner's rule and not a convenience.
+
+
 **Branch `nov11-into-main`, worktree `../efb-nov11-merge`, cut from `origin/nov11`
 (`6903912`) with `origin/main` (`1b500b9`) merged into it.** Read §A1 before the
 merge decision: the identity proof as the brief states it is **red**, for a reason
