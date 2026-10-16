@@ -29,6 +29,92 @@ function Named({ names, label }: { names: string[]; label: string }) {
   );
 }
 
+/**
+ * Every identity the block checks, as the arithmetic it actually is.
+ *
+ * The single line above says how many names went where; this says whether the two
+ * ends of each step agree, which is what the evening and the morning computed and
+ * what a reader checking the numbers by hand needs. The words on the left are the
+ * chain's own, the right-hand side is the same number the block carries, and a step
+ * that does not agree is marked rather than smoothed over.
+ *
+ * `unit` says whether the step counts names or orders: "115 resized + 31 opened + 45
+ * exited = 191 orders" is a different sentence from the same numbers about names, and
+ * a reader who mixes them up learns nothing from the check.
+ */
+const STEPS: Record<string, { left: string; right: string; unit: string }> = {
+  "in both + opened = the book": {
+    left: "kept + opened",
+    right: "in the target",
+    unit: "names",
+  },
+  "in both + exited = held before trading": {
+    left: "kept + exited",
+    right: "held before trading",
+    unit: "names",
+  },
+  "changed + under the minimum = in both": {
+    left: "resized + under the floor",
+    right: "kept",
+    unit: "names",
+  },
+  "changed + opened + exited = orders sent": {
+    left: "resized + opened + exited",
+    right: "orders sent",
+    unit: "orders",
+  },
+  "orders sent = filled + did not fill": {
+    left: "orders sent",
+    right: "filled + did not fill",
+    unit: "orders",
+  },
+  "held before - exited + opened - reversals and removals = held after": {
+    left: "held before - exited + opened - closed and removed",
+    right: "held this morning",
+    unit: "names",
+  },
+};
+
+function Arithmetic({ block }: { block: BridgeBlock }) {
+  return (
+    <ul className="mt-1 text-sm" data-bridge-arithmetic="true">
+      {block.identities.map((check) => {
+        const step = STEPS[check.name];
+        return (
+          <li
+            key={check.name}
+            data-identity={check.name}
+            data-holds={String(check.holds)}
+            className={
+              check.holds ? "font-mono tabular-nums" : "font-mono font-semibold tabular-nums text-amber-900"
+            }
+          >
+            {step ? `${step.left} = ${step.right}` : check.name}: {check.left}
+            {check.holds ? " = " : " ≠ "}
+            {check.right}
+            {step ? ` ${step.unit}` : ""} {check.holds ? "✓" : "✗"}
+            {!check.holds ? (
+              <span className="ml-1 font-sans">
+                — the two sides differ
+                {block.reversals_pending.length + block.removed_without_order.length > 0
+                  ? `, and the names that explain a gap are ${
+                      [
+                        ...block.reversals_pending,
+                        ...block.removed_without_order.map((item) => item.ticker),
+                      ].join(", ")
+                    }`
+                  : block.unexplained.length > 0
+                    ? `, and ${block.unexplained.join(", ")} is in neither list`
+                    : ""}
+              </span>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function Bridge({ snapshot }: { snapshot: Snapshot }) {
   const block: BridgeBlock | null | undefined = snapshot.bridge;
   if (!block) return null;
@@ -88,6 +174,13 @@ export function Bridge({ snapshot }: { snapshot: Snapshot }) {
         </div>
       ) : null}
 
+      <details className="mt-2 text-sm" data-bridge-arithmetic="toggle">
+        <summary className="cursor-pointer">
+          the arithmetic, step by step{partial ? " (the morning completes it)" : ""}
+        </summary>
+        <Arithmetic block={block} />
+      </details>
+
       <details className="mt-2 text-sm" data-bridge-names="true">
         <summary className="cursor-pointer">
           the names the gap is made of{partial ? " (the morning adds the account)" : ""}
@@ -106,15 +199,6 @@ export function Bridge({ snapshot }: { snapshot: Snapshot }) {
             <li key={item.ticker} data-removed={item.ticker}>
               {item.ticker}: {shares(item.quantity)} shares (
               {dollars(item.notional)})
-            </li>
-          ))}
-        </ul>
-        <ul className="mt-1 text-xs text-slate-500">
-          {block.identities.map((check) => (
-            <li key={check.name} data-identity={check.name} data-holds={String(check.holds)}>
-              {check.name}: {check.left}
-              {check.holds ? " = " : " ≠ "}
-              {check.right}
             </li>
           ))}
         </ul>

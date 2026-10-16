@@ -28,6 +28,9 @@ import { count, dollars, oneDecimal, percent } from "./format";
 import type { BookFacts } from "./book";
 import type { Snapshot } from "./types";
 
+/** How many dropped-for-no-risk names the coverage line lists before counting the rest. */
+const DROPPED_LINES = 6;
+
 function Card({
   hook,
   label,
@@ -117,9 +120,6 @@ export function realizedLine(
   return `${day}. Separately, the fill history averages ${avg.toFixed(2)} bp of NAV across ${days} session(s)`;
 }
 
-/** How many dropped-for-no-risk names the coverage line lists before counting. */
-const DROPPED_LINES = 6;
-
 export function MetricsRow({
   snapshot,
   facts,
@@ -135,35 +135,20 @@ export function MetricsRow({
   const nav = facts.nav;
   const intended = snapshot.reconciliation?.intended_notional ?? null;
   const sentNotional = snapshot.reconciliation?.sent_notional ?? null;
+  const unsentNotional = snapshot.reconciliation?.unsent_notional ?? null;
+  // The card stands on the legs the broker was sent, which is what turnover means; the
+  // legs the run built are stated beside it when the document carries both, and the
+  // built figure alone when it predates the split.
+  const turnover = sentNotional ?? intended;
   // The names the risk model could not measure, published under the breadth block.
   // Absent on a document written before the evening published them, and an empty list
-  // on an evening that dropped none: the two say the same thing to a reader (nothing
-  // was dropped), so both draw nothing.
+  // on a night that dropped none: both mean nothing to report, so both draw nothing.
   const droppedNoRisk = breadth?.dropped_no_risk ?? [];
-  const unsentNotional = snapshot.reconciliation?.unsent_notional ?? null;
 
-  // The day's legs, against NAV. The card stands on the legs the broker was sent,
-  // which is what turnover means; the run's own figure for every leg it built is
-  // stated beside it, and the two are never the same number. On 2026-10-09 the legs
-  // sent were $379,430.49 against $388,402.25 built, and the card read the second.
-  // A document written before the evening published the sent half has only the
-  // built half, and there the card says which one it is standing on.
-  const turnover = sentNotional ?? intended;
-  const turnoverDetail =
-    turnover === null
-      ? "the reconciliation carries no notional for this close"
-      : sentNotional !== null
-        ? `${dollars(sentNotional)} sent of NAV${
-            intended === null || unsentNotional === null
-              ? ""
-              : `, and ${dollars(intended)} built, of which ${dollars(
-                  unsentNotional,
-                )} was never sent`
-          }`
-        : `${dollars(intended ?? 0)} of every leg built (the sent figure is not in this document), of NAV`;
-
-  // The per-name column the book carries totals less than either figure, because a
-  // name that left the book has no row to attach its closing leg to.
+  // The day's legs, against NAV. The reconciliation states the notional of every leg
+  // the run built, which is the figure that measured the day's trading; the per-name
+  // column the book carries totals less than it, because a name that left the book has
+  // no row to attach its closing leg to.
   const perNameTotal = (book?.names ?? []).reduce(
     (total, name) => total + Math.abs(name.traded_notional ?? 0),
     0,
@@ -197,19 +182,30 @@ export function MetricsRow({
         />
         <Card
           hook="turnover"
-          label={
-            sentNotional === null
-              ? "turnover, order-leg notional"
-              : "turnover, legs sent"
-          }
+          label={sentNotional === null ? "turnover, order-leg notional" : "turnover, legs sent"}
           value={percent(nav === null || turnover === null ? null : turnover / nav)}
-          detail={turnoverDetail}
+          detail={
+            turnover === null
+              ? "the reconciliation carries no notional for this close"
+              : sentNotional === null || intended === null || unsentNotional === null
+                ? `${dollars(turnover)} of every leg built, of NAV`
+                : `${dollars(sentNotional)} sent of NAV, and ${dollars(intended)} built, of which ${dollars(unsentNotional)} was never sent`
+          }
         />
         <Card
           hook="n_eff_kept"
           label="n_eff_kept"
           value={oneDecimal(breadth?.n_eff_kept)}
-          detail={breadth?.kept_label || "the book's effective breadth"}
+          detail={
+            // What the number means, not its name: an effective breadth of 130 is
+            // the book behaving like 130 equally sized positions, which is the only
+            // way to read it without knowing the statistics.
+            breadth === null || breadth === undefined
+              ? "the book&apos;s effective breadth"
+              : `spread like about ${Math.round(breadth.n_eff_kept ?? 0)} equal positions (out of ${count(
+                  book?.n_names,
+                )})`
+          }
         />
         <Card
           hook="largest-position"
@@ -267,16 +263,11 @@ export function MetricsRow({
           </>
         }
       >
-        <p className="text-xs text-slate-500">
-          The sizing publishes two books: the one that trades, after the floor and the hedge,
-          and the index-sized book it started from. Nothing in the morning route reads the
-          second, which is why it is here rather than on the row above.
-        </p>
         {droppedNoRisk.length > 0 ? (
           <p data-flag="dropped-no-risk" className="mt-2 text-xs text-slate-600">
             {count(breadth?.n_dropped_no_risk ?? droppedNoRisk.length)} name(s) never reached the
-            book because the risk model has no specific variance for them, and a name is not sized
-            on a median that is not its own:{" "}
+            book at all: the risk model has no specific risk for them, and a position is not sized
+            on a median that is not its own.{" "}
             <span className="font-mono">
               {droppedNoRisk
                 .slice(0, DROPPED_LINES)
@@ -289,6 +280,21 @@ export function MetricsRow({
             .
           </p>
         ) : null}
+        <ul className="text-xs text-slate-600" data-telemetry="true">
+          <li>
+            The sizing starts wider than it trades: before dropping positions too small to trade,
+            the ideal book was spread like about {Math.round(breadth?.n_eff_full_book ?? 0)} equal
+            names at {percent(book?.full_book_achieved_annual_vol, 1)} predicted volatility.
+          </li>
+          <li>
+            The floor keeps {count(book?.n_names)} names, which spread like about{" "}
+            {Math.round(breadth?.n_eff_kept ?? 0)} equal names.
+          </li>
+          <li>
+            Nothing in the morning route reads this: it says how much of the idea the floor
+            costs.
+          </li>
+        </ul>
         <dl className="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div data-card="n_eff_full_book">
             <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
@@ -326,13 +332,15 @@ export function MetricsRow({
           </code>
           ,{" "}
           {sentNotional === null
-            ? "every leg the evening built for this close, whether or not it was sent — this document predates the sent-only key, so the card states the built figure and says so."
-            : "the legs the broker was sent for this close; the legs the run built and never sent are stated beside it."}
+            ? "every leg the evening built for this close, whether or not it was sent — this document predates the sent-only figure, so the card stands on the built one."
+            : "the legs the broker was sent for this close; the legs built and never sent are stated beside it."}
           {perNameTotal > 0
-            ? ` The book's own per-name column totals ${dollars(
+            ? ` The book's own per-name rows total ${dollars(
                 perNameTotal,
-              )} here, and the difference is not an error in either: a name that left the book has no row for its closing leg, so the per-name figure counts the trading of the names the book still holds.`
-            : ""}
+              )} here, and the difference is not an error in either: a name that left the book has no row for its closing leg, so the trades-by-reason table carries that row itself.`
+            : ""}{" "}
+          The sent-only notional is in the evening&apos;s email and is not published in this
+          document.
         </div>
       </Details>
     </section>

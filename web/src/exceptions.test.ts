@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { classify, exceptionText, hasUnexpected } from "./exceptions";
+import { NEXT_STEP, classify, exceptionText, hasUnexpected } from "./exceptions";
 import type { Snapshot } from "./types";
 import broken from "../fixtures/snapshot_bridge_broken.json";
 
@@ -35,6 +35,38 @@ function doc(parts: {
       previous_reversals_pending:
         parts.previousReversals === undefined ? null : parts.previousReversals,
       removed_without_order: (parts.removed ?? []).map((ticker) => ({ ticker })),
+      under_minimum_tickers: parts.underMinimum ?? [],
+    },
+  } as unknown as Snapshot;
+}
+
+
+/**
+ * A morning read in miniature: a target book, the account, and the bridge keys.
+ *
+ * `target` names are in the book and not in the account, `held` the other way round,
+ * and the bridge carries the two ticker lists the classifier reads.
+ */
+function targetRead(parts: {
+  target?: string[];
+  held?: string[];
+  underMinimum?: string[];
+  reversals?: string[];
+}): Snapshot {
+  return {
+    book: {
+      gross: 1,
+      gross_notional: 1_000_000,
+      names: (parts.target ?? []).map((ticker) => ({ ticker, weight: 0.01, side: "long" })),
+    },
+    actual_holdings: {
+      read_by: "morning",
+      names: (parts.held ?? []).map((ticker) => ({ ticker, notional: 10_000, side: "long" })),
+    },
+    positions: { matches: false, missing_at_broker: [], missing_in_store: [] },
+    bridge: {
+      reversals_pending: parts.reversals ?? [],
+      removed_without_order: [],
       under_minimum_tickers: parts.underMinimum ?? [],
     },
   } as unknown as Snapshot;
@@ -77,37 +109,6 @@ const MORNING: Snapshot = {
   },
   bridge: { reversals_pending: ["INVH"], removed_without_order: [] },
 } as unknown as Snapshot;
-
-/**
- * A morning read in miniature: a target book, the account, and the bridge keys.
- *
- * `target` names are in the book and not in the account, `held` the other way round,
- * and the bridge carries the two ticker lists the classifier reads.
- */
-function targetRead(parts: {
-  target?: string[];
-  held?: string[];
-  underMinimum?: string[];
-  reversals?: string[];
-}): Snapshot {
-  return {
-    book: {
-      gross: 1,
-      gross_notional: 1_000_000,
-      names: (parts.target ?? []).map((ticker) => ({ ticker, weight: 0.01, side: "long" })),
-    },
-    actual_holdings: {
-      read_by: "morning",
-      names: (parts.held ?? []).map((ticker) => ({ ticker, notional: 10_000 })),
-    },
-    positions: { matches: false, missing_at_broker: [], missing_in_store: [] },
-    bridge: {
-      reversals_pending: parts.reversals ?? [],
-      removed_without_order: [],
-      under_minimum_tickers: parts.underMinimum ?? [],
-    },
-  } as unknown as Snapshot;
-}
 
 describe("the classification", () => {
   it("files a name the document's own reversal list names as expected", () => {
@@ -191,81 +192,15 @@ describe("the classification", () => {
     expect(report.expected.every((entry) => entry.key !== "")).toBe(true);
   });
 
-  it("files a leg the floor left untraded as expected, by ticker", () => {
-    // The count alone said 21 legs of 2026-10-09 went untraded and not which, so the
-    // class was listed as one the page could not check. The tickers are published
-    // beside the count now, and the target asking for a position whose leg the floor
-    // skipped is the loop's own decision: on a morning read it is the target that
-    // asks and the account that does not hold it.
-    const report = classify(targetRead({ target: ["PSKY", "SLB"], underMinimum: ["PSKY"] }));
-    expect(report.source).toBe("target");
-    expect(report.expected.map((entry) => entry.ticker)).toEqual(["PSKY"]);
-    expect(report.expected[0].key).toBe("bridge.under_minimum_tickers");
-    expect(report.expected[0].side).toBe("targeted_not_held");
-    expect(report.expected[0].why).toContain("the $250 floor left its leg untraded");
-    // A name the floor did not skip is still the reader's to explain.
-    expect(report.unexpected.map((entry) => entry.ticker)).toEqual(["SLB"]);
-  });
-
-  it("does not let a skipped leg explain a position the account holds", () => {
-    // The hard direction: a name the account holds and the target does not is the
-    // break the panel exists to show, and "its leg was under the minimum" is not an
-    // explanation for a position being there.
-    const report = classify(
-      targetRead({ target: [], held: ["SLB"], underMinimum: ["SLB"] }),
-    );
-    expect(report.expected).toEqual([]);
-    expect(report.unexpected.map((entry) => entry.ticker)).toEqual(["SLB"]);
-    expect(report.unexpected[0].side).toBe("held_not_targeted");
-  });
-
-  it("files the previous close's deferrals as expected, from the republished list", () => {
-    // 2026-10-09: four names the account does not hold - BEN, F, VZ, ZTS - and all
-    // four are the previous close's deferred reversals. The list travelled in the
-    // 2026-10-08 document; the evening republishes it beside this close's own, and
-    // that is the key that decides the class.
-    const report = classify(
-      doc({ atBroker: ["BEN", "F", "VZ", "ZTS"], previousReversals: ["BEN", "F", "VZ", "ZTS"] }),
-    );
-    expect(report.expected.map((entry) => entry.ticker)).toEqual(["BEN", "F", "VZ", "ZTS"]);
-    expect(report.unexpected).toEqual([]);
-    for (const entry of report.expected) {
-      expect(entry.key).toBe("bridge.previous_reversals_pending");
-      expect(entry.why).toContain("deferred reversal of the previous close");
-    }
-    expect(report.unchecked.map((entry) => entry.what)).not.toContain(
-      "a name the account does not hold because a previous close's morning closed it as a deferred reversal",
-    );
-  });
-
-  it("keeps the class on the cannot-check list when the previous list is null", () => {
-    // An empty list is "the previous close deferred nothing" and decides the class;
-    // null is the evening having been unable to read that document, and the page
-    // says which one it is reading rather than filing a break as expected.
-    expect(classify(doc({ previousReversals: [] })).unchecked.map((e) => e.what)).not.toContain(
-      "a name the account does not hold because a previous close's morning closed it as a deferred reversal",
-    );
-    const unknown = classify(doc({ previousReversals: null }));
-    expect(unknown.unchecked.map((entry) => entry.what)).toContain(
-      "a name the account does not hold because a previous close's morning closed it as a deferred reversal",
-    );
-    expect(unknown.unchecked[0].needs).toContain("bridge.reversals_pending");
-    // And nothing is filed as expected off a list that was never read.
-    const report = classify(doc({ atBroker: ["BEN"], previousReversals: null }));
-    expect(report.expected).toEqual([]);
-  });
-
   it("names the classes it cannot check at all, with the key each one needs", () => {
     const report = classify(doc({}));
     const needs = report.unchecked.map((entry) => entry.needs).join(" ");
-    expect(report.unchecked).toHaveLength(2);
-    expect(needs).not.toContain("no names");
-    expect(needs).toContain("efb.e11_corporate_actions");
-    // The one the page now decides, listed back only because this document has no
-    // previous-close key at all.
-    expect(needs).toContain("previous close's bridge.reversals_pending");
-    // The one the brief expected to be decidable: the list is one session out.
-    expect(needs).toContain("previous close's bridge.reversals_pending");
+    expect(report.unchecked).toHaveLength(3);
+    // One sentence each, and the key names stay out of the default view: the toggle
+    // says what the page cannot see, not which field would fix it.
+    expect(needs).toContain("a ticker list beside bridge.under_minimum");
+    expect(needs).toContain("an asset-status or corporate-action field");
+    expect(needs).toContain("the previous close's deferred-reversal list");
   });
 });
 
@@ -337,5 +272,108 @@ describe("the one line the count is read from", () => {
   it("reads a single name in the singular", () => {
     expect(exceptionText(classify(doc({ atBroker: ["WBD"] })))).toBe("1 unexpected mismatch");
     expect(exceptionText(classify(doc({ matches: true })))).toBe("no mismatch");
+  });
+});
+
+/**
+ * The labels the page puts on a name, and the class each one comes from.
+ *
+ * The reader's question is "must I do something", so every mismatched name wears one
+ * of four labels and the sentence beside it says what happens next.
+ */
+describe("the plain labels", () => {
+  it("labels the previous close's deferrals in transit, from the republished list", () => {
+    // 2026-10-14: F and T are the store's own record of a position the previous
+    // close closed, and the list that says so travels in that close's document.
+    const report = classify(
+      doc({ atBroker: ["F", "T"], previousReversals: ["F", "T"], matches: false }),
+    );
+    expect(report.expected.map((entry) => entry.ticker)).toEqual(["F", "T"]);
+    for (const entry of report.expected) {
+      expect(entry.key).toBe("bridge.previous_reversals_pending");
+      expect(entry.label).toBe("in transit");
+      expect(entry.why).toContain("deferred reversal of the previous close");
+    }
+    expect(NEXT_STEP["in transit"]).toContain("nothing to do");
+    // And the class comes off the cannot-check list once the key is present.
+    expect(report.unchecked.map((entry) => entry.what)).not.toContain(
+      "a name the previous close closed and has not reopened",
+    );
+  });
+
+  it("keeps the class on the cannot-check list when the list is null", () => {
+    // Null is the evening unable to read the document, not a close that deferred
+    // nothing: the two are different statements about the same gap.
+    expect(classify(doc({ previousReversals: [] })).unchecked.map((e) => e.what)).not.toContain(
+      "a name the account does not hold because a previous close's morning closed it as a deferred reversal",
+    );
+    expect(
+      classify(doc({ previousReversals: null })).unchecked.map((entry) => entry.what),
+    ).toContain("a name the previous close closed and has not reopened");
+  });
+
+  it("labels a leg the floor left untraded as too small, and only on the target's side", () => {
+    const report = classify(
+      targetRead({ target: ["PSKY", "SLB"], underMinimum: ["PSKY"] }),
+    );
+    expect(report.expected.map((entry) => entry.ticker)).toEqual(["PSKY"]);
+    expect(report.expected[0].key).toBe("bridge.under_minimum_tickers");
+    expect(report.expected[0].label).toBe("too small");
+    // A name the account holds and the target does not is not explained by a floor.
+    const held = classify(targetRead({ target: [], held: ["SLB"], underMinimum: ["SLB"] }));
+    expect(held.unexpected.map((entry) => entry.ticker)).toEqual(["SLB"]);
+    expect(held.unexpected[0].label).toBe("look at this");
+    // The class drops off the cannot-check list once the tickers are published.
+    expect(report.unchecked.map((entry) => entry.what)).not.toContain("a leg too small to trade");
+    expect(held.unchecked.map((entry) => entry.what)).not.toContain("a leg too small to trade");
+  });
+
+  it("labels a leg the broker refused as stuck, with the broker's own reason", () => {
+    // The 2026-10-12 WBD case: the evening built the order and the asset feed
+    // would not take it, so the position sits until the broker settles it.
+    const snapshot = {
+      ...MORNING,
+      actual_holdings: {
+        ...MORNING.actual_holdings,
+        fills: {
+          trade_date: "2026-10-09",
+          not_sent: 1,
+          not_sent_lines: ["WBD buy_to_close $7,057 never sent (SYMBOL_NOT_FOUND)"],
+        },
+      },
+    } as unknown as Snapshot;
+    const report = classify(snapshot);
+    // "Stuck" is explained, so the name leaves the to-look-at list and lands in the
+    // settled one with the broker's reason beside it.
+    expect(report.unexpected).toEqual([]);
+    const stuck = report.expected.filter((entry) => entry.label === "stuck");
+    expect(stuck.map((entry) => entry.ticker)).toEqual(["WBD"]);
+    expect(stuck[0].key).toBe("actual_holdings.fills.not_sent_lines");
+    expect(stuck[0].why).toContain("SYMBOL_NOT_FOUND");
+    expect(NEXT_STEP.stuck).toContain("broker settles it");
+    expect(report.unchecked.map((entry) => entry.what)).not.toContain(
+      "an asset the broker says is inactive",
+    );
+  });
+
+  it("labels a flip in transit, because the closing leg went out tonight", () => {
+    const snapshot = {
+      book: {
+        gross: 1,
+        gross_notional: 1_000_000,
+        names: [{ ticker: "KO", weight: 0.2, side: "short" }],
+      },
+      actual_holdings: {
+        read_by: "morning",
+        names: [{ ticker: "KO", notional: 200_000, side: "long" }],
+      },
+      positions: { matches: true },
+      bridge: { reversals_pending: [], removed_without_order: [] },
+    } as unknown as Snapshot;
+    const report = classify(snapshot);
+    // A flip is not a one-sided name, so it is not in the mismatch lists at all;
+    // the classifier still knows the reason if it is ever asked.
+    expect(report.compare?.names[0].kind).toBe("both");
+    expect(report.unexpected).toEqual([]);
   });
 });

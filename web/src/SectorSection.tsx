@@ -302,27 +302,41 @@ export function SectorSection({
           within a fraction of a percent of each other and the bars are all the same shape. It
           is here for the reader checking the shape, not as the decision view.
         </p>
-        <table aria-label="sector gross" className="mt-1 w-full text-xs">
+        {/* Six columns on a phone, so the layout is fixed and the labels are short:
+            the units are in the heading above rather than in every header, and the
+            table is exactly the width of its box rather than wider than it. */}
+        <table
+          aria-label="sector gross"
+          className="mt-1 w-full table-fixed border-collapse text-[0.65rem]"
+        >
           <thead>
             <tr className="text-left text-slate-500">
-              <th className="py-1 pr-2">sector</th>
-              <th className="py-1 pr-2">long gross</th>
-              <th className="py-1 pr-2">short gross</th>
-              <th className="py-1 pr-2">target net</th>
-              <th className="py-1 pr-2">account net</th>
-              <th className="py-1">names</th>
+              <th className="w-[26%] py-1 pr-1">sector</th>
+              <th className="w-[15%] py-1 pr-1 text-right">long</th>
+              <th className="w-[15%] py-1 pr-1 text-right">short</th>
+              <th className="w-[15%] py-1 pr-1 text-right">target</th>
+              <th className="w-[15%] py-1 pr-1 text-right">account</th>
+              <th className="w-[14%] py-1 text-right">names</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={`gross-${row.code ?? "unmapped"}`}>
-                <td className="py-1 pr-2">{row.label}</td>
-                <td className="py-1 pr-2 tabular-nums">{dollars(row.bucket.longNotional)}</td>
-                <td className="py-1 pr-2 tabular-nums">{dollars(row.bucket.shortNotional)}</td>
-                <td className="py-1 pr-2 tabular-nums">{signedDollars(row.targetNet)}</td>
-                <td className="py-1 pr-2 tabular-nums">{signedDollars(row.accountNet)}</td>
-                <td className="py-1 tabular-nums">
-                  {row.targetNames} target / {row.accountNames} held
+                <td className="break-words py-1 pr-1">{row.label}</td>
+                <td className="py-1 pr-1 text-right tabular-nums">
+                  {dollars(row.bucket.longNotional)}
+                </td>
+                <td className="py-1 pr-1 text-right tabular-nums">
+                  {dollars(row.bucket.shortNotional)}
+                </td>
+                <td className="py-1 pr-1 text-right tabular-nums">
+                  {signedDollars(row.targetNet)}
+                </td>
+                <td className="py-1 pr-1 text-right tabular-nums">
+                  {signedDollars(row.accountNet)}
+                </td>
+                <td className="py-1 text-right tabular-nums">
+                  {row.targetNames} / {row.accountNames}
                 </td>
               </tr>
             ))}

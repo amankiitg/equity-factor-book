@@ -123,6 +123,12 @@ def retry_missing_closes(
     everything costs one request per missing name and no more. The recovered rows
     replace the empty ones the bulk pass wrote, because the later row wins on the
     same (date, ticker).
+
+    What the retry could not recover is named one line per ticker, because that is
+    the fact the run's log has to carry: on 2026-10-14 the vendor answered 404 for
+    the warrant `SKYD/WS` on both passes and the only record of the name was a
+    frame with no rows. A zero-row frame is a valid answer here - `download_prices`
+    returns one - and it leaves every requested ticker missing.
     """
     missing = prices.missing_tickers(frame, tickers, session=session)
     report: dict[str, object] = {
@@ -142,6 +148,8 @@ def retry_missing_closes(
     if retry is not None and len(retry):
         combined = pd.concat([frame, retry])
         frame = combined[~combined.index.duplicated(keep="last")].sort_index()
+    for ticker in still_missing:
+        logger.warning("no prices from the vendor: %s", ticker)
     logger.warning(
         "the price fetch missed %d of %d requested ticker(s) on %s; the "
         "single-threaded retry recovered %d and %d are still without a close: %s",

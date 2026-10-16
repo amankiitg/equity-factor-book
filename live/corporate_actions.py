@@ -49,6 +49,16 @@ The rule, in the append path only:
    rates cannot be turned into a ratio stops the run the way an unexplained
    back-adjustment does.
 
+   A child that is not a share is not a spin-off child. The vendor files a warrant,
+   unit or right distribution as a spin-off, and applying one moves a real return or
+   nulls a real close in the name of correcting a print that was never wrong:
+   measured on 2026-10-15, `SKYD -> SKYD.WS 1:1` was applied to the 2026-10-14
+   session, and SKYD/WS is the SPY holdings file's own zero-weight, sector `-`
+   warrant line for the same issuer. Such a record is ignored by both readers - the
+   vendor's record before it is applied, and the appendix's stored row before a
+   rebuild re-applies it - and it is logged rather than swallowed, because the
+   vendor's record is the thing that is wrong.
+
 The 2026-09-03 APH split, measured from the stored rows: the vendor's record says
 2:1, the raw close halves from 158.55 on 2026-08-31 to 82.78 on 2026-09-04, and
 the panel's APH return on 2026-09-04 is **NaN**, not -48%, because
@@ -265,6 +275,37 @@ def adjusted_return(close_t: float, factor: float, close_previous: float) -> flo
 
 SPINOFF_SOURCE = "alpaca.corporate_actions"
 
+# The line markers that mean a symbol is not the issuer's share: a warrant, a unit
+# and a right are the three the vendor and the holdings files both spell with a
+# separator and a short suffix, and none of them is a spin-off child. Measured on
+# 2026-10-15: Alpaca reported `source_symbol SKYD, new_symbol SKYD.WS, 1:1` on the
+# 2026-10-14 ex-date, the run applied it, and SKYD/WS is the SPY holdings file's own
+# zero-weight, sector `-` warrant line for the same issuer - the distribution of a
+# warrant is not the grant of a share, so the parent's print does not understate what
+# the session paid and there is nothing to correct. The separators are the three the
+# two sources use (`/` in SSGA's file, `.` and `-` at the vendor) and the marker is
+# the last component, so `BRK.B` (a share class, no marker) and `VYLR` (a real child)
+# are untouched.
+DERIVATIVE_MARKERS = frozenset(
+    {"WS", "WT", "W", "WTS", "U", "UN", "UNIT", "R", "RT", "RIGHT"}
+)
+
+
+def is_derivative_line(ticker: Any) -> bool:
+    """Whether a symbol is a warrant, unit or right line rather than a share.
+
+    Only ever asked about a child: a child is what the rule buys a close for and
+    what makes the parent's print look like a loss. A symbol with no separator
+    (`VYLR`, `CTVA`) is never a derivative line, which is what keeps the real
+    spin-offs working.
+    """
+    symbol = str(ticker or "").strip().upper()
+    spaced = symbol.replace("-", "/").replace(".", "/")
+    parts = [part for part in spaced.split("/") if part]
+    if len(parts) < 2:
+        return False
+    return parts[-1] in DERIVATIVE_MARKERS
+
 
 @dataclass(frozen=True)
 class Spinoff:
@@ -380,6 +421,19 @@ def vendor_spinoffs(
         if parent not in wanted:
             continue
         child = str(record.get("child") or "").strip()
+        if is_derivative_line(child):
+            # A warrant, unit or right the vendor filed as a spin-off child is not a
+            # grant of a share: the parent's print does not understate the session, so
+            # there is nothing to correct and applying the record would only null a
+            # real close or move a real return. Reported rather than swallowed,
+            # because the vendor's own record is what is wrong.
+            logger.warning(
+                "ignored a spin-off record for %s: %s is a warrant, unit or right "
+                "line, not a spin-off child",
+                parent,
+                child,
+            )
+            continue
         source_rate = float(record.get("source_rate") or 0.0)
         new_rate = float(record.get("new_rate") or 0.0)
         when = record.get("ex_date")
@@ -632,6 +686,19 @@ def spinoffs_from_rows(rows: pd.DataFrame) -> list[Spinoff]:
         if not parent or when is None or pd.isna(when):
             continue
         child = str(row.get("new_ticker") or "").strip()
+        if is_derivative_line(child):
+            # The same rule, for the records already in the appendix: a row whose
+            # child is a warrant, unit or right is ignored by every reader, so a
+            # rebuild (`recorded_spinoffs` -> `apply_recorded`) stops re-applying it
+            # every evening. Nothing stored is edited or deleted by this; the row is
+            # named in the log so the owner can delete it.
+            logger.warning(
+                "ignored a recorded spin-off for %s: %s is a warrant, unit or right "
+                "line, not a spin-off child - the row should be deleted",
+                parent,
+                child,
+            )
+            continue
         factor = row.get("factor")
         usable = (
             factor is not None

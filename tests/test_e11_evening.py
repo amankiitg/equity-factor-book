@@ -121,6 +121,42 @@ def test_build_proposal_asserts_the_spy_universe_and_stores_idio_share() -> None
     # the SPY names the frozen model does not know are excluded, not imputed
     assert manifest["n_excluded"] >= 1
     assert manifest["n_names"] + manifest["n_excluded"] >= 490
+    # which hedge built this book, recorded rather than inferred: with no
+    # EFB_HEDGE_MODE set the run is the exact FMP hedge it has always been
+    assert manifest["hedge_mode"] == ev.HEDGE_MODE_EXACT
+
+
+@pytest.mark.slow
+def test_the_cap_then_rehedge_flag_is_read_and_the_cap_holds_on_the_traded_book(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The flag end to end, on the real tree: mode recorded, cap achieved, book neutral.
+
+    The default is checked beside it, because the pair is the point: the same run
+    without the flag leaves the worst name over the cap (the cap is applied before
+    the hedge, and the hedge is allowed to lift a name back above it), and with the
+    flag the traded book is inside the cap and still factor-neutral. Both builds are
+    on the same tree and the same close, so the difference is the construction.
+    """
+    monkeypatch.setattr(ev, "_HEDGE_MODE_CACHE", None)
+    monkeypatch.delenv(ev.HEDGE_MODE_ENV, raising=False)
+    exact = ev.build_proposal(store=False)
+
+    monkeypatch.setattr(ev, "_HEDGE_MODE_CACHE", None)
+    monkeypatch.setenv(ev.HEDGE_MODE_ENV, ev.HEDGE_MODE_CAP_THEN_REHEDGE)
+    capped = ev.build_proposal(store=False)
+
+    assert exact["hedge_mode"] == ev.HEDGE_MODE_EXACT
+    assert capped["hedge_mode"] == ev.HEDGE_MODE_CAP_THEN_REHEDGE
+    assert exact["max_variance_share"] > 0.10, "the default leaves a name over the cap"
+    assert capped["max_variance_share"] <= 0.10 + 2e-4
+    assert capped["max_variance_share"] < exact["max_variance_share"]
+    assert capped["kept_max_abs_exposure"] < 1e-9
+    # The rule is the traded book's, so the kept rows have to agree with the
+    # manifest's own reading of them.
+    kept = {row["ticker"]: row["variance_share"] for row in capped["kept_book"]}
+    assert max(kept.values()) == pytest.approx(capped["max_variance_share"])
+    assert capped["n_kept"] > 0
 
 
 @pytest.mark.slow

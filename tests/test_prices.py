@@ -362,6 +362,86 @@ def test_the_download_asks_for_the_prewarm_before_it_starts_its_threads(
     assert events == ["download AAPL", "threads=True"], events
 
 
+# The columns the vendor sends for a symbol it answered rows for. The two action
+# columns come with the rows, so a symbol it could not price is missing them.
+VENDOR_PRICE_FIELDS = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
+
+
+def test_a_vendor_answer_with_no_rows_still_carries_every_field(monkeypatch) -> None:
+    """An empty answer is a frame with no rows, not a crash in the reader.
+
+    On 2026-10-14 the retry asked the vendor about one name alone - the SPY
+    holdings warrant `SKYD/WS`, whose fetch had already 404'd in the bulk pass -
+    and yfinance answered with no rows and no `Dividends` or `Stock Splits`
+    columns. Selecting `FIELDS` from that frame raised
+    `KeyError: "['dividend', 'split_factor'] not in index"`, which stopped the
+    evening before anything was sized and said nothing about the name. Both an
+    empty answer and a partial one now come back in the shape every caller
+    selects from.
+    """
+
+    def _download(symbols, **kwargs):  # noqa: ANN001
+        return pd.DataFrame(
+            columns=pd.MultiIndex.from_product([list(symbols), VENDOR_PRICE_FIELDS])
+        )
+
+    monkeypatch.setattr(prices.yf, "download", _download)
+    out = prices.download_prices(
+        ["SKYD/WS"], start="2026-10-06", end="2026-10-15", threads=False
+    )
+    assert list(out.columns) == prices.FIELDS
+    assert out.empty
+    assert out.index.names == ["date", "ticker"]
+    assert prices.missing_tickers(out, ["SKYD/WS"], session="2026-10-14") == ["SKYD/WS"]
+
+
+def test_a_partial_answer_keeps_the_tickers_that_came_back(monkeypatch) -> None:
+    """One symbol's missing action columns must not cost the other its rows.
+
+    The same empty answer inside a list where a second name did come back: the
+    frame keeps that name's rows and the name the vendor skipped is the one that
+    reads as missing, rather than the fetch failing on a column the vendor only
+    omitted for the symbol it could not price.
+    """
+
+    def _download(symbols, **kwargs):  # noqa: ANN001
+        answered = [symbol for symbol in symbols if symbol == "AAPL"]
+        return pd.DataFrame(
+            1.0,
+            index=pd.bdate_range("2026-10-06", periods=2),
+            columns=pd.MultiIndex.from_product([answered, list(prices.RENAME)]),
+        )
+
+    monkeypatch.setattr(prices.yf, "download", _download)
+    out = prices.download_prices(
+        ["AAPL", "SKYD/WS"], start="2026-10-06", end="2026-10-15", threads=False
+    )
+    assert list(out.columns) == prices.FIELDS
+    assert set(out.index.get_level_values("ticker")) == {"AAPL"}
+    assert prices.missing_tickers(out, ["AAPL"], session="2026-10-06") == []
+    assert prices.missing_tickers(out, ["SKYD/WS"], session="2026-10-06") == ["SKYD/WS"]
+
+
+def test_a_request_for_no_tickers_never_reaches_the_vendor(monkeypatch) -> None:
+    """An empty ticker list is an answer, not a vendor error.
+
+    yfinance refuses an empty symbol list with
+    `ValueError: No objects to concatenate`, a crash in the fetch rather than a
+    frame with nothing in it. A caller that filtered its way down to no tickers
+    gets the empty shape instead, which is the same frame a vendor that answered
+    nothing returns.
+    """
+
+    def _explode(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        raise AssertionError("the vendor must not be asked for no symbols")
+
+    monkeypatch.setattr(prices.yf, "download", _explode)
+    out = prices.download_prices([], start="2026-10-06", end="2026-10-15")
+    assert list(out.columns) == prices.FIELDS
+    assert out.empty
+    assert out.index.names == ["date", "ticker"]
+
+
 def test_missing_tickers_is_the_names_the_frame_never_priced() -> None:
     """A refused symbol and a delisted one look the same, which is the point.
 

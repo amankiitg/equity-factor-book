@@ -18,6 +18,7 @@ checked by hand. The two controls are the moves that must NOT be corrected: MRNA
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import time
 from datetime import date
@@ -1108,3 +1109,164 @@ def test_the_read_that_answered_and_found_nothing_is_not_a_failure(
         spinoff_lookup_failed=outcome.lookup_failure,
     )
     assert "Spin-off lookup failed" not in text
+
+
+# ---------------------------------------------------------------------------
+# The 2026-10-15 false spin-off: SKYD -> SKYD.WS
+#
+# The vendor filed a warrant distribution for SKYDACE CORP as a spin-off child:
+# `source_symbol SKYD, new_symbol SKYD.WS, 1:1`, ex-date 2026-10-14, and the run
+# applied it, so the 2026-10-14 SKYD cell was rewritten (or nulled - the child has no
+# row in the price panel, so the value came from the vendor's own close fetch and is
+# not stored anywhere). SKYD/WS is the SPY holdings file's own warrant line for the
+# same issuer: weight 0.0, sector "-", and it entered that file on 2026-10-13, one
+# session before the ex-date the vendor named. There was no share distribution, so
+# there was nothing to correct: 9.27 -> 7.06 on 2026-10-14 is a raw -23.84% print and
+# it is the print the fit is supposed to read.
+#
+# The rule is that a warrant, unit or right line is never a spin-off child, in both
+# readers: the vendor's record before it is applied, and the appendix's stored row
+# before a rebuild re-applies it every evening.
+# ---------------------------------------------------------------------------
+
+SKYD_SESSION = pd.Timestamp("2026-10-14")
+# the stored closes, to the last bit, from efb.e11_prices
+SKYD_PREVIOUS_CLOSE = 9.27000045776367
+SKYD_CLOSE = 7.05999994277954
+SKYD_NEXT_CLOSE = 7.26000022888184
+# 7.06 / 9.27 - 1: the print the rule was about to replace
+SKYD_RAW_PRINT = SKYD_CLOSE / SKYD_PREVIOUS_CLOSE - 1.0
+
+
+def a_vendor_record(child: str, *, parent: str = "SKYD") -> dict[str, Any]:
+    """The vendor's own payload, in the shape `alpaca.spin_offs` returns it."""
+    return {
+        "parent": parent,
+        "child": child,
+        "ex_date": str(SKYD_SESSION.date()),
+        "source_rate": 1.0,
+        "new_rate": 1.0,
+    }
+
+
+@pytest.mark.parametrize(
+    "child",
+    ["SKYD.WS", "SKYD/WS", "SKYD-WS", "SKYD.WT", "SKYD/U", "SKYD.UN", "SKYD.R"],
+)
+def test_a_warrant_unit_or_right_is_never_a_spin_off_child(
+    child: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The two spellings the two sources use, and the marker families they share.
+
+    No close for such a child is ever fetched, so nothing is corrected and nothing is
+    nulled: the parent's session return stays the print. The control is in the same
+    call - a real child in the same payload still reads - so this is a filter on the
+    child's kind and not a refusal to read spin-offs.
+    """
+    payload = [
+        a_vendor_record(child),
+        a_vendor_record("VYLR", parent="CTVA"),
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        found = ca.vendor_spinoffs(
+            SKYD_SESSION, ["SKYD", "CTVA"], fetcher=lambda s, d: payload
+        )
+
+    assert [spinoff.parent for spinoff in found] == [
+        "CTVA"
+    ], "only the share child survives"
+    assert found[0].child == "VYLR"
+    assert f"{child} is a warrant, unit or right line" in caplog.text
+
+
+def test_the_marker_is_only_ever_the_last_component() -> None:
+    """A dot is not the signal; the component after it is.
+
+    A share class (`BRK.B`) and a child with no separator at all (`VYLR`) are not
+    derivative lines, and a bare `W` is a ticker rather than a suffix, so the filter
+    cannot quietly widen into "anything with punctuation".
+    """
+    assert ca.is_derivative_line("SKYD.WS")
+    assert ca.is_derivative_line("SKYD/WS")
+    assert ca.is_derivative_line("skyd-ws")
+    assert ca.is_derivative_line("ABCD.UN")
+    assert ca.is_derivative_line("ABCD/RIGHT")
+
+    assert not ca.is_derivative_line("VYLR")
+    assert not ca.is_derivative_line("CTVA")
+    assert not ca.is_derivative_line("BRK.B")
+    assert not ca.is_derivative_line("W")
+    assert not ca.is_derivative_line("BRK/B")
+    assert not ca.is_derivative_line("")
+    assert not ca.is_derivative_line(None)
+
+
+def test_the_real_skyd_record_would_have_moved_the_cell_without_the_filter() -> None:
+    """The fix's own control: the record, read as the code read it before.
+
+    The payload is the real one and the frames carry the real closes. Read as a
+    spin-off, the record turns -23.84% into a null, because the child has no row in
+    the panel - which is the correction the vendor's record claims and which the
+    filter exists to refuse. Both halves are asserted here so the test fails if the
+    filter stops being the thing that decides.
+    """
+    frame, prices = ctva_frames()
+    frame = pd.concat(
+        [
+            frame,
+            returns_frame(
+                [
+                    (str(SKYD_SESSION.date()), "SKYD", SKYD_RAW_PRINT),
+                    ("2026-10-15", "SKYD", SKYD_NEXT_CLOSE / SKYD_CLOSE - 1.0),
+                ]
+            ),
+        ]
+    )
+    prices = pd.concat(
+        [
+            prices,
+            prices_frame(
+                [
+                    (
+                        "2026-10-13",
+                        "SKYD",
+                        SKYD_PREVIOUS_CLOSE,
+                        SKYD_PREVIOUS_CLOSE,
+                        1.0,
+                    ),
+                    ("2026-10-14", "SKYD", SKYD_CLOSE, SKYD_CLOSE, 1.0),
+                    ("2026-10-15", "SKYD", SKYD_NEXT_CLOSE, SKYD_NEXT_CLOSE, 1.0),
+                ]
+            ),
+        ]
+    )
+
+    # what the reader now returns for the real record: nothing at all
+    assert (
+        ca.vendor_spinoffs(
+            SKYD_SESSION, ["SKYD"], fetcher=lambda s, d: [a_vendor_record("SKYD.WS")]
+        )
+        == []
+    )
+
+    # the same record without the filter's decision, applied by the same code
+    decision = ca.Spinoff(
+        parent="SKYD",
+        child="SKYD.WS",
+        ex_date=SKYD_SESSION,
+        child_per_parent=1.0,
+        source_rate=1.0,
+        new_rate=1.0,
+    )
+    ca.apply_recorded(frame, prices, [decision])
+
+    assert pd.isna(
+        frame.loc[(SKYD_SESSION, "SKYD"), "r"]
+    ), "the child has no row in the panel, so the correction is a hole"
+    assert float(frame.loc[(pd.Timestamp("2026-10-15"), "SKYD"), "r"]) == pytest.approx(
+        SKYD_NEXT_CLOSE / SKYD_CLOSE - 1.0
+    ), "only the ex-date cell is the rule's business"
+    assert ca.describe_spinoffs(ca.apply_recorded(frame, prices, [decision])) == [
+        "spinoff: SKYD -> SKYD.WS 1:1 applied"
+    ], "the line the email carried"

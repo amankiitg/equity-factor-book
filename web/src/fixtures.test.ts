@@ -29,6 +29,16 @@ const NAMES = [
   "snapshot_fills_rejected.json",
   "snapshot_bridge_broken.json",
   "snapshot_position_removed.json",
+  // The two documents fetched from the bucket on 2026-10-14. They are byte for
+  // byte the same file: the morning rewrites both keys, so the dated copy is not a
+  // separate evening document. They are committed under both names because the
+  // page's morning path is what they exercise.
+  "snapshot_2026-10-14_morning.json",
+  "snapshot_2026-10-13_evening.json",
+  // The 2026-10-14 evening, which stopped before it sized a book: `status: error`,
+  // the previous close's book left standing, and no account read, no bridge. Fetched
+  // read-only on 2026-10-15 11:46 UTC, before the morning job rewrote it.
+  "snapshot_2026-10-14_error.json",
 ];
 
 // The fixtures that carry an `actual_holdings` block, which is every document a
@@ -40,13 +50,20 @@ const ACCOUNT_FIXTURES = [
   "snapshot_fills_rejected.json",
   "snapshot_bridge_broken.json",
   "snapshot_position_removed.json",
+  "snapshot_2026-10-14_morning.json",
+  "snapshot_2026-10-13_evening.json",
 ];
 
 // The two fixtures that carry the bridge: the 2026-10-05 session's own
 // arithmetic, complete from the evening's read to the next morning's account, and
 // the same morning with one name missing from the account and nothing explaining
 // it. Exactly these, so a third cannot appear without this list moving with it.
-const BRIDGE_FIXTURES = ["snapshot_fills_rejected.json", "snapshot_bridge_broken.json"];
+const BRIDGE_FIXTURES = [
+  "snapshot_fills_rejected.json",
+  "snapshot_bridge_broken.json",
+  "snapshot_2026-10-14_morning.json",
+  "snapshot_2026-10-13_evening.json",
+];
 
 // The bridge block, key by key: the counts the page prints on the one line, the
 // gap's two lists of names, and the identites the block checks itself against.
@@ -78,6 +95,11 @@ const BRIDGE_IDENTITY = ["name", "left", "right", "holds"];
 // left the account between two reads with no closing leg filled and no activity
 // of the broker's naming it.
 const REMOVED_FIXTURE = "snapshot_position_removed.json";
+
+// The two documents fetched on 2026-10-14. Both carry a departure block whose list
+// is empty: the question was asked and nothing had left, which is a different
+// statement from a document that never asked.
+const MARKED_FIXTURES = ["snapshot_2026-10-14_morning.json", "snapshot_2026-10-13_evening.json"];
 
 // The account's own book. Not in TOP_LEVEL on purpose: the key is absent until a
 // run has read the account, so requiring it everywhere would demand a key none of
@@ -344,6 +366,96 @@ describe("the fixtures and the page's types", () => {
 
 
   it("carries the bridge in exactly the fixtures built for it", () => {
+    // The numbers each bridge fixture carries, key by key. The 2026-10-05 evening's
+    // are 201 names held, 191 in the published book, 32 opened and 42 closed, 125
+    // continuing names that moved by the minimum and 34 that did not, 199 orders of
+    // which 197 filled, and 188 names held the next morning. The 2026-10-13 close's
+    // are 185 held, 171 in the book, 31 opened, 45 exited, 115 resized and 25 under
+    // the floor, 191 orders all filled, 169 held the next morning, and the two
+    // names the run deferred (PCG, PYPL).
+    interface BridgeNumbers {
+      book: number;
+      held_before: number;
+      in_both: number;
+      opened: number;
+      exited: number;
+      changed: number;
+      under_minimum: number;
+      orders_sent: number;
+      filled: number;
+      did_not_fill: number;
+      held_after: number;
+      reversals_pending: string[];
+      removed_without_order: string[];
+      unexplained: string[];
+    }
+    const BRIDGE_NUMBERS: Record<string, BridgeNumbers> = {
+      "snapshot_fills_rejected.json": {
+        book: 191,
+        held_before: 201,
+        in_both: 159,
+        opened: 32,
+        exited: 42,
+        changed: 125,
+        under_minimum: 34,
+        orders_sent: 199,
+        filled: 197,
+        did_not_fill: 2,
+        held_after: 188,
+        reversals_pending: ["INVH", "SLB"],
+        removed_without_order: ["PSKY"],
+        unexplained: [],
+      },
+      "snapshot_bridge_broken.json": {
+        book: 191,
+        held_before: 201,
+        in_both: 159,
+        opened: 32,
+        exited: 42,
+        changed: 125,
+        under_minimum: 34,
+        orders_sent: 199,
+        filled: 197,
+        did_not_fill: 2,
+        held_after: 187,
+        reversals_pending: ["INVH", "SLB"],
+        removed_without_order: ["PSKY"],
+        unexplained: ["AEP"],
+      },
+      "snapshot_2026-10-14_morning.json": {
+        book: 171,
+        held_before: 185,
+        in_both: 140,
+        opened: 31,
+        exited: 45,
+        changed: 115,
+        under_minimum: 25,
+        orders_sent: 191,
+        filled: 191,
+        did_not_fill: 0,
+        held_after: 169,
+        reversals_pending: ["PCG", "PYPL"],
+        removed_without_order: [],
+        unexplained: [],
+      },
+      "snapshot_2026-10-13_evening.json": {
+        book: 171,
+        held_before: 185,
+        in_both: 140,
+        opened: 31,
+        exited: 45,
+        changed: 115,
+        under_minimum: 25,
+        orders_sent: 191,
+        filled: 191,
+        did_not_fill: 0,
+        held_after: 169,
+        reversals_pending: ["PCG", "PYPL"],
+        removed_without_order: [],
+        unexplained: [],
+      },
+    };
+
     // The 2026-10-05 session, whose numbers are the real evening's: 201 names held
     // when the evening read the account and 191 in the book it published, 32 opened
     // and 42 closed, 125 continuing names that moved by the minimum and 34 that did
@@ -368,22 +480,27 @@ describe("the fixtures and the page's types", () => {
       for (const check of identities) {
         expect(Object.keys(check).sort()).toEqual([...BRIDGE_IDENTITY].sort());
       }
-      expect(bridge.book).toBe(191);
-      expect(bridge.held_before).toBe(201);
-      expect(bridge.in_both).toBe(159);
-      expect(bridge.opened).toBe(32);
-      expect(bridge.exited).toBe(42);
-      expect(bridge.changed).toBe(125);
-      expect(bridge.under_minimum).toBe(34);
-      expect(bridge.orders_sent).toBe(199);
-      expect(bridge.filled).toBe(197);
-      expect(bridge.did_not_fill).toBe(2);
-      expect(bridge.under_minimum_usd).toBe(250);
-      expect(bridge.reversals_pending).toEqual(["INVH", "SLB"]);
+      const expectedNumbers = BRIDGE_NUMBERS[name];
+      expect(bridge.book, name).toBe(expectedNumbers.book);
+      expect(bridge.held_before, name).toBe(expectedNumbers.held_before);
+      expect(bridge.in_both, name).toBe(expectedNumbers.in_both);
+      expect(bridge.opened, name).toBe(expectedNumbers.opened);
+      expect(bridge.exited, name).toBe(expectedNumbers.exited);
+      expect(bridge.changed, name).toBe(expectedNumbers.changed);
+      expect(bridge.under_minimum, name).toBe(expectedNumbers.under_minimum);
+      expect(bridge.orders_sent, name).toBe(expectedNumbers.orders_sent);
+      expect(bridge.filled, name).toBe(expectedNumbers.filled);
+      expect(bridge.did_not_fill, name).toBe(expectedNumbers.did_not_fill);
+      expect(bridge.under_minimum_usd, name).toBe(250);
+      expect(bridge.reversals_pending, name).toEqual(expectedNumbers.reversals_pending);
       const removed = bridge.removed_without_order as Array<Record<string, number>>;
-      expect(removed.map((entry) => entry.ticker)).toEqual(["PSKY"]);
-      expect(removed[0].quantity).toBeCloseTo(326.072572039, 6);
-      expect(removed[0].notional).toBeCloseTo(3211.814835, 2);
+      expect(removed.map((entry) => entry.ticker), name).toEqual(
+        expectedNumbers.removed_without_order,
+      );
+      if (expectedNumbers.removed_without_order.length > 0) {
+        expect(removed[0].quantity).toBeCloseTo(326.072572039, 6);
+        expect(removed[0].notional).toBeCloseTo(3211.814835, 2);
+      }
 
       // A block whose every identity holds is one the page draws plainly; one with a
       // failing identity is the amber case, and the two must not be mixed up.
@@ -391,18 +508,16 @@ describe("the fixtures and the page's types", () => {
       expect(bridge.holds, `${name}: holds disagrees with its own checks`).toBe(
         failed.length === 0,
       );
+      expect(bridge.held_after, name).toBe(expectedNumbers.held_after);
+      expect(bridge.unexplained, name).toEqual(expectedNumbers.unexplained);
       if (name === "snapshot_bridge_broken.json") {
         expect(failed.length).toBe(1);
         // One name the book holds is not in the account and is in neither of the
         // lists that explain a gap, so the two sides differ by exactly that name.
-        expect(bridge.held_after).toBe(187);
-        expect(bridge.unexplained).toEqual(["AEP"]);
         expect(failed[0].left).toBe(191);
         expect(failed[0].right).toBe(190);
       } else {
-        expect(failed).toEqual([]);
-        expect(bridge.held_after).toBe(188);
-        expect(bridge.unexplained).toEqual([]);
+        expect(failed, name).toEqual([]);
       }
     }
   });
@@ -411,7 +526,17 @@ describe("the fixtures and the page's types", () => {
     for (const name of NAMES) {
       const fixture = load(name) as Record<string, unknown>;
       const actual = fixture.actual_holdings as Record<string, unknown> | undefined;
-      if (name === REMOVED_FIXTURE) {
+      if (MARKED_FIXTURES.includes(name)) {
+        // The 2026-10-13 close: the block was read, the broker's feed answered,
+        // and no name had left with nothing behind it - which is what the empty
+        // list means, and it is not the same as the block being absent.
+        const exits = actual?.exits as Record<string, unknown>;
+        for (const key of EXITS) {
+          expect(Object.keys(exits), `${name}: exits is missing ${key}`).toContain(key);
+        }
+        expect((exits.names as unknown[]).length, name).toBe(0);
+        expect(exits.feed).toBe("read");
+      } else if (name === REMOVED_FIXTURE) {
         const exits = actual?.exits as Record<string, unknown>;
         for (const key of EXITS) {
           expect(Object.keys(exits), `${name}: exits is missing ${key}`).toContain(key);

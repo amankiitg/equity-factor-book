@@ -9,6 +9,7 @@ frozen as-of.
 
 from __future__ import annotations
 
+import logging
 import math
 from pathlib import Path
 
@@ -250,6 +251,63 @@ def test_a_name_the_bulk_fetch_missed_is_retried_once_single_threaded(
     ]
     closes = frame.xs(pd.Timestamp("2026-09-28"), level="date")["adj_close"]
     assert not pd.isna(closes["LIVE2"]) and pd.isna(closes["DELISTED"])
+
+
+def test_a_ticker_the_vendor_answers_nothing_for_stays_missing_and_is_named(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The retry leaves a name the vendor will not price missing, and says so.
+
+    The 2026-10-14 evening at this seam: the bulk pass answered for 503 names and
+    not for the SPY holdings warrant `SKYD/WS`, the single-threaded retry asked for
+    that name alone, and the vendor answered with no rows and no action columns.
+    The retry has to hand the name back as still missing - the book's drop rule is
+    what sees it next - and the run's log has to carry the name, because a frame
+    with no rows is the only other place that fact appears and a KeyError there
+    stopped the evening before sizing on 2026-10-14.
+    """
+    days = pd.bdate_range("2026-10-13", "2026-10-14")
+    price_fields = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
+    calls: list[tuple[list[str], object]] = []
+
+    def _download(symbols, **kwargs):  # noqa: ANN001
+        calls.append((list(symbols), kwargs.get("threads")))
+        answered = [symbol for symbol in symbols if symbol != "SKYD/WS"]
+        if not answered:
+            # nothing priced at all: no rows, and the action columns the vendor
+            # only sends with the rows
+            return pd.DataFrame(
+                columns=pd.MultiIndex.from_product([list(symbols), price_fields])
+            )
+        return pd.DataFrame(
+            1.0,
+            index=days,
+            columns=pd.MultiIndex.from_product([answered, list(prices.RENAME)]),
+        )
+
+    monkeypatch.setattr(extend.prices.yf, "download", _download)
+    with caplog.at_level(logging.WARNING):
+        frame, report = extend.retry_missing_closes(
+            _long_frame(["AAPL", "SKYD/WS"], days, blank=["SKYD/WS"]),
+            ["AAPL", "SKYD/WS"],
+            start="2026-10-13",
+            end="2026-10-15",
+            session="2026-10-14",
+        )
+
+    assert calls == [(["SKYD/WS"], False)], calls
+    assert report == {
+        "requested": 2,
+        "session": "2026-10-14",
+        "missing": ["SKYD/WS"],
+        "recovered": [],
+        "still_missing": ["SKYD/WS"],
+    }
+    assert "no prices from the vendor: SKYD/WS" in caplog.text
+    assert prices.missing_tickers(frame, ["AAPL"], session="2026-10-14") == []
+    assert prices.missing_tickers(frame, ["SKYD/WS"], session="2026-10-14") == [
+        "SKYD/WS"
+    ]
 
 
 def test_a_name_that_answered_for_the_earlier_sessions_is_retried_for_the_close(
@@ -692,3 +750,145 @@ def test_a_store_that_cannot_answer_stops_nothing(
     monkeypatch.setattr(extend.store, "select", explode)
 
     assert extend.recorded_spinoffs() == []
+
+
+# ---------------------------------------------------------------------------
+# The 2026-10-15 record that must not be re-applied: SKYD -> SKYD.WS
+#
+# The rule applied the vendor's warrant distribution to SKYD's 2026-10-14 cell and
+# wrote a row for it. The cell itself is not stored anywhere - the child has no row in
+# the panel, so the value came from the vendor's own close fetch - but the row is, and
+# `recorded_spinoffs` hands every stored row to `apply_recorded` on every evening's
+# rebuild. So the record has to be refused by the reader as well as by the rule, or
+# tonight's mistake is re-applied forever. Measured closes: 9.27, 7.06, 7.26.
+# ---------------------------------------------------------------------------
+
+SKYD = "SKYD"
+SKYD_EX_DATE = pd.Timestamp("2026-10-14")
+SKYD_BEFORE = pd.Timestamp("2026-10-13")
+SKYD_NEXT = pd.Timestamp("2026-10-15")
+SKYD_CLOSES = {
+    SKYD_BEFORE: 9.27000045776367,
+    SKYD_EX_DATE: 7.05999994277954,
+    SKYD_NEXT: 7.26000022888184,
+}
+SKYD_CHILD_CLOSE = 3.0
+SKYD_RAW_PRINT = SKYD_CLOSES[SKYD_EX_DATE] / SKYD_CLOSES[SKYD_BEFORE] - 1.0
+SKYD_TOTAL_RETURN = (SKYD_CLOSES[SKYD_EX_DATE] + SKYD_CHILD_CLOSE) / (
+    SKYD_CLOSES[SKYD_BEFORE]
+) - 1.0
+
+
+def _skyd_tree(root: Path, *, share_child: bool) -> None:
+    """A tree `extend_returns` can run on, carrying the real SKYD closes."""
+    (root / "raw").mkdir(parents=True)
+    (root / "processed").mkdir(parents=True)
+    rows = [(day, SKYD, close) for day, close in SKYD_CLOSES.items()]
+    child = "SKYD1"
+    if share_child:
+        rows.append((SKYD_EX_DATE, child, SKYD_CHILD_CLOSE))
+        rows.append((SKYD_NEXT, child, SKYD_CHILD_CLOSE))
+    index = pd.MultiIndex.from_tuples(
+        [(day, ticker) for day, ticker, _ in rows], names=["date", "ticker"]
+    )
+    pd.DataFrame(
+        {
+            "close": [close for *_, close in rows],
+            "adj_close": [close for *_, close in rows],
+        },
+        index=index,
+    ).to_parquet(root / "raw" / "prices.parquet")
+    pd.DataFrame(
+        {"rf": 0.0},
+        index=pd.DatetimeIndex([SKYD_BEFORE, SKYD_EX_DATE, SKYD_NEXT]),
+    ).to_parquet(root / "raw" / "factors_ff.parquet")
+    pd.DataFrame(
+        {"r": [SKYD_CLOSES[SKYD_NEXT] / SKYD_CLOSES[SKYD_EX_DATE] - 1.0]},
+        index=pd.MultiIndex.from_tuples(
+            [(SKYD_EX_DATE, SKYD)], names=["date", "ticker"]
+        ),
+    ).to_parquet(root / "processed" / "returns.parquet")
+    pd.DataFrame(columns=["action"]).to_parquet(
+        root / "processed" / "ticker_identity.parquet"
+    )
+
+
+def _skyd_record(child: str) -> pd.DataFrame:
+    """The stored row, field for field as `efb.e11_corporate_actions` holds it."""
+    return pd.DataFrame(
+        [
+            {
+                "trade_date": "2026-10-15",
+                "ticker": SKYD,
+                "effective_date": "2026-10-14",
+                "factor": 1.0,
+                "source": "alpaca.corporate_actions",
+                "cross_check_ratio": None,
+                "explained_by": "spinoff",
+                "new_ticker": child,
+                "source_rate": 1.0,
+                "new_rate": 1.0,
+            }
+        ]
+    )
+
+
+def test_a_recorded_warrant_is_not_put_back_by_the_rebuild(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The stored SKYD row is ignored and the raw print is what the rebuild writes.
+
+    The control is the same tree and the same row with a share for a child: the same
+    code, the same closes and the same ratios, so the only thing that decides is what
+    kind of line the child is.
+    """
+    root = tmp_path / "data"
+    _skyd_tree(root, share_child=False)
+    monkeypatch.setattr(extend.store, "select", lambda table: _skyd_record("SKYD.WS"))
+
+    with caplog.at_level(logging.WARNING):
+        extend.extend_returns(root)
+
+    assert "SKYD.WS is a warrant, unit or right line" in caplog.text
+    assert "should be deleted" in caplog.text, "the owner is told the row to remove"
+
+    frame = _rebuilt(root)
+    value = float(frame.loc[(SKYD_EX_DATE, SKYD), "r"])
+    assert value == pytest.approx(SKYD_RAW_PRINT, abs=1e-12)
+    assert f"{value * 100:+.2f}%" == "-23.84%", "the print, not a hole"
+    assert float(frame.loc[(SKYD_NEXT, SKYD), "r"]) == pytest.approx(
+        SKYD_CLOSES[SKYD_NEXT] / SKYD_CLOSES[SKYD_EX_DATE] - 1.0
+    )
+
+    # the control: a share child, everything else identical
+    control = tmp_path / "control"
+    _skyd_tree(control, share_child=True)
+    monkeypatch.setattr(extend.store, "select", lambda table: _skyd_record("SKYD1"))
+
+    assert extend.recorded_spinoffs()[0].child == "SKYD1"
+    extend.extend_returns(control)
+
+    moved = float(_rebuilt(control).loc[(SKYD_EX_DATE, SKYD), "r"])
+    assert moved == pytest.approx(SKYD_TOTAL_RETURN, abs=1e-12)
+    assert f"{moved * 100:+.2f}%" == "+8.52%", "the total return the control pays"
+    assert moved != pytest.approx(SKYD_RAW_PRINT)
+
+
+def test_the_stored_history_reads_the_same_except_for_skyd(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Both stored rows, read together: CTVA is untouched and SKYD is dropped.
+
+    This is the whole table as the store held it on 2026-10-16 - the manual CTVA row
+    and the vendor's SKYD row - so the assertion is about the real history rather than
+    about a constructed one.
+    """
+    stored = pd.concat([_record(), _skyd_record("SKYD.WS")], ignore_index=True)
+    monkeypatch.setattr(extend.store, "select", lambda table: stored)
+
+    with caplog.at_level(logging.WARNING):
+        records = extend.recorded_spinoffs()
+
+    assert [(record.parent, record.child) for record in records] == [(CTVA, VYLR)]
+    assert f"ignored a recorded spin-off for {SKYD}" in caplog.text
+    assert f"ROOT ignored a recorded spin-off for {CTVA}" not in caplog.text

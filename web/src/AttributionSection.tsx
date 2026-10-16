@@ -24,19 +24,25 @@ import { useState } from "react";
 
 import { Details } from "./Details";
 import { count, dateOnly, percent } from "./format";
-import type {
-  Attribution,
-  AttributionDay,
-  AttributionPeriod,
-  AttributionRisk,
-  AttributionRiskPath,
-} from "./types";
+import type { Attribution, AttributionDay, AttributionPeriod, AttributionRisk, AttributionRiskPath, Snapshot } from "./types";
 
 /** A P&L in basis points of NAV, signed to one place. */
 const bps = (value: number | null | undefined): string =>
   value === null || value === undefined
     ? "n/a"
     : `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)} bp of NAV`;
+
+/**
+ * A figure in basis points, bare, for a table whose header carries the unit.
+ *
+ * "bp of NAV" in every cell is the same three words eleven times; in the header it is
+ * said once and the column reads as numbers. The sign is kept: a favourable cost is a
+ * negative number in the same column as an expensive one.
+ */
+const bare = (value: number | null | undefined): string =>
+  value === null || value === undefined
+    ? "n/a"
+    : `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)}`;
 
 /** A cost already quoted in basis points of NAV; a favourable fill is negative. */
 const costBps = (value: number | null | undefined): string =>
@@ -350,9 +356,49 @@ function DailyBars({ days }: { days: AttributionDay[] }) {
   );
 }
 
+/**
+ * Whether a day's cost is a measured number or the evening's estimate.
+ *
+ * `live/attribution_job.py` puts the fill-measured cost in a day's row when the store
+ * has one and the evening's expectation in when it does not, so the same column holds
+ * two kinds of number. What the document publishes is the count of measured days
+ * (`cost.n_realized`) and, for the close it reconciled, the measured figure itself
+ * (`actual_holdings.fills.realized_cost_bps`). A day whose cost is that figure is
+ * measured; a day whose cost is the period's expectation is the estimate. A day that
+ * matches neither gets no tag rather than a guess.
+ */
+function costBasis(
+  day: AttributionDay,
+  period: AttributionPeriod | undefined,
+  snapshot: Snapshot | undefined,
+): "m" | "est" | null {
+  const cost = day.pnl_cost;
+  if (cost === null || cost === undefined) return null;
+  const fills = snapshot?.actual_holdings?.fills ?? null;
+  const close = dateOnly(day.trade_date);
+  if (fills && close !== null && dateOnly(fills.trade_date) === close) {
+    const measured = fills.realized_cost_bps;
+    if (measured !== null && measured !== undefined && Math.abs(-cost * 1e4 - measured) < 0.05) {
+      return "m";
+    }
+  }
+  const expected = period?.cost.expected_bps ?? null;
+  if (expected !== null && Math.abs(-cost * 1e4 - expected) < 0.05) return "est";
+  return null;
+}
+
 /** One day's row, with the row's own sum checked against its total rather than asserted. */
-function DayRow({ day }: { day: AttributionDay }) {
+function DayRow({
+  day,
+  period,
+  snapshot,
+}: {
+  day: AttributionDay;
+  period?: AttributionPeriod;
+  snapshot?: Snapshot;
+}) {
   const date = dateOnly(day.trade_date);
+  const basis = costBasis(day, period, snapshot);
   const sum =
     (day.pnl_factor ?? 0) + (day.pnl_idio ?? 0) + (day.pnl_cost ?? 0) + (day.pnl_unexplained ?? 0);
   const total = day.pnl_total ?? 0;
@@ -362,10 +408,20 @@ function DayRow({ day }: { day: AttributionDay }) {
   return (
     <tr data-day={date ?? ""} className="border-b border-slate-100">
       <td className="py-1 font-mono whitespace-nowrap">{date ?? "n/a"}</td>
-      <td className="py-1 tabular-nums">{bps(day.pnl_total)}</td>
-      <td className="py-1 tabular-nums">{bps(day.pnl_factor)}</td>
-      <td className="py-1 tabular-nums">{bps(day.pnl_idio)}</td>
-      <td className="py-1 tabular-nums">{bps(day.pnl_cost)}</td>
+      <td className="py-1 tabular-nums">{bare(day.pnl_total)}</td>
+      <td className="py-1 tabular-nums">{bare(day.pnl_factor)}</td>
+      <td className="py-1 tabular-nums">{bare(day.pnl_idio)}</td>
+      <td className="py-1 tabular-nums">
+        {bare(day.pnl_cost)}
+        {basis === null ? null : (
+          <span
+            data-cost-basis={basis}
+            className="ml-1 rounded bg-slate-200 px-1 text-[0.6rem] uppercase text-slate-600"
+          >
+            {basis}
+          </span>
+        )}
+      </td>
       <td className="py-1 tabular-nums">{closingBps(day.pnl_unexplained)}</td>
       <td className="py-1" data-check={ok ? "ok" : "off"}>
         {ok ? "✓ ok" : `✗ ${bps(sum - total)}`}
@@ -386,10 +442,14 @@ function DayRow({ day }: { day: AttributionDay }) {
 function DayTable({
   days,
   label,
+  period,
+  snapshot,
   live = true,
 }: {
   days: AttributionDay[];
   label: string;
+  period?: AttributionPeriod;
+  snapshot?: Snapshot;
   live?: boolean;
 }) {
   const [showAll, setShowAll] = useState(false);
@@ -402,7 +462,7 @@ function DayTable({
         <thead>
           <tr className="border-b border-slate-300 text-left">
             <th className="py-1 pr-2">close</th>
-            <th className="py-1 pr-2">total</th>
+            <th className="py-1 pr-2">total, bp of NAV</th>
             <th className="py-1 pr-2">factor</th>
             <th className="py-1 pr-2">idio</th>
             <th className="py-1 pr-2">cost</th>
@@ -412,7 +472,12 @@ function DayTable({
         </thead>
         <tbody>
           {shown.map((day, index) => (
-            <DayRow key={`${day.trade_date ?? "day"}-${index}`} day={day} />
+            <DayRow
+              key={`${day.trade_date ?? "day"}-${index}`}
+              day={day}
+              period={period}
+              snapshot={snapshot}
+            />
           ))}
         </tbody>
       </table>
@@ -426,6 +491,15 @@ function DayTable({
           {showAll ? "show the last 10 days" : `show all ${newest.length} days`}
         </button>
       ) : null}
+      <p className="mt-1 text-xs text-slate-500" data-cost-legend="true">
+        Every figure is bp of NAV. <span className="rounded bg-slate-200 px-1">est</span> is a day
+        whose cost is the evening&apos;s estimate; an untagged day&apos;s cost is measured from the
+        fills
+        {period
+          ? `, and ${count(period.cost.n_realized)} of ${count(period.n_days_carried)} days here have one`
+          : ""}
+        .
+      </p>
     </div>
   );
 }
@@ -639,29 +713,33 @@ function RiskPath({ path }: { path: AttributionRiskPath[] }) {
  * Borrow is the short leg's holding cost over the horizon, no execution price pays
  * a calendar, so it is reported beside the comparison rather than inside it.
  */
-function CostLine({ period }: { period: AttributionPeriod }) {
+function CostLine({ period, snapshot }: { period: AttributionPeriod; snapshot?: Snapshot }) {
   const realized = period.cost.realized_bps;
   const trading = period.cost.expected_trading_bps;
   const borrow = period.cost.expected_borrow_bps;
-  const realizedWords =
-    realized === null
-      ? "no realized fill cost is on file"
-      : `the fills paid ${costBps(realized)} from the previous close to the fill (mostly the overnight gap) across ${count(
-          period.cost.n_realized,
-        )} of ${count(period.n_days_carried)} carried day(s)`;
+  const expected = period.cost.expected_bps;
+  const fills = snapshot?.actual_holdings?.fills ?? null;
+  const session = fills?.realized_cost_bps ?? null;
   return (
-    <p className="mt-2 text-xs text-slate-500" data-cost="line">
-      cost: the evening predicted {costBps(period.cost.expected_bps)} for the period
-      {trading === null ? "" : `, of which ${costBps(trading)} is the trading half (spread, impact and commission, the only half a fill price pays)`}
-      {borrow === null ? "" : ` and ${costBps(borrow)} is borrow, the short leg's holding cost over the horizon`}.{" "}
-      {realizedWords}
-      {realized === null || trading === null
-        ? ""
-        : `, one session against the ${costBps(trading)} of trading cost the evening expected for the same session - the only like-for-like comparison, since borrow is a holding cost over a horizon no fill price pays`}
-      . The cost contribution in the split is a day&apos;s realized number where it has one and the
-      expected number where it does not, so a period total mixes the two and is read as an
-      estimate rather than as a measurement.
-    </p>
+    <div className="mt-2 text-xs text-slate-600" data-cost="line">
+      <p>
+        The evening expected to pay{" "}
+        <span className="font-medium">{costBps(expected)}</span>
+        {trading === null ? "" : `: ${trading.toFixed(1)} bp of trading`}
+        {borrow === null ? "" : ` and ${borrow.toFixed(1)} bp of borrow`}
+        {trading === null || borrow === null ? "" : " to hold the shorts"}.
+        {session === null
+          ? ""
+          : ` The fills cost ${session.toFixed(1)} bp against the ${trading === null ? "expected trading" : `${trading.toFixed(1)} bp of trading`} that was expected for them.`}
+      </p>
+      <p className="mt-1">
+        {realized === null
+          ? "No measured fill cost is on file for this period."
+          : `Measured over ${count(period.cost.n_realized)} of ${count(period.n_days_carried)} days: ${costBps(realized)} on average.`}{" "}
+        It is measured from the previous close to the fill, so it carries the overnight move with
+        it and can be positive — a fill that beat the close is a gain, not a cost.
+      </p>
+    </div>
   );
 }
 
@@ -867,10 +945,12 @@ function biasSentence(pairs: AttributionDay[]): string {
 function PeriodView({
   period,
   chart,
+  snapshot,
   live = false,
 }: {
   period: AttributionPeriod;
   chart: "daily" | "monthly";
+  snapshot?: Snapshot;
   live?: boolean;
 }) {
   const cumulative = period.cumulative;
@@ -951,24 +1031,37 @@ function PeriodView({
 
       {points.length >= 1 ? <CumulativeChart points={points} /> : null}
       {live ? <DailyBars days={carried} /> : null}
-      <CostLine period={period} />
+      <CostLine period={period} snapshot={snapshot} />
       {live ? <VolatilityPanel period={period} /> : null}
       {live && period.risk ? <RiskSplit risk={period.risk} /> : null}
       <FactorTable period={period} />
 
-      <DayTable days={carried} label="attribution by day" live={live} />
+      <DayTable
+        days={carried}
+        label="attribution by day"
+        period={period}
+        snapshot={snapshot}
+        live={live}
+      />
       {lastDay ? (
         <p className="mt-1 text-xs text-slate-500" data-beta="book">
-          the last day, {dateOnly(lastDay.trade_date) ?? "n/a"}: raw beta{" "}
-          {beta3(lastDay.book_beta)} (unitless), market {bps(lastDay.market_return)}, beta line{" "}
-          {bps(lastDay.pnl_beta)}.
+          On {dateOnly(lastDay.trade_date) ?? "the last day"} the book barely moved with the
+          market: a {bps(lastDay.market_return)} market day moved it{" "}
+          {bps(lastDay.pnl_beta)} (beta {beta3(lastDay.book_beta)}).
         </p>
       ) : null}
     </>
   );
 }
 
-export function AttributionSection({ attribution }: { attribution?: Attribution | null }) {
+export function AttributionSection({
+  attribution,
+  snapshot,
+}: {
+  attribution?: Attribution | null;
+  /** The document the fills come from, so a day's cost can be called measured. */
+  snapshot?: Snapshot;
+}) {
   // The view is a decision about which object to read, so it is the one piece of
   // state here; it defaults to the live book, which is the only one that is the book.
   const [view, setView] = useState<"live" | "backtest">("live");
@@ -1050,7 +1143,7 @@ export function AttributionSection({ attribution }: { attribution?: Attribution 
           {live?.note || attribution.note || "no live day is attributed yet"}
         </p>
       ) : live ? (
-        <PeriodView period={live} chart="daily" live />
+        <PeriodView period={live} chart="daily" snapshot={snapshot} live />
       ) : null}
     </section>
   );
