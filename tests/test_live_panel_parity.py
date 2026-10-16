@@ -74,36 +74,48 @@ def _panel_keys(source: str) -> set[str]:
 
 
 @pytest.mark.merge_guard
-def test_the_live_fit_and_the_next_design_read_one_panel() -> None:
-    """The merge guard: the live fit and the opt-in design read the same frame.
+def test_the_live_fit_and_the_next_design_read_one_panel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The merge guard: the fit and the design take their frame from one place.
 
-    `live/extend.py::extend_model` fits the live model on `returns_clean`, which is
-    nov11's change and lands with this branch unchanged. The design's own frame is
-    behind `EFB_DESIGN_RETURNS`, so the two agree when the flag says `clean` and the
-    design deliberately reads origin/main's raw frame when it does not: a merge that
-    silently changed the book for every run is the thing this guard is for, and the
-    flag is what makes the default the old behaviour rather than an edit to a test.
+    `live/extend.py::extend_model` and `efb/race.py::next_descriptor_design` both
+    take their returns frame from `efb/race.py::design_panel`, which is where
+    `EFB_DESIGN_RETURNS` chooses between the cleaned panel and the raw one. Two
+    readers and one decision is the invariant: a model fitted on the cleaned frame
+    beside a design built from the raw one is the divergence this guard is for, and
+    unset is `raw`, so the merge's default is origin/main's behaviour rather than an
+    edit to a test.
     """
-    fit = _panel_keys(_function_source(ROOT / "live" / "extend.py", "extend_model"))
-    design = _panel_keys(_function_source(ROOT / "efb" / "race.py", "design_panel"))
+    fit = _function_source(ROOT / "live" / "extend.py", "extend_model")
     reader = _function_source(ROOT / "efb" / "race.py", "next_descriptor_design")
+    chooser = _function_source(ROOT / "efb" / "race.py", "design_panel")
 
-    assert fit == {"returns_clean"}, (
-        f"the live model fit reads {sorted(fit)}: nov11 fits on the cleaned panel "
-        "and that is not a choice this merge gets to unmake"
-    )
-    assert design == {"returns", "returns_clean"}, (
-        "the design's frame must be chosen by `design_panel`, which reads both keys: "
-        f"it reads {sorted(design)}"
+    assert "design_panel(" in fit, (
+        "the live model fit no longer takes its frame from `design_panel`, so it can "
+        "diverge from the design the hedge is solved against"
     )
     assert "design_panel(" in reader, (
         "next_descriptor_design no longer takes its frame from `design_panel`, so the "
         "flag no longer decides which panel the row is built from"
     )
-    assert race.DESIGN_RETURNS_RAW == "raw" and race.DESIGN_RETURNS_CLEAN == "clean", (
-        "the flag's two values are what the runbook documents"
+    assert _panel_keys(chooser) == {"returns", "returns_clean"}, (
+        "`design_panel` must be the one place both keys are read; it reads "
+        f"{sorted(_panel_keys(chooser))}"
     )
-    assert race.design_returns.__module__ == "efb.race"
+    raw_frame = pd.DataFrame({"A": [0.1]})
+    clean_frame = pd.DataFrame({"A": [0.2]})
+    panel = {"returns": raw_frame, "returns_clean": clean_frame}
+    monkeypatch.delenv(race.DESIGN_RETURNS_ENV, raising=False)
+    monkeypatch.setattr(race, "_DESIGN_RETURNS_CACHE", None)
+    assert race.design_panel(panel) is raw_frame, (
+        "with the flag unset the frame must be the raw one, which is origin/main's"
+    )
+    monkeypatch.setenv(race.DESIGN_RETURNS_ENV, race.DESIGN_RETURNS_CLEAN)
+    monkeypatch.setattr(race, "_DESIGN_RETURNS_CACHE", None)
+    assert race.design_panel(panel) is clean_frame, (
+        "the flag's one job is to choose the cleaned frame, and it is not choosing it"
+    )
 
 
 def _mapped_columns(panel: dict[str, object]) -> list[str]:

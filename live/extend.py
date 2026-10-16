@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from efb import hygiene, prices, probes, returns, spy, universe
+from efb import hygiene, prices, probes, race, returns, spy, universe
 from efb.models import fundamental as fx
 from live import corporate_actions, store
 
@@ -384,7 +384,13 @@ def extend_model(data_root: Path | None = None) -> dict[str, object]:
     root = Path(data_root) if data_root is not None else DATA_ROOT
     xs_dir = root / "models" / "XS-v1"
     inputs = probes.load_panel(root)
-    returns_frame = inputs["returns"]
+    # One decision, two readers: `race.design_panel` is where `EFB_DESIGN_RETURNS`
+    # picks the frame, so the model fitted here and the next session's design row
+    # are always built from the same panel. A fit on the cleaned frame beside a
+    # design built from the raw one is the divergence nov11's
+    # `tests/test_live_panel_parity.py` guard exists to catch, and unset is `raw`,
+    # which is origin/main's behaviour byte for byte.
+    returns_frame = race.design_panel(inputs)
     close = inputs["close"]
     volume = inputs["volume"]
     sectors = inputs["sectors"]
