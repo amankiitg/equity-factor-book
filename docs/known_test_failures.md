@@ -1,37 +1,52 @@
 # The known test failures, and what a report has to do with them
 
-## The list a report compares against: seven ids, measured on this branch
+## The list a report compares against: fourteen ids, measured on the merged tree
 
-Measured on `nov11` at `d3d8a56` on 2026-10-12, with the gate's own command:
+Measured on `nov11-into-main` (the merge of `origin/main` `1b500b9` into
+`origin/nov11` `6903912`) on 2026-10-16, with the gate's own command:
 
 ```
 .venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"
 ```
 
-**7 failed, 1538 passed, 1 skipped, 47 deselected** in 11m48s. These seven are the
-list: the backport branch cleared 48 of the 55 in the older measurement below, and
-these are what is still red. A report names them as known and counts nothing else as
-anything but new.
+**14 failed, 1564 passed, 3 skipped, 49 deselected** in 11m35s, on a worktree holding
+the repository's own `data/` tree. These fourteen are the list: the same fourteen
+`origin/nov11` reports, id for id, and a subset of `origin/main`'s sixty. A report
+names them as known and counts nothing else as anything but new; the merge's own
+three-way comparison is §A4 of `docs/nov11_merge_report.md`.
 
 | id | cause |
 |---|---|
+| `tests/test_dashboard_d5.py::test_methodology_links_exist` | `notebooks/E1_walkthrough.html` is not in this tree. The notebook renders are built where the notebooks are run and are not committed, so the dashboard's methodology links and the six render-existence checks below have no file to open. One cause, seven ids |
+| `tests/test_e4_walkthrough_notebook.py::test_the_render_exists_and_the_methodology_links_resolve` | the same: `notebooks/E4_walkthrough.html` is absent |
+| `tests/test_e5_walkthrough_notebook.py::test_the_html_render_exists` | the same: `notebooks/E5_walkthrough.html` is absent |
+| `tests/test_e6_walkthrough_notebook.py::test_the_html_render_exists` | the same: `notebooks/E6_walkthrough.html` is absent |
+| `tests/test_e7_walkthrough_notebook.py::test_the_html_render_exists` | the same: `notebooks/E7_walkthrough.html` is absent |
+| `tests/test_e8_walkthrough_notebook.py::test_the_html_render_exists` | the same: `notebooks/E8_walkthrough.html` is absent |
+| `tests/test_e9_walkthrough_notebook.py::test_the_html_render_exists` | the same: `notebooks/E9_walkthrough.html` is absent |
 | `tests/test_week2_spinoff.py::test_the_artifact_is_written_only_when_something_was_applied` | `ValueError: CTVA: the vendor back-adjusted the last stored session (ratio 0.150038) with no split record behind it, so the run stops rather than guessing what happened`. The vendor's series carries a 6.7x back-adjustment on the last stored session that no split record explains, and the spin-off rule refuses to apply it. All four ids in this file are that one refusal raised from four different entry points: the artifact write, the failing vendor read, the hung read and the read that answered with nothing |
 | `tests/test_week2_spinoff.py::test_a_vendor_read_that_fails_leaves_the_print_and_the_flag` | the same CTVA refusal |
 | `tests/test_week2_spinoff.py::test_a_hung_spin_off_read_is_named_in_the_evening_email` | the same CTVA refusal |
 | `tests/test_week2_spinoff.py::test_the_read_that_answered_and_found_nothing_is_not_a_failure` | the same CTVA refusal |
-| `tests/test_e13_design_note.py::test_every_module_in_the_repository_appears_in_the_map` | 26 modules are not in the port map: `live/bridge.py`, `live/preflight.py`, this branch's five `scripts/nov11_*` research and audit scripts, and 18 `web/src/*` files. This test enumerates the repository, so it grows every time a module lands and is re-recorded with the map, never mid-work |
+| `tests/test_e13_design_note.py::test_every_module_in_the_repository_appears_in_the_map` | 26 modules are not in the port map: `live/bridge.py`, `live/preflight.py`, the five `scripts/nov11_*` research and audit scripts, and 19 `web/src/*` files (page-v4's page sources, which the merged tree now carries). This test enumerates the repository, so it grows every time a module lands and is re-recorded with the map, never mid-work |
 | `tests/test_e13_design_note.py::test_the_stored_module_count_is_the_count_this_test_measures` | the same enumeration: 105 stored against 135 measured |
 | `tests/test_e11_corporate_actions.py::test_the_aph_split_is_reproduced_from_the_real_rows` | the split reproduction recovers 82.78 from the real `data/raw` rows and the stored row expects 82.07 at a 10% bound, so the split the test reproduces is not the one the real rows now carry |
 
-The CTVA refusal and the APH split are **artifact vintage**: the stored expectations
-predate the current `data/` bytes, and both clear by re-recording from the refreshed
-rows, not by changing the rule. The two `test_e13_design_note` ids are **mechanical**:
-they follow from this branch adding modules and web sources, and they clear by
-re-recording the map at the merge. Neither group is a defect in the code the branch
-changes, and the branch's own suite - 1,538 tests - is green.
+The seven notebook ids are **build state**: the renders exist on the machine that runs
+the notebooks, and the check is that they are current, so a tree without them is not a
+tree with a defect. The CTVA refusal and the APH split are **artifact vintage**: the
+stored expectations predate the current `data/` bytes, and both clear by re-recording
+from the refreshed rows, not by changing the rule. The two `test_e13_design_note` ids
+are **mechanical**: they follow from the repository gaining modules and web sources, and
+they clear by re-recording the map at the refresh. None of the fourteen is in a file
+the merge resolved, and none of them is new: every one is red on `origin/nov11` and on
+`origin/main` as well.
 
-The older measurement below is kept as the record of what the backport cleared, and it
-is *not* the list to compare against: 48 of its 55 ids now pass.
+What the merge *cleared* is the other half of the picture: 45 of `origin/main`'s 60
+ids are green here, including the five `test_hedge_vintage` ids (the row the hedge is
+handed versus the row the model publishes — nov11's `efb/race.py` fix is what turns
+them green), the web-fixture vintage ids, the research artifacts and memos, and the
+sector map.
 
 ## The measurement this file was written from
 
