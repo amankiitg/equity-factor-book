@@ -75,27 +75,35 @@ def _panel_keys(source: str) -> set[str]:
 
 @pytest.mark.merge_guard
 def test_the_live_fit_and_the_next_design_read_one_panel() -> None:
-    """The merge guard: both readers must take the same frame from the panel.
+    """The merge guard: the live fit and the opt-in design read the same frame.
 
-    Fails today. The fix is the merge commit, not a test edit: change
-    `live/extend.py::extend_model` to read `inputs["returns_clean"]` in the same
-    commit that lands this branch, so that the live model fit and
-    `efb/race.py::next_descriptor_design` read one panel.
+    `live/extend.py::extend_model` fits the live model on `returns_clean`, which is
+    nov11's change and lands with this branch unchanged. The design's own frame is
+    behind `EFB_DESIGN_RETURNS`, so the two agree when the flag says `clean` and the
+    design deliberately reads origin/main's raw frame when it does not: a merge that
+    silently changed the book for every run is the thing this guard is for, and the
+    flag is what makes the default the old behaviour rather than an edit to a test.
     """
     fit = _panel_keys(_function_source(ROOT / "live" / "extend.py", "extend_model"))
-    hedge = _panel_keys(
-        _function_source(ROOT / "efb" / "race.py", "next_descriptor_design")
-    )
+    design = _panel_keys(_function_source(ROOT / "efb" / "race.py", "design_panel"))
+    reader = _function_source(ROOT / "efb" / "race.py", "next_descriptor_design")
 
-    assert fit, "extend_model reads no panel key at all - has it been rewritten?"
-    assert hedge, "next_descriptor_design reads no panel key - has the builder moved?"
-    assert fit == hedge == {"returns_clean"}, (
-        "the live model fit reads "
-        f"{sorted(fit)} and the next-session design reads {sorted(hedge)}. "
-        "At merge, live/extend.py must read returns_clean as well, in the same "
-        "commit, so the live model fit and next_descriptor_design use the same "
-        "panel. See docs/backport_runbook.md."
+    assert fit == {"returns_clean"}, (
+        f"the live model fit reads {sorted(fit)}: nov11 fits on the cleaned panel "
+        "and that is not a choice this merge gets to unmake"
     )
+    assert design == {"returns", "returns_clean"}, (
+        "the design's frame must be chosen by `design_panel`, which reads both keys: "
+        f"it reads {sorted(design)}"
+    )
+    assert "design_panel(" in reader, (
+        "next_descriptor_design no longer takes its frame from `design_panel`, so the "
+        "flag no longer decides which panel the row is built from"
+    )
+    assert race.DESIGN_RETURNS_RAW == "raw" and race.DESIGN_RETURNS_CLEAN == "clean", (
+        "the flag's two values are what the runbook documents"
+    )
+    assert race.design_returns.__module__ == "efb.race"
 
 
 def _mapped_columns(panel: dict[str, object]) -> list[str]:
@@ -104,7 +112,9 @@ def _mapped_columns(panel: dict[str, object]) -> list[str]:
     return [str(name) for name in mapped]
 
 
-def test_the_built_row_reads_the_cleaned_panel() -> None:
+def test_the_built_row_reads_the_cleaned_panel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A masked cell leaves the cross-section the hedge is solved against.
 
     The built row's cross-section is the set of names priced on the row's own
@@ -114,7 +124,15 @@ def test_the_built_row_reads_the_cleaned_panel() -> None:
     cleaned frame the name is out of the cross-section and its z is zero, which
     is the record of a print the rule replaced; read off the raw frame it is in
     and its z is not.
+
+    The cleaned panel is opt-in at the merge, through `EFB_DESIGN_RETURNS`: unset
+    is origin/main's raw frame, so this test asks for `clean` and then asks for the
+    default back, both against the same masked panel. A test that asserted only the
+    clean answer would read as a description of every run rather than of the runs
+    that asked for it.
     """
+    monkeypatch.setenv(race.DESIGN_RETURNS_ENV, race.DESIGN_RETURNS_CLEAN)
+    monkeypatch.setattr(race, "_DESIGN_RETURNS_CACHE", None)
     panel = probes.load_panel(DATA)
     clean = panel["returns_clean"]
     raw = panel["returns"]
@@ -138,6 +156,14 @@ def test_the_built_row_reads_the_cleaned_panel() -> None:
     assert np.allclose(_styles(races_row(panel, stamp, name, mask=name)), 0.0), (
         "a name whose cell was masked is still in the cross-section the hedge is "
         "solved against, so the built row is not reading the cleaned panel"
+    )
+    # And the default, which is the merge's contract: with the flag unset the same
+    # call reads the raw frame and the masked name is still in the cross-section.
+    monkeypatch.setenv(race.DESIGN_RETURNS_ENV, race.DESIGN_RETURNS_RAW)
+    monkeypatch.setattr(race, "_DESIGN_RETURNS_CACHE", None)
+    assert not np.allclose(_styles(races_row(panel, stamp, name, mask=name)), 0.0), (
+        "the build read the cleaned panel with EFB_DESIGN_RETURNS unset or raw, so "
+        "the merge's default is not origin/main's"
     )
 
 
