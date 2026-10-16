@@ -154,9 +154,7 @@ def test_the_cap_then_rehedge_flag_is_read_and_the_cap_holds_on_the_traded_book(
     assert capped["kept_max_abs_exposure"] < 1e-9
     # The rule is the traded book's, so the kept rows have to agree with the
     # manifest's own reading of them.
-    kept = {
-        row["ticker"]: row["variance_share"] for row in capped["kept_book"]
-    }
+    kept = {row["ticker"]: row["variance_share"] for row in capped["kept_book"]}
     assert max(kept.values()) == pytest.approx(capped["max_variance_share"])
     assert capped["n_kept"] > 0
 
