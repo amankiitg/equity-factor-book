@@ -1,5 +1,9 @@
 # `EFB_HEDGE_MODE`: the cap-then-rehedge hedge, behind a default-off flag
 
+Merged to `main` in `1807479` (the merge of `63369c1`, branch
+`flag-cap-then-rehedge`). The flag is unset everywhere; turning it on is a Render
+environment variable, described at the end of this note.
+
 Two research notes recommend the construction this flag switches on:
 `docs/research/nov11_hedge.md` (origin/nov11) and
 `docs/research/etf_overlay_hedge.md` (origin/research-etf-hedge). Measured on the live
