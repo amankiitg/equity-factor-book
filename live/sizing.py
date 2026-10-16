@@ -19,6 +19,11 @@ from efb import size
 # book's residual risk that no hedge removes - MRNA at 40%+ on 2026-09-25 - and
 # the owner's rule is 10%.
 VARIANCE_SHARE_CAP = 0.10
+# How many cap-then-reproject passes `cap_then_rehedge` runs. Three is what the
+# research construction uses (docs/research/nov11_hedge.md) and what the study
+# measured: the worst single-name share of predicted specific risk lands at 9.6%
+# against the 10% cap, and one more pass moves nothing that matters.
+REHEDGE_ROUNDS = 3
 
 
 def hedge_exact_robust(design: np.ndarray, exposures: np.ndarray) -> np.ndarray:
@@ -92,10 +97,12 @@ def cap_variance_shares(
     the level is not: at a cap of exactly 1/n the root sits on the boundary and
     rounding it down scales the whole book away.
 
-    Applied to the sized book *before* the hedge, which is the only order that
-    works: the hedge is a projection of the sized vector, so capping afterwards
-    would undo one of the two. Names are only ever scaled down, so the direction
-    of the tilt never reverses.
+    Applied to the sized book *before* the hedge*: capping after a hedge undoes
+    the neutrality, because the cap is not a projection and moves the book off the
+    factor-neutral space the hedge put it on. `cap_then_rehedge` below is the one
+    construction that caps afterwards and then restores the neutrality, three times
+    over, and it exists only for the `EFB_HEDGE_MODE` comparison. Names are only
+    ever scaled down, so the direction of the tilt never reverses either way.
     """
     weights = np.asarray(weights, dtype=float)
     variance = weights**2 * np.asarray(specific, dtype=float)
@@ -134,6 +141,40 @@ def cap_variance_shares(
         variance > 0, np.minimum(1.0, level / np.maximum(variance, 1e-300)), 1.0
     )
     return weights * np.sqrt(target)
+
+
+def cap_then_rehedge(
+    weights: np.ndarray,
+    design: np.ndarray,
+    specific: np.ndarray,
+    cap: float = VARIANCE_SHARE_CAP,
+    rounds: int = REHEDGE_ROUNDS,
+) -> np.ndarray:
+    """Cap the variance shares, then put the book back on the factor-neutral space.
+
+    The default sizing caps *before* the hedge, because capping afterwards moves the
+    book off the neutral space the hedge put it on. This is the other order, run to
+    a fixed point: cap the hedged book, re-project it onto the factor-neutral space,
+    and repeat, so that both conditions hold at the end rather than only the first.
+    Each pass is `w <- cap(w)` followed by `w <- w - X (X'X)^-1 X' w`, the same exact
+    projection the live hedge uses (`hedge_exact_robust`), so the neutrality at the
+    end is the same machine-precision zero the rest of the loop measures against.
+
+    Three passes is the research construction's count and its measured outcome: the
+    worst name's share of predicted specific variance falls to 9.6% against the 10%
+    cap with no pass left moving the book. It is behind a default-off flag
+    (`EFB_HEDGE_MODE=cap_then_rehedge`, read in `live/evening_job.py`) because it
+    trades a small amount of turnover and gross for that concentration.
+
+    The cap can be under-shot rather than met when the neutral space does not contain
+    a book meeting it: the last pass's projection is what the caller gets, and the
+    achieved share is the caller's to report rather than something to assume.
+    """
+    current = np.asarray(weights, dtype=float).copy()
+    for _ in range(rounds):
+        current = cap_variance_shares(current, specific, cap=cap)
+        current = current + hedge_exact_robust(design, design.T @ current)
+    return current
 
 
 def procedure_6_3_robust(

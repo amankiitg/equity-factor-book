@@ -15,7 +15,9 @@ does not know are excluded and counted, not imputed.
 from __future__ import annotations
 
 import json
+import logging
 import math
+import os
 import subprocess
 import time
 from collections.abc import Mapping
@@ -36,12 +38,24 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
 PROPOSAL_DIR = ROOT / "live" / "proposals"
 
+logger = logging.getLogger(__name__)
+
 SIGNAL = "idio_momentum"
 MODEL_VERSION = "XS-v1"  # the champion the book is built and run under
 SPY_UNIVERSE_MIN_AS_OF = date(2026, 9, 18)  # the live-universe seam
 TARGET_ANNUAL_VOL = 0.10  # the E10 target
 GROSS_CAP = 1.0  # the E8 gross cap, a hard ceiling
 PAPER_NAV = 1_000_000.0  # the paper notional the morning job runs
+# Which hedge the loop builds: the exact FMP hedge it has always built, or the
+# research construction that caps the variance shares and re-projects onto the
+# factor-neutral space until both hold (docs/flag_cap_then_rehedge.md). Unset and
+# `exact` are the same thing and produce the book byte for byte; anything else is
+# a typo and falls back to `exact` with a warning, because a typo must never change
+# the book. The mode is recorded on the manifest so a later reader can tell which
+# hedge built a book.
+HEDGE_MODE_ENV = "EFB_HEDGE_MODE"
+HEDGE_MODE_EXACT = "exact"
+HEDGE_MODE_CAP_THEN_REHEDGE = "cap_then_rehedge"
 REFERENCE_AUM = 1e8  # the capacity-curve reference, kept for the E6 finding
 TRADING_DAYS = 252
 HORIZON = 21  # the rebalance horizon, the E6 and E9 convention
@@ -299,6 +313,60 @@ def _scale_to_target(
 SHARE_FLOOR = 20  # the owner's chosen share-only floor, in whole shares
 
 
+# The resolved mode, cached for the process: the floor search calls the sizing
+# hundreds of times per row, and a typo has to be reported once rather than
+# hundreds of times. Tests reset it with `monkeypatch.setattr`.
+_HEDGE_MODE_CACHE: str | None = None
+
+
+def hedge_mode() -> str:
+    """Which hedge the loop builds, from `EFB_HEDGE_MODE`.
+
+    `exact` for unset, empty, `exact` (any case) and for anything unrecognised, so
+    the default path is the hedge that has always run and a typo cannot move a
+    book. `cap_then_rehedge` is the one other value the loop reacts to. The
+    requested string is read once per process and the decision is logged, because
+    the value that built a book is the thing a later reader has to know.
+    """
+    global _HEDGE_MODE_CACHE
+    if _HEDGE_MODE_CACHE is None:
+        requested = os.environ.get(HEDGE_MODE_ENV, "").strip().lower()
+        if not requested or requested == HEDGE_MODE_EXACT:
+            _HEDGE_MODE_CACHE = HEDGE_MODE_EXACT
+        elif requested == HEDGE_MODE_CAP_THEN_REHEDGE:
+            _HEDGE_MODE_CACHE = HEDGE_MODE_CAP_THEN_REHEDGE
+            logger.warning(
+                "%s=%s: the book is built with the cap-then-rehedge hedge, which is "
+                "not the default",
+                HEDGE_MODE_ENV,
+                HEDGE_MODE_CAP_THEN_REHEDGE,
+            )
+        else:
+            logger.warning(
+                "%s=%r is not a hedge mode: the exact hedge is used, because a typo "
+                "must never change the book",
+                HEDGE_MODE_ENV,
+                os.environ.get(HEDGE_MODE_ENV, ""),
+            )
+            _HEDGE_MODE_CACHE = HEDGE_MODE_EXACT
+    return _HEDGE_MODE_CACHE
+
+
+def apply_hedge_mode(
+    hedged: np.ndarray, design: np.ndarray, specific: np.ndarray
+) -> np.ndarray:
+    """The hedged book as the requested mode wants it: unchanged, or re-capped.
+
+    The exact hedge is returned untouched in the default mode, so every downstream
+    number is the one the loop has always produced; in `cap_then_rehedge` the cap is
+    applied to the hedged book and the neutrality is restored after it, to a fixed
+    point (`sizing.cap_then_rehedge`).
+    """
+    if hedge_mode() == HEDGE_MODE_CAP_THEN_REHEDGE:
+        return sizing.cap_then_rehedge(hedged, design, specific)
+    return hedged
+
+
 def sized_kept_weights(
     keep: np.ndarray,
     names: list[str],
@@ -314,21 +382,27 @@ def sized_kept_weights(
     """Procedure 6.3 on the kept subset, hedged and renormalized to gross 1.0.
 
     One implementation for the whole module: `finalize_kept_set` builds its
-    report from this, and the floor search reads the same vector so a set that
-    the search accepts is the set that trades.
+    report from this, `kept_set_clears_floor` checks this, and the floor search
+    reads the same vector so a set that the search accepts is the set that
+    trades. The hedge itself is whichever `EFB_HEDGE_MODE` names: the exact FMP
+    hedge by default, and with the flag on the capped-and-re-projected one, so the
+    cap holds on the vector that trades and not only on the one before the floor.
     """
     del nav  # the renorm is to gross 1.0; the share counts take the NAV
     idx = np.where(keep)[0]
     names_sub = [names[i] for i in idx]
     # Size, cap the variance share, renormalize, then hedge and renormalize: the
     # cap has to sit before the hedge, because the hedge is a projection of the
-    # sized vector and capping after it would undo the neutrality instead.
+    # sized vector and capping after it would undo the neutrality instead. The one
+    # exception is the cap-then-rehedge mode, which caps after the hedge and pays
+    # for it with the re-projections, in `apply_hedge_mode`.
     sized = size.proportional(alpha_vec[idx], specific[idx])
     sized = sizing.cap_variance_shares(sized, specific[idx])
     sized = sizing.renormalize(sized, gross=1.0)
     w_sub, pre_hedge = sizing.procedure_6_3_hedged_with_exposures(
         alpha_vec[idx], design[idx], factor_covariance, specific[idx], sized=sized
     )
+    w_sub = apply_hedge_mode(w_sub, design[idx], specific[idx])
     w_sub = sizing.renormalize(w_sub, gross=1.0)
     prices = usable_prices(names_sub, close)
     return idx, names_sub, w_sub, prices, design[idx], specific[idx], pre_hedge
@@ -1307,8 +1381,13 @@ def build_proposal(
 
     # Procedure 6.3: size on D^-1 alpha, then hedge factors with the exact
     # in-model FMPs. The hedge drives every factor exposure, styles and
-    # sectors included, to zero to machine precision.
+    # sectors included, to zero to machine precision. This is the full-book
+    # construction, before the floor's kept set exists: the hedge the traded book
+    # is finally built with is the one in `sized_kept_weights`, and `EFB_HEDGE_MODE`
+    # is applied here as well so the two agree and the full-book risk numbers on
+    # the manifest are the numbers of the mode the run was asked for.
     weights = size.procedure_6_3(alpha_vec, design, factor_covariance, specific)
+    weights = apply_hedge_mode(weights, design, specific)
     weights, gross_cap_bound = _scale_to_target(
         weights, design, factor_covariance, specific
     )
@@ -1475,6 +1554,11 @@ def build_proposal(
         "min_position_dollars": construction["dollar_floor"],
         "min_position_pct_of_nav": construction["dollar_floor"] / nav if nav else 0.0,
         "construction": construction["construction"],
+        # Which hedge built this book: `exact` for the loop's own hedge and the
+        # default, `cap_then_rehedge` when EFB_HEDGE_MODE asked for the research
+        # construction. Recorded rather than inferred, because two books that differ
+        # only in their hedge are otherwise indistinguishable afterwards.
+        "hedge_mode": hedge_mode(),
         "construction_floor_dollars": (
             construction["dollar_floor"] if construction["dollar_floor"] > 0 else None
         ),
