@@ -214,3 +214,89 @@ def test_traded_run_publishes_nothing_and_keeps_the_rows(
     assert len(runs) == 1
     assert str(runs.iloc[0]["status"]) == "traded"
     assert str(runs.iloc[0]["run_date"])[:10] == SESSION
+
+
+def test_a_traded_second_start_keeps_the_first_attempts_story(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIX 2, second half: the row is replaced by key, so the detail is carried over.
+
+    2026-10-06 sent 192 orders and then died on a missing column, and the failure path
+    filed that close's `run_status` row with the traceback. A second start on the same
+    close finds the legs at the broker and writes its own row for the same
+    `(target_close, job)` key, so without reading the first one the only record of why
+    the evening is incomplete is gone and the day reads as an ordinary traded close.
+    """
+    from live import notify as notify_module
+    from live import staleness
+
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setenv(notify_module.API_KEY_ENV, "re_" + "test-key-value")
+    monkeypatch.setenv(notify_module.TO_ENV, "owner@example.com")
+    sent: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        notify_module, "post", lambda url, payload, headers=None: sent.append(payload)
+    )
+    failure = 'DatatypeMismatch: column "traded_notional" does not exist'
+    store.upsert(
+        staleness.TABLE,
+        [
+            {
+                "target_close": SESSION,
+                "job": staleness.JOB,
+                "run_date": SESSION,
+                "status": run_live_daily.ERROR_STATUS,
+                "detail": failure,
+            }
+        ],
+    )
+
+    assert (
+        run_live_daily.traded_run(SESSION, {"legs": 3, "sent": 3, "unconfirmed": 0})
+        == 0
+    )
+
+    stored = store.select(staleness.TABLE)
+    assert len(stored) == 1, "one row per close and job"
+    row = stored.iloc[0]
+    assert row["status"] == "traded"
+    assert failure in str(row["detail"])
+    assert "the day traded, so it was not re-priced" in str(row["detail"])
+    assert failure in str(sent[0]["text"])
+
+
+def test_a_traded_second_start_carries_nothing_over_from_an_ordinary_day(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a failed attempt's row is a story to keep."""
+    from live import notify as notify_module
+    from live import staleness
+
+    _no_work(monkeypatch)
+    _patch_gate(monkeypatch, tmp_path)
+    _patch_success(monkeypatch)
+    monkeypatch.setenv(notify_module.API_KEY_ENV, "re_" + "test-key-value")
+    monkeypatch.setenv(notify_module.TO_ENV, "owner@example.com")
+    monkeypatch.setattr(notify_module, "post", lambda url, payload, headers=None: None)
+    store.upsert(
+        staleness.TABLE,
+        [
+            {
+                "target_close": SESSION,
+                "job": staleness.JOB,
+                "run_date": SESSION,
+                "status": "ok",
+                "detail": "an ordinary evening, already reported",
+            }
+        ],
+    )
+
+    assert (
+        run_live_daily.traded_run(SESSION, {"legs": 3, "sent": 3, "unconfirmed": 0})
+        == 0
+    )
+
+    detail = str(store.select(staleness.TABLE).iloc[0]["detail"])
+    assert "an ordinary evening" not in detail
