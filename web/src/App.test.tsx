@@ -503,6 +503,27 @@ describe("the page", () => {
     ).toBeTruthy();
   });
 
+  it("reads a catch-up that priced a book as a green proposal run", () => {
+    // The pill said CATCH_UP in grey beside a panel saying the run priced a book:
+    // what was wrong was the clock, not the book, and the two must agree.
+    const snapshot = catchUp as unknown as Snapshot;
+    const { container } = render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const pill = container.querySelector('[data-pill="status"]');
+    expect(pill?.getAttribute("data-tone")).toBe("good");
+    expect(pill?.textContent).toContain(
+      `proposal run: ok (caught up ${snapshot.run_status.catch_up_sessions.length} sessions)`,
+    );
+  });
+
+  it("still names a catch-up that priced nothing as a catch-up", () => {
+    const source = catchUp as unknown as Snapshot;
+    const snapshot = { ...source, book: { ...source.book, n_kept: 0 } };
+    const { container } = render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const pill = container.querySelector('[data-pill="status"]');
+    expect(pill?.getAttribute("data-tone")).toBe("info");
+    expect(pill?.textContent).toContain("proposal run: catch_up");
+  });
+
   it("dates the book whenever its close is not the target close", () => {
     const snapshot: Snapshot = {
       ...OK,
