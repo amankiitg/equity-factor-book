@@ -132,9 +132,16 @@ def test_the_fixture_set_is_exactly_the_states_the_page_tests(
 ) -> None:
     assert set(written) == set(fixtures.NAMES)
     committed = sorted(path.name for path in fixtures.FIXTURE_DIR.glob("*.json"))
-    assert committed == sorted(
-        fixtures.NAMES
-    ), "the fixtures directory holds exactly the set the writer produces"
+    # The writer's own twelve, plus the dated documents the page's work fetched from
+    # the bucket and declared in `fixtures.DATED_DOCUMENTS` (the 2026-10-14 evening
+    # and morning, and the 2026-10-13 evening). Nothing else may sit here, so a
+    # hand-added fixture still fails; the dated ones are not writer output, so the
+    # byte-for-byte check above stays on the files this script builds.
+    assert set(fixtures.NAMES) <= set(committed), "a writer fixture is missing"
+    extra = set(committed) - set(fixtures.NAMES)
+    assert extra <= set(
+        fixtures.DATED_DOCUMENTS
+    ), f"the fixtures directory holds files nothing declares: {sorted(extra)}"
 
 
 def test_every_evening_that_priced_a_book_publishes_its_names(
