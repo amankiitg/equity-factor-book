@@ -8,6 +8,8 @@ of the sizing every caller shares, not a step after it.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pytest
 
@@ -183,3 +185,165 @@ def test_the_uncapped_hedge_is_not_what_trades() -> None:
     )
 
     assert not np.allclose(w_sub, sizing.renormalize(hedged, gross=1.0))
+
+
+# ---------------------------------------------------------------------------
+# EFB_HEDGE_MODE: the cap-then-rehedge construction, behind a default-off flag.
+#
+# The rule above caps before the hedge, and the test above records the boundary it
+# accepts: the hedge can lift a capped name back over the cap. The research on the
+# live books (docs/research/nov11_hedge.md, docs/research/etf_overlay_hedge.md)
+# measures the other order - cap, re-project, three times - as cutting the worst
+# single-name share from about 12.6% to 10.0008% with the neutrality kept. It is
+# the owner's decision to trade on that construction, so the flag defaults to off
+# and an unrecognised value falls back to the hedge that has always run.
+# ---------------------------------------------------------------------------
+
+
+def _mode(monkeypatch: pytest.MonkeyPatch, value: str | None) -> str:
+    """The mode the module resolves for one value of the flag, cache and all."""
+    monkeypatch.setattr(ev, "_HEDGE_MODE_CACHE", None)
+    if value is None:
+        monkeypatch.delenv(ev.HEDGE_MODE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(ev.HEDGE_MODE_ENV, value)
+    return ev.hedge_mode()
+
+
+@pytest.mark.parametrize("value", [None, "", "exact", "exact ", "EXACT", "Exact"])
+def test_the_flag_reads_as_the_exact_hedge_until_it_names_the_other_one(
+    value: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _mode(monkeypatch, value) == ev.HEDGE_MODE_EXACT
+
+
+@pytest.mark.parametrize(
+    "value", ["cap_then_rehedge", " CAP_THEN_REHEDGE ", "Cap_Then_Rehedge"]
+)
+def test_the_one_other_value_the_loop_reacts_to(
+    value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _mode(monkeypatch, value) == ev.HEDGE_MODE_CAP_THEN_REHEDGE
+
+
+@pytest.mark.parametrize("value", ["cap_then_rehedg", "yes", "1", "rehedge", "exact_2"])
+def test_a_typo_falls_back_to_the_exact_hedge_and_says_so(
+    value: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A typo must never change the book, and it must not be silent either."""
+    with caplog.at_level(logging.WARNING):
+        resolved = _mode(monkeypatch, value)
+
+    assert resolved == ev.HEDGE_MODE_EXACT
+    assert f"{ev.HEDGE_MODE_ENV}={value!r} is not a hedge mode" in caplog.text
+    assert "the exact hedge is used" in caplog.text
+
+
+def test_the_mode_is_decided_once_and_then_remembered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The floor search calls the sizing hundreds of times per row.
+
+    The flag is a start-of-run decision, not a per-call one: reading it again inside
+    the search would let a value that changed mid-run build a book out of two
+    hedges, and a typo would be logged once per candidate set instead of once.
+    """
+    assert _mode(monkeypatch, ev.HEDGE_MODE_CAP_THEN_REHEDGE) == (
+        ev.HEDGE_MODE_CAP_THEN_REHEDGE
+    )
+    monkeypatch.setenv(ev.HEDGE_MODE_ENV, "exact")
+    assert ev.hedge_mode() == ev.HEDGE_MODE_CAP_THEN_REHEDGE, "read once per process"
+
+    monkeypatch.setattr(ev, "_HEDGE_MODE_CACHE", None)
+    assert ev.hedge_mode() == ev.HEDGE_MODE_EXACT
+
+
+def test_the_default_mode_leaves_the_hedged_vector_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Byte for byte, not approximately: the off position is the hedge of record."""
+    names, alpha, specific, design, close = _traded_fixture()
+    pre = _capped_sized(alpha, specific)
+    hedged, _pre = sizing.procedure_6_3_hedged_with_exposures(
+        alpha, design, np.eye(3), specific, sized=pre
+    )
+    assert _mode(monkeypatch, None) == ev.HEDGE_MODE_EXACT
+
+    assert ev.apply_hedge_mode(hedged, design, specific) is hedged
+    _idx, _names, w_sub, *_rest = ev.sized_kept_weights(
+        np.ones(12, dtype=bool), names, alpha, design, np.eye(3), specific, close, 1e5
+    )
+    assert np.array_equal(w_sub, sizing.renormalize(hedged, gross=1.0))
+
+
+def _cap_fixture() -> (
+    tuple[list[str], np.ndarray, np.ndarray, np.ndarray, dict[str, float]]
+):
+    """Forty names and three factors: big enough for the neutral space to hold a
+    capped book. The twelve-name fixture above is deliberately too small for it -
+    with nine free dimensions and one name carrying most of the variance, no
+    number of cap-then-re-project passes meets the cap, and the reconstruction is
+    under-shot rather than met. This is the size at which the construction does
+    what it claims, which is what has to be pinned. Deterministic: one seed, no
+    randomness in the test.
+    """
+    rng = np.random.default_rng(6)
+    names = [f"C{index:02d}" for index in range(40)]
+    design = rng.normal(size=(40, 3))
+    alpha = np.linspace(9.0, -9.0, 40) * (1.0 + 0.5 * rng.normal(size=40))
+    specific = np.linspace(1e-4, 2e-3, 40)
+    close = {name: 50.0 for name in names}
+    return names, alpha, specific, design, close
+
+
+def test_the_flag_puts_the_cap_on_the_book_that_trades(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole point of the construction, on the traded vector.
+
+    The control is the same fixture and the same call with the flag unset: that book
+    is the one the loop builds today, and its worst name is 11.94% of the book's
+    predicted specific variance against the 10% rule. With the flag on the worst
+    name is at the cap to within the last re-projection's own move (10.00508%), which
+    is what the research measured on the live books (9.6%). The neutrality is
+    unchanged either way, and that is what the re-projections buy: the cap is applied
+    *after* the hedge here and nowhere else, and the book ends on the neutral space
+    the hedge put it on.
+    """
+    names, alpha, specific, design, close = _cap_fixture()
+    args = (
+        np.ones(len(names), dtype=bool),
+        names,
+        alpha,
+        design,
+        np.eye(3),
+        specific,
+        close,
+        1e5,
+    )
+
+    assert _mode(monkeypatch, None) == ev.HEDGE_MODE_EXACT
+    idx_off, _n_off, traded_off, _p_off, _d_off, _s_off, _pre_off = (
+        ev.sized_kept_weights(*args)
+    )
+    shares_off = sizing.variance_shares(traded_off, specific)
+
+    assert _mode(monkeypatch, ev.HEDGE_MODE_CAP_THEN_REHEDGE) == (
+        ev.HEDGE_MODE_CAP_THEN_REHEDGE
+    )
+    idx_on, _n_on, traded_on, _p_on, _d_on, _s_on, _pre_on = ev.sized_kept_weights(
+        *args
+    )
+    shares_on = sizing.variance_shares(traded_on, specific)
+
+    assert idx_off.tolist() == idx_on.tolist() == list(range(len(names)))
+    assert shares_off.max() == pytest.approx(0.1193758, abs=1e-6), "today's book"
+    assert shares_off.max() > 0.10, "the fixture must show today's book over the cap"
+    assert shares_on.max() == pytest.approx(0.1000508, abs=1e-6), "the flag's book"
+    assert shares_on.max() <= 0.10 + 2e-4
+    assert shares_on.max() < shares_off.max()
+    # Both books are factor-neutral to machine precision: the flag does not trade
+    # the neutrality for the cap, and it does not need to.
+    assert np.abs(design.T @ traded_off).max() < 1e-12
+    assert np.abs(design.T @ traded_on).max() < 1e-12
+    assert not np.allclose(traded_on, traded_off), "the flag has to change the book"
