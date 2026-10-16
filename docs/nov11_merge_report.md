@@ -1,42 +1,70 @@
 # The nov11 merge into main: what happened, what the proofs say, PART B's list
 
-## Resume here (only while the merge is still pending)
+## Resume here
 
-Written 2026-10-16 ~13:10 UTC, before the PART A window opened. `origin/nov11-into-main`
-is pushed at `0abc2b3` and everything in §A0–A6 is done and recorded below. What is
-left, in order:
+**Paused by the owner at 2026-10-16 11:58 UTC. Nothing was merged or pushed to
+`main`, and no deploy was made: `origin/main` is `1b500b9`, untouched. The merge is
+built, proven and pushed on its own branch — `origin/nov11-into-main`, tip recorded at
+the end of this file — and its worktree is clean.**
 
-1. **The PART A merge**, which may only happen between **15:45 and 20:30 UTC on Friday
-   2026-10-16**: `git -C ../efb-nov11-merge merge --no-ff nov11-into-main` on a
-   checkout of `main`, then `git push origin main`. Nothing has to be re-run first —
-   the tree at `0abc2b3` is the one A1–A6 were measured on. If the push is rejected,
-   fetch, merge the new `origin/main` in, re-run the A1 substitution proof and the
-   touched tests, then retry once and stop.
-2. **PART B**, one branch and one commit set per item, each cut from the post-PART-A
-   `main`, each merged separately under the PART B rule (after 23:00 UTC on Friday,
-   only if a read-only `select` of `efb.run_status` for the 2026-10-16 evening shows
-   the run priced a book and sent orders; deadline 20:30 UTC Monday 2026-10-19).
-   B1 reconcile-once, B2 `traded_run`, B3 the shortability check on the final
-   weights, B4 the `pre_hedge_weights` audit, B5 the catch-up pill plus its Worker
-   deploy, B6 the NOT NULL audit. Each item's status, branch and merge sha is
-   appended below under **PART B**.
+A0–A6 are done and recorded below. One thing to read before acting: **A1 and A2 are
+red as the brief states them, and green as the substitute proof states them.** The
+merged branch's book differs from `origin/main`'s because nov11's own `efb/race.py`
+design fix (`panel["returns_clean"]`, commit `0d0bd67`) is a real live behaviour
+change — the merge is faithful (the merged book equals `origin/nov11`'s exactly), and
+with that one change held equal the merged branch equals `origin/main` weight for
+weight on all three closes (max abs weight difference exactly 0.0). Everything else
+passed: A3 (seed preflight 8/8), A4 (no test passing on either parent fails on the
+merged branch), A5, A6, `make lint`. §A1 has the measurement and the consequence for
+Friday's book; §"OWNER-ONLY list" item 6 is the decision it needs.
 
-If this is read after 20:30 UTC on 2026-10-16 with the merge still pending, PART A was
-missed: push the branch (already done) and hand the merge to the owner rather than
-merging late, because the window is the owner's rule and not a convenience.
+### The exact next step
 
+Merge `nov11-into-main` into `main` **only between 15:45 and 20:30 UTC on Friday
+2026-10-16**, from the merge worktree or a fresh one:
 
-**Branch `nov11-into-main`, worktree `../efb-nov11-merge`, cut from `origin/nov11`
-(`6903912`) with `origin/main` (`1b500b9`) merged into it.** Read §A1 before the
-merge decision: the identity proof as the brief states it is **red**, for a reason
-that is nov11's own content, and the substitute proofs are green. PART B's status is
-at the end.
+```
+cd /Users/amankesarwani/PycharmProjects/efb-nov11-merge
+git fetch origin                                  # confirm origin/main is still 1b500b9
+git checkout main && git merge --no-ff nov11-into-main
+git push origin main
+```
 
-Nothing was written to R2, the database or the broker; the store was read with
-SELECTs and the buckets with GETs, no credential is printed anywhere below, no
-`EFB_*` flag was set anywhere live, no Render setting was touched, main's history was
-not rewritten, and the only worktrees this session created are the two named in the
-brief (`efb-nov11-merge`) and PART B's (`efb-<item>`).
+Then: `git rev-parse origin/main` to record the merge sha here, and start PART B from
+that `main`. If the push is rejected, fetch, merge the new `origin/main` into
+`nov11-into-main`, re-run the A1 substitution proof and the touched tests, retry
+once, then stop. If 20:30 UTC passes with the merge still pending, **do not merge
+late**: the window is the owner's rule, and the branch is already pushed for them.
+
+### PART B: not started
+
+Nothing was branched and no code was changed for PART B. Each item is one branch and
+one commit set, cut from the post-PART-A `main`, tested, linted and (for B1–B3) put
+through the same identity proof, then merged **only after 23:00 UTC on Friday
+2026-10-16 and only if** a read-only `select` of `efb.run_status` for that evening
+shows the run priced a book and sent orders; deadline 20:30 UTC Monday 2026-10-19.
+The items, in the brief's order:
+
+1. **B1** the morning's "already reconciled" decision, from the morning's own
+   completion record for the close rather than from `efb.fills` alone — the entry
+   points are `scripts/reconcile_fills.py:112 last_reconciled_close()`, its use at
+   `:415`, and the published document's `actual_holdings.close` (written by
+   `publish()` at `:169`) as the completion record. Tests: the partial morning (fills
+   written, nothing published) and the normal repeat.
+2. **B2** `traded_run` (`scripts/run_live_daily.py:961`) must keep the first
+   attempt's error detail instead of replacing the row's `detail` with its own.
+3. **B3** the shortability precheck on the **final** traded weights, three rounds,
+   names reported per round; the flag stays off and the flag-off identity proof is the
+   gate.
+4. **B4** the `pre_hedge_weights` audit: `efb/attribution.py:225` reads
+   `efb.positions.idio_vol` as the specific *variance* and it is the specific
+   *volatility* (`efb/attribution.py:571` is the caller); evidence and before/after
+   numbers for every stored attribution day, storage untouched.
+5. **B5** the catch-up pill (`web/src/status.ts:143 pillFor`) reading green
+   `PROPOSAL RUN: OK (caught up N sessions)` when the run priced a book, plus the
+   Worker deploy and its rollback command.
+6. **B6** the NOT NULL audit against the live database, read-only, committed as
+   `docs/nov11_notnull_audit.md`.
 
 ## A0. The stop condition, checked first
 
