@@ -109,6 +109,35 @@ def previous_orders(as_of: str | None = None) -> tuple[str, pd.DataFrame] | None
     return close, earlier.loc[dates == close].reset_index(drop=True)
 
 
+def last_reconciled_close() -> str | None:
+    """The newest close this job has already reconciled fills for, or None.
+
+    The fills table is this job's own output - a close with rows in it has been
+    reconciled - so the answer is read from the store rather than remembered: the
+    run that wrote them is a different process on a different morning.
+
+    This is the comparison item 4 asks for. `previous_orders` takes the newest close
+    strictly before today, which is *not* the same as the newest close not yet
+    reconciled: on 2026-10-07 the evening crashed before submitting, so on 10-08 the
+    newest orders in the store were 10-06's, the guard (`already_ran`) is keyed by
+    date and therefore said no, and that morning would have reconciled 10-06 a
+    second time - rewriting the same fills, sending a second 10-06 email two days
+    late, and republishing `latest.json` with a fresh `actual_holdings` block for
+    10-06 over a document whose own close is 10-07.
+    """
+    from live import store
+
+    try:
+        frame = store.select("fills")
+    except Exception as exc:  # noqa: BLE001 - the guard is a refusal, not a write
+        logger.warning("could not read the stored fills: %s", type(exc).__name__)
+        return None
+    if frame.empty or "trade_date" not in frame.columns:
+        return None
+    days = frame["trade_date"].astype(str).str.slice(0, 10)
+    return str(days.max()) if len(days) else None
+
+
 def closes_for(tickers: list[str], close: str, *, fetch: Any = None) -> pd.Series:
     """The close each leg was sized from, read from the vendor for one session.
 
@@ -383,6 +412,21 @@ def _reconcile(argv: list[str] | None = None) -> int:
         )
         return 0
     close, orders = found
+    # Nothing new to reconcile, and the difference matters: the newest close before
+    # today is not the same question as the newest close this job has not already
+    # done. The day is recorded and the work is not repeated (item 4).
+    reconciled = last_reconciled_close()
+    if reconciled is not None and close <= reconciled:
+        detail = (
+            f"the {close} close was already reconciled ({reconciled} is the newest "
+            "close with fills stored): the newest orders before today are not a new "
+            "close, so this morning reconciled nothing. The day is recorded rather "
+            "than repeated - a second pass would rewrite the same fills, send a "
+            "second message for that close and republish the page's block for it"
+        )
+        logger.info("%s", detail)
+        run_live_daily.record_run(JOB, today.isoformat(), "ok", detail)
+        return 0
 
     detail = ""
     status = "ok"
@@ -416,6 +460,36 @@ def _reconcile(argv: list[str] | None = None) -> int:
         if len(frame):
             store.replace_by_date("fills", close, frame.to_dict("records"))
             filled_notional = float(frame["filled_notional"].abs().sum())
+        # The evening's reconciliation row is written before its orders settle, so
+        # `filled_notional` is a placeholder zero on it and `realized_annual_vol` has
+        # no window to be measured over. This is the run that knows both: the fills
+        # above, and the attribution rows the evening has already stored. It replaces
+        # those two columns and leaves every other one the evening wrote.
+        try:
+            from live import reconcile as reconcile_module
+
+            attribution_rows = store.select("attribution")
+        except Exception as exc:  # noqa: BLE001 - the day's row keeps what it has
+            logger.warning(
+                "could not read the attribution rows to back-fill %s (%s)",
+                close,
+                type(exc).__name__,
+            )
+            attribution_rows = None
+        try:
+            reconcile_module.backfill(
+                close,
+                filled_notional=filled_notional,
+                realized_annual_vol=reconcile_module.realized_annual_vol_for(
+                    close, attribution_rows
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - a back-fill never fails the morning
+            logger.warning(
+                "could not back-fill the reconciliation row for %s (%s)",
+                close,
+                type(exc).__name__,
+            )
         # What left the account since the evening last read it, and what explains
         # it: a filled close from this very reconciliation, or an activity of the
         # broker's own. Read here because this is where the account is read and
@@ -445,10 +519,20 @@ def _reconcile(argv: list[str] | None = None) -> int:
             detail += f"; {len(exits['exits'])} position(s) left with no order"
 
         expected = None
+        expected_trading = None
+        expected_borrow = None
         published: dict[str, Any] = {}
         try:
             published = json.loads(snapshot.get_object_text(snapshot.LATEST_KEY))
-            expected = (published.get("book") or {}).get("expected_cost_bps")
+            book = published.get("book") or {}
+            expected = book.get("expected_cost_bps")
+            split = book.get("expected_cost_split") or {}
+            # The realized cost can only ever contain the trading half, so that is
+            # what the morning's line measures against; the borrow travels beside it
+            # rather than into the number being beaten.
+            expected_trading = split.get("trading")
+            if expected_trading is not None:
+                expected_borrow = split.get("borrow")
         except Exception as exc:  # noqa: BLE001 - the cost pair is not the job
             logger.warning("could not read the published book: %s", type(exc).__name__)
         # The bridge's second half: the fills, the account as it stands now, and the
@@ -491,6 +575,8 @@ def _reconcile(argv: list[str] | None = None) -> int:
             close=close,
             report=report,
             expected_cost_bps=expected,
+            expected_trading_bps=expected_trading,
+            expected_borrow_bps=expected_borrow,
             # This run is the morning: the book it read is what the evening's
             # orders left behind, which is why the fills travel with it and why
             # `close` is the evening they settled for.
@@ -540,7 +626,12 @@ def _reconcile(argv: list[str] | None = None) -> int:
             message = notify.notify_fills(
                 status=status,
                 target_close=close,
-                fills={**report, "expected_cost_bps": expected},
+                fills={
+                    **report,
+                    "expected_cost_bps": expected,
+                    "expected_trading_bps": expected_trading,
+                    "expected_borrow_bps": expected_borrow,
+                },
                 detail=message_detail,
                 store=store.store_label(),
                 snapshot=", ".join(keys) if keys else None,

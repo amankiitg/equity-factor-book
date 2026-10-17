@@ -98,26 +98,26 @@ Sharpe with standard error, FF market factor (Mkt-RF), daily 2010 to
 
 | Quantity | Value |
 | --- | --- |
-| Sharpe ratio, daily | 0.0479 |
-| Sharpe ratio, annualized | 0.76 |
-| SE i.i.d., annualized | 0.246 |
-| SE Lo (2002), annualized | 0.227 |
-| Ratio Lo / iid | 0.922 |
+| Sharpe ratio, daily | 0.0483 |
+| Sharpe ratio, annualized | 0.7661 |
+| SE i.i.d., annualized | 0.2454 |
+| SE Lo (2002), annualized | 0.2265 |
+| Ratio Lo / iid | 0.9229 |
 
 The two standard errors differ by 8%, and the Lo correction is the
 smaller one here because the market factor's lag-1 autocorrelation is
-negative (-0.103), which makes the mean more precisely estimated, while
+negative (-0.1023), which makes the mean more precisely estimated, while
 the squared-return clustering term is weighted by SR^2 / 2 and barely
 moves the number. The direction of the correction always follows the
 data's autocorrelation structure; the lesson is that an eyeballed Sharpe
 carries a standard error near 0.2 to 0.25 and is a hypothesis, not
 evidence.
 
-Survivorship. Of 355 deleted members, 159 (44.8%) have recoverable price
+Survivorship. Of the deleted members, 41.0% have recoverable price
 history. A naive backtest that buys all current members over the whole
-window earns 372.4 bp per year more than the FF market; the point-in-time
-universe earns 21.1 bp per year more. The survivorship bias is therefore
-349.4 bp per year.
+window earns 376.3 bp per year more than the FF market; the point-in-time
+universe earns 14.7 bp per year more. The survivorship bias is therefore
+359.6 bp per year.
 
 ## Practitioner conclusion
 

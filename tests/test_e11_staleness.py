@@ -46,7 +46,13 @@ def _write_root(root: Path, dates: dict[str, str]) -> Path:
     `dates` carries every input's content date, plus `shares_fetch` and
     `sectors_fetch` for the two gated on the fetch rather than the content.
     """
-    for relative in ("raw", "processed", "models/XS-v1", "raw/spy_holdings"):
+    for relative in (
+        "raw",
+        "processed",
+        "models/XS-v1",
+        "models/TS-v1",
+        "raw/spy_holdings",
+    ):
         (root / relative).mkdir(parents=True, exist_ok=True)
     (root / "raw" / "wikipedia_constituents").mkdir(parents=True, exist_ok=True)
     _index_frame(dates["prices"]).to_parquet(root / "raw" / "prices.parquet")
@@ -57,6 +63,17 @@ def _write_root(root: Path, dates: dict[str, str]) -> Path:
     pd.DataFrame(
         {"date": [dates["factor_returns"]], "factor": ["MKT"], "f": [0.0]}
     ).to_parquet(root / "models" / "XS-v1" / "factor_returns.parquet")
+    # The attribution step's own read, and since item 27 a declared live input:
+    # `live/seed.preflight_inputs` refuses a tree that does not hold it, so a tree
+    # a run can start from has to carry it like the other nine.
+    pd.DataFrame(
+        {
+            "date": [dates["factor_returns"]],
+            "ticker": ["AAA"],
+            "method": ["raw"],
+            "beta": [1.0],
+        }
+    ).to_parquet(root / "models" / "TS-v1" / "beta_history.parquet")
     pd.DataFrame(
         {
             "date": [dates["specific_returns"]],

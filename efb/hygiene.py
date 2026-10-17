@@ -94,11 +94,23 @@ def clean_returns(returns_frame: pd.DataFrame) -> pd.Series:
     so volatility, beta and portfolio code all read returns through here.
     The flags themselves are never rewritten; the raw r column stays intact
     in returns.parquet.
+
+    A row whose cell was *repaired* is the exception, and the only one: on a
+    recorded spin-off the `outlier` flag describes the vendor's print, because
+    that is the number a reader has to be able to find again, while `r` holds the
+    total return the record computed. Masking it would delete the observation the
+    correction exists to restore - the same distinction the live rule draws when it
+    says the cell is the fit's input and the flag is the record.
     """
     r = _frame_r(returns_frame)
+    repaired = (
+        returns_frame["corrected"].astype(bool)
+        if "corrected" in returns_frame.columns
+        else pd.Series(False, index=returns_frame.index)
+    )
     for flag in ("stale", "outlier"):
         if flag in returns_frame.columns:
-            r = r.mask(returns_frame[flag].astype(bool))
+            r = r.mask(returns_frame[flag].astype(bool) & ~repaired)
     return r
 
 
@@ -114,13 +126,29 @@ def build_events(
     prices: pd.DataFrame,
     returns_frame: pd.DataFrame,
     membership_events: pd.DataFrame,
+    identity_drops: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Assemble events.parquet rows from corporate actions and flags.
 
     membership_events: DataFrame with date, ticker, event_type columns
     holding added and removed rows from the universe matrix.
+
+    identity_drops: the identity table's exclusions (ticker, note, and the two
+    windows when they are known). A name whose series does not overlap its
+    member stint is removed from the panel silently otherwise, and a removal
+    with no row here is a panel a reader cannot reconstruct.
     """
     rows: list[dict[str, object]] = []
+    if identity_drops is not None and not identity_drops.empty:
+        for row in identity_drops.itertuples(index=False):
+            rows.append(
+                {
+                    "date": row.removal_date,
+                    "ticker": row.ticker,
+                    "event_type": "identity_series_does_not_cover_membership",
+                    "detail": f"{row.removed_name or 'unknown'} removed: {row.note}",
+                }
+            )
     for _, row in membership_events.iterrows():
         rows.append(
             {

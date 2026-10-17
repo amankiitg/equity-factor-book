@@ -97,7 +97,11 @@ STATUS_LABELS: dict[str, str] = {
     "error": "error, the run failed",
     # At least one leg was halted, left in an unknown state, refused or rejected.
     # The day is not done and will be retried, so it is neither ok nor a failure.
-    "incomplete": "incomplete, a leg was not confirmed",
+    "incomplete": "incomplete, a leg the broker refused or one that was not confirmed",
+    # A second start on a close whose legs are already at the broker. It does no
+    # work: the day traded, and re-pricing it would rewrite the day's own rows and
+    # send a second book email (item 20).
+    "traded": "traded, the close already has legs at the broker",
     # The exchange was shut: there was no close to price, so the run did nothing
     # and said so. Not a failure, and not a silent evening either.
     "market_closed": "market_closed, the exchange was shut",
@@ -364,6 +368,7 @@ def compose(
     target_close: str | None,
     dry_run: bool = True,
     orders: int | None = None,
+    sent_orders: int | None = None,
     gross: float | None = None,
     worst_input: str | None = None,
     worst_sessions_behind: int | None = None,
@@ -385,6 +390,11 @@ def compose(
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
     no_risk: list[dict[str, Any]] | None = None,
+    no_short: list[dict[str, Any]] | None = None,
+    missing_var: int | None = None,
+    refused_legs: list[dict[str, Any]] | None = None,
+    unconfirmed_legs: int | None = None,
+    excluded: list[dict[str, Any]] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
@@ -426,6 +436,7 @@ def compose(
         qualifiers.append("first run, the store was seeded")
     if qualifiers:
         label = f"{label} ({', '.join(qualifiers)})"
+    sent = int(sent_orders if sent_orders is not None else (orders or 0))
     store_line = store if store is not None else live_store.store_label()
     if init:
         store_line = f"{store_line}, first run"
@@ -439,8 +450,7 @@ def compose(
             )
         else:
             lines.append(
-                f"Orders: {int(orders or 0)} orders sent, "
-                f"{_sized_sent(gross, sent_notional)}"
+                f"Orders: {sent} orders sent, " f"{_sized_sent(gross, sent_notional)}"
             )
     elif status == "stale_stopped":
         lines.append(
@@ -458,8 +468,31 @@ def compose(
         # beside a booked day is the message's own false statement, and the owner
         # reading it would look for a failure before sizing that never happened.
         lines.append(
-            f"Orders: {int(orders or 0)} orders sent, "
+            f"Orders: {sent} orders sent, "
             f"{_sized_sent(gross, sent_notional)}, at least one leg not confirmed"
+        )
+        # Which of the two incomplete kinds it was decides whether the day is done,
+        # and only this message can say it: a leg the shortability check or the
+        # broker refused is a fact about the book that a retry would be told again,
+        # so the day is filed; a leg that is merely unconfirmed is tonight's
+        # connection to the broker, which the next tick may resolve.
+        unconfirmed = int(unconfirmed_legs or 0)
+        if unconfirmed:
+            lines.append(
+                f"Not filed: {unconfirmed} leg(s) were not confirmed, so the next "
+                "tick runs this close again."
+            )
+        else:
+            lines.append(
+                "Filed: no leg was left unconfirmed. A leg the broker refused is "
+                "not a failure of the run, and the day is done."
+            )
+    elif status == "traded":
+        # This start sent nothing, and the legs the *close* has are the first
+        # attempt's. Saying "N sent" here would credit this run with them.
+        lines.append(
+            "Orders: none from this run. The close already has legs at the broker, "
+            "so this start did not re-price the book and sent nothing."
         )
     elif status == "error" and orders:
         # An error is not the same as an empty evening. On 2026-10-06 the evening
@@ -470,7 +503,7 @@ def compose(
         # re-run the close, because the legs are at the broker and a re-run after the
         # open is a different book.
         lines.append(
-            f"Orders: {int(orders)} orders sent for the close of {close}, "
+            f"Orders: {sent} orders sent for the close of {close}, "
             f"{_sized_sent(gross, sent_notional)}."
         )
         lines.append("The run failed after they were sent: do not re-run this close.")
@@ -486,6 +519,17 @@ def compose(
     else:
         lines.append(
             "Orders: none. The run failed before sizing, so no book was priced."
+        )
+    if status == "traded":
+        # What the close already holds, and the two things this run did instead of
+        # trading: it said so, and it left the page alone.
+        if scrub(detail).strip():
+            lines.append(f"{scrub(detail).strip().rstrip('.')}.")
+        lines.append(
+            "The page was left as it was: the document for this close is the first "
+            "attempt's, and this run did not publish over it. The day's own row and "
+            "the cron record were written, which is what keeps a later tick from "
+            "re-pricing the close."
         )
     if status == "incomplete" and scrub(detail).strip():
         # Which leg and why: the count alone leaves the owner to open the store to
@@ -532,6 +576,28 @@ def compose(
         lines.append(
             f"Dropped for no risk estimate: {_no_risk_names(no_risk)} "
             "(out of the book before sizing)."
+        )
+    if no_short:
+        # Item 18's precheck, on a night it is on: the broker's own lending flag took
+        # these names out of the book *before* the sizing, so the published book is one
+        # the loop can hold rather than one that will report a refused leg. The names
+        # and the flag are both stated, because the flag is a point-in-time read and
+        # the next night may answer differently.
+        names = _no_risk_names(no_short)
+        lines.append(
+            f"Dropped before sizing, the broker will not lend: {names} "
+            "(out of the book before the hedge)."
+        )
+    if missing_var:
+        # The same fact from the diagonal's own side, and the count the sizing
+        # cannot report: how many names in the universe the risk artifact has no
+        # row for. The engine fills those with the cross-sectional median (Q on
+        # EQT's own variance, to the last bit), which is why the drop exists; the
+        # count says how much of the universe the book is blind to, not only which
+        # names left tonight.
+        lines.append(
+            f"Specific variance: {int(missing_var)} universe name(s) have no row in "
+            "the risk artifact and are not sized."
         )
     if thin_adv:
         # The impact term is a function of each name's dollar volume, and a name
@@ -590,8 +656,25 @@ def compose(
         # run goes on either way, and this is the line that stops the run reading as
         # a clean evening: nobody else is looking for that session.
         lines.append(spinoff_lookup_failed.strip().rstrip(".") + ".")
-    if flags:
-        lines.append(f"Large moves: {_flag_list(flags)}.")
+    moves = _move_flags(flags)
+    if moves:
+        lines.append(f"Large moves: {_flag_list(moves)}.")
+    for flag in flags or []:
+        if str(flag.get("kind") or "") != "attribution":
+            continue
+        # The step whose failure costs the page a whole section and leaves no other
+        # trace. It is a consequence line rather than a large move, so it is
+        # filtered out of that list and said here in its own words.
+        if flag.get("outcome") == "failed":
+            lines.append(
+                "Attribution: the step failed and the page's attribution section "
+                f"is not being written ({flag.get('error') or 'no reason recorded'})."
+            )
+        else:
+            lines.append(
+                f"Attribution: {int(flag.get('n_stored') or 0)} session(s) stored"
+                f", {int(flag.get('n_done') or 0)} already attributed."
+            )
     # The day's kind, in the owner's own terms. An establishment day creates the
     # book, so its ceiling is the book itself and the throughput brake is not yet
     # the instrument in force; from the second trading day it is. The cost label
@@ -650,6 +733,22 @@ def compose(
         lines.append(
             f"Not easy to borrow, so not opened: "
             f"{_borrow_skip_list(skipped_borrow)}."
+        )
+    if excluded:
+        # The SPY names that never reached the sizing, each with the cause and how
+        # long it has been out. The list is a rule over the artifacts, so it only
+        # ever grows (4 names on 2026-09-25, 7 by 2026-10-06), and until this line
+        # nothing in the message said the book was short of them at all: a name
+        # outside the book for a fortnight is not the same fact as one excluded
+        # tonight, and the owner is the only one who can fix either.
+        lines.append(f"Excluded from the universe: {_excluded_list(excluded)}.")
+    if refused_legs:
+        # The legs the shortability check or the broker refused. The same kind of
+        # fact as "not easy to borrow", and the reason the run is incomplete without
+        # being a failure: the book is one leg short of its own target and nothing
+        # else in the message would say which one.
+        lines.append(
+            f"Refused by the broker, so not sent: {_refused_list(refused_legs)}."
         )
     if no_asset:
         # A ticker the broker's feed carries under no symbol under any spelling.
@@ -772,6 +871,48 @@ def _borrow_skip_list(rows: list[dict[str, Any]]) -> str:
     return shown
 
 
+def _excluded_list(rows: list[dict[str, Any]]) -> str:
+    """Each excluded name with its reason and its age, or the reason alone.
+
+    The age is an absence when the store could not be read: the exclusion is then
+    stated without it rather than with a nought, which would read as "since today".
+    """
+    named = []
+    for row in sorted(rows, key=lambda item: str(item.get("ticker"))):
+        reason = str(row.get("reason") or "no reason recorded")
+        sessions = row.get("sessions")
+        since = row.get("since")
+        age = ""
+        if isinstance(sessions, int) and sessions > 0:
+            age = f", {sessions} stored session(s)"
+            age += f" since {since}" if since else ""
+        named.append(f"{str(row.get('ticker'))} ({reason}{age})")
+    count = len(named)
+    shown = "; ".join(named[:MINIMUM_SKIP_NAMES])
+    if count > MINIMUM_SKIP_NAMES:
+        shown += f"; and {count - MINIMUM_SKIP_NAMES} more"
+    return shown
+
+
+def _refused_list(rows: list[dict[str, Any]]) -> str:
+    """The legs the shortability check or the broker refused, with the code.
+
+    The code is the actionable part - "ASSET_NOT_SHORTABLE" and
+    "SHORT_CHECK_FAILED" are two different things to go and look at - and the ticker
+    is which name the book is short of.
+    """
+    named = [
+        f"{str(row.get('ticker'))} "
+        f"({row.get('reason_code') or row.get('status') or 'refused'})"
+        for row in sorted(rows, key=lambda item: str(item.get("ticker")))
+    ]
+    count = len(named)
+    shown = "; ".join(named[:MINIMUM_SKIP_NAMES])
+    if count > MINIMUM_SKIP_NAMES:
+        shown += f"; and {count - MINIMUM_SKIP_NAMES} more"
+    return shown
+
+
 def _skipped_minimum_list(rows: list[dict[str, Any]]) -> str:
     """The names the minimum left untraded, each with the size of its leg.
 
@@ -828,6 +969,17 @@ def _thin_adv_list(rows: list[dict[str, Any]]) -> str:
     )
 
 
+def _move_flags(flags: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """The session's large-move flags, without the outcome flags beside them.
+
+    A flag whose `kind` is set is a statement about a *step* (the attribution run,
+    so far), not about a name's move, and both the subject's count and the body's
+    "Large moves" line mean the second kind. Reading the two together would put a
+    step's failure in the same field as a 40% print.
+    """
+    return [flag for flag in (flags or []) if str(flag.get("kind") or "") == ""]
+
+
 def _flag_list(flags: list[dict[str, Any]]) -> str:
     parts = []
     for flag in flags:
@@ -845,6 +997,7 @@ def subject_text(
     target_close: str | None,
     dry_run: bool = True,
     orders: int | None = None,
+    sent_orders: int | None = None,
     worst_input: str | None = None,
     worst_sessions_behind: int | None = None,
     splits: list[str] | None = None,
@@ -876,6 +1029,14 @@ def subject_text(
         word = "STALE"
     elif status == "market_closed":
         word = "CLOSED"
+    elif status == "traded":
+        word = "TRADED"
+    elif status == "incomplete":
+        # Its own word rather than ERROR: the book was priced, the legs that could
+        # be sent were sent and the message says which leg was not. On 2026-10-08 the
+        # inbox read `EFB ERROR` and Render recorded the job as failed over one short
+        # leg the shortability check refused before any order left (item 19).
+        word = "INCOMPLETE"
     else:
         word = "ERROR"
     caught_up = len(catch_up_sessions or [])
@@ -886,17 +1047,21 @@ def subject_text(
         qualifiers.append("first run")
     if qualifiers:
         word = f"{word} ({', '.join(qualifiers)})"
+    # "Sent" means sent. `orders` is every leg the run built, which is the right
+    # count for a dry run and the wrong one for the inbox: on 2026-10-08 the subject
+    # said 204 sent while 202 orders reached the broker, the difference being the
+    # legs refused before submission. A caller that does not pass `sent_orders` gets
+    # the old reading rather than a silent zero.
+    sent = int(sent_orders if sent_orders is not None else (orders or 0))
     if status == "ok":
         middle = (
-            f"{int(orders or 0)} proposed, none sent"
-            if dry_run
-            else f"{int(orders or 0)} sent"
+            f"{int(orders or 0)} proposed, none sent" if dry_run else f"{sent} sent"
         )
     elif orders:
         # An error is not the same as an empty evening. The orders a failed run sent
         # are counted on the inbox line, because "none proposed" beside 192 sent
         # orders is the line that decides whether the owner looks.
-        middle = f"{int(orders)} sent"
+        middle = f"{sent} sent"
     else:
         middle = "none proposed"
     if status == "error":
@@ -916,7 +1081,8 @@ def subject_text(
     parts = [f"EFB {word} {close}", middle, tail]
     if splits:
         parts.append(_split_short(splits))
-    unexplained = [flag for flag in flags or [] if flag.get("explained_by") is None]
+    moves = _move_flags(flags)
+    unexplained = [flag for flag in moves if flag.get("explained_by") is None]
     if unexplained:
         parts.append(f"flag {len(unexplained)}")
     return " | ".join(parts)
@@ -1044,11 +1210,41 @@ def fills_message(
                 lines.append(line)
         realized = data.get("realized_cost_bps")
         expected = data.get("expected_cost_bps")
-        against = (
-            f" against {float(expected):.2f} bps expected"
-            if expected is not None
-            else ""
-        )
+        trading = data.get("expected_trading_bps")
+        borrow = data.get("expected_borrow_bps")
+        # The realized side can only ever contain trading cost: the leg is sized after
+        # one close and fills at the next open, so no fill price pays a holding cost.
+        # Comparing it against the full expectation is wrong in the flattering
+        # direction on every borrow-heavy day - 2026-10-07 printed "against 14.22 bps"
+        # where the trading half was 5.89 and 8.33 of the 14.22 was borrow - so the
+        # comparison names the half it is against, and the borrow is stated beside it
+        # rather than added to the number the fills are measured against.
+        if trading is not None:
+            against = (
+                f" against {float(trading):.2f} bps of trading cost "
+                "for the same one session"
+            )
+            if borrow is not None:
+                total = (
+                    f"the {float(expected):.2f} bps total adds "
+                    if expected is not None
+                    else "separate from "
+                )
+                against += (
+                    f" ({total}{float(borrow):.2f} bps of borrow, which no fill "
+                    "price pays)"
+                    if expected is not None
+                    else (
+                        f" (borrow is {float(borrow):.2f} bps, which no fill "
+                        "price pays)"
+                    )
+                )
+        else:
+            against = (
+                f" against {float(expected):.2f} bps expected"
+                if expected is not None
+                else ""
+            )
         if realized is not None:
             lines.append(f"Realized cost: {float(realized):.2f} bps of NAV{against}.")
         elif expected is not None:
@@ -1232,6 +1428,7 @@ def notify_run(
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
     no_risk: list[dict[str, Any]] | None = None,
+    no_short: list[dict[str, Any]] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
@@ -1247,6 +1444,11 @@ def notify_run(
     renames: dict[str, str] | None = None,
     exits: dict[str, Any] | None = None,
     sent_notional: float | None = None,
+    sent_orders: int | None = None,
+    missing_var: int | None = None,
+    refused_legs: list[dict[str, Any]] | None = None,
+    unconfirmed_legs: int | None = None,
+    excluded: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -1256,6 +1458,7 @@ def notify_run(
         target_close=target_close,
         dry_run=dry_run,
         orders=orders,
+        sent_orders=sent_orders,
         worst_input=worst_input,
         worst_sessions_behind=worst_sessions_behind,
         splits=splits,
@@ -1270,6 +1473,12 @@ def notify_run(
         target_close=target_close,
         dry_run=dry_run,
         orders=orders,
+        sent_orders=sent_orders,
+        missing_var=missing_var,
+        refused_legs=refused_legs,
+        unconfirmed_legs=unconfirmed_legs,
+        excluded=excluded,
+        no_short=no_short,
         gross=gross,
         worst_input=worst_input,
         worst_sessions_behind=worst_sessions_behind,

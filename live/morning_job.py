@@ -81,9 +81,25 @@ INCOMPLETE_REASON_CODES = frozenset(
         alpaca.REASON_SKIPPED_AFTER_HALT,
         alpaca.REASON_QTY_ROUNDS_TO_ZERO,
         alpaca.REASON_CLOSE_QTY_UNKNOWN,
-        alpaca.REASON_SHORT_CHECK_FAILED,
         alpaca.REASON_NOT_TRADABLE,
+    }
+)
+
+# The legs the loop or the broker refused before they became orders, because the
+# name could not be borrowed or sold short. They are not *unconfirmed* legs: nothing
+# was sent, and a retry at the next tick would be told the same thing, which is the
+# argument `EXPECTED_SKIP_REASON_CODES` already makes for `REASON_NOT_EASY_TO_BORROW`.
+#
+# The two used to be one list, and that is item 19: 2026-10-08's only fault was one
+# short leg the shortability check refused before any order left, and the run read in
+# the inbox as `EFB ERROR` and left the day unfiled, so Render retried an evening that
+# had already done everything it could. A refusal is a fact about the book, which the
+# message names; an unconfirmed leg is a fact about tonight's connection to the broker,
+# which the next tick may resolve.
+REFUSAL_REASON_CODES = frozenset(
+    {
         alpaca.REASON_NOT_SHORTABLE,
+        alpaca.REASON_SHORT_CHECK_FAILED,
     }
 )
 
@@ -187,9 +203,36 @@ def _leg_incomplete(status: object, reason_code: object) -> bool:
     """
     value = str(alpaca.enum_value(status) or "").upper()
     code = str(alpaca.enum_value(reason_code) or "")
-    if code in EXPECTED_SKIP_REASON_CODES:
+    if code in EXPECTED_SKIP_REASON_CODES or code in REFUSAL_REASON_CODES:
         return False
     return value in INCOMPLETE_STATUSES or code in INCOMPLETE_REASON_CODES
+
+
+def refused_legs(records: pd.DataFrame) -> list[dict[str, str]]:
+    """Every leg the shortability check or the broker refused, and its code.
+
+    The same shape as `incomplete_legs`, and the same words on the row: the leg was
+    intended, the run decided against it for a reason that will not change tonight,
+    and the book is one leg short of its own target because of it.
+    """
+    if records.empty:
+        return []
+    codes = records.get("reason_code")
+    if codes is None:
+        return []
+    out: list[dict[str, str]] = []
+    for row in records.itertuples(index=False):
+        code = str(alpaca.enum_value(getattr(row, "reason_code", "")) or "")
+        if code not in REFUSAL_REASON_CODES:
+            continue
+        out.append(
+            {
+                "ticker": str(row.ticker),
+                "status": str(alpaca.enum_value(row.status) or ""),
+                "reason_code": code,
+            }
+        )
+    return out
 
 
 def incomplete_legs(records: pd.DataFrame) -> list[dict[str, str]]:
@@ -558,11 +601,16 @@ def run_morning(
     state.write_positions(as_of, positions_frame.to_dict("records"))
     _write_execution_log(as_of, records)
     incomplete = incomplete_legs(records)
+    refused = refused_legs(records)
     return {
         "as_of": as_of,
         "executed": True,
         "dry_run": dry_run,
         "orders": int(len(orders)),
+        # The legs that became orders, which is what the message's "sent" claims.
+        # Equal to `orders` on any night no leg is refused, and different by exactly
+        # the refused legs on the nights that matter.
+        "sent_orders": sent_orders(records),
         "passed": int((records["status"] == guards.PASSED).sum())
         + int((records["status"] == "DRY_RUN").sum()),
         "rejected_cap": int((records["status"] == guards.REJECTED_CAP).sum()),
@@ -606,11 +654,16 @@ def run_morning(
         # message, and the caller reads them from here.
         "no_asset": no_asset_rows(records),
         "renamed": renamed_symbols(records),
-        # A leg that was halted, left in an unknown state, refused or rejected
-        # makes the run incomplete: the day is not done, and the caller must not
-        # file it as ok. `incomplete_legs` names each one and why.
+        # A leg that was halted, left in an unknown state or rejected leaves the
+        # run incomplete: the day is not done, and the caller must not file it as
+        # ok. `incomplete_legs` names each one and why.
         "complete": not incomplete,
         "incomplete_legs": incomplete,
+        # The legs the shortability check or the broker refused before anything was
+        # sent. The same status word (`incomplete`) as the list above, and a
+        # different consequence: the day is filed, because a retry would be told
+        # the same thing. `refused_legs` names each one and its code.
+        "refused_legs": refused,
         # The names whose target this run could not reach because the change would
         # cross zero: closed tonight, opened by tomorrow's normal delta logic.
         "deferred_reversals": _deferred_reversals(orders),
@@ -623,6 +676,22 @@ def run_morning(
         "n_held": len(held),
         "held_notional": float(sum(abs(value) for value in held.values())),
     }
+
+
+def sent_orders(records: pd.DataFrame) -> int:
+    """The legs that became orders at the broker, counted the way the dollars are.
+
+    `"orders"` in the summary is every leg the run built, which is the right count
+    for a dry run and the wrong one for the message: on 2026-10-08 the evening said
+    "204 orders sent" while the broker held 202 and the store held 202 `ACCEPTED`
+    rows beside 25 `SKIPPED` - the two-leg difference being exactly the legs that
+    were refused before submission. The predicate is the one `sent_notional` uses,
+    a non-empty `broker_order_id`, so the count and the dollars in the same
+    sentence cannot disagree.
+    """
+    if records.empty or "broker_order_id" not in records.columns:
+        return 0
+    return int((records["broker_order_id"].astype(str).str.len() > 0).sum())
 
 
 def sent_notional(records: pd.DataFrame) -> float:
@@ -661,6 +730,7 @@ def not_executed_summary(
         "dry_run": dry_run,
         "reason": reason,
         "orders": 0,
+        "sent_orders": 0,
         "passed": 0,
         "rejected_cap": 0,
         "rejected_brake": 0,
@@ -676,6 +746,7 @@ def not_executed_summary(
         "renamed": {},
         "complete": True,
         "incomplete_legs": [],
+        "refused_legs": [],
         "deferred_reversals": [],
         "establishment": False,
         "brake_limit": 0.0,

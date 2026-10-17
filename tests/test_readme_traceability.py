@@ -67,5 +67,5 @@ def test_stress_haircut_matches_the_artifact() -> None:
 @pytest.mark.integration
 def test_the_neutral_ic_is_printed_with_its_sign() -> None:
     text = README.read_text()
-    assert "-0.0031" in text  # the neutral IC is negative, printed signed
-    assert "0.0031" not in text.replace("-0.0031", "")
+    assert "-0.0045" in text  # the neutral IC is negative, printed signed
+    assert "0.0045" not in text.replace("-0.0045", "")

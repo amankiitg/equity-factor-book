@@ -151,6 +151,10 @@ def held_out_comparison(
     refit on a rolling window at the same cadence as XS-v1, which is the
     like-for-like pair the criterion is scored on. (v) XS-v1 augmented with the
     top three and top five residual principal components.
+
+    Every row keeps the whole cross-section. A name with no frozen descriptor is
+    a zero row - the same rule the published design uses - not a dropped name
+    and not a dropped day.
     """
     from pathlib import Path
 
@@ -203,20 +207,35 @@ def held_out_comparison(
         index="ticker", columns="descriptor", values="value_z_orth"
     )
 
-    def frozen_design(names: list[str]) -> np.ndarray | None:
+    def frozen_design(names: list[str]) -> tuple[np.ndarray, int]:
+        """One day's frozen XS-v1 design, and how many cells it had to fill.
+
+        A name with no frozen descriptor is a **zero row rather than a missing
+        one**, which is the rule the published design uses
+        (`efb.race._design_from_styles`): `value_z_orth` is already centered, so
+        zero is that name at the cross-sectional mean. Requiring a complete row
+        instead returned None for every held-out day - twelve names have no
+        12-month momentum or no 252-day beta at the frozen stamp (BE, FDXF,
+        HONA, P, Q, SNDK, GEV, RDDT, SOLV, SW and the rest of the recent
+        listings and spin-offs) - so rows (ii) and (v) came out with `days == 0`
+        and a NaN mean, which is a row absent from the comparison rather than a
+        row measured on it. The fill count leaves with the design because an
+        imputation the reader cannot see is a number the reader cannot judge.
+        """
         frame = frozen_wide.reindex(index=names, columns=styles)
-        if frame.isna().to_numpy().any():
-            return None
-        blocks = [frame.to_numpy(dtype=float)]
+        values = frame.to_numpy(dtype=float)
+        filled = int(np.isnan(values).sum())
+        blocks = [np.nan_to_num(values, nan=0.0)]
         for wanted in dummies.values():
             blocks.append(
                 np.array(
                     [[1.0 if sector_of.get(name) in wanted else 0.0] for name in names]
                 )
             )
-        return np.column_stack(blocks)
+        return np.column_stack(blocks), filled
 
     held_days = [date for date in wide.loc[train_end:].index if date > train_end]
+    frozen_filled: list[int] = []
     rows: dict[str, list[float]] = {
         "(i) XS-v1 daily refit, as stored": [],
         "(ii) XS-v1 descriptors frozen": [],
@@ -239,20 +258,20 @@ def held_out_comparison(
         stored = xs_r2.loc[xs_r2["date"] == date, "r_squared"]
         if len(stored):
             rows["(i) XS-v1 daily refit, as stored"].append(float(stored.iloc[0]))
-        design_frozen = frozen_design(names)
-        if design_frozen is not None:
-            rows["(ii) XS-v1 descriptors frozen"].append(
-                _weighted_r_squared(target, design_frozen, weights)
-            )
-            for k_res, frame in residual_exposures.items():
-                # a name outside the residual PCA window carries no residual
-                # exposure, which is zero rather than a missing value
-                extra = frame.reindex(names).fillna(0.0).to_numpy(dtype=float)
-                rows[f"(v) XS-v1 plus top {k_res} residual PCs"].append(
-                    _weighted_r_squared(
-                        target, np.column_stack([design_frozen, extra]), weights
-                    )
+        design_frozen, n_filled = frozen_design(names)
+        frozen_filled.append(n_filled)
+        rows["(ii) XS-v1 descriptors frozen"].append(
+            _weighted_r_squared(target, design_frozen, weights)
+        )
+        for k_res, frame in residual_exposures.items():
+            # a name outside the residual PCA window carries no residual
+            # exposure, which is zero rather than a missing value
+            extra = frame.reindex(names).fillna(0.0).to_numpy(dtype=float)
+            rows[f"(v) XS-v1 plus top {k_res} residual PCs"].append(
+                _weighted_r_squared(
+                    target, np.column_stack([design_frozen, extra]), weights
                 )
+            )
         for label, frame in (
             ("(iii) PCA frozen k=MP", correlation_exposures),
             ("(iii) PCA frozen k=17", wide_exposures),
@@ -280,6 +299,7 @@ def held_out_comparison(
                     weights[[names.index(name) for name in keep]],
                 )
             )
+    frozen_mean = float(np.mean(frozen_filled)) if frozen_filled else float("nan")
     summary = pd.DataFrame(
         {
             "row": list(rows),
@@ -287,6 +307,12 @@ def held_out_comparison(
                 float(np.mean(values)) if values else np.nan for values in rows.values()
             ],
             "days": [len(values) for values in rows.values()],
+            # the mean number of frozen descriptor cells filled per day, on the
+            # rows that read the frozen design and NaN on the rows that do not
+            "frozen_names_filled_mean": [
+                frozen_mean if label[:4] in {"(ii)", "(v) "} else float("nan")
+                for label in rows
+            ],
         }
     )
     return summary

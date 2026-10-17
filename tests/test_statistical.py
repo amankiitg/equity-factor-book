@@ -144,6 +144,6 @@ def test_residual_pca_reports_a_factor_above_its_own_edge() -> None:
     audit = frames["residual_diagnostics"]
     assert audit["above_edge"] is True, "XS-v1 residuals carry common structure"
     assert audit["largest_eigenvalue"] > audit["edge"]
-    assert audit["largest_eigenvalue"] == pytest.approx(22.3031, abs=1e-3)
+    assert audit["largest_eigenvalue"] == pytest.approx(21.8828, abs=1e-3)
     counts = audit["counts"]
     assert counts.marchenko_pastur > 15

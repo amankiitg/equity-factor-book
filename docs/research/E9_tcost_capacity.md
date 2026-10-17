@@ -27,16 +27,16 @@ as a clean point estimate.
 
 | size decile | mean half-spread | mean market cap | mean ADV |
 | --- | --- | --- | --- |
-| 0 | 0.00100 | 2.72e+09 | 7.23e+07 |
-| 1 | 0.00090 | 6.57e+09 | 7.8e+07 |
-| 2 | 0.00080 | 9.75e+09 | 1.14e+08 |
-| 3 | 0.00070 | 1.27e+10 | 9.71e+07 |
-| 4 | 0.00060 | 1.69e+10 | 1.44e+08 |
-| 5 | 0.00050 | 2.26e+10 | 1.32e+08 |
-| 6 | 0.00040 | 3.15e+10 | 2.11e+08 |
-| 7 | 0.00030 | 4.4e+10 | 2.72e+08 |
-| 8 | 0.00020 | 7.28e+10 | 4.58e+08 |
-| 9 | 0.00010 | 2.65e+11 | 8.83e+08 |
+| 0 | 0.00100 | 3.02e+09 | 8.05e+07 |
+| 1 | 0.00090 | 7.05e+09 | 8.33e+07 |
+| 2 | 0.00080 | 1.02e+10 | 1.16e+08 |
+| 3 | 0.00070 | 1.33e+10 | 1e+08 |
+| 4 | 0.00060 | 1.75e+10 | 1.48e+08 |
+| 5 | 0.00050 | 2.36e+10 | 1.34e+08 |
+| 6 | 0.00040 | 3.27e+10 | 2.33e+08 |
+| 7 | 0.00030 | 4.56e+10 | 4.52e+08 |
+| 8 | 0.00020 | 7.57e+10 | 4.75e+08 |
+| 9 | 0.00010 | 2.74e+11 | 9.03e+08 |
 
 The chosen schedule falls monotonically from the smallest to the largest
 decile by construction, which is the size ordering the spread should have.
@@ -45,9 +45,9 @@ decile by construction, which is the size ordering the spread should have.
 
 | rho | turnover cut | ex-ante IR loss |
 | --- | --- | --- |
-| 0.02 | 0.375 | 0.065 |
-| 0.05 | 0.375 | 0.065 |
-| 0.1 | 0.375 | 0.065 |
+| 0.02 | 0.376 | 0.066 |
+| 0.05 | 0.375 | 0.066 |
+| 0.1 | 0.374 | 0.066 |
 
 The penalized optimizer holds the low-alpha half of the book at its
 previous weight. It cuts about 37% of turnover with under 7% ex-ante IR
@@ -60,15 +60,15 @@ The halving AUM per rho and impact coefficient:
 
 | rho | k | gross Sharpe | halving AUM |
 | --- | --- | --- | --- |
-| 0.02 | 0.25 | 1.218 | nan |
-| 0.02 | 0.5 | 1.218 | nan |
-| 0.02 | 1.0 | 1.218 | nan |
-| 0.05 | 0.25 | 2.831 | 4.64e+08 |
-| 0.05 | 0.5 | 2.831 | 1e+08 |
-| 0.05 | 1.0 | 2.831 | 3.16e+07 |
-| 0.1 | 0.25 | 5.087 | 2.15e+09 |
-| 0.1 | 0.5 | 5.087 | 4.64e+08 |
-| 0.1 | 1.0 | 5.087 | 1e+08 |
+| 0.02 | 0.25 | 1.186 | nan |
+| 0.02 | 0.5 | 1.186 | nan |
+| 0.02 | 1.0 | 1.186 | nan |
+| 0.05 | 0.25 | 3.088 | 6.81e+08 |
+| 0.05 | 0.5 | 3.088 | 2.15e+08 |
+| 0.05 | 1.0 | 3.088 | 4.64e+07 |
+| 0.1 | 0.25 | 5.803 | 4.64e+09 |
+| 0.1 | 0.5 | 5.803 | 1e+09 |
+| 0.1 | 1.0 | 5.803 | 2.15e+08 |
 
 Net Sharpe is monotone in AUM (0
 violations over 9 curves) and the net mean return is
@@ -84,15 +84,15 @@ The halving AUM under the schedule at half and double, per rho, at k = 0.5:
 
 | rho | spread multiplier | halving AUM |
 | --- | --- | --- |
-| 0.02 | 0.5 | 1.47e+07 |
+| 0.02 | 0.5 | 3.16e+07 |
 | 0.02 | 1.0 | nan |
 | 0.02 | 2.0 | nan |
-| 0.05 | 0.5 | 1.47e+08 |
-| 0.05 | 1.0 | 1e+08 |
-| 0.05 | 2.0 | 2.15e+07 |
-| 0.1 | 0.5 | 6.81e+08 |
-| 0.1 | 1.0 | 4.64e+08 |
-| 0.1 | 2.0 | 3.16e+08 |
+| 0.05 | 0.5 | 3.16e+08 |
+| 0.05 | 1.0 | 2.15e+08 |
+| 0.05 | 2.0 | 3.16e+07 |
+| 0.1 | 0.5 | 1.47e+09 |
+| 0.1 | 1.0 | 1e+09 |
+| 0.1 | 2.0 | 6.81e+08 |
 
 ## Stored criteria
 
@@ -108,8 +108,8 @@ The halving AUM under the schedule at half and double, per rho, at k = 0.5:
   corrected run, because the cost input is an assumed schedule that makes
   the spread fall with size by construction. The corrected estimator
   floors every name at zero, the raw estimator reads
-  -0.471 and the Abdi-Ranaldo estimate
-  0.003, neither a measurement
+  -0.467 and the Abdi-Ranaldo estimate
+  -0.012, neither a measurement
   of the spread.
 - F9.4 (verdict pass): the halving AUM is stored
   per rho with its sensitivity to k, finite for rho 0.05 and 0.1.
@@ -131,16 +131,16 @@ gradient either. The estimator comparison per decile, before and after:
 
 | size decile | raw CS median | adj CS median | Abdi-Ranaldo | schedule |
 | --- | --- | --- | --- | --- |
-| 0 | 0.04180 | 0.00000 | 0.00071 | 0.00100 |
-| 1 | 0.03657 | 0.00000 | 0.00111 | 0.00090 |
-| 2 | 0.03118 | 0.00000 | 0.00086 | 0.00080 |
-| 3 | 0.02952 | 0.00000 | 0.00068 | 0.00070 |
-| 4 | 0.02758 | 0.00000 | 0.00092 | 0.00060 |
-| 5 | 0.02684 | 0.00000 | 0.00071 | 0.00050 |
-| 6 | 0.02734 | 0.00000 | 0.00052 | 0.00040 |
-| 7 | 0.02717 | 0.00000 | 0.00084 | 0.00030 |
-| 8 | 0.02512 | 0.00000 | 0.00105 | 0.00020 |
-| 9 | 0.02368 | 0.00000 | 0.00091 | 0.00010 |
+| 0 | 0.04140 | 0.00000 | 0.00081 | 0.00100 |
+| 1 | 0.03544 | 0.00000 | 0.00099 | 0.00090 |
+| 2 | 0.03082 | 0.00000 | 0.00087 | 0.00080 |
+| 3 | 0.02855 | 0.00000 | 0.00068 | 0.00070 |
+| 4 | 0.02813 | 0.00000 | 0.00094 | 0.00060 |
+| 5 | 0.02679 | 0.00000 | 0.00068 | 0.00050 |
+| 6 | 0.02762 | 0.00000 | 0.00073 | 0.00040 |
+| 7 | 0.02662 | 0.00000 | 0.00084 | 0.00030 |
+| 8 | 0.02526 | 0.00000 | 0.00106 | 0.00020 |
+| 9 | 0.02366 | 0.00000 | 0.00093 | 0.00010 |
 
 Before: the raw Corwin-Schultz median half-spread was 2.4 to 4.2 percent,
 and at 140% monthly turnover that is about 3 to 5 percent of AUM per
@@ -163,15 +163,15 @@ schedule, at the central impact coefficient k = 0.5:
 
 | rho | phi | gross Sharpe | halving AUM |
 | --- | --- | --- | --- |
-| 0.02 | 0.0 | 1.402 | nan |
-| 0.02 | 0.8 | 1.407 | 1.47e+08 |
-| 0.02 | 0.95 | 1.456 | 2.15e+09 |
-| 0.05 | 0.0 | 3.265 | 1e+08 |
-| 0.05 | 0.8 | 3.181 | 1.47e+09 |
-| 0.05 | 0.95 | 3.392 | 1e+10 |
-| 0.1 | 0.0 | 5.980 | 4.64e+08 |
-| 0.1 | 0.8 | 5.704 | 3.16e+09 |
-| 0.1 | 0.95 | 5.976 | nan |
+| 0.02 | 0.0 | 1.459 | nan |
+| 0.02 | 0.8 | 1.040 | 4.64e+08 |
+| 0.02 | 0.95 | 1.118 | 4.64e+09 |
+| 0.05 | 0.0 | 3.605 | 1e+08 |
+| 0.05 | 0.8 | 3.007 | 2.15e+09 |
+| 0.05 | 0.95 | 3.192 | nan |
+| 0.1 | 0.0 | 6.513 | 4.64e+08 |
+| 0.1 | 0.8 | 5.859 | 4.64e+09 |
+| 0.1 | 0.95 | 6.160 | nan |
 
 At phi 0 the book reshuffles fully and the weak rho 0.02 book is already
 below half its gross Sharpe at the 1 million dollar grid floor, so its

@@ -41,6 +41,7 @@ import logging
 import math
 import os
 import sys
+from collections.abc import Collection
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -69,7 +70,19 @@ def _now() -> str:
 # The status a run carries when it finished its work and told the owner. Only that
 # marks the day done, so a failure retries on the next tick instead of being told
 # it already ran on a day nothing was produced.
-COMPLETED_STATUSES = frozenset({"ok", "market_closed"})
+#
+# `incomplete` is here and is still not automatically filed: a leg that was *not
+# confirmed* leaves the day unfiled and the next tick retries it, which `finish_run`
+# decides from the count rather than from the status. What the status means is that
+# the day traded and the message names what is missing, and on 2026-10-08 the only
+# gap was one short leg the shortability check refused before any order left - a
+# retry would be told the same thing - so that night belongs in the inbox as
+# INCOMPLETE and in the record as a day that is done (item 19).
+#
+# `traded` is the status of a second start on a close whose legs are already at the
+# broker: no pricing, no orders, no second book email (item 20).
+COMPLETED_STATUSES = frozenset({"ok", "market_closed", "incomplete", "traded"})
+TRADED_STATUS = "traded"
 
 
 def already_ran(job: str, run_date: str) -> bool:
@@ -204,7 +217,13 @@ def prior_book(
     return frame
 
 
-def specific_std_or_refuse(ticker: str, today_std: pd.Series, as_of: str) -> float:
+def specific_std_or_refuse(
+    ticker: str,
+    today_std: pd.Series,
+    as_of: str,
+    *,
+    dropped_by_risk: Collection[str] = (),
+) -> float:
     """The name's specific standard deviation, or a refusal that names the name.
 
     `ebf.positions.idio_vol` is `not null`, and a NaN *satisfies* it on Postgres
@@ -220,13 +239,34 @@ def specific_std_or_refuse(ticker: str, today_std: pd.Series, as_of: str) -> flo
     so the two agree by construction. It is kept as a refusal because this function
     is also called on its own, from the day's own artifacts, and a book cannot be
     stored against a risk that was invented on the way in.
+
+    `dropped_by_risk` is the manifest's own record of the names the sizing dropped,
+    which is the one source both this write and the sizing answer to (item 14). The
+    refusal reads that record rather than the artifact a second time: a name the
+    manifest dropped and a name this read cannot measure are two different faults,
+    and which one it is decides whether the file or the row is wrong.
     """
     value = today_std.get(ticker)
-    if value is None or not math.isfinite(float(value)):
+    # "Has a risk estimate" is one predicate, shared with the drop: a variance that
+    # is not finite *or* not positive is no estimate. The drop has always rejected
+    # a zero (`live/evening_job.py:428`) while this write accepted it, so a name
+    # could be stored with `idio_vol = 0.0` - the same lie as the NaN, quieter.
+    # Unreachable from the live path, because the drop removes such a name before
+    # it is sized, which is exactly why the two must agree: two definitions of the
+    # same question in one loop is one too many.
+    if value is None or not math.isfinite(float(value)) or float(value) <= 0.0:
+        where = (
+            "the manifest names it among the names it dropped for no risk estimate, "
+            "so a row for it should not exist"
+            if ticker in set(dropped_by_risk)
+            else "the manifest does not name it among the names it dropped, so this "
+            "write and the sizing read different artifacts"
+        )
         raise ValueError(
-            f"no specific variance for {ticker} at {as_of}: the store cannot be "
-            "written with a fabricated idio_vol, and the evening drops a name with "
-            "no risk estimate before it sizes the book"
+            f"no specific variance for {ticker} at {as_of}: {where}; the store cannot "
+            "be written with a fabricated idio_vol, and the evening drops a name with "
+            "no risk estimate - including a non-positive one - before it sizes the "
+            "book"
         )
     return float(value)
 
@@ -261,6 +301,27 @@ def store_proposal(
     proposal_paths = sorted(PROPOSAL_DIR.glob("proposal_*.parquet"))
     if previous is None and not prior_settled:
         previous = previous_book(as_of, proposal_paths)
+
+    # The manifest's own record of the names the sizing dropped for no risk estimate,
+    # which is the one source this write and the sizing both answer to. The artifact
+    # read below is a second reader of the same file, and a second reader that omitted
+    # `data_root` - the caller's option - would answer for the repository's `data/`
+    # while the sizing answered for the run tree. That is the 2026-10-07 crash this
+    # check removes the reachability of: a name the sizing dropped and this write then
+    # refused is a row that should not exist, and one this write cannot measure while
+    # the manifest does not name it is a different file, not a different name.
+    dropped_by_risk = {
+        str(entry.get("ticker"))
+        for entry in (manifest.get("dropped_no_risk") or [])
+        if isinstance(entry, dict) and str(entry.get("ticker") or "")
+    }
+    still_held = sorted({str(name) for name in rows["ticker"]} & dropped_by_risk)
+    if still_held:
+        raise ValueError(
+            f"{len(still_held)} name(s) the manifest dropped for no risk estimate are "
+            f"still in the book it was written with: {', '.join(still_held)}. The "
+            "proposal and its own drop disagree, so neither is written."
+        )
 
     specific = pd.read_parquet(root / "models" / "XS-v1" / "specific_var.parquet")
     as_of_ts = pd.Timestamp(as_of)
@@ -324,7 +385,9 @@ def store_proposal(
                 "z": float(row.z),
                 "alpha": float(row.alpha),
                 "rank": int(ranked.iloc[index]),
-                "idio_vol": specific_std_or_refuse(ticker, today_std, as_of),
+                "idio_vol": specific_std_or_refuse(
+                    ticker, today_std, as_of, dropped_by_risk=dropped_by_risk
+                ),
                 "previous_weight": previous_weight,
                 "trade": weight - previous_weight,
                 "reason": row.reason,
@@ -452,6 +515,42 @@ def sent_orders(as_of: str) -> tuple[int, float, float]:
     values = day["intended_notional"].abs()
     sent = day["broker_order_id"].astype(str).str.len() > 0
     return int(sent.sum()), float(values[sent].sum()), float(values.sum())
+
+
+def _with_sent_halves(
+    reconciliation: dict[str, Any] | None,
+    *,
+    sent_notional: float | None,
+    built: float | None,
+) -> dict[str, Any]:
+    """The day's reconciliation with the sent-only halves of its notional added.
+
+    `intended_notional` is every leg the run built; the page asked it the turnover
+    question, and on 2026-10-09 that read $388,402.25 where $379,430.49 was sent
+    (`docs/backport_runbook.md`, item 31). The two halves are added here rather than
+    written to the day's row because the row has no column for them and a new column
+    is a migration; the snapshot is the page's own document and this is where the
+    question is answered.
+
+    Nothing is published when the two cannot be reconciled: a sent figure larger
+    than the built one is a bookkeeping break, and a null half names it as unknown
+    rather than printing a negative "never sent".
+    """
+    block = dict(reconciliation or {})
+    if sent_notional is None or built is None:
+        return block
+    unsent = float(built) - float(sent_notional)
+    if unsent < -1e-6:
+        logger.warning(
+            "the sent notional ($%.2f) exceeds the built notional ($%.2f): the two "
+            "halves of the turnover are not published",
+            float(sent_notional),
+            float(built),
+        )
+        return block
+    block["sent_notional"] = float(sent_notional)
+    block["unsent_notional"] = max(0.0, unsent)
+    return block
 
 
 def traded_by_name(execution: pd.DataFrame) -> dict[str, float]:
@@ -781,6 +880,7 @@ def evening_bridge(
     book: pd.DataFrame | None,
     legs: pd.DataFrame | None,
     reversals: list[dict[str, Any]],
+    previous_reversals: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """The evening's half of the book bridge, or None on a dry run.
 
@@ -808,7 +908,176 @@ def evening_bridge(
         reversals=[
             item.get("ticker") for item in reversals or [] if item.get("ticker")
         ],
+        # The previous close's deferral list, or None when the document that carries
+        # it could not be read: the two are different statements and the page reads
+        # them differently.
+        previous_reversals=previous_reversals,
     )
+
+
+def traded_close(as_of: str) -> dict[str, int] | None:
+    """The close's own leg rows when the broker already holds them, or None.
+
+    `already_ran` counts only a filed day, deliberately, so a day that produced
+    nothing is retried. On 2026-10-08 that rule met a night whose legs were all out at
+    the broker with no `cron_runs` row: a second invocation would not exit at the
+    guard, and it would re-price the book, rewrite the day's proposal, positions and
+    orders rows and send a second email. The orders themselves are safe - every leg's
+    deterministic `client_order_id` is looked up first, so a resubmit is a no-op - so
+    the exposure is a rewritten day and a duplicate email, which is what this reads
+    for (item 20).
+
+    `None` when the close has no leg at the broker, which is the ordinary first run
+    and every run whose submission failed before anything left. Otherwise the counts,
+    including how many legs were left *unconfirmed*: a night with a halted or unknown
+    leg has something for the next tick to try, so the caller keeps today's behaviour
+    and runs - a guard that refused it would leave the leg unsent forever.
+    """
+    from live import morning_job, store
+
+    try:
+        frame = store.select("orders")
+    except Exception as exc:  # noqa: BLE001 - the guard is a refusal, not a write
+        logger.warning("could not read the day's orders: %s", type(exc).__name__)
+        return None
+    if frame.empty or not {"trade_date", "broker_order_id"} <= set(frame.columns):
+        return None
+    days = frame["trade_date"].astype(str).str.slice(0, 10)
+    day = frame.loc[days == str(as_of)[:10]]
+    if day.empty:
+        return None
+    sent = day.loc[day["broker_order_id"].astype(str).str.len() > 0]
+    if sent.empty:
+        return None
+    unconfirmed = 0
+    for row in sent.itertuples(index=False):
+        if morning_job._leg_incomplete(
+            getattr(row, "status", ""), getattr(row, "reason_code", "")
+        ):
+            unconfirmed += 1
+    return {"legs": int(len(day)), "sent": int(len(sent)), "unconfirmed": unconfirmed}
+
+
+def traded_run(run_date: str, counts: dict[str, int]) -> int:
+    """A second start on a close that already traded: no pricing, no orders, no page.
+
+    The day is recorded under its own status so the guard stays closed and no later
+    tick re-prices it, and the message says the one thing the owner needs: this close
+    is already at the broker, this run did nothing and the page was left as it was.
+
+    **Nothing is published.** The page's document for this close is the first
+    attempt's, and it is the one that carries the book, the bridge and the
+    attribution; a second document built by this run would have none of them, so a
+    rerun would replace a full page with a thin one about a run that did nothing. The
+    message, the `run_status` row and the `cron_runs` row are written, which is what
+    the guard and the reader need.
+    """
+    from live import notify, staleness, store
+
+    dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
+    detail = (
+        f"The close already has {counts['sent']} of {counts['legs']} leg(s) at the "
+        "broker and no leg is unconfirmed: the day traded, so it was not re-priced"
+    )
+    logger.info("%s, exit 0", detail)
+    result = staleness.error_result(detail, target=run_date)
+    result["status"] = TRADED_STATUS
+    return finish_run(
+        run_date=run_date,
+        result=result,
+        status=TRADED_STATUS,
+        dry_run=dry_run,
+        detail=detail,
+        # No counts on the subject line: "N sent" would credit this run with the
+        # first attempt's legs, and the message says "none proposed" instead. The
+        # close's own counts travel in the detail line.
+        catch_up_sessions=[],
+        actual=None,
+        # The page is the first attempt's, and this run has nothing to add to it.
+        publish_snapshot=False,
+    )
+
+
+def shortable_flags(*, dry_run: bool) -> dict[str, bool] | None:
+    """The broker's lending flag per symbol, when item 18's precheck is on.
+
+    `None` - the default, and the whole of the off state - means the proposal build
+    behaves exactly as it always has: no name is dropped before the sizing, and the
+    leg-time check remains the only guard. With `EFB_SHORTABILITY_PRECHECK=true` the
+    whole active US-equity feed is read once (one request, not one per name) and the
+    mapping is handed to the build, which leaves out the names it would short and the
+    broker will not lend.
+
+    A read that fails, or a dry run, returns `None` rather than an empty mapping: an
+    absent flag keeps a name, so the failure direction is the one the book already
+    has, and a rehearsal does not call the broker to find out what it may not short.
+    """
+    from live import alpaca, evening_job, notify
+
+    if not evening_job.resolve_shortability_precheck(
+        os.environ.get(evening_job.SHORTABILITY_ENV)
+    ):
+        return None
+    if dry_run:
+        logger.info(
+            "%s is on and this is a dry run: the lending flags are not read",
+            evening_job.SHORTABILITY_ENV,
+        )
+        return None
+    try:
+        resolver = alpaca.SymbolResolver(alpaca.connect(dry_run=False))
+        return alpaca.shortable_map(resolver, None)
+    except Exception as exc:  # noqa: BLE001 - the book is priced either way
+        logger.warning(
+            "the broker's lending flags could not be read, so no name is dropped "
+            "before the sizing: %s: %s",
+            type(exc).__name__,
+            notify.scrub(str(exc)),
+        )
+        return None
+
+
+def _rows(manifest: dict[str, Any] | None, key: str) -> list[dict[str, Any]]:
+    """One of the manifest's own step lists as rows, or nothing when it has none.
+
+    The manifest is a JSON document, so the entries arrive as whatever was
+    serialised; this is the one place that decides they are a list of objects, which
+    keeps a malformed one out of the message rather than into it.
+    """
+    raw = (manifest or {}).get(key)
+    if not isinstance(raw, list):
+        return []
+    return [dict(entry) for entry in raw if isinstance(entry, dict)]
+
+
+def _excluded_rows(manifest: dict[str, Any] | None) -> list[dict[str, Any]]:
+    return _rows(manifest, "excluded_detail")
+
+
+def previous_close_reversals(as_of: Any) -> list[str] | None:
+    """The previous close's deferral list, from the document that is up.
+
+    The names missing from tonight's account are the ones the previous close's
+    evening closed to reopen the other side, and that list was published in the
+    previous close's own document. `None` when the document cannot be read, when it
+    names this close (a rerun of an evening already published, whose list is this
+    close's own and not the previous one's) or when it carries no bridge: an unknown
+    the page states, rather than an empty list a reader would take for "nothing was
+    deferred".
+    """
+    from live import snapshot
+
+    try:
+        close, bridge = snapshot.published_bridge()
+    except Exception as exc:  # noqa: BLE001 - the bridge's own term, not the run
+        logger.warning("the previous close's deferrals: %s", type(exc).__name__)
+        return None
+    if bridge is None or close is None or close == str(as_of)[:10]:
+        return None
+    names = bridge.get("reversals_pending")
+    if not isinstance(names, list):
+        return None
+    return [str(name) for name in names]
 
 
 def finish_run(
@@ -819,7 +1088,13 @@ def finish_run(
     dry_run: bool,
     detail: str = "",
     orders: int | None = None,
+    sent_orders: int | None = None,
     gross: float | None = None,
+    refused_legs: list[dict[str, Any]] | None = None,
+    unconfirmed_legs: int | None = None,
+    excluded: list[dict[str, Any]] | None = None,
+    no_short: list[dict[str, Any]] | None = None,
+    publish_snapshot: bool = True,
     error_type: str | None = None,
     catch_up_sessions: list[str] | None = None,
     splits: list[str] | None = None,
@@ -841,6 +1116,7 @@ def finish_run(
     init: bool = False,
     no_price: list[str] | None = None,
     no_risk: list[dict[str, Any]] | None = None,
+    missing_var: int | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     poster: Any = None,
     snapshot_poster: Any = None,
@@ -950,46 +1226,66 @@ def finish_run(
     snapshot_detail, snapshot_failed = "", False
     written: dict[str, Any] | None = None
 
-    # E12: the attribution block, read from the store. Its own handler, because it
-    # is a section of the page: a store that cannot be read is a page without the
-    # section, never a run that failed.
-    try:
-        attribution = snapshot_module.attribution_block()
-    except Exception as exc:  # noqa: BLE001 - a page section, not a step
-        attribution = snapshot_module.empty_attribution(
-            "the attribution store could not be read"
+    # The publish switch, and the one caller that uses it: `traded_run`, a second
+    # start on a close the broker already holds. The document that is up is not that
+    # run's to replace - it did not price a book - so it must not overwrite the first
+    # attempt's book, bridge and attribution with a thin document about a run that did
+    # nothing. The page keeps what the first attempt wrote, and the run row says so,
+    # because that row is the only place the reader can learn this start did not
+    # publish.
+    if not publish_snapshot:
+        snapshot_detail = (
+            "snapshot: left as it was (this run did not price a book, so it does not "
+            "own the page's document)"
         )
-        logger.warning(
-            "the snapshot's attribution block could not be built: %s: %s",
-            type(exc).__name__,
-            notify.scrub(str(exc)),
-        )
-
-    try:
-        written = snapshot_module.write_snapshot(
-            run={**row, "store": store_name, "attribution": attribution},
-            manifest=manifest,
-            book=book,
-            reconciliation=reconciliation,
-            construction=snapshot_module.chosen_row(manifest),
-            book_reason=book_reason,
-            actual=actual,
-            bridge_block=bridge_block,
-            dry_run=dry_run,
-            poster=snapshot_poster,
-        )
-        snapshot_detail = str(written["detail"])
         row["snapshot"] = snapshot_detail
-    except Exception as exc:  # noqa: BLE001 - recorded, and it fails the run
-        snapshot_failed = True
-        snapshot_detail = notify.scrub(f"snapshot failed: {type(exc).__name__}: {exc}")
-        row["snapshot"] = snapshot_detail
-        logger.error("%s", snapshot_detail)
-        if status == "ok":
-            # With the switch on, a snapshot that cannot be uploaded is a failure
-            # of the run, exactly as a message that cannot be sent is.
-            status, detail = "error", snapshot_detail
-            row["status"], row["detail"] = status, detail
+        logger.info("%s", snapshot_detail)
+    else:
+        # E12: the attribution block, read from the store, and only when a document is
+        # being built - it is a section of the page and nothing else reads it, so a run
+        # that publishes nothing does not read the attribution table either. Its own
+        # handler, because it is a page section: a store that cannot be read is a page
+        # without the section, never a run that failed.
+        try:
+            attribution = snapshot_module.attribution_block()
+        except Exception as exc:  # noqa: BLE001 - a page section, not a step
+            attribution = snapshot_module.empty_attribution(
+                "the attribution store could not be read"
+            )
+            logger.warning(
+                "the snapshot's attribution block could not be built: %s: %s",
+                type(exc).__name__,
+                notify.scrub(str(exc)),
+            )
+        try:
+            written = snapshot_module.write_snapshot(
+                run={**row, "store": store_name, "attribution": attribution},
+                manifest=manifest,
+                book=book,
+                reconciliation=_with_sent_halves(
+                    reconciliation, sent_notional=sent_notional, built=gross
+                ),
+                construction=snapshot_module.chosen_row(manifest),
+                book_reason=book_reason,
+                actual=actual,
+                bridge_block=bridge_block,
+                dry_run=dry_run,
+                poster=snapshot_poster,
+            )
+            snapshot_detail = str(written["detail"])
+            row["snapshot"] = snapshot_detail
+        except Exception as exc:  # noqa: BLE001 - recorded, and it fails the run
+            snapshot_failed = True
+            snapshot_detail = notify.scrub(
+                f"snapshot failed: {type(exc).__name__}: {exc}"
+            )
+            row["snapshot"] = snapshot_detail
+            logger.error("%s", snapshot_detail)
+            if status == "ok":
+                # With the switch on, a snapshot that cannot be uploaded is a failure
+                # of the run, exactly as a message that cannot be sent is.
+                status, detail = "error", snapshot_detail
+                row["status"], row["detail"] = status, detail
     # The per-name list is the one thing the page carries that is not a number out
     # of the manifest, so it is the one thing that can go missing while the page
     # still looks right: the 2026-10-01 evening published an empty book beside a
@@ -1013,7 +1309,12 @@ def finish_run(
         target_close=result.get("target_close"),
         dry_run=dry_run,
         orders=orders,
+        sent_orders=sent_orders,
         gross=gross,
+        refused_legs=refused_legs,
+        unconfirmed_legs=unconfirmed_legs,
+        excluded=excluded,
+        no_short=no_short,
         worst_input=result.get("worst_input"),
         worst_sessions_behind=result.get("worst_sessions_behind"),
         failures=result.get("failures") or [],
@@ -1033,6 +1334,7 @@ def finish_run(
         cross_checks_capped=cross_checks_capped,
         no_price=no_price,
         no_risk=no_risk,
+        missing_var=missing_var,
         thin_adv=thin_adv,
         init=init,
         establishment=establishment,
@@ -1072,7 +1374,17 @@ def finish_run(
     elif notified["status"] == notify.STATUS_SKIPPED:
         # On the row and on the dashboard; not noise in the cron's own line.
         logger.warning("no notification channel: %s", notified["detail"])
-    completed = status in COMPLETED_STATUSES and delivered and not snapshot_failed
+    # A leg that was not confirmed is the one thing that keeps an `incomplete` day
+    # from being done, and it is a *count* rather than the status: the status cannot
+    # tell a refused leg from an unconfirmed one, and the two want opposite answers
+    # (item 19). Everything else that makes a day unfinished is already here.
+    unconfirmed = int(unconfirmed_legs or 0)
+    completed = (
+        status in COMPLETED_STATUSES
+        and not unconfirmed
+        and delivered
+        and not snapshot_failed
+    )
     try:
         # The same condition the exit code uses: the run finished its work, the
         # message went out and the snapshot is up. Nothing else marks the day done,
@@ -1097,7 +1409,7 @@ def finish_run(
             notify.scrub(f"{type(exc).__name__}: {exc}"),
         )
     logger.info("run recorded as %s, notification %s", status, notified["status"])
-    if not delivered or store_failed or snapshot_failed:
+    if not delivered or store_failed or snapshot_failed or unconfirmed:
         return 1
     return 0 if status in COMPLETED_STATUSES else 1
 
@@ -1284,6 +1596,21 @@ def main() -> int:
     if already_ran("live_daily", run_date):
         logger.info("already ran for %s, exit 0 (idempotent)", run_date)
         return 0
+    # And the guard the filed-check cannot be: a close whose legs are already at the
+    # broker has traded, whatever the day's own row says. Only a close with nothing
+    # unconfirmed is refused here; one with a halted or unknown leg is the retry the
+    # nonzero exit code asks for, and it runs as it always did.
+    traded = traded_close(run_date)
+    if traded is not None and not traded["unconfirmed"]:
+        return traded_run(run_date, traded)
+    if traded is not None:
+        logger.warning(
+            "this close already has %d leg(s) at the broker and %d of them is/are "
+            "unconfirmed, so the evening runs again: a resubmit of a leg with an "
+            "order id is resolved by the broker, never doubled",
+            traded["sent"],
+            traded["unconfirmed"],
+        )
     dry_run = resolve_dry_run(os.environ.get("EFB_DRY_RUN"))
     from live import appendix as appendix_mod
     from live import preflight, runroot, seed
@@ -1375,6 +1702,13 @@ def main() -> int:
         # the loop needs and the seed does not hold. Better a refusal that names
         # the path here than a crash on Render the message cannot explain.
         logger.info("seed allowlist: %s path(s) allowed", seed.guard(run_tree))
+        # And the artifacts the live steps read, checked against the tree the seed
+        # supplied before anything reads or trades. A step whose input the seed does not
+        # hold would otherwise fail inside its own work - on 2026-10-09 the attribution
+        # step's read was refused by the allowlist above and the evening continued to a
+        # page with no attribution section - and this says so while stopping is still
+        # free.
+        logger.info("seed inputs: %s path(s) checked", seed.preflight_inputs(run_tree))
         # The proposal files move with the tree, so a local run does not add a
         # proposal to the repository either.
         global PROPOSAL_DIR
@@ -1616,6 +1950,7 @@ def main() -> int:
             previous=prior_weights,
             nav=float(holdings["nav"]),
             nav_source=str(holdings["nav_source"]),
+            shortable=shortable_flags(dry_run=dry_run),
         )
         as_of = str(manifest["as_of"])
         # The build drops a kept name it cannot quantize, and the day must not pass
@@ -1702,6 +2037,7 @@ def main() -> int:
             book=book,
             legs=legs,
             reversals=morning.get("deferred_reversals") or [],
+            previous_reversals=previous_close_reversals(as_of),
         )
         if bridge_block is not None and not bridge_block["holds"]:
             logger.warning(
@@ -1747,6 +2083,13 @@ def main() -> int:
         # it is wrapped in its own handler because it is a report about the book:
         # a report that cannot be produced is a bad page, never a reason to leave a
         # book unheld.
+        # The step's outcome is recorded rather than only logged. On 2026-10-09 it
+        # raised and wrote nothing and every durable record said the night was
+        # clean - `efb.run_status.detail` empty, `failures` and `flags` empty - so
+        # the only trace was the container's stdout, and the page lost a whole
+        # section while nothing watched it. The outcome travels as a flag, which is
+        # a JSONB column the row already has, so nothing about the schema moves.
+        attribution_flags: list[dict[str, Any]] = []
         try:
             attributed = store_attribution(run_tree)
             logger.info(
@@ -1754,11 +2097,26 @@ def main() -> int:
                 attributed["n_stored"],
                 attributed["n_done"],
             )
+            attribution_flags.append(
+                {
+                    "kind": "attribution",
+                    "outcome": "stored",
+                    "n_stored": int(attributed["n_stored"]),
+                    "n_done": int(attributed["n_done"]),
+                }
+            )
         except Exception as exc:  # noqa: BLE001 - a report, not a step
             logger.warning(
                 "attribution failed and the run continues: %s: %s",
                 type(exc).__name__,
                 notify.scrub(str(exc)),
+            )
+            attribution_flags.append(
+                {
+                    "kind": "attribution",
+                    "outcome": "failed",
+                    "error": f"{type(exc).__name__}: {notify.scrub(str(exc))}"[:200],
+                }
             )
 
         snapshot_inputs = {
@@ -1785,13 +2143,19 @@ def main() -> int:
             actual=actual,
         )
 
-    # A leg that was halted, left in an unknown state, refused or rejected makes
-    # the run incomplete. The day is not done and must not be filed: the status is
-    # not ok, no `cron_runs` row is written (`finish_run`), and the next tick
-    # retries. The snapshot and the message still go out, so the owner sees which
-    # leg and why.
+    # A leg that was halted, left in an unknown state or rejected leaves the run
+    # incomplete. The day is not done and must not be filed: the status is not ok,
+    # no `cron_runs` row is written (`finish_run`), and the next tick retries. The
+    # snapshot and the message still go out, so the owner sees which leg and why.
+    #
+    # A leg the shortability check or the broker *refused* is the same status word
+    # and a different consequence: nothing was sent for it, a retry would be told
+    # the same thing, so the day is filed and the run exits 0 (item 19). The two are
+    # told apart by which list the leg is in, not by the status, which is why
+    # `finish_run` takes the unconfirmed count.
     incomplete = morning.get("incomplete_legs") or []
-    if morning.get("complete") is False or incomplete:
+    refused = morning.get("refused_legs") or []
+    if morning.get("complete") is False or incomplete or refused:
         status = "incomplete"
         if incomplete:
             detail = f"{len(incomplete)} leg(s) not confirmed: " + ", ".join(
@@ -1799,10 +2163,18 @@ def main() -> int:
                 f"({leg.get('reason_code') or leg.get('status') or 'unknown'})"
                 for leg in incomplete[:6]
             )
+        elif refused:
+            detail = f"{len(refused)} leg(s) refused by the broker: " + ", ".join(
+                f"{leg.get('ticker')} "
+                f"({leg.get('reason_code') or leg.get('status') or 'refused'})"
+                for leg in refused[:6]
+            )
         else:
             detail = "the run reported itself incomplete"
     else:
         status, detail = "ok", ""
+    raw_missing_var = manifest.get("n_specific_var_missing")
+    missing_var = raw_missing_var if isinstance(raw_missing_var, int) else 0
     return finish_run(
         run_date=run_date,
         result=gate,
@@ -1810,6 +2182,7 @@ def main() -> int:
         dry_run=dry_run,
         detail=detail,
         orders=int(morning.get("orders") or 0),
+        sent_orders=int(morning.get("sent_orders") or 0),
         gross=float(morning.get("intended_notional") or 0.0),
         catch_up_sessions=catch_up_sessions,
         splits=splits,
@@ -1817,11 +2190,21 @@ def main() -> int:
         spinoff_missing=spinoff_missing,
         spinoff_unusable=spinoff_unusable,
         spinoff_lookup_failed=spinoff_lookup_failed,
-        flags=flags,
+        flags=[*flags, *attribution_flags],
         started_at=started_at,
         cross_checks_capped=capped,
         no_price=no_price,
         no_risk=no_risk,
+        missing_var=missing_var,
+        # The two halves of the incomplete status (item 19): the legs the broker
+        # refused, which name the book's own gap, and the count that was not
+        # confirmed, which decides whether the day is filed.
+        refused_legs=refused,
+        unconfirmed_legs=len(incomplete),
+        # The names that never reached the book, with the reason and the age:
+        # recorded on the manifest and said in the message (item 9).
+        excluded=_excluded_rows(manifest),
+        no_short=_rows(manifest, "dropped_no_short"),
         thin_adv=thin_adv,
         init=first_run,
         establishment=bool(morning.get("establishment")),

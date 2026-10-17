@@ -204,8 +204,18 @@ def test_an_expected_skip_does_not_make_the_run_incomplete() -> None:
     # the negative control: the same skip status carrying any other code is a leg
     # the run failed to place
     refused = frame.copy()
-    refused.loc[0, "reason_code"] = alpaca.REASON_NOT_SHORTABLE
+    refused.loc[0, "reason_code"] = alpaca.REASON_SUBMIT_UNKNOWN
     assert [leg["ticker"] for leg in morning_job.incomplete_legs(refused)] == ["SMALL"]
+
+    # Item 19: the shortability refusal is its own list. It is still an `incomplete`
+    # run - the book is a leg short of its target - and what it decides is that the
+    # day is filed, because a retry would be told the same thing.
+    not_shortable = frame.copy()
+    not_shortable.loc[0, "reason_code"] = alpaca.REASON_NOT_SHORTABLE
+    assert morning_job.incomplete_legs(not_shortable) == []
+    assert [leg["ticker"] for leg in morning_job.refused_legs(not_shortable)] == [
+        "SMALL"
+    ]
 
 
 class _FakeAccount:

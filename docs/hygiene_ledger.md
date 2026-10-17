@@ -2045,6 +2045,699 @@ taken over the in-memory frame and so are not a byte comparison across a run
 boundary. The rerun's guarantee is therefore "the same numbers to floating-point
 precision", not byte equality.
 
+## 2026-10-03: a spin-off is corrected in the research panel from a recorded vendor row
+
+Decision. The research returns build now corrects a spin-off from a record rather
+than from the price vendor's arithmetic. The vendor's records and the three closes
+each one needs - the child, the parent on the ex-date, the parent the session before
+- are collected once into `processed/corporate_actions.parquet` by
+`scripts/collect_corporate_actions.py`, and `efb.build` puts them back between the
+arithmetic and every reader of it, through
+`live.corporate_actions.apply_recorded` rather than through a second
+implementation of the rule. The hygiene flags are computed first, on the vendor's
+own numbers, and a new `corrected` column marks the cells the rule rewrote, so
+`hygiene.clean_returns` does not throw away a cell that was just repaired.
+
+Reason. E11 found that a spin-off moves one session's return and that neither price
+vendor adjusts its history for it. The research panel had the same flaw and no
+record of it: measured over the panel's whole life, the vendor reports 28 spin-offs
+for its 858 names, the outlier filter caught none of them, and the largest error was
+APTV's 2026-04-01 session at **13.4 percentage points** (-10.58 percent stored
+against +2.78 percent paid), which is the same shape as the CTVA print that started
+this. The record also had to hold the parents' *raw* closes, and that is the part
+that is easy to get wrong: a research panel is delivered back-adjusted, so its close
+for the session before the ex-date already has the child's value taken out of it.
+Measured on GE's 2024-04-02 GE Vernova spin-off, the panel's prior close is 139.95
+against the vendor's raw 175.36, and the rule run on the panel's own numbers reports
+**+22.5 percent** for a session the stock fell in. Both closes are therefore read from
+the vendor and written into the table beside the child's.
+
+Evidence. 28 records, 2019-02-25 to 2026-10-01, 25 of them applied, 2 kept with no
+child to price (the `BBBY.WS` and `GME.WS` warrant distributions, which are not
+child shares and would double-count the parent if the suffix were stripped), and 1
+whose parent the identity layer has already dropped. 25 cells corrected and 2 nulled
+in `processed/returns.parquet`; `raw/prices.parquet` byte-identical before and after
+and the panel held fixed at its own last session, so the movement is the change and
+not a data refresh. Each corrected cell matches the phase-1 hand computation to
+2e-7, which is the rounding of the closes those numbers were read from.
+
+One finding belongs on the record rather than in a footnote: **the vendor's spin-off
+table is incomplete and unstable.** The same per-year read returned 30 records in the
+morning and 28 in the afternoon, a single wide window over 2018-2026 returned 2, and
+two real spin-offs that appeared in the first read - `FTI -> THNPF` (2021-02-16,
+Technip Energies) and `EXC -> CEG` (2022-02-02, Constellation Energy) - are in none
+of the later ones, including a read that asks for those two symbols alone. The table
+is a dated snapshot, `recorded_at` says when it was taken, and `summary` reports where
+it starts and stops so a gap is visible rather than read as "no spin-offs then".
+
+Status. On the `backport` branch. `tests/test_corporate_actions.py`: 8 passed.
+
+## 2026-10-03: a stale cell is not a return (the E3 contract revised)
+
+Decision. The XS-v1 fit reads `probes.load_panel()["returns_clean"]` - the panel with
+`hygiene.clean_returns` applied - instead of the raw panel. The row keeps its value
+and its `stale` flag in `returns.parquet`; it takes no part in the design, the
+descriptors, the factor returns or the specific returns. The contract is stated in
+`efb/models/fundamental.py`: a stale cell is not a return, a real move is kept, a
+corporate action is corrected at the source.
+
+Reason. The evaluation layers already excluded flagged rows - `efb/eval_risk.py` for
+E5's bias engine, `efb/race.py` and `efb/survivor.py` for the race and the
+survivorship measurement, and E5's own build log prints *"exclusions: stale 6186,
+outlier 62"* - but the model layer did not, so the same cells that E5 refused to
+measure were the ones XS-v1 estimated its descriptors and its betas on. A run of
+exact-zero returns is a price that did not move, not a session that paid nothing.
+
+Evidence. 6,186 stale cells over 502 mapped names. With the panel held fixed and the
+window pinned, the E3 rebuild moves the mean cross-sectional R squared from
+**0.3294502 to 0.3312071** (+0.49 percent), F3.4's momentum correlation from 0.7555482
+to 0.7556393, F3.5's seed_mom_ls factor share from 0.8156731 to 0.8161420, F3.6's
+seed_ew mean bias from 0.9583526 to 0.9598426, and F3.9's exposure mean from 0.7220975
+to 0.7196540. No verdict flips: F3.1 to F3.5 and F3.7 to F3.9 pass before and after,
+F3.6 fails before and after.
+
+Status. On the `backport` branch. `tests/test_e3_contract.py`: 7 passed.
+
+## 2026-10-03: E3 is scored over its own fixed window
+
+Decision. `compute_e3_from_artifacts` restricts every date-indexed frame to
+`E3_SAMPLE_START` (2011-01-03) and `E3_SAMPLE_END` (2026-09-03) before the criteria
+are computed, and the window is stored with F3.1's numbers.
+
+Reason. A criterion computed over whatever the artifact happens to hold is not a
+statement about the model: it moves when the panel grows, which changes the sample
+and nothing else. Nothing reworded the criterion and no line of the model changed
+between the two readings below.
+
+Evidence. The stored F3.1 read **0.3294501878861149 over 3,941 days**; the same code
+over a panel eleven sessions longer read 0.3295861 over 3,952 days. With the window
+pinned, the rebuild reproduces the stored numbers exactly - 0.3294501878861149 and
+3,941 days - which is what makes the before/after immediately above the effect of the
+change and nothing else.
+
+Status. On the `backport` branch.
+
+## 2026-10-03: a missing estimator fails F4.3, and F7.1 says what it measures
+
+Decision. F4.3's verdict is `not missing and every scored ratio below 0.9`, and
+`estimators_required` is stored beside `estimators_missing`. F7.1's criterion text no
+longer claims the audit "proves the absence of leakage": it says the audit ran for
+every signal it tested, that no *admitted* signal survived the shift, and that a
+signal the gate labels NULL is not evidence either way. The multiple-testing ledger
+parser no longer counts the markdown separator row as a run.
+
+Reason. Both were tests that could not fail and a criterion that could not see its own
+defect. F4.3 was computed over the estimators the race happened to produce, so the
+missing XS-v1 row - the strongest performer among those scored, as the old note said
+in as many words - made the criterion *more* likely to pass, and
+`tests/test_e4_results.py` pinned `estimators_missing == ["xs_v1"]`, so the test
+failed the moment the row came back. F7.1 passed vacuously with all six signals NULL
+while reading as a positive result about them, and `verdict_by_signal` carried the
+separator row as if it were a run: `ledger_rows: 111` is 110 runs plus that row.
+
+Evidence. Four tests were shown passing on a mutated record rather than on the real
+one: the E4 verdict test passes with every stored number replaced by
+`{"everything": "wrong"}` and with F4.1's failing number moved to a value that would
+flip its verdict; the E5 presence test passes with every stored number replaced by
+`{"wrong": 1.0}`; the E4 F4.3 test *fails* when the missing estimator is restored; and
+`tests/test_cov.py`'s symmetry and positive-definiteness property skipped `xs_v1`, the
+one estimator the race was missing, so that defect had no coverage anywhere. All four
+now assert the arithmetic: the verdicts are re-derived from the artifacts, a missing
+estimator is asserted to fail, the E5 numbers are read and required to be finite, and
+the covariance property runs on XS-v1 with its three inputs supplied.
+
+Status. On the `backport` branch. `tests/test_cov.py` and `tests/test_e5_results.py`:
+11 passed.
+
+## 2026-10-03: a month-end row has its own cross-section, and it changes the hedge
+
+Decision. Recorded as an input to the E6 re-scoring, not as a defect to fix: the
+row built for the session after a month end is not the row the model publishes,
+and the difference is far larger than on an ordinary session. On 2026-07-30 to
+2026-07-31 the built row sits **2.291** from the published row, and the hedged
+book is left with **3.82e-03** of exposure. On the ordinary pair 2026-09-17 to
+2026-09-18 the two rows agree to 7e-14. The E6 re-scoring (item 3) has to be read
+against the pairs the tree actually publishes, not against a grid of sessions.
+
+Reason. `race.next_descriptor_design` builds the missing row with the
+cross-section taken as the names priced at the close, which is exact whenever the
+priced set does not move between the two sessions - every ordinary session - and
+cannot be exact when it does move. A month end moves it for a second reason: the
+seed's published rows exist *only* at month ends, so at a month-end close the
+built row's cross-section is the names priced on the month end while the model's
+row for the next session is the names priced on the next session, after the
+month-end rebalance of the universe. The two rows then differ by far more than
+the cross-sectional statistics of a holiday gap explain.
+
+Evidence. Measured on `/tmp/efb-repair/data` (a live tree as of 2026-10-02, 209
+descriptor dates): the pair 2026-07-30 to 2026-07-31 gives a row distance of
+2.291 and a realized exposure of 3.82e-03, against 1e-15 and 3e-14 for
+2026-09-17 to 2026-09-18 and a 4.1e-03 control for the row dated the close on the
+holiday pair. The same measurement is what makes the hedge-vintage tests
+live-tree-only: `make rebuild-e3` publishes descriptors at month ends plus the
+final session, so a research tree cannot exercise the ordinary case at all.
+
+Consequence for the tests. `tests/test_hedge_vintage.py` reads a live-shaped run
+root from `EFB_RUN_ROOT` and fails rather than skips when there is none; it is
+deselected, and reported as deselected, by the default suite. See
+`docs/backport_runbook.md` §2.
+
+Status. On the `backport` branch, reported to the E6 re-scoring; no live data
+touched.
+
+## 2026-10-03: F4.3 is scored on every estimator it requires, because the row exists
+
+Decision. `efb.race.xs_supplier` reads `fx.ewma_factor_cov`'s output as the K x K
+covariance block it is, and `efb.build.rebuild_e4` now rebuilds the race itself, so
+the artifact F4.3 is scored on is one the build owns. F4.3's stored verdict is
+**pass**, and it comes from scoring rather than from a short list: every one of the
+seven required estimators is present and every ratio to the sample covariance is
+below the 0.9 bound. A missing estimator still fails the criterion; that rule and
+its test are unchanged.
+
+Reason. Two defects kept XS-v1's row out of the race, and together they made the
+criterion's record read as a fact about the model when it was a fact about the
+harness:
+
+- The supplier treated the EWMA helper's return as a date-indexed stack of
+  matrices, took `index.max()` (one row of the matrix) and reindexed that into
+  (17, 17). Measured on 2026-08-31: the block held **272 NaN of 289 cells**, the
+  finiteness check failed, and the window was skipped - on every date, so the row
+  never existed at all. This is the F5.0b record's "single-level-index extraction
+  branch drops every window", now fixed rather than described.
+- `rebuild_e4` never ran the race, on the stated grounds that the grid was chosen
+  interactively. The stored artifact was written **2026-09-20** and ended
+  **2026-07-31** while the panel reached 2026-10-02, so F4.3 was scoring a race
+  from a data vintage that predates every correction this branch makes. The grid is
+  derived now (`efb.race.race_grid` reads the descriptor and specific-variance
+  artifacts and the panel's own sessions), so the race is reproducible and belongs
+  in the build.
+
+Evidence. After the fix, on the current panel: 176 rebalance dates (was 175), first
+2012-01-31, last 2026-08-31; nine estimators. XS-v1's median realized volatility
+**0.089532** against the sample covariance's **0.276707**, a ratio of **0.323563**,
+which is the fourth best of the nine and beats every shrinkage estimator except
+`clip`. The other ratios: `clip` 0.310504, `pca_v1` 0.308480, `pca_v1c` 0.313647,
+`ledoit_wolf` 0.334337, `ts_v1` 0.543148, `constant_correlation` 0.577803 (the
+worst, and the reason the criterion's own bound is what it is). Stored verdict fail
+-> pass, one designed flip, and `estimators_missing` is now empty against a
+required list of seven. The sample covariance still wins no window and EWMA is
+still worse than it (0.296886 against 0.276707 by median).
+
+Status. On the `backport` branch. The five held-out variants of F4.4 are untouched
+by this entry: the three that read NaN did so for a separate reason, fixed in the
+entry below.
+
+## 2026-10-03: a missing frozen descriptor is a zero row, so F4.4's frozen rows are measured
+
+Decision. `efb.pca_eval.held_out_comparison` fills a name's missing frozen
+descriptor with zero and measures the day, instead of refusing the day. The three
+rows that read the frozen design - (ii) descriptors frozen and (v) with the top
+three and top five residual PCs - now report **0.249958**, **0.287751** and
+**0.306384** on all **523** held-out days, against NaN with `days = 0` before. The
+artifact carries `frozen_names_filled_mean` (**11.9885** cells per day) and F4.4's
+stored numbers carry it and `held_out_days_min` (**523**, equal to
+`held_out_days`), so the imputation and the day count are both disclosed rather
+than silent. F4.4's verdict does not move: **fail**, on the comparison the
+criterion names (PCA rolling 0.313337 against XS-v1 refitted daily 0.386278).
+
+Reason. The harness required every name's frozen descriptor row to be complete
+(`if frame.isna().to_numpy().any(): return None`) and returned nothing for the
+whole day when a single name was short. Twelve names have no 12-month momentum or
+no 252-day beta at the frozen stamp of 2024-08-30 - BE, FDXF, HONA, P, Q, SNDK,
+GEV, RDDT, SOLV, SW and the rest of the recent listings and spin-offs, all of
+which joined the cross-section with the panel extension and the spin-off
+corrections - so *every* held-out day was refused, the rows kept their
+`mean_r_squared` as NaN, and the record said "not measured" where a reader expects
+a measurement. Zero-filling is the rule the published design already uses
+(`efb.race._design_from_styles`: "a name the cross-section drops is a zero row
+rather than a missing one"), and it keeps the held-out cross-section identical
+across all seven rows of the one protocol the criterion claims to run.
+
+Evidence. Frozen stamp 2024-08-30: 502 names, of which 12 hold at least one NaN
+among the 7 style columns (size 6, beta 9, momentum 12, reversal 6, resid_vol 10,
+liquidity 6 - momentum and beta are the short-history cells), which is
+**11.9885 cells per day** once averaged over the window. Before the fix rows
+(i)/(iii)/(iv) were finite on 523 days while (ii)/(v) reported `days = 0`; after
+it all seven rows report 523 days. The reading the note draws is unchanged in
+size: (ii) to (v) top 3 gains **0.0378** now against 0.0387 on the
+pre-extension panel, so the missing factor structure is still worth about 3.8
+points of held-out R squared. The failure mode was silent, which is the part
+worth recording: `held_out_days` is a **maximum** over rows and read 523 while the
+frozen rows had none.
+
+Test. `tests/test_e4_results.py` no longer pins the NaN set by name. It asserts
+that no stored F4.4 number is NaN, that `held_out_days_min == held_out_days`, and
+that the fill count is positive - so a NaN, or a row measured on fewer days than
+the window, fails rather than passing unnoticed.
+
+Status. On the `backport` branch. Rebuilt with `make rebuild-e4` and re-scored
+through `efb.evaluate.main_e4`; no earlier sprint's verdict moved. The open item
+of the same date in `docs/open_items.md` is withdrawn: its hypothesis (that the
+harness could not line the held-out window up with the artifact) was tested and
+refuted - the binding constraint was the completeness rule on names, not the
+window.
+
+## 2026-10-03: every rebuild is pinned to a panel end date
+
+Decision. `make rebuild-e1` … `make rebuild-e10` take `END=YYYY-MM-DD`, and the
+entry point behind them takes `--end`. Left unset the pin is the **stored panel's
+own last session**, read from the date index of `data/processed/returns.parquet`,
+so a rebuild that re-reads sources cannot extend the panel during a run. A leg that
+**reads** the panel (E2 … E10) refuses a pin earlier than the panel's own end,
+because it cannot un-read rows it has already been handed; `rebuild-e1`, which
+*makes* the panel, may re-cut it. The date every rebuild in this pass used, stated
+once: **2026-10-02**.
+
+Reason. Two reads could grow the panel and neither was bounded by anything a record
+names:
+
+- `prices.load_or_download` returns the cache as it stands once every ticker is
+  present, so a cache refreshed by the live loop carried sessions past the panel's
+  end, and `build_prices_artifact` clipped only the *start* of the window;
+- `universe.build_membership` defaulted its own `end` to **today**, so the
+  membership grid ran to the day of the rebuild.
+
+Both take the pin now, and so do the factor artifact
+(`factors.build_factors_artifact`, the other side of the excess return) and
+`rebuild`, whose `end` defaulted to today. `rebuild_e2` always ran the E1 leg
+(`rebuild(...)` with no end at all), which is why `make rebuild-e2` could move the
+panel on its own; it passes the pin now, and the `--all` chain threads it from the
+top.
+
+Evidence. The stored panel ends 2026-10-02 (4,213 sessions from 2010-01-04, last
+`universe_membership` row 2026-10-02). `tests/test_panel_freeze.py` drives the real
+E1 leg offline on a price cache that carries sessions past the pin: pinned to
+2015-01-08, `raw/prices.parquet`, `processed/returns.parquet` and
+`processed/universe_membership.parquet` all stop there; the same fixture with the pin
+at 2015-01-14 reaches 2015-01-14: the control that the newer source rows are really
+in the fixture rather than absent from it; and a cache refreshed to fifteen sessions
+before a rebuild with **no** pin still reproduces the 2015-01-08 panel, which is the
+guarantee the item asks for. A pin before the panel raises (`rebuild_e4(end=...)`
+raises before touching an artifact; the helper is asserted directly), and the E1 leg
+is asserted to be the exception that may re-cut it.
+
+Status. On the `backport` branch. `docs/backport_runbook.md` §4 states the date and
+the two rules, `docs/engineering_standards.md` carries the one-line contract, and
+every rebuild in the rest of this pass uses `END=2026-10-02`.
+
+## 2026-10-03: F6.1 is scored on the row the session carries, and it fails
+
+Decision. `efb.hedge.run` records the `design_vintage` of the row each hedge was
+built against, and it measures the exposure the hedged book carries in **the row
+the next session carries** - built from the panel by `fx.build_design`, over the
+names priced on that session's own date - beside the in-model exposure. F6.1's
+verdict is read from that number, so the criterion is scored on the row the book
+earns rather than on the design the hedge was built on. F6.1's stored verdict is
+**fail**: `worst_abs_exposure_after_fmp` is 5.49e-15 by construction while
+`worst_abs_exposure_after_fmp_next_row` is **0.135260** (mean **0.002018**) over
+176 scored dates. F6.5's framing is updated to match: the per-factor residual it
+stores is the instrument set's own gap, read in the design the hedge was built
+against, with the vintage stored beside it.
+
+Reason. The exact FMP hedge subtracts the design's own columns, so its exposure is
+zero in that design by construction. That is arithmetic, not a result, and the
+criterion read it as one. What the book carries over the session it is held for is
+a different object: `race.next_descriptor_design` builds the next session's row
+with the cross-section taken as the names priced at the close, because that is what
+is knowable at the close, while `fx.build_design` standardizes each row over the
+names priced on that row's own date. On an ordinary session the priced set does not
+move and the two agree to 7e-14. On a month end it moves, and on this tree it is
+worse than that: a research tree publishes descriptors at month ends plus the final
+session, so the row for the session after a month end does not exist and every one
+of the 176 scored dates carries a `stale` vintage - the hedge is built against the
+row dated the close, one session behind, by construction.
+
+Evidence. All 176 dates scored, none missing a next session
+(`n_exposure_rows_without_a_next_row` 0). `worst_next_row_distance` 3.856266 at the
+worst date over the names the two rows share; `design_vintages` is `stale` for all
+176. The month-end finding of the same date is the documented example: on the
+2026-07-30 to 2026-07-31 pair the row the hedge was built on sits **2.291** from the
+published row and the hedged book is left with **3.82e-03** of exposure, against
+1e-15 and 3e-14 for 2026-09-17 to 2026-09-18. The re-scoring was expected to fail at
+about 1e-2; it fails at 1.35e-01, an order of magnitude worse, because the worst
+date moves further than the month-end pair does. Stored verdict pass -> fail, one
+designed flip, and `make rebuild-e6` reports it as its own stop condition
+(`E6: 1 of 7 changed`, then exit 3, which is the project's signal and not a failed
+write).
+
+Test. `tests/test_e6_next_row.py` holds the arithmetic on hand-built matrices (a
+name the next row does not carry holds no weight in it; a row read through itself
+gives the book's own exposures and a zero distance) and the stored record: the
+in-model worst is below 1e-12 while the next-row worst is above 1e-6 and a million
+times larger, the artifact's per-row numbers re-derive the stored ones, and the
+verdict is asserted to be the arithmetic on those numbers.
+
+Status. On the `backport` branch, rebuilt with `make rebuild-e6 END=2026-10-02`.
+The E6 artifacts carry `design_vintage`, `exposure_after_fmp_next_row` and
+`next_row_distance` per row.
+
+## 2026-10-03: a series that does not overlap the member's stint is dropped, whatever the name says
+
+Decision. `efb.identity.identity_table` now drops a ticker whose served price
+series does not overlap the member's own stint, and `efb.hygiene.build_events`
+writes that removal into `events.parquet` as
+`identity_series_does_not_cover_membership`. The previous rule reached the same
+conclusion only through the name check, and only for a symbol it had already
+called reused. The test is on coverage: a series whose prints sit entirely before
+the member joined or entirely after the member left carries **no history of the
+member**, which is the same conclusion the reused-symbol rule draws, reached
+without needing a name at either end.
+
+Reason. The name check cannot decide two families of case, and both keep a
+fabricated history in the panel:
+
+- the name matches and the series still cannot be the member's. `BBBY` is the
+  clean example: prints 2026-07-17 to 2026-10-02, member 2010-01-04 to
+  2017-07-25, and the revived listing is spelled "Bed Bath & Beyond, Inc.", so
+  `reused` is False and nothing fired. `BTU`, `LEG`, `NE`, `ADT` and `SBNY` are
+  the same shape.
+- there is no name to check at all. `S`, `SLE`, `SE`, `SHLD`, `SPLS`, `STI`, `SUN`
+  and `TE` are recorded as "no current holder name available, could not verify",
+  and the vendor serves a later holder's prices under the symbol - SentinelOne's
+  history under Sprint's symbol, for instance. Before this change those rows were
+  kept.
+
+Evidence. Measured by running the table over the current artifacts: drops go from
+**36 to 49**. The thirteen new names and their windows:
+
+| ticker | series prints | member stint |
+|---|---|---|
+| ADT | 2018-01-19 to 2026-10-02 | 2012-10-01 to 2016-05-02 |
+| BBBY | 2026-07-17 to 2026-10-02 | 2010-01-04 to 2017-07-25 |
+| BTU | 2017-04-03 to 2026-10-02 | 2010-01-04 to 2014-09-19 |
+| LEG | 2026-08-26 to 2026-08-26 | 2010-01-04 to 2021-12-17 |
+| NE | 2021-06-09 to 2026-10-02 | 2010-01-04 to 2015-07-17 |
+| S | 2021-06-30 to 2026-10-02 | 2010-01-04 to 2013-07-05 |
+| SBNY | 2024-08-15 to 2026-10-02 | 2021-12-20 to 2023-03-14 |
+| SE | 2017-10-20 to 2026-10-02 | 2010-01-04 to 2017-02-27 |
+| SHLD | 2023-09-14 to 2026-10-02 | 2010-01-04 to 2012-09-04 |
+| SLE | 2019-02-26 to 2026-10-02 | 2010-01-04 to 2012-06-28 |
+| SPLS | 2026-01-16 to 2026-10-02 | 2010-01-04 to 2017-09-15 |
+| STI | 2022-05-02 to 2026-10-02 | 2010-01-04 to 2019-12-06 |
+| TE | 2020-01-10 to 2026-10-02 | 2010-01-04 to 2016-06-30 |
+
+**None of the thirteen is in today's live universe** (the SPY archive dated
+2026-09-21), and none is a current constituent, so the rule cannot move the book
+the loop trades. The control that it is coverage and not lateness: `META`, `RDDT`,
+`DELL`, `DOW`, `CEG`, `BE`, `APTV`, `P`, `Q` and `SNDK` also start printing well
+after the panel opens and are **kept**, because the membership grid carries their
+stint back to the panel start and the prints overlap it. Every ticker in the
+offender list whose series does overlap its stint is left alone.
+
+Status. On the `backport` branch. `tests/test_identity.py` gains the rule and its
+control; the removal is logged in `events.parquet`, which is where a reader looks
+for a panel change that has no other trace.
+
+## 2026-10-03: a rebuild dropped the live construction, so the floor enforced nothing
+
+Decision. `efb.registry.write_registry` now upserts only the fields the rebuild
+owns and carries the rest of the entry over, and the `live` construction block
+(the owner's 2026-09-24 share-only choice) is restored on XS-v1 in
+`data/models/registry.json`. A rebuild of the research artifacts may not change
+how the book is sized.
+
+Reason. `write_registry` did `models[entry["version"]] = entry`, replacing the
+whole entry, so the E3 rebuild on this branch wrote a fresh XS-v1 entry with no
+`live` key. `registry.live_construction` then defaulted `share_floor` to 0, and
+with both floors zero `below_floor` returns all-False, so the drop-then-admit
+search kept every name. The "kept" book silently became the full model book. It
+is the same defect class as the missing champion flag the runbook already
+records: a rebuild replacing an entry loses the keys the research path does not
+own. Measured 2026-10-03: `tests/test_e11_evening.py` was failing on the branch
+before the restore and passes after it (37 passed).
+
+Evidence, `live.evening_job.build_proposal` on the frozen panel, one tree per
+cell, `n_eff_kept` / `n_kept`:
+
+| tree | floor off (registry as the rebuild left it) | floor on (`live` restored) |
+|---|---|---|
+| corrected panel (2026-10-02) | **282.2521 / 502** | **143.2554 / 188** |
+| panel before the back-port (2026-09-21) | 275.7918 / 499 | 128.6541 / 173 |
+
+So the unexplained +142.5 in the 131.9175 to 281.41 decomposition is the disabled
+floor: on one tree, turning it off moves `n_eff_kept` by **+138.997** (corrected)
+and **+147.138** (pre-back-port), and it moves `n_kept` from 188 to 502. The
+three corrections together are the small term: on the corrected panel they move
+`n_eff_kept` from 144.9386 (cleaning and spin-offs reverted, floor on) to
+143.2554, and with the floor off, from 275.7918 to 282.2521 (+6.46). A 502-name
+book cannot meet a 20-share floor at $1mn NAV and gross 1.0 (502 x 20 shares at
+about $150 is about $1.5mn), which is what made the number suspect.
+
+Test. `tests/test_registry.py::test_write_registry_keeps_the_live_construction`
+upserts an entry that has `live` with one that does not, and requires the floor
+to survive; it fails on the version before this commit (`assert 0 == 20`) and
+passes after.
+
+Status. On the `backport` branch. **This would have changed the live book at the
+merge**: the regenerated seed would have carried a registry with no floor, and
+the evening would have sized all 502 names. The rest of the +142.5 question is
+closed; there is no further unexplained term.
+
+## 2026-10-03: the design book as the live loop trades it, stored beside the full book
+
+Decision. The design book's performance is now measured twice and stored beside
+itself, under E8's F8.5 and E10's F10.1: `full_book_*` is the book as those two
+sprints already measure it, at the reference AUM; `kept_*` is the same weights
+taken to the E11 construction, whole shares at $1mn NAV with no name held under
+20 whole shares and the kept book renormalized to gross 1.0. Nothing stored is
+replaced, and no threshold is attached: the measurement was taken after the
+numbers existed, so it is a stored measurement and not a criterion (STANDARDS
+2b), recorded here and in the memos rather than scored against a bound. The
+figures live in `data/portfolios/traded_book.parquet`, written by both the E8 and
+the E10 rebuild, and both sprints' criteria read it.
+
+Reason. E11 trades a different object from the one E8 and E10 score. The scored
+book is the persistent proportional design book at its reference AUM with every
+name in it; what trades is that book taken to whole shares at $1mn with a
+20-share floor, which drops names and renormalizes the rest. Quoting the scored
+Sharpe as the traded book's would overstate what the loop earns, and the gap is
+entirely a construction effect.
+
+Evidence. On the frozen panel (`END=2026-10-02`), through
+`efb.allocate.traded_book_figures`: `full_book_sharpe` **1.0262173** over
+`full_book_n_names` **498.0**, `kept_sharpe` **0.7909531** over `kept_n_names`
+**233.4629**, `kept_names_dropped_share` **0.49454**, and
+`kept_gross_before_renorm` **0.7428933**. The Phase 1 scratch measurement
+(Sharpe 0.98 to 0.73, "about half the names dropped") is therefore **corrected**
+on the panel the branch carries: the mechanism and the "about half" hold (49.45%
+of name-rebalances are dropped by the floor), the levels are 1.0262 to 0.7910.
+The floor, not the corrections, is what separates the two books: with
+`share_floor` 0 the same quantizer keeps every sized name (the item 1 defect).
+
+Tests. `tests/test_allocate.py`: the quantizer's floor behaviour on a hand-built
+book, and that the stored row is what the function computes now.
+
+Status. On the `backport` branch. Stored, not scored: no verdict moves.
+
+## 2026-10-03: E9 under E11's trading constraints, and what borrow can be measured
+
+Decision. The E9 book is now measured under the three constraints the live loop
+actually trades with, and the measurement is stored beside E9's own numbers under
+F9.1's `e11_constraints`. It is a measurement, not a criterion: no threshold is
+attached (STANDARDS 2b) and no criterion is reworded.
+
+- **Borrow is charged on the short leg at E11's rate.** `efb.costs._trade_cost`
+  charges spread, commission and impact only; the live evening adds
+  `BORROW_RATE * short_gross * HORIZON / ANNUAL` (`live/evening_job.py:1102`), so
+  the research curves never charged it. Both read the same `costs.BORROW_RATE`,
+  and the measurement now carries the term explicitly.
+- **A reversal is two cost events.** E11 closes a name whose sign flips tonight
+  and opens it the next evening rather than crossing zero in one order. The upper
+  bound below holds the name flat for the whole horizon.
+- **The $250 floor at the tested AUM.** `costs.ALPACA_MIN_NOTIONAL` is E11's
+  `live/alpaca.py::DELTA_MIN_NOTIONAL`, applied at the tested AUM ($1mn, the paper
+  NAV), where a leg that small is a real share of the book.
+- **Borrow availability has no history.** The vendor's `easy_to_borrow` flag is
+  read live and is not archived, so it cannot be replayed for a research panel.
+  The only available proxy is size, and it is recorded as a proxy
+  (`borrow_availability_history` 0, `borrow_availability_proxy` 1), never as a
+  measurement.
+
+Evidence. `efb.costs.e11_constraint_effects` on the frozen panel
+(`END=2026-10-02`), the proportional book at rho 0.02 over seeds 0 to 4, means:
+`reference_ir` **0.396882** and `reference_cost` **0.273456** of AUM per
+rebalance; `short_gross` **0.499641**, so borrow at the 2 percent annual rate over
+a 21-session hold is **0.31 percent of the transaction cost**
+(`borrow_cost_share` **0.003105**), which is why the earlier note called the
+effect small. The $250 floor skips **6.04 percent** of legs and **0.25 percent**
+of turnover at $1mn for an IR ratio of **0.999204**; at the reference AUM it is
+negligible. Reversals are **33.22 percent** of legs and **52.04 percent** of
+turnover, and holding a reversal name flat for the horizon (the two-cost-event
+upper bound) costs **23 percent** of the IR (`reversal_ir_upper_bound_ratio`
+**0.769127**), so the split matters through what the book holds, not through the
+extra impact charge. Excluding the smallest size decile from the short leg as a
+borrow proxy leaves the IR at **0.961951** of the unconstrained book.
+
+Tests. `tests/test_costs.py`: the artifact charges borrow at `costs.BORROW_RATE`
+and the floor at `ALPACA_MIN_NOTIONAL` and the tested AUM, and E9 stores the
+block beside its own scored numbers.
+
+Status. On the `backport` branch. F9.1 to F9.5 are unchanged: `n_changed` 1 is
+the added block, no verdict moved. E9 `data_hash` -> e4b8f9ca.
+
+## 2026-10-03: the frozen-panel propagation pass, and what the criteria now store
+
+Decision. The whole panel is rebuilt once at `END=2026-10-02`, E1 through E10 in
+order, on the branch, so that every stored record comes from one panel and one
+build order. Three records gain a stored block beside their scored numbers, none
+of them a criterion: F8.5's and F10.1's `traded_book`, and F9.1's
+`e11_constraints`. No criterion text changes and no threshold moves.
+
+Reason. Items 1 to 3 of the back-port changed the panel (a reused-ticker rule
+that drops thirteen more symbols), the registry write (which had been dropping
+the owner's live construction) and the E9 cost model. A record scored before
+those changes describes a panel that no longer exists, and three of the
+walkthroughs could not be re-executed at all because their hash checks compared
+a sprint's own stored hash against `data/VERSION.json`, a file every later leg
+rewrites, while a fourth read the raw panel where the build now reads the
+cleaned one.
+
+Evidence. Per sprint, the criteria whose stored numbers moved, how many numbers
+moved, and the data hash before and after. Every count is a diff of
+`sprints/E*/RESULTS.json` between `HEAD` and the rebuilt tree.
+
+| sprint | data_hash | criteria with moves | numbers moved | verdicts that moved |
+|---|---|---|---|---|
+| E1 | 37222bb9 unchanged | 1 | 1 | none |
+| E2 | 223d6756 to 752b798c | 7 | 29 | none |
+| E3 | 25acd580 to 51654769 | 7 | 71 | none |
+| E4 | e6fa25e5 to 53952cdf | 7 | 35 | none |
+| E5 | cee583fc to fd8ebce2 | 5 | 31 | none |
+| E6 | b774d460 to f5cea5fc | 6 | 42 | none |
+| E7 | 609f3c73 to 8d3d3bf7 | 4 | 46 | none |
+| E8 | 1edd117a to 771d88d3 | 6 | 121 | none |
+| E9 | e4b8f9ca to fedcdc9b | 5 | 67 | none |
+| E10 | d8f7d827 to 23f44e40 | 7 | 34 | none |
+
+The one E1 move is float noise in F1.5's `naive_minus_pit_bp_per_year`
+(359.58471777781415 to 359.58471777781443). The largest single moves are E8's,
+whose F8.5 table is scored on synthetic alpha and therefore re-draws with the
+panel the synthetic z is built on.
+
+Corrections to earlier entries in this ledger, which are append-only and are not
+edited in place. The 2026-10-03 F6.1 entry records
+`worst_abs_exposure_after_fmp_next_row` at 0.135260 with mean 0.002018 and
+`worst_next_row_distance` 3.856266; on the propagated panel the same three
+numbers are **0.140820**, **0.001605** and **3.862012**, and the note stored
+beside the criterion has been re-pointed to them. That entry's prose also reads
+"it fails at 1.35e-01", which is 1.41e-01 on this panel. The capped-stored FMP
+residual the same pass re-scored moves from 0.7552 to 0.7437 on the same row
+(seed_mom_ls, reversal, 2024-11-29), and the unhedged exposure on that row from
+0.7169 to 0.7073. F8.1b's GLS-neutrality gap moves from 6.42e-17 to 1.20e-16,
+and E10's design-book Sharpe from 0.978 to 1.074 with the standard error
+unchanged at 0.268.
+
+Two generators are repaired, because the documents they author must run against
+the artifacts they describe. F8.5 now stores the traded book as a flat block
+beside the construction-by-rho table, and both `sprints/E8/write_memo.py` and
+`sprints/E8/build_walkthrough.py` iterated every block as if it were nested,
+so the memo writer raised `TypeError: 'float' object is not subscriptable` and
+the E8 walkthrough failed to execute at all. Both now skip a block that is not a
+table. The E7 signal reports are regenerated by their authoring script for the
+same reason: the rebuild moved the IC, regime and break-even numbers in all six.
+
+The corporate-actions table is the one input that moved under the build rather
+than with it: the vendor's spin-off read is unstable, as the earlier 2026-10-03
+entry records, and the pass re-collected it. `efb.corporate_actions.summary`
+reports 30 records from 2019-02-25 to 2026-10-01, 27 applied and 3 with no child
+price to apply (`FTI->THNPF` 2021-02-16, `BBBY->BBBY.WS` 2025-10-02,
+`GME->GME.WS` 2025-10-03). The panel carries 27 `corrected` cells, 25 repaired
+and 2 nulled. Every one is a cell the vendor's arithmetic got wrong and a
+recorded vendor row repaired, so the pass moves the panel toward the paid numbers
+rather than away from them.
+
+The registry keeps the owner's live construction across the E3 rebuild:
+`models["XS-v1"]["live"]["share_floor"]` is 20 before and after, which is the
+regression item 1 fixed, and the champion flag is cleared by the rebuild and
+restored by E5.
+
+The frozen-block baseline in `tests/test_e11_extend.py` moved with the pass:
+`incremental_integrity` on the pre-2026-09-03 block reads
+`049fe6ea`/`a43d66ce`/`d65a67f1` for descriptors, factor returns and specific
+returns against the recorded `8f93968f`/`42a31d64`/`176dc4b3`. Those recorded
+hashes were taken from a live tree, so a research rebuild cannot satisfy them;
+the baseline is re-recorded from the regenerated seed at the merge. The dry
+run's live-shaped tree reads `bc7bba30`/`a43d66ce`/`d65a67f1`, the descriptor
+value differing because that tree publishes a row for every session while the
+research tree publishes month ends.
+
+Tests. `tests/test_registry.py` holds the live block across a rebuild;
+`tests/test_allocate.py` and `tests/test_costs.py` hold the two new stored
+blocks; every sprint's memo, results and walkthrough traceability test holds its
+printed numbers, and `tests/test_readme_traceability.py` holds the README's.
+
+Status. On the `backport` branch. Designed flips: none. Unexpected flips: none.
+
+## 2026-10-04: the reused-ticker series do not explain the survivor measurement
+
+Decision. `tests/test_survivor_measurement.py` is restated to what the corrected
+panel measures, and the file's claim that the restricted universe deepens the
+small-cap discount is withdrawn rather than re-pointed. The measurement that
+decides it is in the entry's Evidence.
+
+Reason. The propagation pass moved that file's numbers past the bounds it
+asserted: the size factor's panel-versus-mapped correlation went from 0.577780 to
+0.826271, the residual-volatility correlation from under 0.9 to 0.959004, and the
+panel's size premium from negative to +0.000174. The forwarded explanation was
+that part of the small-cap discount had been an artifact of the reused-ticker
+series item 8 drops, so it was measured instead of assumed.
+
+Evidence. E1 was rebuilt in a copy of this tree with the identity drops disabled,
+once for the thirteen names the coverage rule adds (`ADT`, `BBBY`, `BTU`, `LEG`,
+`NE`, `S`, `SBNY`, `SE`, `SHLD`, `SLE`, `SPLS`, `STI`, `TE`) and once for all
+forty-nine the identity layer removes, and `efb.survivor.run` was re-run on each,
+with the raw descriptors recomputed from each panel so the restored names carry
+their own history into the fit. The first attempt at this measurement read the
+repository's cached `data/raw/e4_raw_descriptors.parquet`, which `survivor.py`
+pins to the repository tree, and came back bit-identical on both arms: that is
+what a broken experiment looks like, and it is why the second run rebuilds the
+descriptors from the panel under test.
+
+| arm | panel names | size correlation | resid_vol correlation | size premium, panel | size premium, mapped |
+|---|---|---|---|---|---|
+| this tree (49 dropped) | 811 | 0.826271 | 0.959004 | +0.00017388 | -0.00016859 |
+| 13 coverage drops kept | 824 | 0.826298 | 0.959227 | +0.00017423 | -0.00016802 |
+| all 49 drops kept | 857 | 0.828374 | 0.959007 | +0.00017215 | -0.00017324 |
+
+The premiums' t statistics are 0.51 on the panel and -0.57 on the mapped set in
+every arm. Restoring every series the identity layer removes therefore moves the
+size correlation by 0.002, the residual-volatility correlation by 0.000003 and
+the sign of nothing: the panel's size premium is a small positive number with or
+without them, and none of the three arms reproduces the pre-back-port reading.
+The junk series are not the explanation, and the claim the file used to make was
+already false of the corrected panel before any of these series were considered.
+
+Corrections the same pass made, each regenerated from its own writer or stored
+artifact rather than typed. `efb/probes.py::momentum_factor_vol_by_tercile`
+reimplemented the tertile cut that `efb/risk.py::bias_by_exposure` writes the
+stored table with, and the two disagree whenever the rebalance count is not
+divisible by three: `pd.qcut` puts the surplus month in the low bucket and a
+split on thirds puts it in the high one, which is why the probe stopped
+reproducing the 48/47/47 buckets it is documented to check. It now uses
+`pd.qcut` and agrees to zero. The construction table's reference row is renamed
+`full_book_502`, the size the book is, and the test derives that size from the
+row instead of typing it. The E11 snapshot fixture, the catch-up session list,
+the README's idio-momentum numbers, the status report's Kelly leverages and the
+E1 reference pins in `tests/test_e3_probes.py` are re-pointed from their
+artifacts, and `web/fixtures/*.json` are regenerated by their writer, which now
+states the close it builds for rather than sizing whatever session the panel
+happens to end on.
+
+Two reds are not repaired here because they are not the branch's.
+`tests/test_e11_corporate_actions.py::test_the_aph_split_is_reproduced_from_the_real_rows`
+asserts that the vendor's raw closes halve across the APH split; the price cache
+now serves split-adjusted closes on both sides of it (82.07 on 2026-09-03 and
+82.78 on 2026-09-04, with `split_factor` 2.0 recorded), and the pre-pass tree
+`/tmp/efb-neff/data` carries the same rows, so the premise was already false
+before this pass. `tests/test_construction_table.py`'s beta-magnitude inequality
+fails on the sparsest row (`min_position_5000`, 52 names, |raw beta| 0.0196
+against |shrunk beta| 0.0308); the inequality is an empirical claim about a
+dollar-neutral weighted average rather than an identity, and it is left asserted
+rather than weakened.
+
+Status. On the `backport` branch. No verdict moved in any sprint record.
+
 ## 2026-10-06: The PSKY position left the paper account with nothing explaining it
 
 Decision. The **326.072572039 PSKY shares** the paper account held when the

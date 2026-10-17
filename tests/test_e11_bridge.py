@@ -81,6 +81,9 @@ def test_the_bridge_is_that_sessions_own_numbers(session: dict[str, Any]) -> Non
     assert block["exited"] == 42
     assert block["changed"] == 125
     assert block["under_minimum"] == 34
+    assert block["not_sent_continuing"] == 34
+    assert block["exited_without_order"] == []
+    assert block["opened_without_order"] == []
     assert block["orders_sent"] == 199
     assert block["filled"] == 197
     assert block["did_not_fill"] == 2
@@ -94,13 +97,16 @@ def test_the_bridge_is_that_sessions_own_numbers(session: dict[str, Any]) -> Non
         ("in both + opened = the book", "in both + exited = held before trading"),
         # 125 + 34 = 159: every continuing name either traded or was left alone.
         (
-            "changed + under the minimum = in both",
-            "changed + opened + exited = orders sent",
+            "changed + the continuing legs not sent = in both",
+            "changed + opened + exited - the legs not sent = orders sent",
         ),
         # 125 + 32 + 42 = 199 = 197 + 2: the legs and the fills are one set.
         (
             "orders sent = filled + did not fill",
-            "held before - exited + opened - reversals and removals = held after",
+            (
+                "held before - exited + opened - reversals and removals + arrived "
+                "= held after"
+            ),
         ),
     ],
 )
@@ -123,10 +129,15 @@ def test_every_identity_holds_on_that_session(
 
     assert checks["in both + opened = the book"]["left"] == 191
     assert checks["in both + exited = held before trading"]["left"] == 201
-    assert checks["changed + under the minimum = in both"]["left"] == 159
-    assert checks["changed + opened + exited = orders sent"]["left"] == 199
+    assert checks["changed + the continuing legs not sent = in both"]["left"] == 159
+    assert (
+        checks["changed + opened + exited - the legs not sent = orders sent"]["left"]
+        == 199
+    )
     assert checks["orders sent = filled + did not fill"]["left"] == 199
-    last = checks["held before - exited + opened - reversals and removals = held after"]
+    last = checks[
+        "held before - exited + opened - reversals and removals + arrived = held after"
+    ]
     assert last["left"] == 191
     assert last["right"] == 191
 
@@ -149,7 +160,7 @@ def test_the_gap_is_itemised_into_a_reversal_a_removal_and_nothing_else(
     assert block["removed_without_order"][0]["quantity"] == pytest.approx(326.072572039)
     assert block["removed_without_order"][0]["notional"] == pytest.approx(3211.814835)
     assert block["unexplained"] == []
-    assert bridge.gap_names(block) == ["INVH", "PSKY", "SLB"]
+    assert bridge.gap_names(block) == ["INVH", "PSKY", "SLB"]  # + any arrivals
 
 
 def test_the_two_rejected_legs_are_the_two_that_did_not_fill(
@@ -196,8 +207,8 @@ def test_an_evening_block_says_only_what_the_evening_knew(
     assert {item["name"] for item in block["identities"]} == {
         "in both + opened = the book",
         "in both + exited = held before trading",
-        "changed + under the minimum = in both",
-        "changed + opened + exited = orders sent",
+        "changed + the continuing legs not sent = in both",
+        "changed + opened + exited - the legs not sent = orders sent",
     }
 
 
@@ -228,7 +239,7 @@ def test_a_bridge_that_does_not_add_up_says_which_two_numbers_disagree(
     assert block["holds"] is False
     failed = [item for item in block["identities"] if not item["holds"]]
     assert [item["name"] for item in failed] == [
-        "held before - exited + opened - reversals and removals = held after"
+        "held before - exited + opened - reversals and removals + arrived = held after"
     ]
     # The check's own two sides: the book on the left, and on the right the account
     # with only the two kinds the loop can account for added back. One name short,
@@ -282,6 +293,9 @@ def test_the_under_minimum_legs_carry_their_own_reasons(
     block = _evening(session)
 
     assert block["under_minimum"] == 34
+    assert block["not_sent_continuing"] == 34
+    assert block["exited_without_order"] == []
+    assert block["opened_without_order"] == []
     assert block["skipped_reasons"] == {"BELOW_MIN_NOTIONAL": 34}
     assert block["under_minimum_usd"] == 250.0
     sent = [row for row in session["orders"] if row["sent"]]
@@ -344,6 +358,7 @@ def test_the_evening_publishes_its_half_under_bridge(
         "in_both",
         "opened",
         "exited",
+        "previous_reversals_pending",
         "changed",
         "under_minimum",
         "orders_sent",
@@ -351,6 +366,12 @@ def test_the_evening_publishes_its_half_under_bridge(
         "did_not_fill",
         "held_after",
         "under_minimum_usd",
+        "not_sent_continuing",
+        "under_minimum_tickers",
+        "skipped_continuing",
+        "exited_without_order",
+        "opened_without_order",
+        "arrived_without_order",
         "reversals_pending",
         "removed_without_order",
         "unexplained",

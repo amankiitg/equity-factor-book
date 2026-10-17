@@ -52,8 +52,8 @@ post-hedge exposure across every rebalance date, factor and seed book is
 models. The stored numbers are in F6.1.
 
 The as-stored quarterly capped FMP weights are a different instrument: their
-worst absolute post-hedge exposure is 0.7552 on the reversal factor of the
-momentum book, higher than the unhedged 0.7169 on that date, because the
+worst absolute post-hedge exposure is 0.7437 on the reversal factor of the
+momentum book, higher than the unhedged 0.7073 on that date, because the
 design has drifted since the FMPs were stamped and the caps removed the
 exact spanning property. That cap drift is basis risk, reported rather than
 hidden, and it is the reason the exact hedge, not the capped one, is the
@@ -157,4 +157,4 @@ robust to the champion decision.
 | F6.2 | ETF minimum-variance hedge removes more than 70% of the factor variance of the long-only seed book. ETFs cannot span every factor; the residual is reported. | pass | 97.85% removed, residual per factor in F6.5 |
 | F6.3 | Realized: the hedged momentum long/short book has a beta to Mkt-RF within plus or minus 0.1 over 2018 to 2026. | pass | -0.0272 |
 | F6.4 | New in E6: every headline hedge result stored under the champion model and under the alternative model, with the difference stored. | pass | difference 0.0 on every headline |
-| F6.5 | New in E6: the residual factor exposure the instrument set cannot reach, quantified per factor. | pass | size 0.3816, liquidity 0.3222, reversal 0.1155, momentum 0.0503 |
+| F6.5 | New in E6: the residual factor exposure the instrument set cannot reach, quantified per factor, with the design vintage the hedge was built against stored beside it. | pass | size 0.3816, liquidity 0.3222, reversal 0.1155, momentum 0.0503 |

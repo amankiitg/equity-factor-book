@@ -452,6 +452,35 @@ def identity_table(
         else:
             note = "symbol reused"
         kept = series
+        # The shared window between what the vendor serves and what the index
+        # says the member was. A series that does not overlap the member's own
+        # stint carries no history of the member at all, and that is a test on
+        # coverage rather than on names: the name check cannot see it either way.
+        # It matched BBBY because the revived listing is spelled the same, and
+        # there was no name to check at all for S, SLE, SE, SHLD, SPLS, STI, SUN
+        # and TE, whose symbols the vendor now serves with a later holder's
+        # prices. Those are the cases this extension exists for: the reused-ticker
+        # rule below is the same overlap test on a narrower trigger, and this one
+        # is stated once, for every member.
+        member_first: pd.Timestamp | None = None
+        member_last: pd.Timestamp | None = None
+        if membership is not None and ticker in membership:
+            stint = membership[ticker].astype(bool)
+            member_dates = membership.index[stint.to_numpy()]
+            served = series.dropna().index
+            if len(member_dates) and len(served):
+                member_first = pd.Timestamp(member_dates.min())
+                member_last = pd.Timestamp(member_dates.max())
+                served_min = pd.Timestamp(served.min())
+                served_max = pd.Timestamp(served.max())
+                if served_max < member_first or served_min > member_last:
+                    action = "drop"
+                    drop_before = None
+                    note = (
+                        "the series does not overlap the member stint: prints "
+                        f"{served_min.date()} to {served_max.date()}, member "
+                        f"{member_first.date()} to {member_last.date()}"
+                    )
         if reused:
             if len(segments) >= 2:
                 kept = segments[-1]
@@ -491,6 +520,8 @@ def identity_table(
                 "has_break": has_break,
                 "first_valid_date": first_valid,
                 "last_valid_date": last_valid,
+                "member_first_date": member_first,
+                "member_last_date": member_last,
                 "n_observations": int(series.notna().sum()),
                 "gap_days": gap,
                 "has_gap": gap > gap_days,

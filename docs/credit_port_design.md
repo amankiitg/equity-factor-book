@@ -643,6 +643,7 @@ criterion is a test rather than a claim.
 | efb/allocate.py | re-specified | the drawdown and allocation algebra ports, but the sampler has to draw defaults, not only returns |
 | efb/alpha.py | re-specified | the engine that residualizes a signal on the champion design and measures its IC ports; the six equity signals do not |
 | efb/build.py | unchanged | the build orchestrator and artifact hashing do not depend on the asset class |
+| efb/corporate_actions.py | re-specified | correcting a print from a recorded vendor action rather than from the vendor's arithmetic is the discipline a credit desk needs most, while the payload becomes coupons, calls, tenders and 144A exchanges instead of a spun-off child |
 | efb/costs.py | re-specified | the square-root impact form survives, the spread input becomes a measurement rather than an assumption |
 | efb/cov.py | unchanged | an EWMA or PCA covariance estimator over a 504-session window is asset-class-agnostic once the input is a spread series |
 | efb/eval_risk.py | re-specified | the evaluation engine ports, the piece assembly has to become credit-aware, including which design vintage a backtest hedges with |
@@ -728,6 +729,7 @@ criterion is a test rather than a claim.
 | module | status | reason |
 | --- | --- | --- |
 | scripts/__init__.py | unchanged | package marker |
+| scripts/collect_corporate_actions.py | re-specified | the collector stays a thin CLI over the vendor read and its union-of-reads rule matters more, not less, when a provider can restate a coupon |
 | scripts/make_sector_map.py | re-specified | the page's sector map becomes a credit map: rating bucket, sector and issuer parentage rather than one equity sector code per ticker |
 | scripts/make_web_fixtures.py | unchanged | the fixture writer, once the snapshot it writes is a credit snapshot |
 | scripts/probe_cache_race.py | re-specified | the probe is the shape to keep, and the vendor whose cache race it measures is TRACE rather than the equity price vendor |

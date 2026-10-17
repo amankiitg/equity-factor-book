@@ -21,7 +21,7 @@ from live import evening_job as ev
 def test_the_table_has_all_nine_rows_and_renormalizes() -> None:
     table = ct.build_table(store=False)
     assert sorted(table["construction"]) == [
-        "full_book_499",
+        "full_book_502",
         "min_position_1500",
         "min_position_2000",
         "min_position_3000",
@@ -33,8 +33,13 @@ def test_the_table_has_all_nine_rows_and_renormalizes() -> None:
     ]
     # every row renormalizes to gross 1.0 after dropping
     assert float((table["kept_gross_after_renorm"] - 1.0).abs().max()) < 1e-9
-    # kept + dropped is the full 499-name book
-    assert (table["n_kept"] + table["n_dropped"] == 499).all()
+    # kept + dropped is the full book, whose size the table states itself: the
+    # reference row keeps every name, so its own count is the denominator
+    reference = table.loc[table["construction"].str.startswith("full_book")]
+    assert len(reference) == 1
+    assert int(reference["n_dropped"].iloc[0]) == 0, "the reference row drops nothing"
+    total = int(reference["n_kept"].iloc[0])
+    assert (table["n_kept"] + table["n_dropped"] == total).all()
     # every row states long and short counts
     assert (table["n_long"] + table["n_short"] == table["n_kept"]).all()
     # every row reports post-hedge exposure, idio share and both breadth bounds
@@ -169,7 +174,7 @@ def test_the_book_is_the_drop_then_admit_local_maximum() -> None:
         )
     ]
     no_floor_rows = table.loc[
-        table["construction"].isin(["top_n_150", "top_n_200", "full_book_499"])
+        table["construction"].isin(["top_n_150", "top_n_200", "full_book_502"])
     ]
     # the book is the rule's output, and no kept name is below its floor in the
     # final, quantized weights

@@ -38,6 +38,11 @@ equity-factor-book/
   pre-commit; the test suite never shrinks.
 - Reproducible: fixed seeds; every artifact carries the data hash of its
   inputs; `make rebuild` reproduces the registry from raw.
+- Pinned panel: every `make rebuild-eN` takes an end date (`END=YYYY-MM-DD`),
+  defaulting to the stored panel's own last session rather than the clock, so
+  re-reading sources cannot extend the panel during a run. A leg that reads the
+  panel refuses a pin earlier than it; only `rebuild-e1`, which makes the panel,
+  may re-cut it.
 - No look-ahead: anything used as a forecast at t is computed from data
   through t-1; every sprint runs a shift audit.
 - Dashboard reads parquet and Supabase only; it never fits a model. A tab

@@ -1481,8 +1481,43 @@ E2_EXPOSURE_REFERENCE = {
 }
 
 
+# The sample the E3 criteria are scored over, fixed when the sprint's numbers were
+# measured. It is the model's first descriptor day to the last session of the panel
+# the sprint was scored on, and it does not move when the panel does.
+E3_SAMPLE_START = pd.Timestamp("2011-01-03")
+E3_SAMPLE_END = pd.Timestamp("2026-09-03")
+
+
+def _e3_in_sample(frame: pd.DataFrame) -> pd.DataFrame:
+    """One frame restricted to the E3 scoring window.
+
+    A criterion computed over whatever the artifact happens to hold is not a
+    statement about the model: it moves when the panel grows, which changes the
+    sample and nothing else. Measured: the stored F3.1 read 0.3294502 over 3,941
+    days and the same code over a panel eleven sessions longer read 0.3295861, with
+    no line of the model touched. The window below is the sprint's own - the range
+    the numbers on the record were measured over - and it is stored with the
+    criterion so a reader can see which sample a number belongs to.
+    """
+    if frame is None or len(frame) == 0:
+        return frame
+    if isinstance(frame.index, pd.DatetimeIndex):
+        keep = (frame.index >= E3_SAMPLE_START) & (frame.index <= E3_SAMPLE_END)
+        return frame.loc[keep]
+    if "date" in frame.columns:
+        dates = pd.to_datetime(frame["date"])
+        keep = (dates >= E3_SAMPLE_START) & (dates <= E3_SAMPLE_END)
+        return frame.loc[keep]
+    return frame
+
+
 def compute_e3_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
-    """Read every number the E3 criteria need from the artifacts."""
+    """Read every number the E3 criteria need from the artifacts.
+
+    The date-indexed frames come back restricted to `E3_SAMPLE_START` to
+    `E3_SAMPLE_END`, which is the sprint's own window, so the criteria do not move
+    when the panel behind them grows.
+    """
 
     def read(rel: str) -> pd.DataFrame:
         return pd.read_parquet(data_root / rel)
@@ -1490,14 +1525,14 @@ def compute_e3_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
     registry = json.loads((data_root / "models" / "registry.json").read_text())
     entry = registry["models"]["XS-v1"]
     parameters = entry["parameters"]
-    xs_r2 = read("models/XS-v1/xs_r2.parquet")
+    xs_r2 = _e3_in_sample(read("models/XS-v1/xs_r2.parquet"))
     fmp = read("models/XS-v1/fmp_weights.parquet")
-    factor_returns = read("models/XS-v1/factor_returns.parquet")
-    decomposition = read("eval/xs_risk_decomposition.parquet")
-    bias = read("eval/xs_bias.parquet")
+    factor_returns = _e3_in_sample(read("models/XS-v1/factor_returns.parquet"))
+    decomposition = _e3_in_sample(read("eval/xs_risk_decomposition.parquet"))
+    bias = _e3_in_sample(read("eval/xs_bias.parquet"))
     premia = read("eval/xs_fm_premia.parquet")
     residual = read("eval/xs_residual_covariance.parquet")
-    exposure = read("eval/xs_exposure_timeseries.parquet")
+    exposure = _e3_in_sample(read("eval/xs_exposure_timeseries.parquet"))
     factors_frame = read("raw/factors_ff.parquet")
     return {
         "parameters": parameters,
@@ -2075,6 +2110,7 @@ def evaluate_e4_criteria(
             "ratio_to_sample": ratios,
             "worst_ratio": float(max(ratios.values())),
             "estimators_missing": missing,
+            "estimators_required": list(wanted),
             "windows": int(race["date"].nunique()),
             "n_names": int(race["n_names"].max()),
             "windows_won": {
@@ -2082,19 +2118,33 @@ def evaluate_e4_criteria(
                 for name, count in (pivot.rank(axis=1, method="min") == 1).sum().items()
             },
         },
-        "verdict": _verdict(all(ratio <= 0.9 for ratio in ratios.values())),
+        "verdict": _verdict(
+            not missing and all(ratio <= 0.9 for ratio in ratios.values())
+        ),
         "note": (
-            "Every shrinkage estimator and every factor estimator has a median "
-            "out-of-sample minimum-variance volatility at least 10 percent below "
-            "the sample covariance's, so the estimation-error result holds in the "
-            "direction theory predicts. The sample covariance won no window and "
-            "EWMA none either; EWMA is a weighting scheme rather than a shrinkage "
-            "or factor estimator and is reported beside them, not scored. E5 "
-            "rebuilt this race from a derived grid and could not reproduce the "
-            "XS-v1 row, which is stored as F5.0b; the estimators missing from "
-            "this read are listed in the stored numbers and the verdict is "
-            "unchanged because the missing row is the strongest performer among "
-            "those scored, not the weakest."
+            "Every shrinkage estimator and every factor estimator the race "
+            "produced has a median out-of-sample minimum-variance volatility at "
+            "least 10 percent below the sample covariance's, so the estimation-error "
+            "result holds in the direction theory predicts. The sample covariance "
+            "won no window and EWMA none either; EWMA is a weighting scheme rather "
+            "than a shrinkage or factor estimator and is reported beside them, not "
+            "scored. **A missing estimator fails the criterion**: a race that "
+            "silently drops a requested row is scoring a shorter list. The row that "
+            "was missing - XS-v1, which the old record showed as absent while the "
+            "verdict passed on the strength of a shorter list - came back on "
+            "2026-10-03. Two defects kept it out: "
+            "`efb.race.xs_supplier` read `fx.ewma_factor_cov`'s output as a "
+            "date-indexed stack of matrices and took one row of it, so the (17, 17) "
+            "block had 272 of 289 cells NaN and every window failed the finiteness "
+            "check, and `efb.build.rebuild_e4` never rebuilt the race at all, so "
+            "F4.3 was scoring an artifact written on 2026-09-20 that ended "
+            "2026-07-31 and predated every panel correction this branch makes. With "
+            "the block read as the matrix and the race rebuilt by the E4 build, "
+            "XS-v1 scores a median realized volatility of 0.089532 against the "
+            "sample covariance's 0.276707, a ratio of 0.323563, and the stored "
+            "verdict is pass because every ratio is below the 0.9 bound, not "
+            "because the list was short. `estimators_missing` names what was not "
+            "produced and `estimators_required` names what was asked for."
         ),
     }
 
@@ -2120,16 +2170,34 @@ def evaluate_e4_criteria(
                 held_out["(v) XS-v1 plus top 5 residual PCs"]
             ),
             "held_out_days": int(f44["days"].max()),
+            # the smallest row's day count: `held_out_days` is a maximum, so on
+            # its own it cannot tell a row measured on the whole window from a
+            # row measured on none of it
+            "held_out_days_min": int(f44["days"].min()),
+            # how many frozen descriptor cells a held-out day filled, averaged:
+            # rows (ii) and (v) read the frozen design, which is only complete
+            # for names with enough history at the frozen stamp
+            "frozen_names_filled_mean": float(f44["frozen_names_filled_mean"].max()),
         },
         "verdict": _verdict(pca_rolling >= xs_daily),
         "note": (
-            "Fails by 7.2 points on the comparison the criterion names, PCA "
-            "rolling against XS-v1 refitted daily, both measured on the same 503 "
-            "held-out days with sqrt(market cap) weights and exposures dated t "
-            "minus one. The useful reading is the opposite one: adding the top "
-            "three residual principal components to a frozen XS-v1 raises held "
-            "out R squared from 0.253997 to 0.292699, which is where the missing "
-            "factor structure shows up. Scored as measured."
+            "Fails by 7.3 points on the comparison the criterion names, PCA "
+            "rolling against XS-v1 refitted daily, both measured on the same "
+            "523 held-out days with sqrt(market cap) weights and exposures "
+            "dated t minus one. The useful reading is the opposite one: adding "
+            "the top three residual principal components to a frozen XS-v1 "
+            "raises held out R squared from 0.249958 to 0.287751, and the top "
+            "five to 0.306384, which is where the missing factor structure "
+            "shows up. Those two rows read NaN until 2026-10-03, with "
+            "`days = 0`: the harness required every name's frozen descriptor "
+            "row to be complete and returned nothing for the whole day when one "
+            "name was short, so the twelve names with no 12-month momentum or "
+            "no 252-day beta at the frozen stamp (BE, FDXF, HONA, P, Q, SNDK, "
+            "GEV, RDDT, SOLV, SW and the rest of the recent listings and "
+            "spin-offs) emptied every held-out day. A missing frozen "
+            "descriptor is now a zero row, which is the rule the published "
+            "design uses, and `frozen_names_filled_mean` records what that "
+            "cost per day. Scored as measured."
         ),
     }
 
@@ -2680,6 +2748,12 @@ def main_e4(data_root: Path = ROOT / "data") -> None:
         ROOT / "sprints" / "E4" / "RESULTS.json",
         sprint="E4",
         data_hash=e4_data_hash(data_root),
+        # the hash the record being replaced was measured on, so the revisions
+        # entry names what it moved from (E7's writer has carried this since the
+        # alpha refresh; E4's did not)
+        previous_data_hash=_previous_data_hash(
+            ROOT / "sprints" / "E4" / "RESULTS.json", e4_data_hash(data_root)
+        ),
         reference_values=e4_reference_values(data_root),
     )
     if any(block.get("n_changed") for block in check.values()):
@@ -2710,7 +2784,8 @@ E6_CRITERIA_TEXT = {
     ),
     "F6.5": (
         "New in E6: the residual factor exposure the instrument set cannot "
-        "reach, quantified per factor."
+        "reach, quantified per factor, with the design vintage the hedge was "
+        "built against stored beside it."
     ),
     "F6.4b": (
         "Registered in E8 Task 0b, not pre-registered: F6.4 is rerun "
@@ -2721,7 +2796,10 @@ E6_CRITERIA_TEXT = {
 }
 
 E6_THRESHOLDS = {
-    "F6.1": "every factor's post-FMP exposure below 1e-6 in absolute value",
+    "F6.1": (
+        "every factor's post-FMP exposure below 1e-6 in absolute value, read "
+        "through the row the next session carries"
+    ),
     "F6.2": "long-only seed book factor variance removed above 70%",
     "F6.3": "realized beta to Mkt-RF inside +/- 0.1 over 2018 to 2026",
     "F6.4": "headline numbers present for both models with the difference",
@@ -2775,9 +2853,20 @@ def evaluate_e6_criteria(
     criteria: dict[str, dict[str, Any]] = {}
 
     # F6.1. The FMP hedge on the seed books: every post-hedge exposure below
-    # 1e-6 in absolute value, and the idio share above 95%.
+    # 1e-6 in absolute value, and the idio share above 95%. The bound is read
+    # through **the row the next session carries**, not the design the hedge was
+    # built on: zero in the built design is true by construction and is not what
+    # the book earns. The two are the same row on an ordinary session and a
+    # different one on a month end, which is where the hedge is left with basis
+    # exposure.
     fmp_exposures = exposures[["book", "date", "factor", "exposure_after_fmp"]]
     worst = float(fmp_exposures["exposure_after_fmp"].abs().max())
+    next_values = exposures["exposure_after_fmp_next_row"]
+    measured_next = next_values.dropna()
+    worst_next = (
+        float(measured_next.abs().max()) if len(measured_next) else float("nan")
+    )
+    n_without_next_row = int(next_values.isna().sum())
     worst_capped = float(exposures["exposure_after_fmp_capped"].abs().max())
     fmp_metrics = metrics.loc[metrics["method"] == "fmp"]
     mean_idio_share = float(fmp_metrics["idio_share_after"].mean())
@@ -2786,6 +2875,23 @@ def evaluate_e6_criteria(
         "threshold": E6_THRESHOLDS["F6.1"],
         "stored_numbers": {
             "worst_abs_exposure_after_fmp": worst,
+            "worst_abs_exposure_after_fmp_next_row": worst_next,
+            "mean_abs_exposure_after_fmp_next_row": (
+                float(measured_next.abs().mean())
+                if len(measured_next)
+                else float("nan")
+            ),
+            "worst_next_row_distance": float(exposures["next_row_distance"].max()),
+            "n_dates_scored_on_the_next_row": int(
+                exposures.loc[next_values.notna(), "date"].nunique()
+            ),
+            "n_exposure_rows_without_a_next_row": n_without_next_row,
+            "design_vintages": {
+                str(vintage): int(count)
+                for vintage, count in exposures.groupby("design_vintage")["date"]
+                .nunique()
+                .items()
+            },
             "mean_idio_share_after_fmp": mean_idio_share,
             "worst_abs_exposure_after_fmp_capped_stored": worst_capped,
             "mean_fmp_name_count": float(fmp_metrics["name_count"].mean()),
@@ -2794,9 +2900,33 @@ def evaluate_e6_criteria(
             ),
             "n_fmp_dates": int(fmp_exposures["date"].nunique()),
         },
-        "verdict": _verdict(worst < 1e-6 and mean_idio_share > 0.95),
+        "verdict": _verdict(
+            worst < 1e-6 and worst_next < 1e-6 and mean_idio_share > 0.95
+        ),
         "note": (
-            "The exact in-model FMP hedge is zero by construction; the "
+            "Fails. The exact in-model FMP hedge is zero in the design it was "
+            "built against, which is what `worst_abs_exposure_after_fmp` "
+            "records: zero by construction, not a result. Read through the row "
+            "the next session carries - the row the book actually earns - the "
+            "same book is left with "
+            "`worst_abs_exposure_after_fmp_next_row`, 0.140820 on the worst of "
+            "the 176 scored dates and 0.001605 on average, against a 1e-6 bound. "
+            "The two rows are the same object on an ordinary session and "
+            "different ones on a month end, and on this tree they are never the "
+            "next session's row at all: every one of the 176 dates carries a "
+            "`stale` vintage, because a research tree publishes descriptors at "
+            "month ends plus the final session (`build._descriptor_frame`), so "
+            "the row for the session after a month end does not exist and "
+            "`race.next_descriptor_design` falls back to the row dated the "
+            "close. Each hedge is therefore one session behind by construction, "
+            "and `worst_next_row_distance` records how far behind: 3.862012 at "
+            "the worst date, over the names the two rows share. The month-end "
+            "pair is the documented example of the same gap, measured on a live "
+            "tree: 2026-07-30 to 2026-07-31 the row the hedge was built on sits "
+            "2.291 from the published row and the hedged book is left with "
+            "3.82e-03 of exposure, against 1e-15 and 3e-14 for 2026-09-17 to "
+            "2026-09-18. `design_vintages` names the row every hedge was built "
+            "against, so the gap is attributable rather than asserted. The "
             "quarterly capped FMP weights keep cap drift, which is basis risk "
             "and is stored beside the criterion number."
         ),
@@ -3001,11 +3131,23 @@ def evaluate_e6_criteria(
         "threshold": E6_THRESHOLDS["F6.5"],
         "stored_numbers": {
             "mean_abs_exposure_after_instrument_hedge": residual_dict,
+            "design_vintages": {
+                str(vintage): int(count)
+                for vintage, count in exposures.groupby("design_vintage")["date"]
+                .nunique()
+                .items()
+            },
+            "worst_next_row_distance": float(exposures["next_row_distance"].max()),
         },
         "verdict": _verdict(bool(residual_dict)),
         "note": (
             "Averaged over the long-only seed book's rebalance dates; the "
-            "instrument set cannot span every factor and this is the gap."
+            "instrument set cannot span every factor and this is the gap. The "
+            "exposures are read in the design the hedge was built against, so "
+            "the gap is the instrument set's own, and the vintage each hedge "
+            "used is stored beside it: F6.1 is the one that is re-read through "
+            "the row the next session carries, because that is the row the book "
+            "earns."
         ),
     }
 
@@ -3075,8 +3217,15 @@ def main_e6(data_root: Path = ROOT / "data") -> None:
 
 E7_CRITERIA_TEXT = {
     "F7.1": (
-        "Shift audit: moving every signal forward by one day flips or kills "
-        "its IC. This proves the absence of leakage."
+        "Shift audit: every signal that reaches the audit is rebuilt with its "
+        "inputs moved forward by one day and its IC recomputed against the "
+        "same-day return, and the before and after numbers are stored per "
+        "signal. The criterion is that no *admitted* signal survives the shift; "
+        "a signal the multiple-testing gate labels NULL is not admitted and "
+        'therefore says nothing either way. Read it as "the audit ran and '
+        'nothing it admitted leaks", never as evidence about the signals '
+        "themselves: with every signal NULL the criterion holds vacuously, and "
+        "the verdict on the signals is F7.3's, not this one's."
     ),
     "F7.2": (
         "Factor-neutral momentum IC mean above 0.02 with t above 2, "
@@ -3110,7 +3259,10 @@ E7_CRITERIA_TEXT = {
 }
 
 E7_THRESHOLDS = {
-    "F7.1": "no admitted signal flags leakage in the shift audit",
+    "F7.1": (
+        "the audit ran for every signal it tested and no admitted signal flags "
+        "leakage; a NULL signal is not evidence either way"
+    ),
     "F7.2": "neutral momentum IC mean > 0.02 and t > 2, both periods stored",
     "F7.3": "below-hurdle signals labeled NULL; ledger rows >= runs",
     "F7.4": "stored per signal under both models with the difference",
@@ -3278,7 +3430,7 @@ def evaluate_e7_criteria(
     for line in ledger.splitlines():
         if line.startswith("| ") and not line.startswith("| run_id"):
             cells = [cell.strip() for cell in line.strip("|").split("|")]
-            if len(cells) >= 10:
+            if len(cells) >= 10 and not all(set(cell) <= set("-: ") for cell in cells):
                 n_runs += 1
                 signal_name = cells[1]
                 verdict = cells[9]
@@ -3703,6 +3855,7 @@ E8_ARTIFACTS = [
     "portfolios/persistent_proportional.parquet",
     "portfolios/e8_realized_ic.parquet",
     "portfolios/e8_neff.parquet",
+    "portfolios/traded_book.parquet",
 ] + [
     f"portfolios/{name}.parquet"
     for name in (
@@ -3715,6 +3868,12 @@ E8_ARTIFACTS = [
         "shrunk",
     )
 ]
+
+
+def _read_traded_book(root: Path) -> pd.DataFrame:
+    """The design book as the live loop trades it, written by the E8/E10 builds."""
+    path = root / "portfolios" / "traded_book.parquet"
+    return pd.read_parquet(path) if path.exists() else pd.DataFrame()
 
 
 def compute_e8_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]:
@@ -3780,6 +3939,7 @@ def compute_e8_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
         "neff": neff,
         "f81b": f81b,
         "f87": f87,
+        "traded_book": _read_traded_book(root),
     }
 
 
@@ -3803,6 +3963,7 @@ def evaluate_e8_criteria(
     neff: pd.DataFrame | None = None,
     f81b: pd.DataFrame | None = None,
     f87: pd.DataFrame | None = None,
+    traded_book: pd.DataFrame | None = None,
 ) -> dict[str, dict[str, Any]]:
     """F8.1 to F8.6 plus F8.1b and F8.7, each with a stored number."""
     criteria: dict[str, dict[str, Any]] = {}
@@ -4132,6 +4293,10 @@ def evaluate_e8_criteria(
         ),
     }
 
+    if traded_book is not None and not traded_book.empty and "F8.5" in criteria:
+        criteria["F8.5"]["stored_numbers"]["traded_book"] = {
+            key: float(value) for key, value in traded_book.iloc[0].items()
+        }
     return criteria
 
 
@@ -4217,6 +4382,7 @@ E9_ARTIFACTS = [
     "costs/capacity_phi.parquet",
     "costs/capacity_phi_halving.parquet",
     "costs/turnover_tradeoff.parquet",
+    "costs/e11_constraints.parquet",
 ]
 
 
@@ -4250,6 +4416,11 @@ def compute_e9_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any]
             )
         ),
         "tradeoff": pd.read_parquet(root / "costs" / "turnover_tradeoff.parquet"),
+        "e11_constraints": (
+            pd.read_parquet(root / "costs" / "e11_constraints.parquet")
+            if (root / "costs" / "e11_constraints.parquet").exists()
+            else pd.DataFrame()
+        ),
     }
 
 
@@ -4272,6 +4443,7 @@ def evaluate_e9_criteria(
     halving: pd.DataFrame,
     sensitivity: pd.DataFrame,
     tradeoff: pd.DataFrame,
+    e11_constraints: pd.DataFrame | None = None,
 ) -> dict[str, dict[str, Any]]:
     """F9.1 to F9.5, each with a stored number and a verdict."""
     criteria: dict[str, dict[str, Any]] = {}
@@ -4303,6 +4475,11 @@ def evaluate_e9_criteria(
             "n_monotonicity_violations_net_mean": mean_violations,
             "n_curves": n_curves,
             "halving_aum_by_rho_k": halving_numbers,
+            "e11_constraints": (
+                {key: float(value) for key, value in e11_constraints.iloc[0].items()}
+                if e11_constraints is not None and not e11_constraints.empty
+                else {}
+            ),
         },
         "verdict": _verdict(
             sharpe_violations == 0
@@ -4562,6 +4739,7 @@ E10_ARTIFACTS = [
     "allocation/voltarget_daily.parquet",
     "allocation/stoploss.parquet",
     "allocation/regime.parquet",
+    "portfolios/traded_book.parquet",
 ]
 
 
@@ -4574,6 +4752,7 @@ def compute_e10_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any
         "voltarget_daily": pd.DataFrame(),
         "stoploss": pd.DataFrame(),
         "regime": pd.DataFrame(),
+        "traded_book": pd.DataFrame(),
     }
     out: dict[str, Any] = {}
     for key, rel in (
@@ -4586,6 +4765,7 @@ def compute_e10_from_artifacts(data_root: Path = ROOT / "data") -> dict[str, Any
     ):
         path = root / rel
         out[key] = pd.read_parquet(path) if path.exists() else empty[key]
+    out["traded_book"] = _read_traded_book(root)
     return out
 
 
@@ -4608,13 +4788,14 @@ def evaluate_e10_criteria(
     voltarget_daily: pd.DataFrame,
     stoploss: pd.DataFrame,
     regime: pd.DataFrame,
+    traded_book: pd.DataFrame | None = None,
 ) -> dict[str, dict[str, Any]]:
     """F10.1 to F10.3b, each with a stored number and a verdict."""
     criteria: dict[str, dict[str, Any]] = {}
 
     # F10.1. The simulated drawdown distribution against the analytical
     # median, at the median, with the Gaussian control beside it.
-    f101_numbers: dict[str, float | int] = {}
+    f101_numbers: dict[str, Any] = {}
     if not drawdown.empty:
         row = drawdown.iloc[0]
         f101_numbers = {
@@ -4623,6 +4804,10 @@ def evaluate_e10_criteria(
             "relative_gap_at_median": float(row["relative_gap_at_median"]),
             "gaussian_median_drawdown": float(row["gaussian_median_drawdown"]),
             "n_bootstrap": int(row["n_bootstrap"]),
+        }
+    if traded_book is not None and not traded_book.empty:
+        f101_numbers["traded_book"] = {
+            key: float(value) for key, value in traded_book.iloc[0].items()
         }
     gap = float(f101_numbers.get("relative_gap_at_median", float("nan")))
     criteria["F10.1"] = {

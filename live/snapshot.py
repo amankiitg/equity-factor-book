@@ -44,6 +44,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import math
 import os
 from collections.abc import Callable
@@ -54,6 +55,8 @@ from typing import Any
 import pandas as pd
 
 from live import breadth, construction_table, staleness, store
+
+logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 SNAPSHOT_ENV = "EFB_SNAPSHOT"
@@ -280,6 +283,22 @@ def build(
             "n_eff_full_book": _number(proposal.get("n_eff_full_book")),
             "kept_label": breadth.BOOK_LABEL,
             "full_book_label": breadth.FULL_BOOK_LABEL,
+            # The names the risk model could not measure, which never reached the
+            # sizing, with the reason each one left. The manifest has carried them
+            # and their count since the drop was written and only the evening's
+            # message ever saw them, so a page reader could see a book of 180 names
+            # and not which names the book was short of. The count comes with them
+            # because the two are one statement: `universe = excluded + these +
+            # the book`.
+            "n_dropped_no_risk": _number(proposal.get("n_dropped_no_risk")),
+            "dropped_no_risk": [
+                {
+                    "ticker": str(entry.get("ticker")),
+                    "reason": str(entry.get("reason") or ""),
+                }
+                for entry in (proposal.get("dropped_no_risk") or [])
+                if isinstance(entry, dict) and entry.get("ticker")
+            ],
         },
         "book": {
             "n_names": len(names),
@@ -350,6 +369,15 @@ def build(
             key: _number((reconciliation or {}).get(key))
             for key in (
                 "intended_notional",
+                # The two halves of the figure above, split by what the broker was
+                # actually sent: a leg with no broker id never left the run, so the
+                # sized figure and the sent one are different questions and the page
+                # asked the first while the email answered the second. Read from the
+                # caller's own summary because the day's row has no column for them;
+                # absent (null) on a document whose writer did not know them, which is
+                # every snapshot published before this key existed.
+                "sent_notional",
+                "unsent_notional",
                 "filled_notional",
                 "realized_annual_vol",
                 "expected_cost_bps",
@@ -516,7 +544,38 @@ def _bridge_block(raw: Any) -> dict[str, Any]:
         "opened": _number(block.get("opened")),
         "exited": _number(block.get("exited")),
         "changed": _number(block.get("changed")),
+        # The continuing legs with nothing sent, and the `under_minimum` subset of
+        # them the $250 floor explains: separate, because on 2026-10-08 they were 24
+        # and 23 and the twenty-fourth was a broker refusal. `skipped_continuing`
+        # itemises the ones the floor does not explain, with the broker's code.
+        "not_sent_continuing": _number(block.get("not_sent_continuing")),
         "under_minimum": _number(block.get("under_minimum")),
+        "under_minimum_tickers": [
+            str(name) for name in (block.get("under_minimum_tickers") or [])
+        ],
+        "skipped_continuing": [
+            {"ticker": str(item.get("ticker")), "reason": str(item.get("reason") or "")}
+            for item in (block.get("skipped_continuing") or [])
+            if isinstance(item, dict) and item.get("ticker")
+        ],
+        # A name that left the book with no leg sent, and one that entered it, each
+        # with the code the run recorded - the two terms that make the bridge's
+        # arithmetic hold on a night the broker refused a leg or dropped a symbol.
+        "exited_without_order": [
+            {"ticker": str(item.get("ticker")), "reason": str(item.get("reason") or "")}
+            for item in (block.get("exited_without_order") or [])
+            if isinstance(item, dict) and item.get("ticker")
+        ],
+        "opened_without_order": [
+            {"ticker": str(item.get("ticker")), "reason": str(item.get("reason") or "")}
+            for item in (block.get("opened_without_order") or [])
+            if isinstance(item, dict) and item.get("ticker")
+        ],
+        "arrived_without_order": [
+            {"ticker": str(item.get("ticker"))}
+            for item in (block.get("arrived_without_order") or [])
+            if isinstance(item, dict) and item.get("ticker")
+        ],
         "orders_sent": _number(block.get("orders_sent")),
         "filled": _number(block.get("filled")),
         "did_not_fill": _number(block.get("did_not_fill")),
@@ -525,6 +584,15 @@ def _bridge_block(raw: Any) -> dict[str, Any]:
         "reversals_pending": [
             str(name) for name in (block.get("reversals_pending") or [])
         ],
+        # The previous close's deferral list, and null when the writer could not read
+        # the document that carries it. The list itself is passed through when it is
+        # one - including empty, which is the previous close having deferred nothing -
+        # so the page can tell "no deferrals" from "not read".
+        "previous_reversals_pending": (
+            None
+            if block.get("previous_reversals_pending") is None
+            else [str(name) for name in (block.get("previous_reversals_pending") or [])]
+        ),
         "removed_without_order": [
             {
                 "ticker": str(item.get("ticker")),
@@ -1060,6 +1128,43 @@ PAGE_BOOK_MATCH = "match"
 PAGE_BOOK_EMPTY = "empty"
 PAGE_BOOK_SHORT = "short"
 PAGE_BOOK_UNREAD = "unread"
+
+
+def published_bridge(
+    *,
+    key: str = LATEST_KEY,
+    settings: dict[str, str] | None = None,
+    getter: Callable[..., Any] | None = None,
+) -> tuple[str | None, dict[str, Any] | None]:
+    """The close and the bridge block of the document that is up, or no document.
+
+    The evening's own deferral list explains the gap in the *next* read: the names
+    missing from tonight's account were closed by the previous close's evening, and
+    that list was published in the previous close's own document. The snapshot for
+    tonight carries this close's list, so the previous one is read here and republished
+    beside it rather than reconstructed from a date.
+
+    Returns `(target_close, bridge)`. A read that cannot be made is `(None, None)`,
+    which the caller publishes as an unknown rather than as an empty list: a page that
+    could not look is not a page that found nothing.
+    """
+    try:
+        payload = json.loads(get_object_text(key, settings=settings, getter=getter))
+    except Exception as exc:  # noqa: BLE001 - the caller publishes the unknown
+        logger.warning(
+            "the published document could not be read: %s", type(exc).__name__
+        )
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    bridge = payload.get("bridge")
+    close = payload.get("target_close")
+    # The date as the document writes it, not through `_iso`: the caller compares it
+    # with the close it is publishing, and a document whose close is "2026-10-08"
+    # must compare equal to that string rather than to a timestamp of it.
+    return (str(close)[:10] if close else None), (
+        bridge if isinstance(bridge, dict) else None
+    )
 
 
 def check_published_book(

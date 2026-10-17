@@ -95,9 +95,28 @@ NAMES: tuple[str, ...] = (
 )
 
 
+# The documents the page's own work added beside the writer's set: the 2026-10-14
+# evening that stopped before it sized a book, the morning that followed it, and the
+# 2026-10-13 evening the morning republished. They are records of real runs fetched
+# from the bucket, not writer output, which is why they are declared here rather than
+# built here. `tests/test_e11_web_fixtures.py` asserts that nothing but these sits
+# beside the writer's twelve, so a stray file in either group still fails, and the
+# byte check stays on the files this script produces.
+DATED_DOCUMENTS: tuple[str, ...] = (
+    "snapshot_2026-10-13_evening.json",
+    "snapshot_2026-10-14_error.json",
+    "snapshot_2026-10-14_morning.json",
+)
+
+
 def manifest() -> dict[str, Any]:
-    """The 09-21 proposal as the evening job builds it today."""
-    return evening_job.build_proposal(store=False)
+    """The 09-21 proposal as the evening job builds it today.
+
+    `as_of` is stated rather than left to the tree: left unset the job sizes the
+    panel's own last session, which moves with every rebuild, and the fixture
+    would then narrate the close it names while showing a later book.
+    """
+    return evening_job.build_proposal(store=False, as_of=pd.Timestamp(CLOSE))
 
 
 def bridge_2026_10_05(*, drop_from_account: str = "") -> dict[str, Any]:

@@ -1,10 +1,10 @@
 {
- "idio_momentum": {
+ "momentum_12_1": {
   "verdict": "NULL",
   "deciding_number": {
-   "neutral_ic_oos_t": -0.5339892859029778,
-   "oos_spread_sharpe": 0.3950483266776461,
-   "break_even_cost_bp_per_rebalance": 6.068164056463462
+   "neutral_ic_oos_t": -2.1032966703339557,
+   "oos_spread_sharpe": 0.34905077956488684,
+   "break_even_cost_bp_per_rebalance": 7.398222668547291
   },
   "answers": {
    "Q1": {
@@ -21,17 +21,17 @@
     "question": "Does the basic empirical relationship exist in-sample, factor-neutral?",
     "answer": false,
     "evidence": {
-     "neutral_ic_in_sample_mean": -0.0016556165767887094,
-     "neutral_ic_in_sample_t": -0.22418320729173769
+     "neutral_ic_in_sample_mean": -0.003441121084145504,
+     "neutral_ic_in_sample_t": -0.40247854996963744
     }
    },
    "Q4": {
     "question": "Does it survive simple out-of-sample testing (2021 to 2026) and the deflated-Sharpe hurdle?",
-    "answer": false,
+    "answer": true,
     "evidence": {
-     "neutral_ic_oos_mean": -0.005412558463074396,
-     "neutral_ic_oos_t": -0.5339892859029778,
-     "oos_spread_sharpe": 0.3950483266776461,
+     "neutral_ic_oos_mean": -0.02248028238287326,
+     "neutral_ic_oos_t": -2.1032966703339557,
+     "oos_spread_sharpe": 0.34905077956488684,
      "ledger_verdict": "PASS"
     }
    },
@@ -39,7 +39,7 @@
     "question": "Are the results economically meaningful after a rough cost estimate (break-even cost above realistic cost)?",
     "answer": true,
     "evidence": {
-     "break_even_cost_bp_per_rebalance": 6.068164056463462,
+     "break_even_cost_bp_per_rebalance": 7.398222668547291,
      "realistic_cost_bp_per_rebalance": 5.0
     }
    },
@@ -47,26 +47,26 @@
     "question": "Are the results robust to universe definition, weighting scheme and horizon?",
     "answer": "partially: equal-weight quintiles only; the decay range is stored",
     "evidence": {
-     "ic_h1_mean": 0.01210198660523347,
-     "ic_h63_mean": 0.0070807916417694825
+     "ic_h1_mean": 0.015511812635332195,
+     "ic_h63_mean": 0.005773165757285576
     }
    },
    "Q7": {
     "question": "Is there a plausible implementation path (turnover, capacity, whole shares)?",
     "answer": "yes, on paper",
     "evidence": {
-     "turnover_share_per_rebalance": 0.3829145549088867,
-     "hit_rate": 0.3513218860724993
+     "turnover_share_per_rebalance": 0.3897077271258087,
+     "hit_rate": 0.5372729737056112
     }
    }
   }
  },
- "low_residual_volatility": {
+ "short_term_reversal": {
   "verdict": "NULL",
   "deciding_number": {
-   "neutral_ic_oos_t": 0.35830464895282665,
-   "oos_spread_sharpe": -0.8705203979608366,
-   "break_even_cost_bp_per_rebalance": -20.094597258830312
+   "neutral_ic_oos_t": -0.40810007057937364,
+   "oos_spread_sharpe": -0.46102637905388394,
+   "break_even_cost_bp_per_rebalance": -3.8031685530311274
   },
   "answers": {
    "Q1": {
@@ -83,17 +83,17 @@
     "question": "Does the basic empirical relationship exist in-sample, factor-neutral?",
     "answer": false,
     "evidence": {
-     "neutral_ic_in_sample_mean": 0.0008650275010158255,
-     "neutral_ic_in_sample_t": 0.12342361232346853
+     "neutral_ic_in_sample_mean": 0.004992022182433401,
+     "neutral_ic_in_sample_t": 0.9934164342423427
     }
    },
    "Q4": {
     "question": "Does it survive simple out-of-sample testing (2021 to 2026) and the deflated-Sharpe hurdle?",
     "answer": false,
     "evidence": {
-     "neutral_ic_oos_mean": 0.003477319943354612,
-     "neutral_ic_oos_t": 0.35830464895282665,
-     "oos_spread_sharpe": -0.8705203979608366,
+     "neutral_ic_oos_mean": -0.003253004987097177,
+     "neutral_ic_oos_t": -0.40810007057937364,
+     "oos_spread_sharpe": -0.46102637905388394,
      "ledger_verdict": "NULL"
     }
    },
@@ -101,7 +101,7 @@
     "question": "Are the results economically meaningful after a rough cost estimate (break-even cost above realistic cost)?",
     "answer": false,
     "evidence": {
-     "break_even_cost_bp_per_rebalance": -20.094597258830312,
+     "break_even_cost_bp_per_rebalance": -3.8031685530311274,
      "realistic_cost_bp_per_rebalance": 5.0
     }
    },
@@ -109,26 +109,26 @@
     "question": "Are the results robust to universe definition, weighting scheme and horizon?",
     "answer": "partially: equal-weight quintiles only; the decay range is stored",
     "evidence": {
-     "ic_h1_mean": -0.0013998078824058564,
-     "ic_h63_mean": -0.05450481202401535
+     "ic_h1_mean": 0.011922694972819337,
+     "ic_h63_mean": 0.010594818818023554
     }
    },
    "Q7": {
     "question": "Is there a plausible implementation path (turnover, capacity, whole shares)?",
     "answer": "yes, on paper",
     "evidence": {
-     "turnover_share_per_rebalance": 0.31788710073440063,
-     "hit_rate": 0.2788225674570728
+     "turnover_share_per_rebalance": 0.785085567954313,
+     "hit_rate": 0.4478178368121442
     }
    }
   }
  },
- "momentum_12_1": {
+ "idio_momentum": {
   "verdict": "NULL",
   "deciding_number": {
-   "neutral_ic_oos_t": -1.6387118619136074,
-   "oos_spread_sharpe": 0.270915713623874,
-   "break_even_cost_bp_per_rebalance": 5.7059108245576775
+   "neutral_ic_oos_t": -0.9359203024046759,
+   "oos_spread_sharpe": 0.5315029437988292,
+   "break_even_cost_bp_per_rebalance": 7.996883140729537
   },
   "answers": {
    "Q1": {
@@ -145,17 +145,17 @@
     "question": "Does the basic empirical relationship exist in-sample, factor-neutral?",
     "answer": false,
     "evidence": {
-     "neutral_ic_in_sample_mean": -0.006059038694501872,
-     "neutral_ic_in_sample_t": -0.7074147838845868
+     "neutral_ic_in_sample_mean": -0.0014891162453627258,
+     "neutral_ic_in_sample_t": -0.21292436739317244
     }
    },
    "Q4": {
     "question": "Does it survive simple out-of-sample testing (2021 to 2026) and the deflated-Sharpe hurdle?",
     "answer": false,
     "evidence": {
-     "neutral_ic_oos_mean": -0.01813823913104381,
-     "neutral_ic_oos_t": -1.6387118619136074,
-     "oos_spread_sharpe": 0.270915713623874,
+     "neutral_ic_oos_mean": -0.00929741989177705,
+     "neutral_ic_oos_t": -0.9359203024046759,
+     "oos_spread_sharpe": 0.5315029437988292,
      "ledger_verdict": "PASS"
     }
    },
@@ -163,7 +163,7 @@
     "question": "Are the results economically meaningful after a rough cost estimate (break-even cost above realistic cost)?",
     "answer": true,
     "evidence": {
-     "break_even_cost_bp_per_rebalance": 5.7059108245576775,
+     "break_even_cost_bp_per_rebalance": 7.996883140729537,
      "realistic_cost_bp_per_rebalance": 5.0
     }
    },
@@ -171,16 +171,140 @@
     "question": "Are the results robust to universe definition, weighting scheme and horizon?",
     "answer": "partially: equal-weight quintiles only; the decay range is stored",
     "evidence": {
-     "ic_h1_mean": 0.015076440675165859,
-     "ic_h63_mean": 0.00824056970935707
+     "ic_h1_mean": 0.012538259468988046,
+     "ic_h63_mean": 0.0043845625515757216
     }
    },
    "Q7": {
     "question": "Is there a plausible implementation path (turnover, capacity, whole shares)?",
     "answer": "yes, on paper",
     "evidence": {
-     "turnover_share_per_rebalance": 0.38971395115963464,
-     "hit_rate": 0.5320250749523031
+     "turnover_share_per_rebalance": 0.3852729810306933,
+     "hit_rate": 0.5294117647058824
+    }
+   }
+  }
+ },
+ "low_residual_volatility": {
+  "verdict": "NULL",
+  "deciding_number": {
+   "neutral_ic_oos_t": 0.5944681531376191,
+   "oos_spread_sharpe": -0.7794388020678104,
+   "break_even_cost_bp_per_rebalance": -17.919140034622124
+  },
+  "answers": {
+   "Q1": {
+    "question": "Is the hypothesis clearly defined, with an economic reason the information should exist?",
+    "answer": "yes",
+    "evidence": "the hypothesis and rationale live in the signal report"
+   },
+   "Q2": {
+    "question": "Is the data behind the signal reliable and point-in-time (E1 ledger flags)?",
+    "answer": "yes with the survivor-only universe caveat",
+    "evidence": "E1 returns with the E2 exclusions; the shift audit cleared the signal"
+   },
+   "Q3": {
+    "question": "Does the basic empirical relationship exist in-sample, factor-neutral?",
+    "answer": false,
+    "evidence": {
+     "neutral_ic_in_sample_mean": 0.0005941691886079949,
+     "neutral_ic_in_sample_t": 0.08288667883654931
+    }
+   },
+   "Q4": {
+    "question": "Does it survive simple out-of-sample testing (2021 to 2026) and the deflated-Sharpe hurdle?",
+    "answer": false,
+    "evidence": {
+     "neutral_ic_oos_mean": 0.0055664219707620664,
+     "neutral_ic_oos_t": 0.5944681531376191,
+     "oos_spread_sharpe": -0.7794388020678104,
+     "ledger_verdict": "NULL"
+    }
+   },
+   "Q5": {
+    "question": "Are the results economically meaningful after a rough cost estimate (break-even cost above realistic cost)?",
+    "answer": false,
+    "evidence": {
+     "break_even_cost_bp_per_rebalance": -17.919140034622124,
+     "realistic_cost_bp_per_rebalance": 5.0
+    }
+   },
+   "Q6": {
+    "question": "Are the results robust to universe definition, weighting scheme and horizon?",
+    "answer": "partially: equal-weight quintiles only; the decay range is stored",
+    "evidence": {
+     "ic_h1_mean": -0.0015265126862455325,
+     "ic_h63_mean": -0.054161857503615636
+    }
+   },
+   "Q7": {
+    "question": "Is there a plausible implementation path (turnover, capacity, whole shares)?",
+    "answer": "yes, on paper",
+    "evidence": {
+     "turnover_share_per_rebalance": 0.3172584546745854,
+     "hit_rate": 0.4497153700189753
+    }
+   }
+  }
+ },
+ "short_interest": {
+  "verdict": "NULL",
+  "deciding_number": {
+   "neutral_ic_oos_t": 2.289662320428875,
+   "oos_spread_sharpe": 0.9706935651500626,
+   "break_even_cost_bp_per_rebalance": 24.699390195662637
+  },
+  "answers": {
+   "Q1": {
+    "question": "Is the hypothesis clearly defined, with an economic reason the information should exist?",
+    "answer": "yes",
+    "evidence": "the hypothesis and rationale live in the signal report"
+   },
+   "Q2": {
+    "question": "Is the data behind the signal reliable and point-in-time (E1 ledger flags)?",
+    "answer": "yes with the survivor-only universe caveat",
+    "evidence": "E1 returns with the E2 exclusions; the shift audit cleared the signal"
+   },
+   "Q3": {
+    "question": "Does the basic empirical relationship exist in-sample, factor-neutral?",
+    "answer": false,
+    "evidence": {
+     "neutral_ic_in_sample_mean": -0.011155815296144534,
+     "neutral_ic_in_sample_t": -0.89997917433158
+    }
+   },
+   "Q4": {
+    "question": "Does it survive simple out-of-sample testing (2021 to 2026) and the deflated-Sharpe hurdle?",
+    "answer": false,
+    "evidence": {
+     "neutral_ic_oos_mean": 0.017022664317344664,
+     "neutral_ic_oos_t": 2.289662320428875,
+     "oos_spread_sharpe": 0.9706935651500626,
+     "ledger_verdict": "NULL"
+    }
+   },
+   "Q5": {
+    "question": "Are the results economically meaningful after a rough cost estimate (break-even cost above realistic cost)?",
+    "answer": true,
+    "evidence": {
+     "break_even_cost_bp_per_rebalance": 24.699390195662637,
+     "realistic_cost_bp_per_rebalance": 5.0
+    }
+   },
+   "Q6": {
+    "question": "Are the results robust to universe definition, weighting scheme and horizon?",
+    "answer": "partially: equal-weight quintiles only; the decay range is stored",
+    "evidence": {
+     "ic_h1_mean": 0.0034849942637068367,
+     "ic_h63_mean": 0.015710988332883896
+    }
+   },
+   "Q7": {
+    "question": "Is there a plausible implementation path (turnover, capacity, whole shares)?",
+    "answer": "yes, on paper",
+    "evidence": {
+     "turnover_share_per_rebalance": 0.1457407163782301,
+     "hit_rate": 0.3730118009235505
     }
    }
   }
@@ -188,8 +312,8 @@
  "post_earnings_drift": {
   "verdict": "NULL",
   "deciding_number": {
-   "neutral_ic_oos_t": 1.0343805301874354,
-   "oos_spread_sharpe": 0.03541677134856494,
+   "neutral_ic_oos_t": 0.9993833680130515,
+   "oos_spread_sharpe": 0.07094410601680795,
    "break_even_cost_bp_per_rebalance": NaN
   },
   "answers": {
@@ -207,17 +331,17 @@
     "question": "Does the basic empirical relationship exist in-sample, factor-neutral?",
     "answer": false,
     "evidence": {
-     "neutral_ic_in_sample_mean": 0.0085411944603204,
-     "neutral_ic_in_sample_t": 0.8459522314823931
+     "neutral_ic_in_sample_mean": 0.005885735674135158,
+     "neutral_ic_in_sample_t": 0.5462413949521228
     }
    },
    "Q4": {
     "question": "Does it survive simple out-of-sample testing (2021 to 2026) and the deflated-Sharpe hurdle?",
     "answer": false,
     "evidence": {
-     "neutral_ic_oos_mean": 0.011988216932803376,
-     "neutral_ic_oos_t": 1.0343805301874354,
-     "oos_spread_sharpe": 0.03541677134856494,
+     "neutral_ic_oos_mean": 0.010625567101427782,
+     "neutral_ic_oos_t": 0.9993833680130515,
+     "oos_spread_sharpe": 0.07094410601680795,
      "ledger_verdict": "PASS"
     }
    },
@@ -233,8 +357,8 @@
     "question": "Are the results robust to universe definition, weighting scheme and horizon?",
     "answer": "partially: equal-weight quintiles only; the decay range is stored",
     "evidence": {
-     "ic_h1_mean": 0.12398597114864914,
-     "ic_h63_mean": 0.07138201560760166
+     "ic_h1_mean": 0.12325213294828692,
+     "ic_h63_mean": 0.07139606083604717
     }
    },
    "Q7": {
@@ -242,131 +366,7 @@
     "answer": "yes, on paper",
     "evidence": {
      "turnover_share_per_rebalance": NaN,
-     "hit_rate": 0.3951612903225806
-    }
-   }
-  }
- },
- "short_interest": {
-  "verdict": "NULL",
-  "deciding_number": {
-   "neutral_ic_oos_t": 2.103475390833146,
-   "oos_spread_sharpe": 0.855373158848775,
-   "break_even_cost_bp_per_rebalance": 21.0247968874831
-  },
-  "answers": {
-   "Q1": {
-    "question": "Is the hypothesis clearly defined, with an economic reason the information should exist?",
-    "answer": "yes",
-    "evidence": "the hypothesis and rationale live in the signal report"
-   },
-   "Q2": {
-    "question": "Is the data behind the signal reliable and point-in-time (E1 ledger flags)?",
-    "answer": "yes with the survivor-only universe caveat",
-    "evidence": "E1 returns with the E2 exclusions; the shift audit cleared the signal"
-   },
-   "Q3": {
-    "question": "Does the basic empirical relationship exist in-sample, factor-neutral?",
-    "answer": false,
-    "evidence": {
-     "neutral_ic_in_sample_mean": -0.011039272277854208,
-     "neutral_ic_in_sample_t": -0.8720571855662244
-    }
-   },
-   "Q4": {
-    "question": "Does it survive simple out-of-sample testing (2021 to 2026) and the deflated-Sharpe hurdle?",
-    "answer": false,
-    "evidence": {
-     "neutral_ic_oos_mean": 0.01581548079943466,
-     "neutral_ic_oos_t": 2.103475390833146,
-     "oos_spread_sharpe": 0.855373158848775,
-     "ledger_verdict": "NULL"
-    }
-   },
-   "Q5": {
-    "question": "Are the results economically meaningful after a rough cost estimate (break-even cost above realistic cost)?",
-    "answer": true,
-    "evidence": {
-     "break_even_cost_bp_per_rebalance": 21.0247968874831,
-     "realistic_cost_bp_per_rebalance": 5.0
-    }
-   },
-   "Q6": {
-    "question": "Are the results robust to universe definition, weighting scheme and horizon?",
-    "answer": "partially: equal-weight quintiles only; the decay range is stored",
-    "evidence": {
-     "ic_h1_mean": 0.002677266803264082,
-     "ic_h63_mean": 0.013702276197366737
-    }
-   },
-   "Q7": {
-    "question": "Is there a plausible implementation path (turnover, capacity, whole shares)?",
-    "answer": "yes, on paper",
-    "evidence": {
-     "turnover_share_per_rebalance": 0.14714828609429537,
-     "hit_rate": 0.36702954898911355
-    }
-   }
-  }
- },
- "short_term_reversal": {
-  "verdict": "NULL",
-  "deciding_number": {
-   "neutral_ic_oos_t": -0.3116362057391816,
-   "oos_spread_sharpe": -0.4847551856733789,
-   "break_even_cost_bp_per_rebalance": -3.9746060257151967
-  },
-  "answers": {
-   "Q1": {
-    "question": "Is the hypothesis clearly defined, with an economic reason the information should exist?",
-    "answer": "yes",
-    "evidence": "the hypothesis and rationale live in the signal report"
-   },
-   "Q2": {
-    "question": "Is the data behind the signal reliable and point-in-time (E1 ledger flags)?",
-    "answer": "yes with the survivor-only universe caveat",
-    "evidence": "E1 returns with the E2 exclusions; the shift audit cleared the signal"
-   },
-   "Q3": {
-    "question": "Does the basic empirical relationship exist in-sample, factor-neutral?",
-    "answer": false,
-    "evidence": {
-     "neutral_ic_in_sample_mean": 0.006131600494076827,
-     "neutral_ic_in_sample_t": 1.1956658156147104
-    }
-   },
-   "Q4": {
-    "question": "Does it survive simple out-of-sample testing (2021 to 2026) and the deflated-Sharpe hurdle?",
-    "answer": false,
-    "evidence": {
-     "neutral_ic_oos_mean": -0.0025808933795163774,
-     "neutral_ic_oos_t": -0.3116362057391816,
-     "oos_spread_sharpe": -0.4847551856733789,
-     "ledger_verdict": "NULL"
-    }
-   },
-   "Q5": {
-    "question": "Are the results economically meaningful after a rough cost estimate (break-even cost above realistic cost)?",
-    "answer": false,
-    "evidence": {
-     "break_even_cost_bp_per_rebalance": -3.9746060257151967,
-     "realistic_cost_bp_per_rebalance": 5.0
-    }
-   },
-   "Q6": {
-    "question": "Are the results robust to universe definition, weighting scheme and horizon?",
-    "answer": "partially: equal-weight quintiles only; the decay range is stored",
-    "evidence": {
-     "ic_h1_mean": 0.012030688919115224,
-     "ic_h63_mean": 0.009636618473117014
-    }
-   },
-   "Q7": {
-    "question": "Is there a plausible implementation path (turnover, capacity, whole shares)?",
-    "answer": "yes, on paper",
-    "evidence": {
-     "turnover_share_per_rebalance": 0.7851620348703237,
-     "hit_rate": 0.45053147996729354
+     "hit_rate": 0.39473684210526316
     }
    }
   }

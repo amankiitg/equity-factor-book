@@ -58,8 +58,130 @@ HEDGE_MODE_EXACT = "exact"
 HEDGE_MODE_CAP_THEN_REHEDGE = "cap_then_rehedge"
 REFERENCE_AUM = 1e8  # the capacity-curve reference, kept for the E6 finding
 TRADING_DAYS = 252
+logger = logging.getLogger(__name__)
+
 HORIZON = 21  # the rebalance horizon, the E6 and E9 convention
 MIN_NAMES = 50
+
+# The floor's release band, off by default (`1.0` is "release at the floor", which is
+# the rule the book has always used).
+#
+# The kept set is the drop-then-admit fixed point on tonight's own weights, so a name
+# sitting on the floor line flips in and out as its weight moves a few dollars: of the
+# 39 names that left on 2026-10-07, 16 had been admitted on 10-06, and 5 of the 24
+# that arrived had been dropped the day before (item 12). Each round trip is two
+# crossings of the spread and the impact on a leg that was already at its target size.
+# With the band on, a name the book *holds* is released only below `release` of its
+# floor, and a name being admitted still has to clear the whole floor: entry at the
+# floor, exit below it.
+#
+# Item 12's measurement (docs/research/nov11_turnover.md) is that the floor's own churn
+# was 147 round trips in nine closes, 84 of which returned the next session, costing
+# 6.6 bp of NAV against a 0.67 bp per-session gross edge - so the band is worth
+# building, and its width is the owner's to set rather than this module's.
+#
+# Measured before shipping, on the live construction of 2026-09-21 with the previous
+# book its own default book (`tests/test_nov11_floor_band.py` builds it): switching the
+# band on at 0.75 does **not** hold the same book with fewer legs. Keeping the names
+# inside the band changes the kept set - 200 kept against 204, 14 names in and 18 out -
+# and the renormalization that follows pushes other names below their own floor, so the
+# book trades 15.6% of gross where the default trades none at all. The band therefore
+# is not by itself the churn cut the item expects; the shape that is (a no-trade band at
+# the *leg* stage, which leaves the target alone and suppresses the closing leg of a
+# position inside the band) is a decision for the owner, recorded in the report and in
+# the research note. It stays off until then, and the identity proof is that off the
+# book is identical weight for weight.
+FLOOR_RELEASE_ENV = "EFB_FLOOR_RELEASE"
+FLOOR_RELEASE_OFF = 1.0
+# Below half the floor a "held" name is not a position, it is a rounding error: the
+# band exists to stop trading a name that is at its size, not to keep a stub forever.
+FLOOR_RELEASE_MIN = 0.5
+
+
+# Item 18's precheck, off by default: with it on, the run reads the broker's own
+# `shortable` flag for the universe *before* the sizing and leaves out the names the
+# broker will not lend, so the book it publishes is one it can hold. Off, the flags are
+# read where they always were - as each short leg is built - and the book can carry a
+# name whose short will be refused.
+#
+# It changes the book, so it is a flag and not a fix: with it on, a name the broker
+# will not lend leaves the book before the hedge and the floor, which moves the
+# published book, its breadth and its forecast. Everything else about the run is
+# unchanged, and `/tests/test_nov11_shortability.py` proves the off direction is
+# identity: no source injected, no name dropped, the book identical weight for weight.
+SHORTABILITY_ENV = "EFB_SHORTABILITY_PRECHECK"
+
+
+def resolve_shortability_precheck(value: str | None) -> bool:
+    """Whether the run checks the broker's lending flags before it sizes.
+
+    Opens only on the exact string "true", the same convention as the trading
+    window's override and for the same reason: a missing, empty or mistyped variable
+    must leave the book exactly as it is rather than silently change which names it
+    holds.
+    """
+    return value == "true"
+
+
+def drop_not_shortable(
+    names: list[str], weights: np.ndarray, shortable: dict[str, bool]
+) -> tuple[np.ndarray, list[dict[str, object]]]:
+    """Which names to keep, and the ones the broker will not lend, to be dropped.
+
+    A name is dropped when the sizing puts it on the **short** side and the broker's
+    own flag says it cannot be shorted. Three cases are kept, and each matters:
+
+    - a name the sizing puts *long*: its own shortability is irrelevant tonight;
+    - a ticker **absent** from the mapping: the feed did not answer for it, and an
+      unanswered read is not a refusal - the leg-time check still guards it;
+    - a flag of `True` that is wrong by tomorrow: the flags are a point-in-time read,
+      which is why the leg-time check stays where it is.
+    """
+    keep = np.ones(len(names), dtype=bool)
+    dropped: list[dict[str, object]] = []
+    for index, name in enumerate(names):
+        ticker = str(name)
+        if weights[index] >= 0:
+            continue
+        if shortable.get(ticker, True):
+            continue
+        keep[index] = False
+        dropped.append(
+            {
+                "ticker": ticker,
+                "reason": "the broker's feed reports shortable=false",
+                "weight": float(weights[index]),
+            }
+        )
+    return keep, dropped
+
+
+def resolve_floor_release(value: str | None) -> float:
+    """The band's release fraction from the environment, or `1.0` when unset.
+
+    Unset is off, and so is any value that cannot be read as a fraction in
+    `[0.5, 1.0)` - the safe direction for a switch that changes which names the book
+    holds: a mistyped variable must leave the book exactly as it is, not silently pick
+    a band. A value of exactly `1.0` is off as well, and is the same as unset.
+    """
+    if value is None or not str(value).strip():
+        return FLOOR_RELEASE_OFF
+    try:
+        parsed = float(str(value).strip())
+    except ValueError:
+        logger.warning("ignoring %s=%r: not a number", FLOOR_RELEASE_ENV, value)
+        return FLOOR_RELEASE_OFF
+    if not math.isfinite(parsed) or parsed < FLOOR_RELEASE_MIN or parsed > 1.0:
+        logger.warning(
+            "ignoring %s=%r: outside [%s, 1.0]",
+            FLOOR_RELEASE_ENV,
+            value,
+            FLOOR_RELEASE_MIN,
+        )
+        return FLOOR_RELEASE_OFF
+    return parsed
+
+
 # How many names one evening may lose for having no usable close before the run
 # stops and emails instead of pricing the rest. One or a few is normal: a name can
 # halt, delist or be missed by the vendor on the night, and the book drops it and
@@ -716,6 +838,8 @@ def enforce_floor_on_final_weights(
     dollar_floor: float,
     share_floor: int,
     max_passes: int = 30,
+    sticky: np.ndarray | None = None,
+    release: float = 1.0,
 ) -> tuple[np.ndarray, dict[str, Any], int, bool]:
     """Enforce the floor on the final weights, iterated to a fixed point.
 
@@ -739,14 +863,52 @@ def enforce_floor_on_final_weights(
         )
         shares = np.asarray(finalize["shares"], dtype=int)
         prices = np.asarray(finalize["prices"], dtype=float)
+        idx = np.asarray(finalize["idx"], dtype=int)
         below = below_floor(shares, prices, dollar_floor, share_floor)
+        below = _releasable(
+            below, idx, shares, prices, sticky, release, dollar_floor, share_floor
+        )
         if not below.any():
             return keep, finalize, passes, True
-        idx = np.asarray(finalize["idx"], dtype=int)
         keep[idx[below]] = False
         if not keep.any():
             return keep, finalize, passes, False
     return keep, finalize, max_passes, False
+
+
+def _releasable(
+    below: np.ndarray,
+    idx: np.ndarray,
+    shares: np.ndarray,
+    prices: np.ndarray,
+    sticky: np.ndarray | None,
+    release: float,
+    dollar_floor: float,
+    share_floor: int,
+) -> np.ndarray:
+    """Which below-floor names are released, under the band.
+
+    `release` at or above 1.0 is the rule the book has always used, and the mask
+    comes back untouched: the band changes what trades by nothing unless it is on.
+    With it on, a name the book already *holds* (`sticky`, over the full name list)
+    is released only if it is below `release` of its own floor, so a name inside the
+    band stays at its size instead of being traded out and back.
+    """
+    if sticky is None or release >= FLOOR_RELEASE_OFF:
+        return below
+    held = np.asarray(sticky, dtype=bool)
+    if held.size <= int(idx.max()):
+        raise ValueError(
+            f"the held-position mask has {held.size} entries and the book's last "
+            f"kept index is {int(idx.max())}, so they cannot be aligned"
+        )
+    inside = below_floor(
+        shares,
+        prices,
+        dollar_floor * release,
+        max(1, int(share_floor * release)),
+    )
+    return below & ~(held[idx] & ~inside)
 
 
 def floor_thresholds(
@@ -913,6 +1075,8 @@ def enforce_floor_by_drop_then_admit(
     order: np.ndarray | None = None,
     start: np.ndarray | None = None,
     max_cycles: int = 10,
+    sticky: np.ndarray | None = None,
+    release: float = 1.0,
 ) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
     """Drop, then admit, repeated until a full cycle changes nothing (E11-F13R).
 
@@ -965,6 +1129,8 @@ def enforce_floor_by_drop_then_admit(
             nav,
             dollar_floor,
             share_floor,
+            sticky=sticky,
+            release=release,
         )
     )
     keep = drop_keep.copy()
@@ -1007,6 +1173,8 @@ def enforce_floor_by_drop_then_admit(
             nav,
             dollar_floor,
             share_floor,
+            sticky=sticky,
+            release=release,
         )
         if int(checked.sum()) == int(keep.sum()):
             converged = True
@@ -1271,6 +1439,156 @@ def _cost_decomposition(
     )
 
 
+# Why a name in the SPY universe is not in the book. The three are collapsed into
+# one list today and are three different things to go and fix: a GICS row that the
+# vendor's file does not carry, a price history that stops, and a name that is
+# priced and mapped but absent from the processed returns panel (DD, item 10). The
+# reader of an `excluded` entry is the owner, and "excluded" with no reason is a
+# name they cannot act on.
+EXCLUDED_NO_GICS = "no GICS row"
+EXCLUDED_NO_GICS_NO_PRICES = "no GICS row and no price rows"
+EXCLUDED_NO_RETURNS = "in the sectors file but absent from the processed returns panel"
+# What the detail says when the artifacts behind the reasons could not be read. The
+# *names* are the run's own (`excluded`, off the universe and the wide panel), and the
+# reason is the only part that needs the files, so this is the field that degrades.
+EXCLUDED_NOT_DETERMINED = "not determined"
+
+
+def exclusion_reason(
+    ticker: str,
+    *,
+    in_sectors: bool,
+    in_returns: bool,
+    in_prices: bool,
+) -> str:
+    """Which of the three causes kept this name out of the sized universe."""
+    if in_returns:
+        # In `wide` at all means it was sized; this function is only called on the
+        # names that are not.
+        return "in the universe"
+    if in_sectors:
+        return EXCLUDED_NO_RETURNS
+    return EXCLUDED_NO_GICS if in_prices else EXCLUDED_NO_GICS_NO_PRICES
+
+
+def excluded_history(as_of: str) -> dict[str, dict[str, object]] | None:
+    """How long each excluded name has been excluded, from the stored manifests.
+
+    The loop's own manifests are the record, not the artifacts: the list has only
+    ever grown (4 entries on 2026-09-25, 5 on 2026-10-01, 7 on 2026-10-06) because
+    nothing rebuilds the files the exclusion rule reads, so the trailing run of
+    stored sessions a name appears in *is* its age. A name that left the list and
+    came back starts again, which is why the run is counted backwards from the
+    newest stored manifest rather than from the first date the name ever appeared.
+
+    Each entry is `stored_sessions` (how many of the stored manifests ending with
+    the newest carry it), `since` (the first day of that run) and `current`
+    (whether the newest stored manifest carries it, which is what tells the caller
+    whether tonight continues the run or starts one).
+
+    `None` when the store cannot be read at all, which is a different answer from an
+    empty dict: an empty dict is a history that was read and holds no exclusions, and
+    a name absent from it was excluded for the first time tonight. The caller
+    publishes no age at all off a `None`, because a nought would read as "since
+    today" on a name that has been out for a fortnight.
+    """
+    from live import store
+
+    try:
+        frame = store.select("proposals")
+    except Exception as exc:  # noqa: BLE001 - the age is detail, not the book
+        logger.warning("could not read the stored proposals: %s", type(exc).__name__)
+        return None
+    if frame.empty or "manifest" not in frame.columns:
+        return {}
+    order = "trade_date" if "trade_date" in frame.columns else None
+    if order is not None:
+        frame = frame.sort_values(order)
+    days: list[str] = []
+    listed: dict[str, set[str]] = {}
+    for row in frame.itertuples(index=False):
+        manifest = row.manifest
+        if isinstance(manifest, str):
+            try:
+                manifest = json.loads(manifest)
+            except ValueError:
+                continue
+        if not isinstance(manifest, dict):
+            continue
+        day = str(manifest.get("as_of") or getattr(row, "trade_date", "") or "")[:10]
+        if not day or (days and day <= days[-1]):
+            # One manifest per close, and only forward: a row out of order would
+            # make a trailing run of nothing.
+            if days and day == days[-1]:
+                continue
+        days.append(day)
+        for ticker in manifest.get("excluded") or []:
+            listed.setdefault(str(ticker), set()).add(day)
+    history: dict[str, dict[str, object]] = {}
+    for ticker, appeared in listed.items():
+        sessions = 0
+        since = ""
+        for day in reversed(days):
+            if day not in appeared:
+                break
+            sessions += 1
+            since = day
+        history[ticker] = {
+            "stored_sessions": sessions,
+            "since": since,
+            "current": bool(days and days[-1] in appeared),
+        }
+    return history
+
+
+def exclusion_details(
+    excluded: list[str],
+    *,
+    in_sectors: set[str],
+    in_returns: set[str],
+    in_prices: set[str],
+    history: dict[str, dict[str, object]] | None,
+    as_of: str,
+) -> list[dict[str, object]]:
+    """One row per excluded name: its ticker, why, and how long it has been out.
+
+    The age counts tonight: the name is excluded on the manifest this run is
+    writing, so a name first excluded tonight reads one session, and a name the
+    newest stored manifest also carries reads its stored run plus tonight.
+
+    `None` for the age when the store could not be read - the message renders that
+    as an absence rather than as a nought, which would read as "since today" on a
+    name that has been out for a fortnight. A history that *was* read and does not
+    carry the name is the name's first exclusion, which reads one session.
+    """
+    details: list[dict[str, object]] = []
+    for ticker in sorted(excluded):
+        name = str(ticker)
+        entry = (history or {}).get(name) or {}
+        stored = entry.get("stored_sessions")
+        current = bool(entry.get("current"))
+        sessions: int | None = None
+        since: str | None = None
+        if history is not None:
+            sessions = (int(stored) if isinstance(stored, int) and current else 0) + 1
+            since = str(entry.get("since")) if current and entry.get("since") else as_of
+        details.append(
+            {
+                "ticker": name,
+                "reason": exclusion_reason(
+                    name,
+                    in_sectors=name in in_sectors,
+                    in_returns=name in in_returns,
+                    in_prices=name in in_prices,
+                ),
+                "sessions": sessions,
+                "since": since,
+                "as_of": as_of,
+            }
+        )
+    return details
+
+
 def previous_book_exposure(
     as_of_ts: pd.Timestamp, previous: pd.Series | None, data_root: Path
 ) -> dict[str, object] | None:
@@ -1313,6 +1631,8 @@ def build_proposal(
     appendix: dict[str, Any] | None = None,
     previous: pd.Series | None = None,
     nav_source: str | None = None,
+    floor_release: float | None = None,
+    shortable: dict[str, bool] | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
@@ -1326,6 +1646,22 @@ def build_proposal(
     `previous` is the last book the loop held, keyed by ticker. The impact term
     is the cost of trading to this book rather than of owning it, so it needs
     that book; from flat (the establishment day) every previous weight is zero.
+
+    `shortable` is item 18's precheck: the broker's own lending flag per ticker,
+    injected by the caller that read it (so this module never calls the broker and a
+    test can pass a recorded fixture). `None` is off - the default - and then no name
+    is dropped and the leg-time check remains the only guard. With a mapping, a name
+    the sizing puts on the short side whose flag is `False` is dropped before the
+    hedge and the floor, with the reason on the manifest and in the message. A ticker
+    absent from the mapping is *not* dropped: an unanswered read is not a refusal.
+
+    `floor_release` is item 12's band, and `None` reads it from the environment
+    (`EFB_FLOOR_RELEASE`), where unset is off: at `1.0` the floor is released exactly
+    where it always was, and a fraction below it keeps a name the book already holds
+    until its size falls below that fraction of its own floor. A name being *admitted*
+    always clears the whole floor, so the band can only ever hold a position that is
+    already there. The default book is therefore unchanged, weight for weight, and
+    `tests/test_nov11_floor_band.py` proves it on the live construction.
     """
     if nav is None or not math.isfinite(nav) or nav <= 0:
         raise ValueError(
@@ -1339,10 +1675,86 @@ def build_proposal(
     as_of_ts = pd.Timestamp(as_of) if as_of is not None else wide.index.max()
     universe, spy_path = load_spy_universe(root, as_of=as_of_ts)
     universe_as_of = str(pd.to_datetime(universe["as_of"].iloc[0]).date())
-    spy_tickers = sorted(universe["ticker"].astype(str).str.upper().str.strip())
+    # A duplicated universe row would size the name twice, count it twice in
+    # `n_kept`, hedge it against itself and write it to `efb.positions` twice, where
+    # the natural key would collapse the two rows and leave the row count
+    # disagreeing with every count taken off the manifest. Nothing has ever seen
+    # one (the 2026-09-21 archive: 503 rows, 499 unique), so this is a guard rather
+    # than a fix, and it names what it dropped instead of absorbing it silently.
+    raw_tickers = universe["ticker"].astype(str).str.upper().str.strip()
+    spy_tickers = sorted(set(raw_tickers))
+    duplicates = sorted(
+        {ticker for ticker in raw_tickers if int((raw_tickers == ticker).sum()) > 1}
+    )
+    if duplicates:
+        logger.warning(
+            "the SPY universe lists %d ticker(s) more than once and they are kept "
+            "once: %s",
+            len(duplicates),
+            ", ".join(duplicates),
+        )
     wide_names = [str(column) for column in wide.columns]
     names = [ticker for ticker in spy_tickers if ticker in wide_names]
     excluded = [ticker for ticker in spy_tickers if ticker not in wide_names]
+    # Why each one is out, and for how long: the three causes are three different
+    # things to go and fix, and a name that has been outside the book for a
+    # fortnight is not the same fact as one excluded tonight (item 9). The three
+    # memberships are read from the same artifacts the rule reads, so the reason
+    # cannot disagree with the exclusion: `in_returns` is membership in `wide`,
+    # which is what the rule itself uses.
+    excluded_detail: list[dict[str, object]] = []
+    if excluded:
+        # The reason and the age are a note about a name that is already out of the
+        # book: the drop itself happened above, off the universe and `wide`. So this
+        # block cannot be allowed to stop the evening - a fetch that broke, a panel
+        # that moved or a store that will not answer is a reason string, not a failed
+        # run - and every failure here degrades the *reasons* while `excluded` and
+        # `n_excluded` stay exactly what the rule computed.
+        try:
+            sectors_names = {
+                str(name)
+                for name in pd.read_parquet(root / "processed" / "sectors.parquet")[
+                    "ticker"
+                ].astype(str)
+            }
+            # The index alone: the panel is 3.6M rows and the question is only which
+            # tickers it carries. `index.names` is `['date', 'ticker']`, so `ticker`
+            # is a level of the frame's index and not a column.
+            price_names = {
+                str(name)
+                for name in pd.read_parquet(root / "raw" / "prices.parquet", columns=[])
+                .index.get_level_values("ticker")
+                .unique()
+            }
+            excluded_detail = exclusion_details(
+                excluded,
+                in_sectors=sectors_names,
+                in_returns=set(wide_names),
+                in_prices=price_names,
+                history=excluded_history(str(as_of_ts.date())),
+                as_of=str(as_of_ts.date()),
+            )
+        except Exception as exc:  # noqa: BLE001 - a note, never the book
+            logger.warning(
+                "the excluded names' reasons could not be determined (%s: %s), so "
+                "they are published as %r with no age: %s",
+                type(exc).__name__,
+                exc,
+                EXCLUDED_NOT_DETERMINED,
+                ", ".join(str(name) for name in excluded),
+            )
+            excluded_detail = [
+                {
+                    "ticker": str(name),
+                    "reason": EXCLUDED_NOT_DETERMINED,
+                    # No age and no date: `history` is what carries them, and this
+                    # path did not get that far.
+                    "sessions": None,
+                    "since": None,
+                    "as_of": str(as_of_ts.date()),
+                }
+                for name in sorted(excluded)
+            ]
     if len(names) < MIN_NAMES:
         raise ValueError(
             f"the SPY universe overlaps the frozen model on only {len(names)} "
@@ -1354,7 +1766,7 @@ def build_proposal(
     # same one `_xs_pieces` uses, so the check and the diagonal cannot disagree
     # about which names have an estimate. `n_names` below is what is left, so the
     # counts add up as universe = excluded + dropped_no_risk + n_names.
-    variances, _filled = race._specific_for(as_of_ts, names, root)
+    variances, n_missing_var = race._specific_for(as_of_ts, names, root)
     names, dropped_no_risk = risk_names_or_stop(names, variances)
 
     pieces = eval_risk._xs_pieces(as_of_ts, names, root)
@@ -1387,6 +1799,35 @@ def build_proposal(
     # is applied here as well so the two agree and the full-book risk numbers on
     # the manifest are the numbers of the mode the run was asked for.
     weights = size.procedure_6_3(alpha_vec, design, factor_covariance, specific)
+    # Item 18, when the caller injected the broker's lending flags: a name the sizing
+    # puts short and the broker will not lend leaves the book *here*, before the hedge
+    # and the floor, so the published book, its breadth and its forecast are the book
+    # the loop can actually hold rather than one it will report a refused leg for. The
+    # aligned arrays are filtered together, because a name dropped from `names` and
+    # left in `design` would size the wrong row against the wrong name.
+    dropped_no_short: list[dict[str, object]] = []
+    if shortable is not None:
+        keep_names, dropped_no_short = drop_not_shortable(names, weights, shortable)
+        if not keep_names.all():
+            if int(keep_names.sum()) < MIN_NAMES:
+                raise ValueError(
+                    f"the broker's lending flags leave only "
+                    f"{int(keep_names.sum())} name(s), below the {MIN_NAMES} floor: "
+                    "the feed's answer is the fetch having broken, not a market "
+                    "with nothing to short"
+                )
+            names = [name for name, keep in zip(names, keep_names, strict=True) if keep]
+            design = design[keep_names]
+            specific = specific[keep_names]
+            z = z[keep_names]
+            alpha_vec = alpha_vec[keep_names]
+            weights = weights[keep_names]
+            logger.warning(
+                "%d name(s) left the book before sizing because the broker's feed "
+                "will not lend them: %s",
+                len(dropped_no_short),
+                ", ".join(str(row["ticker"]) for row in dropped_no_short),
+            )
     weights = apply_hedge_mode(weights, design, specific)
     weights, gross_cap_bound = _scale_to_target(
         weights, design, factor_covariance, specific
@@ -1410,6 +1851,24 @@ def build_proposal(
     # having broken rather than names delisting, and that stops the run.
     priced, dropped_no_price = priced_names_or_stop(names, close)
     started = time.perf_counter()
+    release = (
+        resolve_floor_release(os.environ.get(FLOOR_RELEASE_ENV))
+        if floor_release is None
+        else float(floor_release)
+    )
+    # The names the book already holds with a real position, which are the only ones
+    # the band can hold: a name not held has nothing to keep, and a zero weight is
+    # not a position.
+    sticky: np.ndarray | None = None
+    if release < FLOOR_RELEASE_OFF and previous is not None and len(previous):
+        held = {
+            str(ticker): float(weight)
+            for ticker, weight in previous.items()
+            if float(weight) != 0.0
+        }
+        sticky = np.array(
+            [held.get(str(name), 0.0) != 0.0 for name in names], dtype=bool
+        )
     enforced_keep, finalize, search = enforce_floor_by_drop_then_admit(
         names,
         alpha_vec,
@@ -1422,6 +1881,8 @@ def build_proposal(
         dollar_floor=construction["dollar_floor"],
         share_floor=construction["share_floor"],
         start=priced,
+        sticky=sticky,
+        release=release,
     )
     floor_search_seconds = time.perf_counter() - started
     violations = floor_book_violations(
@@ -1499,6 +1960,17 @@ def build_proposal(
         "n_names": len(names),
         "n_excluded": len(excluded),
         "excluded": excluded,
+        # The names the broker will not lend, dropped before the sizing when the
+        # precheck is on, and the count beside them so the two cannot disagree.
+        "n_dropped_no_short": len(dropped_no_short),
+        "dropped_no_short": dropped_no_short,
+        # Which floor rule built this book: `1.0` is the release-at-the-floor rule the
+        # loop has always used, and a fraction below it is item 12's band. A row read
+        # back months later has to say which of the two its book came from.
+        "floor_release": float(release),
+        # The same names with their reason and their age: the list itself is what
+        # downstream reads, and this is what the message and the owner read.
+        "excluded_detail": excluded_detail,
         # The names tonight's book lost for having no usable close, and the count
         # that would have stopped the run: one or a few is a name the vendor did not
         # answer for, ten at once is the fetch having broken. They are named in the
@@ -1517,6 +1989,14 @@ def build_proposal(
         "n_dropped_no_risk": len(dropped_no_risk),
         "dropped_no_risk": dropped_no_risk,
         "max_risk_drops": MAX_RISK_DROPS,
+        # How many names the risk block had no estimate for at all, before the drop
+        # removed them. `_specific_for` has always computed this count and the
+        # caller has always thrown it away, so a reader could see the names that
+        # left the book and not how many the diagonal could not measure. It is the
+        # same number as `n_dropped_no_risk` on a night the drop is what removed
+        # them, and it is smaller when a name is excluded first, which is why both
+        # are recorded rather than one being derived from the other.
+        "n_specific_var_missing": int(n_missing_var),
         "ic": ic,
         "kappa": kappa,
         "factor_neutral_ic_h21": neutral_ic["factor_neutral_ic_h21"],
@@ -1554,6 +2034,11 @@ def build_proposal(
         "min_position_dollars": construction["dollar_floor"],
         "min_position_pct_of_nav": construction["dollar_floor"] / nav if nav else 0.0,
         "construction": construction["construction"],
+        # Which panel the design row behind this book was built from: `raw` for the
+        # loop's own history and the default, `clean` when EFB_DESIGN_RETURNS asked
+        # for the cleaned one. Recorded rather than inferred, because two books that
+        # differ only in their design panel are otherwise indistinguishable.
+        "design_returns": race.design_returns(),
         # Which hedge built this book: `exact` for the loop's own hedge and the
         # default, `cap_then_rehedge` when EFB_HEDGE_MODE asked for the research
         # construction. Recorded rather than inferred, because two books that differ

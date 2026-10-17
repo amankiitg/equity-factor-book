@@ -15,6 +15,8 @@ as F5.0, and both readings are kept.
 from __future__ import annotations
 
 import json
+import logging
+import os
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +27,76 @@ from efb.models import fundamental as fx
 
 ROOT = Path(__file__).resolve().parents[1]
 MIN_NAMES = 50
+
+logger = logging.getLogger(__name__)
+
+# Which panel `next_descriptor_design` standardises its built row over.
+#
+# The two frames `probes.load_panel` returns differ only where the hygiene flags
+# mask a row, and the choice is a live behaviour change rather than a tidy-up: on
+# the 2026-10-13 close the masked cells inside the 400-session window are two
+# (`ECHO`, `MRNA`), and because every descriptor is standardised across the
+# cross-section those two move 1,477 of the 8,534 design cells, so the hedge
+# solves a different cross-section and the kept book changes (171 -> 186 names).
+#
+# `raw` is the file's own rows and the behaviour the loop has always had; `clean`
+# is the same panel with the flagged rows masked, which is what the published
+# descriptors are fitted on, so a row built here agrees with the row the model
+# will publish. Unset and `raw` are the same thing, and any other value warns once
+# and falls back to `raw`, because a typo must never change the book.
+DESIGN_RETURNS_ENV = "EFB_DESIGN_RETURNS"
+DESIGN_RETURNS_RAW = "raw"
+DESIGN_RETURNS_CLEAN = "clean"
+_DESIGN_RETURNS_CACHE: str | None = None
+
+
+def design_returns() -> str:
+    """Which panel the built design row comes from, from `EFB_DESIGN_RETURNS`.
+
+    `raw` for unset, empty, `raw` (any case) and for anything unrecognised, so the
+    default path is the panel the loop has always used and a typo cannot move a
+    book. `clean` is the one other value the loop reacts to. The requested string
+    is read once per process and the decision is logged, because the value that
+    built a book is the thing a later reader has to know; `EFB_DESIGN_RETURNS=clean`
+    is the setting the 2026-11-11 seed regeneration wants, and it is not the
+    default until the owner asks for it.
+    """
+    global _DESIGN_RETURNS_CACHE
+    if _DESIGN_RETURNS_CACHE is None:
+        requested = os.environ.get(DESIGN_RETURNS_ENV, "").strip().lower()
+        if not requested or requested == DESIGN_RETURNS_RAW:
+            _DESIGN_RETURNS_CACHE = DESIGN_RETURNS_RAW
+        elif requested == DESIGN_RETURNS_CLEAN:
+            _DESIGN_RETURNS_CACHE = DESIGN_RETURNS_CLEAN
+            logger.warning(
+                "%s=%s: the design row is built from the cleaned panel, which is not "
+                "the default",
+                DESIGN_RETURNS_ENV,
+                DESIGN_RETURNS_CLEAN,
+            )
+        else:
+            logger.warning(
+                "%s=%r is not a panel: the raw panel is used, because a typo must "
+                "never change the book",
+                DESIGN_RETURNS_ENV,
+                os.environ.get(DESIGN_RETURNS_ENV, ""),
+            )
+            _DESIGN_RETURNS_CACHE = DESIGN_RETURNS_RAW
+    return _DESIGN_RETURNS_CACHE
+
+
+def design_panel(panel: dict[str, object]) -> pd.DataFrame:
+    """The frame the built row is standardised over, per `design_returns()`.
+
+    The one line the flag controls, in one place, so the choice can be tested
+    without a tree: `panel["returns_clean"]` under `clean`, `panel["returns"]`
+    otherwise.
+    """
+    key = "returns_clean" if design_returns() == DESIGN_RETURNS_CLEAN else "returns"
+    frame = panel[key]
+    assert isinstance(frame, pd.DataFrame)
+    return frame
+
 
 # The model needs this much published factor history before a point-in-time
 # covariance exists. Windows behind this are skipped for the XS-v1 row only.
@@ -266,7 +338,15 @@ def next_descriptor_design(
         )
 
     panel = probes.load_panel(root)
-    frame = panel["returns"]
+    # Which panel this row is built from is `EFB_DESIGN_RETURNS`'s decision, in
+    # `design_panel`. The *cleaned* panel is what the published rows are fitted on,
+    # so a row built from it agrees with the row the model will publish; the raw
+    # panel is what the loop has always used and is the default, because the
+    # difference is a live behaviour change (two masked cells move 1,477 design
+    # cells on the 2026-10-13 close, and the kept book with them) and the owner
+    # asked for it to be opt-in. Either way the priced set is read off the frame the
+    # cross-section is taken over, so the two cannot disagree about who is in it.
+    frame = design_panel(panel)
     close = panel["close"]
     volume = panel["volume"]
     shares = panel["shares"]
@@ -454,18 +534,22 @@ def xs_supplier(
     factor_covariance = fx.ewma_factor_cov(
         history.loc[:, ordered], half_life=fx.F_HALF_LIFE
     )
-    # `ewma_factor_cov` returns a date indexed stack of matrices; taking the
-    # last date and reindexing both axes is what turns it into the (k, k) block
-    # the design is multiplied by. Reshaping defensively here rather than
-    # trusting the layout is what caught a one by seventeen block.
-    if isinstance(factor_covariance.index, pd.MultiIndex):
-        latest = factor_covariance.index.get_level_values(0).max()
-        block = factor_covariance.xs(latest, level=0)
-    else:
-        block = factor_covariance.loc[factor_covariance.index.max()]
-    block = pd.DataFrame(block).reindex(index=ordered, columns=ordered)
+    # `ewma_factor_cov` returns the K x K block itself, labelled by factor, not a
+    # date-indexed stack of blocks: its index IS the factor list. Reading it as a
+    # stack and taking `index.max()` picked one row of the matrix and reindexed
+    # that into (K, K), which is 272 of 289 cells NaN, so every window failed the
+    # finiteness check below and the XS-v1 row was absent from the race on every
+    # date. Measured 2026-10-03 on 2026-08-31: block (17, 17) with 272 NaN; with
+    # the block read as the matrix it is (17, 17), 0 NaN, finite.
+    block = pd.DataFrame(factor_covariance).reindex(index=ordered, columns=ordered)
     if block.shape != (len(ordered), len(ordered)):
         raise RuntimeError(f"the factor covariance block is {block.shape}")
+    if not np.isfinite(block.to_numpy(dtype=float)).all():
+        # a non-finite covariance is a real reason to skip the window, and it is
+        # reported rather than silently flattened: the whole point of the
+        # finiteness check is that the row says what it was built from.
+        _SKIPPED.append(date)
+        return None
     design = _design_for(date, names, data_root)
     specific, missing = _specific_for(date, names, data_root)
     # A name the model cannot price on this date gets no factor exposure and the

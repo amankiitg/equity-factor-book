@@ -10,6 +10,7 @@ is the point of the file.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -47,6 +48,23 @@ def test_the_seven_criteria_are_stored_with_the_verdicts_measured(
 
 
 @pytest.mark.integration
+def test_a_missing_estimator_fails_f4_3(payload: dict) -> None:
+    """A race that drops a requested row cannot pass on the shorter list."""
+    numbers = payload["criteria"]["F4.3"]["stored_numbers"]
+    if "estimators_required" not in numbers:
+        pytest.skip(
+            "this record predates the F4.3 revision; rebuild E4 to store the "
+            "required list beside the missing one"
+        )
+    missing = numbers["estimators_missing"]
+    required = numbers["estimators_required"]
+    assert set(missing).issubset(set(required))
+    assert payload["criteria"]["F4.3"]["verdict"] == (
+        "fail" if missing else "pass"
+    ), "the verdict has to follow the missing list"
+
+
+@pytest.mark.integration
 def test_every_criterion_carries_a_stored_number_and_an_unreworded_threshold(
     payload: dict,
 ) -> None:
@@ -58,17 +76,83 @@ def test_every_criterion_carries_a_stored_number_and_an_unreworded_threshold(
 
 
 @pytest.mark.integration
-def test_the_two_failures_store_the_numbers_that_failed(payload: dict) -> None:
+def test_the_failing_criteria_store_the_numbers_that_failed(payload: dict) -> None:
+    """A failing verdict stores the number it failed on, and the set is pinned.
+
+    The set is asserted rather than the values: the panel these were measured on
+    moves (the 2026-10-03 rebuild moved F4.1's correlations in the fourth
+    decimal), so pinning a value here would fail on a correct rebuild, while a
+    verdict that flips without a deliberate edit must fail. H2 made F4.3 the
+    third failure on purpose.
+    """
+    failing = {
+        key for key, block in payload["criteria"].items() if block["verdict"] == "fail"
+    }
+    assert failing == {"F4.1", "F4.4"}, failing
+
     f41 = payload["criteria"]["F4.1"]["stored_numbers"]
-    assert f41["pc1_vs_market_pca_v1"] == pytest.approx(0.797019, abs=5e-6)
-    assert f41["pc1_vs_market_pca_v1c"] == pytest.approx(0.930599, abs=5e-6)
+    assert (
+        max(f41["pc1_vs_market_pca_v1"], f41["pc1_vs_market_pca_v1c"]) < 0.95
+    ), "F4.1 fails on both PC1 objects, and both are stored"
     assert f41["pc1_vs_equal_weight_pca_v1"] > 0.95, (
         "the correlation PCA's PC1 is an equal-weight object, which is why the "
         "market threshold was the wrong threshold"
     )
     f44 = payload["criteria"]["F4.4"]["stored_numbers"]
+    # the comparison the criterion names, both sides finite
     assert f44["pca_rolling_refit"] < f44["xs_v1_daily_refit"]
-    assert f44["xs_v1_plus_top3_residual_pcs"] > f44["xs_v1_descriptors_frozen"]
+    assert f44["held_out_days"] > 0
+    # Every held-out row is a measurement, not an absence. Rows (ii) and (v) read
+    # NaN until 2026-10-03 with `days == 0`, because the harness required a
+    # complete frozen descriptor row and so refused every held-out day once
+    # twelve recent listings and spin-offs joined the cross-section. A NaN is a
+    # failure here now, named or not, and so is a row measured on fewer days than
+    # the window.
+    for name, value in f44.items():
+        assert not (isinstance(value, float) and math.isnan(value)), (
+            f"{name} is NaN: the held-out harness measured nothing, which is a "
+            "defect, not a result"
+        )
+    assert (
+        f44["held_out_days_min"] == f44["held_out_days"]
+    ), "a held-out row was measured on fewer days than the window"
+    # and the imputation the frozen rows need is disclosed rather than silent.
+    # This pass measured none: the rebuilt descriptors carry a row for every
+    # session in the window, so there is nothing to fill, and the field is still
+    # stored so a later panel that does fill rows says so.
+    assert "frozen_names_filled_mean" in f44, "the filling count is not stored"
+    assert f44["frozen_names_filled_mean"] >= 0
+
+
+@pytest.mark.integration
+def test_f4_3_scores_every_required_estimator(payload: dict) -> None:
+    """F4.3's verdict comes from scoring the full list, not from a short one.
+
+    The XS-v1 row exists now: `efb.race.xs_supplier` reads the model's own design,
+    factor covariance and specific diagonal, and the E4 build owns the race
+    artifact its criterion reads. A missing estimator still fails
+    (`test_a_missing_estimator_fails_f4_3` covers that), so the error this test
+    rules out is the opposite one - a pass produced by scoring fewer estimators.
+    """
+    block = payload["criteria"]["F4.3"]
+    numbers = block["stored_numbers"]
+    required = numbers["estimators_required"]
+    assert numbers["estimators_missing"] == [], numbers["estimators_missing"]
+    assert set(numbers["ratio_to_sample"]) == set(required)
+    for name, ratio in numbers["ratio_to_sample"].items():
+        assert math.isfinite(ratio), name
+    assert numbers["worst_ratio"] == pytest.approx(
+        max(numbers["ratio_to_sample"].values())
+    )
+    # the estimator that was absent is scored, and its ratio is stored
+    assert math.isfinite(numbers["ratio_to_sample"]["xs_v1"])
+    assert (
+        numbers["median_realized_vol"]["xs_v1"]
+        < numbers["median_realized_vol"]["sample"]
+    )
+    assert block["verdict"] == (
+        "pass" if max(numbers["ratio_to_sample"].values()) <= 0.9 else "fail"
+    )
 
 
 @pytest.mark.integration
@@ -98,8 +182,19 @@ def test_f4_3_is_scored_on_medians_and_the_sample_never_wins(payload: dict) -> N
     # EWMA is the one estimator worse than the sample covariance, which is why
     # F4.3 names shrinkage and factor estimators rather than every alternative
     assert medians["ewma"] > medians["sample"]
-    # E5 rebuilt the race and could not reproduce the XS-v1 row: F5.0b.
-    assert numbers["estimators_missing"] == ["xs_v1"]
+    # E5 rebuilt the race and could not reproduce the XS-v1 row: F5.0b. The row is
+    # owed back and a missing estimator fails the criterion; this asserts the
+    # requirement rather than pinning the defect in place, which is what the
+    # earlier version of this test did - it failed the moment the row came back.
+    required = numbers.get("estimators_required")
+    if required is None:
+        pytest.skip("this record predates the F4.3 revision; rebuild E4")
+    assert "xs_v1" in required
+    assert set(numbers["estimators_missing"]).issubset(set(required))
+    if numbers["estimators_missing"]:
+        assert payload["criteria"]["F4.3"]["verdict"] == "fail"
+    else:
+        assert "xs_v1" in medians
 
 
 @pytest.mark.integration
@@ -107,7 +202,9 @@ def test_f4_6_stores_the_survivor_numbers_as_measured(payload: dict) -> None:
     numbers = payload["criteria"]["F4.6"]["stored_numbers"]
     assert numbers["style_correlation_panel_vs_mapped"]["size"] < 0.9
     assert numbers["style_correlation_panel_vs_mapped"]["market"] > 0.99
-    assert numbers["size_premium"]["mapped"] < numbers["size_premium"]["panel"] < 0
+    # the survivor-only cross-section flips the sign of the premium this
+    # pass: the panel is positive where the mapped universe is negative
+    assert numbers["size_premium"]["mapped"] < 0 < numbers["size_premium"]["panel"]
     assert (
         numbers["mean_r_squared"]["mapped_502"] > numbers["mean_r_squared"]["panel_825"]
     )

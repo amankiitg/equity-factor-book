@@ -54,7 +54,13 @@ describe("health", () => {
     // ...and keeps the run's own sentence beside it, because that is what someone
     // fixing the loop needs.
     expect(state.detail).toContain("no usable close price for 3 kept names");
-    expect(state.detail).toContain("still the 2026-10-02 close");
+    // The close the sentence names is the kept book's own, read off the fixture
+    // rather than typed: `scripts/make_web_fixtures.py` on nov11 pins the fixture's
+    // `as_of` to the close it names (2026-09-21) where page-v4's left it to the
+    // tree's last session (2026-10-02 on the seed), and what the page has to say is
+    // the close of the book it is still showing, whatever that close is.
+    const bookClose = String((errored as unknown as Snapshot).book_as_of).slice(0, 10);
+    expect(state.detail).toContain(`still the ${bookClose} close`);
   });
 
   it("keeps the raw status word when an errored run did price tonight's book", () => {
@@ -316,7 +322,10 @@ describe("the page", () => {
     // that trades is 100% and $1,000,000. The full book's own number is read from
     // the fixture rather than typed in, so regenerating it cannot break this.
     render(<SnapshotView snapshot={OK} now={NOW} />);
-    expect(OK.book.gross).toBe(1);
+    // One, up to the last bit of the sizing arithmetic: the regenerated fixture
+    // carries 0.9999999999999999 rather than 1, and what is being tested is the
+    // page's headline, which is asserted as rendered text below.
+    expect(OK.book.gross).toBeCloseTo(1, 12);
     const gross = document.querySelector("[data-card='gross']") as HTMLElement;
     expect(gross.textContent).toContain("100.00%");
     expect(gross.textContent).toContain("$1,000,000");
