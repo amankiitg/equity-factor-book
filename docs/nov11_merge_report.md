@@ -2,69 +2,160 @@
 
 ## Resume here
 
-**Paused by the owner at 2026-10-16 11:58 UTC. Nothing was merged or pushed to
-`main`, and no deploy was made: `origin/main` is `1b500b9`, untouched. The merge is
-built, proven and pushed on its own branch — `origin/nov11-into-main`, tip recorded at
-the end of this file — and its worktree is clean.**
+**Resumed at 2026-10-16 22:15 UTC on the owner's second brief, and the first half of it
+is done: A-1 is committed, A-2's four proofs passed, A-3's table is below, tonight's run
+is clean, and A-4's merge is the one step left (it waits on the gate run, §A-4b). PART
+B is five of six items built, tested and pushed; B3 is not started and its entry point
+is named at the end of this file.**
 
-A0–A6 are done and recorded below. One thing to read before acting: **A1 and A2 are
-red as the brief states them, and green as the substitute proof states them.** The
-merged branch's book differs from `origin/main`'s because nov11's own `efb/race.py`
-design fix (`panel["returns_clean"]`, commit `0d0bd67`) is a real live behaviour
-change — the merge is faithful (the merged book equals `origin/nov11`'s exactly), and
-with that one change held equal the merged branch equals `origin/main` weight for
-weight on all three closes (max abs weight difference exactly 0.0). Everything else
-passed: A3 (seed preflight 8/8), A4 (no test passing on either parent fails on the
-merged branch), A5, A6, `make lint`. §A1 has the measurement and the consequence for
-Friday's book; §"OWNER-ONLY list" item 6 is the decision it needs.
+`origin/main` was `1b500b9` when this session started and is unchanged until the merge.
+The branch is `origin/nov11-into-main`; its tip is recorded at the end of this file.
+
+The new brief's items are written `A-1` to `A-4` (with a hyphen) and the first
+session's are `A0` to `A6`; both are below, the second half under its own headings.
+
+### What this session changed on the branch
+
+| commit | what | why |
+|---|---|---|
+| `a952213` | `EFB_DESIGN_RETURNS` in `efb/race.py`, on the manifest for every book | A-1: nov11's design panel is a live behaviour change, and the merge's default must be origin/main's |
+| `c61c928` | the two `tests/test_live_panel_parity.py` checks state the flag's contract | one asserted the clean panel as the default, which is now the opt-in |
+| `3611e04` | `live/extend.py::extend_model` takes its frame from `race.design_panel` too | one flag, one panel: the fit and the design cannot diverge in either mode |
 
 ### The exact next step
 
-Merge `nov11-into-main` into `main` **only between 15:45 and 20:30 UTC on Friday
-2026-10-16**, from the merge worktree or a fresh one:
+Run the gate (§A-4b), then merge `nov11-into-main` into `main` inside the owner's window
+(23:00 UTC Friday 2026-10-16 to 20:30 UTC Monday 2026-10-19, and only while Friday's run
+stays clean — it is):
 
 ```
 cd /Users/amankesarwani/PycharmProjects/efb-nov11-merge
-git fetch origin                                  # confirm origin/main is still 1b500b9
+git fetch origin                                  # origin/main must still be 1b500b9
 git checkout main && git merge --no-ff nov11-into-main
 git push origin main
+git rev-parse origin/main                         # record the sha here
 ```
 
-Then: `git rev-parse origin/main` to record the merge sha here, and start PART B from
-that `main`. If the push is rejected, fetch, merge the new `origin/main` into
-`nov11-into-main`, re-run the A1 substitution proof and the touched tests, retry
-once, then stop. If 20:30 UTC passes with the merge still pending, **do not merge
-late**: the window is the owner's rule, and the branch is already pushed for them.
+If the push is rejected: fetch, merge the new `origin/main` in, re-run the identity proof
+(§A-2) and the touched tests, retry once, then stop.
 
-### PART B: not started
+## A-2. The four proofs, on four closes including tonight's
 
-Nothing was branched and no code was changed for PART B. Each item is one branch and
-one commit set, cut from the post-PART-A `main`, tested, linted and (for B1–B3) put
-through the same identity proof, then merged **only after 23:00 UTC on Friday
-2026-10-16 and only if** a read-only `select` of `efb.run_status` for that evening
-shows the run priced a book and sent orders; deadline 20:30 UTC Monday 2026-10-19.
-The items, in the brief's order:
+Built exactly as the brief says: a copy of the data tree per close in `/tmp`, the R2
+`efb-seed` bundle plus the store appendix cut to that close, `build_proposal(store=False)`
+with `previous` = the latest stored book before it and that close's NAV from `efb.nav`.
+The four closes are 2026-10-13, -14, -15 and **-16**, the last one from tonight's run
+(hydrated 163,505 appendix rows; the 10-16 tree carries the session).
 
-1. **B1** the morning's "already reconciled" decision, from the morning's own
-   completion record for the close rather than from `efb.fills` alone — the entry
-   points are `scripts/reconcile_fills.py:112 last_reconciled_close()`, its use at
-   `:415`, and the published document's `actual_holdings.close` (written by
-   `publish()` at `:169`) as the completion record. Tests: the partial morning (fills
-   written, nothing published) and the normal repeat.
-2. **B2** `traded_run` (`scripts/run_live_daily.py:961`) must keep the first
-   attempt's error detail instead of replacing the row's `detail` with its own.
-3. **B3** the shortability precheck on the **final** traded weights, three rounds,
-   names reported per round; the flag stays off and the flag-off identity proof is the
-   gate.
-4. **B4** the `pre_hedge_weights` audit: `efb/attribution.py:225` reads
-   `efb.positions.idio_vol` as the specific *variance* and it is the specific
-   *volatility* (`efb/attribution.py:571` is the caller); evidence and before/after
-   numbers for every stored attribution day, storage untouched.
-5. **B5** the catch-up pill (`web/src/status.ts:143 pillFor`) reading green
-   `PROPOSAL RUN: OK (caught up N sessions)` when the run priced a book, plus the
-   Worker deploy and its rollback command.
-6. **B6** the NOT NULL audit against the live database, read-only, committed as
-   `docs/nov11_notnull_audit.md`.
+| proof | left | right | closes | result |
+|---|---|---|---|---|
+| flags unset (strict) | `origin/main` | `nov11-into-main` | 4 | **PASS** — same kept names, `max abs weight difference exactly 0.0`, same `kept_gross`, `n_kept`, excluded and dropped lists |
+| `EFB_HEDGE_MODE=cap_then_rehedge`, in-process | `origin/main` | `nov11-into-main` | 4 | **PASS** — identical, weight for weight |
+| `EFB_DESIGN_RETURNS=clean`, in-process | `origin/nov11` | `nov11-into-main` | 4 | **PASS** — the merged branch's flag-on book is nov11's own, exactly |
+
+A1's substitute proof is therefore no longer needed: with the flag unset the branch *is*
+`origin/main`, weight for weight, on every close including tonight's. The books' own
+numbers, all four closes: kept 171/176/169/170 names at gross 1.0, predicted vol
+2.76%/2.65%/2.75%/3.01%, worst single-name variance share 10.99%/8.84%/11.98%/12.25%,
+traded notional $449,701/$485,040/$441,589/$489,148 — the last of which is 48.9% of NAV,
+in the same family as the live record's 44%.
+
+## A-3. Design `raw` versus `clean`, per close
+
+`EFB_DESIGN_RETURNS` unset (`raw`, origin/main's panel) against `clean` (nov11's), same
+merged branch, same trees, same flags otherwise. Owner decision later; **the flag stays
+unset everywhere.**
+
+| close | n_kept raw | n_kept clean | names that differ | pred vol raw | pred vol clean | worst share raw | worst share clean | traded notional raw | traded notional clean |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-10-13 | 171 | 186 | 204 | 2.7599% | 2.6459% | 10.99% | 11.30% | $449,701 | $393,316 |
+| 2026-10-14 | 176 | 177 | 198 | 2.6498% | 2.6312% | 8.84% | 10.30% | $485,040 | $479,920 |
+| 2026-10-15 | 169 | 177 | 194 | 2.7479% | 3.3348% | 11.98% | **35.69%** | $441,589 | $440,010 |
+| 2026-10-16 | 170 | 180 | 195 | 3.0109% | 2.8720% | 12.25% | 11.74% | $489,148 | $428,987 |
+
+Read it as: the clean panel changes about 200 of ~500 names every day, so it is not a
+tweak; the predicted volatility is a wash (better two days, worse two); and on
+2026-10-15 the clean book's worst single-name share is **35.69% against 11.98%**, three
+times the raw book's. A concentration that large on the traded book is the argument for
+leaving the flag unset until the owner has priced it.
+
+## A-4. Tonight's run, and the gate
+
+**Tonight's run (the 2026-10-16 close) is clean**, read-only from `efb.run_status`:
+
+```
+2026-10-16 live_daily  status=ok  orders=181  gross_notional=486,633.14
+```
+
+`ok` with a priced book, so the merge condition is met. Two nearby rows are worth
+knowing rather than fixing here: 2026-10-14's evening ran `error` (a `KeyError` on
+`dividend`/`split_factor`, so that close has no booked run and no stored positions), and
+2026-10-13 and -15 are both `ok`.
+
+### A-4b. The gate on the merged tree
+
+### PART B: five of six built, tested and pushed
+
+One branch and one commit set per item, cut from `a952213` (the branch head before the
+merge; the merge commit's tree is that tree, so a B branch cut from either is the same
+content). Nothing in PART B is merged to `main` yet: the PART B window is 23:00 UTC
+Monday 2026-10-19 to 20:30 UTC Tuesday 2026-10-20 and needs Monday's run clean.
+
+| item | branch | head | what it does | tests | status |
+|---|---|---|---|---|---|
+| B1 | `nov11-b1-reconcile-once` | `9340d1b` | reconcile-once reads the morning's completion record (its filed `run_status` row or the published block), not `efb.fills` alone | 3 new, and the existing repeat test rewritten; the subset's failures are exactly the base's 23 | **pushed** |
+| B2 | `nov11-b2-traded-story` | `fba2619` | a traded second start carries the failed first attempt's detail instead of overwriting it | 2 new; subset 23 failed / 75 passed against the base's 23 / 73, the same failing set | **pushed** |
+| B3 | - | - | not started; see below | - | **not built** |
+| B4 | `nov11-b4-attribution-variance` | `f4459ee` | the pre-hedge reconstruction squares `idio_vol` before sizing | 2 new; `tests/test_e12_attribution_job.py` 15 passed | **pushed** |
+| B5 | `nov11-b5-catchup-pill` | `25c44de` | a catch-up that priced a book reads green `PROPOSAL RUN: OK (caught up N sessions)` | 2 new; `tsc -b` clean, `App.test.tsx` + `status.test.tsx` green | **pushed**, deploy waits for its merge |
+| B6 | `nov11-b6-notnull-audit` | `5664c60` | the NOT NULL NaN audit run against the live database | read-only; 28 columns, 28 clean, 0 NaN, 0 null | **pushed** |
+
+**B4's evidence, every stored attribution day** (computed locally and read-only on the
+live-era tree, nothing written). `pre-hedge` is the reconstructed sized book's predicted
+volatility and `effect` is that minus the held book's; the held book's own number does not
+move, because the fix is upstream of the book that traded:
+
+| close | pre-hedge before | pre-hedge after | hedged (both) | effect before | effect after |
+|---|---|---|---|---|---|
+| 2026-09-29 | 11.98% | 9.36% | 2.87% | 9.11pp | 6.49pp |
+| 2026-09-30 | 11.75% | 8.93% | 2.76% | 8.99pp | 6.17pp |
+| 2026-10-01 | 11.55% | 9.01% | 2.68% | 8.87pp | 6.34pp |
+| 2026-10-02 | 10.77% | 8.46% | 2.48% | 8.29pp | 5.98pp |
+| 2026-10-05 | 10.26% | 7.85% | 2.55% | 7.71pp | 5.30pp |
+| 2026-10-06 | 9.87% | 7.62% | 2.51% | 7.36pp | 5.12pp |
+| 2026-10-08 | 9.77% | 7.48% | 2.66% | 7.11pp | 4.82pp |
+| 2026-10-09 | 9.34% | 7.30% | 2.77% | 6.57pp | 4.53pp |
+| 2026-10-12 | 10.53% | 8.04% | 2.64% | 7.89pp | 5.41pp |
+| 2026-10-13 | 9.47% | 7.43% | 2.76% | 6.71pp | 4.67pp |
+| 2026-10-15 | 10.14% | 7.86% | 2.75% | 7.40pp | 5.11pp |
+| 2026-10-16 | 10.81% | 8.13% | 3.01% | 7.79pp | 5.12pp |
+
+Three stored days (2026-09-28, -10-07, -10-14) have no position rows to rebuild from -
+the evenings that did not book - so their stored `pre_hedge_vol` is what it always was.
+The four-term identity still closes: recomputed from each stored row,
+`pnl_total - (pnl_factor + pnl_idio + pnl_cost)` is under 1e-16 on 14 of the 15 days, and
+2026-09-29's 6.08e-05 is the case that row already records (`n_computed_specific` 2,
+`n_missing_return` 1, missing weight 0.0057). **No stored row was rewritten.** The days
+the owner may want recomputed are the twelve above.
+
+**B3 is not built, and it should not be built the way the others were.** The precheck's
+drop sits right after the full-book sizing and before the hedge
+(`live/evening_job.py:1808-1830`, `drop_not_shortable` at `:126`), which is exactly the
+brief's point: the hedge flips signs, so a name the sizing put short can trade long.
+Checking the *final* traded weights means lifting the block from that drop to the
+quantized kept book (roughly `:1808` to `:1900`) into a function that takes the surviving
+names and returns the final book, calling it in a loop of at most three rounds and
+recording the names each round. That is a real refactor of the live construction, and a
+flag-off identity proof cannot see it: the flag has to be on in the test to reach the
+code. It is left unstarted rather than half-landed - with the flag off everywhere, a
+half-built loop would sit in the file with nothing to notice it.
+
+## PLAN C: the cadence study, in its own worktree
+
+`research-cadence` is pushed, and `docs/research/cadence_study.md` carries the window,
+the table and the recommendation. The short version: the live construction cannot be
+built before its universe seam, so the window is stated and the universe is frozen at the
+oldest local archive, with the substitution's size measured against the native builds.
 
 ## A0. The stop condition, checked first
 
