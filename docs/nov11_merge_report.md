@@ -124,18 +124,19 @@ knowing rather than fixing here: 2026-10-14's evening ran `error` (a `KeyError` 
 ### PART B: five of six built, tested and pushed
 
 One branch and one commit set per item, cut from `a952213` (the branch head before the
-merge; the merge commit's tree is that tree, so a B branch cut from either is the same
-content). Nothing in PART B is merged to `main` yet: the PART B window is 23:00 UTC
+merge) and then brought onto the post-merge `main` (`9e484f9`) with a merge commit, so
+each branch's diff against `main` is exactly its own item. Nothing in PART B is merged to
+`main` yet: the PART B window is 23:00 UTC
 Monday 2026-10-19 to 20:30 UTC Tuesday 2026-10-20 and needs Monday's run clean.
 
 | item | branch | head | what it does | tests | status |
 |---|---|---|---|---|---|
-| B1 | `nov11-b1-reconcile-once` | `9340d1b` | reconcile-once reads the morning's completion record (its filed `run_status` row or the published block), not `efb.fills` alone | 3 new, and the existing repeat test rewritten; the subset's failures are exactly the base's 23 | **pushed** |
-| B2 | `nov11-b2-traded-story` | `fba2619` | a traded second start carries the failed first attempt's detail instead of overwriting it | 2 new; subset 23 failed / 75 passed against the base's 23 / 73, the same failing set | **pushed** |
+| B1 | `nov11-b1-reconcile-once` | `975736f` | reconcile-once reads the morning's completion record (its filed `run_status` row or the published block), not `efb.fills` alone | 3 new, and the existing repeat test rewritten; the subset's failures are exactly the base's 23 | **pushed** |
+| B2 | `nov11-b2-traded-story` | `8f7f102` | a traded second start carries the failed first attempt's detail instead of overwriting it | 2 new; subset 23 failed / 75 passed against the base's 23 / 73, the same failing set | **pushed** |
 | B3 | - | - | not started; see below | - | **not built** |
-| B4 | `nov11-b4-attribution-variance` | `f4459ee` | the pre-hedge reconstruction squares `idio_vol` before sizing | 2 new; `tests/test_e12_attribution_job.py` 15 passed | **pushed** |
-| B5 | `nov11-b5-catchup-pill` | `25c44de` | a catch-up that priced a book reads green `PROPOSAL RUN: OK (caught up N sessions)` | 2 new; `tsc -b` clean, `App.test.tsx` + `status.test.tsx` green | **pushed**, deploy waits for its merge |
-| B6 | `nov11-b6-notnull-audit` | `5664c60` | the NOT NULL NaN audit run against the live database | read-only; 28 columns, 28 clean, 0 NaN, 0 null | **pushed** |
+| B4 | `nov11-b4-attribution-variance` | `2098cc6` | the pre-hedge reconstruction squares `idio_vol` before sizing | 2 new; `tests/test_e12_attribution_job.py` 15 passed | **pushed** |
+| B5 | `nov11-b5-catchup-pill` | `ab6955e` | a catch-up that priced a book reads green `PROPOSAL RUN: OK (caught up N sessions)` | 2 new; `tsc -b` clean, `App.test.tsx` + `status.test.tsx` green | **pushed**, deploy waits for its merge |
+| B6 | `nov11-b6-notnull-audit` | `129315c` | the NOT NULL NaN audit run against the live database | read-only; 28 columns, 28 clean, 0 NaN, 0 null | **pushed** |
 
 **B4's evidence, every stored attribution day** (computed locally and read-only on the
 live-era tree, nothing written). `pre-hedge` is the reconstructed sized book's predicted
