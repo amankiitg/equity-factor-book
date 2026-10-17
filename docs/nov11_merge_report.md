@@ -104,8 +104,9 @@ on `origin/main` - the same two, in the same time, to the second. The whole
 `test_repair_session.py` file on `origin/main`'s own tree: `1 failed, 1 passed, 6 errors
 in 858.24s`, against a 120-second per-test timeout, which is what the six errors are
 (a bare `ERROR` reading `Failed: Timeout (>120.0s) from pytest-timeout`). They are the
-machine's load, not the merge: the same file, run alone on a quiet machine, passes (it is
-the same file the earlier session's `A4` recorded passing).
+machine's load, not the merge: the earlier session's gate run on a quiet machine had none
+of them - its red list was exactly nov11's fourteen - and the twelve-hour cadence build
+was saturating this machine for every run above.
 
 So the gate rule - *no test that passes on `origin/main` fails on the branch* - holds for
 every id except the eight above, and those eight fail on `origin/main` too, under the
