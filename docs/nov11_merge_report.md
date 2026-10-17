@@ -27,141 +27,71 @@ session's are `A0` to `A6`; both are below, the second half under its own headin
 | `c61c928` | the two `tests/test_live_panel_parity.py` checks state the flag's contract | one asserted the clean panel as the default, which is now the opt-in |
 | `3611e04` | `live/extend.py::extend_model` takes its frame from `race.design_panel` too | one flag, one panel: the fit and the design cannot diverge in either mode |
 
-### The exact next step
+### The exact next step: Monday's merges (nothing is owed before then)
 
-**Nothing is owed for PART A.** The merge command that was run, and why `main` was not
-checked out in the branch worktree, are in §A-4c. The next step is PART B's merge window:
+The owner approved B1, B2, B4, B5 (with its Worker deploy) and B6 at 2026-10-17, under the
+rules already given. **The window is 23:00 UTC Monday 2026-10-19 to 20:30 UTC Tuesday
+2026-10-20, and Monday's run has to be clean first:**
 
 ```
-# Monday 2026-10-19, after 23:00 UTC and only if Monday's run is clean:
-gh api repos/amankiitg/equity-factor-book/... # or the read-only SELECT in the brief
+# 1. clean?  read-only, and the same rule as A-4
+#    SELECT target_close, job, status, n_orders, gross_notional FROM efb.run_status
+#    WHERE substr(target_close::text,1,10) = '2026-10-19';
+#    clean = live_daily status ok (or incomplete with orders sent) AND a priced book.
+#    Not clean -> merge nothing, write down what the row says, stop.
+
 cd /Users/amankesarwani/PycharmProjects/efb-nov11-merge && git fetch origin
+git rev-parse --short origin/main            # expect 9e484f9 or later
+
+# 2. one item at a time, in this order, each merged separately
 for item in b1-reconcile-once b2-traded-story b4-attribution-variance \
             b5-catchup-pill b6-notnull-audit; do
-  git worktree add ../efb-$item nov11-$item
+  git worktree add -q --detach ../efb-merge-$item origin/main
+  cd ../efb-merge-$item
+  #    gate: the item's own tests plus the suite rule (no test passing on main may
+  #    fail here); for B1 and B2 also the identity proof, because they are on the
+  #    evening's own path -- the /tmp/nov11merge apparatus still has the cut trees
+  #    and a2_identity.py, and the flag-off book must equal the pre-merge book
+  #    weight for weight, max abs difference exactly 0.0
+  git merge --no-ff -m "Merge nov11-$item into main" nov11-$item
+  git push origin HEAD:main
+  cd .. && git worktree remove --force ../efb-merge-$item
+  git rev-parse --short origin/main          # record the sha for each item
 done
-# each: gate, then merge --no-ff into main and push, separately
 ```
 
-B3 is the one item with no branch: §"PART B" has the refactor it needs.
+**B5's Worker deploy, only after B5 is merged**, from a worktree of the merged `main`
+(`ln -sfn <repo>/web/node_modules web/node_modules` first, and `cd web`):
 
-## A-2. The four proofs, on four closes including tonight's
+```
+npx wrangler deployments status              # READ FIRST: the version at 100% now
+npm run deploy                               # vite build && wrangler deploy
+npx wrangler deployments status              # the new version id, and its traffic share
+# rollback, if it is wrong: redeploy the version that was at 100% before this merge
+npx wrangler versions deploy <old-version-id>@100%
+```
 
-Built exactly as the brief says: a copy of the data tree per close in `/tmp`, the R2
-`efb-seed` bundle plus the store appendix cut to that close, `build_proposal(store=False)`
-with `previous` = the latest stored book before it and that close's NAV from `efb.nav`.
-The four closes are 2026-10-13, -14, -15 and **-16**, the last one from tonight's run
-(hydrated 163,505 appendix rows; the 10-16 tree carries the session).
+Record in this file: each item's merge sha, the Worker's new version id, and the rollback
+command naming the old one. Then push this branch (and `main`).
 
-| proof | left | right | closes | result |
-|---|---|---|---|---|
-| flags unset (strict) | `origin/main` | `nov11-into-main` | 4 | **PASS** — same kept names, `max abs weight difference exactly 0.0`, same `kept_gross`, `n_kept`, excluded and dropped lists |
-| `EFB_HEDGE_MODE=cap_then_rehedge`, in-process | `origin/main` | `nov11-into-main` | 4 | **PASS** — identical, weight for weight |
-| `EFB_DESIGN_RETURNS=clean`, in-process | `origin/nov11` | `nov11-into-main` | 4 | **PASS** — the merged branch's flag-on book is nov11's own, exactly |
+Branch heads to merge, all of them already carrying a merge of `9e484f9` so their diff
+against `main` is exactly their own item:
 
-A1's substitute proof is therefore no longer needed: with the flag unset the branch *is*
-`origin/main`, weight for weight, on every close including tonight's. The books' own
-numbers, all four closes: kept 171/176/169/170 names at gross 1.0, predicted vol
-2.76%/2.65%/2.75%/3.01%, worst single-name variance share 10.99%/8.84%/11.98%/12.25%,
-traded notional $449,701/$485,040/$441,589/$489,148 — the last of which is 48.9% of NAV,
-in the same family as the live record's 44%.
-
-## A-3. Design `raw` versus `clean`, per close
-
-`EFB_DESIGN_RETURNS` unset (`raw`, origin/main's panel) against `clean` (nov11's), same
-merged branch, same trees, same flags otherwise. Owner decision later; **the flag stays
-unset everywhere.**
-
-| close | n_kept raw | n_kept clean | names that differ | pred vol raw | pred vol clean | worst share raw | worst share clean | traded notional raw | traded notional clean |
-|---|---|---|---|---|---|---|---|---|---|
-| 2026-10-13 | 171 | 186 | 204 | 2.7599% | 2.6459% | 10.99% | 11.30% | $449,701 | $393,316 |
-| 2026-10-14 | 176 | 177 | 198 | 2.6498% | 2.6312% | 8.84% | 10.30% | $485,040 | $479,920 |
-| 2026-10-15 | 169 | 177 | 194 | 2.7479% | 3.3348% | 11.98% | **35.69%** | $441,589 | $440,010 |
-| 2026-10-16 | 170 | 180 | 195 | 3.0109% | 2.8720% | 12.25% | 11.74% | $489,148 | $428,987 |
-
-Read it as: the clean panel changes about 200 of ~500 names every day, so it is not a
-tweak; the predicted volatility is a wash (better two days, worse two); and on
-2026-10-15 the clean book's worst single-name share is **35.69% against 11.98%**, three
-times the raw book's. A concentration that large on the traded book is the argument for
-leaving the flag unset until the owner has priced it.
-
-### A-4b. The gate's numbers, and the eight ids that are not the branch's
-
-The merged tree's gate: **16 failed, 1570 passed, 3 skipped, 49 deselected, 6 errors**
-(`pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"`, 27m29s).
-Fourteen of the sixteen are nov11's own red list, unchanged. The other two, and the six
-errors, are the machine rather than the merge - each was re-run on **both** trees, one
-after the other, on the same data tree:
-
-| id | branch tree | `origin/main` tree |
+| item | branch | head |
 |---|---|---|
-| `tests/test_e12_attribution.py::test_the_pipeline_attributes_the_seed_book_every_session` | failed | **failed** |
-| `tests/test_repair_session.py::test_the_mask_removes_the_one_cell_and_leaves_other_flagged_ones` | failed | **failed** |
-| the other six of `tests/test_repair_session.py` (errors) | errored | **errored** |
+| B1 | `nov11-b1-reconcile-once` | `975736f` |
+| B2 | `nov11-b2-traded-story` | `8f7f102` |
+| B4 | `nov11-b4-attribution-variance` | `2098cc6` |
+| B5 | `nov11-b5-catchup-pill` | `ab6955e` |
+| B6 | `nov11-b6-notnull-audit` | `129315c` |
 
-The two ids on their own: `2 failed in 243.83s` on the branch and `2 failed in 242.03s`
-on `origin/main` - the same two, in the same time, to the second. The whole
-`test_repair_session.py` file on `origin/main`'s own tree: `1 failed, 1 passed, 6 errors
-in 858.24s`, against a 120-second per-test timeout, which is what the six errors are
-(a bare `ERROR` reading `Failed: Timeout (>120.0s) from pytest-timeout`). They are the
-machine's load, not the merge: the earlier session's gate run on a quiet machine had none
-of them - its red list was exactly nov11's fourteen - and the twelve-hour cadence build
-was saturating this machine for every run above.
+### Where the cadence study landed
 
-So the gate rule - *no test that passes on `origin/main` fails on the branch* - holds for
-every id except the eight above, and those eight fail on `origin/main` too, under the
-conditions they were run in. Nothing was waved through: the one test that **did** fail
-for a branch reason, `tests/test_live_panel_parity.py::test_the_built_row_reads_the_cleaned_panel`,
-was fixed in the branch (`c61c928`) rather than excused, and it passes.
-
-### B3, parked
-
-The owner's decision, 2026-10-17: the shortability flag is off with no plan to turn it on,
-and the live construction is not to be refactored for it. For the record, what B3 would
-involve: `live/evening_job.py::build_proposal` drops the refused shorts once, at
-`:1808-1830`, right after the full-book sizing and **before** `apply_hedge_mode` and the
-floor - which is exactly the gap the item names, because the hedge flips signs (SMCI went
-short to long on 2026-10-13). Checking the final traded weights means lifting everything
-from that drop to the quantized kept book (roughly `:1808` to `:1900`) into a function of
-the surviving names that returns the final book, calling it in a loop of at most three
-rounds, recording the names each round, and testing it with the flag **on** - a flag-off
-identity proof cannot see code it never runs. No branch was cut and nothing was pushed.
-
-### A-4c. The merge, and the one thing that got in the way
-
-`main` was already checked out in another worktree (`../efb-cap`, from the earlier
-session), so `git checkout main` here is refused by git and the merge could not be
-made in the branch worktree. It was made in a temporary detached worktree at
-`1b500b9` instead, which produces the same commit — a `--no-ff` merge whose first
-parent is the old `main` — and pushed as `HEAD:main`:
-
-```
-git worktree add --detach ../efb-merge-main 1b500b9
-cd ../efb-merge-main
-git merge --no-ff -F docs/../merge-message nov11-into-main
-git push origin HEAD:main
-```
-
-`origin/main` is `9e484f9`, parents `1b500b9` and `5625772`, pushed 2026-10-17 00:07
-UTC. **One side effect to know about:** `../efb-cap` still has `main` checked out, so
-its `git status` now reports the merge's changes as if they were uncommitted
-reversions. Its working tree is untouched; whoever picks that worktree up should
-`git checkout -- .` or switch branches before doing anything else.
-
-## A-4. Tonight's run, and the gate
-
-**Tonight's run (the 2026-10-16 close) is clean**, read-only from `efb.run_status`:
-
-```
-2026-10-16 live_daily  status=ok  orders=181  gross_notional=486,633.14
-```
-
-`ok` with a priced book, so the merge condition is met. Two nearby rows are worth
-knowing rather than fixing here: 2026-10-14's evening ran `error` (a `KeyError` on
-`dividend`/`split_factor`, so that close has no booked run and no stored positions), and
-2026-10-13 and -15 are both `ok`.
-
-### A-4b. The gate on the merged tree
+`research-cadence` is pushed (`a3c40c1`): `docs/research/cadence_study.md` and its JSON.
+The answer: **weekly**, best variant V1 (25% resize band), net +98.1 bp/yr against
+monthly's +48.4, a 49.7 bp/yr margin; fortnightly V0 is the best cell in the table at
++131.9 bp/yr and is named as a rider. Nothing about it touches trading, a flag, the store
+or the page.
 
 ### PART B: five of six built, tested and pushed
 
