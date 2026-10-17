@@ -85,6 +85,47 @@ tweak; the predicted volatility is a wash (better two days, worse two); and on
 times the raw book's. A concentration that large on the traded book is the argument for
 leaving the flag unset until the owner has priced it.
 
+### A-4b. The gate's numbers, and the eight ids that are not the branch's
+
+The merged tree's gate: **16 failed, 1570 passed, 3 skipped, 49 deselected, 6 errors**
+(`pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"`, 27m29s).
+Fourteen of the sixteen are nov11's own red list, unchanged. The other two, and the six
+errors, are the machine rather than the merge - each was re-run on **both** trees, one
+after the other, on the same data tree:
+
+| id | branch tree | `origin/main` tree |
+|---|---|---|
+| `tests/test_e12_attribution.py::test_the_pipeline_attributes_the_seed_book_every_session` | failed | **failed** |
+| `tests/test_repair_session.py::test_the_mask_removes_the_one_cell_and_leaves_other_flagged_ones` | failed | **failed** |
+| the other six of `tests/test_repair_session.py` (errors) | errored | **errored** |
+
+The two ids on their own: `2 failed in 243.83s` on the branch and `2 failed in 242.03s`
+on `origin/main` - the same two, in the same time, to the second. The whole
+`test_repair_session.py` file on `origin/main`'s own tree: `1 failed, 1 passed, 6 errors
+in 858.24s`, against a 120-second per-test timeout, which is what the six errors are
+(a bare `ERROR` reading `Failed: Timeout (>120.0s) from pytest-timeout`). They are the
+machine's load, not the merge: the same file, run alone on a quiet machine, passes (it is
+the same file the earlier session's `A4` recorded passing).
+
+So the gate rule - *no test that passes on `origin/main` fails on the branch* - holds for
+every id except the eight above, and those eight fail on `origin/main` too, under the
+conditions they were run in. Nothing was waved through: the one test that **did** fail
+for a branch reason, `tests/test_live_panel_parity.py::test_the_built_row_reads_the_cleaned_panel`,
+was fixed in the branch (`c61c928`) rather than excused, and it passes.
+
+### B3, parked
+
+The owner's decision, 2026-10-17: the shortability flag is off with no plan to turn it on,
+and the live construction is not to be refactored for it. For the record, what B3 would
+involve: `live/evening_job.py::build_proposal` drops the refused shorts once, at
+`:1808-1830`, right after the full-book sizing and **before** `apply_hedge_mode` and the
+floor - which is exactly the gap the item names, because the hedge flips signs (SMCI went
+short to long on 2026-10-13). Checking the final traded weights means lifting everything
+from that drop to the quantized kept book (roughly `:1808` to `:1900`) into a function of
+the surviving names that returns the final book, calling it in a loop of at most three
+rounds, recording the names each round, and testing it with the flag **on** - a flag-off
+identity proof cannot see code it never runs. No branch was cut and nothing was pushed.
+
 ### A-4c. The merge, and the one thing that got in the way
 
 `main` was already checked out in another worktree (`../efb-cap`, from the earlier
