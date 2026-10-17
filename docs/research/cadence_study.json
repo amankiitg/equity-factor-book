@@ -1,0 +1,336 @@
+{
+  "curve": [
+    {
+      "cadence": 1,
+      "turnover_per_rebalance": 0.32631159717836294,
+      "turnover_per_year": 82.23052248894746
+    },
+    {
+      "cadence": 2,
+      "turnover_per_rebalance": 0.4106244021577555,
+      "turnover_per_year": 51.738674671877185
+    },
+    {
+      "cadence": 3,
+      "turnover_per_rebalance": 0.4819793431832889,
+      "turnover_per_year": 40.62444320564676
+    },
+    {
+      "cadence": 5,
+      "turnover_per_rebalance": 0.579797063155342,
+      "turnover_per_year": 29.421238003391203
+    },
+    {
+      "cadence": 10,
+      "turnover_per_rebalance": 0.7526806864133057,
+      "turnover_per_year": 19.097024651182643
+    },
+    {
+      "cadence": 21,
+      "turnover_per_rebalance": 0.8702481721430964,
+      "turnover_per_year": 10.478619629081377
+    }
+  ],
+  "daily_split": {
+    "entries": 56.71736836072914,
+    "exits": 56.31505816337438,
+    "resizes": 78.18616942241715
+  },
+  "daily_turnover": 0.32631159717836294,
+  "rows": [
+    {
+      "borrow_bp": 100.00601485789046,
+      "cadence": 1,
+      "cost_bp": 519.0148609269328,
+      "exposure_avg": 0.0009330998960845132,
+      "exposure_days": 586,
+      "exposure_max": 0.025734467035735717,
+      "gross_bp": 380.1819009743921,
+      "names_held": 200.5767918088737,
+      "net_bp": -238.83897481043118,
+      "rebalances": 586,
+      "sessions": 586,
+      "sharpe": -0.5618674921375995,
+      "split": {
+        "entries": 56.71736836072914,
+        "exits": 56.31505816337438,
+        "resizes": 78.18616942241715
+      },
+      "turnover_per_rebalance": 0.32631159717836294,
+      "turnover_per_year": 82.23052248894746,
+      "variant": "V0",
+      "vol": 0.042508060735419864,
+      "years": 2.3253968253968256
+    },
+    {
+      "borrow_bp": 98.19804384459383,
+      "cadence": 1,
+      "cost_bp": 434.60367229764216,
+      "exposure_avg": 0.010751787288006374,
+      "exposure_days": 586,
+      "exposure_max": 0.0376588148125517,
+      "gross_bp": 430.8435746300274,
+      "names_held": 200.5767918088737,
+      "net_bp": -101.95814151220863,
+      "rebalances": 586,
+      "sessions": 586,
+      "sharpe": -0.24057851253643803,
+      "split": {
+        "entries": 56.71736836072914,
+        "exits": 56.084488443501165,
+        "resizes": 47.668738969873395
+      },
+      "turnover_per_rebalance": 0.2738406071230438,
+      "turnover_per_year": 69.00783299500702,
+      "variant": "V1",
+      "vol": 0.04238040232157726,
+      "years": 2.3253968253968256
+    },
+    {
+      "borrow_bp": 149.21805935387448,
+      "cadence": 1,
+      "cost_bp": 233.51481900629926,
+      "exposure_avg": 0.06214185621198049,
+      "exposure_days": 586,
+      "exposure_max": 0.3768472760048362,
+      "gross_bp": 294.8813228290932,
+      "names_held": 305.39078498293514,
+      "net_bp": -87.85155553108041,
+      "rebalances": 586,
+      "sessions": 586,
+      "sharpe": -0.12854013323127841,
+      "split": {
+        "entries": 13.928778908489981,
+        "exits": 12.701873434792745,
+        "resizes": 57.42132877052126
+      },
+      "turnover_per_rebalance": 0.1434334148699727,
+      "turnover_per_year": 36.145220547233116,
+      "variant": "V2",
+      "vol": 0.0683456235205636,
+      "years": 2.3253968253968256
+    },
+    {
+      "borrow_bp": 100.22076649677385,
+      "cadence": 5,
+      "cost_bp": 189.9640418161521,
+      "exposure_avg": 0.0008423987054797201,
+      "exposure_days": 118,
+      "exposure_max": 0.024892100659478306,
+      "gross_bp": 338.8166523182239,
+      "names_held": 201.11864406779662,
+      "net_bp": 48.63184400529792,
+      "rebalances": 118,
+      "sessions": 586,
+      "sharpe": 0.11206831071088175,
+      "split": {
+        "entries": 20.5343606243975,
+        "exits": 20.13058167694674,
+        "resizes": 27.751111150986112
+      },
+      "turnover_per_rebalance": 0.579797063155342,
+      "turnover_per_year": 29.421238003391203,
+      "variant": "V0",
+      "vol": 0.0433948220480991,
+      "years": 2.3253968253968256
+    },
+    {
+      "borrow_bp": 98.97272077186209,
+      "cadence": 5,
+      "cost_bp": 174.0926491991121,
+      "exposure_avg": 0.00886710299609941,
+      "exposure_days": 118,
+      "exposure_max": 0.027179369160510353,
+      "gross_bp": 371.1557263474848,
+      "names_held": 201.11864406779662,
+      "net_bp": 98.09035637651068,
+      "rebalances": 118,
+      "sessions": 586,
+      "sharpe": 0.22613080231456922,
+      "split": {
+        "entries": 20.5343606243975,
+        "exits": 19.99427273076332,
+        "resizes": 22.173268383946265
+      },
+      "turnover_per_rebalance": 0.5313720486365009,
+      "turnover_per_year": 26.96395774446244,
+      "variant": "V1",
+      "vol": 0.04337770678408409,
+      "years": 2.3253968253968256
+    },
+    {
+      "borrow_bp": 148.70833762135905,
+      "cadence": 5,
+      "cost_bp": 123.59620103868926,
+      "exposure_avg": 0.05404277555991637,
+      "exposure_days": 118,
+      "exposure_max": 0.30555135816527046,
+      "gross_bp": 149.2424054310899,
+      "names_held": 293.09322033898303,
+      "net_bp": -123.06213322895853,
+      "rebalances": 118,
+      "sessions": 586,
+      "sharpe": -0.17778441529846178,
+      "split": {
+        "entries": 9.076597652841592,
+        "exits": 7.935641119999816,
+        "resizes": 27.007896908955484
+      },
+      "turnover_per_rebalance": 0.37305199730336364,
+      "turnover_per_year": 18.930160736881945,
+      "variant": "V2",
+      "vol": 0.06921986554466188,
+      "years": 2.3253968253968256
+    },
+    {
+      "borrow_bp": 100.41431933706663,
+      "cadence": 10,
+      "cost_bp": 124.47322349342649,
+      "exposure_avg": 0.0005093830565320463,
+      "exposure_days": 59,
+      "exposure_max": 0.001847451975225678,
+      "gross_bp": 356.83570710395935,
+      "names_held": 201.8135593220339,
+      "net_bp": 131.94816427346623,
+      "rebalances": 59,
+      "sessions": 586,
+      "sharpe": 0.3032262652109458,
+      "split": {
+        "entries": 13.506626011961123,
+        "exits": 13.152973570816759,
+        "resizes": 17.748560915607165
+      },
+      "turnover_per_rebalance": 0.7526806864133057,
+      "turnover_per_year": 19.097024651182643,
+      "variant": "V0",
+      "vol": 0.04351475429797405,
+      "years": 2.3253968253968256
+    },
+    {
+      "borrow_bp": 99.61836797589999,
+      "cadence": 10,
+      "cost_bp": 117.60242549185054,
+      "exposure_avg": 0.007518583127675378,
+      "exposure_days": 59,
+      "exposure_max": 0.02552391243071271,
+      "gross_bp": 320.9334253306388,
+      "names_held": 201.8135593220339,
+      "net_bp": 103.71263186288817,
+      "rebalances": 59,
+      "sessions": 586,
+      "sharpe": 0.24035055513142406,
+      "split": {
+        "entries": 13.506626011961123,
+        "exits": 13.068620064797846,
+        "resizes": 15.374237185536302
+      },
+      "turnover_per_rebalance": 0.7110081908863604,
+      "turnover_per_year": 18.039709525765197,
+      "variant": "V1",
+      "vol": 0.043150568887256345,
+      "years": 2.3253968253968256
+    },
+    {
+      "borrow_bp": 148.02680628975025,
+      "cadence": 10,
+      "cost_bp": 89.33662695698656,
+      "exposure_avg": 0.0551612251502049,
+      "exposure_days": 59,
+      "exposure_max": 0.13742178790970933,
+      "gross_bp": 170.40182185750442,
+      "names_held": 286.0169491525424,
+      "net_bp": -66.96161138923256,
+      "rebalances": 59,
+      "sessions": 586,
+      "sharpe": -0.09954827096135958,
+      "split": {
+        "entries": 7.028182064299152,
+        "exits": 5.97907239252171,
+        "resizes": 18.583004635334547
+      },
+      "turnover_per_rebalance": 0.5354281202060237,
+      "turnover_per_year": 13.584889575466143,
+      "variant": "V2",
+      "vol": 0.06726546904589052,
+      "years": 2.3253968253968256
+    },
+    {
+      "borrow_bp": 101.4166328762685,
+      "cadence": 21,
+      "cost_bp": 69.07125780902238,
+      "exposure_avg": 0.0004615268934998456,
+      "exposure_days": 28,
+      "exposure_max": 0.0015900089698129291,
+      "gross_bp": 218.86674201300067,
+      "names_held": 199.64285714285714,
+      "net_bp": 48.378851327709846,
+      "rebalances": 28,
+      "sessions": 586,
+      "sharpe": 0.10980561652353851,
+      "split": {
+        "entries": 7.8185826181700255,
+        "exits": 7.280880515740303,
+        "resizes": 9.267485686096368
+      },
+      "turnover_per_rebalance": 0.8702481721430964,
+      "turnover_per_year": 10.478619629081377,
+      "variant": "V0",
+      "vol": 0.04405863093290779,
+      "years": 2.3253968253968256
+    },
+    {
+      "borrow_bp": 100.56466986208751,
+      "cadence": 21,
+      "cost_bp": 66.30256127292378,
+      "exposure_avg": 0.007340779148159927,
+      "exposure_days": 28,
+      "exposure_max": 0.019289047568266063,
+      "gross_bp": 211.6481585895695,
+      "names_held": 199.64285714285714,
+      "net_bp": 44.78092745455835,
+      "rebalances": 28,
+      "sessions": 586,
+      "sharpe": 0.10124805150081453,
+      "split": {
+        "entries": 7.8185826181700255,
+        "exits": 7.230003196565124,
+        "resizes": 8.31946884976217
+      },
+      "turnover_per_rebalance": 0.8345733808749042,
+      "turnover_per_year": 10.049061050261646,
+      "variant": "V1",
+      "vol": 0.0442289276591146,
+      "years": 2.3253968253968256
+    },
+    {
+      "borrow_bp": 146.619715724342,
+      "cadence": 21,
+      "cost_bp": 53.73794815500987,
+      "exposure_avg": 0.046692977519876874,
+      "exposure_days": 28,
+      "exposure_max": 0.11345725688618499,
+      "gross_bp": -47.18968859805968,
+      "names_held": 278.0,
+      "net_bp": -247.5473524774115,
+      "rebalances": 28,
+      "sessions": 586,
+      "sharpe": -0.34591343069356284,
+      "split": {
+        "entries": 4.756969871559272,
+        "exits": 3.541356164510873,
+        "resizes": 10.534144734536353
+      },
+      "turnover_per_rebalance": 0.672588241807375,
+      "turnover_per_year": 8.098605177803476,
+      "variant": "V2",
+      "vol": 0.07156338277501237,
+      "years": 2.3253968253968256
+    }
+  ],
+  "targets": "/tmp/cadence/targets/frozen0.jsonl",
+  "window": {
+    "end": "2026-10-02",
+    "sessions": 586,
+    "start": "2024-06-03"
+  }
+}

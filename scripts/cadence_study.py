@@ -154,16 +154,43 @@ def cmd_targets(args: argparse.Namespace) -> int:
     logger.info("%s sessions %s..%s", len(dates), dates[0], dates[-1])
     previous: dict[str, dict[str, float]] = {}
     for pass_number in range(args.passes):
+        path = out.parent / f"{out.name}{pass_number}.jsonl"
+        # A pass is an hour of work on a copy of the tree, so a run that dies at
+        # session 585 keeps the books it already built: they are read back and those
+        # dates are left out of the work list. A half-written last line is dropped.
+        done: dict[str, dict[str, Any]] = {}
+        if path.exists():
+            with path.open() as handle:
+                for line in handle:
+                    try:
+                        record = json.loads(line)
+                    except ValueError:
+                        continue
+                    done[record["date"]] = record
         items: list[tuple[str, dict[str, float] | None]] = [
             (date, previous.get(dates[index - 1]) if index else None)
             for index, date in enumerate(dates)
+            if date not in done
         ]
+        if done:
+            logger.info("%d session(s) already built, %d to go", len(done), len(items))
         context = multiprocessing.get_context("fork")
-        with context.Pool(
+        records = list(done.values())
+        # Written as they arrive rather than at the end: the pass is an hour of work
+        # on a copy of the tree, and a session that dies at session 585 should not
+        # cost the 584 books already built. The order is restored below.
+        with path.open("a") as handle, context.Pool(
             args.workers, initializer=_init_worker, initargs=(str(root),)
         ) as pool:
-            records = pool.map(_build_day, items, chunksize=1)
-        path = out.parent / f"{out.name}{pass_number}.jsonl"
+            for done, record in enumerate(
+                pool.imap_unordered(_build_day, items, chunksize=1), start=1
+            ):
+                records.append(record)
+                handle.write(json.dumps(record) + "\n")
+                handle.flush()
+                if done % 50 == 0 or done == len(items):
+                    logger.info("  %d of %d session(s) built", done, len(items))
+        records.sort(key=lambda record: record["date"])
         with path.open("w") as handle:
             for record in records:
                 handle.write(json.dumps(record) + "\n")
