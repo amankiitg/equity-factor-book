@@ -8,8 +8,13 @@ is clean, and A-4's merge is the one step left (it waits on the gate run, §A-4b
 B is five of six items built, tested and pushed; B3 is not started and its entry point
 is named at the end of this file.**
 
-`origin/main` was `1b500b9` when this session started and is unchanged until the merge.
-The branch is `origin/nov11-into-main`; its tip is recorded at the end of this file.
+**PART A is merged and pushed: `origin/main` is `9e484f9`**, a `--no-ff` merge whose
+parents are `1b500b9` (the old `main`) and `5625772` (`origin/nov11-into-main`), pushed
+at 2026-10-17 00:07 UTC inside the owner's window and after Friday's run came back clean.
+The branch is left as it was, so the owner can read this file on it.
+
+PART B's window is 23:00 UTC Monday 2026-10-19 to 20:30 UTC Tuesday 2026-10-20 and needs
+Monday's run clean; nothing in PART B is merged.
 
 The new brief's items are written `A-1` to `A-4` (with a hyphen) and the first
 session's are `A0` to `A6`; both are below, the second half under its own headings.
@@ -24,20 +29,21 @@ session's are `A0` to `A6`; both are below, the second half under its own headin
 
 ### The exact next step
 
-Run the gate (§A-4b), then merge `nov11-into-main` into `main` inside the owner's window
-(23:00 UTC Friday 2026-10-16 to 20:30 UTC Monday 2026-10-19, and only while Friday's run
-stays clean — it is):
+**Nothing is owed for PART A.** The merge command that was run, and why `main` was not
+checked out in the branch worktree, are in §A-4c. The next step is PART B's merge window:
 
 ```
-cd /Users/amankesarwani/PycharmProjects/efb-nov11-merge
-git fetch origin                                  # origin/main must still be 1b500b9
-git checkout main && git merge --no-ff nov11-into-main
-git push origin main
-git rev-parse origin/main                         # record the sha here
+# Monday 2026-10-19, after 23:00 UTC and only if Monday's run is clean:
+gh api repos/amankiitg/equity-factor-book/... # or the read-only SELECT in the brief
+cd /Users/amankesarwani/PycharmProjects/efb-nov11-merge && git fetch origin
+for item in b1-reconcile-once b2-traded-story b4-attribution-variance \
+            b5-catchup-pill b6-notnull-audit; do
+  git worktree add ../efb-$item nov11-$item
+done
+# each: gate, then merge --no-ff into main and push, separately
 ```
 
-If the push is rejected: fetch, merge the new `origin/main` in, re-run the identity proof
-(§A-2) and the touched tests, retry once, then stop.
+B3 is the one item with no branch: §"PART B" has the refactor it needs.
 
 ## A-2. The four proofs, on four closes including tonight's
 
@@ -78,6 +84,27 @@ tweak; the predicted volatility is a wash (better two days, worse two); and on
 2026-10-15 the clean book's worst single-name share is **35.69% against 11.98%**, three
 times the raw book's. A concentration that large on the traded book is the argument for
 leaving the flag unset until the owner has priced it.
+
+### A-4c. The merge, and the one thing that got in the way
+
+`main` was already checked out in another worktree (`../efb-cap`, from the earlier
+session), so `git checkout main` here is refused by git and the merge could not be
+made in the branch worktree. It was made in a temporary detached worktree at
+`1b500b9` instead, which produces the same commit — a `--no-ff` merge whose first
+parent is the old `main` — and pushed as `HEAD:main`:
+
+```
+git worktree add --detach ../efb-merge-main 1b500b9
+cd ../efb-merge-main
+git merge --no-ff -F docs/../merge-message nov11-into-main
+git push origin HEAD:main
+```
+
+`origin/main` is `9e484f9`, parents `1b500b9` and `5625772`, pushed 2026-10-17 00:07
+UTC. **One side effect to know about:** `../efb-cap` still has `main` checked out, so
+its `git status` now reports the merge's changes as if they were uncommitted
+reversions. Its working tree is untouched; whoever picks that worktree up should
+`git checkout -- .` or switch branches before doing anything else.
 
 ## A-4. Tonight's run, and the gate
 
