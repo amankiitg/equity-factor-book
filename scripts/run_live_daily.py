@@ -83,6 +83,10 @@ def _now() -> str:
 # broker: no pricing, no orders, no second book email (item 20).
 COMPLETED_STATUSES = frozenset({"ok", "market_closed", "incomplete", "traded"})
 TRADED_STATUS = "traded"
+# The status the failure path files. It is here rather than spelled inline because
+# one other reader asks about it: `failed_attempt_detail` keeps a failed attempt's
+# story on the row a later start would otherwise overwrite.
+ERROR_STATUS = "error"
 
 
 def already_ran(job: str, run_date: str) -> bool:
@@ -958,6 +962,45 @@ def traded_close(as_of: str) -> dict[str, int] | None:
     return {"legs": int(len(day)), "sent": int(len(sent)), "unconfirmed": unconfirmed}
 
 
+def failed_attempt_detail(close: str) -> str | None:
+    """What a failed earlier attempt filed for this close, or None.
+
+    `run_status` is keyed by `(target_close, job)`, so the row a later start writes
+    replaces the failed attempt's. On 2026-10-06 the evening sent 192 orders and then
+    died on a missing column; the failure path filed that close's row with the
+    traceback's first line, which is the only record of *why* the evening is
+    incomplete. A second start that found the legs already at the broker would
+    overwrite it with "the close already traded, so it was not re-priced", and both
+    the page and the record would read as an ordinary evening.
+
+    Only this job's own row with a failed status is carried over: a row in any other
+    state is not this run's story, and a row with no detail is nothing to keep.
+    """
+    from live import staleness, store
+
+    try:
+        frame = store.select(staleness.TABLE)
+    except Exception as exc:  # noqa: BLE001 - the report is not worth a failure
+        logger.warning("could not read the stored run rows: %s", type(exc).__name__)
+        return None
+    columns = {"target_close", "job", "status", "detail"}
+    if frame.empty or not columns <= set(frame.columns):
+        return None
+    days = frame["target_close"].astype(str).str.slice(0, 10)
+    rows = frame.loc[
+        days.eq(str(close)[:10])
+        & frame["job"].astype(str).eq(staleness.JOB)
+        & frame["status"].astype(str).eq(ERROR_STATUS)
+    ]
+    if rows.empty:
+        return None
+    value = rows.iloc[-1].get("detail")
+    if value is None or pd.isna(value):
+        return None
+    detail = str(value).strip()
+    return detail or None
+
+
 def traded_run(run_date: str, counts: dict[str, int]) -> int:
     """A second start on a close that already traded: no pricing, no orders, no page.
 
@@ -971,6 +1014,11 @@ def traded_run(run_date: str, counts: dict[str, int]) -> int:
     rerun would replace a full page with a thin one about a run that did nothing. The
     message, the `run_status` row and the `cron_runs` row are written, which is what
     the guard and the reader need.
+
+    **The first attempt's story is kept.** Its row for this close is replaced by this
+    one - the key is `(target_close, job)` - so its detail is carried into the detail
+    below rather than erased: a failed evening is why the legs are at the broker, and
+    a row that reads as an ordinary traded day is the one record that would lose it.
     """
     from live import notify, staleness, store
 
@@ -979,6 +1027,9 @@ def traded_run(run_date: str, counts: dict[str, int]) -> int:
         f"The close already has {counts['sent']} of {counts['legs']} leg(s) at the "
         "broker and no leg is unconfirmed: the day traded, so it was not re-priced"
     )
+    earlier = failed_attempt_detail(run_date)
+    if earlier:
+        detail = f"{detail}. The first attempt's own row said: {earlier}"
     logger.info("%s, exit 0", detail)
     result = staleness.error_result(detail, target=run_date)
     result["status"] = TRADED_STATUS
@@ -1527,7 +1578,7 @@ def failed_run(
     return finish_run(
         run_date=run_date,
         result=gate if gate is not None else staleness.error_result(detail),
-        status="error",
+        status=ERROR_STATUS,
         dry_run=dry_run,
         detail=detail,
         error_type=type(exc).__name__,
