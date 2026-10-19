@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -374,3 +375,55 @@ def test_the_step_takes_the_run_tree_rather_than_a_module_global() -> None:
     source = (ROOT / "scripts" / "run_live_daily.py").read_text()
     assert "def store_attribution(run_tree: Path) -> dict[str, Any]:" in source
     assert "attribution_job.run(run_tree)" in source
+
+
+def test_the_pre_hedge_vector_sizes_on_the_variance_not_the_volatility() -> None:
+    """`idio_vol` is a volatility and the sizing wants its square.
+
+    SMCI's 2026-10-13 row is the case: `idio_vol` 0.0499164 against an
+    `e11_specific_var` of 0.0024916, and the live run hands the sizing the variance.
+    Rebuilding from the stored `idio_vol` without squaring it is the same as
+    multiplying each name's correct weight by its own sigma before renormalizing, so
+    the reconstruction tilts further into the volatile names than the book the hedge
+    acted on ever did - and the two volatility columns this feeds are then not the
+    live run's numbers.
+    """
+    from efb import attribution
+
+    alpha = np.array([2.0e-3, 4.0e-4])
+    volatility = np.array([0.0499164, 0.015])
+    names = ["SMCI", "AAPL"]
+    block = pd.DataFrame(
+        {
+            "ticker": names,
+            "alpha": alpha,
+            "idio_vol": volatility,
+        }
+    )
+
+    rebuilt = attribution._pre_hedge_vector(block, names)
+
+    assert rebuilt is not None
+    on_the_variance = attribution.pre_hedge_weights(
+        np.zeros(2), alpha, np.square(volatility)
+    )
+    on_the_volatility = attribution.pre_hedge_weights(np.zeros(2), alpha, volatility)
+    np.testing.assert_allclose(rebuilt, on_the_variance)
+    assert not np.allclose(rebuilt, on_the_volatility)
+    # The direction, so the test says what was wrong rather than only that it changed:
+    # sizing on `alpha / sigma` instead of `alpha / sigma^2` scales each name by its own
+    # sigma, and renormalizing then hands the volatile name more of the book.
+    assert abs(on_the_volatility[0]) > abs(rebuilt[0])
+
+
+def test_a_row_with_no_specific_volatility_still_refuses_the_vector() -> None:
+    from efb import attribution
+
+    block = pd.DataFrame(
+        {
+            "ticker": ["SMCI"],
+            "alpha": [2.0e-3],
+            "idio_vol": [0.0],
+        }
+    )
+    assert attribution._pre_hedge_vector(block, ["SMCI"]) is None
