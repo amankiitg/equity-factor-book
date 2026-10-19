@@ -1063,6 +1063,38 @@ def test_a_morning_that_dies_before_the_reconciliation_still_tells_the_owner(
     assert harness.recorded == []
 
 
+def _store_the_fills(close: str = CLOSE) -> None:
+    """The rows a morning writes early, before the page, the send and its own row."""
+    store.replace_by_date(
+        "fills",
+        close,
+        [
+            {
+                "trade_date": close,
+                "ticker": "DG",
+                "order_id": "oid-dg",
+                "filled_notional": 512.42,
+                "filled_quantity": -41.0,
+            }
+        ],
+    )
+
+
+def _file_the_morning_row(close: str = CLOSE, status: str = "ok") -> None:
+    """The `run_status` row this job files last, after the page write and the send."""
+    store.upsert(
+        staleness.TABLE,
+        [
+            {
+                "job": reconcile_fills.JOB,
+                "target_close": close,
+                "run_date": TODAY,
+                "status": status,
+            }
+        ],
+    )
+
+
 def test_a_morning_with_nothing_new_reconciles_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1073,22 +1105,11 @@ def test_a_morning_with_nothing_new_reconciles_nothing(
     reconciled 10-06 a second time - rewriting the same fills, sending a second 10-06
     email two days late and republishing the page's block for it over a document whose
     own close is 10-07. The comparison is against the newest close this job has already
-    reconciled, read from its own output.
+    reconciled, read from its own completion record.
     """
     harness = _install(monkeypatch, tmp_path, broker_orders={})
-    store.replace_by_date(
-        "fills",
-        CLOSE,
-        [
-            {
-                "trade_date": CLOSE,
-                "ticker": "DG",
-                "order_id": "oid-dg",
-                "filled_notional": 512.42,
-                "filled_quantity": -41.0,
-            }
-        ],
-    )
+    _store_the_fills()
+    _file_the_morning_row()
 
     assert reconcile_fills.main([]) == 0
 
@@ -1096,10 +1117,89 @@ def test_a_morning_with_nothing_new_reconciles_nothing(
     assert harness.recorded == [(reconcile_fills.JOB, TODAY, "ok")]
     # And nothing was done: no broker read, no fill written, no message, no page.
     assert harness.broker.asked == []
-    # The one write is the test's own setup row; the job added none.
-    assert harness.written == ["fills"]
+    # The two writes are the test's own setup rows; the job added none.
+    assert harness.written == ["fills", staleness.TABLE]
     assert harness.sent == []
     assert harness.published == []
+
+
+def test_a_morning_that_wrote_fills_and_then_died_is_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A morning that failed before publishing is not a reconciled close.
+
+    This job writes `fills` first and publishes the page, sends the message and files
+    its own row afterwards, so a morning that died in between leaves fills rows for a
+    close whose `actual_holdings` block never went up. Reading those rows as "already
+    done" skips the close for good: the page keeps the previous evening's holdings and
+    the owner never learns that a morning failed.
+    """
+    harness = _install(
+        monkeypatch,
+        tmp_path,
+        broker_orders={"oid-dg": _order("filled", filled_qty="41")},
+    )
+    _store_the_fills()
+    before = len(harness.written)
+
+    assert reconcile_fills.main([]) == 0
+
+    # Reconciled again, from the broker, with the page republished for the close.
+    assert harness.broker.asked == ["oid-dg"]
+    assert "fills" in harness.written[before:]
+    assert staleness.TABLE in harness.written[before:]
+    assert harness.published, "the block that never went up goes up now"
+    stored = store.select("fills")
+    assert list(stored["ticker"]) == ["DG"]
+    assert str(stored.iloc[0]["trade_date"])[:10] == CLOSE
+
+
+def test_a_close_whose_page_block_is_up_reconciles_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The published document is a completion record too.
+
+    A repeat is a repeat when the block is on the page: the hold the job takes is
+    what it published, not only its own row. `generated_at` and the rest of the
+    evening's bytes are left alone here, as `publish` says.
+    """
+    published = dict(PUBLISHED)
+    published["actual_holdings"] = {"close": CLOSE, "names": [], "nav": 998_580.38}
+    harness = _install(monkeypatch, tmp_path, broker_orders={}, published=published)
+    _store_the_fills()
+    before = len(harness.written)
+
+    assert reconcile_fills.main([]) == 0
+
+    assert harness.recorded == [(reconcile_fills.JOB, TODAY, "ok")]
+    assert harness.written[before:] == []
+    assert harness.broker.asked == []
+    assert harness.published == []
+
+
+def test_a_failed_morning_row_is_not_a_completion_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The row counts when its status says the morning finished.
+
+    A row is filed whatever happens, because a morning that dies must still say so,
+    and the failure path files one with `status="error"`. That row is the record of a
+    failure, not of a reconciliation, so the close is still owed its page block.
+    """
+    harness = _install(
+        monkeypatch,
+        tmp_path,
+        broker_orders={"oid-dg": _order("filled", filled_qty="41")},
+    )
+    _store_the_fills()
+    _file_the_morning_row(status="error")
+    before = len(harness.written)
+
+    assert reconcile_fills.main([]) == 0
+
+    assert harness.broker.asked == ["oid-dg"]
+    assert "fills" in harness.written[before:]
+    assert harness.published
 
 
 def test_a_new_close_is_reconciled_as_it_always_was(

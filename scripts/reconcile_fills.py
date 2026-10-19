@@ -110,11 +110,23 @@ def previous_orders(as_of: str | None = None) -> tuple[str, pd.DataFrame] | None
 
 
 def last_reconciled_close() -> str | None:
-    """The newest close this job has already reconciled fills for, or None.
+    """The newest close this job has already reconciled, or None.
 
-    The fills table is this job's own output - a close with rows in it has been
-    reconciled - so the answer is read from the store rather than remembered: the
-    run that wrote them is a different process on a different morning.
+    The completion record is what is read here, not `efb.fills`. This job writes
+    fills early - before it republishes the page, before it sends the message and
+    before it files its own row - so a morning that died in between leaves fills
+    rows that read as a finished reconciliation for a close whose
+    `actual_holdings` block never went up and whose message never went out. A
+    retry that trusted them would skip that close for good: the page would go on
+    showing the previous evening's holdings and the owner would never hear about
+    the morning that failed.
+
+    Two things are the record, and either one means the close is done: this job's
+    own `run_status` row for that close with a completed status, written last,
+    after the page write and the send; and the document that is up carrying an
+    `actual_holdings` block for that close. Both are this job's own output on a
+    different morning, which is why the answer is read from the store and the
+    bucket rather than remembered.
 
     This is the comparison item 4 asks for. `previous_orders` takes the newest close
     strictly before today, which is *not* the same as the newest close not yet
@@ -125,17 +137,37 @@ def last_reconciled_close() -> str | None:
     late, and republishing `latest.json` with a fresh `actual_holdings` block for
     10-06 over a document whose own close is 10-07.
     """
-    from live import store
+    from live import snapshot, staleness, store
 
+    candidates: list[str] = []
     try:
-        frame = store.select("fills")
+        frame = store.select(staleness.TABLE)
     except Exception as exc:  # noqa: BLE001 - the guard is a refusal, not a write
-        logger.warning("could not read the stored fills: %s", type(exc).__name__)
-        return None
-    if frame.empty or "trade_date" not in frame.columns:
-        return None
-    days = frame["trade_date"].astype(str).str.slice(0, 10)
-    return str(days.max()) if len(days) else None
+        logger.warning("could not read the stored run rows: %s", type(exc).__name__)
+    else:
+        columns = {"job", "target_close", "status"}
+        if len(frame) and columns <= set(frame.columns):
+            done = frame.loc[
+                frame["job"].astype(str).eq(JOB)
+                & frame["status"].astype(str).isin(COMPLETED_STATUSES)
+            ]
+            days = done["target_close"].astype(str).str.slice(0, 10)
+            if len(days):
+                candidates.append(str(days.max()))
+    try:
+        published = json.loads(snapshot.get_object_text(snapshot.LATEST_KEY))
+    except Exception as exc:  # noqa: BLE001 - the guard is a refusal, not a write
+        logger.warning("could not read the published document: %s", type(exc).__name__)
+    else:
+        block = (
+            published.get("actual_holdings") if isinstance(published, dict) else None
+        )
+        held_close = block.get("close") if isinstance(block, dict) else None
+        if held_close:
+            # The block carries the close as an ISO stamp; the orders table and
+            # this comparison speak in plain dates.
+            candidates.append(str(held_close)[:10])
+    return max(candidates) if candidates else None
 
 
 def closes_for(tickers: list[str], close: str, *, fetch: Any = None) -> pd.Series:
@@ -419,10 +451,11 @@ def _reconcile(argv: list[str] | None = None) -> int:
     if reconciled is not None and close <= reconciled:
         detail = (
             f"the {close} close was already reconciled ({reconciled} is the newest "
-            "close with fills stored): the newest orders before today are not a new "
-            "close, so this morning reconciled nothing. The day is recorded rather "
-            "than repeated - a second pass would rewrite the same fills, send a "
-            "second message for that close and republish the page's block for it"
+            "close whose reconciliation completed): the newest orders before today "
+            "are not a new close, so this morning reconciled nothing. The day is "
+            "recorded rather than repeated - a second pass would rewrite the same "
+            "fills, send a second message for that close and republish the page's "
+            "block for it"
         )
         logger.info("%s", detail)
         run_live_daily.record_run(JOB, today.isoformat(), "ok", detail)
