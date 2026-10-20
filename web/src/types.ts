@@ -104,6 +104,31 @@ export interface RunStatus {
   snapshot: string | null;
   establishment: boolean;
   cost_label: string | null;
+  /**
+   * The rebalance calendar (`EFB_CADENCE`). Absent on every document written
+   * before the flag existed, and on a run that did not ask: an absent block is the
+   * daily behaviour and must read as one.
+   */
+  cadence?: CadenceBlock | null;
+}
+
+/** One close on the rebalance calendar, as the evening reports it. */
+export interface CadenceBlock {
+  /** Sessions between rebalances. 1 is the daily loop. */
+  k: number;
+  anchor: string;
+  /** `rebalance` or `hold`. */
+  day: "rebalance" | "hold";
+  /** Whether the calendar named today, rather than a missed one promoting it. */
+  scheduled: boolean;
+  /** Whether today is a rebalance because an earlier scheduled one did not run. */
+  pending: boolean;
+  /** The scheduled rebalances the completion record does not have. */
+  missed: string[];
+  /** The next rebalance date. */
+  next_rebalance: string | null;
+  /** The one sentence the strip shows: "hold day, next rebalance <date>". */
+  label: string;
 }
 
 export interface PositionsCheck {

@@ -282,6 +282,7 @@ def target_orders(
     nav: float,
     current: dict[str, float] | None = None,
     quantities: dict[str, float] | None = None,
+    forced: set[str] | None = None,
 ) -> list[OrderSpec]:
     """The signed change to every name, over the union of the two books.
 
@@ -309,7 +310,7 @@ def target_orders(
     `quantities` is the broker's signed share count, carried on each leg so a full
     close can send the exact held quantity.
     """
-    return _target_legs(proposal, nav, current, quantities)[0]
+    return _target_legs(proposal, nav, current, quantities, forced)[0]
 
 
 def minimum_skips(
@@ -317,6 +318,7 @@ def minimum_skips(
     nav: float,
     current: dict[str, float] | None = None,
     quantities: dict[str, float] | None = None,
+    forced: set[str] | None = None,
 ) -> list[dict[str, object]]:
     """The kept legs the `DELTA_MIN_NOTIONAL` floor left out, as leg records.
 
@@ -329,7 +331,7 @@ def minimum_skips(
     This is the same pass `target_orders` makes, so the two cannot disagree about
     which legs were left out.
     """
-    return _target_legs(proposal, nav, current, quantities)[1]
+    return _target_legs(proposal, nav, current, quantities, forced)[1]
 
 
 def _target_legs(
@@ -337,8 +339,17 @@ def _target_legs(
     nav: float,
     current: dict[str, float] | None = None,
     quantities: dict[str, float] | None = None,
+    forced: set[str] | None = None,
 ) -> tuple[list[OrderSpec], list[dict[str, object]]]:
-    """One pass over the union of the two books: the orders, and the skips."""
+    """One pass over the union of the two books: the orders, and the skips.
+
+    `forced` is a hold day's allow-list (`live.cadence`). When it is a set, the
+    only legs emitted are the ones the book cannot avoid: a name in the set, and a
+    held name the proposal does not carry (which is a close - the universe or the
+    model no longer has it). Everything else is left alone, because on a hold day
+    the published book *is* the held book and a leg on it would be a rebalance the
+    calendar did not ask for. `None` is the daily path and changes nothing.
+    """
     held = {str(key): float(value) for key, value in (current or {}).items()}
     held_quantity = {
         str(key): float(value) for key, value in (quantities or {}).items()
@@ -352,6 +363,21 @@ def _target_legs(
     for name in sorted(set(targets) | set(held)):
         target = targets.get(name, 0.0)
         position = held.get(name, 0.0)
+        sign_flip = (
+            position != 0.0 and target != 0.0 and (position > 0) != (target > 0)
+        )
+        if (
+            forced is not None
+            and name not in forced
+            and target != 0.0
+            and not sign_flip
+        ):
+            # A name the proposal still carries and the hold day did not name as
+            # forced: its target is the book's own weight, and there is nothing to
+            # do. A close (target 0) and a reversal (the account and the book
+            # disagree in sign, which is a position that cannot be held) are always
+            # allowed through: both are states the book cannot keep.
+            continue
         if position != 0.0 and target != 0.0 and (position > 0) != (target > 0):
             # Opposite signs: close the held position tonight, and let tomorrow's
             # delta open the other side. Crossing zero in one order is refused.
@@ -516,11 +542,16 @@ def run_morning(
     positions: dict[str, float] | None = None,
     establishment: bool | None = None,
     quantities: dict[str, float] | None = None,
+    forced_names: object | None = None,
 ) -> dict[str, Any]:
     """The whole morning flow: gate, propose, guard, submit, reconcile.
 
     Returns the summary with the decision, the guard outcomes and the
     fill-vs-intent reconciliation.
+
+    `forced_names` is a hold day's allow-list (`live.cadence`): the names whose
+    legs this run may send even though the published book is the held one. `None`
+    is the daily path, where every leg of the delta is sent.
 
     `positions` is the book the account actually holds, in signed notional, and
     `quantities` is the same book in signed shares. Every traded leg is measured
@@ -542,6 +573,7 @@ def run_morning(
                 else "auto_approve off and no approve"
             ),
         )
+    forced = set(forced_names) if forced_names is not None else None
     held = {str(key): float(value) for key, value in (positions or {}).items()}
     held_quantity = {
         str(key): float(value) for key, value in (quantities or {}).items()
@@ -559,13 +591,13 @@ def run_morning(
     # over the union of the two. From flat the whole target trades; from a book
     # only the change does, and a held name absent from the target is closed. A
     # change that would cross zero is split: closed tonight, opened tomorrow.
-    orders = target_orders(proposal, nav, held, held_quantity)
+    orders = target_orders(proposal, nav, held, held_quantity, forced)
     # The kept names the minimum left untraded. They are not orders and are not
     # guarded or submitted, but they are legs of the day: they join the execution
     # rows with their reason, so the book's own shortfall against its target is on
     # the record and in the message rather than only in the difference between two
     # lists.
-    skipped_minimum = minimum_skips(proposal, nav, held, held_quantity)
+    skipped_minimum = minimum_skips(proposal, nav, held, held_quantity, forced)
     brake_limit, brake_basis = guards.traded_notional_limit(
         nav, establishment=is_establishment
     )
@@ -672,7 +704,14 @@ def run_morning(
         "establishment": is_establishment,
         "brake_limit": brake_limit,
         "brake_basis": brake_basis,
-        "cost_label": "establishment" if is_establishment else "rebalance",
+        "cost_label": (
+            "hold"
+            if forced is not None
+            else ("establishment" if is_establishment else "rebalance")
+        ),
+        # The names a hold day was allowed to trade, so the record says what the
+        # filter was rather than leaving it to be inferred from an empty order list.
+        "hold_forced_names": sorted(forced) if forced is not None else None,
         "n_held": len(held),
         "held_notional": float(sum(abs(value) for value in held.values())),
     }

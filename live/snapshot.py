@@ -271,6 +271,10 @@ def build(
             # second trading day the run is a rebalance under the absolute brake.
             "establishment": bool(run.get("establishment", False)),
             "cost_label": run.get("cost_label"),
+            # The rebalance calendar, when the run has one: a hold day is a normal
+            # evening that did not trade, and the page has to be able to say so
+            # without turning it red. Absent on a run that never asked.
+            "cadence": _json_value(run.get("cadence"), None),
         },
         "construction": construction_table.construction_label(proposal),
         # The account's book against the store's, read before the orders were

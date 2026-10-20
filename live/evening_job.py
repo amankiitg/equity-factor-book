@@ -32,7 +32,7 @@ from efb import alpha as alpha_mod
 from efb import costs as costs_mod
 from efb import eval_risk, race, registry, size
 from efb.build import hash_file
-from live import alpaca, sizing
+from live import alpaca, cadence, sizing
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
@@ -306,6 +306,103 @@ def universe_without_prices(
     tonight = dates == pd.Timestamp(dates.max())
     priced = prices.index.get_level_values("ticker")[tonight]
     return sorted(members - {str(name).upper().strip() for name in priced})
+
+
+def forced_names_for_hold(
+    manifest: Mapping[str, Any],
+    splits: object = None,
+    spinoffs: object = None,
+) -> set[str]:
+    """Every name a hold day may still trade, and nothing else.
+
+    A hold day publishes the book it already holds, so the only legs that may be
+    sent are the ones the book cannot avoid keeping:
+
+    - **left universe** - a held name the proposal no longer carries. The order
+      path emits it as a close, and it is not in this set because it is not in the
+      proposal at all; it is named here only if the manifest says so.
+    - **corporate action** - a split or a spin-off that moved the day's cash or
+      share count. `splits` and `spinoffs` are the run's own record of what it
+      applied tonight.
+    - **not shortable** - a name the broker's lending feed refused, which the
+      precheck dropped before the sizing (`dropped_no_short`).
+    - **no risk estimate** - a name the model cannot measure, dropped before the
+      sizing (`dropped_no_risk`); the book cannot state its risk, so it cannot be
+      held on purpose.
+    - **no usable close** - a name with no price to quantize on
+      (`dropped_no_price`).
+    - **reversal** - a position the account and the book disagree about in sign.
+      The order path closes it and defers the other side; the filter lets a sign
+      flip through without needing a name here.
+
+    The list is what the run's record states as `hold_forced_names`, so a quiet
+    evening can be told from an evening whose hold was quietly skipped.
+    """
+    forced = {str(name) for name in (splits or [])}
+    forced |= {str(name) for name in (spinoffs or [])}
+    for key in ("dropped_no_short", "dropped_no_risk"):
+        for row in manifest.get(key) or []:
+            ticker = row.get("ticker") if isinstance(row, Mapping) else row
+            if ticker:
+                forced.add(str(ticker))
+    for name in manifest.get("dropped_no_price") or []:
+        forced.add(str(name))
+    return forced
+
+
+def _completed_rebalances(data_root: Path) -> list[str] | None:
+    """The closes this job's own completion record says were rebalanced, or None.
+
+    The calendar's "a missed rebalance makes the next evening a rebalance" rule
+    reads the record the run already writes rather than keeping a second one:
+    `efb.run_status` has a row per close it priced, and the row's status says
+    whether the evening produced a book. A scheduled rebalance with no completed
+    row is the gap.
+
+    The store is asked and never written to. A tree with no store behind it - a
+    test, a fresh container - gets `None`, which means "cannot say": no gap is
+    inferred from a record that could not be read, because promoting every hold
+    day to a rebalance on a store failure would quietly undo the calendar.
+    """
+    from live import staleness, store
+
+    try:
+        frame = store.select(staleness.TABLE)
+    except Exception as exc:  # noqa: BLE001 - the calendar goes on without it
+        logger.warning(
+            "the completion record could not be read, so a missed rebalance "
+            "cannot be proven: %s: %s",
+            type(exc).__name__,
+            exc,
+        )
+        return None
+    columns = {"job", "target_close", "status"}
+    if frame is None or not len(frame) or not columns <= set(frame.columns):
+        return None
+    done = frame.loc[
+        frame["job"].astype(str).eq("live_daily")
+        & frame["status"].astype(str).isin(cadence.COMPLETED_STATUSES)
+    ]
+    return sorted({str(value)[:10] for value in done["target_close"]})
+
+
+def _held_book_weights(previous: pd.Series | None, names: list[str]) -> np.ndarray | None:
+    """The held book as a vector over `names`, or None when there is nothing held.
+
+    A name in `previous` that `names` does not carry is absent here, which is
+    exactly the close the order path should send: the universe or the model no
+    longer has it. The weights are never renormalized - gross falling a little
+    below 1.0 because a name left is the truth about the book, and renormalizing
+    would trade every other name to make up the difference on a day that is
+    supposed to trade nothing.
+    """
+    if previous is None or len(previous) == 0:
+        return None
+    held = {str(key): float(value) for key, value in previous.items()}
+    vector = np.asarray([held.get(str(name), 0.0) for name in names], dtype=float)
+    if not np.any(np.abs(vector) > 1e-12):
+        return None
+    return vector
 
 
 def _stored_ic(signal: str, data_root: Path) -> float:
@@ -1209,6 +1306,8 @@ def floor_book_violations(
     dollar_floor: float,
     share_floor: int,
     min_names: int = MIN_FLOOR_BOOK_NAMES,
+    sticky: np.ndarray | None = None,
+    release: float = 1.0,
 ) -> list[str]:
     """Every check an enforced floor book must pass, as a list of violations.
 
@@ -1216,6 +1315,16 @@ def floor_book_violations(
     dollar neutrality, an exact hedge, a full idio share, no name below its
     floor in the final weights, and at least three times the design width in
     kept names so the exact FMP hedge keeps its rank margin.
+
+    `release` and `sticky` are the band, and the below-floor test has to be the
+    band's own. `EFB_FLOOR_RELEASE` exists to keep a *held* name that has fallen
+    below its floor but is still above `release x floor`; testing those same names
+    against the full floor contradicts the flag by construction, and `build_proposal`
+    raises on the result. That is the defect the churn study found on 2026-10-17: a
+    release of 0.75 or 0.5 fired this check on the first rebalance where the band
+    bound and the evening produced no book at all. The mask is the same one the
+    floor search uses (`_releasable`), so the search and the check cannot disagree
+    about which kept names are inside the band.
     """
     violations: list[str] = []
     finalize = finalize_kept_set(
@@ -1237,7 +1346,11 @@ def floor_book_violations(
         )
     if abs(float(decomp["idio_share"]) - 1.0) > 1e-9:
         violations.append(f"idio share is {decomp['idio_share']:.6f}, not 1.0")
-    below = int(below_floor(shares, prices, dollar_floor, share_floor).sum())
+    below_mask = below_floor(shares, prices, dollar_floor, share_floor)
+    below_mask = _releasable(
+        below_mask, idx, shares, prices, sticky, release, dollar_floor, share_floor
+    )
+    below = int(below_mask.sum())
     if below:
         violations.append(f"{below} kept names are below their floor")
     if int(keep.sum()) < min_names:
@@ -1378,12 +1491,21 @@ def _cost_decomposition(
     nav: float,
     root: Path,
     previous: np.ndarray | None = None,
+    horizon: int | None = None,
 ) -> tuple[dict[str, float], list[dict[str, Any]]]:
     """The establishment cost split into spread, impact, commission and borrow.
 
     Each component is in basis points of the paper NAV. Borrow is the
-    annualized rate on the short leg over one rebalance horizon, the same
+    annualized rate on the short leg over one holding horizon, the same
     horizon E6's per-rebalance number uses.
+
+    `horizon` is that holding period in sessions and defaults to `HORIZON` (21,
+    the E6/E9 convention), which is what every call made before `EFB_CADENCE`
+    existed used. Spread, commission and impact are the cost of a *trade* and do
+    not amortize; the borrow is the one term charged for the time the book is
+    held, so it is the one term the cadence changes: at `EFB_CADENCE=k` the book
+    is held k sessions between rebalances and the short leg is borrowed for
+    exactly that long.
 
     The impact is the cost of the *trade*, so its dollar amount is the change in
     weight - from flat on the establishment day, which is why the number is
@@ -1414,7 +1536,10 @@ def _cost_decomposition(
     commission_bps = float(np.sum(costs_mod.COMMISSION * np.abs(weights))) * 1e4
     impact_bps = float(np.sum(impact * np.abs(weights - held))) * 1e4
     short_gross = float(np.maximum(-weights, 0.0).sum())
-    borrow_bps = costs_mod.BORROW_RATE * short_gross * (HORIZON / TRADING_DAYS) * 1e4
+    horizon_sessions = HORIZON if horizon is None else int(horizon)
+    borrow_bps = (
+        costs_mod.BORROW_RATE * short_gross * (horizon_sessions / TRADING_DAYS) * 1e4
+    )
     total = spread_bps + commission_bps + impact_bps + borrow_bps
     notional = float(np.abs(weights).sum()) * nav
     traded_notional = float(np.abs(weights - held).sum()) * nav
@@ -1633,6 +1758,9 @@ def build_proposal(
     nav_source: str | None = None,
     floor_release: float | None = None,
     shortable: dict[str, bool] | None = None,
+    cadence_mode: int | None = None,
+    cadence_anchor: object | None = None,
+    completed_rebalances: object | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
@@ -1662,6 +1790,17 @@ def build_proposal(
     always clears the whole floor, so the band can only ever hold a position that is
     already there. The default book is therefore unchanged, weight for weight, and
     `tests/test_nov11_floor_band.py` proves it on the live construction.
+
+    `cadence_mode` is `EFB_CADENCE` and `cadence_anchor` is `EFB_CADENCE_ANCHOR`
+    (`live/cadence.py`). `1` - the default - is the daily rebalance this job has
+    always built. Above that, a hold day publishes the **held book**: the previous
+    proposal's weights, unchanged, on the names tonight's universe still has. Nothing
+    is sized, hedged or floor-enforced on a hold day, because none of it is being
+    traded; the risk figures on the manifest describe the book that is actually held,
+    and the names the universe no longer has simply drop out, which the order path
+    reads as a close. `completed_rebalances` is the completion record the calendar
+    reads for a missed rebalance; `None` means it could not be read, and then no gap
+    is inferred (see `live.cadence.plan`).
     """
     if nav is None or not math.isfinite(nav) or nav <= 0:
         raise ValueError(
@@ -1761,6 +1900,25 @@ def build_proposal(
             f"names, below the {MIN_NAMES} floor"
         )
 
+    # The calendar, before anything is sized: which close this is decides whether
+    # the book is rebuilt or held. `k = 1` - the default - is the daily rebalance
+    # the loop has always run, and `cadence.plan` says so without consulting a
+    # calendar at all.
+    k = (
+        max(1, int(cadence_mode))
+        if cadence_mode is not None
+        else cadence.resolve_cadence()
+    )
+    anchor = (
+        pd.Timestamp(cadence_anchor)
+        if cadence_anchor is not None
+        else cadence.resolve_anchor()
+    )
+    completed = completed_rebalances
+    if completed is None and k > 1:
+        completed = _completed_rebalances(root)
+    calendar = cadence.plan(wide.index, as_of_ts, k, anchor, completed)
+
     # The risk universe, before anything is priced: a name the model has no
     # specific variance for cannot be sized on one, and the reader here is the
     # same one `_xs_pieces` uses, so the check and the diagonal cannot disagree
@@ -1799,6 +1957,28 @@ def build_proposal(
     # is applied here as well so the two agree and the full-book risk numbers on
     # the manifest are the numbers of the mode the run was asked for.
     weights = size.procedure_6_3(alpha_vec, design, factor_covariance, specific)
+    # A hold day does not size: the book it publishes is the one it holds. The
+    # sizing above still runs so the manifest can say what the target would have
+    # been - that difference is what a rebalance would trade, and it is the
+    # number the owner will want when the next rebalance is due - but the weights
+    # that leave this function are the held ones, unchanged, with a name the
+    # universe or the model no longer carries simply absent (which the order path
+    # reads as a close).
+    held_weights = (
+        _held_book_weights(previous, names) if calendar["day"] == cadence.HOLD else None
+    )
+    holding = held_weights is not None
+    target_weights: np.ndarray | None = None
+    if holding:
+        target_weights = np.array(weights, dtype=float)
+        logger.info(
+            "%s: %s - the book is held, not rebuilt (%d name(s), gross %.4f)",
+            as_of_ts.date(),
+            calendar["label"],
+            int(np.sum(np.abs(held_weights) > 1e-12)),
+            float(np.abs(held_weights).sum()),
+        )
+        weights = held_weights
     # Item 18, when the caller injected the broker's lending flags: a name the sizing
     # puts short and the broker will not lend leaves the book *here*, before the hedge
     # and the floor, so the published book, its breadth and its forecast are the book
@@ -1833,6 +2013,15 @@ def build_proposal(
         weights, design, factor_covariance, specific
     )
     full_decomposition = _decomposition(weights, design, factor_covariance, specific)
+    if holding:
+        # The published book is the held one, and so is every number that
+        # describes it. The sizing above produced the *target* book; it is kept on
+        # the manifest as the rebalance the calendar did not take today.
+        weights = held_weights
+        gross_cap_bound = False
+        full_decomposition = _decomposition(
+            weights, design, factor_covariance, specific
+        )
 
     # The chosen construction, read from the registry rather than hardcoded:
     # share-only, a minimum of 20 whole shares per name, no dollar floor,
@@ -1869,39 +2058,75 @@ def build_proposal(
         sticky = np.array(
             [held.get(str(name), 0.0) != 0.0 for name in names], dtype=bool
         )
-    enforced_keep, finalize, search = enforce_floor_by_drop_then_admit(
-        names,
-        alpha_vec,
-        design,
-        factor_covariance,
-        specific,
-        close,
-        nav,
-        weights,
-        dollar_floor=construction["dollar_floor"],
-        share_floor=construction["share_floor"],
-        start=priced,
-        sticky=sticky,
-        release=release,
-    )
-    floor_search_seconds = time.perf_counter() - started
-    violations = floor_book_violations(
-        enforced_keep,
-        names,
-        alpha_vec,
-        design,
-        factor_covariance,
-        specific,
-        close,
-        nav,
-        dollar_floor=construction["dollar_floor"],
-        share_floor=construction["share_floor"],
-    )
-    if violations:
-        raise ValueError(
-            "the enforced floor book fails its checks and must not trade: "
-            + "; ".join(violations)
+    if holding:
+        # Nothing is enforced on a book that is not being traded: the floor is a
+        # rule about which names a *rebalance* keeps, and applying it here would
+        # trade the book back to a target the calendar said not to take today.
+        # The held names keep their sizes exactly, so `finalize` is assembled from
+        # the held vector itself and the search reports what it did - nothing.
+        idx = np.where(np.abs(weights) > 1e-12)[0]
+        enforced_keep = np.abs(weights) > 1e-12
+        finalize = {
+            "idx": idx,
+            "w_sub": weights[idx],
+            "shares": np.zeros(len(idx), dtype=int),
+            "prices": np.asarray(
+                [close.get(str(names[i]), 0.0) for i in idx], dtype=float
+            ),
+            # No hedge ran on a hold day, so the "before" and "after" vectors are
+            # the same one: the held book's own exposures.
+            "pre_hedge_exposures": (
+                design[idx].T @ weights[idx] if len(idx) else np.zeros(design.shape[1])
+            ),
+        }
+        search = {
+            "n_drop_only": int(enforced_keep.sum()),
+            "n_one_pass_admission": int(enforced_keep.sum()),
+            "cycles": 0,
+            "admit_passes": 0,
+            "admitted": [],
+            "converged": True,
+        }
+        floor_search_seconds = 0.0
+        # The band is not consulted on a hold day, so the manifest states the rule
+        # the book was actually built under rather than the one it would have used.
+        release = FLOOR_RELEASE_OFF
+    else:
+        enforced_keep, finalize, search = enforce_floor_by_drop_then_admit(
+            names,
+            alpha_vec,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            nav,
+            weights,
+            dollar_floor=construction["dollar_floor"],
+            share_floor=construction["share_floor"],
+            start=priced,
+            sticky=sticky,
+            release=release,
         )
+        floor_search_seconds = time.perf_counter() - started
+        violations = floor_book_violations(
+            enforced_keep,
+            names,
+            alpha_vec,
+            design,
+            factor_covariance,
+            specific,
+            close,
+            nav,
+            dollar_floor=construction["dollar_floor"],
+            share_floor=construction["share_floor"],
+            sticky=sticky,
+            release=release,
+        )
+        if violations:
+            raise ValueError(
+                "the enforced floor book fails its checks and must not trade: "
+                + "; ".join(violations)
+            )
     n_dropped = len(names) - int(enforced_keep.sum())
     n_selected = int(enforced_keep.sum())
     kept_gross_before_renorm = float(np.abs(weights[enforced_keep]).sum())
@@ -1936,7 +2161,15 @@ def build_proposal(
         else None
     )
     cost, thin_adv = _cost_decomposition(
-        weights, names, specific, nav, root, previous_weights
+        weights,
+        names,
+        specific,
+        nav,
+        root,
+        previous_weights,
+        # The holding horizon the borrow is charged over. `k` above 1 is the
+        # cadence the book is actually held for; 1 keeps the E6/E9 convention.
+        horizon=k if k > 1 else None,
     )
 
     kept_rows = pd.DataFrame({"ticker": names, "weight": weights})
@@ -1968,6 +2201,24 @@ def build_proposal(
         # loop has always used, and a fraction below it is item 12's band. A row read
         # back months later has to say which of the two its book came from.
         "floor_release": float(release),
+        # Which close this was, on the calendar `EFB_CADENCE` describes: a rebalance
+        # or a hold, the next rebalance date, and whether today's is a rebalance an
+        # earlier evening missed. `held` is the fact the order path reads - the book
+        # below is the held book, so only its forced legs may trade. At the default
+        # `k = 1` this block says "rebalance" every day and changes nothing.
+        "cadence": dict(calendar, held=bool(holding)),
+        "held_book": bool(holding),
+        # What a hold day did not take: the target the construction would have
+        # traded to. `None` on a rebalance day, where the published book *is* it.
+        "target_book_held_back": (
+            {
+                "n_names": int(np.sum(np.abs(target_weights) > 1e-12)),
+                "gross": float(np.abs(target_weights).sum()),
+                "turnover": float(np.abs(target_weights - weights).sum()),
+            }
+            if holding
+            else None
+        ),
         # The same names with their reason and their age: the list itself is what
         # downstream reads, and this is what the message and the owner read.
         "excluded_detail": excluded_detail,

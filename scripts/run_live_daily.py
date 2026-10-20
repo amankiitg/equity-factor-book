@@ -1310,7 +1310,15 @@ def finish_run(
             )
         try:
             written = snapshot_module.write_snapshot(
-                run={**row, "store": store_name, "attribution": attribution},
+                run={
+                    **row,
+                    "store": store_name,
+                    "attribution": attribution,
+                    # The calendar block travels to the page: a hold day is a
+                    # normal, green state and the page says which one it is and
+                    # when the next rebalance is due.
+                    "cadence": (manifest or {}).get("cadence"),
+                },
                 manifest=manifest,
                 book=book,
                 reconciliation=_with_sent_halves(
@@ -2063,12 +2071,26 @@ def main() -> int:
             )
 
         # Morning: gate, guard, submit (dry run by default), reconcile.
+        # A hold day publishes the held book, so the only legs it may send are the
+        # forced ones: a name that left the universe (the proposal no longer carries
+        # it, which the order path sends as a close), a corporate action, a short the
+        # broker will not lend, a name with no usable close or no risk estimate, and
+        # a reversal the loop had already deferred. `None` on a rebalance day is the
+        # daily path, unchanged.
+        cadence_block = manifest.get("cadence") or {}
+        holding = bool(manifest.get("held_book"))
+        forced_names = (
+            evening_job.forced_names_for_hold(manifest, splits, spinoffs)
+            if holding
+            else None
+        )
         morning = morning_job.run_morning(
             as_of,
             dry_run=dry_run,
             positions=held,
             quantities=holdings.get("held_quantities"),
             establishment=establishment,
+            forced_names=forced_names,
         )
         store_orders(as_of, dry_run)
         # The dollars tonight's legs moved, per name, for the page's trades-by-reason
