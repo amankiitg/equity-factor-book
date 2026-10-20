@@ -72,7 +72,11 @@ def test_every_kth_session_is_a_rebalance_and_the_rest_are_holds() -> None:
         )
         for index, day in enumerate(days)
     ]
-    rebalances = [day for day, plan in zip(days, plans, strict=True) if plan["day"] == cadence.REBALANCE]
+    rebalances = [
+        day
+        for day, plan in zip(days, plans, strict=True)
+        if plan["day"] == cadence.REBALANCE
+    ]
     assert rebalances == [days[0], days[21], days[42]]
     hold = plans[5]
     assert hold["day"] == cadence.HOLD
@@ -89,8 +93,14 @@ def test_the_anchor_is_session_zero() -> None:
     plan = cadence.plan(days, days[4], 7, anchor=anchor, completed=[])
     assert plan["day"] == cadence.REBALANCE
     assert plan["offset"] == 0
-    assert cadence.plan(days, days[11], 7, anchor=anchor, completed=[done[0]])["day"] == cadence.REBALANCE
-    assert cadence.plan(days, days[12], 7, anchor=anchor, completed=done)["day"] == cadence.HOLD
+    assert (
+        cadence.plan(days, days[11], 7, anchor=anchor, completed=[done[0]])["day"]
+        == cadence.REBALANCE
+    )
+    assert (
+        cadence.plan(days, days[12], 7, anchor=anchor, completed=done)["day"]
+        == cadence.HOLD
+    )
 
 
 def test_an_anchor_that_is_not_a_session_snaps_back_to_the_session_before_it() -> None:
@@ -219,7 +229,9 @@ def test_a_hold_day_sends_only_forced_legs_and_closes() -> None:
 
 
 def test_the_daily_path_sends_every_leg_when_no_hold_is_named() -> None:
-    proposal = pd.DataFrame({"ticker": ["AAA", "CCC", "DDD"], "weight": [0.10, 0.05, 0.02]})
+    proposal = pd.DataFrame(
+        {"ticker": ["AAA", "CCC", "DDD"], "weight": [0.10, 0.05, 0.02]}
+    )
     held = {"AAA": 100_000.0, "BBB": 50_000.0, "CCC": 40_000.0}
     orders = morning_job.target_orders(proposal, nav=1_000_000.0, current=held)
     assert sorted(order.ticker for order in orders) == ["BBB", "CCC", "DDD"]

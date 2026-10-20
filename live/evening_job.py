@@ -20,10 +20,10 @@ import math
 import os
 import subprocess
 import time
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -310,8 +310,8 @@ def universe_without_prices(
 
 def forced_names_for_hold(
     manifest: Mapping[str, Any],
-    splits: object = None,
-    spinoffs: object = None,
+    splits: Iterable[Any] | None = None,
+    spinoffs: Iterable[Any] | None = None,
 ) -> set[str]:
     """Every name a hold day may still trade, and nothing else.
 
@@ -341,12 +341,15 @@ def forced_names_for_hold(
     forced = {str(name) for name in (splits or [])}
     forced |= {str(name) for name in (spinoffs or [])}
     for key in ("dropped_no_short", "dropped_no_risk"):
-        for row in manifest.get(key) or []:
+        entries: list[Any] = list(cast(list[Any], manifest.get(key) or []))
+        for row in entries:
             ticker = row.get("ticker") if isinstance(row, Mapping) else row
             if ticker:
                 forced.add(str(ticker))
-    for name in manifest.get("dropped_no_price") or []:
-        forced.add(str(name))
+    for key in ("dropped_no_price", "left_universe"):
+        values: list[Any] = list(cast(list[Any], manifest.get(key) or []))
+        for name in values:
+            forced.add(str(name))
     return forced
 
 
@@ -386,7 +389,22 @@ def _completed_rebalances(data_root: Path) -> list[str] | None:
     return sorted({str(value)[:10] for value in done["target_close"]})
 
 
-def _held_book_weights(previous: pd.Series | None, names: list[str]) -> np.ndarray | None:
+def _held_back_block(
+    target: np.ndarray | None, held: np.ndarray
+) -> dict[str, float | int] | None:
+    """The target a hold day did not trade to, or None when nothing was held back."""
+    if target is None:
+        return None
+    return {
+        "n_names": int(np.sum(np.abs(target) > 1e-12)),
+        "gross": float(np.abs(target).sum()),
+        "turnover": float(np.abs(target - held).sum()),
+    }
+
+
+def _held_book_weights(
+    previous: pd.Series | None, names: list[str]
+) -> np.ndarray | None:
     """The held book as a vector over `names`, or None when there is nothing held.
 
     A name in `previous` that `names` does not carry is absent here, which is
@@ -1760,7 +1778,7 @@ def build_proposal(
     shortable: dict[str, bool] | None = None,
     cadence_mode: int | None = None,
     cadence_anchor: object | None = None,
-    completed_rebalances: object | None = None,
+    completed_rebalances: Iterable[Any] | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
@@ -1969,7 +1987,7 @@ def build_proposal(
     )
     holding = held_weights is not None
     target_weights: np.ndarray | None = None
-    if holding:
+    if held_weights is not None:
         target_weights = np.array(weights, dtype=float)
         logger.info(
             "%s: %s - the book is held, not rebuilt (%d name(s), gross %.4f)",
@@ -2013,7 +2031,7 @@ def build_proposal(
         weights, design, factor_covariance, specific
     )
     full_decomposition = _decomposition(weights, design, factor_covariance, specific)
-    if holding:
+    if held_weights is not None:
         # The published book is the held one, and so is every number that
         # describes it. The sizing above produced the *target* book; it is kept on
         # the manifest as the rebalance the calendar did not take today.
@@ -2208,17 +2226,18 @@ def build_proposal(
         # `k = 1` this block says "rebalance" every day and changes nothing.
         "cadence": dict(calendar, held=bool(holding)),
         "held_book": bool(holding),
+        # The held names tonight's universe or model no longer carries, which are
+        # the closes a hold day sends. Named on the manifest so the run's record
+        # says which names the hold could not keep rather than leaving it to be
+        # inferred from an order list.
+        "left_universe": (
+            sorted({str(name) for name in previous.index} - set(names))
+            if holding and previous is not None
+            else []
+        ),
         # What a hold day did not take: the target the construction would have
         # traded to. `None` on a rebalance day, where the published book *is* it.
-        "target_book_held_back": (
-            {
-                "n_names": int(np.sum(np.abs(target_weights) > 1e-12)),
-                "gross": float(np.abs(target_weights).sum()),
-                "turnover": float(np.abs(target_weights - weights).sum()),
-            }
-            if holding
-            else None
-        ),
+        "target_book_held_back": _held_back_block(target_weights, weights),
         # The same names with their reason and their age: the list itself is what
         # downstream reads, and this is what the message and the owner read.
         "excluded_detail": excluded_detail,

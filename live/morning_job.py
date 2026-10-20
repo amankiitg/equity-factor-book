@@ -13,6 +13,7 @@ is `approve`, or when auto-approve is on and the decision is not `reject`.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -363,9 +364,7 @@ def _target_legs(
     for name in sorted(set(targets) | set(held)):
         target = targets.get(name, 0.0)
         position = held.get(name, 0.0)
-        sign_flip = (
-            position != 0.0 and target != 0.0 and (position > 0) != (target > 0)
-        )
+        sign_flip = position != 0.0 and target != 0.0 and (position > 0) != (target > 0)
         if (
             forced is not None
             and name not in forced
@@ -542,7 +541,7 @@ def run_morning(
     positions: dict[str, float] | None = None,
     establishment: bool | None = None,
     quantities: dict[str, float] | None = None,
-    forced_names: object | None = None,
+    forced_names: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """The whole morning flow: gate, propose, guard, submit, reconcile.
 

@@ -108,14 +108,14 @@ def test_the_live_fit_and_the_next_design_read_one_panel(
     panel = {"returns": raw_frame, "returns_clean": clean_frame}
     monkeypatch.delenv(race.DESIGN_RETURNS_ENV, raising=False)
     monkeypatch.setattr(race, "_DESIGN_RETURNS_CACHE", None)
-    assert race.design_panel(panel) is raw_frame, (
-        "with the flag unset the frame must be the raw one, which is origin/main's"
-    )
+    assert (
+        race.design_panel(panel) is raw_frame
+    ), "with the flag unset the frame must be the raw one, which is origin/main's"
     monkeypatch.setenv(race.DESIGN_RETURNS_ENV, race.DESIGN_RETURNS_CLEAN)
     monkeypatch.setattr(race, "_DESIGN_RETURNS_CACHE", None)
-    assert race.design_panel(panel) is clean_frame, (
-        "the flag's one job is to choose the cleaned frame, and it is not choosing it"
-    )
+    assert (
+        race.design_panel(panel) is clean_frame
+    ), "the flag's one job is to choose the cleaned frame, and it is not choosing it"
 
 
 def _mapped_columns(panel: dict[str, object]) -> list[str]:

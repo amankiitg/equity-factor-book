@@ -273,8 +273,15 @@ def build(
             "cost_label": run.get("cost_label"),
             # The rebalance calendar, when the run has one: a hold day is a normal
             # evening that did not trade, and the page has to be able to say so
-            # without turning it red. Absent on a run that never asked.
-            "cadence": _json_value(run.get("cadence"), None),
+            # without turning it red. **Absent** on a run that never asked, rather
+            # than present as null: the document a flag-less run writes has to be
+            # byte-identical to the one it wrote before the flag existed, which is
+            # what `tests/test_e11_web_fixtures.py` pins.
+            **(
+                {"cadence": _json_value(run.get("cadence"), None)}
+                if _json_value(run.get("cadence"), None) is not None
+                else {}
+            ),
         },
         "construction": construction_table.construction_label(proposal),
         # The account's book against the store's, read before the orders were

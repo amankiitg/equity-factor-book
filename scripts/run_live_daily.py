@@ -1316,8 +1316,13 @@ def finish_run(
                     "attribution": attribution,
                     # The calendar block travels to the page: a hold day is a
                     # normal, green state and the page says which one it is and
-                    # when the next rebalance is due.
-                    "cadence": (manifest or {}).get("cadence"),
+                    # when the next rebalance is due. Left out entirely when there
+                    # is none, so a flag-less run's document is unchanged.
+                    **(
+                        {"cadence": (manifest or {}).get("cadence")}
+                        if (manifest or {}).get("cadence")
+                        else {}
+                    ),
                 },
                 manifest=manifest,
                 book=book,

@@ -78,7 +78,10 @@ def resolve_anchor(value: str | None = None) -> pd.Timestamp | None:
 
 
 def _sessions(dates: Iterable[Any]) -> list[pd.Timestamp]:
-    return [pd.Timestamp(day).normalize() for day in sorted(set(pd.to_datetime(list(dates))))]
+    return [
+        pd.Timestamp(day).normalize()
+        for day in sorted(set(pd.to_datetime(list(dates))))
+    ]
 
 
 def _anchor_index(sessions: list[pd.Timestamp], anchor: pd.Timestamp) -> int:
