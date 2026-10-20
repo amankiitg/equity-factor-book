@@ -250,3 +250,120 @@ before anything else.**
    charges nothing on easy-to-borrow names. Re-record `BORROW_RATE` from the
    broker's own schedule (or make it a flag) before the monthly net is used to
    decide anything: it moves the conclusion by more than the whole variant table.
+
+---
+
+# Update, 2026-10-20: where the loadings actually refresh, and B0R
+
+Three questions: does the **live** design refresh daily or monthly; does rebalancing
+on the refresh day (B0R) remove the 23%; and what does `cap_then_rehedge` do at
+monthly. Every number below is in `churn_followup.json`; the new variants are
+`B0R` and `B0RH`, and every row now carries two exposure readings (see "Two
+readings" below).
+
+## 2a. The live loadings refresh **every session**.
+
+**Code.** The evening's design is `efb.eval_risk._xs_pieces(date, names, root)` ->
+`efb.race.next_descriptor_design(date, names, root)`. That function has three
+branches, and the live one is the second:
+
+1. the artifact already publishes the row for the **next** session -> use it (a
+   replay);
+2. **the panel stops at the close - the live shape - so the row is built there from
+   data through `date`**, with the cross-section taken as the names priced at
+   `date`. The docstring says so in as many words: *"the panel stops at the close,
+   which is the live shape, so the row is built here from data through `date`"*;
+3. neither -> fall back to the row dated `date`, labelled `stale`.
+
+So each evening produces a **fresh** design for the session the book will earn.
+
+**Data.** `efb.e11_descriptors` (the appendix the live tree hydrates) carries
+**3,514 rows for every session** from 2026-09-04 through 2026-10-19 - 33 distinct
+dates in that window, no gaps: the loadings are refitted nightly by
+`extend_model`, which appends one descriptor row per new session. The R2 seed's
+`models/XS-v1/descriptors.parquet` is also daily after the 2026-09-03 seam
+(200 dates: monthly before it, daily after).
+
+**Why the study saw monthly.** The research tree is the *repo's* frozen panel -
+`data/models/XS-v1/descriptors.parquet`, **190 dates, median gap 31 days**, last
+2026-10-02 - which is why only 29 of the study's 586 sessions publish a design. The
+study's mid-month rebalances therefore hedge against a month-end row up to 20
+sessions old, and the next month-end reveals the gap. **That is a property of the
+study tree, not of the live loop.**
+
+## 2b. B0R: monthly, rebalanced on the first session the loadings refresh
+
+B0R rebalances on every session the frozen tree publishes a design for (29 month-ends),
+instead of every 21 sessions from an anchor; nothing else changes. B0RH is the same
+with `EFB_HEDGE_MODE=cap_then_rehedge`.
+
+### Two readings, because one of them is misleading
+
+`design days` is the study's original measurement: the worst factor exposure on the
+29 sessions the frozen tree publishes a design for. **`carry`** is the reading a live
+run would take **every session**, against the last published design (the same
+`_as_of` carry-forward `efb/race.py` uses). The second is the honest one for a tree
+whose designs rotate monthly, because between two refreshes there is nothing new to
+measure against and a design-day-only series cannot see the drift at all.
+
+| variant | rebal | tov/reb | cost bp/yr | alpha | expo **design days** med / p95 / max | expo **carry** med / p95 / max | var share max | names |
+|---|---|---|---|---|---|---|---|---|
+| **B0** | 28 | 87.02% | 69.1 | 100.0% | 9.34% / 19.84% / **23.03%** | 1.61% / 15.93% / **23.03%** | 47.1% | 200 |
+| **B0H** | 28 | 86.56% | 68.8 | 96.6% | 9.20% / 20.70% / 22.40% | 1.57% / 14.79% / 22.40% | **31.8%** | 200 |
+| **B0R** | 29 | 74.56% | 61.3 | 82.9% | 0.09% / 0.21% / 2.59% | 1.75% / 3.90% / **6.75%** | 56.9% | 187 |
+| **B0RH** | 29 | 75.00% | 61.5 | 83.4% | 0.11% / 0.20% / 2.88% | 1.69% / 3.52% / **6.66%** | **31.0%** | 187 |
+| **G3** | 28 | 86.48% | 77.7 | 97.3% | 0.26% / 0.63% / 1.58% | 1.23% / 3.24% / **6.39%** | 47.1% | 200 |
+
+Turnover split of the two new variants (per rebalance, % NAV): B0R in 10.22 / out
+9.17 / resize 12.67; B0RH in 10.36 / out 9.31 / resize 12.58. Borrow 97.8 bp on
+both (the book is a little less short), vol 4.42% / 4.31%.
+
+### What B0R is actually doing
+
+On the design days B0R reads **0.09% median** - because it rebalances *on the day
+the design is published*, so the book is hedged to the very row it is then measured
+against. That reading alone would be circular. The carry-forward series is what
+separates the two effects:
+
+- **B0 reaches 23.03% in both readings.** Its mid-month rebalance hedges against a
+  twenty-session-old row; when the model publishes the new row the book is suddenly
+  23% exposed to it. That is the **design rotation shock**, and it is most of the
+  23%.
+- **B0R reaches 6.75% carry.** It times every rebalance to the rotation, so the
+  shock never happens; what is left is the **weight drift** over the month, which
+  peaks at 6.75%.
+
+So B0R is a real reduction *in a tree whose designs rotate monthly*. It is **not
+transferable to the live path**: live, the design rotates every session (2a), so a
+monthly book is re-exposed to a new row *every evening* and the 23% is the real
+monthly exposure. An `anchor=refresh` mode live would rebalance on the first evening
+whose loadings are newer than the held book's - every evening - i.e. it would
+silently be the daily loop.
+
+The cost of B0R is lower than B0's (61.3 vs 69.1 bp/yr, 74.56% vs 87.02% turnover)
+because it trades 29 times instead of 28 but with better alignment; its alpha
+retained is **82.9%**, below the study's own 90% floor.
+
+### `cap_then_rehedge` at monthly (B0H, B0RH)
+
+B0H changes almost nothing about turnover (86.56% vs 87.02%) or factor exposure
+(22.40% vs 23.03%), and cuts the worst **single-name variance share from 47.1% to
+31.8%** at 96.6% of the alpha. B0RH does the same at B0R's calendar: 31.0% variance
+share, 6.66% carry exposure, 83.4% alpha. It is the one lever here that addresses
+concentration rather than exposure.
+
+## 2d. Recommendation for monthly
+
+**Run monthly with the 3% drift guard (G3), and turn `cap_then_rehedge` on beside
+it.** The guard is the only setup whose risk reduction survives the honest
+measurement (carry max 6.39% against B0's 23.03%) while keeping 97.3% of the alpha,
+and it does it without moving the rebalance calendar. B0R looks better on the study
+tree but its advantage is the design rotation, which does not exist on the live path,
+where designs are rebuilt every evening; adopting `anchor=refresh` there would
+rebalance daily and quietly undo the monthly cadence. `cap_then_rehedge` is worth
+having independently: it takes the worst single-name variance share from 47% to 31%
+for 3.4 points of alpha, and it composes with the guard (P50G3's 35.1% shows the
+same direction). Two caveats the study cannot settle: the guard's **cost is
+understated** here (+8.6 bp/yr) because it can only fire on the 29 monthly design
+days - live, with a daily design, it will fire more often and cost more - and the
+borrow line is still the unverified 2%.

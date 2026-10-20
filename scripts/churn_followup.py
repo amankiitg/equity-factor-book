@@ -81,6 +81,17 @@ VARIANTS: dict[str, dict[str, Any]] = {
     # leaves in full. Without it the blend keeps a decaying residual of every name
     # the alpha has abandoned, and the book's name count grows all window.
     "P50T": {"phi": 0.50, "hedge": "exact", "guard": None, "truncate": True},
+    # B0R: monthly, but on the calendar the *loadings* keep - a rebalance on every
+    # session the design refreshes (a month-end in this tree), instead of every 21
+    # sessions from an anchor. The point is the alignment: the book is hedged
+    # against the design it will be measured against, on the day it is measured.
+    "B0R": {"phi": 1.0, "hedge": "exact", "guard": None, "refresh": True},
+    "B0RH": {
+        "phi": 1.0,
+        "hedge": "cap_then_rehedge",
+        "guard": None,
+        "refresh": True,
+    },
 }
 
 
@@ -137,6 +148,19 @@ def _set_hedge_mode(mode: str) -> None:
     evening_job._HEDGE_MODE_CACHE = None
 
 
+def descriptor_dates(root: pathlib.Path) -> set[pd.Timestamp]:
+    """The sessions the frozen model publishes a design for.
+
+    The live tree refreshes every session; this research tree is the frozen panel,
+    which publishes one row per month-end. `B0R` rebalances on these sessions, so the
+    set is what defines its calendar.
+    """
+    frame = pd.read_parquet(
+        root / "models" / "XS-v1" / "descriptors.parquet", columns=["date"]
+    )
+    return {pd.Timestamp(value).normalize() for value in frame["date"].unique()}
+
+
 def run_variant(
     name: str,
     spec: dict[str, Any],
@@ -146,8 +170,13 @@ def run_variant(
     alphas: churn.AlphaSource,
     baseline: dict[str, Any] | None = None,
     detail: bool = False,
+    design_sessions: set[pd.Timestamp] | None = None,
 ) -> dict[str, Any]:
-    """Hold and rebalance one variant through the window, and report what it cost."""
+    """Hold and rebalance one variant through the window, and report what it cost.
+
+    `design_sessions` is the set of sessions the tree publishes a design for; a
+    `refresh` variant rebalances on those, which is B0R's calendar.
+    """
 
     phi = float(spec["phi"])
     guard = spec["guard"]
@@ -173,6 +202,10 @@ def run_variant(
     guard_turnover = 0.0
     guard_cost = 0.0
     rebalances = 0
+    last_rebalance = -1
+    design_exposures: list[float] = []
+    carry_exposures: list[float] = []
+    carry_day: pd.Timestamp | None = None
     daily: list[dict[str, Any]] = []
     try:
         for index, day in enumerate(dates):
@@ -181,7 +214,19 @@ def run_variant(
             if index and row is not None and held:
                 held, portfolio = icd._drift(held, row)
             gross.append(portfolio)
-            is_rebalance = index % CADENCE == 0
+            if spec.get("refresh"):
+                # The first session whose loadings are newer than the held book's.
+                # The held book's design is the day it last traded, so every session
+                # that publishes a new design is a rebalance and nothing else is.
+                is_rebalance = (
+                    design_sessions is not None
+                    and day in design_sessions
+                    and index > last_rebalance
+                )
+                if is_rebalance:
+                    last_rebalance = index
+            else:
+                is_rebalance = index % CADENCE == 0
             legs: dict[str, float] = {}
             split = {"entries": 0.0, "exits": 0.0, "resizes": 0.0}
             if is_rebalance:
@@ -254,10 +299,27 @@ def run_variant(
             borrows.append(float(cost_model.BORROW_RATE) * short_gross / TRADING_DAYS)
             names_held.append(len(held))
             names = sorted(held)
+            if design_sessions:
+                available = [d for d in design_sessions if d <= day]
+                carry_day = max(available) if available else None
             design = design_for(market, day, names) if names else None
+            if names and carry_day is not None:
+                # The exposure as a live run would measure it every evening: against
+                # the design the model actually publishes, carried forward until the
+                # next one. This is the measurement the frozen tree cannot make on the
+                # days between refreshes, and the one that shows whether a book is
+                # drifting rather than whether it happens to trade on a refresh day.
+                carry_design = design_for(market, carry_day, names)
+                if carry_design is not None:
+                    carry = carry_design.T @ np.asarray(
+                        [held[name] for name in names], dtype=float
+                    )
+                    carry_exposures.append(float(np.abs(carry).max()))
             if design is not None:
                 vector = exposure_vector(design, held, names)
                 exposures.append(float(np.abs(vector).max()))
+                if design_sessions is not None and day in design_sessions:
+                    design_exposures.append(float(np.abs(vector).max()))
                 if is_rebalance:
                     exposures_at_rebalance.append(float(np.abs(vector).max()))
                 if detail:
@@ -341,6 +403,35 @@ def run_variant(
                 if exposures_at_rebalance
                 else float("nan")
             ),
+            # The distribution on the sessions the frozen tree publishes a design
+            # for, which is the only place a style exposure can be measured at all.
+            "design_days": len(design_exposures),
+            "design_median": (
+                float(np.median(design_exposures)) if design_exposures else float("nan")
+            ),
+            "design_p95": (
+                float(np.percentile(design_exposures, 95))
+                if design_exposures
+                else float("nan")
+            ),
+            "design_max": (
+                float(np.max(design_exposures)) if design_exposures else float("nan")
+            ),
+            # The same book measured every session against the last published
+            # design, which is the live reading and the only one that can see the
+            # drift between two refreshes.
+            "carry_median": (
+                float(np.median(carry_exposures)) if carry_exposures else float("nan")
+            ),
+            "carry_p95": (
+                float(np.percentile(carry_exposures, 95))
+                if carry_exposures
+                else float("nan")
+            ),
+            "carry_max": (
+                float(np.max(carry_exposures)) if carry_exposures else float("nan")
+            ),
+            "carry_days": len(carry_exposures),
         },
         "variance_share_avg": (
             float(np.nanmean(variance_shares)) if variance_shares else float("nan")
@@ -388,6 +479,16 @@ def run(root: pathlib.Path, out: pathlib.Path, only: list[str], detail_b0: bool)
     logger.info("%d sessions %s..%s", len(dates), dates[0].date(), dates[-1].date())
     market = icd.Market(root, [str(day.date()) for day in dates])
     alphas = churn.AlphaSource(root)
+    design_sessions = descriptor_dates(root)
+    session_set = {day.normalize() for day in dates}
+    in_window = design_sessions & session_set
+    logger.info(
+        "the tree publishes a design on %d of %d sessions in the window (%s..%s)",
+        len(in_window),
+        len(session_set),
+        min(in_window).date() if in_window else "-",
+        max(in_window).date() if in_window else "-",
+    )
     partial = pathlib.Path(tempfile.gettempdir()) / f"{out.stem}_rows.partial.json"
     done: dict[str, dict[str, Any]] = {}
     if partial.exists():
@@ -411,6 +512,7 @@ def run(root: pathlib.Path, out: pathlib.Path, only: list[str], detail_b0: bool)
                 alphas,
                 baseline,
                 detail=(name == "B0" and detail_b0),
+                design_sessions=design_sessions,
             )
             done[name] = row
             partial.write_text(json.dumps(list(done.values()), default=str))
