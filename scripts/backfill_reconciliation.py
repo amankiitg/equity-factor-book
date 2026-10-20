@@ -40,6 +40,24 @@ import pandas as pd  # noqa: E402
 from live import reconcile, store  # noqa: E402
 
 
+def _for_store(row: dict[str, Any]) -> dict[str, Any]:
+    """One row as `store.upsert` needs it.
+
+    `select` hands back the jsonb columns as dicts and the store's write path binds
+    them straight to the placeholder, so a row read from the table and written back
+    has to be re-encoded as JSON text - which is what the code that wrote the row in
+    the first place passed. Only the two back-filled columns are floats.
+    """
+    return {
+        key: (
+            store.json_text(value, sort_keys=True)
+            if isinstance(value, (dict, list))
+            else value
+        )
+        for key, value in row.items()
+    }
+
+
 def _filled_by_day(fills: pd.DataFrame) -> dict[str, float]:
     if fills is None or fills.empty or "trade_date" not in fills.columns:
         return {}
@@ -97,12 +115,7 @@ def main(argv: list[str] | None = None) -> int:
             if note:
                 note += "; "
             note += "realized needs two attributed sessions"
-        changed = (
-            old_filled != filled and not (pd.isna(old_filled) and pd.isna(filled))
-        ) or (
-            old_realized != realized
-            and not (pd.isna(old_realized) and pd.isna(realized))
-        )
+        changed = _differs(old_filled, filled) or _differs(old_realized, realized)
         print(
             f"{key:<12}{_num(old_filled):>15}{_num(filled):>15}"
             f"{_num(old_realized):>17}{_num(realized):>16}   {note}"
@@ -115,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
         }
         row["filled_notional"] = float(filled) if filled is not None else None
         row["realized_annual_vol"] = float(realized) if realized is not None else None
-        updates.append(row)
+        updates.append(_for_store(row))
 
     if newest is not None:
         print(f"\nnewest close considered: {newest.date()}")
@@ -129,6 +142,24 @@ def main(argv: list[str] | None = None) -> int:
         store.upsert("reconciliation", updates)
     print(f"\nAPPLIED: {len(updates)} row(s) upserted into efb.reconciliation")
     return 0
+
+
+def _differs(old: Any, new: Any) -> bool:
+    """Whether `new` is a real change from `old`.
+
+    The stored columns are Postgres `numeric`, so they come back as Decimal and never
+    compare equal to the float that produced them; a plain `!=` therefore reports a
+    change on every row forever. Money and volatility are compared at a tolerance far
+    below the last digit anyone reads.
+    """
+    old_missing = old is None or (isinstance(old, float) and pd.isna(old))
+    new_missing = new is None or (isinstance(new, float) and pd.isna(new))
+    if old_missing or new_missing:
+        return old_missing != new_missing
+    try:
+        return abs(float(old) - float(new)) > 1e-9 * max(1.0, abs(float(new)))
+    except (TypeError, ValueError):
+        return str(old) != str(new)
 
 
 def _num(value: Any) -> str:

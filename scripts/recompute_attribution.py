@@ -25,6 +25,7 @@ machine that is the cut tree from the nov11 merge
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import sys
 from typing import Any
@@ -80,6 +81,87 @@ def _recompute(root: pathlib.Path) -> pd.DataFrame:
     return frame
 
 
+def _same(left: Any, right: Any) -> bool:
+    """Equality that tolerates float reassociation and jsonb key ordering."""
+    if left is None or (isinstance(left, float) and pd.isna(left)):
+        return right is None or (isinstance(right, float) and pd.isna(right))
+    if isinstance(left, float) and isinstance(right, float):
+        return abs(left - right) <= 1e-12
+    if isinstance(left, (dict, list)) or isinstance(right, (dict, list)):
+        return _json_same(left, right)
+    return str(left) == str(right)
+
+
+def _json_same(left: Any, right: Any) -> bool:
+    parsed = []
+    for value in (left, right):
+        if isinstance(value, str):
+            try:
+                parsed.append(json.loads(value))
+            except json.JSONDecodeError:
+                parsed.append(value)
+        else:
+            parsed.append(value)
+    first, second = parsed
+    if isinstance(first, dict) and isinstance(second, dict):
+        if set(first) != set(second):
+            return False
+        return all(_same(first[k], second[k]) for k in first)
+    if isinstance(first, list) and isinstance(second, list):
+        return len(first) == len(second) and all(
+            _same(a, b) for a, b in zip(first, second, strict=False)
+        )
+    return _same(first, second)
+
+
+def _other_changes(old: Any, record: dict[str, Any]) -> str:
+    """The columns, other than the vol pair, a full-row upsert would change.
+
+    A recompute is only safe to write whole when this is empty: the stored row's
+    `pnl_*`, `n_filled` and `realized_vol` were written against the fills and the
+    price tree of that evening, and recomputing them now re-derives that history
+    from today's store instead of fixing the volatility.
+    """
+    skip = {"trade_date", "written_at", "pre_hedge_vol", "hedged_vol"}
+    changed = []
+    for key in record:
+        if key in skip:
+            continue
+        if old is not None and not _same(old.get(key), record.get(key)):
+            changed.append(key)
+    if not changed:
+        return "0"
+    names = ",".join(changed[:3]) + ("…" if len(changed) > 3 else "")
+    return f"{len(changed)} ({names})"
+
+
+def _apply_only_pre_hedge_vol(updates: list[tuple[float, Any]], apply: bool) -> int:
+    table = store._qualified("attribution")  # noqa: SLF001
+    statement = (
+        f'UPDATE {table} SET "pre_hedge_vol" = %s, "written_at" = now() '
+        'WHERE "trade_date" = %s'
+    )
+    print(f"\n{statement}")
+    if not updates:
+        print("every day already holds the recomputed pre-hedge vol: nothing to write")
+        return 0
+    if not apply:
+        print(
+            f"\nDRY RUN (--only-pre-hedge-vol): {len(updates)} row(s) would have "
+            "pre_hedge_vol updated and no other column touched. Nothing was written."
+        )
+        return 0
+    connection = store.get_connection()
+    with connection.cursor() as cursor:
+        cursor.executemany(statement, updates)
+    connection.commit()
+    print(
+        f"\nAPPLIED (--only-pre-hedge-vol): {len(updates)} row(s) updated in "
+        "efb.attribution; only pre_hedge_vol and written_at changed"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, help="the live data tree")
@@ -90,6 +172,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--since", default=None, help="first close, YYYY-MM-DD")
     parser.add_argument("--through", default=None, help="last close, YYYY-MM-DD")
+    parser.add_argument(
+        "--only-pre-hedge-vol",
+        action="store_true",
+        help=(
+            "write only the pre_hedge_vol column, leaving every other column exactly "
+            "as stored (default: upsert the whole recomputed row)"
+        ),
+    )
     args = parser.parse_args(argv)
     root = pathlib.Path(args.root).resolve()
 
@@ -112,9 +202,11 @@ def main(argv: list[str] | None = None) -> int:
 
     before = stored.set_index("trade_date")
     rows: list[dict[str, Any]] = []
+    updates: list[tuple[float, Any]] = []
     print(
         f"\n{'close':<12}{'pre-hedge before':>18}{'pre-hedge after':>18}"
         f"{'hedged before':>15}{'hedged after':>14}{'identity after':>16}"
+        f"{'other cols':>12}"
     )
     for record in recomputed.sort_values("trade_date").to_dict("records"):
         day = pd.Timestamp(record["trade_date"])
@@ -125,13 +217,18 @@ def main(argv: list[str] | None = None) -> int:
             float(record.get(key) or 0.0) * (1 if key == "pnl_total" else -1)
             for key in IDENTITY
         )
+        others = _other_changes(old, record)
         print(
             f"{str(day.date()):<12}"
             f"{_pct(old_pre):>18}{_pct(record.get('pre_hedge_vol')):>18}"
             f"{_pct(old_hedged):>15}{_pct(record.get('hedged_vol')):>14}"
-            f"{residual:>16.2e}"
+            f"{residual:>16.2e}{others:>12}"
         )
         rows.append({key: record.get(key) for key in recomputed.columns})
+        if args.only_pre_hedge_vol and old is not None:
+            new_pre = record.get("pre_hedge_vol")
+            if new_pre is not None and not _same(old.get("pre_hedge_vol"), new_pre):
+                updates.append((float(new_pre), day.date()))
 
     missing = sorted(
         str(d.date()) for d in wanted if d not in set(recomputed["trade_date"])
@@ -139,6 +236,8 @@ def main(argv: list[str] | None = None) -> int:
     if missing:
         print(f"\nnot recomputable (no stored positions): {', '.join(missing)}")
 
+    if args.only_pre_hedge_vol:
+        return _apply_only_pre_hedge_vol(updates, args.apply)
     if not args.apply:
         print(
             f"\nDRY RUN: {len(rows)} row(s) would be upserted. Nothing was written. "
