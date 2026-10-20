@@ -470,3 +470,93 @@ Nothing below was done by this session; each is a live or policy action:
 5. the cadence and cost-horizon decision
 6. deciding whether nov11's design fix should go live tonight or be reverted first
    (§A1): it changes the kept set on the same inputs
+
+## Monday resume: PART B merged, B5 deployed (2026-10-19 23:24 UTC - 2026-10-20 00:50 UTC)
+
+**Monday's run is the stop condition and it passed.** Read-only, one SELECT on
+`efb.run_status` for `target_close = 2026-10-19`:
+
+| target_close | job | status | n_orders | gross_notional | started_at | checked_at |
+|---|---|---|---|---|---|---|
+| 2026-10-19 | live_daily | **ok** | **163** | $402,075.92 | 22:31:30Z | 22:52:38Z |
+
+`efb.cron_runs` has the same close filed at 22:55:12Z, `efb.proposals` has one row
+(`n_names` 493, `n_excluded` 7, gross 1.0, net -1.7e-16, NAV $985,941.27), and
+`efb.e11_prices` runs through 2026-10-19. The evening finished with a priced book
+and orders, so the window opened.
+
+**Every item merged, one `--no-ff` merge each, each cut from the `origin/main`
+that existed when its turn came.** The merges used one detached worktree reset to
+`origin/main` before each item (`git checkout --detach origin/main`), which is the
+same content as a fresh worktree per item; the `data/` tree was a copy and the
+`data-src` symlink was not used.
+
+| item | branch | merge SHA | gate (failing) | new failures | pushed |
+|---|---|---|---|---|---|
+| B1 | `nov11-b1-reconcile-once` | `50178c7` | 14 failed / 1581 passed | 0 | yes |
+| B2 | `nov11-b2-traded-story` | `ac38c4e` | 14 failed / 1583 passed | 0 | yes |
+| B4 | `nov11-b4-attribution-variance` | `425fcc1` | 14 failed / 1585 passed | 0 | yes |
+| B5 | `nov11-b5-catchup-pill` | `9c3b0c3` | 14 failed / 1585 passed; `tsc -b` clean; `App.test.tsx` + `status.test.tsx` 67 passed | 0 | yes |
+| B6 | `nov11-b6-notnull-audit` | `d45ef9e` | 15 failed / 1584 passed (one timeout, see below) | 0 real | yes |
+
+- **The base gate**, run first on `origin/main` `9e484f9` with the same `data/`,
+  is **14 failed, 1578 passed, 3 skipped, 49 deselected** - exactly the fourteen
+  ids `docs/known_test_failures.md` lists, id for id. Every item's failing set is
+  a subset of that list, compared with `comm` on the sorted ids.
+- **B6's extra id is a load timeout, not a regression.** `tests/test_repair_session.py::
+  test_the_appendix_payload_is_one_session_and_loses_no_rows` failed with
+  `Failed: Timeout (>120.0s) from pytest-timeout` while the churn follow-up's
+  simulations were running on the same machine. B6's diff is **one docs file**
+  (`docs/nov11_notnull_audit.md`), so it cannot reach that test; re-run alone on
+  the same tree it **passed in 86.6s**, against the 120s timeout. The number is
+  recorded rather than absorbed: it is 26 seconds of headroom, and a loaded box
+  will trip it again.
+- **No conflict was resolved.** The five branches touch disjoint files
+  (`scripts/reconcile_fills.py`, `scripts/run_live_daily.py`, `efb/attribution.py`,
+  `web/src/{status.ts,App.test.tsx}`, `docs/nov11_notnull_audit.md`), and each
+  merge applied cleanly. Nothing needed aborting.
+
+### B5, deployed
+
+`cd web && npx wrangler deployments status` before the deploy:
+
+```
+Created:     2026-10-15T12:37:42.689Z
+Version(s):  (100%) a8fc0f88-f6cf-4a99-902e-4c6b7394d7de
+```
+
+`npm run deploy` from the merged tree (`vite build && wrangler deploy`) uploaded
+two assets and deployed `efb-live-book`. Status after:
+
+```
+Created:     2026-10-20T00:29:42.011Z
+Version(s):  (100%) a4082203-e469-48b1-8001-641f6b63ddc0
+```
+
+| | version |
+|---|---|
+| before | `a8fc0f88-f6cf-4a99-902e-4c6b7394d7de` |
+| after | `a4082203-e469-48b1-8001-641f6b63ddc0` |
+
+**Rollback command**, exactly as it would be run if the page has to go back:
+
+```
+cd web && npx wrangler rollback a8fc0f88-f6cf-4a99-902e-4c6b7394d7de
+```
+
+**The page is behind Cloudflare Access, so the deployed URL cannot be read by a
+script**: `https://efb-live-book.nutritrack.workers.dev/` redirects to the Access
+login (the browser tool aborted on the OAuth redirect). The pill was therefore
+proven against the **built `dist/` from the merged tree**, served locally with
+`/api/snapshot` answering the committed `fixtures/snapshot_catch_up.json` (a
+harness only; the fixture was restored with `git checkout --` and the harness
+stopped):
+
+- the strip reads **`PROPOSAL RUN: OK (CAUGHT UP 2 SESSIONS)`**, green, with the
+  rest of the row (`RECONCILIATION: NOT RUN`, the dry-run line, the close);
+- at **390 x 844** `document.documentElement.scrollWidth` is **390** and
+  `clientWidth` is **390** - no horizontal overflow anywhere on the page.
+
+The one thing this does not prove is the live Worker's own render, because Access
+stops a non-interactive reader. The asset it serves is the one built from this
+tree, and the Worker code did not change.
