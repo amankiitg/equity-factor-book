@@ -61,16 +61,16 @@ Only `scripts/push_seed.py` uses it, and it is not on the run path.
 
 1. Create a write token scoped to the seed bucket.
 2. Update `EFB_SEED_R2_ACCESS_KEY_ID` / `EFB_SEED_R2_SECRET_ACCESS_KEY` in `.env`.
-3. **Check:** `python -c "from live import seed; seed.seed_client().head_bucket(Bucket='efb-seed')"`
+3. **Check:** `python -c "import os; from live import seed; seed.seed_client().head_bucket(Bucket=os.environ['EFB_SEED_R2_BUCKET'])"`
    succeeds, and `python scripts/push_seed.py --check` (dry run) reports no drift.
 4. Revoke the old token.
 
 ### 3. R2 snapshot token (Render)
 
-1. Create a token scoped to `efb-snapshots`.
+1. Create a token scoped to the snapshot bucket named by `EFB_R2_BUCKET`.
 2. Render → `EFB_R2_ACCESS_KEY_ID` / `EFB_R2_SECRET_ACCESS_KEY`.
 3. **Check:** with the new pair exported locally,
-   `python -c "from live import snapshot; snapshot.r2_client().head_bucket(Bucket='efb-snapshots')"`
+   `python -c "import os; from live import snapshot; snapshot.r2_client().head_bucket(Bucket=os.environ['EFB_R2_BUCKET'])"`
    succeeds. The evening's own check is the snapshot upload, which is visible in the
    next run's `run_status.snapshot` column (`snapshot: on (...)`).
 4. Revoke the old token.
