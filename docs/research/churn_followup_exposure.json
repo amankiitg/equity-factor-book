@@ -1,0 +1,1131 @@
+{
+  "design_days": {
+    "dates": [
+      "2024-06-28",
+      "2024-07-31",
+      "2024-08-30",
+      "2024-09-30",
+      "2024-10-31",
+      "2024-11-29",
+      "2024-12-31",
+      "2025-01-31",
+      "2025-02-28",
+      "2025-03-31",
+      "2025-04-30",
+      "2025-05-30",
+      "2025-06-30",
+      "2025-07-31",
+      "2025-08-29",
+      "2025-09-30",
+      "2025-10-31",
+      "2025-11-28",
+      "2025-12-31",
+      "2026-01-30",
+      "2026-02-27",
+      "2026-03-31",
+      "2026-04-30",
+      "2026-05-29",
+      "2026-06-30",
+      "2026-07-31",
+      "2026-08-31",
+      "2026-09-30",
+      "2026-10-02"
+    ],
+    "max": 0.230325157498797,
+    "median": 0.09339831448391417,
+    "n": 29,
+    "of": 586,
+    "p95": 0.19840478730059397
+  },
+  "distribution": {
+    "max": 0.230325157498797,
+    "mean": 0.011935844283452441,
+    "median": 0.005288679429237263,
+    "n_days": 586,
+    "p90": 0.019699129716959262,
+    "p95": 0.03094448661397197,
+    "p99": 0.15935082739977463,
+    "share_over_3pct": 0.051194539249146756,
+    "share_over_5pct": 0.04436860068259386
+  },
+  "fixed_design_series": {
+    "design_date": "2026-06-30",
+    "factor": "reversal",
+    "series": [
+      {
+        "date": "2026-05-29",
+        "exposure_fixed_design": 0.19633197139627342,
+        "shared_names": 117,
+        "this_factor": 0.19633197139627342
+      },
+      {
+        "date": "2026-06-01",
+        "exposure_fixed_design": 0.19771725031581983,
+        "shared_names": 117,
+        "this_factor": 0.19771725031581983
+      },
+      {
+        "date": "2026-06-02",
+        "exposure_fixed_design": 0.199983220722401,
+        "shared_names": 117,
+        "this_factor": 0.199983220722401
+      },
+      {
+        "date": "2026-06-03",
+        "exposure_fixed_design": 0.20209164384610084,
+        "shared_names": 117,
+        "this_factor": 0.20209164384610084
+      },
+      {
+        "date": "2026-06-04",
+        "exposure_fixed_design": 0.2046900723445399,
+        "shared_names": 117,
+        "this_factor": 0.2046900723445399
+      },
+      {
+        "date": "2026-06-05",
+        "exposure_fixed_design": 0.19956155140392032,
+        "shared_names": 117,
+        "this_factor": 0.19956155140392032
+      },
+      {
+        "date": "2026-06-08",
+        "exposure_fixed_design": 0.20966721276562272,
+        "shared_names": 166,
+        "this_factor": 0.20966721276562272
+      },
+      {
+        "date": "2026-06-09",
+        "exposure_fixed_design": 0.20712766142848857,
+        "shared_names": 166,
+        "this_factor": 0.20712766142848857
+      },
+      {
+        "date": "2026-06-10",
+        "exposure_fixed_design": 0.20541724001374403,
+        "shared_names": 166,
+        "this_factor": 0.20541724001374403
+      },
+      {
+        "date": "2026-06-11",
+        "exposure_fixed_design": 0.20918565702307113,
+        "shared_names": 166,
+        "this_factor": 0.20918565702307113
+      },
+      {
+        "date": "2026-06-12",
+        "exposure_fixed_design": 0.2185377652281418,
+        "shared_names": 166,
+        "this_factor": 0.2185377652281418
+      },
+      {
+        "date": "2026-06-15",
+        "exposure_fixed_design": 0.2256707256809729,
+        "shared_names": 166,
+        "this_factor": 0.2256707256809729
+      },
+      {
+        "date": "2026-06-16",
+        "exposure_fixed_design": 0.22375117353560448,
+        "shared_names": 166,
+        "this_factor": 0.22375117353560448
+      },
+      {
+        "date": "2026-06-17",
+        "exposure_fixed_design": 0.22583856511887684,
+        "shared_names": 166,
+        "this_factor": 0.22583856511887684
+      },
+      {
+        "date": "2026-06-18",
+        "exposure_fixed_design": 0.23621547675298116,
+        "shared_names": 166,
+        "this_factor": 0.23621547675298116
+      },
+      {
+        "date": "2026-06-22",
+        "exposure_fixed_design": 0.23540789226513065,
+        "shared_names": 166,
+        "this_factor": 0.23540789226513065
+      },
+      {
+        "date": "2026-06-23",
+        "exposure_fixed_design": 0.22360239154851172,
+        "shared_names": 166,
+        "this_factor": 0.22360239154851172
+      },
+      {
+        "date": "2026-06-24",
+        "exposure_fixed_design": 0.22439697771923006,
+        "shared_names": 166,
+        "this_factor": 0.22439697771923006
+      },
+      {
+        "date": "2026-06-25",
+        "exposure_fixed_design": 0.23172749524163852,
+        "shared_names": 166,
+        "this_factor": 0.23172749524163852
+      },
+      {
+        "date": "2026-06-26",
+        "exposure_fixed_design": 0.2180113497557798,
+        "shared_names": 166,
+        "this_factor": 0.2180113497557798
+      },
+      {
+        "date": "2026-06-29",
+        "exposure_fixed_design": 0.23041603089688567,
+        "shared_names": 166,
+        "this_factor": 0.23041603089688567
+      },
+      {
+        "date": "2026-06-30",
+        "exposure_fixed_design": 0.230325157498797,
+        "shared_names": 166,
+        "this_factor": 0.230325157498797
+      }
+    ]
+  },
+  "rebalance_days": {
+    "max": 0.0015900089698129291,
+    "n": 28
+  },
+  "winsorization": {
+    "count_at_max": 12,
+    "count_at_min": 38,
+    "max": 2.421673414953437,
+    "min": -1.4681812039073958,
+    "n": 501,
+    "std": 1.000999500499376
+  },
+  "worst_days": [
+    {
+      "date": "2026-06-30",
+      "exposure": 0.230325157498797,
+      "factor": "reversal",
+      "is_rebalance": false,
+      "loading_std_cross_section": 0.981248684095049,
+      "max_abs_loading": 2.421673414953437,
+      "max_abs_weight": 0.02598507432973379,
+      "n_names": 166,
+      "net_over_gross": 0.22393494638645906,
+      "next_factors": {
+        "market": 0.026512000927685464,
+        "momentum": 0.04439777753794547,
+        "reversal": 0.230325157498797,
+        "size": 0.03023316572926381
+      },
+      "previous_day": {
+        "date": "2026-06-29",
+        "exposure": 0.027802690723091994,
+        "this_factor": 0.0
+      },
+      "sessions_since_rebalance": 15,
+      "this_factor_exposure": 0.230325157498797,
+      "top5_returns_21d": [
+        {
+          "cum_return": 0.39709957855254474,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "GLW",
+          "z_used": 2.421673414953437,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.2371947132798844,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "WDC",
+          "z_used": 2.421673414953437,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.1911880366552593,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "CAH",
+          "z_used": 2.214659835967103,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": -0.13751201420976744,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "CIEN",
+          "z_used": -1.4681812039073958,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.2341131670931199,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "INTC",
+          "z_used": 1.6598980901731277,
+          "zero_returns": 0
+        }
+      ],
+      "top_contributions": [
+        {
+          "contribution": 0.06292736368990533,
+          "loading": 2.421673414953437,
+          "ticker": "GLW",
+          "weight": 0.02598507432973379
+        },
+        {
+          "contribution": 0.06279984124157287,
+          "loading": 2.421673414953437,
+          "ticker": "WDC",
+          "weight": 0.025932415516392145
+        },
+        {
+          "contribution": -0.031664081646707046,
+          "loading": 2.214659835967103,
+          "ticker": "CAH",
+          "weight": -0.014297492162212759
+        },
+        {
+          "contribution": -0.02768554784302436,
+          "loading": -1.4681812039073958,
+          "ticker": "CIEN",
+          "weight": 0.01885703738022422
+        },
+        {
+          "contribution": 0.02448201976161075,
+          "loading": 1.6598980901731277,
+          "ticker": "INTC",
+          "weight": 0.01474911014510371
+        },
+        {
+          "contribution": 0.02332320495813282,
+          "loading": 1.8867303704561629,
+          "ticker": "GL",
+          "weight": 0.012361705373139178
+        },
+        {
+          "contribution": -0.020383409335379948,
+          "loading": -1.4681812039073958,
+          "ticker": "ECHO",
+          "weight": 0.013883442507731226
+        },
+        {
+          "contribution": 0.01971795410284961,
+          "loading": 2.0939311123330766,
+          "ticker": "CINF",
+          "weight": 0.009416715758561747
+        }
+      ]
+    },
+    {
+      "date": "2025-02-28",
+      "exposure": 0.20226890686158128,
+      "factor": "reversal",
+      "is_rebalance": false,
+      "loading_std_cross_section": 1.0074896700264289,
+      "max_abs_loading": 2.2363291816854525,
+      "max_abs_weight": 0.022822825058843862,
+      "n_names": 219,
+      "net_over_gross": 0.23409111002696922,
+      "next_factors": {
+        "market": 0.017572145715512657,
+        "momentum": 0.03810040713351938,
+        "resid_vol": 0.03856923047218602,
+        "reversal": 0.20226890686158128
+      },
+      "previous_day": {
+        "date": "2025-02-27",
+        "exposure": 0.016188735001692864,
+        "this_factor": 0.0
+      },
+      "sessions_since_rebalance": 17,
+      "this_factor_exposure": 0.20226890686158128,
+      "top5_returns_21d": [
+        {
+          "cum_return": 0.49237404535859075,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "SMCI",
+          "z_used": 2.2363291816854525,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": -0.1222015567427377,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "VST",
+          "z_used": -1.71052791578119,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.15365975619642214,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "VTR",
+          "z_used": 2.202566193740717,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": -0.13360783632652473,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "MRVL",
+          "z_used": -1.9205085580248853,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.15380222626159734,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "ECHO",
+          "z_used": 1.9345742570668465,
+          "zero_returns": 0
+        }
+      ],
+      "top_contributions": [
+        {
+          "contribution": 0.037385347802073234,
+          "loading": 2.2363291816854525,
+          "ticker": "SMCI",
+          "weight": 0.016717282995832056
+        },
+        {
+          "contribution": -0.01927011366679585,
+          "loading": -1.71052791578119,
+          "ticker": "VST",
+          "weight": 0.01126559437528693
+        },
+        {
+          "contribution": 0.017785270624237064,
+          "loading": 2.202566193740717,
+          "ticker": "VTR",
+          "weight": 0.00807479506167828
+        },
+        {
+          "contribution": 0.017240754431100253,
+          "loading": -1.9205085580248853,
+          "ticker": "MRVL",
+          "weight": -0.00897718177774288
+        },
+        {
+          "contribution": -0.017029758103573003,
+          "loading": 1.9345742570668465,
+          "ticker": "ECHO",
+          "weight": -0.008802845401960998
+        },
+        {
+          "contribution": 0.014891421519854026,
+          "loading": 1.9032877898718648,
+          "ticker": "WELL",
+          "weight": 0.007824051412033996
+        },
+        {
+          "contribution": -0.014391826693873271,
+          "loading": 1.9702691809192199,
+          "ticker": "TPR",
+          "weight": -0.007304497696684689
+        },
+        {
+          "contribution": 0.013683469295523339,
+          "loading": 2.2363291816854525,
+          "ticker": "GILD",
+          "weight": 0.006118718750166525
+        }
+      ]
+    },
+    {
+      "date": "2026-07-31",
+      "exposure": 0.19260860795911308,
+      "factor": "reversal",
+      "is_rebalance": false,
+      "loading_std_cross_section": 0.917807662919502,
+      "max_abs_loading": 2.1103416241586985,
+      "max_abs_weight": 0.01942105776776261,
+      "n_names": 150,
+      "net_over_gross": -0.25470963398794433,
+      "next_factors": {
+        "market": -0.01380131287909428,
+        "momentum": 0.10542653338290653,
+        "reversal": -0.19260860795911308,
+        "size": -0.01291979101741067
+      },
+      "previous_day": {
+        "date": "2026-07-30",
+        "exposure": 0.013420706862939627,
+        "this_factor": 0.0
+      },
+      "sessions_since_rebalance": 16,
+      "this_factor_exposure": -0.19260860795911308,
+      "top5_returns_21d": [
+        {
+          "cum_return": -0.17363970729171252,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "CIEN",
+          "z_used": -1.8948370995588069,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.17237270406199723,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "ROST",
+          "z_used": 2.1103416241586985,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.2274890054123463,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "GRMN",
+          "z_used": 2.1103416241586985,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": -0.046460876958571484,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "WDC",
+          "z_used": -1.3714753705886127,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": -0.17510328666887265,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "ECHO",
+          "z_used": -1.8080594084584751,
+          "zero_returns": 0
+        }
+      ],
+      "top_contributions": [
+        {
+          "contribution": -0.03432024532924481,
+          "loading": -1.8948370995588069,
+          "ticker": "CIEN",
+          "weight": 0.018112504413828463
+        },
+        {
+          "contribution": 0.031926988750351236,
+          "loading": 2.1103416241586985,
+          "ticker": "ROST",
+          "weight": 0.015128824823838245
+        },
+        {
+          "contribution": 0.027810814519866507,
+          "loading": 2.1103416241586985,
+          "ticker": "GRMN",
+          "weight": 0.01317834714602356
+        },
+        {
+          "contribution": -0.026635502399265078,
+          "loading": -1.3714753705886127,
+          "ticker": "WDC",
+          "weight": 0.01942105776776261
+        },
+        {
+          "contribution": -0.024551647498761448,
+          "loading": -1.8080594084584751,
+          "ticker": "ECHO",
+          "weight": 0.013579004862287032
+        },
+        {
+          "contribution": -0.024349776074942264,
+          "loading": -1.8948370995588069,
+          "ticker": "INTC",
+          "weight": 0.012850590734481533
+        },
+        {
+          "contribution": -0.02244941673800146,
+          "loading": -1.37967577633499,
+          "ticker": "CNC",
+          "weight": 0.016271516194650257
+        },
+        {
+          "contribution": -0.02178628745772328,
+          "loading": 1.8071432174944304,
+          "ticker": "HAS",
+          "weight": -0.012055650734715732
+        }
+      ]
+    },
+    {
+      "date": "2024-09-30",
+      "exposure": 0.1794703392535473,
+      "factor": "reversal",
+      "is_rebalance": false,
+      "loading_std_cross_section": 1.0407648315680191,
+      "max_abs_loading": 1.996987155426246,
+      "max_abs_weight": 0.022570445811670822,
+      "n_names": 203,
+      "net_over_gross": -0.1965707171453753,
+      "next_factors": {
+        "beta": -0.02473113851633632,
+        "resid_vol": 0.0676933470399187,
+        "reversal": -0.1794703392535473,
+        "size": 0.01939516552068248
+      },
+      "previous_day": {
+        "date": "2024-09-27",
+        "exposure": 0.007788419446184278,
+        "this_factor": 0.0
+      },
+      "sessions_since_rebalance": 19,
+      "this_factor_exposure": -0.1794703392535473,
+      "top5_returns_21d": [
+        {
+          "cum_return": 0.1596178569428851,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "CVNA",
+          "z_used": 1.9351266170101915,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.3673423302601373,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "VST",
+          "z_used": 1.9351266170101915,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.3734255317080236,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "APP",
+          "z_used": 1.9351266170101915,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.14896988336397854,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "COHR",
+          "z_used": 1.9351266170101915,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": -0.04719635043817627,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "GDDY",
+          "z_used": -1.5931735334653656,
+          "zero_returns": 0
+        }
+      ],
+      "top_contributions": [
+        {
+          "contribution": -0.04367667044795041,
+          "loading": 1.9351266170101915,
+          "ticker": "CVNA",
+          "weight": -0.022570445811670822
+        },
+        {
+          "contribution": 0.03730214499560493,
+          "loading": 1.9351266170101915,
+          "ticker": "VST",
+          "weight": 0.01927633296328561
+        },
+        {
+          "contribution": -0.0327703892096082,
+          "loading": 1.9351266170101915,
+          "ticker": "APP",
+          "weight": -0.016934493547631057
+        },
+        {
+          "contribution": -0.028154790679680044,
+          "loading": 1.9351266170101915,
+          "ticker": "COHR",
+          "weight": -0.014549327383641565
+        },
+        {
+          "contribution": -0.027971300779838237,
+          "loading": -1.5931735334653656,
+          "ticker": "GDDY",
+          "weight": 0.017556970532266448
+        },
+        {
+          "contribution": -0.023419368529659975,
+          "loading": -1.996987155426246,
+          "ticker": "BE",
+          "weight": 0.01172735060715062
+        },
+        {
+          "contribution": -0.017714410328004287,
+          "loading": 1.4470039409708206,
+          "ticker": "AVGO",
+          "weight": -0.01224212998073756
+        },
+        {
+          "contribution": 0.016471597757273852,
+          "loading": 1.9351266170101915,
+          "ticker": "INTC",
+          "weight": 0.008511896644118716
+        }
+      ]
+    },
+    {
+      "date": "2025-03-31",
+      "exposure": 0.16587467424765753,
+      "factor": "momentum",
+      "is_rebalance": false,
+      "loading_std_cross_section": 1.0937315138983255,
+      "max_abs_loading": 2.61379311289265,
+      "max_abs_weight": 0.024883622770197098,
+      "n_names": 224,
+      "net_over_gross": 0.16116805152803174,
+      "next_factors": {
+        "beta": 0.021267537008253862,
+        "momentum": 0.16587467424765753,
+        "resid_vol": -0.08606972004223064,
+        "reversal": 0.046197130746412234
+      },
+      "previous_day": {
+        "date": "2025-03-28",
+        "exposure": 0.0030651467306015874,
+        "this_factor": 0.0
+      },
+      "sessions_since_rebalance": 17,
+      "this_factor_exposure": 0.16587467424765753,
+      "top5_returns_21d": [
+        {
+          "cum_return": -0.0009315529139609646,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "TRGP",
+          "z_used": 0.640647467120096,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": -0.06499279874849029,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "CVNA",
+          "z_used": -0.9060435703077613,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": -0.10779326316590487,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "VST",
+          "z_used": -0.6777624629035006,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.0005158760605836754,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "WELL",
+          "z_used": 0.9201411098575147,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": -0.13423175816657462,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "HOOD",
+          "z_used": -1.5052588714157462,
+          "zero_returns": 0
+        }
+      ],
+      "top_contributions": [
+        {
+          "contribution": 0.05155016232749721,
+          "loading": 2.0716502096004445,
+          "ticker": "TRGP",
+          "weight": 0.024883622770197098
+        },
+        {
+          "contribution": -0.031790864327609476,
+          "loading": 2.175597019002366,
+          "ticker": "CVNA",
+          "weight": -0.014612478344995792
+        },
+        {
+          "contribution": 0.03041794947154694,
+          "loading": 1.92373127428786,
+          "ticker": "VST",
+          "weight": 0.015811953508323175
+        },
+        {
+          "contribution": 0.029405791918158786,
+          "loading": 2.008108753529177,
+          "ticker": "WELL",
+          "weight": 0.01464352558917897
+        },
+        {
+          "contribution": 0.026260347191873572,
+          "loading": 1.9394062072596883,
+          "ticker": "HOOD",
+          "weight": 0.01354040586937097
+        },
+        {
+          "contribution": 0.024249006057800233,
+          "loading": 2.312035150443651,
+          "ticker": "TPL",
+          "weight": 0.010488164962867086
+        },
+        {
+          "contribution": 0.0209106793897807,
+          "loading": 1.7150047989189345,
+          "ticker": "APP",
+          "weight": 0.012192781852833236
+        },
+        {
+          "contribution": -0.018044503055547678,
+          "loading": 2.266177257158066,
+          "ticker": "TPR",
+          "weight": -0.007962529408743896
+        }
+      ]
+    },
+    {
+      "date": "2026-02-27",
+      "exposure": 0.16289894227467433,
+      "factor": "reversal",
+      "is_rebalance": false,
+      "loading_std_cross_section": 0.9688321021626574,
+      "max_abs_loading": 2.4090204968470252,
+      "max_abs_weight": 0.023623889635549532,
+      "n_names": 188,
+      "net_over_gross": 0.17513705403380606,
+      "next_factors": {
+        "market": 0.02845482546907177,
+        "momentum": 0.033125111479243116,
+        "resid_vol": 0.051095387677070836,
+        "reversal": 0.16289894227467433
+      },
+      "previous_day": {
+        "date": "2026-02-26",
+        "exposure": 0.0241325886742247,
+        "this_factor": 0.0
+      },
+      "sessions_since_rebalance": 15,
+      "this_factor_exposure": 0.16289894227467433,
+      "top5_returns_21d": [
+        {
+          "cum_return": 0.625294049611193,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "LITE",
+          "z_used": 2.4090204968470252,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.32005306651874577,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "CIEN",
+          "z_used": 2.4090204968470252,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.22115274847525002,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "GRMN",
+          "z_used": 2.4090204968470252,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.17969118263770822,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "MRNA",
+          "z_used": 1.4765645020731806,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.38692928373715973,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "GLW",
+          "z_used": 2.4090204968470252,
+          "zero_returns": 0
+        }
+      ],
+      "top_contributions": [
+        {
+          "contribution": 0.04869553256601187,
+          "loading": 2.4090204968470252,
+          "ticker": "LITE",
+          "weight": 0.020213830737324804
+        },
+        {
+          "contribution": 0.038523863209578006,
+          "loading": 2.4090204968470252,
+          "ticker": "CIEN",
+          "weight": 0.01599150495398392
+        },
+        {
+          "contribution": 0.02239365512876737,
+          "loading": 2.4090204968470252,
+          "ticker": "GRMN",
+          "weight": 0.009295751181061613
+        },
+        {
+          "contribution": 0.019670490492747276,
+          "loading": 1.4765645020731806,
+          "ticker": "MRNA",
+          "weight": 0.013321795604004287
+        },
+        {
+          "contribution": -0.019041165317842404,
+          "loading": 2.4090204968470252,
+          "ticker": "GLW",
+          "weight": -0.007904110962428035
+        },
+        {
+          "contribution": 0.017750226604422492,
+          "loading": 2.219568270179451,
+          "ticker": "HSY",
+          "weight": 0.00799715279899338
+        },
+        {
+          "contribution": -0.016789846800550463,
+          "loading": -1.504144557137225,
+          "ticker": "ECHO",
+          "weight": 0.011162389094107997
+        },
+        {
+          "contribution": -0.016714213962386124,
+          "loading": 2.4090204968470252,
+          "ticker": "LUV",
+          "weight": -0.006938178394190512
+        }
+      ]
+    },
+    {
+      "date": "2025-06-30",
+      "exposure": 0.15872468948067478,
+      "factor": "reversal",
+      "is_rebalance": false,
+      "loading_std_cross_section": 0.9729268463120887,
+      "max_abs_loading": 2.33129107942335,
+      "max_abs_weight": 0.022578026384594607,
+      "n_names": 218,
+      "net_over_gross": 0.18841112416641817,
+      "next_factors": {
+        "liquidity": 0.00653177437445128,
+        "momentum": 0.029604473183219897,
+        "resid_vol": 0.03150573514274016,
+        "reversal": 0.15872468948067478
+      },
+      "previous_day": {
+        "date": "2025-06-27",
+        "exposure": 0.004993336120801675,
+        "this_factor": 0.0
+      },
+      "sessions_since_rebalance": 16,
+      "this_factor_exposure": 0.15872468948067478,
+      "top5_returns_21d": [
+        {
+          "cum_return": 0.3395675387103132,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "RDDT",
+          "z_used": 1.6936857640200527,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.1755596326368326,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "VRT",
+          "z_used": 1.6936857640200527,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.3990503771628928,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "HOOD",
+          "z_used": 1.6936857640200527,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.1195336296067312,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "GEV",
+          "z_used": 0.9658611691727459,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": -0.09911381771435046,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "TSLA",
+          "z_used": -2.33129107942335,
+          "zero_returns": 0
+        }
+      ],
+      "top_contributions": [
+        {
+          "contribution": -0.038240081867257025,
+          "loading": 1.6936857640200527,
+          "ticker": "RDDT",
+          "weight": -0.022578026384594607
+        },
+        {
+          "contribution": 0.02097253445879385,
+          "loading": 1.6936857640200527,
+          "ticker": "VRT",
+          "weight": 0.012382777788138476
+        },
+        {
+          "contribution": 0.020059839437728048,
+          "loading": 1.6936857640200527,
+          "ticker": "HOOD",
+          "weight": 0.011843896821872648
+        },
+        {
+          "contribution": -0.019703375603250695,
+          "loading": 0.9658611691727459,
+          "ticker": "GEV",
+          "weight": -0.020399800957032484
+        },
+        {
+          "contribution": 0.01854195760813997,
+          "loading": -2.33129107942335,
+          "ticker": "TSLA",
+          "weight": -0.007953514587601976
+        },
+        {
+          "contribution": 0.0172552678566132,
+          "loading": -0.8152340301994924,
+          "ticker": "CVNA",
+          "weight": -0.0211660298974403
+        },
+        {
+          "contribution": -0.015308761872602479,
+          "loading": -1.2838674626000937,
+          "ticker": "DECK",
+          "weight": 0.011923942555253414
+        },
+        {
+          "contribution": 0.014319190507638578,
+          "loading": 1.2014623509437696,
+          "ticker": "NFLX",
+          "weight": 0.011918135009715955
+        }
+      ]
+    },
+    {
+      "date": "2026-08-31",
+      "exposure": 0.1579122479066742,
+      "factor": "reversal",
+      "is_rebalance": false,
+      "loading_std_cross_section": 0.9648738387300032,
+      "max_abs_loading": 2.181333057995406,
+      "max_abs_weight": 0.02380604781978029,
+      "n_names": 193,
+      "net_over_gross": -0.20071308715645345,
+      "next_factors": {
+        "liquidity": 0.02355469560214287,
+        "momentum": 0.13855257266763427,
+        "resid_vol": -0.03379586019159226,
+        "reversal": -0.1579122479066742
+      },
+      "previous_day": {
+        "date": "2026-08-28",
+        "exposure": 0.004515874101434642,
+        "this_factor": 0.0
+      },
+      "sessions_since_rebalance": 16,
+      "this_factor_exposure": -0.1579122479066742,
+      "top5_returns_21d": [
+        {
+          "cum_return": -0.16272748946834303,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "WDC",
+          "z_used": -2.181333057995406,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.30637849480729173,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "SMCI",
+          "z_used": 1.6833349808906792,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.2731938403444242,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "COIN",
+          "z_used": 1.6833349808906792,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": 0.1460377213277535,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "ALB",
+          "z_used": 1.6833349808906792,
+          "zero_returns": 0
+        },
+        {
+          "cum_return": -0.17360101716805376,
+          "missing_returns": 0,
+          "sessions": 21,
+          "ticker": "NRG",
+          "z_used": -2.181333057995406,
+          "zero_returns": 0
+        }
+      ],
+      "top_contributions": [
+        {
+          "contribution": -0.03686439310966103,
+          "loading": -2.181333057995406,
+          "ticker": "WDC",
+          "weight": 0.016899937849719538
+        },
+        {
+          "contribution": 0.029173727261526873,
+          "loading": 1.6833349808906792,
+          "ticker": "SMCI",
+          "weight": 0.01733091012348035
+        },
+        {
+          "contribution": 0.018892099111196832,
+          "loading": 1.6833349808906792,
+          "ticker": "COIN",
+          "weight": 0.011223018190473725
+        },
+        {
+          "contribution": -0.018341185016646066,
+          "loading": 1.6833349808906792,
+          "ticker": "ALB",
+          "weight": -0.010895742811060372
+        },
+        {
+          "contribution": 0.014835276510682643,
+          "loading": -2.181333057995406,
+          "ticker": "NRG",
+          "weight": -0.006801013928755984
+        },
+        {
+          "contribution": -0.014616629948634793,
+          "loading": 1.6216600439506028,
+          "ticker": "CRWD",
+          "weight": -0.009013374907496968
+        },
+        {
+          "contribution": 0.013891073977696903,
+          "loading": -1.9868675211801452,
+          "ticker": "DDOG",
+          "weight": -0.0069914444871724424
+        },
+        {
+          "contribution": -0.012976989293951425,
+          "loading": 1.6833349808906792,
+          "ticker": "NEM",
+          "weight": -0.0077090950056091
+        }
+      ]
+    }
+  ]
+}
