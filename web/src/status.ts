@@ -144,7 +144,18 @@ export function pillFor(snapshot: Snapshot, now: Date): string {
     // catch-up. Catch-up is named when the run is current, which is when it is
     // true of the book in hand rather than of a run nobody made.
     if (isLate(snapshot, now)) return "expired";
-    return snapshot.run_status?.catch_up ? "catch_up" : "ok";
+    if (snapshot.run_status?.catch_up) {
+      // A catch-up that priced a book is a proposal run that did its job: what was
+      // wrong was the clock, not the book, and the pill says so while naming the
+      // sessions it made up. Grey `catch_up` on its own read as a run that had
+      // done something to the account, beside a panel saying the book was priced.
+      const sessions = (snapshot.run_status.catch_up_sessions ?? []).length;
+      if (sessions > 0 && (snapshot.book?.n_kept ?? 0) > 0) {
+        return `ok (caught up ${sessions} session${sessions === 1 ? "" : "s"})`;
+      }
+      return "catch_up";
+    }
+    return "ok";
   }
   return status;
 }
@@ -154,7 +165,9 @@ export function runTone(pill: string): Tone {
   if (pill === "error" || pill === "stale_stopped") return "bad";
   if (pill === "expired") return "warn";
   if (pill === "market_closed" || pill === "catch_up") return "info";
-  if (pill === "ok") return "good";
+  // `ok (caught up N sessions)` is the same state as `ok`, told with the reason the
+  // run was late: it is green for the same reason and must not fall to amber.
+  if (pill === "ok" || pill.startsWith("ok (")) return "good";
   return "warn";
 }
 
