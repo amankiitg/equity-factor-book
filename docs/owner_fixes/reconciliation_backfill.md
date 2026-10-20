@@ -1,6 +1,6 @@
 # Owner fix: back-fill `efb.reconciliation`'s two morning-owned columns
 
-**Applied 2026-10-20 23:51 UTC.** 14 rows back-filled; see
+**Applied 2026-10-20 ~23:44 UTC.** 14 rows back-filled; see
 ["Applied 2026-10-20"](#applied-2026-10-20) at the end for the before/after table and the
 rollback command. The numbers in the 2026-10-20 dry run below are one session stale:
 the count is 14, not 13.
@@ -107,7 +107,7 @@ would be updated`.
 
 ## Applied 2026-10-20
 
-Ran at 23:51 UTC on `owner-fixes`. The 2026-10-19 evening's morning (2026-10-20
+Ran at about 23:44 UTC on `owner-fixes`. The 2026-10-19 evening's morning (2026-10-20
 15:30 UTC) had run, so **2026-10-19 was updatable** and the count moved from 13 to
 **14** - 13 as before, plus 10-19, plus 10-20 which now has the two attributed
 sessions its `realized_annual_vol` needs. 2026-10-20 becomes the new "no fills rows"

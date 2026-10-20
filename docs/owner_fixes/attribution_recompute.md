@@ -1,6 +1,6 @@
 # Owner fix: recompute the stored attribution rows after the B4 variance fix
 
-**Applied 2026-10-20 23:47 UTC, narrow mode only.** The full-row upsert described
+**Applied 2026-10-20 23:42 UTC, narrow mode only.** The full-row upsert described
 below turned out to re-derive columns it must not touch; see
 ["Applied 2026-10-20"](#applied-2026-10-20-narrow-mode) at the end for what was
 actually written, what was backed up and how to roll it back. Read that section
