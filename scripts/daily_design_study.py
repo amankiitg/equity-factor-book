@@ -137,14 +137,15 @@ def run(root: pathlib.Path, out: pathlib.Path, only: list[str]) -> int:
                 detail=False,
                 design_sessions=None,
             )
-            done[name] = row
-            partial.write_text(json.dumps(list(done.values()), default=str))
-        if name == "B0":
-            baseline = row
         row["cadence"] = int(spec["cadence"])
         row["net_at_anchor"] = {
             f"{rate:.4f}": net_at_anchor(row, rate, model_rate) for rate in BORROW_RATES
         }
+        if name not in done:
+            done[name] = row
+            partial.write_text(json.dumps(list(done.values()), default=str))
+        if name == "B0":
+            baseline = row
         rows.append(row)
         logger.info(
             "%-4s turnover/reb %6.2f%% cost %6.1f bp net %7.1f expo med %.2f%% "
@@ -166,7 +167,9 @@ def run(root: pathlib.Path, out: pathlib.Path, only: list[str]) -> int:
             "years": round(len(dates) / cf.TRADING_DAYS, 2),
             "nav": cf.NAV,
             "design_panel": "daily, built by scripts/build_daily_design_panel.py "
-            "with race.next_descriptor_design's live branch (clean returns branch)",
+            "with race.next_descriptor_design's live branch (clean returns branch), "
+            "installed as models/XS-v1/descriptors.parquet in the data copy so the "
+            "construction hedges on the row dated the next session, as live does",
             "frozen_panel_design_days": 29,
             "universe": (
                 "frozen at the 2026-09-18 SPY archive, dated for every session: "
