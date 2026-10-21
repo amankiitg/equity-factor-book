@@ -24,7 +24,15 @@ import { useState } from "react";
 
 import { Details } from "./Details";
 import { count, dateOnly, percent } from "./format";
-import type { Attribution, AttributionDay, AttributionPeriod, AttributionRisk, AttributionRiskPath, Snapshot } from "./types";
+import type {
+  Attribution,
+  AttributionDay,
+  AttributionNote,
+  AttributionPeriod,
+  AttributionRisk,
+  AttributionRiskPath,
+  Snapshot,
+} from "./types";
 
 /** A P&L in basis points of NAV, signed to one place. */
 const bps = (value: number | null | undefined): string =>
@@ -87,7 +95,21 @@ const COMPONENTS = [
   { key: "unexplained", field: "pnl_unexplained", color: COLORS.unexplained },
 ] as const;
 
-type LegendEntry = { key: string; word: string; color: string; dash: string };
+/**
+ * One legend entry.
+ *
+ * `shape` says how the series is drawn, because a legend that showed every series as a
+ * line would mislabel the two charts whose series are filled areas: a reader looking
+ * for "where is that line" in a stacked band is looking for something the chart does
+ * not have.
+ */
+type LegendEntry = {
+  key: string;
+  word: string;
+  color: string;
+  dash: string;
+  shape?: "line" | "patch";
+};
 
 /**
  * What the fourth term is called in each view.
@@ -116,15 +138,19 @@ function Legend({ entries }: { entries: LegendEntry[] }) {
       {entries.map((entry) => (
         <li key={entry.key} data-series={entry.key} className="flex items-center gap-1">
           <svg width="18" height="8" aria-hidden="true">
-            <line
-              x1="0"
-              y1="4"
-              x2="18"
-              y2="4"
-              stroke={entry.color}
-              strokeWidth="2"
-              strokeDasharray={entry.dash === "" ? undefined : entry.dash}
-            />
+            {entry.shape === "patch" ? (
+              <rect x="0" y="0" width="18" height="8" fill={entry.color} fillOpacity="0.55" />
+            ) : (
+              <line
+                x1="0"
+                y1="4"
+                x2="18"
+                y2="4"
+                stroke={entry.color}
+                strokeWidth="2"
+                strokeDasharray={entry.dash === "" ? undefined : entry.dash}
+              />
+            )}
           </svg>
           <span>{entry.word}</span>
         </li>
@@ -520,21 +546,25 @@ function DayTable({
  * hedge acted on and the book that was held - so the hedge reads as the difference
  * it is rather than as a line pinned at 100%.
  */
-function RiskSplit({ risk }: { risk: AttributionRisk }) {
+function RiskSplit({ risk, notes }: { risk: AttributionRisk; notes: AttributionNote[] }) {
   const before = risk.pre_hedge_vol;
   const after = risk.hedged_vol;
   const removed = before === null || after === null ? null : before - after;
   const share = removed === null || !before ? null : removed / before;
+  // The envelope, not a chart: it holds the two pictures, each of which carries its
+  // own axis, caption and legend. Giving the envelope a legend of its own would name
+  // series it does not draw.
   return (
-    <figure className="mt-3" data-chart="risk">
-      <figcaption className="text-xs text-slate-500">
-        predicted variance, as of {dateOnly(risk.as_of) ?? "n/a"}
-      </figcaption>
+    <div className="mt-3" data-chart="risk">
+      <p className="text-xs text-slate-500">
+        predicted variance, as of {dateOnly(risk.as_of) ?? "n/a"}, % of the book&apos;s predicted
+        variance
+      </p>
       <p className="mt-1 text-sm tabular-nums">
         <span data-var-share="factor">{percent(risk.factor_share, 1)}</span> from factors,{" "}
         <span data-var-share="idio">{percent(risk.idio_share, 1)}</span> idiosyncratic.
       </p>
-      {risk.path.length >= 2 ? <RiskPath path={risk.path} /> : null}
+      {risk.path.length >= 2 ? <RiskPath path={risk.path} notes={notes} /> : null}
       <p className="mt-1 text-xs text-slate-500">
         The traded book is hedged to be factor-neutral, so the factor share sits near zero - under
         6% across the live period - and almost all of the predicted risk is idiosyncratic. That is
@@ -551,9 +581,87 @@ function RiskSplit({ risk }: { risk: AttributionRisk }) {
         .
       </p>
       {risk.path.length >= 2 && before !== null && after !== null ? (
-        <HedgeVol path={risk.path} />
+        <HedgeVol path={risk.path} notes={notes} />
       ) : null}
-    </figure>
+      <Notes notes={notes} />
+    </div>
+  );
+}
+
+/**
+ * The dates a note falls on, numbered as the list below the charts numbers them.
+ *
+ * A note whose date is not in the path is still in the list: it is a statement about
+ * the series, and a chart that dropped it because the window had scrolled past it
+ * would lose the record of a correction exactly when the correction is old.
+ */
+function noteMarkers(
+  path: AttributionRiskPath[],
+  notes: AttributionNote[],
+): Array<{ index: number; number: number; note: AttributionNote }> {
+  const dates = path.map((point) => dateOnly(point.trade_date) ?? "");
+  const markers: Array<{ index: number; number: number; note: AttributionNote }> = [];
+  notes.forEach((note, position) => {
+    const index = dates.indexOf(dateOnly(note.date) ?? "");
+    if (index >= 0) markers.push({ index, number: position + 1, note });
+  });
+  return markers;
+}
+
+/** A numbered marker on a chart, carrying its note's text as the accessible title. */
+function Marker({
+  cx,
+  top,
+  height,
+  number,
+  note,
+}: {
+  cx: number;
+  top: number;
+  height: number;
+  number: number;
+  note: AttributionNote;
+}) {
+  return (
+    <g data-note-marker={number}>
+      <title>{`${dateOnly(note.date) ?? "undated"}: ${note.text}`}</title>
+      <line
+        x1={cx}
+        y1={top}
+        x2={cx}
+        y2={top + height}
+        stroke="#475569"
+        strokeWidth="0.8"
+        strokeDasharray="2 2"
+      />
+      <circle cx={cx} cy={top + 4} r="6" fill="#475569" />
+      <text x={cx} y={top + 6.5} textAnchor="middle" fontSize="7" fill="#ffffff">
+        {number}
+      </text>
+    </g>
+  );
+}
+
+/** The dated notes, numbered to match the markers on the charts. */
+function Notes({ notes }: { notes: AttributionNote[] }) {
+  if (notes.length === 0) return null;
+  return (
+    <ol className="mt-2 space-y-1 text-xs text-slate-600" data-notes="true" aria-label="notes on these charts">
+      {notes.map((note, index) => (
+        <li
+          key={`${note.date ?? "undated"}-${index}`}
+          data-note={dateOnly(note.date) ?? ""}
+          className="flex gap-1"
+        >
+          <span className="mt-px inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-slate-600 text-[10px] text-white">
+            {index + 1}
+          </span>
+          <span>
+            <span className="font-medium">{dateOnly(note.date) ?? "undated"}</span> - {note.text}
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -565,7 +673,7 @@ function RiskSplit({ risk }: { risk: AttributionRisk }) {
  * risk the hedge removed. Both are read off one covariance and one design, which is
  * what makes the band a measurement rather than a comparison of two vintages.
  */
-function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
+function HedgeVol({ path, notes }: { path: AttributionRiskPath[]; notes: AttributionNote[] }) {
   const W = 320;
   const H = 110;
   const L = 30;
@@ -588,14 +696,17 @@ function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
   ].join(" ");
 
   return (
-    <svg
-      className="mt-1 h-auto"
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      role="img"
-      aria-label="predicted annual volatility before and after the hedge"
-      data-chart="hedge-vol"
-    >
+    <figure className="mt-2" data-chart="hedge-vol">
+      <figcaption className="text-xs text-slate-500">
+        predicted annual volatility, % annualized, by session
+      </figcaption>
+      <svg
+        className="mt-1 h-auto"
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        role="img"
+        aria-label="predicted annual volatility before and after the hedge"
+      >
       {[0, 0.5, 1].map((tick, index) => (
         <g key={index}>
           <line x1={L} y1={y(tick * top)} x2={W - R} y2={y(tick * top)} stroke="#e2e8f0" strokeWidth="1" />
@@ -619,17 +730,40 @@ function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
         stroke={COLORS.idio}
         strokeWidth="1.4"
       />
+      {noteMarkers(path, notes).map((marker) => (
+        <Marker
+          key={marker.number}
+          cx={x(marker.index)}
+          top={T}
+          height={ph}
+          number={marker.number}
+          note={marker.note}
+        />
+      ))}
       <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
         {dateOnly(path[0]?.trade_date) ?? ""}
       </text>
       <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#64748b">
         {dateOnly(path[path.length - 1]?.trade_date) ?? ""}
       </text>
-    </svg>
+      </svg>
+      <Legend
+        entries={[
+          {
+            key: "pre-hedge",
+            word: "sized book, before the hedge",
+            color: COLORS.factor,
+            dash: "",
+          },
+          { key: "hedged", word: "book held, after the hedge", color: COLORS.idio, dash: "" },
+          { key: "removed", word: "removed by the hedge", color: "#94a3b8", dash: "", shape: "patch" },
+        ]}
+      />
+    </figure>
   );
 }
 
-function RiskPath({ path }: { path: AttributionRiskPath[] }) {
+function RiskPath({ path, notes }: { path: AttributionRiskPath[]; notes: AttributionNote[] }) {
   const W = 320;
   const H = 110;
   const L = 30;
@@ -655,13 +789,17 @@ function RiskPath({ path }: { path: AttributionRiskPath[] }) {
     ].join(" ");
 
   return (
-    <svg
-      className="mt-1 h-auto"
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      role="img"
-      aria-label="share of predicted variance, factors and idiosyncratic"
-    >
+    <figure className="mt-2" data-chart="risk-path">
+      <figcaption className="text-xs text-slate-500">
+        share of predicted variance, % of the book&apos;s predicted variance, by session
+      </figcaption>
+      <svg
+        className="mt-1 h-auto"
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        role="img"
+        aria-label="share of predicted variance, factors and idiosyncratic"
+      >
       {[0, 0.5, 1].map((tick, index) => (
         <g key={index}>
           <line x1={L} y1={y(tick)} x2={W - R} y2={y(tick)} stroke="#e2e8f0" strokeWidth="1" />
@@ -692,13 +830,30 @@ function RiskPath({ path }: { path: AttributionRiskPath[] }) {
         stroke={COLORS.factor}
         strokeWidth="1"
       />
+      {noteMarkers(path, notes).map((marker) => (
+        <Marker
+          key={marker.number}
+          cx={x(marker.index)}
+          top={T}
+          height={ph}
+          number={marker.number}
+          note={marker.note}
+        />
+      ))}
       <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
         {dateOnly(path[0]?.trade_date) ?? ""}
       </text>
       <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#64748b">
         {dateOnly(path[path.length - 1]?.trade_date) ?? ""}
       </text>
-    </svg>
+      </svg>
+      <Legend
+        entries={[
+          { key: "factor", word: "from factors", color: COLORS.factor, dash: "", shape: "patch" },
+          { key: "idio", word: "idiosyncratic", color: COLORS.idio, dash: "", shape: "patch" },
+        ]}
+      />
+    </figure>
   );
 }
 
@@ -947,11 +1102,14 @@ function PeriodView({
   chart,
   snapshot,
   live = false,
+  notes = [],
 }: {
   period: AttributionPeriod;
   chart: "daily" | "monthly";
   snapshot?: Snapshot;
   live?: boolean;
+  /** Dated notes about the series, drawn as markers on the risk pictures. */
+  notes?: AttributionNote[];
 }) {
   const cumulative = period.cumulative;
   const carried = period.daily;
@@ -1033,7 +1191,7 @@ function PeriodView({
       {live ? <DailyBars days={carried} /> : null}
       <CostLine period={period} snapshot={snapshot} />
       {live ? <VolatilityPanel period={period} /> : null}
-      {live && period.risk ? <RiskSplit risk={period.risk} /> : null}
+      {live && period.risk ? <RiskSplit risk={period.risk} notes={notes} /> : null}
       <FactorTable period={period} />
 
       <DayTable
@@ -1143,7 +1301,7 @@ export function AttributionSection({
           {live?.note || attribution.note || "no live day is attributed yet"}
         </p>
       ) : live ? (
-        <PeriodView period={live} chart="daily" snapshot={snapshot} live />
+        <PeriodView period={live} chart="daily" snapshot={snapshot} live notes={attribution.notes ?? []} />
       ) : null}
     </section>
   );
