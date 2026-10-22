@@ -15,7 +15,7 @@ merged on).
 |---|---|---|
 | `EFB_CADENCE` | `21` | sessions between rebalances. `1` or unset is the daily loop. |
 | `EFB_CADENCE_ANCHOR` | `<the first evening you set them>` — **`2026-10-22` if you set them before Thursday 2026-10-22 22:25 UTC** | the session the calendar counts from. The anchor is itself a rebalance, so the first evening after you set it is a full rebalance and the next one is 21 sessions later. |
-| `EFB_DRIFT_GUARD` | `0.05` | a fraction of NAV. On a hold day, if the book's worst factor exposure is past 5%, it re-hedges to neutral. |
+| `EFB_DRIFT_GUARD` | `0.05` | a fraction of NAV. On a hold day, if the book's worst factor exposure is past 5%, it re-hedges to neutral - and the exposure it reports is the one **after the $250 order minimum**, which is the exposure the book actually keeps. |
 | `EFB_HEDGE_MODE` | `cap_then_rehedge` | the hedge the book is built with. Default `exact`. |
 
 Set the anchor to **the session of the first evening you want a rebalance on**, not to
@@ -55,7 +55,9 @@ start) and makes the next one start on a calendar it did not expect to.
    marks, reconciliation, attribution, snapshot, page. The proposal is the held book.
    The only legs are the forced ones - a name that left the universe, a corporate
    action, a short the broker will not lend, a name the model cannot price, a reversal
-   whose second leg is due, and the drift guard's own re-hedge when it fires.
+   whose second leg is due, **the unfinished remainder of the last rebalance's own
+   legs** (a partial fill, a rejection, a name that never filled - anything left owing
+   from the rebalance), and the drift guard's own re-hedge when it fires.
 3. **A missed rebalance is taken.** If a scheduled rebalance evening fails or is
    skipped, the completion record (`efb.run_status`) shows the gap and the next
    successful evening rebalances, so the book cannot quietly drift for months.
@@ -103,6 +105,21 @@ ORDER BY target_close DESC;
 ```
 
 A hold day is `status = 'ok'` with `n_orders` equal to the forced legs only - often 0.
+
+On a hold day the manifest also carries `unfilled_remainder` (the last rebalance's legs
+still owed, as target weights) and `reversal_targets` (a sign flip whose second leg is
+due). Both are forced, so a rebalance finishes before the book is allowed to sit still:
+
+```sql
+SELECT trade_date,
+       manifest -> 'unfilled_remainder' AS owed_from_the_rebalance,
+       manifest -> 'reversal_targets'   AS reversals_due
+FROM efb.proposals
+WHERE trade_date >= '2026-10-22' AND manifest -> 'cadence' ->> 'day' = 'hold'
+ORDER BY trade_date DESC;
+```
+
+An evening with an empty `unfilled_remainder` is a rebalance that finished.
 
 ## Turning it off
 
