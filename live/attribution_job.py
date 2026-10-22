@@ -23,6 +23,7 @@ without a second source for either.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -242,16 +243,128 @@ def _same_number(left: Any, right: Any, *, tolerance: float = 1e-12) -> bool:
     return abs(first - second) <= tolerance * max(1.0, abs(first), abs(second))
 
 
-# The columns this step exists to correct: the day's cost, its total, and the two
-# realized figures derived from them. `pre_hedge_vol` is deliberately not among them
-# - the recompute runs the current code, so it can only restate it, never change it.
+# The columns this step exists to correct: the day's cost, its total, and the
+# realized cost figure derived from them. `pre_hedge_vol` is deliberately not among
+# them - the recompute runs the current code, so it can only restate it, never change
+# it. Neither are `realized_vol` and `vol_ratio`: they are properties of the *series*
+# rather than of one day, and a per-day recompute cannot produce them - it would hand
+# the trailing window the one row it is pricing. `restate_risk_lines` owns them and
+# runs right after this, over the whole history.
 REFINALIZED = (
     "pnl_cost",
     "pnl_total",
-    "realized_vol",
-    "vol_ratio",
     "realized_cost_bps",
 )
+
+
+def restate_risk_lines(
+    days: set[str] | None = None, *, dry_run: bool = False
+) -> list[dict[str, Any]]:
+    """Recompute realized volatility, its ratio and the bias statistic from history.
+
+    Every row's `realized_vol` is a trailing standard deviation of the book's own
+    P&L, so it depends on every session at or before it - and a session whose cost is
+    rewritten changes the value for itself *and for every later session whose window
+    still holds it*. That is why this is a whole-series operation and why it runs
+    after a re-price rather than as part of one.
+
+    `days` narrows which rows are written; the arithmetic always uses the whole
+    history. A full row is written rather than the three changed columns, because the
+    local store's upsert replaces a row wholesale and a partial write would empty the
+    rest of it there while being a harmless column update on Postgres - one write that
+    means the same thing in both.
+    """
+    frame = store.select("attribution")
+    if frame is None or frame.empty or "trade_date" not in frame.columns:
+        return []
+    lines = attribution.risk_lines_over(frame)
+    wanted = (
+        None if days is None else {str(day)[:10] for day in days}
+    )
+    stored = {
+        str(row["trade_date"])[:10]: row for row in frame.to_dict("records")
+    }
+    changed: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
+    for line in lines.to_dict("records"):
+        day = str(line["trade_date"])[:10]
+        row = stored.get(day)
+        if row is None or (wanted is not None and day not in wanted):
+            continue
+        updated = dict(row)
+        moved = [
+            column
+            for column in attribution.RISK_LINE_COLUMNS
+            if not _same_number(row.get(column), line.get(column))
+        ]
+        if not moved:
+            continue
+        for column in attribution.RISK_LINE_COLUMNS:
+            updated[column] = _none_if_nan(line.get(column))
+        rows.append(_as_stored(updated))
+        changed.append(
+            {
+                "day": day,
+                "moved": moved,
+                "before": {column: row.get(column) for column in moved},
+                "after": {column: _none_if_nan(line.get(column)) for column in moved},
+            }
+        )
+    if rows and not dry_run:
+        store.upsert("attribution", rows)
+    for item in changed:
+        logger.info(
+            "risk lines restated for %s: %s",
+            item["day"],
+            ", ".join(
+                f"{column} {_shown(item['before'].get(column))} -> "
+                f"{_shown(item['after'].get(column))}"
+                for column in item["moved"]
+            ),
+        )
+    return changed
+
+
+def _as_stored(row: dict[str, Any]) -> dict[str, Any]:
+    """A row read back from the store, made writable again.
+
+    Postgres hands the jsonb columns over as dicts and the write path wants text, so a
+    row that is round-tripped through `select` and `upsert` - as this restatement does
+    - has to be serialized the way `attribution.store_rows` does it. Found by the
+    first live apply, which refused with "cannot adapt type 'dict'": the local store
+    accepts a dict happily, which is why the tests did not.
+    """
+    out: dict[str, Any] = {}
+    for key, value in row.items():
+        if key in attribution.JSON_COLUMNS:
+            # Postgres hands these over parsed; the local parquet store hands them
+            # over as the text they were written as. Both are writable, one needs
+            # serializing first.
+            out[key] = (
+                value
+                if value is None or isinstance(value, str)
+                else json.dumps(
+                    {
+                        str(name): attribution._jsonable(number)
+                        for name, number in value.items()
+                    },
+                    sort_keys=True,
+                )
+            )
+        elif key == "trade_date":
+            out[key] = str(pd.Timestamp(value).date())
+        else:
+            out[key] = attribution._jsonable(value)
+    return out
+
+
+def _none_if_nan(value: Any) -> Any:
+    """A number that jsonb and parquet both accept: NaN is absence, not a value."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return value
+    return None if pd.isna(number) else number
 
 
 def refinalize(
@@ -344,6 +457,11 @@ def refinalize(
     row["n_filled"] = float(filled)
     if not dry_run:
         store.upsert("attribution", [row])
+        # The re-price moved this session's P&L, so the trailing windows that hold it
+        # - its own and every later one - were measuring a number that no longer
+        # exists. Restated here rather than folded into the row above, because the
+        # window is the series, not the session.
+        restate_risk_lines()
     logger.info(
         "attribution %s re-finalized against %d fill(s): %s",
         stamp,
@@ -461,15 +579,22 @@ def run(root: Path, *, panel: attribution.ModelPanel | None = None) -> dict[str,
             "n_stored": 0,
             "n_done": len(done),
             "sessions": [],
+            "restated": restate_risk_lines(),
             "refinalized": refinalize_stale(root, panel=panel),
             "detail": "every stored day already has an attribution row",
         }
     rows = attribution.store_rows(frame)
     store.upsert("attribution", rows)
+    # A one-session frame carries one observation, and a trailing standard deviation
+    # of one observation is null: that is why a day attributed on its own used to be
+    # written with no realized volatility at all. The series is restated from the
+    # store, which now holds every session including tonight's.
+    restated = restate_risk_lines()
     return {
         "n_stored": len(rows),
         "n_done": len(done),
         "sessions": [str(row["trade_date"]) for row in rows],
+        "restated": restated,
         # A day written by an earlier run was priced against an estimate. The fills
         # arrived after it, so it is priced again here - in the same pass, with the
         # panel already built, because this is the first run that has both the fills

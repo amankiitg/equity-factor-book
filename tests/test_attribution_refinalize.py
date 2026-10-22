@@ -322,3 +322,39 @@ def test_a_close_with_no_fills_is_never_a_candidate(
 
     assert again["refinalized"] == []
     assert _same_row(_stored(SESSION), evening)
+
+
+def test_the_risk_lines_are_the_series_not_the_session() -> None:
+    """`realized_vol` is not this step's to write, and must not be in its set.
+
+    A per-day recompute hands the trailing window one observation, so leaving these
+    two columns in `REFINALIZED` is what wrote a null over a real number on every
+    evening a single session was priced. `restate_risk_lines` owns them instead, over
+    the whole stored history - see `tests/test_attribution_risk_lines.py`.
+    """
+    assert "realized_vol" not in attribution_job.REFINALIZED
+    assert "vol_ratio" not in attribution_job.REFINALIZED
+    assert "pnl_cost" in attribution_job.REFINALIZED
+
+
+def test_a_re_price_leaves_the_realized_vol_it_did_not_move(
+    local_store: pathlib.Path,
+) -> None:
+    """The column survives a re-price untouched, and the series is restated after."""
+    _evening_row(local_store)
+    evening = _stored(SESSION)
+    store.upsert("fills", [_fill_row(SESSION, "AAPL", 500_000.0, 55.0)])
+
+    report = attribution_job.refinalize(SESSION, ROOT / "data")
+
+    assert report["changed"] is True
+    assert "realized_vol" not in report["moved"]
+    assert "vol_ratio" not in report["moved"]
+    after = _stored(SESSION)
+    # Both are the series' values on this history, and the re-price is not allowed to
+    # move them: this store holds one book, so there is no window on either side of
+    # the session and both stay absent - as absent as the evening left them.
+    assert _same_row(
+        {key: after[key] for key in ("realized_vol", "vol_ratio")},
+        {key: evening[key] for key in ("realized_vol", "vol_ratio")},
+    )

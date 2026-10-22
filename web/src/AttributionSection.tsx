@@ -1023,8 +1023,8 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
   const last = pairs[pairs.length - 1];
 
   return (
-    <div data-panel="volatility" className="mt-3">
-      <h3 className="text-sm font-semibold">Realized against forecast volatility</h3>
+    <figure data-chart="volatility" data-panel="volatility" className="mt-3">
+      <figcaption className="text-sm font-semibold">Realized against forecast volatility</figcaption>
       <p className="mt-1 text-xs text-slate-600">
         Annualized, per session, from <code>attribution.live.daily</code>. {count(pairs.length)} of{" "}
         {count(period.n_days)} session(s) carry both; the realized line is the book&apos;s own
@@ -1073,6 +1073,22 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
           {dateOnly(last?.trade_date) ?? ""}
         </text>
       </svg>
+      <Legend
+        entries={[
+          {
+            key: "realized",
+            word: "realized volatility, % annualized (the book's own P&L over a rolling quarter)",
+            color: COLORS.idio,
+            dash: "",
+          },
+          {
+            key: "forecast",
+            word: "forecast volatility, % annualized (the model's, for the same session)",
+            color: COLORS.factor,
+            dash: "",
+          },
+        ]}
+      />
       <p className="mt-1 text-sm tabular-nums" data-vol="last">
         the last session with both, {dateOnly(last?.trade_date) ?? "n/a"}: realized{" "}
         {volPct(last?.realized_vol)} against {volPct(last?.forecast_vol)} forecast
@@ -1083,7 +1099,7 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
         wants thirty live days before a bias band means anything, and a page that drew a verdict
         on seven would be inventing one.
       </p>
-    </div>
+    </figure>
   );
 }
 

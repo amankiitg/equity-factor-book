@@ -177,3 +177,36 @@ describe("dated notes", () => {
     }
   });
 });
+
+describe("the realized against forecast chart", () => {
+  // This chart used to be a plain panel, so the generic checks above never reached it
+  // and it drew two lines with nothing naming them. It is a chart like the others now,
+  // and this case is here so that a later edit cannot quietly take it back to a panel.
+  const chart = (): HTMLElement => {
+    const node = document.querySelector("figure[data-chart='volatility']");
+    expect(node, "the realized-against-forecast chart is not a figure[data-chart]").toBeTruthy();
+    return node as HTMLElement;
+  };
+
+  it("names both series it draws, with the unit in the legend", () => {
+    open(OK);
+    const node = chart();
+    const legend = Array.from(node.querySelectorAll("li[data-series]"));
+    expect(legend.map((item) => item.getAttribute("data-series"))).toEqual([
+      "realized",
+      "forecast",
+    ]);
+    const words = legend.map((item) => (item.textContent ?? "").toLowerCase());
+    expect(words[0]).toContain("realized");
+    expect(words[1]).toContain("forecast");
+    for (const word of words) expect(word).toContain("% annualized");
+    // And every series drawn has an entry, which is the rule the other charts follow.
+    const drawnKeys = new Set(
+      Array.from(node.querySelectorAll("[data-series]"))
+        .filter((item) => item.tagName.toLowerCase() === "polyline")
+        .map((item) => item.getAttribute("data-series")),
+    );
+    const namedKeys = new Set(legend.map((item) => item.getAttribute("data-series")));
+    for (const key of drawnKeys) expect(namedKeys.has(key), `unnamed series ${key}`).toBe(true);
+  });
+});
