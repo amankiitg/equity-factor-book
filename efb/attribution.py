@@ -874,6 +874,47 @@ def skill_test(frame: pd.DataFrame, *, target_t: float = DETECTION_T) -> dict[st
     }
 
 
+# The three columns that describe the book's P&L *series* rather than one session,
+# and are therefore not a session's to rewrite on its own. `realized_vol` is a
+# trailing-window standard deviation and `bias_statistic` a trailing dispersion of
+# z-scores: both read every session at or before the one they are reported on, so a
+# run that recomputes one session has to restate them from the whole history.
+RISK_LINE_COLUMNS: tuple[str, ...] = ("realized_vol", "vol_ratio", "bias_statistic")
+
+
+def risk_lines_over(history: pd.DataFrame) -> pd.DataFrame:
+    """The risk lines for every session in a full P&L history, keyed by session.
+
+    `_with_risk_lines` measures positionally over **the frame it is given**, which is
+    correct only when that frame is the whole history. It is not, at the call sites
+    that recompute one session or a handful: `from_positions` drops the sessions
+    already attributed, so an evening that attributes a single day hands the window a
+    single observation and gets a null, and a run that attributes two gets the
+    standard deviation of two numbers. Measured on the live store on 2026-10-22:
+    2026-10-15 carried realized volatility of **0.226%** - the two-point figure from
+    the 10-14 and 10-15 P&L - against 2.48% over its own history, a tenfold cliff
+    drawn on the page.
+
+    So the window is taken over the history, not over the batch. `history` is any
+    frame with `trade_date`, `pnl_total` and `forecast_vol`; only the three
+    `RISK_LINE_COLUMNS` come back, and a caller replaces those in its own rows rather
+    than the whole row.
+    """
+    missing = [name for name in ("trade_date", "pnl_total") if name not in history]
+    if missing:
+        raise ValueError(f"a P&L history needs {missing}, which this frame lacks")
+    frame = history.copy()
+    if "forecast_vol" not in frame:
+        frame["forecast_vol"] = np.nan
+    frame["trade_date"] = frame["trade_date"].astype(str).str.slice(0, 10)
+    frame = frame.drop_duplicates(subset="trade_date", keep="last")
+    frame = frame.sort_values("trade_date", kind="stable")
+    frame["pnl_total"] = pd.to_numeric(frame["pnl_total"], errors="coerce")
+    frame["forecast_vol"] = pd.to_numeric(frame["forecast_vol"], errors="coerce")
+    lines = _with_risk_lines(frame)
+    return lines[["trade_date", *RISK_LINE_COLUMNS]].reset_index(drop=True)
+
+
 def _with_risk_lines(frame: pd.DataFrame) -> pd.DataFrame:
     """The realized volatility, its ratio to the forecast, and the bias statistic.
 
