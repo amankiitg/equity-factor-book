@@ -2044,7 +2044,10 @@ def main() -> int:
         # book carries the other side, and on a hold day nothing else would send the
         # second leg. Its weight comes from the book the loop last recorded, which on
         # the first hold after a rebalance is that rebalance's own target book.
-        prior_reversals = previous_close_reversals(as_of)
+        # `as_of` is the manifest's own date and is not known yet at this point in
+        # the run; the close being priced is what the previous document is compared
+        # against, and it is the same date.
+        prior_reversals = previous_close_reversals(str(gate["target_close"]))
         reversal_targets = reversal_weights(prior_reversals, previous)
         logger.info(
             "prior book: %s",
