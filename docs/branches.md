@@ -1,22 +1,29 @@
 # Branches, worktrees and scratch directories
 
-State after the 2026-10-21 cleanup. Four branches are live; everything else is
-either merged into `main` (so its commits are in history) or preserved as an
+State after the 2026-10-22 merges. One branch is live besides `main`; everything else
+is either merged into `main` (so its commits are in history) or preserved as an
 `archive/<branch>` tag on `origin`.
 
 ## What is left, and why
 
 | branch | tip | worktree | why it stays |
 |---|---|---|---|
-| `main` | `5059ecb` | `equity-factor-book` | production; the main checkout is back on it |
-| `owner-fixes` | `8737c9f` | `efb-owner-fixes` | the owner-fix notes, the two applied scripts, `HANDOFF.md`, this file |
-| `cadence-flag` | `97aa007` | `efb-cadence-flag` | `EFB_CADENCE`, the hold-day path and the page pill, proven but deliberately not merged |
-| `research-daily-design` | `4a43552` + study | `efb-daily-design` | the daily-panel drift-guard study, in progress; branches from `archive/research-churn2` |
+| `main` | `e7969b6` | `equity-factor-book` | production; the main checkout is on it, and every branch below except the last is in its history |
+| `research-daily-design` | `94c536e` | `efb-daily-design` | the daily-panel study (`docs/research/daily_design_study.md`) the cadence flag's settings come from; not merged, because it is a study rather than a change to the loop |
 
-Two upstream oddities were left alone rather than changed during a cleanup:
-`cadence-flag` and `owner-fixes` still track `origin/main` (they were created with
-`git worktree add -b <branch> origin/main`), and `research-daily-design` currently
-has **no** upstream after `origin/research-churn2` was deleted. Set it with:
+## Merged on 2026-10-22
+
+| branch | tip | merge commit | what merged |
+|---|---|---|---|
+| `page-legends` | `ac851db` | `606ba5d` | a legend with units on every chart, and dated notes the snapshot carries |
+| `cadence-flag` | `31378ac` | `a25557b` | `EFB_CADENCE`, `EFB_DRIFT_GUARD`, `EFB_HEDGE_MODE`, the hold-day path that finishes the last rebalance's unfilled legs and deferred reversals, and the page pill. **Every flag is off on `main`**; the identity proof is that with the flags unset the manifest is byte-identical to the one `main` wrote before |
+| `attribution-refinalize` | `c8efec6` | `e7969b6` | a close's cost is re-priced once its fills exist, from the evening job, which is the first run with both the fills and a tree |
+| `owner-fixes` | this commit | the merge that carries this file | the owner-fix notes, the backups the database writes were proved against, and the scripts that applied and restored them |
+
+`owner-fixes` still tracks `origin/main` from the worktree it was created in; it is
+merged, so the tracking branch is now the merge point rather than a divergence. The
+one upstream left broken on purpose is `research-daily-design` after
+`origin/research-churn2` was deleted - set it with:
 
 ```bash
 git branch -u origin/research-daily-design research-daily-design
