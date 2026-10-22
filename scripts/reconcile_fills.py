@@ -523,6 +523,14 @@ def _reconcile(argv: list[str] | None = None) -> int:
                 close,
                 type(exc).__name__,
             )
+        # The evening attributes this close before its orders settle, so its row's
+        # cost is the day's expected cost and `n_filled` is zero. The correction is
+        # not made here: this job runs on the service render.yaml describes as
+        # holding no artifacts at all (every parquet under data/ is gitignored), and
+        # a row cannot be rebuilt without the XS-v1 artifacts its exposures come
+        # from. The evening's own attribution pass re-prices these days instead, as
+        # the first run that has both the fills and a tree -
+        # live/attribution_job.py::refinalize_stale.
         # What left the account since the evening last read it, and what explains
         # it: a filled close from this very reconciliation, or an activity of the
         # broker's own. Read here because this is where the account is read and

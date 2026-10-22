@@ -2258,16 +2258,26 @@ def main() -> int:
         try:
             attributed = store_attribution(run_tree)
             logger.info(
-                "attribution: %d session(s) stored, %d already attributed",
+                "attribution: %d session(s) stored, %d already attributed, "
+                "%d re-priced against their fills",
                 attributed["n_stored"],
                 attributed["n_done"],
+                len(attributed.get("refinalized") or ()),
             )
+            for refinal in attributed.get("refinalized") or ():
+                logger.info(
+                    "attribution %s re-priced against %d fill(s): %s",
+                    refinal["day"],
+                    refinal.get("n_filled", 0),
+                    ", ".join(refinal.get("moved") or ()),
+                )
             attribution_flags.append(
                 {
                     "kind": "attribution",
                     "outcome": "stored",
                     "n_stored": int(attributed["n_stored"]),
                     "n_done": int(attributed["n_done"]),
+                    "n_refinalized": len(attributed.get("refinalized") or ()),
                 }
             )
         except Exception as exc:  # noqa: BLE001 - a report, not a step
