@@ -135,6 +135,37 @@ def _other_changes(old: Any, record: dict[str, Any]) -> str:
     return f"{len(changed)} ({names})"
 
 
+def _changed_pairs(old: Any, record: dict[str, Any]) -> list[tuple[str, Any, Any]]:
+    """Every stored column whose value the recompute would change, with both values."""
+    if old is None:
+        return []
+    changed = []
+    for key in record:
+        if key in {"trade_date", "written_at"}:
+            continue
+        if not _same(old.get(key), record.get(key)):
+            changed.append((key, old.get(key), record.get(key)))
+    return sorted(changed)
+
+
+def _show_diff(day: pd.Timestamp, pairs: list[tuple[str, Any, Any]]) -> None:
+    for key, was, now in pairs:
+        if isinstance(was, float) or isinstance(now, float):
+            shown = f"{_number(was):>14.8f} -> {_number(now):>14.8f}"
+        else:
+            shown = f"{str(was):>14} -> {str(now):>14}"
+        print(f"    {str(day.date()):<12}{key:<22}{shown}")
+
+
+def _number(value: Any) -> float:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return float("nan")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float("nan")
+
+
 def _apply_only_pre_hedge_vol(updates: list[tuple[float, Any]], apply: bool) -> int:
     table = store._qualified("attribution")  # noqa: SLF001
     statement = (
@@ -172,6 +203,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--since", default=None, help="first close, YYYY-MM-DD")
     parser.add_argument("--through", default=None, help="last close, YYYY-MM-DD")
+    parser.add_argument(
+        "--diff",
+        action="store_true",
+        help=(
+            "print, for every changed column, its stored and recomputed value. "
+            "Read-only, and the table a review of a full-row apply is read from."
+        ),
+    )
     parser.add_argument(
         "--only-pre-hedge-vol",
         action="store_true",
@@ -224,6 +263,10 @@ def main(argv: list[str] | None = None) -> int:
             f"{_pct(old_hedged):>15}{_pct(record.get('hedged_vol')):>14}"
             f"{residual:>16.2e}{others:>12}"
         )
+        if args.diff:
+            pairs = _changed_pairs(old, record)
+            if pairs:
+                _show_diff(day, pairs)
         rows.append({key: record.get(key) for key in recomputed.columns})
         if args.only_pre_hedge_vol and old is not None:
             new_pre = record.get("pre_hedge_vol")
