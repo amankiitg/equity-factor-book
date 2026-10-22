@@ -307,6 +307,11 @@ def test_a_whole_rebalance_proposal_still_builds_with_the_band_on() -> None:
         previous=previous,
         floor_release=0.5,
     )
-    assert manifest["held_book"] is False
+    # With no calendar asked for, the manifest is `main`'s: no `held_book`, no
+    # `cadence`, no guard keys. The floor band is the only thing this run changed, and
+    # it has to be possible to prove that key for key (see
+    # `tests/test_cadence_manifest_identity.py`).
+    assert "held_book" not in manifest
+    assert "cadence" not in manifest
     assert manifest["floor_release"] == 0.5
     assert manifest["n_kept"] > 0

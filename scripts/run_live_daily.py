@@ -1105,6 +1105,37 @@ def _excluded_rows(manifest: dict[str, Any] | None) -> list[dict[str, Any]]:
     return _rows(manifest, "excluded_detail")
 
 
+def unfilled_remainders(as_of: Any) -> dict[str, float]:
+    """The last rebalance's unfinished legs, as target weights, from the store.
+
+    Reads the three tables the answer lives in and hands them to
+    `evening_job.unfilled_remainder`, which is where the rule is. A store that cannot
+    be read returns nothing and says so: a leg that is not carried waits for the next
+    rebalance, which is the state this exists to avoid, so it is a warning.
+    """
+    from live import alpaca, evening_job, store
+
+    try:
+        proposals = store.select("proposals")
+        orders = store.select("orders")
+        book = previous_book(str(as_of)[:10], [])
+    except Exception as exc:  # noqa: BLE001 - the evening goes on without it
+        logger.warning(
+            "could not read the last rebalance's legs (%s: %s), so a partly filled "
+            "rebalance is not carried",
+            type(exc).__name__,
+            exc,
+        )
+        return {}
+    return evening_job.unfilled_remainder(
+        proposals,
+        orders,
+        book,
+        as_of=pd.Timestamp(as_of),
+        minimum=float(alpaca.DELTA_MIN_NOTIONAL),
+    )
+
+
 def reversal_weights(
     pending: Iterable[str] | None, previous: pd.DataFrame | None
 ) -> dict[str, float]:
@@ -2049,6 +2080,10 @@ def main() -> int:
         # against, and it is the same date.
         prior_reversals = previous_close_reversals(str(gate["target_close"]))
         reversal_targets = reversal_weights(prior_reversals, previous)
+        # The last rebalance's legs that did not complete. On the daily loop the
+        # next evening rebuilds the target and finishes them by itself; on a hold day
+        # nothing would, so they are carried into the held book and forced.
+        carried_remainders = unfilled_remainders(str(gate["target_close"]))
         logger.info(
             "prior book: %s",
             (
@@ -2063,6 +2098,7 @@ def main() -> int:
             appendix=appendix_identity,
             previous=prior_weights,
             reversal_targets=reversal_targets,
+            unfilled=carried_remainders,
             nav=float(holdings["nav"]),
             nav_source=str(holdings["nav_source"]),
             shortable=shortable_flags(dry_run=dry_run),

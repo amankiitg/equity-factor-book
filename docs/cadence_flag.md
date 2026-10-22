@@ -16,7 +16,7 @@ all three as flags whose defaults are today's behaviour.
 |---|---|---|
 | `EFB_CADENCE` | sessions between rebalances. `1` (or unset, or empty) is the daily loop the book runs today. A whole number below 1, a fraction or a word is refused in the log and treated as unset. | `1` |
 | `EFB_CADENCE_ANCHOR` | the session the calendar counts from, `YYYY-MM-DD`. The anchor is session 0 and is therefore itself a rebalance. A date that is not a session snaps back to the last session on or before it. | the close being priced |
-| `EFB_DRIFT_GUARD` | a fraction of NAV. On a hold day, if the held book's worst absolute factor exposure is past it, the book takes the minimum-norm correction that makes it neutral, under the active hedge mode, and every name it moves is forced. `off`, `none`, `0` and `false` are all "no guard"; anything else that is not a fraction in (0, 1) is refused in the log and treated as unset. | unset (no guard) |
+| `EFB_DRIFT_GUARD` | a fraction of NAV. On a hold day, if the held book's worst absolute factor exposure is past it, the book takes the minimum-norm correction that makes it neutral, under the active hedge mode, and every name it moves is forced. The exposure it reports is the one **after the $250 order minimum**, not the projection's. `off`, `none`, `0` and `false` are all "no guard"; anything else that is not a fraction in (0, 1) is refused in the log and treated as unset. | unset (no guard) |
 
 `EFB_FLOOR_RELEASE` keeps its own meaning and is unchanged; the band is simply
 fixed (see B6 below) so that it can be turned on at all.
@@ -183,10 +183,12 @@ the book carried forward exactly as the loop carries it. Orders are what
   `black --check` on `origin/main` too (two asserts Black would restate). The branch
   carries the format-only change so the lint gate means something.
 
-### B7 (re-run 2026-10-22, after the guard and the reversal fix)
+### B7 (re-run 2026-10-22, after the guard, the reversal fix and the manifest gating)
 
-Same apparatus, every flag unset, `main` at `606ba5d` against this branch, one cut
-tree (`/tmp/nov11merge/cut-2026-10-20/data`), the last four closes the tree prices:
+Every flag unset, `main` at `606ba5d` against this branch, one cut tree
+(`/tmp/nov11merge/cut-2026-10-20/data`), the last four closes the tree prices.
+
+**Weights**, `build_proposal(store=False)`:
 
 | close | n_kept main / branch | kept_gross main / branch | same names | **max abs weight difference** |
 |---|---|---|---|---|
@@ -195,67 +197,89 @@ tree (`/tmp/nov11merge/cut-2026-10-20/data`), the last four closes the tree pric
 | 2026-10-19 | 169 / 169 | 1.0 / 1.0 | yes | **0.0** |
 | 2026-10-20 | 153 / 153 | 1.0 / 1.0 | yes | **0.0** |
 
-**Max abs weight difference over all four closes: 0.0**, name for name, with
-`drift_guard: null` and `reversal_targets: {}` on every one - the guard and the
-reversal path are unreachable while the calendar says rebalance.
+**The manifest, key for key** - the owner's rule that a flag-less run writes the
+manifest it always wrote. Both trees dumped the **whole** manifest for those four
+closes and they were diffed, key by key:
 
-### B8 (re-run 2026-10-22, with the guard on)
+```
+main vs branch, all four closes: 8 differences
+  ~2026-10-15.code_commit: 606ba5d7... -> 37d010e1...     (the two trees are different commits)
+  ~2026-10-15.floor_search_seconds: 0.0657 -> 0.0678      (wall clock)
+  ... the same two keys on the other three closes ...
+```
+
+The same tree run twice differs on `floor_search_seconds` alone, which is what makes
+those two keys the answer rather than an excuse: **every other key of the manifest is
+identical**, including the seven the branch used to add - `cadence`, `drift_guard`,
+`held_book`, `left_universe`, `reversal_targets`, `target_book_held_back` and
+`unfilled_remainder`. They are emitted only when `EFB_CADENCE > 1`
+(`tests/test_cadence_manifest_identity.py` pins that, and that a calendar run emits
+all seven).
+
+### B8 (re-run 2026-10-22, with the guard on and the post-filter check in)
 
 `scripts/cadence_shadow.py --as-of 2026-10-20 --guard 0.05 --hedge cap_then_rehedge
 --seed-reversal ADM`, `store=False`, no broker, the cut tree above. Thirteen closes:
 **1 rebalance, 12 hold**. The tree ends at the 2026-10-20 close, so 2026-10-21 is not
-in it; the brief asked for the window through 10-21 and this is one session short,
-because the 10-21 session exists only in the evening's run tree, which is not
-reachable read-only from here.
+in it - one session short of the brief's window, because that session exists only in
+the evening's run tree.
 
-| close | day | guard | exposure before -> after | guard legs | orders | traded |
-|---|---|---|---|---|---|---|
-| 2026-10-01 | **rebalance** | — | — | 0 | 183 | $985,941 |
-| 2026-10-02 | hold | — | — | 0 | **1** (the seeded reversal's second leg) | $7,167 |
-| 2026-10-05 | hold | — | — | 0 | 3 | $9,865 |
-| 2026-10-06 | hold | — | — | 0 | 0 | $0 |
-| 2026-10-07 | hold | — | — | 0 | 0 | $0 |
-| 2026-10-08 | hold | — | — | 0 | 0 | $0 |
-| 2026-10-09 | hold | — | — | 0 | 0 | $0 |
-| 2026-10-12 | hold | — | — | 0 | 0 | $0 |
-| 2026-10-13 | hold | **fired** | 5.31% -> 0.00% | 493 | 88 | $30,142 |
-| 2026-10-14 | hold | no | — | 0 | 0 | $0 |
-| 2026-10-15 | hold | **fired** | 6.73% -> 0.00% | 493 | 56 | $18,299 |
-| 2026-10-16 | hold | **fired** | 7.91% -> 0.00% | 493 | 88 | $29,615 |
-| 2026-10-19 | hold | no | — | 0 | 0 | $0 |
+| close | day | orders | traded | guard | before | projection | tradeable | **after** | legs sent / dropped / rounds |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-10-01 | **rebalance** | 183 | $985,941 | - | - | - | - | - | - |
+| 2026-10-02 | hold | **1** | $7,167 | - | - | - | - | - | - (the seeded reversal's second leg) |
+| 2026-10-05 | hold | 3 | $9,865 | - | - | - | - | - | - |
+| 2026-10-06 | hold | 0 | $0 | - | - | - | - | - | - |
+| 2026-10-07 | hold | 0 | $0 | - | - | - | - | - | - |
+| 2026-10-08 | hold | 0 | $0 | - | - | - | - | - | - |
+| 2026-10-09 | hold | 0 | $0 | - | - | - | - | - | - |
+| 2026-10-12 | hold | 0 | $0 | - | - | - | - | - | - |
+| 2026-10-13 | hold | 117 | $69,174 | **fired** | 5.31% | 0.00% | 0.42% | **0.42%** | 117 / 63 / 1 |
+| 2026-10-14 | hold | 98 | $56,030 | **fired** | 6.58% | 0.00% | 0.39% | **0.39%** | 99 / 81 / 1 |
+| 2026-10-15 | hold | 0 | $0 | - | - | - | - | - | - |
+| 2026-10-16 | hold | 116 | $65,975 | **fired** | 7.32% | 0.00% | 0.38% | **0.38%** | 116 / 62 / 1 |
+| 2026-10-19 | hold | 1 | $0 | - | - | - | - | - | - |
 
-Monthly traded **$1,201,740** over the window against the daily loop's **$5,984,875**
-(419 orders against 2,400); 236 of the monthly legs are hold-day legs, and 232 of
-those are the guard's. The guard fires three times in twelve holds, which is the
-study's rate on a book that rebalanced on the 1st: at 5% it is a 6-weekly event, not
-a daily one, and each fire costs ~2-3% of NAV in turnover.
+Monthly traded **$1,185,849** against the daily loop's **$5,984,875** (519 orders
+against 2,400); 336 of the monthly legs are hold-day legs, 331 of those the guard's.
 
-The `guard legs` count is every name the minimum-norm correction touched (493, the
-whole book, because the projection is spread over every loading); the *orders* are
-fewer because a leg under the $250 minimum is not sent.
+**What the post-filter check changed.** Before it, the guard reported the projection's
+`0.00%` on the three fires while sending 56-88 of the 493 legs it computed, and the
+book it left carried an exposure it never stated. Now the number on the manifest is
+the one those legs deliver: `0.42%`, `0.39%`, `0.38%` - each measured on the book the
+sent legs leave, and each well under the 2.5% floor that would trigger the re-solve.
+The re-solve path itself is exercised by
+`tests/test_cadence_guard.py::test_the_guard_resolves_over_the_names_that_clear_the_minimum`,
+and the "it cannot deliver, so it does not trade" path by the test above it.
+
+**One leg's difference between `orders` and `legs sent`** (10-14: 98 orders against 99
+legs) is whole-share quantization: a leg that clears $250 before the book is quantized
+can fall under it after, and the morning is the thing that decides.
 
 ## Turning it on, if the owner wants it
 
-Nothing is set today. On the Render service `efb-live-daily`, the two variables
-are:
+Nothing is set today. The four variables, on the Render service `efb-live-daily`:
 
 ```
 EFB_CADENCE=21
-EFB_CADENCE_ANCHOR=2026-10-01
+EFB_CADENCE_ANCHOR=<the first evening you want a rebalance on>
+EFB_DRIFT_GUARD=0.05
+EFB_HEDGE_MODE=cap_then_rehedge
 ```
 
-`EFB_CADENCE_ANCHOR` must be a **session** the owner is willing to call the start
-of the cycle; 2026-10-01 is the anchor the proofs used. With `EFB_CADENCE` unset
-or `1`, both the flag and the calendar are inert and the loop rebalances daily
-exactly as it does now.
+The step-by-step, with the read-only query that confirms it the next morning and the
+way back to daily, is `docs/turn_on_monthly.md`. `EFB_CADENCE_ANCHOR` must be a
+**session** the owner is willing to call the start of the cycle; the anchor's own
+close is a rebalance, and if it never ran the first evening after it takes that
+rebalance rather than holding - which is the B3 rule, not a bug.
 
-**The order matters on the first evening.** If the anchor's own rebalance never
-ran (a fresh anchor in the middle of a month), the first evening after the anchor
-takes that rebalance rather than holding - which is the B3 rule, not a bug. The
-2026-10-01 anchor in the shadow run was such a rebalance.
+With `EFB_CADENCE` unset or `1`, all four are inert and the loop is the daily loop it
+is today, manifest included. `EFB_HEDGE_MODE=cap_then_rehedge` is the one that can be
+turned on by itself: it does not need a hold day.
 
-**Deployed.** `web/src/status.ts` carries the hold-day pill, and the Worker was
-redeployed with it on 2026-10-22 (`dd3110ad-7ae6-4715-9540-4288cd3f1f74`, replacing
+**Deployed.** `web/src/status.ts` carries the hold-day pill and the guard's version of
+it, and the Worker was redeployed with them on 2026-10-22
+(`dd3110ad-7ae6-4715-9540-4288cd3f1f74`, replacing
 `a4082203-e469-48b1-8001-641f6b63ddc0`). An older page shows `ok` and simply does not
 say "hold day"; a newer page whose document carries no `cadence` block reads exactly
 as it did before this branch.
@@ -279,9 +303,24 @@ On a hold day, after the reversal legs are placed and before the floor:
    largest position;
 3. **apply the hedge mode**: with `EFB_HEDGE_MODE=cap_then_rehedge` the cap rounds run
    and the neutrality is restored after them, which is variant **G5H** in the study;
-4. **force the legs**: every name the correction moved joins the hold day's forced
-   list, and the manifest records `drift_guard: {fired, threshold, exposure_before,
-   exposure_after, turnover, legs[]}`.
+4. **measure what will actually trade**: the projection is exact, but the morning only
+   sends legs at or above the $250 order minimum, and the projection moves every name
+   the book holds a little. So the exposure that matters is measured *after* the
+   minimum filter. If that is above 2.5% of NAV the correction is re-solved over the
+   names whose legs do clear the minimum (the same restricted projection, round after
+   round, until the tradeable set stops changing), and **if the best it can deliver is
+   worse than the book it found, the guard trades nothing** - a half-sent correction
+   can leave the book further from neutral than it started;
+5. **force the legs**: every name the correction moved joins the hold day's forced
+   list, and the manifest records
+   `drift_guard: {fired, threshold, exposure_before, exposure_projection,
+   exposure_projection_tradeable, exposure_after, turnover, legs_under_minimum, rounds,
+   legs[]}`.
+
+The correction is solved **over the names the book holds**, not over the universe: the
+minimum-norm solution over the whole cross-section is smaller in norm but it opens
+positions the book does not have, which is a rebalance on a day the calendar did not
+ask for.
 
 A hold day the guard looked at and left alone records `drift_guard: null`; a run that
 never asked for a guard records no `drift_guard` key at all, so a flag-less document
@@ -330,3 +369,30 @@ and the short leg landing on the next morning, which is a **hold** day.
 
 And on a day with nothing pending, `reversal_targets` is empty and the hold day sends
 nothing but its forced legs.
+
+## The last rebalance's unfinished legs
+
+The same defect, one step wider. A rebalance is a set of legs and the book only holds
+what filled; on the daily loop the next evening rebuilds the target and the delta
+finishes the job, but on a hold day nothing would, so a partially filled name would
+sit short of its target for up to twenty sessions.
+
+`evening_job.unfilled_remainder` reads `efb.proposals` for the newest close before
+tonight whose own manifest says `cadence.day == "rebalance"`, then `efb.orders` for
+that close, and keeps every name whose `intended_notional - filled_notional` is at or
+above the $250 order minimum - whatever the reason: a partial fill, a rejection, a
+name that never filled. The weight it carries is the **target** weight from the book
+that close published, not the leg's size, because completing a leg means reaching the
+target. On a hold day those names are written back into the held book and forced,
+exactly like a deferred reversal; on a rebalance day the key is not even computed into
+the manifest, because the rebuild trades the whole difference by itself.
+
+It is idempotent for the same reason the reversal is: the remainder is recomputed from
+the store every evening, so once the following morning has filled it the name drops out.
+
+| test | what it pins |
+|---|---|
+| `test_a_partly_filled_rebalance_is_carried_into_the_next_hold_day` | a leg filled 40% of its size is owed the other 60%, and the next morning sends exactly that |
+| `test_a_fully_filled_rebalance_forces_nothing` | nothing is carried, nothing is forced |
+| `test_a_leg_under_the_order_minimum_is_not_carried` | a $100 leftover is not a leg |
+| `test_the_daily_loop_carries_nothing_into_a_rebalance` | the computation is the evening's; the daily build never writes it |

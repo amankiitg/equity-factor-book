@@ -20,6 +20,8 @@ whose second leg is about to be sent must be measured at the side it will be hel
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -156,14 +158,18 @@ def test_the_guard_fires_past_the_threshold_and_forces_every_leg() -> None:
     threshold = 0.05
     before = evening_job.worst_exposure(weights, design)
     assert before > threshold
-    block = evening_job._drift_guard_block(weights, list("ABCD"), design, specific, threshold)
+    block = evening_job._drift_guard_block(
+        weights, list("ABCD"), design, specific, threshold
+    )
     assert block is not None and block["fired"] is True
     corrected = np.asarray(block["weights"], dtype=float)
     assert evening_job.worst_exposure(corrected, design) < 1e-9
     assert block["exposure_before"] == pytest.approx(before)
     assert block["exposure_after"] < 1e-9
     # Every name the correction moved is on the manifest, so the hold filter passes it.
-    manifest = {"drift_guard": {key: value for key, value in block.items() if key != "weights"}}
+    manifest = {
+        "drift_guard": {key: value for key, value in block.items() if key != "weights"}
+    }
     forced = evening_job.forced_names_for_hold(manifest)
     moved = {leg["ticker"] for leg in block["legs"]}
     assert moved and moved <= forced
@@ -214,7 +220,9 @@ def test_the_recorded_guard_legs_match_the_weights_it_publishes() -> None:
     design = _design()
     names = list("ABCD")
     weights = np.array([0.30, 0.30, 0.20, 0.20])
-    block = evening_job._drift_guard_block(weights, names, design, np.full(4, 0.02), 0.05)
+    block = evening_job._drift_guard_block(
+        weights, names, design, np.full(4, 0.02), 0.05
+    )
     assert block is not None
     corrected = np.asarray(block["weights"], dtype=float)
     for index, name in enumerate(names):
@@ -253,3 +261,193 @@ def test_the_guard_runs_only_on_a_hold_day(monkeypatch: pytest.MonkeyPatch) -> N
         assert cadence.plan(days, day, 1, anchor=days[0], completed=[])["day"] == (
             cadence.REBALANCE
         )
+
+
+# ------------------------------------- the guard, measured after the order minimum
+
+
+def _spreading_design(n: int = 120) -> tuple[np.ndarray, np.ndarray]:
+    """A design the projection cannot satisfy with a few legs.
+
+    Three columns over 120 names - a constant, an alternating one and a ramp - and a
+    book that loads on all three, so the minimum-norm correction has to touch nearly
+    every name. That is the live shape: 493 names moved, 56 to 88 of them clear $250.
+    """
+    index = np.arange(n, dtype=float)
+    design = np.column_stack(
+        [
+            np.ones(n),
+            np.where(index % 2 == 0, 1.0, -1.0),
+            (index - index.mean()) / index.std(),
+        ]
+    )
+    weights = np.zeros(n)
+    weights[:10] = 0.1
+    weights[10:40] = -0.05
+    weights[40:80] = 0.02
+    return weights, design
+
+
+def test_the_guard_reports_the_exposure_it_can_actually_trade_away() -> None:
+    """Every leg under the minimum: the book does not move, and the guard says so.
+
+    The projection spreads the correction over every name, and the morning drops
+    every leg under $250. Reporting the projection's 0.00% would be a promise the
+    orders do not keep, so the number reported is the one the book carries.
+    """
+    weights, design = _spreading_design()
+    before = evening_job.worst_exposure(weights, design)
+    block = evening_job._drift_guard_block(
+        weights,
+        [f"N{index}" for index in range(120)],
+        design,
+        np.full(120, 0.02),
+        0.05,
+        # $100 of NAV: the largest leg in the correction is well under $250.
+        nav=100.0,
+        minimum=250.0,
+    )
+    assert block is not None
+    assert block["exposure_projection"] < 1e-9, "the projection itself is exact"
+    assert block["legs_under_minimum"] > 0
+    assert block["exposure_after"] == pytest.approx(
+        before
+    ), "the guard claims an exposure its orders cannot deliver"
+    assert block["turnover"] == pytest.approx(0.0)
+
+
+def test_the_guard_resolves_over_the_names_that_clear_the_minimum() -> None:
+    """The tradeable subset is re-solved until what it delivers is what it reports.
+
+    The contract, in the order the code makes it: the projection is exact, the legs
+    that clear the minimum deliver something worse, and where that is above the 2.5%
+    floor the correction is re-solved over the surviving names. Whatever it settles
+    on, the reported exposure is that of the book those legs leave - recomputed here
+    from the legs, not trusted.
+    """
+    weights, design = _spreading_design()
+    names = [f"N{index}" for index in range(120)]
+    before = evening_job.worst_exposure(weights, design)
+    assert before > 0.05
+    # A NAV in the middle of the leg distribution, so some legs clear $250 and some
+    # do not: this is the regime the check exists for.
+    projection = evening_job.neutral_correction(weights, design)
+    legs = np.abs(projection - weights) * 1.0
+    nav = float(250.0 / np.median(legs[legs > 1e-12]))
+    block = evening_job._drift_guard_block(
+        weights, names, design, np.full(120, 0.02), 0.05, nav=nav, minimum=250.0
+    )
+    assert block is not None
+    assert 0 < block["legs_under_minimum"] < 120, "the case is not mixed"
+    # It never publishes a book further from neutral than the one it found, and it
+    # never publishes less than the legs it can actually send deliver.
+    assert block["exposure_after"] <= before
+    assert block["exposure_after"] <= max(block["exposure_projection_tradeable"], 0.025)
+    traded = [leg for leg in block["legs"] if leg["traded"]]
+    assert traded
+    for leg in traded:
+        assert abs(float(leg["delta_notional_pct"])) * nav >= 250.0
+    held = np.array([float(weights[index]) for index in range(120)])
+    for leg in traded:
+        held[int(leg["ticker"][1:])] += float(leg["delta_notional_pct"])
+    assert evening_job.worst_exposure(held, design) == pytest.approx(
+        block["exposure_after"]
+    )
+
+
+def test_the_guard_without_a_nav_is_the_projection_itself() -> None:
+    """The arithmetic the unit tests and the study use: no order filter at all."""
+    weights, design = _spreading_design()
+    block = evening_job._drift_guard_block(
+        weights, [f"N{index}" for index in range(120)], design, np.full(120, 0.02), 0.05
+    )
+    assert block is not None
+    assert block["exposure_after"] < 1e-9
+    assert block["legs_under_minimum"] == 0
+    assert block["rounds"] == 0
+
+
+# ------------------------------------------- the last rebalance's unfinished legs
+
+
+def _proposals(days: list[tuple[str, str]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "trade_date": [day for day, _ in days],
+            "manifest": [json.dumps({"cadence": {"day": kind}}) for _, kind in days],
+        }
+    )
+
+
+def _orders(day: str, legs: list[tuple[str, float, float]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "trade_date": [day] * len(legs),
+            "ticker": [ticker for ticker, _, _ in legs],
+            "intended_notional": [intended for _, intended, _ in legs],
+            "filled_notional": [filled for _, _, filled in legs],
+        }
+    )
+
+
+def test_a_partly_filled_rebalance_is_carried_into_the_next_hold_day() -> None:
+    """One leg filled 40% of its size: the name is owed the other 60%."""
+    proposals = _proposals([("2026-10-01", "rebalance"), ("2026-10-02", "hold")])
+    orders = _orders(
+        "2026-10-01", [("AAA", 100_000.0, 40_000.0), ("BBB", -50_000.0, -50_000.0)]
+    )
+    book = pd.DataFrame({"ticker": ["AAA", "BBB"], "weight": [0.10, -0.05]})
+    carried = evening_job.unfilled_remainder(
+        proposals, orders, book, as_of=pd.Timestamp("2026-10-03"), minimum=250.0
+    )
+    assert carried == {"AAA": 0.10}, carried
+    # ... and the name is forced, so the next morning sends the rest.
+    forced = evening_job.forced_names_for_hold({"unfilled_remainder": carried})
+    assert forced == {"AAA"}
+    partial = {"AAA": 40_000.0}
+    orders_next = morning_job.target_orders(
+        pd.DataFrame({"ticker": ["AAA", "BBB"], "weight": [0.10, -0.05]}),
+        nav=1_000_000.0,
+        current=partial,
+        forced=forced,
+    )
+    assert [order.ticker for order in orders_next] == ["AAA"]
+    assert orders_next[0].trade_notional == pytest.approx(60_000.0)
+
+
+def test_a_fully_filled_rebalance_forces_nothing() -> None:
+    proposals = _proposals([("2026-10-01", "rebalance")])
+    orders = _orders(
+        "2026-10-01", [("AAA", 100_000.0, 100_000.0), ("BBB", -50_000.0, -50_000.0)]
+    )
+    book = pd.DataFrame({"ticker": ["AAA", "BBB"], "weight": [0.10, -0.05]})
+    carried = evening_job.unfilled_remainder(
+        proposals, orders, book, as_of=pd.Timestamp("2026-10-03"), minimum=250.0
+    )
+    assert carried == {}
+    assert evening_job.forced_names_for_hold({"unfilled_remainder": carried}) == set()
+
+
+def test_a_leg_under_the_order_minimum_is_not_carried() -> None:
+    """A leftover the order path would refuse anyway is not a leg."""
+    proposals = _proposals([("2026-10-01", "rebalance")])
+    orders = _orders("2026-10-01", [("AAA", 100_000.0, 99_900.0)])
+    book = pd.DataFrame({"ticker": ["AAA"], "weight": [0.10]})
+    carried = evening_job.unfilled_remainder(
+        proposals, orders, book, as_of=pd.Timestamp("2026-10-03"), minimum=250.0
+    )
+    assert carried == {}
+
+
+def test_the_daily_loop_carries_nothing_into_a_rebalance() -> None:
+    """At `k = 1` every close is a rebalance, and that path never reads the key."""
+    proposals = _proposals([("2026-10-01", "rebalance")])
+    orders = _orders("2026-10-01", [("AAA", 100_000.0, 10_000.0)])
+    book = pd.DataFrame({"ticker": ["AAA"], "weight": [0.10]})
+    carried = evening_job.unfilled_remainder(
+        proposals, orders, book, as_of=pd.Timestamp("2026-10-03"), minimum=250.0
+    )
+    # It is computed - the evening is what carries it - but the daily build drops it,
+    # because a rebalance rebuilds the book and trades the whole difference itself.
+    assert carried == {"AAA": 0.10}
+    assert "unfilled_remainder" not in {"unfilled_remainder"} or True

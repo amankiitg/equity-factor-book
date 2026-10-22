@@ -166,7 +166,19 @@ def run_pass(
             "guard_fired": bool(guard_block.get("fired")) if guard_block else None,
             "guard_before": guard_block.get("exposure_before"),
             "guard_after": guard_block.get("exposure_after"),
+            # The three exposures worth reading apart: what the projection promised,
+            # what the legs that clear the order minimum deliver, and what the book
+            # carries after the re-solve.
+            "guard_projection": guard_block.get("exposure_projection"),
+            "guard_delivered": guard_block.get("exposure_projection_tradeable"),
+            "guard_rounds": guard_block.get("rounds"),
             "guard_legs": len(guard_block.get("legs") or []),
+            "guard_legs_sent": (
+                sum(1 for leg in guard_block.get("legs") or [] if leg.get("traded"))
+                if guard_block
+                else None
+            ),
+            "guard_legs_dropped": guard_block.get("legs_under_minimum"),
             "dropped_no_risk": [str(n) for n in manifest["dropped_no_risk"]],
             "dropped_no_price": [str(n) for n in manifest["dropped_no_price"]],
         }
