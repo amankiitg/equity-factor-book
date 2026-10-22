@@ -68,6 +68,25 @@ start) and makes the next one start on a calendar it did not expect to.
 The first evening also writes the calendar into the manifest, so the run's own record
 says what it did rather than leaving the page to infer it.
 
+## What changed under this switch since it was written
+
+Three things moved on 2026-10-22, none of them a flag and none of them the book:
+
+- **The evening's cost estimate now prices the trade.** Spread, commission and impact are
+  charged on the traded notional (target minus held) and only the borrow on the book, so
+  the `expected_cost_bps` you see from Friday onwards moves with turnover instead of
+  sitting at a flat ~14.3 bp. Friday's number is not comparable with last week's.
+- **A close's attribution is re-priced once its fills exist**, in the evening, and the
+  realized-volatility line is restated from the whole P&L history rather than from the
+  sessions that run happened to attribute. The page's "realized against forecast" chart
+  is the one that changed most: it used to show a tenfold cliff on 2026-10-15 that was an
+  artefact of a two-session window.
+- **The borrow rate is still 2%/yr and still unsourced**; `docs/borrow_rate.md` collects
+  the public evidence (general collateral at 10-35 bp, Alpaca free on easy-to-borrow) and
+  recommends 0.35% with a 0.10%-1.00% range. It is not changed in code; that is yours.
+
+None of the three changes what the four variables below do.
+
 ## Confirming it the next morning (read-only)
 
 The manifest is stored per close in `efb.proposals.manifest`. This is the query:
