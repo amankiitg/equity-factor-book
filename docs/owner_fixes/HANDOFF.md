@@ -1,243 +1,213 @@
-# Handoff, 2026-10-21 01:00 UTC (2026-10-20 21:00 ET)
+# Handoff, 2026-10-22 01:30 UTC
 
-State at pause: **both authorised database writes are applied and verified; the
-research panel is built and validated and the study got through one of seven
-variants.** Nothing is half-written, no process is running.
+Paused by instruction. **Two branches are not merged because their gate has not passed.**
+Nothing is half-written: the database writes below are applied and verified, the page is
+deployed and verified, and every branch is pushed.
 
-## Part 1 - attribution recompute: **applied and verified**
+Deadline for the rest: **Thursday 2026-10-22 21:30 UTC**, and never inside the run
+windows (15:25-15:45 and 22:25-23:00 UTC).
 
-`--since 2026-09-29`. `--since` is inclusive (`d >= Timestamp(args.since)`), so this
-includes 09-29 and excludes **only** 2026-09-28, the day with no positions of its own
-that is rebuilt from 09-29's book.
+## What is on `main` right now
 
-### Deviation: the documented full-row upsert was rejected by the stop rule
+`main` = **`606ba5d`** — the `page-legends` merge (`--no-ff`), gate run on the merge
+commit: **14 failed, 1585 passed**, the 14 being exactly `docs/known_test_failures.md`.
 
-The full-row dry run failed the brief's "`realized_vol` unchanged on every day"
-expectation. Its new `other cols` guard showed why - eight rows would have been
-rewritten in P&L columns:
+Every new flag is **off** on `main`: `cadence-flag` is not merged, so `EFB_CADENCE`,
+`EFB_CADENCE_ANCHOR`, `EFB_DRIFT_GUARD` and `EFB_HEDGE_MODE` do not exist in the
+construction at all. No Render variable was set. The identity proof for the branch that
+carries them is 0.0 (below), but that is a branch proof, not a statement about `main`.
 
-```
-close         pre-hedge before   pre-hedge after  hedged before  hedged after  identity after  other cols
-2026-10-09               9.77%             7.48%          2.66%         2.66%       -5.27e-17   6 (pnl_total, pnl_cost, realized_vol…)
-2026-10-13              10.53%             8.04%          2.64%         2.64%       -9.44e-17   6 (pnl_total, pnl_cost, realized_vol…)
-2026-10-14               9.46%             7.43%          2.76%         2.76%        6.42e-17   1 (realized_vol)
-2026-10-15               9.46%             7.43%          2.76%         2.76%       -3.20e-17   6 (pnl_total, pnl_cost, realized_vol…)
-2026-10-20               7.69%             7.69%          2.96%         2.96%        1.24e-16   2 (realized_vol, vol_ratio)
-   (09-29 .. 10-08 had other cols = 0)
-```
+## Part 1 — the attribution chart and legends: DONE, merged, deployed
 
-Cause, from `n_filled`: those rows were written before the morning had recorded the
-day's fills (`n_filled = 0`), so their `pnl_cost` is an estimate. Recomputing today
-charges the actual fill cost:
+1. **Read (read-only)**: `efb.attribution` holds 18 rows, 2026-09-28..2026-10-21. The
+   15 rows recomputed on 2026-10-20 still hold the corrected values, to the digit, in
+   `docs/owner_fixes/attribution_recompute.md`. 2026-09-28 was still on the old formula
+   (18.6918%).
+2. **Where the chart's series comes from**: the store -> the evening -> `live/snapshot.py::_risk_path`
+   -> `latest.json` in R2 -> the Worker -> the page. **Tonight's document (2026-10-21,
+   uploaded after the 22:56:35 attribution write) carries the corrected values for
+   09-29..10-19 and the stale 18.69% for 09-28.** I could not read R2 to confirm: this
+   machine holds `EFB_SEED_R2_*` and not the snapshot bucket's `EFB_R2_*`. The next
+   evening rebuilds the document and picks up the 09-28 write.
+3. **The drop explained**: before the fix the series ran 18.69 -> 15.61 -> 9.36; the
+   first two points were the old formula. After it, 15.61 -> 15.61 -> 9.36. The
+   remaining 6.2-point step is real and is the **establishment book**: on 09-28 and
+   09-29 the book held 150 names with `hedged_vol` 16.47% (the hedge not yet complete),
+   and on 09-30 it was 175 names at 2.87%. It is a one-time transition at the start of
+   the live period, not a current risk level. That is now a dated note on the page.
+4. **Series made consistent**: 2026-09-28 *was* reconstructible (it rebuilds from the
+   09-29 book), so it took the same narrow recompute — **18.6918% -> 15.6087%**,
+   `hedged_vol` untouched at 16.4721%, identity -3.11e-17, no other column. Backup
+   `backups/attribution_0928_before.json`; rollback:
+   `python scripts/restore_attribution.py --backup docs/owner_fixes/backups/attribution_0928_before.json --apply`.
+5. **Legends, notes, page**: every one of the four charts (`cumulative`, `daily`,
+   `risk-path`, `hedge-vol`) now carries a caption with its unit (bp of NAV / % of
+   predicted variance / % annualized) and a legend naming every series, with area
+   series drawn as swatches. The snapshot carries `attribution.notes` (code, not the
+   store: `live.snapshot.ATTRIBUTION_NOTES`), drawn as numbered markers with their
+   text, seeded with 09-28, 10-20 and 10-21.
 
-```
-close       pnl_total old     pnl_total new    delta   pnl_cost old    pnl_cost new  n_filled old/new
-2026-10-09     -0.0043212215     -0.0041165415  2.05e-04    -0.00141982     -0.00121514       0.0 / 171
-2026-10-13      0.0013485556      0.0003346462 -1.01e-03    -0.00142579     -0.00243970       0.0 / 191
-2026-10-15      0.0001925681      0.0005924712  4.00e-04    -0.00142888     -0.00102898       0.0 / 176
-```
+   **Verified at 390px** against the built page and a fixture, in a real browser:
+   `scrollWidth == clientWidth == 390`, all four charts 340px wide with their legends
+   and units, three notes listed, a marker only on an in-window date, and the only
+   elements past the viewport edge are inside the attribution table's own
+   `overflow-x-auto`.
 
-2026-10-13 would move from +13 bp to +3 bp. That is a P&L rewrite, not a volatility
-fix, so it was **not** applied. Per the stop rule the remaining parts continued.
+   **Worker: `a4082203-e469-48b1-8001-641f6b63ddc0` -> `dd3110ad-7ae6-4715-9540-4288cd3f1f74`.**
+   Rollback: `cd web && npx wrangler rollback a4082203-e469-48b1-8001-641f6b63ddc0`.
 
-### What was applied
+## Part 2a — the actual-fills recompute: DONE, applied and verified
 
-A new narrow mode, `--only-pre-hedge-vol`, which updates that one column:
+`--since 2026-10-09`, full row, eight rows (10-09, 10-12, 10-13, 10-14, 10-15, 10-16,
+10-19, 10-20). `pnl_cost`, `pnl_total`, `realized_cost_bps`, `realized_vol`,
+`vol_ratio` and `n_filled` moved; `pre_hedge_vol` was restated identically on every
+row; the identity closes everywhere. The full before/after table is in
+`docs/owner_fixes/attribution_recompute.md`.
 
-```sql
-UPDATE "efb"."attribution" SET "pre_hedge_vol" = %s, "written_at" = now()
-WHERE "trade_date" = %s
-```
+2026-10-13: `pnl_total` +0.00135 -> +0.00033, `pnl_cost` -0.00143 -> -0.00244, which is
+the +13 bp day becoming a +3 bp day — the number the last handoff predicted.
 
-15 rows, 2026-09-29..2026-10-19, stamped **2026-10-20 23:42:08 UTC** in the rows.
+Backup `backups/attribution_fills_before.json` (8 rows). Rollback:
+`python scripts/restore_attribution.py --backup docs/owner_fixes/backups/attribution_fills_before.json --apply`.
+Verified with a NaN-aware diff of every stored column against both backups: the
+expected columns and `written_at`, nothing else; a re-run reports `other cols = 0`.
 
-| close | pre-hedge before | pre-hedge after | change (pts) |
-|---|---|---|---|
-| 2026-09-28 | 18.6918% | 18.6918% | 0.000 (not selected) |
-| 2026-09-29 | 18.6918% | 15.6087% | -3.083 |
-| 2026-09-30 | 11.9783% | 9.3603% | -2.618 |
-| 2026-10-01 | 11.7508% | 8.9281% | -2.823 |
-| 2026-10-02 | 11.5482% | 9.0140% | -2.534 |
-| 2026-10-05 | 10.7682% | 8.4590% | -2.309 |
-| 2026-10-06 | 10.2577% | 7.8472% | -2.410 |
-| 2026-10-07 | 9.8679% | 7.6226% | -2.245 |
-| 2026-10-08 | 9.8679% | 7.6226% | -2.245 |
-| 2026-10-09 | 9.7682% | 7.4761% | -2.292 |
-| 2026-10-12 | 9.3394% | 7.2984% | -2.041 |
-| 2026-10-13 | 10.5279% | 8.0421% | -2.486 |
-| 2026-10-14 | 9.4650% | 7.4319% | -2.033 |
-| 2026-10-15 | 9.4650% | 7.4319% | -2.033 |
-| 2026-10-16 | 10.1428% | 7.8592% | -2.284 |
-| 2026-10-19 | 10.8048% | 8.1306% | -2.674 |
-| 2026-10-20 | 7.6891% | 7.6891% | 0.000 (already correct) |
+## Part 2b — the forward fix: WRITTEN, NOT MERGED (gate not run)
 
-Every fall is inside the brief's 1.9-3.1 point band. The four-term identity closes on
-every day, with the two known residuals (6.08e-05 on 09-29, 1.54e-06 on 10-06)
-unchanged. 2026-10-20 reproduces its stored value to 2.8e-17 - the control that the
-script matches the live code.
+Branch **`attribution-refinalize`**, head **`de27f05`**, pushed, **not merged**.
 
-**Verified after the apply**: 17 rows before and after, same 17 dates; 2026-09-28
-changed in **no** column; the 15 applied rows changed in `pre_hedge_vol` +
-`written_at` only; 2026-10-20 changed in no column; `hedged_vol`, `realized_vol`,
-`pnl_*`, `n_filled`, `vol_ratio` byte-identical to the backup; re-running the dry run
-says `every day already holds the recomputed pre-hedge vol: nothing to write`.
+`live.attribution_job.refinalize(day, root)` re-attributes one close against the fills
+it now has and rewrites the row; `scripts/reconcile_fills.py` calls it right after the
+fills are stored, which is the first run that can price the day. Idempotent three ways:
+no fills means nothing to price, a matching `n_filled` means the row is left as stored,
+and the row is written only when the cost columns actually move. The corrected
+pre-hedge volatility is restated, never altered — `REFINALIZED` deliberately excludes
+it.
 
-**Rollback**: `python scripts/restore_attribution.py --apply`
-(backup `docs/owner_fixes/backups/attribution_before.json`, 16 rows; whole table in
-`attribution_context_before.json`, 17). The restore dry run reproduced the backup
-exactly **before** the apply (0 rows differing).
+`tests/test_attribution_refinalize.py` (7 tests): the three the brief named, plus
+dry-run, no-row and "the cost is the fills' own". They pass, as do
+`test_e12_attribution_job.py` and `test_e12_attribution.py` (28 together).
 
-## Part 2 - reconciliation back-fill: **applied and verified**
+**What is missing: the full gate.** Run
+`.venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"`
+in `../efb-attr-fin`, expect the 14 known failures, then merge.
 
-Dry run reported **14** updatable rows - the brief's number, not 13. 2026-10-19
-became updatable because its morning ran at 15:30 UTC on 10-20, and 2026-10-20 became
-the new "no fills rows" close, exactly as 10-19 was before it. 2026-09-25 was
-considered and left alone (no fills rows, and realised vol needs two attributed
-sessions).
+## Part 3 — the guard and the reversal addendum: WRITTEN, NOT MERGED (gate failed, fix untested)
 
-```
-close         filled before   filled after  realized before  realized after   note
-2026-09-25             0.00           0.00                -               -   not upserted
-2026-09-29             0.00           0.00                -            4.64%
-2026-09-30             0.00           0.00                -            3.46%
-2026-10-01             0.00         517.42                -            2.83%
-2026-10-02             0.00     411,229.54                -            2.81%
-2026-10-05             0.00     425,739.98                -            2.70%
-2026-10-06             0.00     342,598.25                -            2.53%
-2026-10-08             0.00     494,417.34                -            2.19%
-2026-10-09             0.00     376,262.54                -            2.59%
-2026-10-12             0.00     409,357.31                -            2.77%
-2026-10-13             0.00     437,952.78                -            2.64%
-2026-10-15             0.00     429,573.30                -            2.26%
-2026-10-16             0.00     480,740.60                -            2.75%
-2026-10-19             0.00     394,934.52                -            2.46%
-2026-10-20             0.00           0.00                -            2.40%
-```
+Branch **`cadence-flag`**, head **`37d010e`**, pushed, **not merged**.
 
-Applied ~23:44 UTC (`reconciliation` has no write stamp). `filled_notional` was
-independently re-derived as `sum(abs(filled_notional))` per close from `efb.fills`
-(2026-10-02: 207 legs, 411,229.54; 2026-10-16: 181 legs, 480,740.60; 2026-10-19: 163
-legs, 394,934.52 - all matching), and `realized_annual_vol` comes from
-`live.reconcile.realized_annual_vol_for`, the function `reconcile.backfill` calls for
-a new morning.
+**The gate for `160ed2d` FAILED: 39 failures, not 14.** 25 were new, all in
+`test_e11_positions.py`, `test_e11_staleness.py` and `test_e11_notify.py`, and all one
+cause: `previous_close_reversals(as_of)` read a name the scope had not bound yet
+(`as_of` is set from the manifest further down the run). `37d010e` changes it to
+`str(gate["target_close"])`, and those three files now pass **100/100**. **The full
+suite has not been re-run since that fix.** That is the one gate between this branch and
+a merge.
 
-**Verified**: post-apply dry run `0 row(s) would be updated`; the restore dry run
-shows the two columns as the only difference with `other cols = 0` on all 14 rows
-(`intended_notional`, `forecast_annual_vol`, the cost split and the risk blocks
-unchanged); table still 15 rows on 15 dates.
+What is on the branch:
 
-**Rollback**: `python scripts/restore_reconciliation.py --apply`
-(backup `reconciliation_before.json`, 14 rows; whole table
-`reconciliation_context_before.json`, 15).
+- **`EFB_DRIFT_GUARD`** (a fraction; unset = off): on a hold day, measure the held
+  book's worst absolute factor exposure against the design it will be held with, and
+  past the threshold take the minimum-norm correction, under the active hedge mode (so
+  `cap_then_rehedge` runs its cap rounds as G5H did). Every name it moves is forced.
+  `manifest["drift_guard"]` and `manifest["cadence"]["drift_guard"]` record
+  `fired / threshold / exposure_before / exposure_after / turnover / legs[]`.
+- **The pill**: `hold day, guard re-hedged 6.7% -> 0.0%`, still green.
+- **The reversal addendum, CONFIRMED and fixed.** The code path was exactly as the
+  addendum describes: `_target_legs` closes a sign flip and defers
+  `deferred_target_notional`; on a hold day the published book is read from the
+  **account** (`prior_book(holdings, ...)`), where the leg closed the name to zero, and
+  the hold filter only passes closes and live sign flips — so the second leg waited for
+  the next rebalance, with the book claiming a position the account did not have. The
+  fix writes the deferred target back into the held book on a hold day
+  (`_with_deferred_targets`), records it as `manifest["reversal_targets"]`, and forces
+  those names. It is gated on `calendar["day"] == HOLD`, so the daily loop is untouched.
+- **Tests**: `tests/test_cadence_guard.py`, 18 tests — the reversal's two legs, the
+  control (the filter still drops an unnamed leg), a completed reversal sending
+  nothing, the daily path, the guard firing and not firing, the guard measuring after
+  the reversal is placed, legs matching weights, and the flag's parsing.
+- **Identity (flags unset)**: max abs weight difference **0.0** on 2026-10-15, 10-16,
+  10-19 and 10-20 (same names, same `kept_gross`), against `main` at `606ba5d`.
+- **Shadow** (`--guard 0.05 --hedge cap_then_rehedge --seed-reversal ADM`): 13 closes,
+  1 rebalance and 12 holds; the guard fires on 10-13 (5.31%), 10-15 (6.73%) and 10-16
+  (7.91%), each to 0.00%; monthly traded $1,201,740 against the daily loop's
+  $5,984,875. The seeded reversal: ADM closes long on 10-01 with
+  `deferred = -0.006986`, and the **short leg lands on 10-02, a hold day — 1 order,
+  $7,167**. Full table in `docs/cadence_flag.md`.
 
-### Two bugs the apply forced out (fixed, committed)
+**One session short of the brief's window**: the newest cut tree is the 2026-10-20 one,
+so the shadow covers 10-01..10-20 and not 10-21. The 10-21 session exists only in the
+evening's run tree, which is not reachable read-only from this machine.
 
-1. **jsonb cannot be written back as an object.** `store.select` returns jsonb as a
-   dict and `store.upsert` binds values straight to the placeholder, so the first
-   `--apply` died with `psycopg.ProgrammingError: cannot adapt type 'dict' using
-   placeholder '%s'`. It wrote nothing (verified against the backup). Rows are now
-   re-encoded with `store.json_text`, which is what the evening's own writer passes.
-2. **`Decimal` never equals the float that produced it**, so every re-run claimed 14
-   rows needed updating and the verification could never pass. The change test now
-   compares at `1e-9 * max(1, |new|)`.
+## Part 4 — owner-fixes into main: NOT DONE (no merge started)
 
-## Part 3 - research: **panel built and validated; study stopped after B0**
+Branch **`owner-fixes`**, head **`51fbcb4`**, pushed. It carries `docs/`, `scripts/`
+and the backups — `docs/turn_on_monthly.md` (Part 5), the applied sections in
+`docs/owner_fixes/attribution_recompute.md`, `scripts/backup_attribution_rows.py`, the
+`--diff` flag on `scripts/recompute_attribution.py`, `docs/branches.md`.
 
-Worktree `../efb-daily-design`, branch `research-daily-design`.
+Nothing outside `docs/` and `scripts/` has been touched this session on that branch; the
+diff against `main` still needs the check the brief asks for (`git diff --stat
+origin/main...owner-fixes`). No gate was run on it.
 
-**Daily panel: complete.** 586 sessions (2024-06-03..2026-10-02): **557 built** with
-the live branch (data through each close), **29 published** (the frozen month-ends),
-**0 stale**. 1,750,954 cells, 2.21 s/session, 21.6 min.
+## Part 5 — the owner's switch: WRITTEN (`docs/turn_on_monthly.md`, on `owner-fixes`)
 
-- `/tmp/churn/daily/models/XS-v1/descriptors_daily.parquet` (15.4 MB)
-- `/tmp/churn/daily/models/XS-v1/descriptors_daily.labels.json` (branch per session)
-- data copy `/tmp/churn/daily` (893 MB); the repo's `data/` was never written to
-- build log `/tmp/daily_panel_build.log`, validation log `/tmp/validate_panel2.log`
+The four variables, the service they belong on (`efb-live-daily`, the one cron that runs
+both slots — it is the only service that reads any of them), the timing, what the first
+evening does, the read-only query against `efb.proposals.manifest`, and how to turn it
+off. **Do not hand this to the owner before Parts 2b and 3 are merged** — the document
+describes flags that are not on `main` yet.
 
-### Validation (a): built row vs the frozen published row, 29 month-ends - **pass, exact**
+## Surprises, and what to know
 
-Max abs difference per descriptor over all 29 days: **size 0.0, beta 3.1e-15,
-momentum 2.7e-15, reversal 4.4e-15, resid_vol 1.4e-13, liquidity 4.5e-15.** Days over
-1e-06: none. 502 names on every day, all common.
+1. **A merge went in without its schema change.** I committed the page changes, then
+   fixed `docs/snapshot.schema.json` and merged before committing the fix. The gate on
+   the merge commit caught it
+   (`test_the_builder_and_the_schema_declare_the_same_block`); I committed the schema,
+   redid the merge as a single `--no-ff` commit `606ba5d`, and re-ran the full gate —
+   14 known. Worth knowing because the first gate run's *count* looked right and only
+   the id list showed the extra one.
+2. **`make lint` is red on `main` for a file this session never touched**:
+   `tests/test_live_panel_parity.py` is not black-clean at `origin/main`. I left it
+   alone and reverted a reformat I had briefly applied.
+3. **The identity proof is a weight proof, not a document proof.** With every flag
+   unset the branch's manifests still carry a `cadence` block (k=1, "rebalance day")
+   that `main` does not write, and a `drift_guard: null` key. The weights are identical
+   to 0.0, which is the gate the brief named, but a run's manifest is not byte-identical.
+   If the owner wants that too, it is a small gating change in `evening_job`.
+4. **The guard's correction moves every name** (493 legs, minimum-norm), which is why a
+   fire costs ~2-3% of NAV in turnover even though only 56-88 legs clear the $250 order
+   minimum.
 
-This required building on the **cleaned** returns branch (`EFB_DESIGN_RETURNS=clean`).
-The live default is the raw branch, which differs from the frozen rows (~1.4e-3 median
-on beta/momentum/resid_vol, 0.63 on one name). The published artifact was fitted on
-the clean panel, so the study uses clean to make its month-ends equal the frozen ones.
+## Open questions for the owner
 
-### Validation (b): rebuilt panel vs `efb.e11_descriptors`, 2026-09-04..10-02 - **disagrees**
-
-20 dates, 59,680 cells matched (360 panel-only). Median |diff| **0.0080**, max
-**2.16**:
-
-| descriptor | median | max |
-|---|---|---|
-| size | 0.0065 | 0.040 |
-| beta | 0.0074 | 0.674 |
-| momentum | 0.0151 | **2.163** |
-| reversal | 0.0153 | 0.284 |
-| resid_vol | 0.0072 | 2.080 |
-| liquidity | 0.0037 | 0.042 |
-
-**Cause, proven:** the study copy is a 2026-10-03 snapshot and the store rows were
-built by the live tree from live data. The underlying returns differ on exactly those
-dates - `processed/returns.parquet` max |Δr| between the two trees is 6.0e-05 on
-2026-09-29 but **1.48e-02 on 09-30** and 1.03-1.08e-02 on 10-01/10-02, with tens of
-names differing per close, and the copy has 811 raw names against the live tree's 830
-(502 mapped in common). So this is a **cross-tree** comparison, not a code-path
-disagreement: check (a), which is same-tree and same-code, is exact. **Not a defect in
-the panel**, but the owner should know it is not an agreement either.
-
-### Study: 1 of 7 variants done when stopped
-
-| variant | tov/reb | cost bp/yr | net bp | alpha | expo median | p95 | max | var share |
-|---|---|---|---|---|---|---|---|---|
-| **B0** monthly, no guard | 87.02% | 69.1 | 48.4 | 100% | **10.47%** | **22.67%** | **33.32%** | 47.09% |
-
-B0 reproduces the frozen-panel B0 exactly on turnover, cost and net (its rebalance
-days are month-ends, where the daily panel equals the frozen row) - the identity
-check that the panel is usable. Exposure, now measured **every session** instead of
-only at the 29 publishes, is **median 10.47%, p95 22.67%, max 33.32%** against the
-frozen study's 0.53% median / 1.19% average. That is the headline so far: with
-loadings refreshed nightly, a monthly book's true exposure is an order of magnitude
-larger than the frozen panel could reveal, so G3's guard will fire far more often and
-cost far more than the +8.6 bp/yr the frozen study estimated.
-
-`D1` (daily rebalance) was running when the pause came - it re-solves the construction
-on all 586 sessions, so it is the slowest variant (~25 min). G3, G5, B0H, G3H, G5H had
-not started.
-
-- Partial results (resume-safe): `/tmp/daily_design_study_rows.partial.json` (B0 only)
-- Log: `/tmp/daily_study.log` (the two `StoreNotConfigured` warnings come from the
-  variant's own store-free path and are expected)
-- No `docs/research/daily_design_study.md` / `.json` was written yet.
-
-### Open questions for the owner
-
-1. **Should the live loop keep `EFB_DESIGN_RETURNS` unset (raw)?** The published
-   artifact and the frozen rows are fitted on the clean panel; only the clean branch
-   reproduces them. The study uses clean so its month-ends equal the frozen ones. If
-   live really runs raw, the study's absolute exposure levels would shift somewhat
-   (its ranking would not).
-2. **The full-row attribution recompute is still available and still withheld.** If
-   the owner wants `pnl_cost` / `realized_vol` for 10-09..10-19 re-derived from the now
-   complete fills (2026-10-13 would move -1.01e-03), that is a separate explicit
-   decision. Script and backups are ready: drop `--only-pre-hedge-vol`.
+1. Run `EFB_DESIGN_RETURNS=clean` live? Unchanged from the last handoff, still open.
+2. Should the manifest stay byte-identical to `main` with the flags off (no `cadence`
+   block at all when `k = 1`)? See surprise 3.
+3. A deferred leg that only partially fills is not re-forced on the following hold day
+   (only a *deferred* reversal is). That is outside the addendum's scope and I did not
+   widen it; worth deciding before the flag goes on.
 
 ## Exact next step on resume
 
 ```bash
-cd /Users/amankesarwani/PycharmProjects/efb-daily-design
-set -a; source ../equity-factor-book/.env; set +a
-EFB_DESIGN_RETURNS=clean python scripts/daily_design_study.py run \
-  --root /tmp/churn/daily --out docs/research/daily_design_study.json
+# 1. the one gate between cadence-flag and a merge
+cd /Users/amankesarwani/PycharmProjects/efb-cadence-flag && git pull --ff-only
+../equity-factor-book/.venv/bin/python -m pytest tests/ -q \
+  -m "not slow and not requires_live_tree and not merge_guard"
+#    expect 14 failed (docs/known_test_failures.md), 1598+ passed;
+#    then a fresh worktree off origin/main, --no-ff merge, gate on the merge, push.
+
+# 2. the same for attribution-refinalize (de27f05), in ../efb-attr-fin.
+
+# 3. owner-fixes (51fbcb4): check `git diff --stat origin/main...owner-fixes` touches
+#    only docs/ and scripts/, then merge --no-ff and push.
+
+# 4. once 2 and 3 are on main, redeploy the page once more (the hold-day pill) and
+#    record the version; then hand the owner docs/turn_on_monthly.md.
 ```
 
-It resumes from `/tmp/daily_design_study_rows.partial.json`, so B0 is not repeated;
-D1 takes ~25 min and the remaining five 2.5-4 min each. Then write
-`docs/research/daily_design_study.md` from the JSON (D1/B0/G3/G5/B0H/G3H/G5H with
-turnover, cost, guard fires and cost, alpha retained, exposure median/p95/max, worst
-variance share, and net at 169 bp at borrow 0.5% and 2%) and push the branch.
-
-Two cosmetic script fixes before that run: the partial row is written *before*
-`row["cadence"]` and `row["net_at_anchor"]` are set, so a resumed row lacks both keys.
+Data symlinks: `../efb-attr-fin`, `../efb-cadence-flag`, `../efb-page-legends` and
+`../efb-merge-1` point `data/` at `/tmp/efb-pl-data` (a writable copy of the repo's
+data). Remove the symlink and `git checkout -- data` before committing in any of them —
+that is why `git status` shows deleted `data/` files there.
