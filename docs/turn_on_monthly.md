@@ -4,10 +4,10 @@ The calendar, the drift guard and the cap-then-rehedge hedge are on `main` as of
 2026-10-22 with **every flag off**, which is today's daily loop. This is the switch:
 four Render environment variables, and the checks that say the switch worked.
 
-The evidence behind the settings is in `docs/research/daily_design_study.md` (what a
-monthly book's exposure costs and what the guard costs to fix) and
-`docs/cadence_flag.md` (how the flag works, and the identity and shadow proofs it
-merged on).
+The evidence behind the settings is in `docs/research/daily_design_study.md` on
+`research-daily-design` (what a monthly book's exposure costs and what the guard costs
+to fix) and `docs/cadence_flag.md` on `main` (how the flag works, and the identity and
+shadow proofs it merged on).
 
 ## The four variables
 
@@ -32,8 +32,9 @@ routed by `scripts/run_cron.py`). It is the only service that reads these variab
 - the calendar (`live/cadence.py`) is read by the evening build only;
 - the guard and the hedge mode are read by `live/evening_job.py`'s construction, which
   only the evening calls;
-- the morning's reconciliation imports neither, and the attribution re-finalize it runs
-  is a store computation with no flags in it.
+- the morning's reconciliation imports neither, and it reads no flag: the attribution
+  re-price runs in the evening, not the morning, because the morning's service holds
+  no artifacts to rebuild a row from.
 
 If a second service is ever pointed at `scripts/run_live_daily.py`, it needs the same
 four values. `render.yaml` does **not** declare them, deliberately: adding them to the
