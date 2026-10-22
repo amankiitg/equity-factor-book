@@ -1208,7 +1208,7 @@
     "attribution": {
       "type": "object",
       "description": "What the book earned, split into factor, idio, cost and the unexplained remainder, with the hedge's own factor P&L, the raw-beta line and the risk split beside it. Two periods of one shape: `live` is the book the loop actually traded, read from the store's attribution table by scripts/run_live_daily.py, which the evening run fills for every day it has not already attributed; `backtest` is the research panel's own seed artifact, a book nobody traded, and is null where the host's seed bundle does not carry it. The page opens on the live period.",
-      "required": ["live", "backtest", "note"],
+      "required": ["live", "backtest", "notes", "note"],
       "properties": {
         "live": {
           "allOf": [{"$ref": "#/$defs/attribution_period"}],
@@ -1220,6 +1220,24 @@
             {"type": "null"}
           ],
           "description": "The research panel's 2012-2026 attribution, or null when the seed bundle on the host does not carry the artifact."
+        },
+        "notes": {
+          "type": "array",
+          "description": "Dated statements about the series, oldest first, carried in code by `live.snapshot.ATTRIBUTION_NOTES` so a note and the code that moved the number ship together. Each is drawn as a numbered marker at its date with its text, and listed beneath the charts: a series that changed formula, or that opened on a book that was not yet the book, reads as a change in risk unless the date it changed is on the picture.",
+          "items": {
+            "type": "object",
+            "required": ["date", "text"],
+            "properties": {
+              "date": {
+                "type": "string",
+                "description": "The session the note is about, as ISO yyyy-mm-dd."
+              },
+              "text": {
+                "type": "string",
+                "description": "What changed, in one sentence a reader can check against the code."
+              }
+            }
+          }
         },
         "note": {
           "type": "string",
