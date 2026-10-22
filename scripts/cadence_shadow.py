@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import sys
 from typing import Any, cast
@@ -55,11 +56,32 @@ def _book(manifest: dict[str, Any]) -> dict[str, float]:
 
 
 def run_pass(
-    data: pathlib.Path, nav: float, closes: list[str], *, k: int
+    data: pathlib.Path,
+    nav: float,
+    closes: list[str],
+    *,
+    k: int,
+    seed_reversal: str | None = None,
+    guard: float | None = None,
 ) -> list[dict[str, Any]]:
+    """One pass over the closes, with the account and the book kept apart.
+
+    The loop has two books and the difference between them is what it trades: the
+    *published* book the evening wrote, and the *account* the morning reads. They
+    diverge exactly when a leg is deferred - a reversal closes the held side at the
+    morning and opens the other at the next one - so both are carried here, and
+    `pending` is the deferral list the next evening writes back into the held book.
+
+    `seed_reversal` names a ticker the account holds *long* before the first close,
+    in the size the first rebalance targets short, so the run contains a reversal the
+    calendar did not otherwise produce: with k = 21 there is one rebalance in the
+    window and nothing else can flip a sign.
+    """
     held: dict[str, float] = {}
+    pending: dict[str, float] = {}
     completed: list[str] = []
     rows: list[dict[str, Any]] = []
+    seeded = False
     for close in closes:
         manifest = cast(
             dict[str, Any],
@@ -72,29 +94,56 @@ def run_pass(
                 cadence_mode=k,
                 cadence_anchor=ANCHOR if k > 1 else None,
                 completed_rebalances=list(completed) if k > 1 else None,
+                reversal_targets=pending,
+                guard_threshold=guard,
             ),
         )
         book = _book(manifest)
         plan = manifest.get("cadence") or {}
+        if seed_reversal and not seeded:
+            # Before the morning: the account holds the other side of the name the
+            # rebalance is about to be short, which is the state a reversal starts in.
+            if book.get(seed_reversal, 0.0) < 0.0:
+                held[seed_reversal] = -book[seed_reversal]
+                seeded = True
         proposal = pd.DataFrame({"ticker": list(book), "weight": list(book.values())})
-        # `current` is in dollars, which is what the morning reads from the
-        # account; `held` is in weights, so the two are converted rather than
-        # compared as though they were the same unit.
+        forced = (
+            evening_job.forced_names_for_hold(manifest)
+            if manifest.get("held_book")
+            else None
+        )
+        # `current` is in dollars, which is what the morning reads from the account;
+        # `held` is in weights, so the two are converted rather than compared as
+        # though they were the same unit.
         orders = morning_job.target_orders(
             proposal,
             nav=nav,
             current={name: weight * nav for name, weight in held.items()},
-            forced=(
-                evening_job.forced_names_for_hold(manifest)
-                if manifest.get("held_book")
-                else None
-            ),
+            forced=forced,
         )
+        deferred = {
+            order.ticker: order.deferred_target_notional / nav
+            for order in orders
+            if order.deferred_target_notional
+        }
+        # What the morning leaves the account holding: the target for every name it
+        # traded, zero for the ones it closed, and untouched for the ones it could not
+        # send - the deferred side is the account flat on the name, not the target.
+        after = dict(held)
+        for order in orders:
+            # `held` is in weights and the order is in dollars, so the leg is
+            # converted before it is added: a sign flip moves the account to zero,
+            # not to the target it deferred.
+            after[order.ticker] = (
+                held.get(order.ticker, 0.0) + order.trade_notional / nav
+            )
+        pending = dict(deferred)
+        guard_block = manifest.get("drift_guard") or {}
         row = {
             "close": close,
             "day": plan.get("day", "rebalance"),
             "scheduled": plan.get("scheduled"),
-            "pending": plan.get("pending"),
+            "pending_rebalance": plan.get("pending"),
             "next_rebalance": plan.get("next_rebalance"),
             "held_book": bool(manifest.get("held_book")),
             "n_kept": int(manifest["n_kept"]),
@@ -104,16 +153,25 @@ def run_pass(
             "orders": len(orders),
             "order_notional": float(sum(abs(order.trade_notional) for order in orders)),
             "order_names": sorted(order.ticker for order in orders),
+            "forced": sorted(forced or []),
+            "reversal_targets": {
+                name: round(weight, 6)
+                for name, weight in sorted(
+                    (manifest.get("reversal_targets") or {}).items()
+                )
+            },
+            "deferred": {
+                name: round(weight, 6) for name, weight in sorted(deferred.items())
+            },
+            "guard_fired": bool(guard_block.get("fired")) if guard_block else None,
+            "guard_before": guard_block.get("exposure_before"),
+            "guard_after": guard_block.get("exposure_after"),
+            "guard_legs": len(guard_block.get("legs") or []),
             "dropped_no_risk": [str(n) for n in manifest["dropped_no_risk"]],
             "dropped_no_price": [str(n) for n in manifest["dropped_no_price"]],
-            "forced": sorted(
-                evening_job.forced_names_for_hold(manifest)
-                if manifest.get("held_book")
-                else []
-            ),
         }
         rows.append(row)
-        held = book
+        held = after
         if row["day"] == cadence.REBALANCE:
             completed.append(close)
     return rows
@@ -125,10 +183,39 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--as-of", default="2026-10-19")
     parser.add_argument("--out", required=True)
     parser.add_argument("--nav", type=float, default=985_941.27)
+    parser.add_argument(
+        "--guard",
+        default="",
+        help="EFB_DRIFT_GUARD for the cadence pass, as a fraction (e.g. 0.05)",
+    )
+    parser.add_argument(
+        "--hedge",
+        default="",
+        help="EFB_HEDGE_MODE for both passes (e.g. cap_then_rehedge)",
+    )
+    parser.add_argument(
+        "--seed-reversal",
+        default="",
+        help="ticker held long before the first close, so the run contains a reversal",
+    )
     args = parser.parse_args(argv)
     data = pathlib.Path(args.data)
     closes = [c for c in CLOSES if c <= args.as_of]
-    monthly = run_pass(data, args.nav, closes, k=K)
+    # The flags are set for the process, which is how the loop reads them, and they
+    # are recorded in the payload: a table that cannot say which flags produced it is
+    # a table of an unknown experiment.
+    guard = float(args.guard) if args.guard else None
+    if args.hedge:
+        os.environ[evening_job.HEDGE_MODE_ENV] = args.hedge
+        evening_job._HEDGE_MODE_CACHE = None  # noqa: SLF001 - the resolver's own cache
+    monthly = run_pass(
+        data,
+        args.nav,
+        closes,
+        k=K,
+        seed_reversal=args.seed_reversal or None,
+        guard=guard,
+    )
     daily = run_pass(data, args.nav, closes, k=1)
     payload: dict[str, Any] = {
         "window": {
@@ -137,6 +224,9 @@ def main(argv: list[str] | None = None) -> int:
             "closes": closes,
             "nav": args.nav,
             "data": str(data),
+            "guard": guard,
+            "hedge": args.hedge or evening_job.hedge_mode(),
+            "seed_reversal": args.seed_reversal or None,
         },
         "monthly": monthly,
         "daily": daily,

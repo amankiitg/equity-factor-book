@@ -754,6 +754,47 @@ describe("a hold day on the rebalance calendar", () => {
     expect(state.tone).toBe("good");
   });
 
+  it("says when the hold day's guard re-hedged, and stays green", () => {
+    const held = withCadence({
+      k: 21,
+      anchor: "2026-10-01",
+      day: "hold",
+      scheduled: false,
+      pending: false,
+      missed: [],
+      next_rebalance: "2026-10-30",
+      label: "hold day, next rebalance 2026-10-30",
+      drift_guard: {
+        fired: true,
+        threshold: 0.05,
+        exposure_before: 0.062,
+        exposure_after: 0.0,
+        turnover: 0.021,
+        legs: [
+          { ticker: "AAA", weight_before: 0.04, weight_after: 0.019, delta_notional_pct: -0.021 },
+        ],
+      },
+    });
+    const state = runState(held, new Date("2026-10-14T23:00:00Z"));
+    expect(state.pill).toBe("hold day, guard re-hedged 6.2% -> 0.0%");
+    expect(state.tone).toBe("good");
+  });
+
+  it("says the plain hold day when the guard looked and left the book alone", () => {
+    const held = withCadence({
+      k: 21,
+      anchor: "2026-10-01",
+      day: "hold",
+      scheduled: false,
+      pending: false,
+      missed: [],
+      next_rebalance: "2026-10-30",
+      label: "hold day, next rebalance 2026-10-30",
+      drift_guard: null,
+    });
+    expect(runState(held, new Date("2026-10-14T23:00:00Z")).pill).toBe("hold day");
+  });
+
   it("leaves a document without the block exactly as it was", () => {
     const plain = structuredClone(TODAY) as Snapshot;
     delete plain.run_status.cadence;

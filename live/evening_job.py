@@ -332,8 +332,12 @@ def forced_names_for_hold(
     - **no usable close** - a name with no price to quantize on
       (`dropped_no_price`).
     - **reversal** - a position the account and the book disagree about in sign.
-      The order path closes it and defers the other side; the filter lets a sign
-      flip through without needing a name here.
+      The order path closes it and defers the other side; the filter lets the sign
+      flip through without needing a name here. The *second* leg is a different
+      leg: on the next morning the account is flat and the book carries the other
+      side, so it is named here through `manifest["reversal_targets"]` - without
+      that, a reversal opened on a rebalance day would wait for the next rebalance
+      while the book claimed a position the account did not have.
 
     The list is what the run's record states as `hold_forced_names`, so a quiet
     evening can be told from an evening whose hold was quietly skipped.
@@ -350,7 +354,63 @@ def forced_names_for_hold(
         values: list[Any] = list(cast(list[Any], manifest.get(key) or []))
         for name in values:
             forced.add(str(name))
+    # The deferred reversals: the account is flat on the name and the book carries
+    # the other side, so tonight's delta opens it. It is not a sign flip - there is
+    # no position to flip - so the order path will not let it through on its own.
+    deferred = manifest.get("reversal_targets")
+    if isinstance(deferred, Mapping):
+        for name, weight in deferred.items():
+            if abs(float(weight)) > 1e-12:
+                forced.add(str(name))
+    # The drift guard's own legs: the refresh moves names the book already carries,
+    # so every one of them is a delta the hold filter would otherwise drop.
+    guard = manifest.get("drift_guard")
+    if isinstance(guard, Mapping) and guard.get("fired"):
+        for leg in cast(list[Any], guard.get("legs") or []):
+            if isinstance(leg, Mapping) and leg.get("ticker"):
+                forced.add(str(leg["ticker"]))
     return forced
+
+
+def _with_deferred_targets(
+    held_weights: np.ndarray | None,
+    names: list[str],
+    targets: Mapping[str, float] | None,
+    as_of_ts: pd.Timestamp,
+) -> tuple[np.ndarray | None, dict[str, float]]:
+    """The held book with every deferred reversal written back into it.
+
+    Returns the vector and the names it actually wrote, so the manifest can say
+    which reversals the book is waiting on rather than leaving the reader to infer
+    it from a delta. A name the universe no longer carries cannot be published: it
+    is logged and left out, and the leg waits for the next rebalance.
+    """
+    applied: dict[str, float] = {}
+    for name, weight in (targets or {}).items():
+        ticker = str(name)
+        if abs(float(weight)) <= 1e-12:
+            continue
+        if ticker not in names:
+            logger.warning(
+                "%s: the deferred reversal in %s cannot be published: the universe no "
+                "longer carries the name",
+                as_of_ts.date(),
+                ticker,
+            )
+            continue
+        applied[ticker] = float(weight)
+    if not applied:
+        return held_weights, {}
+    vector = np.zeros(len(names), dtype=float) if held_weights is None else held_weights
+    for ticker, weight in applied.items():
+        vector[names.index(ticker)] = weight
+    logger.info(
+        "%s: %d deferred reversal(s) written back into the held book: %s",
+        as_of_ts.date(),
+        len(applied),
+        ", ".join(f"{name} {weight:+.4f}" for name, weight in sorted(applied.items())),
+    )
+    return vector, applied
 
 
 def _completed_rebalances(data_root: Path) -> list[str] | None:
@@ -587,6 +647,139 @@ def hedge_mode() -> str:
             )
             _HEDGE_MODE_CACHE = HEDGE_MODE_EXACT
     return _HEDGE_MODE_CACHE
+
+
+GUARD_ENV = "EFB_DRIFT_GUARD"
+
+# The resolved threshold, cached for the same reason the hedge mode is: the floor
+# search calls into this module hundreds of times per row and a typo has to be
+# reported once. `None` is "no guard", which is the default and the daily loop.
+_GUARD_CACHE: float | None | str = "unset"
+
+
+def resolve_drift_guard(value: object = None) -> float | None:
+    """`EFB_DRIFT_GUARD` as a fraction, or `None` when the guard is off.
+
+    Unset, empty, `off`, `none` and `0` are all "no guard"; a fraction in (0, 1) is
+    the threshold; anything else is refused, logged, and treated as off, because a
+    typo must never trade a book the owner did not ask for. The guard is only
+    reachable when the calendar has a hold day to guard, so at `EFB_CADENCE=1` the
+    value changes nothing whatever it is.
+    """
+    if value is not None:
+        requested = str(value).strip().lower()
+    else:
+        requested = os.environ.get(GUARD_ENV, "").strip().lower()
+    if not requested or requested in {"off", "none", "0", "false"}:
+        return None
+    try:
+        threshold = float(requested)
+    except ValueError:
+        logger.warning(
+            "%s=%r is not a fraction: the drift guard is off, because a typo must "
+            "never move a book",
+            GUARD_ENV,
+            requested,
+        )
+        return None
+    if not 0.0 < threshold < 1.0:
+        logger.warning(
+            "%s=%r is not between 0 and 1: the drift guard is off",
+            GUARD_ENV,
+            requested,
+        )
+        return None
+    logger.warning(
+        "%s=%.4f: on a hold day a book whose worst factor exposure is past %.1f%% "
+        "of NAV is re-hedged to neutral, which is not the default",
+        GUARD_ENV,
+        threshold,
+        threshold * 100.0,
+    )
+    return threshold
+
+
+def worst_exposure(weights: np.ndarray, design: np.ndarray) -> float:
+    """The book's worst absolute factor exposure, as a fraction of NAV.
+
+    The same measurement the research used (`docs/research/daily_design_study.md`):
+    the design's own loadings times the weights, one number per factor, and the
+    largest of them in absolute value. It is a share of NAV and not a standard
+    deviation, so it does not depend on the covariance and cannot be confused with
+    the volatility beside it on the page.
+    """
+    if not len(weights):
+        return 0.0
+    return float(np.abs(design.T @ weights).max())
+
+
+def neutral_correction(weights: np.ndarray, design: np.ndarray) -> np.ndarray:
+    """`weights` with the minimum-norm change that zeroes every factor exposure.
+
+    The least-squares projection of the book onto the design's column space,
+    subtracted: every dollar removed from a name is spread over the book in
+    proportion to loading rather than dumped on the largest position. It is the
+    same correction `efb.hedge`'s projection makes, applied to a book that is not
+    being rebuilt.
+    """
+    if not len(weights):
+        return weights
+    coef, *_ = np.linalg.lstsq(design, weights, rcond=None)
+    return weights - design @ coef
+
+
+def _drift_guard_block(
+    weights: np.ndarray,
+    names: list[str],
+    design: np.ndarray,
+    specific: np.ndarray,
+    threshold: float,
+) -> dict[str, Any] | None:
+    """The hold day's hedge refresh, when the book has drifted past the threshold.
+
+    Measured against the design the book will be held with, on the book as it will
+    actually be held - the reversal legs are placed before this runs, so a name
+    whose second leg is about to be sent is measured at the side it is going to.
+    Past the threshold the book takes the minimum-norm correction that makes it
+    factor-neutral, under the active hedge mode: with `EFB_HEDGE_MODE` at its
+    default that is the projection itself, and with `cap_then_rehedge` the cap
+    rounds run and the neutrality is restored after them, exactly as variant G5H
+    did in the study.
+    """
+    before = worst_exposure(weights, design)
+    if before <= threshold:
+        return None
+    corrected = neutral_correction(weights, design)
+    corrected = apply_hedge_mode(corrected, design, specific)
+    after = worst_exposure(corrected, design)
+    delta = corrected - weights
+    legs = [
+        {
+            "ticker": names[index],
+            "weight_before": float(weights[index]),
+            "weight_after": float(corrected[index]),
+            "delta_notional_pct": float(delta[index]),
+        }
+        for index in np.where(np.abs(delta) > 1e-12)[0]
+    ]
+    legs.sort(key=lambda leg: -abs(float(leg["delta_notional_pct"])))
+    logger.warning(
+        "the drift guard fired: worst factor exposure %.2f%% of NAV is past %.2f%%, "
+        "re-hedged to %.2f%% with %d leg(s)",
+        before * 100.0,
+        threshold * 100.0,
+        after * 100.0,
+        len(legs),
+    )
+    return {
+        "fired": True,
+        "threshold": threshold,
+        "exposure_before": before,
+        "exposure_after": after,
+        "turnover": float(np.abs(delta).sum()),
+        "legs": legs,
+        "weights": corrected,
+    }
 
 
 def apply_hedge_mode(
@@ -1779,6 +1972,8 @@ def build_proposal(
     cadence_mode: int | None = None,
     cadence_anchor: object | None = None,
     completed_rebalances: Iterable[Any] | None = None,
+    reversal_targets: Mapping[str, float] | None = None,
+    guard_threshold: float | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
@@ -1985,6 +2180,21 @@ def build_proposal(
     held_weights = (
         _held_book_weights(previous, names) if calendar["day"] == cadence.HOLD else None
     )
+    # A reversal the last close deferred is a leg the loop has already decided to
+    # send, and the account is flat on the name until it lands. The held book is read
+    # from the account, so it carries the name at zero - and publishing zero would
+    # drop the deferred target for the whole hold: the morning's delta would have
+    # nothing to send and the book would say the name is gone. The deferred target
+    # from the last rebalance is written back here, which is what makes the published
+    # book the book the loop means to hold and lets the filter name the leg.
+    # Only a hold day needs it: a rebalance day rebuilds the book and its target
+    # already carries the side the deferral did not open, so writing the older number
+    # back would be a change to the daily loop for no reason.
+    deferred_targets: dict[str, float] = {}
+    if calendar["day"] == cadence.HOLD:
+        held_weights, deferred_targets = _with_deferred_targets(
+            held_weights, names, reversal_targets, as_of_ts
+        )
     holding = held_weights is not None
     target_weights: np.ndarray | None = None
     if held_weights is not None:
@@ -2031,11 +2241,25 @@ def build_proposal(
         weights, design, factor_covariance, specific
     )
     full_decomposition = _decomposition(weights, design, factor_covariance, specific)
+    guard_block: dict[str, Any] | None = None
     if held_weights is not None:
         # The published book is the held one, and so is every number that
         # describes it. The sizing above produced the *target* book; it is kept on
         # the manifest as the rebalance the calendar did not take today.
         weights = held_weights
+        # The drift guard runs on the book as it will actually be held, which is
+        # after the reversal legs are placed above: a name whose second leg is about
+        # to be sent is measured at the side it is going to, not at the flat one the
+        # account is still showing.
+        threshold = (
+            guard_threshold if guard_threshold is not None else resolve_drift_guard()
+        )
+        if threshold is not None and len(weights):
+            guard_block = _drift_guard_block(
+                weights, names, design, specific, threshold
+            )
+            if guard_block is not None:
+                weights = cast(np.ndarray, guard_block["weights"])
         gross_cap_bound = False
         full_decomposition = _decomposition(
             weights, design, factor_covariance, specific
@@ -2224,8 +2448,42 @@ def build_proposal(
         # earlier evening missed. `held` is the fact the order path reads - the book
         # below is the held book, so only its forced legs may trade. At the default
         # `k = 1` this block says "rebalance" every day and changes nothing.
-        "cadence": dict(calendar, held=bool(holding)),
+        # The guard's own record rides inside the calendar block, because both are
+        # statements about *this* evening rather than about the book, and the block
+        # is the one the page already reads. It is absent when the flag is off, so a
+        # run that did not ask for a guard writes the document it always wrote.
+        "cadence": (
+            dict(calendar, held=bool(holding))
+            if (guard_block is None and resolve_drift_guard() is None)
+            else dict(
+                calendar,
+                held=bool(holding),
+                drift_guard=(
+                    None
+                    if guard_block is None
+                    else {
+                        key: value
+                        for key, value in guard_block.items()
+                        if key != "weights"
+                    }
+                ),
+            )
+        ),
         "held_book": bool(holding),
+        # The name and the weight of every reversal the last close deferred, which
+        # this evening has written back into the held book. `forced_names_for_hold`
+        # reads it, so the second leg is sent on the next morning instead of waiting
+        # for the next rebalance.
+        "reversal_targets": dict(sorted(deferred_targets.items())),
+        # The hold day's hedge refresh, when `EFB_DRIFT_GUARD` is on and the book had
+        # drifted past it: what the guard measured, what it did, and the legs it
+        # needs. `fired: false` is a hold day the guard looked at and left alone, and
+        # `None` is a day it was not asked about - a rebalance, or no flag.
+        "drift_guard": (
+            None
+            if guard_block is None
+            else {key: value for key, value in guard_block.items() if key != "weights"}
+        ),
         # The held names tonight's universe or model no longer carries, which are
         # the closes a hold day sends. Named on the manifest so the run's record
         # says which names the hold could not keep rather than leaving it to be

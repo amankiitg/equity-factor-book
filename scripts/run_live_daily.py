@@ -41,7 +41,7 @@ import logging
 import math
 import os
 import sys
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -1105,6 +1105,47 @@ def _excluded_rows(manifest: dict[str, Any] | None) -> list[dict[str, Any]]:
     return _rows(manifest, "excluded_detail")
 
 
+def reversal_weights(
+    pending: Iterable[str] | None, previous: pd.DataFrame | None
+) -> dict[str, float]:
+    """The deferred target of every pending reversal, as a weight of NAV.
+
+    `pending` is the previous close's deferral list and `previous` is the book the
+    loop last recorded - on the first hold day after a rebalance that is the
+    rebalance's own target book, which carries the side the deferral did not open.
+    A name with no row there cannot be reconstructed, and is named in the log rather
+    than traded blind: the leg will then wait for the next rebalance, which is the
+    state this function exists to avoid, so it says so out loud.
+    """
+    if not pending:
+        return {}
+    weights: dict[str, float] = {}
+    if previous is None or len(previous) == 0:
+        logger.warning(
+            "the previous close deferred %s, but there is no recorded book to read "
+            "the deferred target from: the second leg waits for the next rebalance",
+            ", ".join(sorted(str(name) for name in pending)),
+        )
+        return {}
+    frame = previous.copy()
+    frame["ticker"] = frame["ticker"].astype(str)
+    book = frame.set_index("ticker")["weight"].astype(float)
+    missing: list[str] = []
+    for name in sorted(str(item) for item in pending):
+        if name in book.index and abs(float(book.loc[name])) > 1e-12:
+            weights[name] = float(book.loc[name])
+        else:
+            missing.append(name)
+    if missing:
+        logger.warning(
+            "the previous close deferred %s and the recorded book carries no position "
+            "to take the other side from: %s waits for the next rebalance",
+            ", ".join(missing),
+            "it" if len(missing) == 1 else "they",
+        )
+    return weights
+
+
 def previous_close_reversals(as_of: Any) -> list[str] | None:
     """The previous close's deferral list, from the document that is up.
 
@@ -1999,6 +2040,12 @@ def main() -> int:
         prior_weights = (
             prior.set_index("ticker")["weight"] if prior is not None else None
         )
+        # A reversal the last close deferred: the account is flat on the name and the
+        # book carries the other side, and on a hold day nothing else would send the
+        # second leg. Its weight comes from the book the loop last recorded, which on
+        # the first hold after a rebalance is that rebalance's own target book.
+        prior_reversals = previous_close_reversals(as_of)
+        reversal_targets = reversal_weights(prior_reversals, previous)
         logger.info(
             "prior book: %s",
             (
@@ -2012,6 +2059,7 @@ def main() -> int:
         manifest = evening_job.build_proposal(
             appendix=appendix_identity,
             previous=prior_weights,
+            reversal_targets=reversal_targets,
             nav=float(holdings["nav"]),
             nav_source=str(holdings["nav_source"]),
             shortable=shortable_flags(dry_run=dry_run),

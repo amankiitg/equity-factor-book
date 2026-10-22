@@ -149,6 +149,16 @@ export function pillFor(snapshot: Snapshot, now: Date): string {
     // nothing about it needs attention.
     const cadence = snapshot.run_status?.cadence;
     if (cadence && cadence.day === "hold") {
+      // A hold day that re-hedged says so, with the two exposures that made it: a
+      // refresh is the loop trading on a day it was told not to, and the pill is
+      // where a reader sees that it happened and what it was for. Still green -
+      // the guard is doing its job, not reporting a fault.
+      const guard = cadence.drift_guard;
+      if (guard?.fired) {
+        const before = `${(guard.exposure_before * 100).toFixed(1)}%`;
+        const after = `${(guard.exposure_after * 100).toFixed(1)}%`;
+        return `hold day, guard re-hedged ${before} -> ${after}`;
+      }
       return cadence.pending
         ? "hold day (rebalance taken: one was missed)"
         : "hold day";
