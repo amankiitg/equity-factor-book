@@ -728,12 +728,53 @@ DATA_ROOT = Path(__file__).resolve().parents[1] / "data"
 BACKTEST_DAILY = "daily.parquet"
 BACKTEST_MONTHLY = "monthly.parquet"
 
+# Dated notes about the attribution series, carried in the snapshot and drawn on the
+# page as markers with their text.
+#
+# They exist because a series that changes formula, or that opens on a book that is
+# not yet the book, looks like a change in risk when it is a change in accounting.
+# The list is code, not the store: a note is a statement about a day that a reader has
+# to be able to check against the code that wrote it, and every evening rebuilds the
+# document from this tuple, so a note and the code that moved the number ship together.
+ATTRIBUTION_NOTES: tuple[dict[str, str], ...] = (
+    {
+        "date": "2026-09-28",
+        "text": (
+            "the live book opens on an establishment book: 150 names, with the hedge "
+            "not yet complete, so the predicted volatility on 09-28 and 09-29 is not "
+            "comparable with the sessions that follow. The 09-28 row holds no "
+            "positions of its own and is rebuilt from the 09-29 book."
+        ),
+    },
+    {
+        "date": "2026-10-20",
+        "text": (
+            "pre-hedge volatility formula corrected: the reconstruction squares the "
+            "stored idio volatility, which every earlier row was built without. Every "
+            "stored attribution day from 2026-09-28 on was recomputed, so the series "
+            "before this date is lower than it was drawn."
+        ),
+    },
+    {
+        "date": "2026-10-21",
+        "text": (
+            "cost terms recomputed against the actual fills on the eight days whose "
+            "rows were written before their fills existed (2026-10-09 to 2026-10-20): "
+            "pnl_cost, the day's total, realized volatility and the vol ratio."
+        ),
+    },
+)
+
 
 def empty_attribution(note: str) -> dict[str, Any]:
     """The attribution block for a run with nothing to show, and why."""
     return {
         "live": _empty_period("the live book has no attributed day yet"),
         "backtest": None,
+        # A run with no attribution store still carries the notes: they are about the
+        # series, and the page should not lose the record of a correction because an
+        # evening could not read the table.
+        "notes": [dict(entry) for entry in ATTRIBUTION_NOTES],
         "note": note,
     }
 
@@ -1006,6 +1047,7 @@ def attribution_block(
     return {
         "live": live,
         "backtest": backtest_period,
+        "notes": [dict(note) for note in ATTRIBUTION_NOTES],
         "note": "" if not live_frame.empty else "no attributed day is stored yet",
     }
 

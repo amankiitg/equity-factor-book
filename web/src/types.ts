@@ -292,9 +292,23 @@ export interface AttributionPeriod {
   note: string;
 }
 
+/**
+ * A dated statement about the series, written by the snapshot builder.
+ *
+ * Drawn as a marker at its date with its text beside the chart, because a series that
+ * changed formula or opened on a book that was not yet the book reads as a change in
+ * risk unless the date it changed is on the picture.
+ */
+export interface AttributionNote {
+  date: string | null;
+  text: string;
+}
+
 export interface Attribution {
   live: AttributionPeriod | null;
   backtest: AttributionPeriod | null;
+  /** Dated notes about the series; absent on a document written before they existed. */
+  notes?: AttributionNote[];
   note: string;
 }
 
