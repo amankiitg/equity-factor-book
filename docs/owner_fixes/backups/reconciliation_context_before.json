@@ -1,0 +1,929 @@
+{
+ "captured_at_utc": "2026-10-20T23:42:50Z",
+ "note": "Whole table before the write, for the 'nothing else changed' check.",
+ "row_count": 15,
+ "rows": [
+  {
+   "dry_run": true,
+   "expected_borrow_bps": null,
+   "expected_commission_bps": null,
+   "expected_cost_bps": 53.7338320669181,
+   "expected_impact_bps": null,
+   "expected_spread_bps": null,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.1,
+   "full_book_forecast_annual_vol": null,
+   "full_book_gross": null,
+   "full_book_net": null,
+   "full_risk": null,
+   "gross": 0.900817233257398,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 1000000.0,
+   "max_abs_exposure_after_fmp": 1.4584687624275e-15,
+   "n_eff_kept": 61.0285621570336,
+   "net": -4.16333634234434e-17,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-09-25T00:00:00",
+   "traded_risk": null,
+   "unexplained_adjustment": null
+  },
+  {
+   "dry_run": true,
+   "expected_borrow_bps": 8.33333333333333,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.3984690671534,
+   "expected_impact_bps": 0.421583270336897,
+   "expected_spread_bps": 4.64355246348315,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0287121387019122,
+   "full_book_forecast_annual_vol": 0.0251708655218408,
+   "full_book_gross": 1.0,
+   "full_book_net": -3.60822483003176e-16,
+   "full_risk": {
+    "forecast_annual_vol": 0.02517086552184082,
+    "gross": 0.9999999999999999,
+    "idio_share": 1.0,
+    "max_abs_exposure": 4.558853294867049e-15,
+    "n_eff": 249.3003624425505,
+    "n_names": 499,
+    "net": -3.608224830031759e-16
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 1000829.539348,
+   "max_abs_exposure_after_fmp": 4.55885329486705e-15,
+   "n_eff_kept": 128.739970653862,
+   "net": 7.63278329429795e-17,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-09-29T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.028712138701912245,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 3.2148762818540177e-15,
+    "max_weight": 0.020852323349616047,
+    "n_eff": 128.73997065386203,
+    "net": 7.632783294297951e-17,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.09590800931285678
+     },
+     {
+      "ticker": "WDC",
+      "variance_share": 0.07626805539299378
+     },
+     {
+      "ticker": "COIN",
+      "variance_share": 0.05007215101448641
+     },
+     {
+      "ticker": "RDDT",
+      "variance_share": 0.038551113029956306
+     },
+     {
+      "ticker": "ALB",
+      "variance_share": 0.03690291798482947
+     }
+    ],
+    "variance_share_cap_binds": false
+   },
+   "unexplained_adjustment": null
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333333,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.5406642534509,
+   "expected_impact_bps": 0.430134761996163,
+   "expected_spread_bps": 4.7771961581214,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0267716550136879,
+   "full_book_forecast_annual_vol": 0.0242907689368709,
+   "full_book_gross": 1.0,
+   "full_book_net": -3.40005801291454e-16,
+   "full_risk": {
+    "forecast_annual_vol": 0.02429076893687094,
+    "gross": 0.9999999999999998,
+    "idio_share": 1.0,
+    "max_abs_exposure": 2.0521778720805628e-15,
+    "n_eff": 257.6017036177,
+    "n_names": 499,
+    "net": -3.400058012914542e-16
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 1000002.59,
+   "max_abs_exposure_after_fmp": 2.05217787208056e-15,
+   "n_eff_kept": 129.388546310761,
+   "net": -1.38777878078145e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-09-30T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.026771655013687872,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 7.511352650979575e-16,
+    "max_weight": 0.0209635569198155,
+    "n_eff": 129.38854631076057,
+    "net": -1.3877787807814457e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.09415822119764257
+     },
+     {
+      "ticker": "CSGP",
+      "variance_share": 0.07966111156433711
+     },
+     {
+      "ticker": "COIN",
+      "variance_share": 0.05427995497641124
+     },
+     {
+      "ticker": "BG",
+      "variance_share": 0.043376440928524315
+     },
+     {
+      "ticker": "ALB",
+      "variance_share": 0.03589197688113283
+     }
+    ],
+    "variance_share_cap_binds": false
+   },
+   "unexplained_adjustment": null
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333333,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.1522518004431,
+   "expected_impact_bps": 0.131822179661303,
+   "expected_spread_bps": 4.68709628744847,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0271845018959165,
+   "full_book_forecast_annual_vol": 0.0247951558715505,
+   "full_book_gross": 1.0,
+   "full_book_net": 8.88178419700125e-16,
+   "full_risk": {
+    "forecast_annual_vol": 0.024795155871550508,
+    "gross": 1.0000000000000002,
+    "idio_share": 1.0,
+    "max_abs_exposure": 2.0001361678012586e-15,
+    "n_eff": 259.61162748798733,
+    "n_names": 499,
+    "net": 8.881784197001252e-16
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 391004.579282331,
+   "max_abs_exposure_after_fmp": 2.00013616780126e-15,
+   "n_eff_kept": 139.848520650673,
+   "net": 4.44089209850063e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-01T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.02718450189591646,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.2962721174236691e-15,
+    "max_weight": 0.018037512008277103,
+    "n_eff": 139.84852065067278,
+    "net": 4.440892098500626e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.1421679789847073
+     },
+     {
+      "ticker": "WDC",
+      "variance_share": 0.07365689935365066
+     },
+     {
+      "ticker": "COIN",
+      "variance_share": 0.054446093828914945
+     },
+     {
+      "ticker": "BG",
+      "variance_share": 0.0334045494426835
+     },
+     {
+      "ticker": "ALB",
+      "variance_share": 0.030695802931849262
+     }
+    ],
+    "variance_share_cap_binds": true
+   },
+   "unexplained_adjustment": null
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333334,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.2138429407425,
+   "expected_impact_bps": 0.125568396046652,
+   "expected_spread_bps": 4.75494121136249,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0247757556887483,
+   "full_book_forecast_annual_vol": 0.0236773652679963,
+   "full_book_gross": 1.0,
+   "full_book_net": -1.04083408558608e-15,
+   "full_risk": {
+    "forecast_annual_vol": 0.023677365267996298,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 2.0990154059319366e-15,
+    "n_eff": 265.8605561280516,
+    "n_names": 499,
+    "net": -1.0408340855860843e-15
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 418966.838765651,
+   "max_abs_exposure_after_fmp": 2.09901540593194e-15,
+   "n_eff_kept": 152.603227176065,
+   "net": -9.0205620750794e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-02T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.024775755688748312,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.855286757557195e-15,
+    "max_weight": 0.014918603649427143,
+    "n_eff": 152.60322717606522,
+    "net": -9.020562075079397e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.12873552334465924
+     },
+     {
+      "ticker": "COIN",
+      "variance_share": 0.0573563130893952
+     },
+     {
+      "ticker": "CHTR",
+      "variance_share": 0.03499100866514284
+     },
+     {
+      "ticker": "BG",
+      "variance_share": 0.03249170239303295
+     },
+     {
+      "ticker": "CRWD",
+      "variance_share": 0.026841314279823763
+     }
+    ],
+    "variance_share_cap_binds": true
+   },
+   "unexplained_adjustment": null
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333333,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.2570566347443,
+   "expected_impact_bps": 0.130957819672018,
+   "expected_spread_bps": 4.79276548173894,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0253803348960301,
+   "full_book_forecast_annual_vol": 0.0233045678105078,
+   "full_book_gross": 1.0,
+   "full_book_net": -1.06165076729781e-15,
+   "full_risk": {
+    "forecast_annual_vol": 0.023304567810507777,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 2.9282132274488504e-15,
+    "n_eff": 268.0537980522533,
+    "n_names": 499,
+    "net": -1.061650767297806e-15
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 433479.550831279,
+   "max_abs_exposure_after_fmp": 2.92821322744885e-15,
+   "n_eff_kept": 143.318513109313,
+   "net": 1.73472347597681e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-05T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.025380334896030077,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.0109101056254843e-15,
+    "max_weight": 0.016821783115806125,
+    "n_eff": 143.31851310931293,
+    "net": 1.734723475976807e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.08719083076287398
+     },
+     {
+      "ticker": "COIN",
+      "variance_share": 0.04320550038484583
+     },
+     {
+      "ticker": "PTC",
+      "variance_share": 0.038234496298312215
+     },
+     {
+      "ticker": "LULU",
+      "variance_share": 0.033911572579329065
+     },
+     {
+      "ticker": "CHTR",
+      "variance_share": 0.03388110673601402
+     }
+    ],
+    "variance_share_cap_binds": false
+   },
+   "unexplained_adjustment": null
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333333,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.2241719821203,
+   "expected_impact_bps": 0.108529909632549,
+   "expected_spread_bps": 4.78230873915441,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0250730253862868,
+   "full_book_forecast_annual_vol": 0.0235664938674192,
+   "full_book_gross": 1.0,
+   "full_book_net": 6.03683769639929e-16,
+   "full_risk": {
+    "forecast_annual_vol": 0.02356649386741923,
+    "gross": 1.0000000000000002,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.8318679906315083e-15,
+    "n_eff": 267.51482345161054,
+    "n_names": 496,
+    "net": 6.036837696399289e-16
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 358424.323397714,
+   "max_abs_exposure_after_fmp": 1.83186799063151e-15,
+   "n_eff_kept": 150.276468995193,
+   "net": 2.34187669256869e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-06T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.025073025386286828,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.2420620087993939e-15,
+    "max_weight": 0.015110437928278233,
+    "n_eff": 150.2764689951931,
+    "net": 2.3418766925686896e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.12952947501440062
+     },
+     {
+      "ticker": "COIN",
+      "variance_share": 0.04329186884514215
+     },
+     {
+      "ticker": "BG",
+      "variance_share": 0.04217287999276856
+     },
+     {
+      "ticker": "CHTR",
+      "variance_share": 0.03186923369858365
+     },
+     {
+      "ticker": "LYB",
+      "variance_share": 0.029281012033429057
+     }
+    ],
+    "variance_share_cap_binds": true
+   },
+   "unexplained_adjustment": -3211.814835
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333332,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.232717091772,
+   "expected_impact_bps": 0.149984368460384,
+   "expected_spread_bps": 4.74939938997828,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.02655676896843,
+   "full_book_forecast_annual_vol": 0.0245375790506613,
+   "full_book_gross": 1.0,
+   "full_book_net": 7.91033905045424e-16,
+   "full_risk": {
+    "forecast_annual_vol": 0.024537579050661253,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.906899140420911e-15,
+    "n_eff": 264.9157122144087,
+    "n_names": 493,
+    "net": 7.91033905045424e-16
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 506977.706623973,
+   "max_abs_exposure_after_fmp": 1.90689914042091e-15,
+   "n_eff_kept": 130.661862705966,
+   "net": 1.32185928869433e-15,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-08T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.026556768968430018,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.8003907765172867e-15,
+    "max_weight": 0.01778022270251882,
+    "n_eff": 130.66186270596572,
+    "net": 1.321859288694327e-15,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.13242885244511315
+     },
+     {
+      "ticker": "INTC",
+      "variance_share": 0.05177618529953557
+     },
+     {
+      "ticker": "CHRW",
+      "variance_share": 0.0402025434753792
+     },
+     {
+      "ticker": "CHTR",
+      "variance_share": 0.035340465454653545
+     },
+     {
+      "ticker": "COIN",
+      "variance_share": 0.03447136393837105
+     }
+    ],
+    "variance_share_cap_binds": true
+   },
+   "unexplained_adjustment": 0.0
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333333,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.1982067251615,
+   "expected_impact_bps": 0.121854268052257,
+   "expected_spread_bps": 4.74301912377594,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0276532414219329,
+   "full_book_forecast_annual_vol": 0.0240237011047571,
+   "full_book_gross": 1.0,
+   "full_book_net": 7.7715611723761e-16,
+   "full_risk": {
+    "forecast_annual_vol": 0.024023701104757135,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.1551949230369585e-15,
+    "n_eff": 265.7521362681233,
+    "n_names": 493,
+    "net": 7.771561172376096e-16
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 388402.251488715,
+   "max_abs_exposure_after_fmp": 1.15519492303696e-15,
+   "n_eff_kept": 122.881696632273,
+   "net": 3.34801630863524e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-09T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.02765324142193291,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 2.43480590457541e-15,
+    "max_weight": 0.017926108039121844,
+    "n_eff": 122.8816966322733,
+    "net": 3.3480163086352377e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.1419708229919136
+     },
+     {
+      "ticker": "WDC",
+      "variance_share": 0.06446823020704093
+     },
+     {
+      "ticker": "INTC",
+      "variance_share": 0.04605492258576485
+     },
+     {
+      "ticker": "CHTR",
+      "variance_share": 0.03999224834340316
+     },
+     {
+      "ticker": "CHRW",
+      "variance_share": 0.0347978295035551
+     }
+    ],
+    "variance_share_cap_binds": true
+   },
+   "unexplained_adjustment": 0.0
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333333,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.1867169136636,
+   "expected_impact_bps": 0.119061648518521,
+   "expected_spread_bps": 4.73432193181174,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0263653849408487,
+   "full_book_forecast_annual_vol": 0.0243074931464107,
+   "full_book_gross": 1.0,
+   "full_book_net": -9.71445146547012e-17,
+   "full_risk": {
+    "forecast_annual_vol": 0.024307493146410696,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.2519649351470325e-15,
+    "n_eff": 265.60674486272086,
+    "n_names": 493,
+    "net": -9.71445146547012e-17
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 422486.894072336,
+   "max_abs_exposure_after_fmp": 1.25196493514703e-15,
+   "n_eff_kept": 141.901327049252,
+   "net": 5.20417042793042e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-12T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.026365384940848696,
+    "gross": 1.0000000000000002,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.8908485888147197e-15,
+    "max_weight": 0.016365557506250253,
+    "n_eff": 141.90132704925168,
+    "net": 5.204170427930421e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.11169849826576383
+     },
+     {
+      "ticker": "CHTR",
+      "variance_share": 0.056397326385841204
+     },
+     {
+      "ticker": "COIN",
+      "variance_share": 0.048666234920965036
+     },
+     {
+      "ticker": "CRWD",
+      "variance_share": 0.037917962993971745
+     },
+     {
+      "ticker": "INTC",
+      "variance_share": 0.03429257267316532
+     }
+    ],
+    "variance_share_cap_binds": true
+   },
+   "unexplained_adjustment": 0.0
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333333,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.2579419650831,
+   "expected_impact_bps": 0.148843039890994,
+   "expected_spread_bps": 4.7757655918588,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0275992544314798,
+   "full_book_forecast_annual_vol": 0.0234915838637315,
+   "full_book_gross": 1.0,
+   "full_book_net": -5.68989300120393e-16,
+   "full_risk": {
+    "forecast_annual_vol": 0.023491583863731486,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.1159619790228409e-15,
+    "n_eff": 266.8480438314454,
+    "n_names": 493,
+    "net": -5.689893001203927e-16
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 447195.230764601,
+   "max_abs_exposure_after_fmp": 1.11596197902284e-15,
+   "n_eff_kept": 130.485288261051,
+   "net": 3.33066907387547e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-13T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.02759925443147978,
+    "gross": 1.0000000000000002,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.6583956430338276e-15,
+    "max_weight": 0.016460064065310556,
+    "n_eff": 130.4852882610513,
+    "net": 3.3306690738754696e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.10987671718019912
+     },
+     {
+      "ticker": "PTC",
+      "variance_share": 0.06834031523868545
+     },
+     {
+      "ticker": "CHRW",
+      "variance_share": 0.042783621599525444
+     },
+     {
+      "ticker": "CHTR",
+      "variance_share": 0.038968491802478585
+     },
+     {
+      "ticker": "APP",
+      "variance_share": 0.031826441895789474
+     }
+    ],
+    "variance_share_cap_binds": true
+   },
+   "unexplained_adjustment": 7056.6
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333333,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.2887883424729,
+   "expected_impact_bps": 0.131306224057195,
+   "expected_spread_bps": 4.82414878508234,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0274794188111414,
+   "full_book_forecast_annual_vol": 0.0238055893209815,
+   "full_book_gross": 1.0,
+   "full_book_net": -5.82867087928207e-16,
+   "full_risk": {
+    "forecast_annual_vol": 0.023805589320981514,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.1503200777493115e-15,
+    "n_eff": 269.7808254163863,
+    "n_names": 493,
+    "net": -5.828670879282072e-16
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 434026.330056646,
+   "max_abs_exposure_after_fmp": 1.15032007774931e-15,
+   "n_eff_kept": 126.755062289798,
+   "net": 6.00214322687975e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-15T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.027479418811141427,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 2.2065682614424986e-15,
+    "max_weight": 0.017730051117207636,
+    "n_eff": 126.75506228979765,
+    "net": 6.002143226879753e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.11980926957617333
+     },
+     {
+      "ticker": "PTC",
+      "variance_share": 0.05837502159071872
+     },
+     {
+      "ticker": "INTC",
+      "variance_share": 0.047931811722956165
+     },
+     {
+      "ticker": "CHTR",
+      "variance_share": 0.040745186793520294
+     },
+     {
+      "ticker": "CHRW",
+      "variance_share": 0.03949338819404535
+     }
+    ],
+    "variance_share_cap_binds": true
+   },
+   "unexplained_adjustment": 0.0
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333333,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.3490238902208,
+   "expected_impact_bps": 0.15158724008959,
+   "expected_spread_bps": 4.86410331679789,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0301092483411234,
+   "full_book_forecast_annual_vol": 0.0232849974840816,
+   "full_book_gross": 1.0,
+   "full_book_net": 4.16333634234434e-17,
+   "full_risk": {
+    "forecast_annual_vol": 0.023284997484081613,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.5455402708560932e-15,
+    "n_eff": 270.40587356902705,
+    "n_names": 493,
+    "net": 4.163336342344337e-17
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 486633.139725843,
+   "max_abs_exposure_after_fmp": 1.54554027085609e-15,
+   "n_eff_kept": 125.7547455195,
+   "net": 9.99200722162641e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-16T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.030109248341123353,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.8561541192951836e-15,
+    "max_weight": 0.01914729128822641,
+    "n_eff": 125.75474551949964,
+    "net": 9.992007221626409e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.12250522102922835
+     },
+     {
+      "ticker": "MU",
+      "variance_share": 0.07962320950344386
+     },
+     {
+      "ticker": "CHRW",
+      "variance_share": 0.04148425230943193
+     },
+     {
+      "ticker": "CHTR",
+      "variance_share": 0.039342917005548296
+     },
+     {
+      "ticker": "MRVL",
+      "variance_share": 0.035923442742274395
+     }
+    ],
+    "variance_share_cap_binds": true
+   },
+   "unexplained_adjustment": 0.0
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333334,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.2821670465324,
+   "expected_impact_bps": 0.141806947092495,
+   "expected_spread_bps": 4.80702676610653,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0296085451490231,
+   "full_book_forecast_annual_vol": 0.0232817291707797,
+   "full_book_gross": 1.0,
+   "full_book_net": -7.28583859910259e-16,
+   "full_risk": {
+    "forecast_annual_vol": 0.02328172917077971,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 7.153565934059358e-16,
+    "n_eff": 267.486373769537,
+    "n_names": 493,
+    "net": -7.28583859910259e-16
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 402075.917302077,
+   "max_abs_exposure_after_fmp": 7.15356593405936e-16,
+   "n_eff_kept": 119.821325256524,
+   "net": -1.70002900645727e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-19T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.02960854514902308,
+    "gross": 1.0,
+    "idio_share": 1.0,
+    "max_abs_exposure": 7.626014547529598e-16,
+    "max_weight": 0.020153133616220682,
+    "n_eff": 119.82132525652449,
+    "net": -1.700029006457271e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.11378408419607883
+     },
+     {
+      "ticker": "MU",
+      "variance_share": 0.07903879057755397
+     },
+     {
+      "ticker": "HPE",
+      "variance_share": 0.05332918036847549
+     },
+     {
+      "ticker": "COIN",
+      "variance_share": 0.049216447018602366
+     },
+     {
+      "ticker": "INTC",
+      "variance_share": 0.043354328940734786
+     }
+    ],
+    "variance_share_cap_binds": true
+   },
+   "unexplained_adjustment": 0.0
+  },
+  {
+   "dry_run": false,
+   "expected_borrow_bps": 8.33333333333333,
+   "expected_commission_bps": 1.0,
+   "expected_cost_bps": 14.277288164199,
+   "expected_impact_bps": 0.100648099770165,
+   "expected_spread_bps": 4.84330673109552,
+   "filled_notional": 0.0,
+   "forecast_annual_vol": 0.0292015864490882,
+   "full_book_forecast_annual_vol": 0.0232247683635947,
+   "full_book_gross": 1.0,
+   "full_book_net": 4.71844785465692e-16,
+   "full_risk": {
+    "forecast_annual_vol": 0.023224768363594696,
+    "gross": 0.9999999999999998,
+    "idio_share": 1.0,
+    "max_abs_exposure": 5.223411451653513e-16,
+    "n_eff": 276.41641027232396,
+    "n_names": 493,
+    "net": 4.718447854656915e-16
+   },
+   "gross": 1.0,
+   "idio_share_after_fmp": 1.0,
+   "intended_notional": 343314.672291386,
+   "max_abs_exposure_after_fmp": 5.22341145165351e-16,
+   "n_eff_kept": 118.689176439871,
+   "net": 2.22044604925031e-16,
+   "realized_annual_vol": null,
+   "realized_pnl": null,
+   "trade_date": "2026-10-20T00:00:00",
+   "traded_risk": {
+    "forecast_annual_vol": 0.029201586449088192,
+    "gross": 0.9999999999999999,
+    "idio_share": 1.0,
+    "max_abs_exposure": 1.1310397063368782e-15,
+    "max_weight": 0.01953243769698963,
+    "n_eff": 118.68917643987115,
+    "net": 2.220446049250313e-16,
+    "top_variance_shares": [
+     {
+      "ticker": "SMCI",
+      "variance_share": 0.11689810649405316
+     },
+     {
+      "ticker": "MU",
+      "variance_share": 0.08532027378842558
+     },
+     {
+      "ticker": "INTC",
+      "variance_share": 0.06648923930948418
+     },
+     {
+      "ticker": "HPE",
+      "variance_share": 0.03970614634290833
+     },
+     {
+      "ticker": "COIN",
+      "variance_share": 0.02781105658905875
+     }
+    ],
+    "variance_share_cap_binds": true
+   },
+   "unexplained_adjustment": 0.0
+  }
+ ],
+ "table": "efb.reconciliation"
+}
