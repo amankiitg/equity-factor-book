@@ -144,6 +144,25 @@ export function pillFor(snapshot: Snapshot, now: Date): string {
     // catch-up. Catch-up is named when the run is current, which is when it is
     // true of the book in hand rather than of a run nobody made.
     if (isLate(snapshot, now)) return "expired";
+    // A hold day is a normal evening that did not trade. It outranks the catch-up
+    // qualifier because the hold is what the run was *for*; it is green, because
+    // nothing about it needs attention.
+    const cadence = snapshot.run_status?.cadence;
+    if (cadence && cadence.day === "hold") {
+      // A hold day that re-hedged says so, with the two exposures that made it: a
+      // refresh is the loop trading on a day it was told not to, and the pill is
+      // where a reader sees that it happened and what it was for. Still green -
+      // the guard is doing its job, not reporting a fault.
+      const guard = cadence.drift_guard;
+      if (guard?.fired) {
+        const before = `${(guard.exposure_before * 100).toFixed(1)}%`;
+        const after = `${(guard.exposure_after * 100).toFixed(1)}%`;
+        return `hold day, guard re-hedged ${before} -> ${after}`;
+      }
+      return cadence.pending
+        ? "hold day (rebalance taken: one was missed)"
+        : "hold day";
+    }
     if (snapshot.run_status?.catch_up) {
       // A catch-up that priced a book is a proposal run that did its job: what was
       // wrong was the clock, not the book, and the pill says so while naming the
@@ -168,6 +187,8 @@ export function runTone(pill: string): Tone {
   // `ok (caught up N sessions)` is the same state as `ok`, told with the reason the
   // run was late: it is green for the same reason and must not fall to amber.
   if (pill === "ok" || pill.startsWith("ok (")) return "good";
+  // A hold day is the loop doing exactly what it was asked to do.
+  if (pill.startsWith("hold day")) return "good";
   return "warn";
 }
 

@@ -41,7 +41,7 @@ import logging
 import math
 import os
 import sys
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -1105,6 +1105,78 @@ def _excluded_rows(manifest: dict[str, Any] | None) -> list[dict[str, Any]]:
     return _rows(manifest, "excluded_detail")
 
 
+def unfilled_remainders(as_of: Any) -> dict[str, float]:
+    """The last rebalance's unfinished legs, as target weights, from the store.
+
+    Reads the three tables the answer lives in and hands them to
+    `evening_job.unfilled_remainder`, which is where the rule is. A store that cannot
+    be read returns nothing and says so: a leg that is not carried waits for the next
+    rebalance, which is the state this exists to avoid, so it is a warning.
+    """
+    from live import alpaca, evening_job, store
+
+    try:
+        proposals = store.select("proposals")
+        orders = store.select("orders")
+        book = previous_book(str(as_of)[:10], [])
+    except Exception as exc:  # noqa: BLE001 - the evening goes on without it
+        logger.warning(
+            "could not read the last rebalance's legs (%s: %s), so a partly filled "
+            "rebalance is not carried",
+            type(exc).__name__,
+            exc,
+        )
+        return {}
+    return evening_job.unfilled_remainder(
+        proposals,
+        orders,
+        book,
+        as_of=pd.Timestamp(as_of),
+        minimum=float(alpaca.DELTA_MIN_NOTIONAL),
+    )
+
+
+def reversal_weights(
+    pending: Iterable[str] | None, previous: pd.DataFrame | None
+) -> dict[str, float]:
+    """The deferred target of every pending reversal, as a weight of NAV.
+
+    `pending` is the previous close's deferral list and `previous` is the book the
+    loop last recorded - on the first hold day after a rebalance that is the
+    rebalance's own target book, which carries the side the deferral did not open.
+    A name with no row there cannot be reconstructed, and is named in the log rather
+    than traded blind: the leg will then wait for the next rebalance, which is the
+    state this function exists to avoid, so it says so out loud.
+    """
+    if not pending:
+        return {}
+    weights: dict[str, float] = {}
+    if previous is None or len(previous) == 0:
+        logger.warning(
+            "the previous close deferred %s, but there is no recorded book to read "
+            "the deferred target from: the second leg waits for the next rebalance",
+            ", ".join(sorted(str(name) for name in pending)),
+        )
+        return {}
+    frame = previous.copy()
+    frame["ticker"] = frame["ticker"].astype(str)
+    book = frame.set_index("ticker")["weight"].astype(float)
+    missing: list[str] = []
+    for name in sorted(str(item) for item in pending):
+        if name in book.index and abs(float(book.loc[name])) > 1e-12:
+            weights[name] = float(book.loc[name])
+        else:
+            missing.append(name)
+    if missing:
+        logger.warning(
+            "the previous close deferred %s and the recorded book carries no position "
+            "to take the other side from: %s waits for the next rebalance",
+            ", ".join(missing),
+            "it" if len(missing) == 1 else "they",
+        )
+    return weights
+
+
 def previous_close_reversals(as_of: Any) -> list[str] | None:
     """The previous close's deferral list, from the document that is up.
 
@@ -1310,7 +1382,20 @@ def finish_run(
             )
         try:
             written = snapshot_module.write_snapshot(
-                run={**row, "store": store_name, "attribution": attribution},
+                run={
+                    **row,
+                    "store": store_name,
+                    "attribution": attribution,
+                    # The calendar block travels to the page: a hold day is a
+                    # normal, green state and the page says which one it is and
+                    # when the next rebalance is due. Left out entirely when there
+                    # is none, so a flag-less run's document is unchanged.
+                    **(
+                        {"cadence": (manifest or {}).get("cadence")}
+                        if (manifest or {}).get("cadence")
+                        else {}
+                    ),
+                },
                 manifest=manifest,
                 book=book,
                 reconciliation=_with_sent_halves(
@@ -1986,6 +2071,19 @@ def main() -> int:
         prior_weights = (
             prior.set_index("ticker")["weight"] if prior is not None else None
         )
+        # A reversal the last close deferred: the account is flat on the name and the
+        # book carries the other side, and on a hold day nothing else would send the
+        # second leg. Its weight comes from the book the loop last recorded, which on
+        # the first hold after a rebalance is that rebalance's own target book.
+        # `as_of` is the manifest's own date and is not known yet at this point in
+        # the run; the close being priced is what the previous document is compared
+        # against, and it is the same date.
+        prior_reversals = previous_close_reversals(str(gate["target_close"]))
+        reversal_targets = reversal_weights(prior_reversals, previous)
+        # The last rebalance's legs that did not complete. On the daily loop the
+        # next evening rebuilds the target and finishes them by itself; on a hold day
+        # nothing would, so they are carried into the held book and forced.
+        carried_remainders = unfilled_remainders(str(gate["target_close"]))
         logger.info(
             "prior book: %s",
             (
@@ -1999,6 +2097,8 @@ def main() -> int:
         manifest = evening_job.build_proposal(
             appendix=appendix_identity,
             previous=prior_weights,
+            reversal_targets=reversal_targets,
+            unfilled=carried_remainders,
             nav=float(holdings["nav"]),
             nav_source=str(holdings["nav_source"]),
             shortable=shortable_flags(dry_run=dry_run),
@@ -2063,12 +2163,26 @@ def main() -> int:
             )
 
         # Morning: gate, guard, submit (dry run by default), reconcile.
+        # A hold day publishes the held book, so the only legs it may send are the
+        # forced ones: a name that left the universe (the proposal no longer carries
+        # it, which the order path sends as a close), a corporate action, a short the
+        # broker will not lend, a name with no usable close or no risk estimate, and
+        # a reversal the loop had already deferred. `None` on a rebalance day is the
+        # daily path, unchanged.
+        cadence_block = manifest.get("cadence") or {}
+        holding = bool(manifest.get("held_book"))
+        forced_names = (
+            evening_job.forced_names_for_hold(manifest, splits, spinoffs)
+            if holding
+            else None
+        )
         morning = morning_job.run_morning(
             as_of,
             dry_run=dry_run,
             positions=held,
             quantities=holdings.get("held_quantities"),
             establishment=establishment,
+            forced_names=forced_names,
         )
         store_orders(as_of, dry_run)
         # The dollars tonight's legs moved, per name, for the page's trades-by-reason

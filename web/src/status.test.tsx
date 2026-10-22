@@ -10,7 +10,7 @@
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { SnapshotView, runTone } from "./App";
+import { SnapshotView, runState, runTone } from "./App";
 import type { BridgeBlock, Snapshot } from "./types";
 import brokenFixture from "../fixtures/snapshot_bridge_broken.json";
 import closed from "../fixtures/snapshot_market_closed.json";
@@ -707,5 +707,99 @@ describe("the wording the report left untested", () => {
     // The key names stay out of the default view.
     expect(telemetry.textContent).not.toContain("n_eff");
     expect(telemetry.textContent).not.toContain("full_book");
+  });
+});
+
+describe("a hold day on the rebalance calendar", () => {
+  // `EFB_CADENCE` on a branch: a hold day is the loop doing what it was asked to
+  // do, so it is green and it says what it is. The three cases below are the whole
+  // contract - scheduled, promoted because a rebalance was missed, and absent (a
+  // document from before the flag, which must read exactly as it always did).
+  const withCadence = (cadence: Snapshot["run_status"]["cadence"]): Snapshot => {
+    const copy = structuredClone(TODAY) as Snapshot;
+    copy.run_status.cadence = cadence;
+    return copy;
+  };
+
+  it("reads green and names the next rebalance", () => {
+    const held = withCadence({
+      k: 21,
+      anchor: "2026-10-01",
+      day: "hold",
+      scheduled: false,
+      pending: false,
+      missed: [],
+      next_rebalance: "2026-10-30",
+      label: "hold day, next rebalance 2026-10-30",
+    });
+    const state = runState(held, new Date("2026-10-14T23:00:00Z"));
+    expect(state.pill).toBe("hold day");
+    expect(state.tone).toBe("good");
+    expect(state.ok).toBe(true);
+  });
+
+  it("says so when the hold is taking a missed rebalance", () => {
+    const held = withCadence({
+      k: 21,
+      anchor: "2026-10-01",
+      day: "hold",
+      scheduled: false,
+      pending: true,
+      missed: ["2026-10-01"],
+      next_rebalance: "2026-10-30",
+      label: "hold day, next rebalance 2026-10-30",
+    });
+    const state = runState(held, new Date("2026-10-14T23:00:00Z"));
+    expect(state.pill).toBe("hold day (rebalance taken: one was missed)");
+    expect(state.tone).toBe("good");
+  });
+
+  it("says when the hold day's guard re-hedged, and stays green", () => {
+    const held = withCadence({
+      k: 21,
+      anchor: "2026-10-01",
+      day: "hold",
+      scheduled: false,
+      pending: false,
+      missed: [],
+      next_rebalance: "2026-10-30",
+      label: "hold day, next rebalance 2026-10-30",
+      drift_guard: {
+        fired: true,
+        threshold: 0.05,
+        exposure_before: 0.062,
+        exposure_after: 0.0,
+        turnover: 0.021,
+        legs: [
+          { ticker: "AAA", weight_before: 0.04, weight_after: 0.019, delta_notional_pct: -0.021 },
+        ],
+      },
+    });
+    const state = runState(held, new Date("2026-10-14T23:00:00Z"));
+    expect(state.pill).toBe("hold day, guard re-hedged 6.2% -> 0.0%");
+    expect(state.tone).toBe("good");
+  });
+
+  it("says the plain hold day when the guard looked and left the book alone", () => {
+    const held = withCadence({
+      k: 21,
+      anchor: "2026-10-01",
+      day: "hold",
+      scheduled: false,
+      pending: false,
+      missed: [],
+      next_rebalance: "2026-10-30",
+      label: "hold day, next rebalance 2026-10-30",
+      drift_guard: null,
+    });
+    expect(runState(held, new Date("2026-10-14T23:00:00Z")).pill).toBe("hold day");
+  });
+
+  it("leaves a document without the block exactly as it was", () => {
+    const plain = structuredClone(TODAY) as Snapshot;
+    delete plain.run_status.cadence;
+    expect(runState(plain, new Date("2026-10-14T23:00:00Z"))).toEqual(
+      runState(TODAY, new Date("2026-10-14T23:00:00Z")),
+    );
   });
 });

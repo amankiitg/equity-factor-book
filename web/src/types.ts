@@ -104,6 +104,58 @@ export interface RunStatus {
   snapshot: string | null;
   establishment: boolean;
   cost_label: string | null;
+  /**
+   * The rebalance calendar (`EFB_CADENCE`). Absent on every document written
+   * before the flag existed, and on a run that did not ask: an absent block is the
+   * daily behaviour and must read as one.
+   */
+  cadence?: CadenceBlock | null;
+}
+
+/** One close on the rebalance calendar, as the evening reports it. */
+export interface CadenceBlock {
+  /** Sessions between rebalances. 1 is the daily loop. */
+  k: number;
+  anchor: string;
+  /** `rebalance` or `hold`. */
+  day: "rebalance" | "hold";
+  /** Whether the calendar named today, rather than a missed one promoting it. */
+  scheduled: boolean;
+  /** Whether today is a rebalance because an earlier scheduled one did not run. */
+  pending: boolean;
+  /** The scheduled rebalances the completion record does not have. */
+  missed: string[];
+  /** The next rebalance date. */
+  next_rebalance: string | null;
+  /** The one sentence the strip shows: "hold day, next rebalance <date>". */
+  label: string;
+  /**
+   * The hold day's hedge refresh (`EFB_DRIFT_GUARD`), when the flag was on: what it
+   * measured, what it did, and the legs it moved. Null is a hold day the guard
+   * looked at and left alone; absent is a run that never asked for one.
+   */
+  drift_guard?: DriftGuard | null;
+}
+
+/** One hold day's hedge refresh. */
+export interface DriftGuard {
+  fired: boolean;
+  /** The threshold in force, as a fraction of NAV. */
+  threshold: number;
+  /** Worst absolute factor exposure before and after, as a fraction of NAV. */
+  exposure_before: number;
+  exposure_after: number;
+  /** The correction's gross, as a fraction of NAV. */
+  turnover: number;
+  legs: DriftGuardLeg[];
+}
+
+export interface DriftGuardLeg {
+  ticker: string;
+  weight_before: number;
+  weight_after: number;
+  /** The signed change in weight points of NAV. */
+  delta_notional_pct: number;
 }
 
 export interface PositionsCheck {
