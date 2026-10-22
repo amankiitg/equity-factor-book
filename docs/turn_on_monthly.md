@@ -80,6 +80,7 @@ SELECT trade_date,
        manifest ->> 'hedge_mode'                           AS hedge_mode,
        manifest ->> 'held_book'                            AS held_book,
        manifest -> 'cadence' -> 'drift_guard' ->> 'fired'  AS guard_fired,
+       (manifest -> 'cadence' -> 'drift_guard' ->> 'legs_under_minimum')::int AS guard_small_legs,
        (manifest -> 'cadence' -> 'drift_guard' ->> 'exposure_before')::float8 AS guard_before,
        (manifest -> 'cadence' -> 'drift_guard' ->> 'exposure_after')::float8  AS guard_after
 FROM efb.proposals
@@ -93,8 +94,9 @@ What it must say on the first evening:
   `held_book = false`, `guard_fired = NULL` (the guard only acts on a hold day);
 - the evening 21 sessions later: `day = rebalance` again;
 - the evenings between: `day = hold`, `held_book = true`, and `guard_fired` either
-  `false` (the guard looked and left the book alone) or `true` with `guard_before`
-  above `0.05` and `guard_after` at 0.
+  `NULL` (the guard looked and left the book alone: it only writes a block when it
+  fires) or `true` with `guard_before` above `0.05`, `guard_after` at 0, and
+  `legs_under_minimum` counting the legs too small to send.
 
 And the run's own row, which is what the page reads:
 
