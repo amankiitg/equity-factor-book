@@ -1,20 +1,28 @@
-"""The morning re-finalizes a close's attribution once its fills exist.
+"""The attribution re-prices a close once its fills exist.
 
 The evening attributes a close before its orders settle, so the row it writes prices
 the day at the *expected* cost and records `n_filled = 0`. Eight live rows were in
 that state on 2026-10-21 (`docs/owner_fixes/attribution_recompute.md`), and the page
-showed them as measured costs. The morning is the first run that knows what the fills
-cost, so `live.attribution_job.refinalize` re-runs the same computation with the
-fills in the store and rewrites the row.
+showed them as measured costs. The next run that knows what the fills cost re-runs
+the same computation with the fills in the store and rewrites the row.
 
-Three properties are pinned here, and they are the whole contract:
+It does that from the evening job, not the morning one, and the reason is measured
+rather than preferred: the morning's service holds no artifacts - `render.yaml` says
+so, because every parquet under `data/` is gitignored - and a row cannot be rebuilt
+without the XS-v1 artifacts its exposures are read from. The evening is the first run
+with both the fills and a tree, so `run()` carries the pass (`refinalize_stale`) and
+`refinalize` is the single day it calls.
+
+Four properties are pinned here, and they are the whole contract:
 
 - a row written against an estimate is replaced by the one the fills produce, with
   the corrected pre-hedge volatility untouched - the recompute runs the current code,
   so it can only restate that column;
 - a second run is a no-op, because the stored `n_filled` then matches the fills;
 - a close whose fills are already counted is not touched at all, which is what keeps
-  the step idempotent and safe to call on every morning.
+  the step idempotent and safe to run on every evening;
+- the evening's own `run()` finds the stale rows and re-prices them without being
+  told which they are, and leaves a hold day alone.
 """
 
 from __future__ import annotations
@@ -263,3 +271,54 @@ def test_the_cost_the_row_carries_is_the_fills_own(
     assert float(_stored(SESSION)["realized_cost_bps"]) == pytest.approx(
         expected, rel=1e-9
     )
+
+
+def test_the_evenings_own_run_re_prices_the_close_the_morning_filled(
+    local_store: pathlib.Path,
+) -> None:
+    """The pass finds the stale row itself: the evening never names the days.
+
+    This is the whole forward fix end to end. The evening writes the estimate, the
+    fills arrive, and the next run of the same job - with no argument about which
+    days are stale - replaces the row and says so in its report.
+    """
+    _evening_row(local_store)
+    evening = _stored(SESSION)
+    store.upsert("fills", [_fill_row(SESSION, "AAPL", 500_000.0, 55.0)])
+
+    report = attribution_job.run(ROOT / "data")
+
+    assert [item["day"] for item in report["refinalized"]] == [SESSION]
+    assert "pnl_cost" in report["refinalized"][0]["moved"]
+    now = _stored(SESSION)
+    assert float(now["n_filled"]) == 1.0
+    assert float(now["pnl_cost"]) != pytest.approx(float(evening["pnl_cost"]))
+    assert float(now["pre_hedge_vol"]) == pytest.approx(
+        float(evening["pre_hedge_vol"]), abs=1e-15
+    )
+
+
+def test_a_re_priced_close_is_not_re_priced_again(local_store: pathlib.Path) -> None:
+    """Once the row counts its fills, the pass has nothing to do on any later run."""
+    _evening_row(local_store)
+    store.upsert("fills", [_fill_row(SESSION, "AAPL", 500_000.0, 55.0)])
+    attribution_job.run(ROOT / "data")
+    settled = _stored(SESSION)
+
+    again = attribution_job.run(ROOT / "data")
+
+    assert again["refinalized"] == []
+    assert _same_row(_stored(SESSION), settled)
+
+
+def test_a_close_with_no_fills_is_never_a_candidate(
+    local_store: pathlib.Path,
+) -> None:
+    """A hold day has no fills to price, so the pass cannot touch its row."""
+    _evening_row(local_store)
+    evening = _stored(SESSION)
+
+    again = attribution_job.run(ROOT / "data")
+
+    assert again["refinalized"] == []
+    assert _same_row(_stored(SESSION), evening)

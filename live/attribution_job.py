@@ -369,6 +369,57 @@ def _shown(value: Any) -> str:
     return "n/a" if value is None else f"{float(value):.6f}"
 
 
+def refinalize_stale(
+    root: Path, *, panel: attribution.ModelPanel | None = None
+) -> list[dict[str, Any]]:
+    """Re-price every stored day whose fills arrived after it was written.
+
+    The evening attributes a close before its orders settle, so the row it writes
+    carries the day's *expected* cost and `n_filled` zero; the fills land on the
+    following morning. This pass is what closes that gap, and it runs in the evening
+    job rather than the morning one for one measured reason: `render.yaml` says the
+    morning's service holds no artifacts at all - every parquet under `data/` is
+    gitignored, so the deploy image carries none - and a row cannot be rebuilt
+    without the XS-v1 artifacts the exposures are read from. The evening is the
+    first run that has the fills *and* a tree, so it is where the correction belongs.
+
+    Idempotent, and narrow: a day is a candidate only while the fills the store
+    holds disagree with the `n_filled` its row already counted, and `refinalize`
+    writes nothing unless a cost column actually moves. A close with no fills is
+    never a candidate, so nothing about a hold day can change here.
+    """
+    stored = store.select("attribution")
+    if stored is None or stored.empty or "trade_date" not in stored.columns:
+        return []
+    fills = store.select("fills")
+    if fills is None or fills.empty or "trade_date" not in fills.columns:
+        return []
+    counted = _filled_by_day(fills)
+    days = stored["trade_date"].astype(str).str.slice(0, 10)
+    rows = stored.loc[:, [column for column in ("trade_date", "n_filled") if column in stored]]
+    changed: list[dict[str, Any]] = []
+    for day in sorted(set(days)):
+        if not counted.get(day):
+            continue
+        written = rows.loc[days == day, "n_filled"] if "n_filled" in rows else None
+        already = None if written is None or written.empty else written.iloc[-1]
+        if already is not None and _same_number(already, counted[day], tolerance=0.0):
+            continue
+        result = refinalize(day, root, panel=panel)
+        if result.get("changed"):
+            changed.append(result)
+    return changed
+
+
+def _filled_by_day(fills: pd.DataFrame) -> dict[str, int]:
+    """How many orders each close has actually filled, by ISO day."""
+    if "status" not in fills.columns:
+        return {}
+    filled = fills.loc[fills["status"].astype(str) == "FILLED"]
+    days = filled["trade_date"].astype(str).str.slice(0, 10)
+    return {str(day): int(count) for day, count in days.value_counts().items()}
+
+
 def run(root: Path, *, panel: attribution.ModelPanel | None = None) -> dict[str, Any]:
     """Attribute every stored day without a row, store the rows, and report.
 
@@ -410,6 +461,7 @@ def run(root: Path, *, panel: attribution.ModelPanel | None = None) -> dict[str,
             "n_stored": 0,
             "n_done": len(done),
             "sessions": [],
+            "refinalized": refinalize_stale(root, panel=panel),
             "detail": "every stored day already has an attribution row",
         }
     rows = attribution.store_rows(frame)
@@ -418,5 +470,10 @@ def run(root: Path, *, panel: attribution.ModelPanel | None = None) -> dict[str,
         "n_stored": len(rows),
         "n_done": len(done),
         "sessions": [str(row["trade_date"]) for row in rows],
+        # A day written by an earlier run was priced against an estimate. The fills
+        # arrived after it, so it is priced again here - in the same pass, with the
+        # panel already built, because this is the first run that has both the fills
+        # and the artifacts.
+        "refinalized": refinalize_stale(root, panel=panel),
         "detail": "",
     }
