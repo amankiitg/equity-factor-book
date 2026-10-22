@@ -190,7 +190,56 @@ Applied: **15 rows**, `pre_hedge_vol` and `written_at` only.
 
 Every fall is inside the 1.9-3.1 point band the fix predicts.
 
-### Backup and rollback
+### Applied 2026-10-21/22: 2026-09-28, and the eight estimated-cost days
+
+Two more writes, both with the same script and the same narrow/normal modes:
+
+1. **2026-09-28**, `--since 2026-09-28 --through 2026-09-28 --only-pre-hedge-vol`.
+   The chart still opened on 18.69% because that row was written before the B4 fix
+   and was never in the 09-29..10-19 range. It has no positions of its own and is
+   rebuilt from the 09-29 book, so the narrow mode is the right one: **18.6918% ->
+   15.6087%**, `hedged_vol` unchanged at 16.4721%, identity -3.11e-17, no other
+   column touched. Backup `backups/attribution_0928_before.json` (1 row).
+2. **2026-10-09..2026-10-20**, full row, `--since 2026-10-09`. These are the days
+   whose rows were written before their own fills existed (`n_filled = 0`), and whose
+   fills are now in `efb.fills`. Eight rows; `pnl_cost`, `pnl_total`,
+   `realized_cost_bps`, `realized_vol`, `vol_ratio` and `n_filled` moved, and nothing
+   else did. `pre_hedge_vol` was restated identically on every one. Backup
+   `backups/attribution_fills_before.json` (8 rows).
+
+| close | pnl_total before -> after | pnl_cost before -> after | n_filled |
+|---|---|---|---|
+| 2026-10-09 | -0.00432122 -> -0.00411654 | -0.00141982 -> -0.00121514 | 0 -> 171 |
+| 2026-10-12 | -0.00139560 -> -0.00129091 | -0.00141867 -> -0.00131398 | 0 -> 188 |
+| 2026-10-13 | +0.00134856 -> +0.00033465 | -0.00142579 -> -0.00243970 | 0 -> 191 |
+| 2026-10-14 | +0.00039369 (unchanged) | 0.00 (unchanged) | - -> - |
+| 2026-10-15 | +0.00019257 -> +0.00059247 | -0.00142888 -> -0.00102898 | 0 -> 176 |
+| 2026-10-16 | -0.00121018 -> -0.00127656 | -0.00143490 -> -0.00150128 | 0 -> 181 |
+| 2026-10-19 | -0.00053191 -> -0.00049661 | -0.00142822 -> -0.00139292 | 0 -> 163 |
+| 2026-10-20 | -0.00026332 -> +0.00049675 | -0.00142773 -> -0.00066765 | 0 -> 167 |
+
+2026-10-14 moved only `realized_vol` (empty -> 0.02453864), which is the trailing
+window finally having the corrected days behind it.
+
+Verified after both writes with a NaN-aware, tolerance-aware diff of every stored
+column against the backups: the columns above and `written_at`, and nothing else.
+Re-running either dry run reports `other cols = 0` on every row.
+
+Rollback, dry run first:
+
+```bash
+python scripts/restore_attribution.py --backup docs/owner_fixes/backups/attribution_0928_before.json
+python scripts/restore_attribution.py --backup docs/owner_fixes/backups/attribution_fills_before.json --apply
+```
+
+Both backups were taken with `scripts/backup_attribution_rows.py` (new), and both
+restores were proven exact - 0 rows differing - before the writes.
+
+The forward fix, so this cannot recur, is `live.attribution_job.refinalize`: the
+morning re-attributes the close it just reconciled against the fills it just
+recorded. See the commit and `tests/test_attribution_refinalize.py`.
+
+## Backup and rollback
 
 - Backup of the 14 + 2 rows written, every column:
   `docs/owner_fixes/backups/attribution_before.json` (16 rows, `since` 09-29).
