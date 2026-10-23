@@ -1030,6 +1030,8 @@ def _check_one(
     close_fetcher: Callable[[str, pd.Timestamp], float] | None,
     patch: bool,
     frame: pd.DataFrame,
+    *,
+    explained_by_spinoff: bool = False,
 ) -> tuple[Split | None, float | None, bool]:
     """Cross-check one ticker against the vendor and resolve what it means.
 
@@ -1038,6 +1040,16 @@ def _check_one(
     ticker, rather than being guessed at. A ticker the vendor's own column flags is
     resolved first, so a split is recorded even when the session before it has no
     close to compute a return against.
+
+    `explained_by_spinoff` is the one exception, and it is not a loosening: a
+    spin-off back-adjusts the vendor's history exactly like a split does, and the
+    vendor reports no `split_factor` for it, so a parent whose recorded spin-off is
+    the reason for the move would otherwise stop the run. CTVA on 2026-10-01 is
+    that case - 77.65 to 12.57, a ratio of 0.150038 with no split record anywhere,
+    because the holder was given a VYLR share worth 68.26 rather than because the
+    shares were divided. The correction is not skipped: the spin-off pass computes
+    the parent's true return from the parent's and the child's closes on the same
+    session, and this path only declines to call the adjustment a split.
     """
     factor = split_factor_of(_cell(prices_frame, session, ticker, "split_factor"))
     when, previous_close, stored_adjusted = _stored_pair(prices_frame, ticker, session)
@@ -1053,6 +1065,10 @@ def _check_one(
         spent = True
         ratio = cross_check_ratio(stored_adjusted, refetched)
     if ratio is not None and abs(ratio - 1.0) > CROSS_CHECK_TOLERANCE:
+        if explained_by_spinoff and not records:
+            # The move is the recorded spin-off's, and the return it really implies
+            # is computed from the child's close in the pass below.
+            return None, ratio, spent
         split = resolve_split(ticker, ratio, records, session=session)
     elif factor is not None:
         near = [
@@ -1121,9 +1137,17 @@ def apply_to_append(
     events: list[SpinoffOutcome] = []
     frame = returns_frame
     for session in sessions:
+        explained = {event.parent for event in (spinoffs or {}).get(session, [])}
         for ticker in split_flag_tickers(prices_frame, session):
             split, ratio, spent = _check_one(
-                ticker, session, prices_frame, split_fetcher, close_fetcher, True, frame
+                ticker,
+                session,
+                prices_frame,
+                split_fetcher,
+                close_fetcher,
+                True,
+                frame,
+                explained_by_spinoff=ticker in explained,
             )
             if ratio is not None:
                 ratios[ticker] = ratio
@@ -1154,6 +1178,7 @@ def apply_to_append(
                 close_fetcher,
                 False,
                 frame,
+                explained_by_spinoff=ticker in explained,
             )
             if ratio is not None:
                 ratios[ticker] = ratio
