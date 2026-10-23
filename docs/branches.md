@@ -1,33 +1,36 @@
 # Branches, worktrees and scratch directories
 
-State after the 2026-10-22 merges. One branch is live besides `main`; everything else
-is either merged into `main` (so its commits are in history) or preserved as an
-`archive/<branch>` tag on `origin`.
+State after the 2026-10-23 cleanup. **Two branches remain, one worktree besides the main
+checkout, and nine archive tags.** Everything else is merged into `main` (so its commits
+are in history) or preserved as an `archive/<branch>` tag on `origin`.
 
 ## What is left, and why
 
 | branch | tip | worktree | why it stays |
 |---|---|---|---|
-| `main` | `e7969b6` | `equity-factor-book` | production; the main checkout is on it, and every branch below except the last is in its history |
-| `research-daily-design` | `94c536e` | `efb-daily-design` | the daily-panel study (`docs/research/daily_design_study.md`) the cadence flag's settings come from; not merged, because it is a study rather than a change to the loop |
+| `main` | `0c97c75` | `equity-factor-book` | production; the main checkout is on it, and both tips below are the only branches outside its history |
+| `research-daily-design` | `94c536e` | `efb-daily-design` | the daily-panel study (`docs/research/daily_design_study.md`) that `docs/turn_on_monthly.md` points at for the cadence settings; a study, not a change to the loop, so it is not merged |
 
-## Merged on 2026-10-22
+Both track `origin`. `research-daily-design` lost its upstream when
+`origin/research-churn2` was deleted during the 2026-10-21 cleanup and was re-pointed at
+`origin/research-daily-design` on 2026-10-22.
+
+## The merges of 2026-10-22, all in `main`
 
 | branch | tip | merge commit | what merged |
 |---|---|---|---|
 | `page-legends` | `ac851db` | `606ba5d` | a legend with units on every chart, and dated notes the snapshot carries |
-| `fix-realized-vol` | `4169a26` | `1f2d575` | the realized volatility measured over the P&L history instead of over the batch a run happened to attribute, the rows it repaired, and the missing legend on the realized-against-forecast chart |
-| `cost-measurement` | `1ef9375` | see `git log --oneline --merges main` | `scripts/cost_split.py`: measured cost split into the overnight move and the execution |
-| `cadence-flag` | `31378ac` | `a25557b` | `EFB_CADENCE`, `EFB_DRIFT_GUARD`, `EFB_HEDGE_MODE`, the hold-day path that finishes the last rebalance's unfilled legs and deferred reversals, and the page pill. **Every flag is off on `main`**; the identity proof is that with the flags unset the manifest is byte-identical to the one `main` wrote before |
+| `cadence-flag` | `31378ac` | `a25557b` | `EFB_CADENCE`, `EFB_DRIFT_GUARD`, `EFB_HEDGE_MODE`, the hold-day path that finishes the last rebalance's unfilled legs and deferred reversals, and the page pill. **Every flag is off on `main`**; with the flags unset the manifest is byte-identical to the one `main` wrote before |
 | `attribution-refinalize` | `c8efec6` | `e7969b6` | a close's cost is re-priced once its fills exist, from the evening job, which is the first run with both the fills and a tree |
 | `owner-fixes` | `0a70387` | `2e91018` | the owner-fix notes, the backups the database writes were proved against, and the scripts that applied and restored them |
+| `fix-realized-vol` | `4169a26` | `1f2d575` | the realized volatility measured over the P&L history instead of over the batch a run happened to attribute, the rows it repaired, and the missing legend on the realized-against-forecast chart |
+| `cost-measurement` | `1ef9375` | `8f2af8d` | `scripts/cost_split.py`: measured cost split into the overnight move and the execution |
+| `debt-lint` | `5e2f49a` | `32225cf` | seven gate ids that could never pass made to skip with their reason, the three lines lint was red on, and `docs/known_test_failures.md` cut to the seven real ones |
+| `docs-research-2` | `8c915de` | `1e3afa8` | `docs/borrow_rate.md`, `docs/nov11_disposition.md`, and the switch and branch docs |
+| `fix-cost-estimate` | `8ebf172` | `0c97c75` | the evening's cost estimate prices the trade rather than the book; reporting only, proven weight-identical on four closes |
 
-`owner-fixes` still tracks `origin/main` from the worktree it was created in; it is
-merged, so the tracking branch is now the merge point rather than a divergence.
-`research-daily-design` lost its upstream when `origin/research-churn2` was deleted and
-was left that way through the 2026-10-21 cleanup; it now tracks
-`origin/research-daily-design` again (`git branch -u origin/research-daily-design
-research-daily-design`, 2026-10-22). No branch is without an upstream.
+Their branches were deleted, locally and on `origin`, on 2026-10-23. The tips above are
+still reachable from `main`, so `git checkout -b <branch> <tip>` restores any of them.
 
 ## Archive tags
 
@@ -80,6 +83,9 @@ every commit is in `main`'s history and `git log` still finds them:
 
 There was no `nov11-b3-*` branch to park.
 
+The nine branches merged on 2026-10-22 and deleted on 2026-10-23 are in the table at the
+top of this file with their tips; they are in `main`'s history, not archived.
+
 ## Restoring anything
 
 ```bash
@@ -96,17 +102,29 @@ git worktree add ../efb-<branch> -b <branch> archive/<branch>
 
 ## Worktrees removed
 
-Fifteen were removed with `git worktree remove --force` after `git status
---porcelain` showed nothing but `.venv`, `web/node_modules` or the `data-src`
-symlink: `efb-b1`, `efb-b2`, `efb-b4`, `efb-b5`, `efb-b6`, `efb-cadence`,
-`efb-churn`, `efb-churn2`, `efb-diag`, `efb-etf-hedge`, `efb-ic-decay`,
-`efb-merge-a` (detached HEAD at `5059ecb`), `efb-nov11-merge`, `efb-page-v4`,
-`efb-skyd`. Then `git worktree prune`. The four that remain are the four branches
-in the first table; the main checkout is on `main`.
+The 2026-10-23 cleanup removed nine with `git worktree remove --force` after
+`git status --porcelain` showed nothing but `.venv`, `web/node_modules` or the `data`
+symlink: `efb-attr-fin`, `efb-cadence-flag`, `efb-cost`, `efb-costmeas`, `efb-debt`,
+`efb-docs2`, `efb-owner-fixes`, `efb-page-legends`, `efb-vol`. Then `git worktree
+prune`. Fifteen more went in the 2026-10-21 cleanup (see `git log docs/branches.md`).
+**One worktree remains besides the main checkout**: `efb-daily-design`, holding
+`research-daily-design`.
 
 ## Scratch directories
 
-- Deleted: `/tmp/icdecay` (873 MB), `/tmp/cadence` (0 B) - 873 MB freed.
-- Kept: `/tmp/churn` (1.8 GB, the study data copy) and `/tmp/nov11merge` (338 MB,
-  the cut trees the attribution recompute used, needed if the owner approves the
-  full P&L recompute).
+Every `/tmp` tree the project built is gone as of 2026-10-23:
+
+| path | size | what it was |
+|---|---|---|
+| `/tmp/efb-pl-data` | 873 MB | a copy of the live artifact tree, used as `data/` in the worktrees that ran gates |
+| `/tmp/nov11merge` | 338 MB | the cut trees per close that the identity proofs and the attribution recompute read |
+| `/tmp/churn` | 938 MB | the daily-design study's panel, descriptors and partial rows |
+
+**2.1 GB freed.** All three were rebuildable: the artifact tree from the seed bucket
+(`scripts/push_seed.py` pulls it, `live/seed.py` verifies every hash), the cut trees from
+the store plus the seed, and the daily-design panel by re-running
+`scripts/daily_design_study.py` on `research-daily-design`. Every database write they
+supported is applied, verified, and backed up under `docs/owner_fixes/backups/` with a
+restore script proved by dry run.
+
+Deleted in the 2026-10-21 cleanup: `/tmp/icdecay` (873 MB) and `/tmp/cadence` (0 B).
