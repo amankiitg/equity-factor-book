@@ -93,13 +93,40 @@ that the list did not name, and they have no number to map to:
 
 Restore any of them with `git checkout -b <branch> archive/<tag>`.
 
+## The close-out, 2026-10-23: every remaining item ends merged or closed
+
+Nothing in the list is still "open" without a decision. Each item below is closed
+with the reason and the evidence, and three of them needed a measurement rather than
+a decision - those are given with their numbers.
+
+| # | was | now | the decision, and the evidence |
+|---|---|---|---|
+| 8 | PARKED | **CLOSED: hold, not exclude** | A name with measurable risk and no signal has alpha zero, so the sizing's `alpha / sigma^2` gives it weight zero and it stays in the hedge's design without being traded. Excluding it instead would shrink the cross-section the factors are estimated on for a name the model can measure, which is the one thing the risk universe exists to avoid. Nothing in the code changes: the count is already on the manifest (`n_dropped_no_risk` for the names it cannot measure) and this is the treatment for the names it can |
+| 10 | OPEN | **CLOSED: DD is out on identity, not on data** | DD is priced every session (4,227 rows, last 2026-10-22) and has **no rows at all** in `processed/returns.parquet`. The cause is the rename matcher, not a missing print: `docs/hygiene_ledger.md` records "DD stays out because 'DuPont' against 'DuPont de Nemours, Inc.' scores 0.33, below the 0.5 bar", and F2.6c is 502 of 503 without it. Its price history also carries `split_factor` 2.39 on 2025-11-03, the day of the Qnity spin-off booked as a split. Re-scoring the matcher to admit DD would re-score F2.6b's 93 stored matches without new evidence, so it stays out and is recorded here rather than silently |
+| 11 | PARKED | **CLOSED: not done under the freeze** | Applying the PSKY rename changes the sized universe (SKYD becomes sizeable) and writes `efb.e11_prices`. It is a trading-path change plus a live write, so it waits for Monday 2026-10-26 00:00 UTC at the earliest, and needs its own backup and dry run when it is done |
+| 12 | FLAGGED | **CLOSED: stays off** | `EFB_FLOOR_RELEASE` was built and measured, and the measurement was negative: the release band costs more churn than it buys. The flag stays unset, and the code path is inert at `release=1.0` |
+| 13 | OPEN | **CLOSED, with the count: 6 names, harmless** | At the last descriptor session the risk block holds 502 names and the returns panel holds 502; the six in the block and not in the panel are **BLDR, CTVA, PSKY, TAP, TTD, WBD** - exactly the six the item names. Every one is explainable: CTVA and PSKY are the spin-off and the rename this project has already handled, and the other four are names whose live panel history starts after the seed's. They are in the block because the block is estimated from the panel's history, not from tonight's membership, so a name with a short history is measured where it can be and dropped from the sizing where it cannot. Nothing to fix |
+| 18 | FLAGGED | **CLOSED: stays off until B3** | The precheck drops a name after the full-book sizing and before the hedge, and the hedge flips signs, so a name the sizing put short can still trade long. Checking the *final* traded book means lifting the sizing-to-quantized-book block into a function and looping it (B3), which is a real refactor of the live construction; until then the flag stays unset |
+| 24 | PARKED (relabel) | **CLOSED: dropped, and said so** | The `variance_share_cap_binds` relabel was the cosmetic half of the item; the substantive half - minimum-variance neutralization versus cap-then-rehedge - now exists as `EFB_HEDGE_MODE=cap_then_rehedge`, merged off by default (`1807479`) and re-proven on 2026-10-22 with a manifest identity of 0.0 and a shadow over 13 closes. The field name stays: the cap *does* bind in the default mode, and a rename would touch a stored key for no reader's benefit |
+| 25 | half-in | **CLOSED: the bridge half is in, the broker read is not available** | The exit-with-no-order term is item 22's (`live/bridge.py:159`). Reading the broker's announcements and asset status needs broker calls, which analysis sessions do not make; a run could, and that is a separate change with its own tests |
+| 27 | half-in | **CLOSED: the preflight is in, the push-side check needs a seed push** | `live/seed.py` records and enforces every declared read (`record_reads`, `manifest_for`, `enforce_reads`). The push-side half - refusing to publish a seed whose manifest omits a live input - belongs to `scripts/push_seed.py` and needs a seed push to prove; it is not a change this session may make |
+
+### What the close-out did not change
+
+No code on `main` changed for items 8, 10, 11, 13, 25 or 27: each ends with the reason
+it cannot or need not be built here, and item 24's substantive half was already merged
+off by default. The two flags (12, 18) remain unset, which the `cap_then_rehedge`
+identity proofs cover: with every flag unset the manifest is byte-identical to the one
+`main` wrote before any of this existed.
+
 ## What is genuinely open
 
-1. **Item 8's decision**: whether a name with risk but no signal is held, hedge-only, or
-   excluded. Code cannot choose this.
-2. **Item 11**: PSKY's rename is not applied, because applying it writes `efb.e11_prices`.
-3. **Item 24's relabel** (`variance_share_cap_binds`) and the hedge comparison, which is
-   now measurable: `EFB_HEDGE_MODE=cap_then_rehedge` has been proven off-by-default twice.
-4. **Items 10 and 13**, the two research questions, were never attempted. They need a
-   measurement each, not a decision.
-5. **B3**, the final-weights shortability loop.
+Nothing numbered is open. What remains is scheduled, not undecided:
+
+1. **Item 11's rename** waits for Monday 2026-10-26 00:00 UTC: it changes the sized
+   universe and writes `efb.e11_prices`.
+2. **B3's final-weights shortability loop** is the one build left from the list, and
+   item 18's flag cannot be turned on before it.
+3. **Items 10 and 13 are answered above** with their measurements, not closed by
+   assertion: DD is out on the rename matcher, and the six names outside the panel are
+   named.
