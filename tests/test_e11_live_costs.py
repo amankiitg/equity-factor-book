@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from efb import costs as costs_mod
 from live import evening_job
@@ -124,9 +125,16 @@ def test_the_impact_is_the_trade_not_the_position(tmp_path: Path) -> None:
     # Half the distance is not half the cost - impact goes as the square root -
     # but it is strictly less, which is the property that was missing.
     assert 0 < halved["impact_bps"] < from_flat["impact_bps"]
-    # The other three components are the cost of owning the book and do not move.
-    for key in ("spread_bps", "commission_bps", "borrow_bps"):
-        assert no_change[key] == from_flat[key]
+    # Spread and commission are the cost of a trade too, so a book that does not
+    # trade costs neither - before 2026-10-22 they were summed over the whole book
+    # and charged in full on a day that traded nothing.
+    assert no_change["spread_bps"] == 0.0
+    assert no_change["commission_bps"] == 0.0
+    # Half the distance, half the spread and half the commission.
+    assert halved["spread_bps"] == pytest.approx(0.5 * from_flat["spread_bps"])
+    assert halved["commission_bps"] == pytest.approx(0.5 * from_flat["commission_bps"])
+    # The borrow is the cost of *holding*: charged either way, on the short gross.
+    assert no_change["borrow_bps"] == from_flat["borrow_bps"] > 0.0
     assert from_flat["traded_notional"] == 1_000_000.0
     assert no_change["traded_notional"] == 0.0
     assert no_change["avg_trade_size"] == 0.0
@@ -144,3 +152,40 @@ def test_a_thin_name_is_named_with_its_own_numbers(tmp_path: Path) -> None:
     )
 
     assert thin == [{"ticker": "THIN", "adv_usd": 500_000.0}]
+
+
+def test_the_estimate_moves_with_the_turnover(tmp_path: Path) -> None:
+    """The 2026-10-22 defect: a flat ~14.3 bp however little the night traded.
+
+    The live store priced 10-09, 10-13 and 10-15 at 14.20, 14.26 and 14.29 bp while
+    their traded notional was 39%, 45% and 43% of NAV, because spread and commission
+    were summed over the whole book. A day that trades a tenth of the book must not
+    carry the whole book's spread.
+    """
+    prices = _prices({"AAA": [1_000_000.0] * 63, "BBB": [1_000_000.0] * 63})
+    root = _write_root(tmp_path, prices)
+    names = ["AAA", "BBB"]
+    specific = np.array([4e-4, 4e-4])
+    weights = np.array([0.5, -0.5])
+
+    full, _thin = evening_job._cost_decomposition(
+        weights, names, specific, 1_000_000.0, root, None
+    )
+    tenth, _thin = evening_job._cost_decomposition(
+        weights, names, specific, 1_000_000.0, root, weights * 0.9
+    )
+
+    # A tenth of the distance is a tenth of the trade cost, and the holding cost is
+    # the one term that does not move.
+    assert tenth["traded_notional"] == pytest.approx(0.1 * full["traded_notional"])
+    assert tenth["spread_bps"] == pytest.approx(0.1 * full["spread_bps"])
+    assert tenth["commission_bps"] == pytest.approx(0.1 * full["commission_bps"])
+    assert tenth["borrow_bps"] == pytest.approx(full["borrow_bps"])
+    # So the total is no longer flat: it is the borrow plus a tenth of the rest.
+    assert tenth["total_bps"] < full["total_bps"]
+    assert tenth["total_bps"] == pytest.approx(
+        tenth["spread_bps"]
+        + tenth["commission_bps"]
+        + tenth["impact_bps"]
+        + tenth["borrow_bps"]
+    )

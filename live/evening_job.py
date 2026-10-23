@@ -1952,12 +1952,16 @@ def _cost_decomposition(
     is held k sessions between rebalances and the short leg is borrowed for
     exactly that long.
 
-    The impact is the cost of the *trade*, so its dollar amount is the change in
-    weight - from flat on the establishment day, which is why the number is
-    unchanged there, and the difference from the last book afterwards. The other
-    three components still scale with the book that is held: they are the cost of
-    owning the position for the horizon, not of establishing it, and they are
-    named as such until the owner says otherwise.
+    Every term that is the cost of a *trade* is charged on the traded notional - the
+    change in weight from the last book, from flat on the establishment day - and only
+    the borrow, which is the cost of *holding*, is charged on the book. Spread,
+    commission and impact are all paid once per dollar traded, so a day that trades
+    4% of the book cannot cost the same as a day that trades all of it.
+
+    That was not true before 2026-10-22: spread and commission were summed over
+    `|weights|`, the whole book, so the total barely moved from day to day - 14.20,
+    14.26 and 14.29 bp on 10-09, 10-13 and 10-15, whose traded notional was 39%, 45%
+    and 43% of NAV - and the flatness was the giveaway, not the level.
 
     Returns the components and the names whose own ADV is unknown or thin.
     """
@@ -1977,9 +1981,10 @@ def _cost_decomposition(
         * sigma
         * np.sqrt(np.maximum(dollar_trade, 0.0) / np.maximum(adv_map, 1.0))
     )
-    spread_bps = float(np.sum(spread_map * np.abs(weights))) * 1e4
-    commission_bps = float(np.sum(costs_mod.COMMISSION * np.abs(weights))) * 1e4
-    impact_bps = float(np.sum(impact * np.abs(weights - held))) * 1e4
+    traded = np.abs(weights - held)
+    spread_bps = float(np.sum(spread_map * traded)) * 1e4
+    commission_bps = float(np.sum(costs_mod.COMMISSION * traded)) * 1e4
+    impact_bps = float(np.sum(impact * traded)) * 1e4
     short_gross = float(np.maximum(-weights, 0.0).sum())
     horizon_sessions = HORIZON if horizon is None else int(horizon)
     borrow_bps = (
