@@ -81,9 +81,12 @@ Three things moved on 2026-10-22, none of them a flag and none of them the book:
   sessions that run happened to attribute. The page's "realized against forecast" chart
   is the one that changed most: it used to show a tenfold cliff on 2026-10-15 that was an
   artefact of a two-session window.
-- **The borrow rate is still 2%/yr and still unsourced**; `docs/borrow_rate.md` collects
-  the public evidence (general collateral at 10-35 bp, Alpaca free on easy-to-borrow) and
-  recommends 0.35% with a 0.10%-1.00% range. It is not changed in code; that is yours.
+- **The borrow rate became 0.35%/yr on 2026-10-23**, from the E6 provisional 2% that had
+  no recorded source. `docs/borrow_rate.md` carries the evidence (general collateral at
+  10-35 bp, Alpaca free on easy-to-borrow, 0.10-1.00% as the range) and the arithmetic:
+  the evening's borrow term falls from 8.33 to 1.46 bp on a half-short book, and the
+  monthly book at the 169 bp anchor nets **+62.7 bp/yr** instead of -20.5. The identity
+  proof for the change is weight-for-weight 0.0 on four closes.
 
 None of the three changes what the four variables below do.
 

@@ -6,14 +6,42 @@ are in history) or preserved as an `archive/<branch>` tag on `origin`.
 
 ## What is left, and why
 
+State after the 2026-10-23 close-out. **Four branches, two worktrees.** Everything that
+merged today is deleted, locally and on `origin`; its tip is in the table below, so it can
+be restored from `main`'s history.
+
 | branch | tip | worktree | why it stays |
 |---|---|---|---|
-| `main` | `0c97c75` | `equity-factor-book` | production; the main checkout is on it, and both tips below are the only branches outside its history |
-| `research-daily-design` | `94c536e` | `efb-daily-design` | the daily-panel study (`docs/research/daily_design_study.md`) that `docs/turn_on_monthly.md` points at for the cadence settings; a study, not a change to the loop, so it is not merged |
+| `main` | `a8e0546` | `equity-factor-book` | production; every branch below except the three studies and the two held ones is in its history |
+| `research-daily-design` | `94c536e` | `efb-daily-design` | the daily-panel study (`docs/research/daily_design_study.md`) that `docs/turn_on_monthly.md` points at for the cadence settings; a study, not a change to the loop |
+| `research-exec-timing` | `e7b2235` | - | `docs/research/exec_timing.md`: the open against 10:00 ET against the fills, on twelve days. Research only, never merged |
+| `spinoff-explains-adjustment` | `44e04ca` | - | **held under the freeze**: the CTVA back-adjustment, plus an owner decision on which contract wins |
+| `order-time-quotes` | `4cdbc30` | - | **held under the freeze**: records the bid, ask and mid with every order. Changes the morning path and needs `docs/migrations/e13_order_quotes.sql` applied |
 
-Both track `origin`. `research-daily-design` lost its upstream when
-`origin/research-churn2` was deleted during the 2026-10-21 cleanup and was re-pointed at
-`origin/research-daily-design` on 2026-10-22.
+`handoff` (`63c440c`) was written mid-session when the work looked like it would
+overrun; it did not, and the branch is deleted. This file and
+`docs/known_test_failures.md` say everything it said.
+
+### Held under the trading freeze, with their proofs
+
+Both are pushed and both have their own tests green; neither may merge before Monday
+2026-10-26 00:00 UTC, because both change what the evening or the morning does.
+
+| branch | proof | the exact merge |
+|---|---|---|
+| `spinoff-explains-adjustment` | `tests/test_e11_corporate_actions.py` 6 passed (the stop contract intact); `tests/test_week2_spinoff.py` 47 passed with the recorded-spin-off exemption, the four stale-contract ids still failing; lint scope green | decide the contract, then `git merge --no-ff spinoff-explains-adjustment` from a fresh worktree off `origin/main` and gate |
+| `order-time-quotes` | 15 tests in `tests/test_order_quotes.py` and `tests/test_cost_split.py`; `test_e11_preflip_fixes.py` and `test_run_live_daily.py` unaffected (60 passed); ruff and black clean in the lint scope | apply `docs/migrations/e13_order_quotes.sql`, then merge from a fresh worktree and gate |
+
+## The merges of 2026-10-23
+
+| branch | tip | merge commit | what merged | gate |
+|---|---|---|---|---|
+| `e13-port-map` | `61c0c25` | `a633e70` | 37 rows added to the port map and the stored counts re-recorded: 146 modules, 156 mapped rows | 5 failed, 1659 passed |
+| `borrow-rate-035` | `a9d63f5` | `459ea31` | `BORROW_RATE` 2% to 0.35% with its source in the code and in `docs/borrow_rate.md`, eleven web fixtures restated (the borrow term and its total, nothing else), and the E9 artifact test separated from the live constant | 5 failed, 1660 passed |
+| `docs-closeout` | `029eb12` | `a8e0546` | the nov11 close-out, `docs/known_test_failures.md` at five ids, the two tree recipes, and this file | 5 failed, 1660 passed |
+
+All three were cut from `origin/main` in a fresh worktree, merged `--no-ff`, gated on the
+merge commit, pushed, and then deleted.
 
 ## The merges of 2026-10-22, all in `main`
 
@@ -102,7 +130,13 @@ git worktree add ../efb-<branch> -b <branch> archive/<branch>
 
 ## Worktrees removed
 
-The 2026-10-23 cleanup removed nine with `git worktree remove --force` after
+The 2026-10-23 close-out removed eleven more after `git status --porcelain` showed
+nothing but `.venv`, `web/node_modules` or the `data` symlink: `efb-borrow`, `efb-ctva`,
+`efb-docs2`, `efb-docs3`, `efb-e13`, `efb-exec`, `efb-handoff`, `efb-m-borrow`,
+`efb-m-borrow2`, `efb-m-docs`, `efb-m-e13`, `efb-quotes`. **Two remain**: the main
+checkout, on `main`, and `efb-daily-design`, holding `research-daily-design`.
+
+The earlier 2026-10-23 cleanup removed nine with `git worktree remove --force` after
 `git status --porcelain` showed nothing but `.venv`, `web/node_modules` or the `data`
 symlink: `efb-attr-fin`, `efb-cadence-flag`, `efb-cost`, `efb-costmeas`, `efb-debt`,
 `efb-docs2`, `efb-owner-fixes`, `efb-page-legends`, `efb-vol`. Then `git worktree
