@@ -278,12 +278,8 @@ def restate_risk_lines(
     if frame is None or frame.empty or "trade_date" not in frame.columns:
         return []
     lines = attribution.risk_lines_over(frame)
-    wanted = (
-        None if days is None else {str(day)[:10] for day in days}
-    )
-    stored = {
-        str(row["trade_date"])[:10]: row for row in frame.to_dict("records")
-    }
+    wanted = None if days is None else {str(day)[:10] for day in days}
+    stored = {str(row["trade_date"])[:10]: row for row in frame.to_dict("records")}
     changed: list[dict[str, Any]] = []
     rows: list[dict[str, Any]] = []
     for line in lines.to_dict("records"):
@@ -514,7 +510,9 @@ def refinalize_stale(
         return []
     counted = _filled_by_day(fills)
     days = stored["trade_date"].astype(str).str.slice(0, 10)
-    rows = stored.loc[:, [column for column in ("trade_date", "n_filled") if column in stored]]
+    rows = stored.loc[
+        :, [column for column in ("trade_date", "n_filled") if column in stored]
+    ]
     changed: list[dict[str, Any]] = []
     for day in sorted(set(days)):
         if not counted.get(day):

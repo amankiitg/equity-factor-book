@@ -199,9 +199,7 @@ def _rows() -> list[dict[str, object]]:
                 "forecast_vol": LIVE_FORECAST[day],
                 # The two failures, side by side: a null where a session was priced
                 # alone, and the two-point cliff on 10-15.
-                "realized_vol": (
-                    float("nan") if day != CLIFF_DAY else 0.002258
-                ),
+                "realized_vol": (float("nan") if day != CLIFF_DAY else 0.002258),
                 "vol_ratio": float("nan"),
                 "bias_statistic": None,
                 "pnl_cost": -0.0001,
@@ -242,7 +240,9 @@ def test_a_second_restate_writes_nothing(local_store: pathlib.Path) -> None:
     """Idempotent: the values it wrote are the values it computes."""
     store.upsert("attribution", _rows())
     attribution_job.restate_risk_lines()
-    settled = store.select("attribution").sort_values("trade_date").reset_index(drop=True)
+    settled = (
+        store.select("attribution").sort_values("trade_date").reset_index(drop=True)
+    )
 
     again = attribution_job.restate_risk_lines()
 
@@ -253,7 +253,9 @@ def test_a_second_restate_writes_nothing(local_store: pathlib.Path) -> None:
 
 def test_a_dry_run_reports_without_writing(local_store: pathlib.Path) -> None:
     store.upsert("attribution", _rows())
-    before = store.select("attribution").sort_values("trade_date").reset_index(drop=True)
+    before = (
+        store.select("attribution").sort_values("trade_date").reset_index(drop=True)
+    )
 
     changed = attribution_job.restate_risk_lines(dry_run=True)
 

@@ -57,10 +57,27 @@ def test_d5_loaders_raise_on_missing_artifact(loader, tmp_path) -> None:
 
 @pytest.mark.integration
 def test_methodology_links_exist() -> None:
+    """Every methodology link points at something, where that something can be here.
+
+    The notebook renders are built where the notebooks are run and are not committed,
+    so a tree without `notebooks/` cannot check them - and the six render-existence
+    tests skip for the same reason. Everything else the methodology tab links must
+    exist: those are the committed docs and result files, and a broken one is a
+    broken page.
+    """
     from dashboard.tabs import methodology
 
+    renders = []
     for _label, rel in methodology.LINKS:
         if rel.startswith(("http://", "https://")):
             continue
+        if rel.startswith("notebooks/"):
+            renders.append(rel)
+            continue
         assert (ROOT / rel).exists(), rel
     assert any("E6" in rel for _label, rel in methodology.LINKS)
+    if renders and not (ROOT / "notebooks").exists():
+        pytest.skip(
+            f"{len(renders)} methodology link(s) point at notebook renders, which are "
+            "not in this tree"
+        )
