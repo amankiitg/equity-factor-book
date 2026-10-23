@@ -59,6 +59,41 @@ EXECUTION_COLUMNS = [
     "broker_symbol",
 ]
 
+# What the order saw when it was submitted, when the database has the columns for it.
+# `realized_cost_bps` measures a fill against the close the book was sized from, and
+# the loop submits about two hours later, so the overnight move and the drift to
+# submission are both inside that number. These four let `scripts/cost_split.py` take
+# them out. They are written only when `docs/migrations/e13_order_quotes.sql` has been
+# applied: a write that named a column the database does not have would fail the whole
+# order log, and this is reporting data that must never be able to stop the book.
+QUOTE_COLUMNS: tuple[str, ...] = (
+    "submitted_bid",
+    "submitted_ask",
+    "submitted_mid",
+    "quoted_at",
+)
+
+
+def order_quote_columns() -> tuple[str, ...]:
+    """The quote columns the live database has. Empty until the migration is applied."""
+    from live import store
+
+    try:
+        catalog = store.select_catalog()
+    except Exception:  # noqa: BLE001 - a schema read that must not stop the morning
+        return ()
+    if catalog is None or catalog.empty:
+        return ()
+    if "table_name" not in catalog.columns or "column_name" not in catalog.columns:
+        return ()
+    have = set(
+        catalog.loc[catalog["table_name"].astype(str) == "orders", "column_name"]
+        .astype(str)
+        .tolist()
+    )
+    return tuple(column for column in QUOTE_COLUMNS if column in have)
+
+
 # A leg with one of these statuses, or one of these reason codes, was not
 # confirmed. The run is incomplete: at least one leg was halted, left in an
 # unknown state, refused or rejected, so the day is not done and the next tick
@@ -448,6 +483,7 @@ def submit_orders(
     dry_run: bool,
     prices: dict[str, float] | None = None,
     close: str | None = None,
+    quote_columns: tuple[str, ...] = (),
 ) -> pd.DataFrame:
     """Submit guarded orders and record one row per order, filled or not.
 
@@ -514,21 +550,34 @@ def submit_orders(
     if not dry_run and client is not None:
         fills = alpaca.submit_market_orders(orders, client, prices or {}, close=close)
         for fill in fills:
-            records.append(
-                {
-                    "ticker": fill.ticker,
-                    "intended_notional": fill.intended_notional,
-                    "filled_notional": fill.filled_notional,
-                    "status": fill.status,
-                    "reason": fill.detail or "live paper fill",
-                    "reason_code": fill.reason_code,
-                    "client_order_id": fill.client_order_id,
-                    "position_intent": fill.intent,
-                    "broker_order_id": fill.order_id,
-                    "broker_symbol": fill.broker_symbol,
-                }
-            )
-    return pd.DataFrame(records, columns=EXECUTION_COLUMNS[1:])
+            record: dict[str, object] = {
+                "ticker": fill.ticker,
+                "intended_notional": fill.intended_notional,
+                "filled_notional": fill.filled_notional,
+                "status": fill.status,
+                "reason": fill.detail or "live paper fill",
+                "reason_code": fill.reason_code,
+                "client_order_id": fill.client_order_id,
+                "position_intent": fill.intent,
+                "broker_order_id": fill.order_id,
+                "broker_symbol": fill.broker_symbol,
+            }
+            # What the order saw when it went out, only where the database can hold
+            # it. A null is "no quote was recorded", which is what a row written
+            # before the migration means.
+            for column, value in (
+                ("submitted_bid", fill.submitted_bid),
+                ("submitted_ask", fill.submitted_ask),
+                ("submitted_mid", fill.submitted_mid),
+                ("quoted_at", fill.quoted_at or None),
+            ):
+                if column in quote_columns:
+                    record[column] = value
+            records.append(record)
+    columns = list(EXECUTION_COLUMNS[1:]) + [
+        column for column in QUOTE_COLUMNS if column in quote_columns
+    ]
+    return pd.DataFrame(records, columns=columns)
 
 
 def run_morning(
@@ -612,7 +661,14 @@ def run_morning(
         alpaca_module.check_buying_power(
             client, [order for order in guarded if order.status == guards.PASSED]
         )
-    records = submit_orders(guarded, client, dry_run, prices, close=as_of)
+    records = submit_orders(
+        guarded,
+        client,
+        dry_run,
+        prices,
+        close=as_of,
+        quote_columns=order_quote_columns(),
+    )
     if skipped_minimum:
         records = pd.concat(
             [

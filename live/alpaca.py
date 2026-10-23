@@ -206,6 +206,13 @@ class Fill:
     # ordinary case, where the two agree, and it is what the caller reads to name
     # the rename in the email rather than leaving the two names unexplained.
     broker_symbol: str = ""
+    # What the order saw when it went out: the bid, the ask, their mid and the
+    # instant the quote was read. Empty when the quote could not be read, which is
+    # recorded as absent rather than as zero - a missing quote is not a tight one.
+    submitted_bid: float | None = None
+    submitted_ask: float | None = None
+    submitted_mid: float | None = None
+    quoted_at: str = ""
 
 
 # ---------------------------------------------------------------- rate limiting
@@ -1213,6 +1220,7 @@ def submit_market_orders(
     throttle: Throttle | None = None,
     id_prefix: str = "efb",
     resolver: SymbolResolver | None = None,
+    quote_client: Any = None,
 ) -> list[Fill]:
     """Submit market orders, one record per intended leg, and do not poll.
 
@@ -1285,6 +1293,26 @@ def submit_market_orders(
     symbols: dict[str, SymbolResolution] = {
         order.ticker: resolver.resolve(order.ticker) for order in orders
     }
+
+    # One quote request for the whole book, read just before the first submission and
+    # kept for every leg that goes out after it. The loop submits within a few minutes,
+    # so one read is the price the book actually saw; a per-leg read would double the
+    # request count in a loop that is rate limited, for a spread that has not moved.
+    # A failure here is recorded as an absent quote and never stops the book.
+    quotes: dict[str, dict[str, Any]] = {}
+    if quote_client is not False:
+        try:
+            quotes = latest_quotes(
+                [order.ticker for order in orders], client=quote_client or None
+            )
+        except Exception as exc:  # noqa: BLE001 - a read that must not stop the book
+            logger.warning(
+                "the order-time quote could not be read, so the legs carry none: "
+                "%s: %s",
+                type(exc).__name__,
+                exc,
+            )
+            quotes = {}
 
     fills: list[Fill] = []
     halted = False
@@ -1458,6 +1486,13 @@ def submit_market_orders(
                 # the ordinary case, and the caller reads a non-empty one as the
                 # rename to name in the email.
                 broker_symbol=symbol if symbol != order.ticker else "",
+                # What the order saw when it went out. Absent is recorded as absent:
+                # a leg whose quote could not be read is not a leg that traded at the
+                # mid, and `scripts/cost_split.py` splits only where a quote exists.
+                submitted_bid=(quotes.get(order.ticker) or {}).get("bid"),
+                submitted_ask=(quotes.get(order.ticker) or {}).get("ask"),
+                submitted_mid=(quotes.get(order.ticker) or {}).get("mid"),
+                quoted_at=(quotes.get(order.ticker) or {}).get("quoted_at", ""),
             )
         )
     return fills
@@ -1471,6 +1506,61 @@ def submit_market_orders(
 # guard that protects *submission*: an evening that is not trading still has to
 # know a spin-off happened, because it decides what the appended session's return
 # is.
+
+
+def latest_quotes(symbols: list[str], client: Any = None) -> dict[str, dict[str, Any]]:
+    """The latest bid, ask and mid per symbol, and when the quote was read.
+
+    One request for the whole list, because the submission loop is rate limited and a
+    quote per leg would double its request count. The mid is computed here rather than
+    by the vendor so the three numbers cannot disagree about which quote they came
+    from. A symbol with no quote is absent from the answer instead of being zero: a
+    skipped quote is not a tight spread, and `scripts/cost_split.py` reads an absent
+    quote as "not recorded".
+
+    The read is best-effort by design. It runs inside the submission loop, where a
+    market-data failure must not stop the book from trading, so the caller catches
+    and records the absence.
+    """
+    if not symbols:
+        return {}
+    try:
+        from alpaca.data.historical import StockHistoricalDataClient  # type: ignore
+        from alpaca.data.requests import StockLatestQuoteRequest  # type: ignore
+    except ImportError as exc:  # pragma: no cover - depends on the environment
+        raise RuntimeError("the quote read needs alpaca-py; install it") from exc
+    reader = (
+        client if client is not None else StockHistoricalDataClient(*data_credentials())
+    )
+    request = StockLatestQuoteRequest(symbol_or_symbols=sorted(set(symbols)))
+    quotes = reader.get_stock_latest_quote(request)
+    stamp = pd.Timestamp.now(tz="UTC").isoformat()
+    out: dict[str, dict[str, Any]] = {}
+    for symbol, quote in dict(quotes).items():
+        bid = _positive_or_none(getattr(quote, "bid_price", None))
+        ask = _positive_or_none(getattr(quote, "ask_price", None))
+        if bid is None or ask is None:
+            continue
+        out[str(symbol)] = {
+            "bid": bid,
+            "ask": ask,
+            "mid": (bid + ask) / 2.0,
+            "quoted_at": stamp,
+        }
+    return out
+
+
+def _positive_or_none(value: Any) -> float | None:
+    """A quote price, or None when it is absent, zero or unusable."""
+    if value is None or value == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number) or number <= 0:
+        return None
+    return number
 
 
 def data_credentials() -> tuple[str, str]:
