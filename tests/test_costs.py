@@ -108,7 +108,15 @@ def test_the_e11_constraints_charge_borrow_at_e11s_rate() -> None:
     if not path.exists():
         pytest.skip("the E9 run has not completed")
     row = pd.read_parquet(path).iloc[0]
-    assert row["borrow_rate"] == costs.BORROW_RATE
+    # The row records the rate the study was measured at, which is not the same
+    # question as the rate the live path charges today: on 2026-10-23 the owner moved
+    # `BORROW_RATE` from the E6 provisional 2% to 0.35% (docs/borrow_rate.md), and the
+    # stored row is a measurement made before that. Asserting the artifact against the
+    # live constant would make an owner's rate change a study defect. So the row is
+    # checked for having recorded *a* rate, and the live path is checked separately,
+    # below, for charging the one it declares.
+    assert row["borrow_rate"] > 0.0
+    assert costs.BORROW_RATE > 0.0
     assert row["min_notional"] == costs.ALPACA_MIN_NOTIONAL
     assert row["tested_aum"] == 1_000_000.0
     # borrow is charged on the short leg: a real, small share of the cost
@@ -123,6 +131,31 @@ def test_the_e11_constraints_charge_borrow_at_e11s_rate() -> None:
     # borrow availability has no history: recorded, with size as a labelled proxy
     assert row["borrow_availability_history"] == 0.0
     assert row["borrow_availability_proxy"] == 1.0
+
+
+def test_the_live_cost_estimate_charges_the_rate_the_module_declares(
+    tmp_path: Path,
+) -> None:
+    """What the evening charges is `BORROW_RATE`, whatever the E9 study recorded.
+
+    One book, one close, and the borrow term read back out of the estimate: half a
+    nav of short gross over a 21-session horizon costs `BORROW_RATE x 0.5 x 21/252`.
+    """
+    from live import evening_job
+    from tests.test_e11_live_costs import _prices, _write_root
+
+    prices = _prices({"AAA": [1_000_000.0] * 63, "BBB": [1_000_000.0] * 63})
+    root = _write_root(tmp_path, prices)
+    cost, _thin = evening_job._cost_decomposition(
+        np.array([0.5, -0.5]),
+        ["AAA", "BBB"],
+        np.array([4e-4, 4e-4]),
+        1_000_000.0,
+        root,
+        None,
+    )
+    expected_bps = costs.BORROW_RATE * 0.5 * (evening_job.HORIZON / 252.0) * 1e4
+    assert cost["borrow_bps"] == pytest.approx(expected_bps, rel=1e-9)
 
 
 @pytest.mark.integration
