@@ -30,7 +30,15 @@ HORIZON = 21
 CORWIN_WINDOW = 63
 IMPACT_K = 0.5  # square-root impact coefficient, uncertainty [0.25, 1.0]
 COMMISSION = 1e-4  # 1 bp per dollar traded, one side
-BORROW_RATE = 0.02  # 2% per year on short notional, the E6 provisional
+# 2026-10-23: the E6 provisional 2% had no recorded source and is six to twenty times
+# any published figure for the names this book shorts. The evidence and the arithmetic
+# are in docs/borrow_rate.md: general collateral runs 10-35 bp/yr (index-level 10 bp,
+# the industry's 30 bp benchmark, D'Avolio's 17 bp value-weighted mean), 9% of lent
+# names cost more than 1% and carry 40% of the borrow bill on 2% of the dollars, and
+# Alpaca charges nothing on its easy-to-borrow names. 35 bp is the benchmark plus a
+# margin for the tail. The monthly book at the 169 bp anchor nets +62.7 bp/yr at this
+# rate and breaks even at ~1.6%.
+BORROW_RATE = 0.0035  # 35 bp/yr on short notional, from docs/borrow_rate.md
 ANNUAL = 252
 # E11's own trading constraints, so the research measurement can mirror them:
 # the smallest leg the morning sends (`live/alpaca.py::DELTA_MIN_NOTIONAL`) and
