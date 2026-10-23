@@ -1,6 +1,47 @@
 # The known test failures, and what a report has to do with them
 
-## The list a report compares against: fourteen ids, measured on the merged tree
+## The list a report compares against today: seven ids
+
+Measured on `main` `1f2d575` on 2026-10-22 with the gate's own command.
+
+```
+.venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"
+```
+
+**14 failed, 1650 passed** on 2026-10-22 before the triage below. Of the fourteen, seven
+were never failures of behaviour: they assert that files the repository does not commit
+exist, so no checkout could ever pass them. Those seven now skip with the reason on the
+record, and **the gate's failing set is seven ids**. Two of the seven are the port map
+being behind the repository; five are real conditions in the data this machine holds.
+Nothing was deleted or weakened: every id below still fails, and each says why.
+
+| id | stale or real | cause |
+|---|---|---|
+| `tests/test_week2_spinoff.py::test_the_artifact_is_written_only_when_something_was_applied` | **real** (vendor data) | `ValueError: CTVA: the vendor back-adjusted the last stored session (ratio 0.150038) with no split record behind it, so the run stops rather than guessing what happened`. A 6.7x back-adjustment with no split record; the spin-off rule refuses to apply it rather than guess. All four ids in this file are that one refusal raised from four entry points |
+| `tests/test_week2_spinoff.py::test_a_vendor_read_that_fails_leaves_the_print_and_the_flag` | **real** (the same) | the same CTVA refusal |
+| `tests/test_week2_spinoff.py::test_a_hung_spin_off_read_is_named_in_the_evening_email` | **real** (the same) | the same CTVA refusal |
+| `tests/test_week2_spinoff.py::test_the_read_that_answered_and_found_nothing_is_not_a_failure` | **real** (the same) | the same CTVA refusal |
+| `tests/test_e11_corporate_actions.py::test_the_aph_split_is_reproduced_from_the_real_rows` | **real** (vendor data) | the split reproduction recovers 82.78 from the real `data/raw` rows against the stored row's 82.07 at a 10% bound: the rows now carry a different split from the one that was stored |
+| `tests/test_e13_design_note.py::test_every_module_in_the_repository_appears_in_the_map` | **real** (the doc is behind) | 26 modules are not in the port map: `live/bridge.py`, `live/preflight.py`, the five `scripts/nov11_*` research and audit scripts, and 19 `web/src/*` files. The map is meant to be complete, so this is a documentation defect, and re-recording it is a docs job that moves whenever a module lands |
+| `tests/test_e13_design_note.py::test_the_stored_module_count_is_the_count_this_test_measures` | **real** (the same) | the same enumeration: 105 stored against 135 measured |
+
+### The seven that were made to skip, and why that is not a weakening
+
+`tests/test_dashboard_d5.py::test_methodology_links_exist` and the six
+`test_e4..e9_walkthrough_notebook` render checks asserted that
+`notebooks/E*_walkthrough.html` exists. Those renders are built where the notebooks are
+run and are **not committed** - `notebooks/` is not in the tree at all - so the seven
+could only ever fail, on every machine, for a reason no change to the code can fix. They
+now skip when the render is absent, with the path and the reason in the skip message, and
+they still assert everything else: `test_methodology_links_exist` keeps checking every
+committed link the methodology tab carries, and the six notebook tests keep their size
+and link checks for a tree where the renders exist. The repository already did this for
+`test_published_docs_exist_for_every_e4_link` ("docs not published yet"), so the pattern
+is the file's own.
+
+## The list before the triage: fourteen ids, measured on the merged tree
+
+Kept as the record of what the gate compared against from 2026-10-16 to 2026-10-22.
 
 Measured on `nov11-into-main` (the merge of `origin/main` `1b500b9` into
 `origin/nov11` `6903912`) on 2026-10-16, with the gate's own command:
@@ -15,6 +56,8 @@ the repository's own `data/` tree. These fourteen are the list: the same fourtee
 names them as known and counts nothing else as anything but new; the merge's own
 three-way comparison is §A4 of `docs/nov11_merge_report.md`.
 
+| id | cause |
+|---|---|
 | id | cause |
 |---|---|
 | `tests/test_dashboard_d5.py::test_methodology_links_exist` | `notebooks/E1_walkthrough.html` is not in this tree. The notebook renders are built where the notebooks are run and are not committed, so the dashboard's methodology links and the six render-existence checks below have no file to open. One cause, seven ids |
