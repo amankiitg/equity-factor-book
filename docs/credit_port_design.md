@@ -682,6 +682,8 @@ criterion is a test rather than a claim.
 | live/alpaca.py | re-specified | the broker and the order type change; the interface of intent, submit, poll and reconcile does not |
 | live/appendix.py | unchanged | mirroring each model input into a queryable store is exactly what a credit desk needs for point-in-time marks |
 | live/breadth.py | unchanged | effective breadth is a property of the weight vector |
+| live/bridge.py | unchanged | the identity bridge between the account and the book is a reconciliation, and a credit book reconciles the same way |
+| live/cadence.py | re-specified | the rebalance calendar is generic, and a credit book's calendar has to carry index rolls and coupon dates |
 | live/clock.py | unchanged | the thirty-session clock is an operating discipline, not an equity one |
 | live/construction_table.py | unchanged | the construction diagnostics port; the vintage of the design it reports is now recorded |
 | live/corporate_actions.py | re-specified | splits become coupons, calls, tenders and 144A exchanges, and the vendor sentinel lesson carries over |
@@ -693,6 +695,7 @@ criterion is a test rather than a claim.
 | live/morning_job.py | unchanged | submit, poll and reconcile the intent |
 | live/notify.py | unchanged | run notification |
 | live/positions.py | unchanged | read the account before sizing and report the mismatch |
+| live/preflight.py | unchanged | the run's declared-inputs preflight is the guard that a new vendor file cannot be read silently, which a credit desk needs more |
 | live/reconcile.py | re-specified | the forecast-against-outcome reconciliation ports, and gains carry and roll-down |
 | live/runroot.py | unchanged | the per-run tree |
 | live/sanity.py | unchanged | the sanity gate, and its replay defect, are asset-class-agnostic |
@@ -769,6 +772,40 @@ criterion is a test rather than a claim.
 | docs/multiple_testing_ledger.md | unchanged | the deflated-Sharpe discipline is the part of EFB a credit desk most needs |
 | docs/roadmap_v2.md | unchanged | the programme record |
 | handoff/ | unchanged | the handoff convention, which the credit port should adopt on day one |
+| scripts/backfill_reconciliation.py | unchanged | the one-off that writes a priced close's reconciliation row from the store, with its own dry run |
+| scripts/backup_attribution_rows.py | unchanged | the backup step every attribution write is proved against, and the restore script beside it |
+| scripts/cadence_shadow.py | re-specified | the offline shadow that replays a rebalance calendar stays as a shape, and its guard measures a credit book's factor exposure |
+| scripts/cost_split.py | re-specified | splitting a measured cost into drift and execution is asset-class-agnostic, and the reference price becomes TRACE's |
+| scripts/nov11_hedge_research.py | dropped | a one-sprint equity hedge comparison, kept as the record of how the hedge mode was chosen and not ported |
+| scripts/nov11_live_churn_research.py | dropped | the same: an equity churn measurement whose numbers belong to this book |
+| scripts/nov11_live_cost_research.py | dropped | the same: the live cost measurement that produced the 169 bp anchor |
+| scripts/nov11_notnull_audit.py | unchanged | a read-only audit of which columns can hold nothing is a migration check, not an equity one |
+| scripts/nov11_turnover_research.py | dropped | the same: the turnover study behind the cadence decision |
+| scripts/recompute_attribution.py | unchanged | recomputing stored rows from the current code, dry run first, is the same operation with different terms |
+| scripts/repair_risk_lines.py | unchanged | restating a series column from history is a repair a credit book needs for the same reason: a window is the series, not the batch |
+| scripts/restore_attribution.py | unchanged | the restore half of the backup beside it |
+| scripts/restore_common.py | unchanged | the shared diff and write machinery the three restore scripts use |
+| scripts/restore_reconciliation.py | unchanged | the restore half of the reconciliation backup |
+| web/src/ActualHoldingsTable.tsx | re-specified | the account's holdings become bond positions, in notional and with a rating rather than a ticker and a weight |
+| web/src/Alerts.tsx | unchanged | the alert list renders what the snapshot decides is worth attention, which is a snapshot question |
+| web/src/AttributionSection.tsx | re-specified | the attribution charts lose nothing and gain carry and roll-down, with the same rule that every series names its unit |
+| web/src/Bridge.tsx | unchanged | the bridge view renders the block the evening stores, whose terms change rather than its shape |
+| web/src/Details.tsx | re-specified | the detail drawer's rows become issue terms: coupon, maturity, rating, parent |
+| web/src/DrawerSection.tsx | unchanged | the drawer's shell |
+| web/src/ExposuresSection.tsx | re-specified | the exposures become credit factors and DTS rather than equity factors |
+| web/src/HedgePanel.tsx | re-specified | the hedge panel shows CDX and Treasury legs, and its neutrality check is the same projection |
+| web/src/MetricsRow.tsx | re-specified | the headline row's volatility and cost become spread duration and carry |
+| web/src/Panel.tsx | unchanged | the panel shell every section is built on |
+| web/src/StatusStrip.tsx | unchanged | the run-status strip reads the run's own row and does not know the asset class |
+| web/src/account.ts | re-specified | deriving the account's book from the broker payload becomes bond positions, and the concentration measure changes with it |
+| web/src/attribution.test.tsx | unchanged | the attribution tests follow the fixtures |
+| web/src/bridge.test.tsx | unchanged | the bridge tests follow the fixtures |
+| web/src/exceptions.test.ts | unchanged | the exception tests, which is the page's error vocabulary and is asset-class-agnostic |
+| web/src/exceptions.ts | unchanged | the error vocabulary itself: what a reader is told when a section cannot be built |
+| web/src/labels.ts | re-specified | the label table's factor names become credit names, and its units become spread and notional |
+| web/src/legends.test.tsx | unchanged | the legend contract: every chart names its series and states its unit, which is a rule for any desk |
+| web/src/status.test.tsx | unchanged | the status tests follow the fixtures |
+| web/src/status.ts | unchanged | turning a snapshot into the one-line status pill is a document question, not an asset-class one |
 
 ### 13.5 The E12 modules
 
