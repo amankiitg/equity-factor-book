@@ -16,18 +16,18 @@ is either merged into `main` (so its commits are in history) or preserved as an
 | branch | tip | merge commit | what merged |
 |---|---|---|---|
 | `page-legends` | `ac851db` | `606ba5d` | a legend with units on every chart, and dated notes the snapshot carries |
+| `fix-realized-vol` | `4169a26` | `1f2d575` | the realized volatility measured over the P&L history instead of over the batch a run happened to attribute, the rows it repaired, and the missing legend on the realized-against-forecast chart |
+| `cost-measurement` | `1ef9375` | see `git log --oneline --merges main` | `scripts/cost_split.py`: measured cost split into the overnight move and the execution |
 | `cadence-flag` | `31378ac` | `a25557b` | `EFB_CADENCE`, `EFB_DRIFT_GUARD`, `EFB_HEDGE_MODE`, the hold-day path that finishes the last rebalance's unfilled legs and deferred reversals, and the page pill. **Every flag is off on `main`**; the identity proof is that with the flags unset the manifest is byte-identical to the one `main` wrote before |
 | `attribution-refinalize` | `c8efec6` | `e7969b6` | a close's cost is re-priced once its fills exist, from the evening job, which is the first run with both the fills and a tree |
-| `owner-fixes` | this commit | the merge that carries this file | the owner-fix notes, the backups the database writes were proved against, and the scripts that applied and restored them |
+| `owner-fixes` | `0a70387` | `2e91018` | the owner-fix notes, the backups the database writes were proved against, and the scripts that applied and restored them |
 
 `owner-fixes` still tracks `origin/main` from the worktree it was created in; it is
-merged, so the tracking branch is now the merge point rather than a divergence. The
-one upstream left broken on purpose is `research-daily-design` after
-`origin/research-churn2` was deleted - set it with:
-
-```bash
-git branch -u origin/research-daily-design research-daily-design
-```
+merged, so the tracking branch is now the merge point rather than a divergence.
+`research-daily-design` lost its upstream when `origin/research-churn2` was deleted and
+was left that way through the 2026-10-21 cleanup; it now tracks
+`origin/research-daily-design` again (`git branch -u origin/research-daily-design
+research-daily-design`, 2026-10-22). No branch is without an upstream.
 
 ## Archive tags
 
