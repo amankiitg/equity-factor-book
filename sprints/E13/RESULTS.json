@@ -4,21 +4,21 @@
       "criterion": "Every EFB module appears in the port map with a status: unchanged, re-specified, or dropped, with one sentence of reason.",
       "stored_numbers": [
         {
-          "source": "docs/credit_port_design.md section 13",
-          "value": 109,
+          "source": "docs/credit_port_design.md section 13, counted over 156 mapped rows (146 modules in this tree, 4 that arrive with e12, and 10 repository items)",
+          "value": 150,
           "what": "modules in the map"
         },
         {
           "source": "tests/test_e13_design_note.py::test_every_module_in_the_repository_appears_in_the_map",
-          "value": 105,
+          "value": 146,
           "what": "modules in the repository"
         },
         {
-          "source": "docs/credit_port_design.md section 13, counted over the 119 mapped rows (105 modules in this tree, 4 that arrive with e12, and 10 repository items)",
+          "source": "docs/credit_port_design.md section 13, counted over 156 mapped rows (146 modules in this tree, 4 that arrive with e12, and 10 repository items)",
           "value": {
-            "dropped": 0,
-            "re-specified": 43,
-            "unchanged": 76
+            "dropped": 4,
+            "re-specified": 54,
+            "unchanged": 98
           },
           "what": "statuses assigned in the map"
         },
@@ -130,7 +130,8 @@
     "path": "docs/credit_port_design.md",
     "required_sections_present": 13,
     "required_sections_required": 13
-  },  "falsification_criteria": {
+  },
+  "falsification_criteria": {
     "a_module_marked_unchanged_that_depends_on_an_equity_only_assumption": {
       "criterion": "A module marked unchanged that in fact depends on an equity-only assumption.",
       "evidence": "Named candidates for attack are in section 17: the factor covariance, which needs a spread input for a DTS loading to mean anything; the hedge algebra, whose instrument betas are the weakest link; and the cross-sectional standardization, which takes its cross-section over the names priced on the row's own date. The last one is not a theory: EFB's hedge was one session stale for that reason, with the measurements stored in tests/test_hedge_vintage.py.",
