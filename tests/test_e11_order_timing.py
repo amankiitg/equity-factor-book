@@ -30,9 +30,11 @@ def test_the_time_in_force_is_day_and_the_rule_is_written_down() -> None:
     assert "before 7:00pm ET will be rejected" in source
     assert "it is queued and submitted the following trading day" in source
     assert "docs.alpaca.markets/docs/orders-at-alpaca#time-in-force" in source
-    # and the loop uses it rather than an enum spelling of its own
-    assert "TimeInForce(NEXT_OPEN_TIF)" in source
+    # and the loop uses it rather than an enum spelling of its own: the run's TIF
+    # comes from the one validated switch, whose unset answer is this constant
+    assert "TimeInForce(leg_tif)" in source
     assert "TimeInForce.DAY" not in source
+    assert alpaca.order_time_in_force({}) == alpaca.NEXT_OPEN_TIF
 
 
 @pytest.mark.parametrize(

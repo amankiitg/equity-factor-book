@@ -173,6 +173,65 @@ def position_intent(held: float, target: float) -> str:
 # window because the hour is the point.
 NEXT_OPEN_TIF = "day"
 
+# The one switch that changes the order type the morning sends. Unset (the
+# default) is the loop's own `day`, byte for byte: a rerun sends the same tickets
+# with the same TIF it always did. `opg` asks for market-on-open instead, so every
+# leg is eligible only in the opening auction and fills at the auction's single
+# clearing price rather than at the first quote after the bell.
+#
+# Two facts from Alpaca's own order schema shape what `opg` has to send, and both
+# are measured against this account in `docs/research/moo_orders.md`:
+#
+#   * "notional ... Can only work for market order types and day for time in
+#     force", so a notional leg cannot carry `opg` at all. Under the flag the open
+#     legs go out as whole-share quantities, sized down at the run's own reference
+#     price, which is how every other leg is already sized.
+#   * "OPG orders submitted after 9:28am but before 7:00pm ET will be rejected."
+#     The evening submits at 22:30 UTC and the broker releases the orders into the
+#     04:00 ET pre-market, but a leg can be released as late as 09:23 ET (measured:
+#     RDDT on 2026-10-22), so the guard is a fallback rather than a rejection: past
+#     09:28 ET the leg goes out `day`, and its record says why.
+ORDER_TIF_ENV = "EFB_ORDER_TIF"
+ORDER_TIFS = ("day", "opg")
+# 09:28 ET is Alpaca's cutoff for an `opg` submission; a leg sent after it is
+# refused outright, which is a missed trade rather than a worse fill.
+OPG_CUTOFF_HOUR_ET = 9
+OPG_CUTOFF_MINUTE_ET = 28
+
+
+def order_time_in_force(environ: dict[str, str] | None = None) -> str:
+    """The TIF the morning's legs carry: `day` unless `EFB_ORDER_TIF` says `opg`.
+
+    Read once per submission loop rather than per leg, and validated rather than
+    passed through: a typo must stop the run before the first order, not reach the
+    broker as a string it silently interprets. An empty value is the unset case,
+    because that is what a service that sets the key to nothing means.
+    """
+    source = os.environ if environ is None else environ
+    raw = str(source.get(ORDER_TIF_ENV, "") or "").strip().lower()
+    if not raw:
+        return NEXT_OPEN_TIF
+    if raw not in ORDER_TIFS:
+        raise ValueError(
+            f"{ORDER_TIF_ENV}={raw!r} is not one of {', '.join(ORDER_TIFS)}"
+        )
+    return raw
+
+
+def opg_is_open(stamp: Any) -> bool:
+    """True when an `opg` submission at `stamp` still clears Alpaca's 09:28 cutoff.
+
+    The comparison is in New York, not in UTC: the cutoff is a wall-clock rule on
+    the exchange's own clock, and the answer must not move when the offset does.
+    """
+    from live.staleness import NEW_YORK
+
+    local = pd.Timestamp(stamp).tz_convert(NEW_YORK)
+    cutoff = local.replace(
+        hour=OPG_CUTOFF_HOUR_ET, minute=OPG_CUTOFF_MINUTE_ET, second=0, microsecond=0
+    )
+    return local < cutoff
+
 
 @dataclass(frozen=True)
 class Fill:
@@ -1213,6 +1272,7 @@ def submit_market_orders(
     throttle: Throttle | None = None,
     id_prefix: str = "efb",
     resolver: SymbolResolver | None = None,
+    now: Any = None,
 ) -> list[Fill]:
     """Submit market orders, one record per intended leg, and do not poll.
 
@@ -1251,7 +1311,8 @@ def submit_market_orders(
         INTENT_SELL_TO_OPEN: PositionIntent.SELL_TO_OPEN,
         INTENT_SELL_TO_CLOSE: PositionIntent.SELL_TO_CLOSE,
     }
-    time_in_force = TimeInForce(NEXT_OPEN_TIF)
+    requested_tif = order_time_in_force()
+    clock = (lambda: pd.Timestamp.now(tz="UTC")) if now is None else (lambda: now)
     cache = {} if short_cache is None else short_cache
     pace = throttle if throttle is not None else Throttle()
 
@@ -1330,7 +1391,44 @@ def submit_market_orders(
             continue
         symbol = resolution.symbol or order.ticker
         price = prices.get(order.ticker, 0.0)
-        if intent == INTENT_BUY_TO_OPEN:
+        # The TIF is decided per leg because the cutoff is a wall-clock rule and a
+        # large book takes real time to send: a leg that would be refused is sent
+        # the loop's own `day` instead, and its record says so.
+        leg_tif = requested_tif
+        tif_detail = ""
+        if leg_tif == "opg" and not opg_is_open(clock()):
+            leg_tif = NEXT_OPEN_TIF
+            tif_detail = (
+                f"sent {NEXT_OPEN_TIF}: {requested_tif} is rejected after "
+                f"{OPG_CUTOFF_HOUR_ET:02d}:{OPG_CUTOFF_MINUTE_ET:02d} ET"
+            )
+        time_in_force = TimeInForce(leg_tif)
+        if intent == INTENT_BUY_TO_OPEN and leg_tif == "opg":
+            # A notional leg cannot carry `opg` ("notional ... Can only work for
+            # market order types and day for time in force"), so the open goes out
+            # in whole shares sized down at the run's own reference price. Rounded
+            # down, never up: the leg can only ever buy less than it sized.
+            qty = int(notional // price) if price > 0 else 0
+            if qty < 1:
+                fills.append(
+                    _skipped(
+                        order.ticker,
+                        trade,
+                        REASON_QTY_ROUNDS_TO_ZERO,
+                        f"{notional:.2f} at {price:.4f} rounds to zero shares",
+                        intent,
+                    )
+                )
+                continue
+            request = MarketOrderRequest(
+                symbol=symbol,
+                qty=qty,
+                side=OrderSide.BUY,
+                time_in_force=time_in_force,
+                client_order_id=ticket,
+                position_intent=intent_enum[intent],
+            )
+        elif intent == INTENT_BUY_TO_OPEN:
             request = MarketOrderRequest(
                 symbol=symbol,
                 notional=round(notional, 2),
@@ -1454,6 +1552,9 @@ def submit_market_orders(
                 status=status,
                 intent=intent,
                 client_order_id=ticket,
+                # Empty unless the leg was sent a TIF other than the one asked
+                # for, which only the 09:28 cutoff can cause.
+                detail=tif_detail,
                 # Only when the broker spells it differently: the empty string is
                 # the ordinary case, and the caller reads a non-empty one as the
                 # rename to name in the email.
