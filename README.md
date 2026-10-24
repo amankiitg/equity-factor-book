@@ -238,13 +238,13 @@ Cloudflare Worker behind Cloudflare Access, described in `web/README.md`.
 
 **Nightly rebalancing was dropped because it is the whole cost.** Rebalancing every
 session turns the book over **38.70% of NAV a night**, 97.53 turns a year, for
-**624.6 bp a year** of trading cost, and nets **-389.9 bp** at the 169 bp gross
-anchor. Monthly without a guard turns over 9.4 times for 62.4 bp and nets +82.1;
-monthly with the 5% guard — the mode that is live, `cap_then_rehedge` — turns over
-13.15 times for **86.7 bp** and nets **+48.0 bp** at the study's 91.0 percent alpha
-([`docs/research/daily_design_study.md`](docs/research/daily_design_study.md), variant
-G5H). The guard is the whole of the monthly premium: it costs 23.8 bp and 3.64 of
-those 13 turns, fires on 24 percent of hold days, and buys a p95 worst-factor
+**624.6 bp a year** of trading cost, against 9.4 turns and 62.4 bp a year for monthly
+with no guard at all
+([`docs/research/daily_design_study.md`](docs/research/daily_design_study.md)). The
+live mode is monthly plus the 5% guard with `cap_then_rehedge`, which turns over
+**13.15 times for 86.7 bp a year**. The guard is the whole of the monthly premium: it
+costs 23.8 bp and 3.64 of those 13 turns, fires on 24 percent of hold days, and buys a
+p95 worst-factor
 exposure of **4.76 percent** against **21.71 percent** for the same cadence with no
 guard. The 5 percent threshold is a choice with a number behind it: a freshly built
 book already carries a ~3.7 percent median exposure to tonight's row, so a 3 percent
@@ -260,8 +260,9 @@ point estimate to carry the hard-to-borrow tail that a single rate cannot see
 gross that is 17.6 bp a year of NAV. Tonight's account carries 91 shorts and every
 one of them reads `easy_to_borrow`, so the realised bill is zero — the 0.35 percent
 is a stress input, and the number that will matter is the first short that turns
-hard to borrow, at 20 to 50 percent a year. At the anchor, monthly plus guard nets
-about **+65 bp a year** (169 - 86.7 - 17.6).
+hard to borrow, at 20 to 50 percent a year. On the study's own restatement line,
+`net = 169 - cost - borrow x (rate / 2%)`, monthly plus guard nets about **+65 bp a
+year** at the anchor (169 - 86.7 - 17.6).
 
 **The execution cost measured on paper is not a real cost estimate.** The fills pay
 **+17.2 bp against the open** over twelve filled days, 10 of them positive, and all
