@@ -681,20 +681,40 @@ def test_the_artifact_is_written_only_when_something_was_applied(tmp_path: Path)
     frame.to_parquet(returns_path)
     prices.to_parquet(root / "raw" / "prices.parquet")
 
+    # No spin-off record at all: the vendor's -84% restatement is unexplained, so the
+    # name is dropped for the session and nothing else is touched. The returns file is
+    # left exactly as it was - the drop is carried by the price artifact, which is what
+    # the evening's own no-price rule reads - and the run completes.
     quiet = apply_to_artifact(
         root,
         since=PRIOR,
         spinoff_fetcher=lambda symbols, session: [],
     )
     assert quiet.spinoffs == []
+    assert len(quiet.suspended) == 1
+    assert quiet.suspended[0].ticker == "CTVA"
+    assert quiet.suspended[0].session == SESSION
+    # The ratio the cross-check measured: the vendor's 50.0 over the 99.79... it
+    # restated the stored session's adjusted close to.
+    assert quiet.suspended[0].ratio == pytest.approx(0.1500375088, abs=1e-9)
     assert (
         hashlib.sha256(returns_path.read_bytes()).hexdigest()
         == hashlib.sha256(frame.to_parquet() and returns_path.read_bytes()).hexdigest()
     )
-    assert float(pd.read_parquet(returns_path).loc[(SESSION, "CTVA"), "r"]) == (
-        pytest.approx(RAW_PRINT)
-    )
+    # The name has no close for that session any more, which is exactly how the
+    # evening drops a name it cannot price (`dropped_no_price`), and it is dropped
+    # for that session only.
+    prices_after = pd.read_parquet(root / "raw" / "prices.parquet")
+    assert pd.isna(prices_after.loc[(SESSION, "CTVA"), "close"])
+    assert pd.isna(prices_after.loc[(SESSION, "CTVA"), "adj_close"])
+    assert not pd.isna(prices_after.loc[(PRIOR, "CTVA"), "close"])
+    # And nothing else about the tree moved: the parent's own prior session, and the
+    # frame's shape, are what they were.
+    assert set(prices_after.index) == set(prices.index)
 
+    # A recorded spin-off, from the same starting tree: this is the case the rule
+    # exists for, and it must still correct the parent's return rather than drop it.
+    prices.to_parquet(root / "raw" / "prices.parquet")
     applied = apply_to_artifact(
         root,
         since=PRIOR,
@@ -711,6 +731,7 @@ def test_the_artifact_is_written_only_when_something_was_applied(tmp_path: Path)
     )
 
     assert len(applied.spinoffs) == 1
+    assert applied.suspended == []
     assert float(pd.read_parquet(returns_path).loc[(SESSION, "CTVA"), "r"]) == (
         pytest.approx(TARGET_RETURN, abs=1e-6)
     )

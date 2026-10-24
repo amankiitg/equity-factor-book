@@ -220,11 +220,10 @@ def resolve_split(
     if abs(ratio - 1.0) <= CROSS_CHECK_TOLERANCE:
         return None
     if not splits:
-        raise ValueError(
-            f"{ticker}: the vendor back-adjusted the last stored session "
-            f"(ratio {ratio:.6f}) with no split record behind it, so the run stops "
-            f"rather than guessing what happened"
-        )
+        # No record to resolve. Whether that is fatal is the caller's question: the
+        # append path drops the name for the session (see `Suspended`), and a caller
+        # asking only for the split gets None.
+        return None
     if session is not None:
         floor = _normalized(session) - pd.Timedelta(days=lookback_days)
         near = [split for split in splits if split.effective_date >= floor]
@@ -866,6 +865,31 @@ MAX_CROSS_CHECKS = 30
 
 
 @dataclass(frozen=True)
+class Suspended:
+    """A name dropped for one session because nothing explains its vendor print.
+
+    The vendor restated a stored session's adjusted close by a ratio that neither a
+    split record nor a recorded spin-off explains. The print cannot be priced, the
+    name cannot be sized on a return nobody can account for, and stopping the evening
+    would leave the whole book unheld for one name's data. So the name is dropped for
+    that session only: its close is nulled in the prices artifact before the evening
+    sizes, which the run already reports as a name with no price, and this record is
+    what tells the reader which name, which session and which ratio.
+    """
+
+    ticker: str
+    session: pd.Timestamp
+    ratio: float
+
+    def describe(self) -> str:
+        return (
+            f"{self.ticker} dropped for {self.session.date()}: the vendor "
+            f"back-adjusted the print (ratio {self.ratio:.6f}) and no split record or "
+            "recorded spin-off explains it"
+        )
+
+
+@dataclass
 class Outcome:
     """What the append path did, for the run's record and for its message."""
 
@@ -885,6 +909,10 @@ class Outcome:
     # records did not answer. Never an error and never silent: the run goes on with
     # the raw prints in place, and the owner is told which session is unverified.
     lookup_failure: str | None = None
+    # The names dropped for a session because nothing explains their vendor print.
+    # Never an error and never silent: the name, its session and its ratio travel to
+    # the manifest and to the message, and the name is out of the book for that night.
+    suspended: list[Suspended] = field(default_factory=list)
 
 
 def appended_sessions(
@@ -1017,8 +1045,7 @@ def cap_note(unchecked: list[str]) -> str:
     if not unchecked:
         return ""
     return (
-        f"cross-check capped: {len(unchecked)} unchecked "
-        f"({', '.join(unchecked[:5])})"
+        f"cross-check capped: {len(unchecked)} unchecked ({', '.join(unchecked[:5])})"
     )
 
 
@@ -1032,7 +1059,7 @@ def _check_one(
     frame: pd.DataFrame,
     *,
     explained_by_spinoff: bool = False,
-) -> tuple[Split | None, float | None, bool]:
+) -> tuple[Split | None, float | None, bool, Suspended | None]:
     """Cross-check one ticker against the vendor and resolve what it means.
 
     Returns the split (when there is one), the ratio and whether a request was
@@ -1068,7 +1095,26 @@ def _check_one(
         if explained_by_spinoff and not records:
             # The move is the recorded spin-off's, and the return it really implies
             # is computed from the child's close in the pass below.
-            return None, ratio, spent
+            return None, ratio, spent, None
+        if not records:
+            # Nothing explains this print: no split record, and no recorded spin-off
+            # for this ticker on this session. The name is dropped for the session
+            # rather than priced on a return nobody can account for, and rather than
+            # stopping an evening that has a whole book to hold.
+            logger.warning(
+                "%s: the vendor back-adjusted the %s print (ratio %.6f) and no split "
+                "record or recorded spin-off explains it; the name is dropped for "
+                "that session",
+                ticker,
+                session.date(),
+                ratio,
+            )
+            return (
+                None,
+                ratio,
+                spent,
+                Suspended(ticker=ticker, session=session, ratio=ratio),
+            )
         split = resolve_split(ticker, ratio, records, session=session)
     elif factor is not None:
         near = [
@@ -1084,9 +1130,9 @@ def _check_one(
             )
         split = near[-1]
     else:
-        return None, ratio, spent
+        return None, ratio, spent, None
     if split is None:
-        return None, ratio, spent
+        return None, ratio, spent, None
     if patch and previous_close is not None and (session, ticker) in frame.index:
         today = _close_on(prices_frame, ticker, session)
         if today is not None:
@@ -1098,7 +1144,7 @@ def _check_one(
                     close_t=today, factor=split.factor, close_previous=previous_close
                 ),
             )
-    return split, ratio, spent
+    return split, ratio, spent, None
 
 
 def apply_to_append(
@@ -1134,12 +1180,13 @@ def apply_to_append(
     splits: list[Split] = []
     ratios: dict[str, float] = {}
     cross_checked: list[str] = []
+    suspended: list[Suspended] = []
     events: list[SpinoffOutcome] = []
     frame = returns_frame
     for session in sessions:
         explained = {event.parent for event in (spinoffs or {}).get(session, [])}
         for ticker in split_flag_tickers(prices_frame, session):
-            split, ratio, spent = _check_one(
+            split, ratio, spent, dropped = _check_one(
                 ticker,
                 session,
                 prices_frame,
@@ -1155,6 +1202,8 @@ def apply_to_append(
                 cross_checked.append(ticker)
             if split is not None:
                 splits.append(split)
+            if dropped is not None:
+                suspended.append(dropped)
         for spinoff in (spinoffs or {}).get(session, []):
             event = _apply_spinoff(frame, prices_frame, spinoff, child_close)
             if event is not None:
@@ -1170,7 +1219,7 @@ def apply_to_append(
         for ticker in watched[:max_cross_checks]:
             if ticker in cross_checked:
                 continue
-            split, ratio, spent = _check_one(
+            split, ratio, spent, dropped = _check_one(
                 ticker,
                 session,
                 prices_frame,
@@ -1184,6 +1233,8 @@ def apply_to_append(
                 ratios[ticker] = ratio
             if spent:
                 cross_checked.append(ticker)
+            if dropped is not None:
+                suspended.append(dropped)
     last = sessions[-1]
     tail = frame.loc[last, "r"] if last in frame.index else pd.Series(dtype=float)
     explained = {split.ticker: describe([split]) for split in splits}
@@ -1208,7 +1259,15 @@ def apply_to_append(
     ]
     unchecked = [ticker for ticker in watched_last if ticker not in cross_checked]
     return Outcome(
-        frame, splits, ratios, flags, cross_checked, sessions, unchecked, events
+        frame,
+        splits,
+        ratios,
+        flags,
+        cross_checked,
+        sessions,
+        unchecked,
+        events,
+        suspended=suspended,
     )
 
 
@@ -1305,7 +1364,37 @@ def apply_to_artifact(
         outcome = replace(outcome, lookup_failure=lookup_failure)
     if outcome.splits or outcome.spinoffs:
         outcome.returns.to_parquet(returns_path)
+    if outcome.suspended:
+        # A name whose print nothing explains is dropped for this session, and the
+        # drop has to reach the step that sizes the book. Nulling its close in the
+        # prices artifact is what does it: `live/evening_job.py` already refuses to
+        # size a name with no close, records it as `dropped_no_price` on the manifest
+        # and names it in the message, so the exclusion needs no new path and no new
+        # rule. Nothing else about the row moves; the vendor's own value is in the
+        # `Suspended` record beside the ratio that made it unusable.
+        _suspend_in_prices(root / "raw" / "prices.parquet", outcome.suspended)
     return outcome
+
+
+def _suspend_in_prices(path: Any, suspended: list[Suspended]) -> None:
+    """Null the close and the adjusted close of the names dropped for a session."""
+    from pathlib import Path as _Path
+
+    target = _Path(path)
+    frame = pd.read_parquet(target)
+    touched: list[str] = []
+    for record in suspended:
+        key = (pd.Timestamp(record.session), str(record.ticker))
+        if key in frame.index:
+            frame.loc[key, ["close", "adj_close"]] = float("nan")
+            touched.append(record.describe())
+    if touched:
+        frame.to_parquet(target)
+        logger.warning(
+            "%d name(s) dropped for the session and nulled in the price artifact: %s",
+            len(touched),
+            "; ".join(touched),
+        )
 
 
 def cumulative_factor(splits: list[Split], since: pd.Timestamp) -> float:
