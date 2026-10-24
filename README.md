@@ -273,7 +273,9 @@ quote, the order's size is never checked against the quote's, and a random 10 pe
 partial fill is possible, so the number says what the book would pay if the market
 always met it at the touch. It is a measurement of the paper account, not of an
 equity book, and the study above says as much in its own section on what twelve days
-cannot separate ([`docs/research/moo_orders.md`](docs/research/moo_orders.md)).
+cannot separate. The write-up of the order type that would change it,
+`docs/research/moo_orders.md`, is on the held `moo-orders` branch, waiting on the
+owner's decision.
 
 ## Attribution
 
