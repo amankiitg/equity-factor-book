@@ -1,38 +1,47 @@
 # The known test failures, and what a report has to do with them
 
-## The list a report compares against today: four ids, all on one held branch
+## The list a report compares against today: five ids, four of them one held fix
 
-Measured on `main` `49fba72` on 2026-10-23 with the gate's own command and a **freshly
-seeded artifact tree** (the 2026-10-23 cleanup deleted the copy; `docs/branches.md` says
-how it is rebuilt).
+Measured on `main` `041e8ad` on 2026-10-24 with the gate's own command on the tree
+`docs/branches.md` calls the gate tree (`/tmp/efb-gate`):
+
+```
+5 failed, 1660 passed, 9 skipped, 54 deselected in 676.20s
+```
+
+The same five, id for id, on `main` `633fd89` before the studies came onto `main`, so the
+docs merge added nothing.
 
 ```
 .venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"
 ```
 
-Two things changed the list today, and neither is a test made to pass:
+What the five are, and where each one's fix sits:
 
-- **The APH split test passes** on a freshly seeded tree. It was never a code defect:
-  the copy the gate had been reading carried rows from a different vendor vintage, and
-  the reproduction now recovers the split the real rows carry. Nothing was edited.
 - **The four CTVA spin-off ids are one defect, and its fix is held under the trading
-  freeze**: branch `spinoff-explains-adjustment`. A recorded spin-off back-adjusts the
-  vendor's history exactly like a split, and reports no `split_factor`, so the cross
-  check reads CTVA's 77.65 to 12.57 (ratio 0.150038, a VYLR share worth 68.26 paid
-  alongside) as an unexplained split and stops the run. The branch lets a recorded
-  spin-off explain the adjustment and leaves the raw print flagged when nothing
-  explains it. That is a change to what the evening prices and therefore to what it
-  trades, so it waits for Monday 2026-10-26 00:00 UTC.
+  freeze, merged Monday 2026-10-26**: branch `spinoff-explains-adjustment` `91eed42`. On
+  `main` as it stands, a recorded spin-off back-adjusts the vendor's history exactly like
+  a split and reports no `split_factor`, so the cross check reads CTVA's 77.65 to 12.57
+  (ratio 0.150038, a VYLR share worth 68.26 paid alongside) as an unexplained split and
+  stops the run. The branch carries the owner's contract instead - an unexplained
+  adjustment excludes that name for the night - and rewrites these four ids to it. Full
+  gate there: **1 failed, 1665 passed**, the one failure being the APH id below.
+- **The APH id is an artifact vintage, not a code defect.** The brief's own allowance:
+  `test_the_aph_split_is_reproduced_from_the_real_rows` recovers the split the stored rows
+  carry, and the gate tree holds rows from a different vendor vintage than the branch was
+  measured against. Nothing is edited for it.
 
 | id | stale or real | cause, and where its fix sits |
 |---|---|---|
-| `tests/test_week2_spinoff.py::test_the_artifact_is_written_only_when_something_was_applied` | **real** (price path) | the CTVA refusal, as above. Fix on `spinoff-explains-adjustment`, held under the freeze |
-| `tests/test_week2_spinoff.py::test_a_vendor_read_that_fails_leaves_the_print_and_the_flag` | **real** (the same) | the same refusal |
-| `tests/test_week2_spinoff.py::test_a_hung_spin_off_read_is_named_in_the_evening_email` | **real** (the same) | the same refusal |
-| `tests/test_week2_spinoff.py::test_the_read_that_answered_and_found_nothing_is_not_a_failure` | **real** (the same) | the same refusal |
+| `tests/test_week2_spinoff.py::test_the_artifact_is_written_only_when_something_was_applied` | **real** (price path) | the CTVA refusal. Fixed on `spinoff-explains-adjustment` `91eed42`, which merges Monday night - `docs/monday_2026-10-26.md` B2 |
+| `tests/test_week2_spinoff.py::test_a_vendor_read_that_fails_leaves_the_print_and_the_flag` | **real** (the same) | the same branch |
+| `tests/test_week2_spinoff.py::test_a_hung_spin_off_read_is_named_in_the_evening_email` | **real** (the same) | the same branch |
+| `tests/test_week2_spinoff.py::test_the_read_that_answered_and_found_nothing_is_not_a_failure` | **real** (the same) | the same branch |
+| `tests/test_e11_corporate_actions.py::test_the_aph_split_is_reproduced_from_the_real_rows` | **artifact vintage** | the gate tree's stored rows differ from the vendor vintage the test reproduces; no code change is owed and none is made |
 
-A gate run whose failing set is a subset of these four plus the documented skips is
-clean. Anything else is new.
+A gate run whose failing set is a subset of these five plus the documented skips is clean.
+Anything else is new. After `91eed42` merges, this list reduces to the APH id alone, and
+that one reduces to nothing on a freshly seeded tree.
 
 ### The test that fails alone but passes in the suite: `test_the_hedge_drives_the_exposures_to_zero`
 
