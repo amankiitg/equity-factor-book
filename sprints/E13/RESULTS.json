@@ -5,20 +5,20 @@
       "stored_numbers": [
         {
           "source": "docs/credit_port_design.md section 13, counted over 156 mapped rows (146 modules in this tree, 4 that arrive with e12, and 10 repository items)",
-          "value": 150,
+          "value": 151,
           "what": "modules in the map"
         },
         {
           "source": "tests/test_e13_design_note.py::test_every_module_in_the_repository_appears_in_the_map",
-          "value": 146,
+          "value": 147,
           "what": "modules in the repository"
         },
         {
-          "source": "docs/credit_port_design.md section 13, counted over 156 mapped rows (146 modules in this tree, 4 that arrive with e12, and 10 repository items)",
+          "source": "docs/credit_port_design.md section 13, counted over 157 mapped rows (147 modules in this tree, 4 that arrive with e12, and 10 repository items)",
           "value": {
             "dropped": 4,
             "re-specified": 54,
-            "unchanged": 98
+            "unchanged": 99
           },
           "what": "statuses assigned in the map"
         },
