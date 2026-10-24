@@ -1,36 +1,49 @@
 # Branches, worktrees and scratch directories
 
-State after the 2026-10-23 cleanup. **Two branches remain, one worktree besides the main
-checkout, and nine archive tags.** Everything else is merged into `main` (so its commits
-are in history) or preserved as an `archive/<branch>` tag on `origin`.
+State after the 2026-10-24 close-out. **Three branches besides `main` - all of them held
+under the trading freeze - one worktree, and eleven archive tags.** Everything else is
+merged into `main` (so its commits are in history) or preserved as an `archive/<branch>`
+tag on `origin`.
+
+The two study branches are gone as branches: their write-ups and result JSONs are in
+`docs/research/` on `main`, and the scripts that produced them are in the archive tags.
 
 ## What is left, and why
 
-State after the 2026-10-23 close-out. **Four branches, two worktrees.** Everything that
-merged today is deleted, locally and on `origin`; its tip is in the table below, so it can
-be restored from `main`'s history.
-
 | branch | tip | worktree | why it stays |
 |---|---|---|---|
-| `main` | `a8e0546` | `equity-factor-book` | production; every branch below except the three studies and the two held ones is in its history |
-| `research-daily-design` | `94c536e` | `efb-daily-design` | the daily-panel study (`docs/research/daily_design_study.md`) that `docs/turn_on_monthly.md` points at for the cadence settings; a study, not a change to the loop |
-| `research-exec-timing` | `e7b2235` | - | `docs/research/exec_timing.md`: the open against 10:00 ET against the fills, on twelve days. Research only, never merged |
-| `spinoff-explains-adjustment` | `44e04ca` | - | **held under the freeze**: the CTVA back-adjustment, plus an owner decision on which contract wins |
-| `order-time-quotes` | `4cdbc30` | - | **held under the freeze**: records the bid, ask and mid with every order. Changes the morning path and needs `docs/migrations/e13_order_quotes.sql` applied |
+| `main` | `041e8ad`, then the merge of `docs-closeout` (`git log -1`) | `equity-factor-book` | production |
+| `spinoff-explains-adjustment` | `91eed42` | - | **held under the freeze**: the CTVA contract. An unexplained vendor back-adjustment excludes that name for the night instead of stopping the run. Merges Monday night, not before |
+| `order-time-quotes` | `4cdbc30` | - | **held under the freeze**: records the bid, ask and mid with every order. Changes the morning path and needs `docs/migrations/e13_order_quotes.sql` applied first |
+| `moo-orders` | `e7ad6c8` | - | **held for the owner's decision**: `EFB_ORDER_TIF` for market-on-open orders. Unset is byte-identical to today. The switch is the owner's, for the rebalance about 2026-11-23 |
 
-`handoff` (`63c440c`) was written mid-session when the work looked like it would
-overrun; it did not, and the branch is deleted. This file and
-`docs/known_test_failures.md` say everything it said.
+## The archive tags
+
+Eleven, all on `origin`. Each is an annotated tag at the branch's last tip:
+
+| tag | holds |
+|---|---|
+| `archive/page-v4` | the page-v4 rewrite |
+| `archive/nov11-into-main` | the nov11 merge |
+| `archive/research-etf-hedge` | the ETF-hedge study |
+| `archive/research-cadence` | the cadence study |
+| `archive/research-churn`, `archive/research-churn2` | the churn studies |
+| `archive/research-ic-decay` | the factor-IC decay study |
+| `archive/flag-cap-then-rehedge` | the hedge-mode flag work |
+| `archive/e12` | the E12 attribution work |
+| `archive/research-daily-design` | the daily-panel study, **including `scripts/daily_design_study.py`, `cadence_study.py`, `churn_study.py`, `churn_followup.py`, `build_daily_design_panel.py`, `validate_daily_panel.py`** - the scripts are not on `main` |
+| `archive/research-exec-timing` | the execution-timing study and its measurement script |
 
 ### Held under the trading freeze, with their proofs
 
-Both are pushed and both have their own tests green; neither may merge before Monday
-2026-10-26 00:00 UTC, because both change what the evening or the morning does.
+All three are pushed and all three have their own tests green. None may merge before
+Monday 2026-10-26 00:00 UTC, because each changes what the evening or the morning does.
 
 | branch | proof | the exact merge |
 |---|---|---|
-| `spinoff-explains-adjustment` | `tests/test_e11_corporate_actions.py` 6 passed (the stop contract intact); `tests/test_week2_spinoff.py` 47 passed with the recorded-spin-off exemption, the four stale-contract ids still failing; lint scope green | decide the contract, then `git merge --no-ff spinoff-explains-adjustment` from a fresh worktree off `origin/main` and gate |
-| `order-time-quotes` | 15 tests in `tests/test_order_quotes.py` and `tests/test_cost_split.py`; `test_e11_preflip_fixes.py` and `test_run_live_daily.py` unaffected (60 passed); ruff and black clean in the lint scope | apply `docs/migrations/e13_order_quotes.sql`, then merge from a fresh worktree and gate |
+| `spinoff-explains-adjustment` | the owner's contract, with the four `test_week2_spinoff.py` ids rewritten and an added test where an unexplained adjustment drops exactly one name and the run completes; full gate on `91eed42`: **1 failed, 1665 passed** (the one is the APH artifact vintage); weights identical to `main` on the last four closes (2026-10-16, 19, 20, 21), max abs difference **0.0**, same names, same `kept_gross` on each | the Monday checklist, part B2 |
+| `order-time-quotes` | 15 tests in `tests/test_order_quotes.py` and `tests/test_cost_split.py`; `test_e11_preflip_fixes.py` and `test_run_live_daily.py` unaffected (60 passed); ruff and black clean in the lint scope. Tolerates the four columns being absent, so it can merge before or after the migration | apply the migration (Monday), then merge **after 15:45 UTC Tuesday**, once that morning has reconciled - the Tuesday morning sends the reversal second legs on current code |
+| `moo-orders` | `tests/test_moo_orders.py` 9 passed: unset is `day` with the four `client_order_id`s pinned, `opg` is `opg` on every leg with the open sized in whole shares, a bad value raises before the first order, the 09:28 ET cutoff falls back to `day` with the reason recorded, and a rerun submits nothing | the owner's decision before the rebalance about 2026-11-23; see `docs/research/moo_orders.md` |
 
 ## The merges of 2026-10-23
 
@@ -114,6 +127,52 @@ There was no `nov11-b3-*` branch to park.
 The nine branches merged on 2026-10-22 and deleted on 2026-10-23 are in the table at the
 top of this file with their tips; they are in `main`'s history, not archived.
 
+## The two `/tmp` trees a gate or an identity proof needs
+
+Both were rebuilt on 2026-10-24 and **both are kept on purpose**, because Monday night's
+merges and the identity proofs need them and each takes minutes to rebuild:
+
+| path | size | what it is |
+|---|---|---|
+| `/tmp/efb-gate` | 873 MB | a plain copy of the owner's `data/`. This is the only tree on which the failing set equals the known list; a gate run on the extended tree below shows research-artifact failures that are not code failures |
+| `/tmp/efb-pl-data` | 882 MB | the same copy, extended to the latest session, for `build_proposal` and the identity proofs |
+
+### Recipe 1: the gate tree
+
+From the main checkout, on `main`:
+
+    rsync -a data/ /tmp/efb-gate/
+    cd ../efb-<work>; rm -rf data && ln -s /tmp/efb-gate data
+
+`rm -rf data` first, every time: `ln -s` into a directory that already exists quietly
+creates `data/efb-gate` and the run then tests the wrong tree.
+
+### Recipe 2: the identity tree
+
+    rsync -a data/ /tmp/efb-pl-data/
+    cd ../efb-<work>; rm -rf data && ln -s /tmp/efb-pl-data data
+    set -a; source .env; set +a
+    .venv/bin/python -c "from live import seed, appendix; seed.download(); appendix.hydrate()"
+
+then extend exactly as the evening does, on the copy:
+
+    .venv/bin/python - <<'EOF'
+    from pathlib import Path
+    from live import extend
+    tree = Path("/tmp/efb-pl-data")
+    print(extend.extend_prices(tree), extend.extend_archives(tree))
+    print(extend.extend_returns(tree), extend.extend_model(tree))
+    print("last session:", extend.last_price_session(tree))
+    EOF
+
+### Committing from a worktree that holds a `data` symlink
+
+`data/` is tracked. With the symlink in place, `git status` reports every tracked file
+under `data/` as deleted, and a commit made then removes them from the branch. Remove the
+symlink and restore the directory first:
+
+    rm -f data && git checkout -- data
+
 ## Restoring anything
 
 ```bash
@@ -130,23 +189,27 @@ git worktree add ../efb-<branch> -b <branch> archive/<branch>
 
 ## Worktrees removed
 
+The 2026-10-24 close-out removed six with `git worktree remove --force`, each after
+`git status --porcelain` was empty: `efb-ctva2`, `efb-moo`, `efb-docs`, `efb-merge1`,
+`efb-docs2`, and `efb-daily-design` (whose `research-daily-design` branch is now
+`archive/research-daily-design`). **One worktree remains: the main checkout, on `main`.**
+
 The 2026-10-23 close-out removed eleven more after `git status --porcelain` showed
 nothing but `.venv`, `web/node_modules` or the `data` symlink: `efb-borrow`, `efb-ctva`,
 `efb-docs2`, `efb-docs3`, `efb-e13`, `efb-exec`, `efb-handoff`, `efb-m-borrow`,
-`efb-m-borrow2`, `efb-m-docs`, `efb-m-e13`, `efb-quotes`. **Two remain**: the main
-checkout, on `main`, and `efb-daily-design`, holding `research-daily-design`.
+`efb-m-borrow2`, `efb-m-docs`, `efb-m-e13`, `efb-quotes`.
 
 The earlier 2026-10-23 cleanup removed nine with `git worktree remove --force` after
 `git status --porcelain` showed nothing but `.venv`, `web/node_modules` or the `data`
 symlink: `efb-attr-fin`, `efb-cadence-flag`, `efb-cost`, `efb-costmeas`, `efb-debt`,
 `efb-docs2`, `efb-owner-fixes`, `efb-page-legends`, `efb-vol`. Then `git worktree
 prune`. Fifteen more went in the 2026-10-21 cleanup (see `git log docs/branches.md`).
-**One worktree remains besides the main checkout**: `efb-daily-design`, holding
-`research-daily-design`.
 
 ## Scratch directories
 
-Every `/tmp` tree the project built is gone as of 2026-10-23:
+`/tmp/efb-gate` (873 MB) and `/tmp/efb-pl-data` (882 MB) are the two exceptions: they were
+rebuilt on 2026-10-24 and are kept for Monday (above). Every other `/tmp` tree the project
+built is gone as of 2026-10-23:
 
 | path | size | what it was |
 |---|---|---|
