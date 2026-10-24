@@ -57,7 +57,7 @@ The reasoning, in the order it matters:
 
 The study's restatement is `net = 169 - cost - borrow x (rate / 2%)`, where `borrow` at
 2% is 100.8 bp/yr for the G5 variant (a book that is ~50% short gross, so 2% x 50.4%).
-`docs/research/daily_design_study.md` on `research-daily-design` gives G5 a cost of 88.7
+`docs/research/daily_design_study.md` (on `main` since 2026-10-24) gives G5 a cost of 88.7
 bp/yr; B0 (no guard) costs 62.4 bp and shares the same borrow term.
 
 | borrow rate | G5 net at 169 bp gross | B0 net at 169 bp gross |
@@ -83,3 +83,52 @@ is a defensible thing to keep, provided it is labelled as one.
   and charge 0 on `easy_to_borrow` and a flagged estimate on `hard_to_borrow`; that is a
   change to the cost model, and it waits for the owner.
 - **Locate fees**, which are per-share and one-off, and are not in the model at all.
+
+## The account's shorts, read from the broker (2026-10-24 01:12 UTC)
+
+The one question above that a read can answer is whether any name the book is
+short is hard to borrow. Read-only, from `GET /v2/positions` then `GET
+/v2/assets/<symbol>` for every short, on the paper account:
+
+| | |
+|---|---|
+| positions | 174 (91 short, 83 long) |
+| equity | $982,176.93 |
+| long notional | $486,672.56 |
+| short notional | −$486,945.06 |
+| gross | $973,617.61 |
+| short as a share of gross | **50.0%** |
+| shorts that are `easy_to_borrow: true`, `shortable: true`, `status: active`, `borrow_status: easy_to_borrow` | **91 of 91** |
+| **hard-to-borrow names currently short** | **none** |
+
+The largest shorts, for the record:
+
+| symbol | shares | short notional | borrow status |
+| --- | --- | --- | --- |
+| AES | −968 | −$14,520.00 | easy_to_borrow |
+| LHX | −44 | −$11,146.19 | easy_to_borrow |
+| VICI | −454 | −$10,814.28 | easy_to_borrow |
+| NVDA | −51 | −$10,766.81 | easy_to_borrow |
+| TSN | −60 | −$3,402.00 | easy_to_borrow |
+
+So tonight the borrow tail is **$0 of notional**, and Alpaca's published rate for
+easy-to-borrow names is "$0 locate and borrow fees" (claim 5 above). The `0.35%`
+constant is therefore a stress input against a realized cost of nothing, which is
+the right shape for it: the number that matters is not tonight's bill but the
+first night a short turns hard to borrow, when the fee is quoted per name,
+accrued daily on `/360`, and can be 20-50%/yr.
+
+At 0.35% on a 50.4%-short book that is about **17.6 bp a year of NAV**, or $1,730
+on the equity above - small next to the 169 bp gross anchor, and inside the
+model's own range.
+
+What this read **cannot** show, and why:
+
+- **A borrow-fee accrual on the account.** Paper trading does not simulate borrow
+  fees at all - the paper-versus-live table in
+  <https://docs.alpaca.markets/us/docs/paper-trading> marks "Borrow Fees" as
+  "Coming Soon". A zero accrual here is the simulator's, not the broker's.
+- **Locate fees.** The locate endpoints are documented as "not available in paper
+  trading", so there is nothing to read.
+- **A per-name HTB rate.** Alpaca does not publish the rates; `borrow_status` is
+  the only per-asset signal, and it is what the table above reads.
