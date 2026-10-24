@@ -4,10 +4,12 @@ The calendar, the drift guard and the cap-then-rehedge hedge are on `main` as of
 2026-10-22 with **every flag off**, which is today's daily loop. This is the switch:
 four Render environment variables, and the checks that say the switch worked.
 
-The evidence behind the settings is in `docs/research/daily_design_study.md` on
-`research-daily-design` (what a monthly book's exposure costs and what the guard costs
-to fix) and `docs/cadence_flag.md` on `main` (how the flag works, and the identity and
-shadow proofs it merged on).
+The evidence behind the settings is in `docs/research/daily_design_study.md` (what a
+monthly book's exposure costs and what the guard costs to fix), its supporting runs
+`docs/research/cadence_study.md` and `docs/research/churn_study.md`, and
+`docs/cadence_flag.md` (how the flag works, and the identity and shadow proofs it merged
+on). All of them are on `main`; the build and study scripts that produced them are in
+the `archive/research-daily-design` tag.
 
 ## The four variables
 

@@ -1,0 +1,581 @@
+{
+  "frozen": {
+    "check": "built row vs the frozen published row, on every published session",
+    "days": 29,
+    "days_over_1e-06": [],
+    "detail": [
+      {
+        "date": "2024-06-28",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 3.1086244689504383e-15,
+          "liquidity": 0.0,
+          "momentum": 1.4432899320127035e-15,
+          "resid_vol": 1.3811174426336947e-13,
+          "reversal": 4.218847493575595e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2024-06-27",
+        "worst": 1.3811174426336947e-13
+      },
+      {
+        "date": "2024-07-31",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.1657341758564144e-15,
+          "liquidity": 0.0,
+          "momentum": 1.3322676295501878e-15,
+          "resid_vol": 1.1945999744966684e-13,
+          "reversal": 2.4424906541753444e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2024-07-30",
+        "worst": 1.1945999744966684e-13
+      },
+      {
+        "date": "2024-08-30",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.887379141862766e-15,
+          "liquidity": 4.3298697960381105e-15,
+          "momentum": 1.7763568394002505e-15,
+          "resid_vol": 1.1513012765362873e-13,
+          "reversal": 4.440892098500626e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2024-08-29",
+        "worst": 1.1513012765362873e-13
+      },
+      {
+        "date": "2024-09-30",
+        "holiday_after": true,
+        "max_abs": {
+          "beta": 1.1102230246251565e-15,
+          "liquidity": 0.0,
+          "momentum": 1.5543122344752192e-15,
+          "resid_vol": 9.453549054683208e-14,
+          "reversal": 3.3306690738754696e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2024-09-27",
+        "worst": 9.453549054683208e-14
+      },
+      {
+        "date": "2024-10-31",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.1102230246251565e-15,
+          "liquidity": 0.0,
+          "momentum": 1.7763568394002505e-15,
+          "resid_vol": 9.947598300641403e-14,
+          "reversal": 3.1086244689504383e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2024-10-30",
+        "worst": 9.947598300641403e-14
+      },
+      {
+        "date": "2024-11-29",
+        "holiday_after": true,
+        "max_abs": {
+          "beta": 1.3322676295501878e-15,
+          "liquidity": 4.5102810375396984e-15,
+          "momentum": 1.9984014443252818e-15,
+          "resid_vol": 7.149836278586008e-14,
+          "reversal": 4.440892098500626e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2024-11-27",
+        "worst": 7.149836278586008e-14
+      },
+      {
+        "date": "2024-12-31",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 8.881784197001252e-16,
+          "liquidity": 0.0,
+          "momentum": 1.3322676295501878e-15,
+          "resid_vol": 6.822320486321587e-14,
+          "reversal": 3.9968028886505635e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2024-12-30",
+        "worst": 6.822320486321587e-14
+      },
+      {
+        "date": "2025-01-31",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 6.661338147750939e-16,
+          "liquidity": 4.3298697960381105e-15,
+          "momentum": 2.220446049250313e-15,
+          "resid_vol": 6.378231276471524e-14,
+          "reversal": 3.774758283725532e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-01-30",
+        "worst": 6.378231276471524e-14
+      },
+      {
+        "date": "2025-02-28",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.3322676295501878e-15,
+          "liquidity": 0.0,
+          "momentum": 1.9984014443252818e-15,
+          "resid_vol": 7.271960811294775e-14,
+          "reversal": 2.3314683517128287e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-02-27",
+        "worst": 7.271960811294775e-14
+      },
+      {
+        "date": "2025-03-31",
+        "holiday_after": true,
+        "max_abs": {
+          "beta": 8.881784197001252e-16,
+          "liquidity": 0.0,
+          "momentum": 1.7763568394002505e-15,
+          "resid_vol": 8.838763054797028e-14,
+          "reversal": 3.9968028886505635e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-03-28",
+        "worst": 8.838763054797028e-14
+      },
+      {
+        "date": "2025-04-30",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.7763568394002505e-15,
+          "liquidity": 0.0,
+          "momentum": 1.1102230246251565e-15,
+          "resid_vol": 5.365152766501069e-14,
+          "reversal": 3.774758283725532e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-04-29",
+        "worst": 5.365152766501069e-14
+      },
+      {
+        "date": "2025-05-30",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.5543122344752192e-15,
+          "liquidity": 0.0,
+          "momentum": 1.5543122344752192e-15,
+          "resid_vol": 5.551115123125783e-14,
+          "reversal": 3.9968028886505635e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-05-29",
+        "worst": 5.551115123125783e-14
+      },
+      {
+        "date": "2025-06-30",
+        "holiday_after": true,
+        "max_abs": {
+          "beta": 1.3322676295501878e-15,
+          "liquidity": 0.0,
+          "momentum": 2.4424906541753444e-15,
+          "resid_vol": 5.517808432387028e-14,
+          "reversal": 4.440892098500626e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-06-27",
+        "worst": 5.517808432387028e-14
+      },
+      {
+        "date": "2025-07-31",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.1102230246251565e-15,
+          "liquidity": 0.0,
+          "momentum": 1.7763568394002505e-15,
+          "resid_vol": 6.0285110237146e-14,
+          "reversal": 4.440892098500626e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-07-30",
+        "worst": 6.0285110237146e-14
+      },
+      {
+        "date": "2025-08-29",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.1102230246251565e-15,
+          "liquidity": 0.0,
+          "momentum": 1.3322676295501878e-15,
+          "resid_vol": 6.975670041597937e-14,
+          "reversal": 4.038436252074007e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-08-28",
+        "worst": 6.975670041597937e-14
+      },
+      {
+        "date": "2025-09-30",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.7763568394002505e-15,
+          "liquidity": 0.0,
+          "momentum": 1.3322676295501878e-15,
+          "resid_vol": 7.26640969617165e-14,
+          "reversal": 3.3306690738754696e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-09-29",
+        "worst": 7.26640969617165e-14
+      },
+      {
+        "date": "2025-10-31",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.7763568394002505e-15,
+          "liquidity": 0.0,
+          "momentum": 1.3322676295501878e-15,
+          "resid_vol": 7.513434319150747e-14,
+          "reversal": 3.2144426009850235e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-10-30",
+        "worst": 7.513434319150747e-14
+      },
+      {
+        "date": "2025-11-28",
+        "holiday_after": true,
+        "max_abs": {
+          "beta": 1.5543122344752192e-15,
+          "liquidity": 0.0,
+          "momentum": 2.6645352591003757e-15,
+          "resid_vol": 8.321121569565548e-14,
+          "reversal": 3.774758283725532e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-11-26",
+        "worst": 8.321121569565548e-14
+      },
+      {
+        "date": "2025-12-31",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.1102230246251565e-15,
+          "liquidity": 0.0,
+          "momentum": 1.5543122344752192e-15,
+          "resid_vol": 6.52811138479592e-14,
+          "reversal": 3.6637359812630166e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2025-12-30",
+        "worst": 6.52811138479592e-14
+      },
+      {
+        "date": "2026-01-30",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 8.881784197001252e-16,
+          "liquidity": 0.0,
+          "momentum": 1.7763568394002505e-15,
+          "resid_vol": 6.655787032627813e-14,
+          "reversal": 2.886579864025407e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2026-01-29",
+        "worst": 6.655787032627813e-14
+      },
+      {
+        "date": "2026-02-27",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.1102230246251565e-15,
+          "liquidity": 0.0,
+          "momentum": 1.5543122344752192e-15,
+          "resid_vol": 6.306066779870889e-14,
+          "reversal": 3.1086244689504383e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2026-02-26",
+        "worst": 6.306066779870889e-14
+      },
+      {
+        "date": "2026-03-31",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.5543122344752192e-15,
+          "liquidity": 0.0,
+          "momentum": 2.55351295663786e-15,
+          "resid_vol": 6.772360450213455e-14,
+          "reversal": 3.4416913763379853e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2026-03-30",
+        "worst": 6.772360450213455e-14
+      },
+      {
+        "date": "2026-04-30",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 7.216449660063518e-16,
+          "liquidity": 0.0,
+          "momentum": 1.3322676295501878e-15,
+          "resid_vol": 5.076494780098528e-14,
+          "reversal": 2.9976021664879227e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2026-04-29",
+        "worst": 5.076494780098528e-14
+      },
+      {
+        "date": "2026-05-29",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 8.881784197001252e-16,
+          "liquidity": 0.0,
+          "momentum": 1.5543122344752192e-15,
+          "resid_vol": 4.418687638008123e-14,
+          "reversal": 2.831068712794149e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2026-05-28",
+        "worst": 4.418687638008123e-14
+      },
+      {
+        "date": "2026-06-30",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 8.881784197001252e-16,
+          "liquidity": 0.0,
+          "momentum": 1.5543122344752192e-15,
+          "resid_vol": 4.7128967395337895e-14,
+          "reversal": 2.886579864025407e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2026-06-29",
+        "worst": 4.7128967395337895e-14
+      },
+      {
+        "date": "2026-07-31",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 8.881784197001252e-16,
+          "liquidity": 4.2010665779468326e-15,
+          "momentum": 1.5543122344752192e-15,
+          "resid_vol": 4.3826053897078054e-14,
+          "reversal": 2.6645352591003757e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2026-07-30",
+        "worst": 4.3826053897078054e-14
+      },
+      {
+        "date": "2026-08-31",
+        "holiday_after": true,
+        "max_abs": {
+          "beta": 8.881784197001252e-16,
+          "liquidity": 0.0,
+          "momentum": 1.3322676295501878e-15,
+          "resid_vol": 4.29101199017623e-14,
+          "reversal": 3.1086244689504383e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2026-08-28",
+        "worst": 4.29101199017623e-14
+      },
+      {
+        "date": "2026-09-30",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.2212453270876722e-15,
+          "liquidity": 0.0,
+          "momentum": 1.1102230246251565e-15,
+          "resid_vol": 4.4297898682543746e-14,
+          "reversal": 3.552713678800501e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2026-09-29",
+        "worst": 4.4297898682543746e-14
+      },
+      {
+        "date": "2026-10-02",
+        "holiday_after": false,
+        "max_abs": {
+          "beta": 1.1102230246251565e-15,
+          "liquidity": 0.0,
+          "momentum": 1.1102230246251565e-15,
+          "resid_vol": 4.5075054799781356e-14,
+          "reversal": 2.7755575615628914e-15,
+          "size": 0.0
+        },
+        "names_built": 502,
+        "names_common": 502,
+        "names_frozen": 502,
+        "stamp": "2026-10-01",
+        "worst": 4.5075054799781356e-14
+      }
+    ],
+    "max_abs_by_descriptor": {
+      "beta": 3.1086244689504383e-15,
+      "liquidity": 4.5102810375396984e-15,
+      "momentum": 2.6645352591003757e-15,
+      "resid_vol": 1.3811174426336947e-13,
+      "reversal": 4.440892098500626e-15,
+      "size": 0.0
+    },
+    "median_abs_by_descriptor": {
+      "beta": 1.1102230246251565e-15,
+      "liquidity": 0.0,
+      "momentum": 1.5543122344752192e-15,
+      "resid_vol": 6.655787032627813e-14,
+      "reversal": 3.4416913763379853e-15,
+      "size": 0.0
+    },
+    "worst_day": {
+      "date": "2024-06-28",
+      "holiday_after": false,
+      "max_abs": {
+        "beta": 3.1086244689504383e-15,
+        "liquidity": 0.0,
+        "momentum": 1.4432899320127035e-15,
+        "resid_vol": 1.3811174426336947e-13,
+        "reversal": 4.218847493575595e-15,
+        "size": 0.0
+      },
+      "names_built": 502,
+      "names_common": 502,
+      "names_frozen": 502,
+      "stamp": "2024-06-27",
+      "worst": 1.3811174426336947e-13
+    }
+  },
+  "store": {
+    "by_descriptor": {
+      "beta": {
+        "cells": 9937,
+        "max": 0.6739570747522083,
+        "median": 0.007383054511257814
+      },
+      "liquidity": {
+        "cells": 9977,
+        "max": 0.04161138224758726,
+        "median": 0.0037029957413081682
+      },
+      "momentum": {
+        "cells": 9882,
+        "max": 2.162688258867814,
+        "median": 0.015103390833751021
+      },
+      "resid_vol": {
+        "cells": 9896,
+        "max": 2.0803500606945473,
+        "median": 0.007181124784012866
+      },
+      "reversal": {
+        "cells": 9947,
+        "max": 0.284469359154943,
+        "median": 0.015276246627245471
+      },
+      "size": {
+        "cells": 9977,
+        "max": 0.040060937957379306,
+        "median": 0.006491292456792586
+      }
+    },
+    "cells_matched": 59680,
+    "cells_panel": 60040,
+    "cells_panel_only": 360,
+    "check": "rebuilt daily panel vs efb.e11_descriptors",
+    "dates_panel": 20,
+    "dates_store": 20,
+    "max_abs": 2.162688258867814,
+    "median_abs": 0.008032824204233985,
+    "window": [
+      "2026-09-04",
+      "2026-10-02"
+    ]
+  }
+}
