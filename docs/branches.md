@@ -12,7 +12,7 @@ The two study branches are gone as branches: their write-ups and result JSONs ar
 
 | branch | tip | worktree | why it stays |
 |---|---|---|---|
-| `main` | `041e8ad`, then the merge of `docs-closeout` (`git log -1`) | `equity-factor-book` | production |
+| `main` | whatever `git log -1 origin/main` says - this file cannot record its own merge | `equity-factor-book` | production |
 | `spinoff-explains-adjustment` | `91eed42` | - | **held under the freeze**: the CTVA contract. An unexplained vendor back-adjustment excludes that name for the night instead of stopping the run. Merges Monday night, not before |
 | `order-time-quotes` | `4cdbc30` | - | **held under the freeze**: records the bid, ask and mid with every order. Changes the morning path and needs `docs/migrations/e13_order_quotes.sql` applied first |
 | `moo-orders` | `e7ad6c8` | - | **held for the owner's decision**: `EFB_ORDER_TIF` for market-on-open orders. Unset is byte-identical to today. The switch is the owner's, for the rebalance about 2026-11-23 |
@@ -164,6 +164,15 @@ then extend exactly as the evening does, on the copy:
     print(extend.extend_returns(tree), extend.extend_model(tree))
     print("last session:", extend.last_price_session(tree))
     EOF
+
+### The 2026-10-24 incident this warning exists for
+
+The docs commit that carried the studies onto `main` was made in a worktree holding the
+symlink, and `git add -A` recorded `data` as a symlink in place of the fifteen tracked
+placeholder files. It reached `main` and was undone the same night by `721619d`, which
+restores the tree from `041e8ad` and deletes the symlink; the tree matches `041e8ad` byte
+for byte. **Nothing under `data/` was ever read or changed** - the placeholders carry no
+run data - and no gate or proof ran against the affected commit.
 
 ### Committing from a worktree that holds a `data` symlink
 
