@@ -220,7 +220,7 @@ built is gone as of 2026-10-23:
 **2.1 GB freed.** All three were rebuildable: the artifact tree from the seed bucket
 (`scripts/push_seed.py` pulls it, `live/seed.py` verifies every hash), the cut trees from
 the store plus the seed, and the daily-design panel by re-running
-`scripts/daily_design_study.py` on `research-daily-design`. Every database write they
+`scripts/daily_design_study.py`, which lives in `archive/research-daily-design`. Every database write they
 supported is applied, verified, and backed up under `docs/owner_fixes/backups/` with a
 restore script proved by dry run.
 

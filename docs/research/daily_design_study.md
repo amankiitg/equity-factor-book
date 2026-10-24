@@ -156,7 +156,11 @@ hold days.
 
 ## Reproducing
 
+The scripts that follow are in `archive/research-daily-design`, not on `main`; restore the
+tag into a worktree first.
+
 ```bash
+git worktree add ../efb-daily-design archive/research-daily-design     # from the main checkout
 cd /Users/amankesarwani/PycharmProjects/efb-daily-design
 set -a; source ../equity-factor-book/.env; set +a
 EFB_DESIGN_RETURNS=clean python scripts/build_daily_design_panel.py --root /tmp/churn/daily   # 21.6 min
