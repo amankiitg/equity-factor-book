@@ -33,8 +33,10 @@ are summarized on the metrics row. A run that could not read the account publish
 no block, and the strip says so in one line rather than drawing an empty book.
 
 Screenshots of the rendered page, taken from a headless browser at 1280px and
-390px against the fixture that stands for a clean run, are
-`docs/img/live_page_ok_1280.png` and `docs/img/live_page_ok_390.png`.
+390px, are `../docs/img/book.png` and `../docs/img/book_phone.png`; the attribution
+tab is `../docs/img/attribution.png`. They are regenerated against one snapshot
+document by `../scripts/readme_screenshots.py`, which is the harness to reuse rather
+than a new one.
 
 ```
 npm install

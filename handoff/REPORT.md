@@ -187,7 +187,9 @@ to a panel. And three em dashes exist in `web/README.md` (lines 4, 13 and 48) th
 pre-existing on `main` and outside this task's scope: they were noticed while updating
 the README's layout paragraph and left where they are, so the file still carries them.
 The root `README.md` picture of the live page, `docs/img/live_dashboard.png`, is also
-still the pre-redesign layout for the reason the previous report gave.
+still the pre-redesign layout for the reason the previous report gave. (That file was
+deleted on 2026-10-24; the README now carries `docs/img/book.png`, a render of the
+2026-10-13 published snapshot.)
 
 # live-page-redesign: one status strip, one metrics row, two columns and one drawer
 
@@ -387,21 +389,29 @@ Also not changed, and the reviewer may expect it to have been: `docs/img/live_da
 the picture of the live page in the root `README.md`, still shows the old layout. It is
 a capture of the deployed page behind Cloudflare Access and re-capturing it needs a
 browser session as the owner, so it was left alone rather than replaced with a render
-of a fixture under a caption that claims it is the published page.
+of a fixture under a caption that claims it is the published page. (The file was
+deleted on 2026-10-24, and the README's picture is now `docs/img/book.png`: a render of
+a published snapshot, under a caption that says so.)
 
 ## The 1280px and 390px screenshots of the ok state
 
-`docs/img/live_page_ok_1280.png` and `docs/img/live_page_ok_390.png`, taken from a
-headless browser against `web/fixtures/snapshot_ok.json` with the clock pinned to the
-evening the fixture was written for (2026-09-21T23:00Z), so the strip reads
-`snapshot generated 2026-09-21 22:41 UTC (19 minutes ago)` and the pill reads `ok`
-rather than `expired`. The same fixture rendered against today's clock reads
-`expired` with `(14 days ago)`, which is the page being right about a fourteen day old
-book, not a defect.
+Two captures, `docs/img/live_page_ok_1280.png` and `docs/img/live_page_ok_390.png`,
+taken from a headless browser against `web/fixtures/snapshot_ok.json` with the clock
+pinned to the evening the fixture was written for (2026-09-21T23:00Z), so the strip
+read `snapshot generated 2026-09-21 22:41 UTC (19 minutes ago)` and the pill read `ok`
+rather than `expired`. The same fixture rendered against today's clock reads `expired`
+with `(14 days ago)`, which is the page being right about a fourteen day old book, not
+a defect.
 
-![the live page at 1280px](../docs/img/live_page_ok_1280.png)
+**Those two files were deleted on 2026-10-24**, with the README's picture of the page,
+and the pictures below are the current captures of the same two views: the book at
+1280px and at 390px, from `scripts/readme_screenshots.py` and the 2026-10-13 published
+snapshot rather than `snapshot_ok.json`. The paragraphs above are the report as it was
+written; only the image paths moved.
 
-![the live page at 390px](../docs/img/live_page_ok_390.png)
+![the live page at 1280px](../docs/img/book.png)
+
+![the live page at 390px](../docs/img/book_phone.png)
 
 ## The headless render, all nine states at both widths
 
