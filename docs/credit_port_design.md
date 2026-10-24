@@ -739,6 +739,7 @@ criterion is a test rather than a claim.
 | scripts/provision_supabase.py | unchanged | schema provisioning |
 | scripts/push_seed.py | unchanged | seed publication |
 | scripts/record_spinoff.py | re-specified | recording a provider corporate action so a rebuild can re-apply it is the same discipline, and a credit provider restates index membership and coupons rather than paying a spun-off child |
+| scripts/readme_screenshots.py | unchanged | the screenshot harness builds the page, serves it against one stored snapshot and captures it, which a credit page needs for the same reason: a picture that no run regenerated is a picture nobody can date |
 | scripts/reconcile_fills.py | unchanged | the morning entry point for that reconciliation, and the job name that keeps its store rows apart from the evening's |
 | scripts/rehearse_preflip.py | unchanged | rehearsing the order path against a strict fake broker is a safety net a credit desk needs more, not less |
 | scripts/repair_session.py | unchanged | repairing one name-day by appending rather than restating is the same discipline, and credit marks are revised more often |
