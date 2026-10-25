@@ -106,6 +106,11 @@ DATED_DOCUMENTS: tuple[str, ...] = (
     "snapshot_2026-10-13_evening.json",
     "snapshot_2026-10-14_error.json",
     "snapshot_2026-10-14_morning.json",
+    # The first monthly rebalance, fetched from the snapshot bucket for the
+    # public-dashboard audit on 2026-10-24. It is the only fixture here that is
+    # byte-for-byte a published `latest.json`, which is why the Worker's
+    # `published.test.ts` treats it as the statement about what the writer emits.
+    "snapshot_2026-10-23_evening.json",
 )
 
 
