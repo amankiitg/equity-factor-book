@@ -10,9 +10,11 @@ was written down before it traded.
 **The live page: <https://efb-live-book.nutritrack.workers.dev>** (public, paper account,
 no login).
 
-![The book monitor after the 2026-10-23 close, the first monthly rebalance: the status
+[![The book monitor after the 2026-10-23 close, the first monthly rebalance: the status
 strip, the headline metrics and the top of the exposure and sector panels. Real data,
-paper account.](docs/img/book.png)
+paper account.](docs/img/book.png)](https://efb-live-book.nutritrack.workers.dev)
+
+Screenshot from the 2026-10-23 close; the live page updates every evening.
 
 ## At a glance
 
@@ -148,9 +150,9 @@ Below them are the cumulative and daily charts, then the predicted volatility be
 after the hedge and a realized-against-forecast panel that refuses to draw a verdict on
 fewer than thirty live sessions.
 
-![The attribution tab for the 2026-10-23 close: the four P&L terms, the cumulative and
+[![The attribution tab for the 2026-10-23 close: the four P&L terms, the cumulative and
 daily charts with their legends, and realized against forecast volatility. Real data,
-paper account.](docs/img/attribution.png)
+paper account.](docs/img/attribution.png)](https://efb-live-book.nutritrack.workers.dev)
 
 Every row is stored by the evening run and the page recomputes the identity from them, so
 a day that does not add up shows as a gap between a bar and its marker
