@@ -170,7 +170,7 @@ a day that does not add up shows as a gap between a bar and its marker
 | 2026-10-22 | **Realized volatility was measured over the batch** a run happened to hold, giving a tenfold cliff (0.226% against 2.477%). | The window runs over the book's own history, and a repair script restates the series. | [`cadence`](docs/turn_on_monthly.md) |
 | 2026-10-22 | The **cost estimate priced the whole book** instead of the trades, so it sat flat at 14.3 bp whatever traded. | Spread, commission and impact charge the traded notional; only borrow stays on the book. | [`cadence`](docs/turn_on_monthly.md) |
 | 2026-10-22 | Under a monthly cadence a **reversal's second leg was never sent**, because a hold day publishes the account's flat book. | A hold day forces whatever the last rebalance left owing. | [`cadence`](docs/cadence_flag.md) |
-| 2026-10-24 | An **unexplained vendor restatement** (CTVA, 6.7x) stopped the evening rather than trade a return it could not reproduce. | Exclude that name for the night, record its ratio and name it in the email. | [`monday`](docs/monday_2026-10-26.md) |
+| 2026-10-01 | The vendor served CTVA's **spin-off as a price** (77.65 to 12.57, a 6.7x restatement), and the cross check refuses a back-adjustment no split record explains, so the run stops rather than trade a return it cannot reproduce. | Mask the cell and refit the session; the owner's contract then excludes that name for the night, records its ratio and names it in the email. | [`ledger`](docs/hygiene_ledger.md), [`monday`](docs/monday_2026-10-26.md) |
 
 Each one is a defect the code could not see from the inside: every unit test held the
 world still, and every failure lived in a seam between two things that were each right.
