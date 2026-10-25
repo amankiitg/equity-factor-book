@@ -32,6 +32,12 @@
   },
   "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "efb-snapshots" }],
   "vars": {
+    // The switch that makes the page public: "true" serves the sanitized snapshot to
+    // anyone, and anything else (unset, empty, a typo) demands the Access assertion as
+    // before. It fails closed, which is why the value is a string compared exactly.
+    "PUBLIC": "true",
+    // Kept so a re-lock is a one-word change: set PUBLIC to "false", re-add the Access
+    // application, and these are the two values the Worker verifies against.
     "ACCESS_TEAM_DOMAIN": "amankesar.cloudflareaccess.com",
     "ACCESS_AUD": "6d6b4aec421a3a0c13d54d45a7f6a6ad2bd0b1c75602fa88ba4f073b15908620"
   },
