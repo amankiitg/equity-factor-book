@@ -7,6 +7,9 @@ that failed its own gate, so the book is a **measurement instrument** rather tha
 edge claim: the point is to watch a real stack behave on a signal whose expected verdict
 was written down before it traded.
 
+**The live page: <https://efb-live-book.nutritrack.workers.dev>** (public, paper account,
+no login).
+
 ![The book monitor after the 2026-10-23 close, the first monthly rebalance: the status
 strip, the headline metrics and the top of the exposure and sector panels. Real data,
 paper account.](docs/img/book.png)
