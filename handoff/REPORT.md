@@ -404,14 +404,13 @@ with `(14 days ago)`, which is the page being right about a fourteen day old boo
 a defect.
 
 **Those two files were deleted on 2026-10-24**, with the README's picture of the page,
-and the pictures below are the current captures of the same two views: the book at
-1280px and at 390px, from `scripts/readme_screenshots.py` and the 2026-10-13 published
-snapshot rather than `snapshot_ok.json`. The paragraphs above are the report as it was
-written; only the image paths moved.
+and the picture below is the current capture of the book at 1280px, from
+`scripts/readme_screenshots.py` and the 2026-10-23 published snapshot rather than
+`snapshot_ok.json`. The 390px capture that stood here was deleted the same day, when the
+README went to two desktop images and nothing else used the phone one. The paragraphs
+above are the report as it was written; only the image path moved.
 
 ![the live page at 1280px](../docs/img/book.png)
-
-![the live page at 390px](../docs/img/book_phone.png)
 
 ## The headless render, all nine states at both widths
 

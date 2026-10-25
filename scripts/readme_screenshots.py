@@ -1,30 +1,35 @@
-"""Regenerate the three README screenshots from the built page.
+"""Regenerate the two README screenshots from the built page.
 
     .venv/bin/python scripts/readme_screenshots.py
 
 The script builds `web/`, serves the built `dist/` with one snapshot document behind
-`/api/snapshot`, and captures three PNGs into `docs/img/`:
+`/api/snapshot`, and captures two PNGs into `docs/img/`:
 
-    book.png          the book view at 1280 px: status strip, headline metrics, the
-                      bridge, the hedge and exposures panels, trades by reason, the
-                      sector split and the largest longs and shorts
-    attribution.png   the attribution view at 1280 px: the four P&L terms, the cost
-                      split, predicted volatility before and after the hedge, the
-                      variance path, the factor table and realized against forecast
-    book_phone.png    the top of the book at 390 px, which is the first two screens
+    book.png          the book view at 1280 px, cropped to its first screen: the status
+                      strip, the headline metrics, the account note and the top of the
+                      exposures and sector panels
+    attribution.png   the attribution view at 1280 px: the four P&L terms, the
+                      cumulative and daily charts with their legends, and the cost
+                      split
+
+Both are desktop width, because the README is read on a desktop and a phone shot only
+shows the same status strip smaller. The crops are what a reader needs to recognise the
+page, not the whole scroll: the book's detail drawer and the research panels below the
+charts are one click further in on the real page.
 
 It is the same harness the 390 px checks use (`web/scripts/measure.mjs`): the same
-fixture behind the same endpoint, and the same pinned clock, because a snapshot
-document is a document from one morning and a page opened days later is right to call
-it stale. Playwright is resolved from the page's own package, from `PLAYWRIGHT_MODULE`,
-or from the npx cache, exactly as `measure.mjs` resolves it; nothing here reaches the
-network and nothing here writes to the store, the bucket or the broker.
+document behind the same endpoint, and the same pinned clock, because a snapshot is a
+document from one morning and a page opened days later is right to call it stale.
+Playwright is resolved from the page's own package, from `PLAYWRIGHT_MODULE`, or from
+the npx cache, exactly as `measure.mjs` resolves it; nothing here reaches the network
+and nothing here writes to the store, the bucket or the broker.
 
-The default snapshot is `web/fixtures/snapshot_2026-10-13_evening.json`, the most recent
-real published document kept in the repository (generated 2026-10-13T22:53:47Z by the
-evening run). `--snapshot` takes any other document; the clock defaults to seventeen
-minutes after whichever one is given, which is what makes the page read "ok" rather than
-"expired".
+The default snapshot is `web/fixtures/snapshot_2026-10-23_evening.json`, the document
+the evening run published for the first monthly rebalance. It is the same document the
+Worker serves, and the Worker sanitizes before it serves, so this is the page a reader
+of the public page would see. `--snapshot` takes any other document; the clock defaults
+to ten minutes after the newest moment the document mentions, which is what makes the
+page read "ok" rather than "expired".
 
 `--check` captures nothing and prints what would be captured, which is what a CI job
 wants if the page's own measuring stick ever runs the layout.
@@ -50,11 +55,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "web" / "dist"
 OUT = ROOT / "docs" / "img"
-DEFAULT_SNAPSHOT = ROOT / "web" / "fixtures" / "snapshot_2026-10-13_evening.json"
+DEFAULT_SNAPSHOT = ROOT / "web" / "fixtures" / "snapshot_2026-10-23_evening.json"
 SIZE_CEILING = 400 * 1024
 VIEWPORT_WIDTH = 1280
-PHONE_WIDTH = 390
-PHONE_VIEWPORT_HEIGHT = 844
+# The two crops: a screen of the book, and the attribution down to its cost split.
+BOOK_HEIGHT = 1400
+ATTRIBUTION_HEIGHT = 2200
 
 TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -101,19 +107,22 @@ class Harness(BaseHTTPRequestHandler):
 
 
 CAPTURE = r"""
-// The capture half: one page, three crops. It prints the boxes it framed so a reader
+// The capture half: one page, two crops. It prints the boxes it framed so a reader
 // can see what an image holds rather than trusting a filename.
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-const args = { port: 0, out: "docs/img", now: null };
+const args = { port: 0, out: "docs/img", now: null, book: 1400, attribution: 2200 };
 for (let index = 2; index < process.argv.length; index += 1) {
   const flag = process.argv[index];
   if (flag === "--port") args.port = Number(process.argv[++index]);
   else if (flag === "--out") args.out = process.argv[++index];
   else if (flag === "--now") args.now = process.argv[++index];
+  else if (flag === "--book-height") args.book = Number(process.argv[++index]);
+  else if (flag === "--attribution-height")
+    args.attribution = Number(process.argv[++index]);
 }
 
 /** Playwright, from the page's package, the environment, or npx's own cache. */
@@ -137,7 +146,7 @@ async function loadPlaywright() {
   throw new Error(`playwright not found; tried ${candidates.join(", ")}`);
 }
 
-/** The clock the page reads: a fixture is a document from one morning. */
+/** The clock the page reads: a document is from one morning. */
 const fixClock = (iso) => {
   const fixed = new Date(iso).getTime();
   return `(() => {
@@ -169,7 +178,11 @@ const boxes = () => {
     pageHeight: document.documentElement.scrollHeight,
     columns: box("[data-columns]"),
     attribution: box('[data-section="attribution"]'),
-    drawer: box('[data-section="drawer"]'),
+    cumulative: box('[data-chart="cumulative"]'),
+    daily: box('[data-chart="daily"]'),
+    cost: box('[data-cost-legend="true"]'),
+    hedgeVol: box('[data-chart="hedge-vol"]'),
+    volatility: box('[data-panel="volatility"]'),
   };
 };
 
@@ -179,8 +192,6 @@ mkdirSync(args.out, { recursive: true });
 const browser = await chromium.launch();
 const report = {};
 
-// The book at desktop width. The crop ends with the detail drawer's tab bar, so the
-// frame says where the full table lives instead of implying it is absent.
 {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 1000 },
@@ -190,46 +201,43 @@ const report = {};
   const page = await context.newPage();
   await page.goto(base, { waitUntil: "networkidle" });
   await page.waitForTimeout(400);
+
+  // The book: the first screen, which is the status strip, the metrics row and the
+  // top of the two panels under it.
   const first = await page.evaluate(boxes);
-  const height = Math.min(first.pageHeight, first.drawer.bottom + 12);
-  await page.setViewportSize({ width: 1280, height });
+  const bookHeight = Math.min(first.pageHeight, args.book);
+  await page.setViewportSize({ width: 1280, height: bookHeight });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(150);
   await page.screenshot({ path: join(args.out, "book.png") });
-  report.book = { width: 1280, height, columns: first.columns, drawer: first.drawer };
+  report.book = { width: 1280, height: bookHeight, columns: first.columns };
 
-  // The attribution tab, framed on its own section: the four terms, the cost split,
-  // the two risk charts and the realized-against-forecast panel, each with its legend
-  // and its notes.
+  // The attribution: its own section, from the four terms down to the cost split.
   await page.click('[data-view="attribution"]');
   await page.waitForTimeout(500);
   const second = await page.evaluate(boxes);
   const section = second.attribution;
-  await page.setViewportSize({ width: 1280, height: section.height + 8 });
+  // Never cut a panel in half: the crop ends with the realized-against-forecast
+  // panel when the requested height would run into it, so the image holds whole
+  // charts with their legends rather than the top half of one.
+  const panelEnd = second.volatility
+    ? second.volatility.bottom + 16 - section.top
+    : section.height;
+  const attributionHeight = Math.min(section.height, panelEnd, args.attribution);
+  await page.setViewportSize({ width: 1280, height: attributionHeight });
   await page.evaluate((top) => window.scrollTo(0, top - 4), section.top);
   await page.waitForTimeout(200);
   await page.screenshot({ path: join(args.out, "attribution.png") });
-  report.attribution = { width: 1280, top: section.top, height: section.height };
-  await context.close();
-}
-
-// One phone view: the first two screens at 390 px, twice the pixel density.
-{
-  const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    deviceScaleFactor: 2,
-  });
-  await context.addInitScript(fixClock(args.now));
-  const page = await context.newPage();
-  await page.goto(base, { waitUntil: "networkidle" });
-  await page.waitForTimeout(400);
-  const measured = await page.evaluate(boxes);
-  const height = Math.min(measured.pageHeight, measured.columns.top + 8);
-  await page.setViewportSize({ width: 390, height });
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForTimeout(150);
-  await page.screenshot({ path: join(args.out, "book_phone.png") });
-  report.phone = { width: 390, height, pageHeight: measured.pageHeight };
+  report.attribution = {
+    width: 1280,
+    height: attributionHeight,
+    section,
+    cumulative: second.cumulative,
+    daily: second.daily,
+    cost: second.cost,
+    hedgeVol: second.hedgeVol,
+    volatility: second.volatility,
+  };
   await context.close();
 }
 
@@ -239,7 +247,6 @@ console.log(JSON.stringify(report));
 
 
 STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")
-
 
 # The document's own write times: `generated_at`, and any `*_at` or `*_as_of` stamp the
 # writer put on a block. Deliberately not every date it mentions - `expected_next_by` is
@@ -379,7 +386,7 @@ def main() -> int:
         server.server_close()
 
     print(json.dumps(report, indent=1))
-    for name in ("book.png", "attribution.png", "book_phone.png"):
+    for name in ("book.png", "attribution.png"):
         path = out / name
         if not path.is_file():
             raise SystemExit(f"{name} was not written")
