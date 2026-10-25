@@ -1,9 +1,13 @@
 # The public dashboard: what it serves, what it may show, and how to publish it
 
-Status: **the sanitizer is deployed and the page is still private.** Cloudflare Access
-still fronts `efb-live-book.nutritrack.workers.dev`, because nothing in this session could
-remove it (section 6). Everything below was read from the live account and the live
-bucket, not from a fixture.
+Status: **the page is public as of 2026-10-25.**
+<https://efb-live-book.nutritrack.workers.dev> answers anyone, the Access application that
+fronted it is deleted, and the Worker serves the sanitized snapshot to a request with no
+token because `PUBLIC` is `"true"` in `web/wrangler.jsonc`. The audit below was written
+while the page was still private and is kept as it was, with the two changes since
+recorded in sections 6 and 10: the route no longer requires the assertion, and section 8's
+check has been run against the public hostname and came back clean. Everything here was
+read from the live account and the live bucket, not from a fixture.
 
 ## 1. The document, fetched from the bucket
 
@@ -114,18 +118,28 @@ guard on the writer.
 
 | | |
 |---|---|
-| before | `d2de3169-6e99-4079-8642-5a87dfb8f1f7`, created 2026-10-22T23:32:44Z, at 100% |
-| after | `ec18c6ba-b49d-4d4e-a601-3b319baae924`, created 2026-10-25T03:30:20Z, at 100% |
-| merged | `b5e79a2` (`Merge branch 'public-sanitize'`) |
-| rollback | `cd web && npx wrangler rollback d2de3169-6e99-4079-8642-5a87dfb8f1f7` |
+| before the sanitizer | `d2de3169-6e99-4079-8642-5a87dfb8f1f7`, created 2026-10-22T23:32:44Z |
+| the sanitizer, still requiring Access | `ec18c6ba-b49d-4d4e-a601-3b319baae924`, created 2026-10-25T03:30:20Z, merged `b5e79a2` |
+| **the page public** | **`d1db763c-5631-4cbd-9a80-df8c1da9e414`**, created 2026-10-25T12:21:52Z, merged `dcd4443` |
+| rollback from public | `cd web && npx wrangler rollback ec18c6ba-b49d-4d4e-a601-3b319baae924` |
 
-Rolling back restores the version that echoes `latest.json` unsanitized. Do that only if
-the page is behind Access at the time.
+**What a rollback does now.** Every version before `d1db763c` still requires a valid
+Access assertion, and the Access application this hostname used is gone, so rolling back
+to any of them makes `/api/snapshot` answer the Worker's own 403 to everyone. That is the
+safe direction: the page fails closed, nothing is served, and no unsanitized body is ever
+reachable by rolling back. Do not roll back to `d2de3169` while the page is public unless
+Access is put back first: that version echoes `latest.json` with no sanitizer at all.
 
-## 7. What is served now, checked
+**To re-lock the page**, in this order: set `"PUBLIC": "false"` in `web/wrangler.jsonc`
+and `cd web && npx wrangler deploy` (the route demands the assertion again), then re-add
+the Access application as section 8 describes, which also gives a new AUD to put back in
+the same file. Setting `PUBLIC` to anything other than the exact string `true` closes the
+route, so the deploy is the lock and the application is the door.
 
-The public hostname answers a 302 to the Access login for every path, so the Worker is
-never reached from outside:
+## 7. What the Worker serves, checked before the page opened
+
+While Access was still on, the hostname answered a 302 to its login for every path, so the
+Worker was never reached from outside:
 
 ```
 GET /             -> 302
@@ -133,7 +147,7 @@ GET /api/snapshot -> 302
 GET /api/other    -> 302
 ```
 
-To see the body the Worker actually produces, the deployed handler was run locally
+To see the body the Worker produces, the deployed handler was run locally
 against the production bucket (`wrangler dev --remote`, with only the Access decision
 injected and no deploy), and the response scanned:
 
@@ -147,7 +161,39 @@ injected and no deploy), and the response scanned:
 | `GET /api`, `GET /api/other` | 404 `{"error":"not found"}` |
 | `GET /` | 200, the page |
 
-## 8. Why the page is not public yet, and the exact steps to publish it
+## 8. How the page was made public, and the check that was run
+
+This section was written while the page was private; the steps below are the ones that
+were taken, and the check is the one that came back clean on 2026-10-25.
+
+**The removal**, by the owner in the dashboard, after the wrangler login here turned out
+to have no Access scope and no token existed to create one: Zero Trust, Access,
+Applications, the application on `efb-live-book.nutritrack.workers.dev` (AUD
+`6d6b4aec421a3a0c13d54d45a7f6a6ad2bd0b1c75602fa88ba4f073b15908620`), Delete.
+
+That left the Worker answering its own 403, which is why the `PUBLIC` switch exists: the
+edge no longer asks for a login and the Worker was still demanding the assertion it had
+been handed by it. Setting `PUBLIC` to `"true"` is the second half of the change.
+
+**The check, run from this machine with no session and no cookie:**
+
+```
+curl -sI https://efb-live-book.nutritrack.workers.dev/api/snapshot
+HTTP/2 200
+content-type: application/json
+content-length: 69490
+cache-control: public, max-age=300
+```
+
+and the body, scanned with the patterns in this section: 69,490 bytes, parses as JSON, 20
+top-level keys, **no email, no URL, no absolute path, no UUID, no Alpaca account id, no
+hostname, no error text, no client order id, no JWT, no cloud key, and no denied key name
+anywhere in the tree.**
+
+The routes around it, anonymously: `GET /` 200 (the page), `GET /api/other` 404,
+`GET /api` 404, `POST /api/snapshot` 405.
+
+## 8a. The steps, kept for the next application
 
 The wrangler login is an OAuth token with no Access scope (`wrangler whoami` lists
 workers, R2, KV, D1, pages, zones and more, but no `access`), there is no
