@@ -32,11 +32,11 @@ with what those orders did. It is read in the drawer's second tab, and its fills
 are summarized on the metrics row. A run that could not read the account publishes
 no block, and the strip says so in one line rather than drawing an empty book.
 
-Screenshots of the rendered page, taken from a headless browser at 1280px and
-390px, are `../docs/img/book.png` and `../docs/img/book_phone.png`; the attribution
-tab is `../docs/img/attribution.png`. They are regenerated against one snapshot
-document by `../scripts/readme_screenshots.py`, which is the harness to reuse rather
-than a new one.
+Screenshots of the rendered page at 1280px are `../docs/img/book.png` and, for the
+attribution tab, `../docs/img/attribution.png`. They are regenerated against one
+snapshot document by `../scripts/readme_screenshots.py`, which is the harness to reuse
+rather than a new one; there is no phone capture, because the README shows only these
+two desktop views.
 
 ```
 npm install
