@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { handle, SNAPSHOT_PATH, verifyAccess, type Env } from "./index";
+import {
+  handle,
+  isPublic,
+  SNAPSHOT_PATH,
+  verifyAccess,
+  type Env,
+} from "./index";
 
 const PAYLOAD = { schema_version: 1, target_close: "2026-09-21" };
 const TOKEN = {
@@ -185,6 +191,82 @@ describe("the routes that are not the snapshot", () => {
       const response = await handle(request(path), envWith(PAYLOAD));
       expect(response.status, path).toBe(404);
       expect(await response.json()).toEqual({ error: "not found" });
+    }
+  });
+});
+
+describe("the PUBLIC switch", () => {
+  // The page is public only when the deployment says so in one word, and the word is
+  // compared exactly: unset, empty, "false" and a typo all keep the Access check.
+  it("serves the sanitized snapshot to a request with no token when PUBLIC is true", async () => {
+    const response = await handle(
+      request(SNAPSHOT_PATH),
+      envWith(PAYLOAD, { PUBLIC: "true" }),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("public, max-age=300");
+    expect(await response.json()).toEqual(PAYLOAD);
+  });
+
+  it("still strips a document with secrets in it when PUBLIC is true", async () => {
+    const response = await handle(
+      request(SNAPSHOT_PATH),
+      envWith(
+        {
+          schema_version: 1,
+          account_id: "PA1ABCDEF2345",
+          run_status: {
+            status: "error",
+            detail: "KeyError: the frame had no such column",
+          },
+          positions: {
+            note: "read from https://paper-api.alpaca.markets on /Users/operator/efb",
+          },
+        },
+        { PUBLIC: "true" },
+      ),
+    );
+    const served = (await response.json()) as Record<string, any>;
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(served)).not.toContain("PA1ABCDEF2345");
+    expect(JSON.stringify(served)).not.toContain("alpaca.markets");
+    expect(JSON.stringify(served)).not.toContain("/Users/operator");
+    expect(served.account_id).toBeUndefined();
+    expect(served.run_status.detail).toBe("");
+  });
+
+  it.each([undefined, "", "false", "TRUE", "1", "yes"])(
+    "still refuses a request with no token when PUBLIC is %p",
+    async (value) => {
+      const env = envWith(PAYLOAD, { PUBLIC: value });
+      const response = await handle(request(SNAPSHOT_PATH), env);
+      expect(response.status).toBe(403);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    },
+  );
+
+  it("keeps the other rules whatever PUBLIC says", async () => {
+    const open = envWith(PAYLOAD, { PUBLIC: "true" });
+    const post = await handle(
+      new Request(`https://book.example.com${SNAPSHOT_PATH}`, {
+        method: "POST",
+      }),
+      open,
+    );
+    expect(post.status).toBe(405);
+    const elsewhere = await handle(request("/api/other"), open);
+    expect(elsewhere.status).toBe(404);
+    const missing = await handle(
+      request(SNAPSHOT_PATH),
+      envWith(null, { PUBLIC: "true" }),
+    );
+    expect(missing.status).toBe(404);
+  });
+
+  it("reads PUBLIC as the exact string, not as a truthy value", async () => {
+    expect(isPublic({ PUBLIC: "true" } as Env)).toBe(true);
+    for (const value of [undefined, "", "false", "TRUE", "true ", "1"]) {
+      expect(isPublic({ PUBLIC: value } as Env)).toBe(false);
     }
   });
 });

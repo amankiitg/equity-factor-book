@@ -7,6 +7,17 @@
 // trusting the edge alone: an Access policy is a routing decision and this is a
 // data decision, and the page shows positions.
 //
+// **Whether the route is open is one variable, and it fails closed.** `PUBLIC` set to
+// the exact string `true` makes `/api/snapshot` skip the Access check and answer anyone
+// with the sanitized snapshot; unset, empty, or any other value and the route is exactly
+// what it was: a valid assertion or a 403. The switch exists because the Access
+// application that fronted this hostname was deleted while the Worker still demanded its
+// assertion, which left the page answering its own 403 to everyone.
+//
+// What `PUBLIC` does not change: the sanitizer still runs on every body, the route is
+// still a read (GET or HEAD), an unknown path under `/api` is still a 404, and a refusal
+// is still uncacheable.
+//
 // **Every snapshot the Worker answers with is sanitized first** (`./sanitize`), so
 // the document can be served to anyone without a second review: the fields that
 // name an account, an order, a credential, an email or a host are removed or
@@ -31,6 +42,7 @@ export interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
+  PUBLIC?: string;
 }
 
 export interface Deps {
@@ -62,6 +74,17 @@ function json(
       "cache-control": cacheControl,
     },
   });
+}
+
+/**
+ * Whether this deployment serves the snapshot to anyone.
+ *
+ * The comparison is against the exact string `true`, the same way the evening run
+ * treats `EFB_FORCE_HOUR`: a typo, an empty value or a "1" must not open the page, and
+ * everything except `true` is the closed behaviour.
+ */
+export function isPublic(env: Env): boolean {
+  return env.PUBLIC === "true";
 }
 
 /** Whether the request carries a valid Access assertion for this application. */
@@ -119,13 +142,16 @@ export async function handle(
     refused.headers.set("allow", "GET, HEAD");
     return refused;
   }
-  if (
-    !(await verifyAccess(
+  // The open case first, so the closed case reads exactly as it always has: no
+  // assertion and not public is a refusal.
+  const allowed =
+    isPublic(env) ||
+    (await verifyAccess(
       request.headers.get("Cf-Access-Jwt-Assertion"),
       env,
       deps,
-    ))
-  ) {
+    ));
+  if (!allowed) {
     return json({ error: "forbidden" }, 403);
   }
   const object = await env.SNAPSHOTS.get(SNAPSHOT_KEY);
