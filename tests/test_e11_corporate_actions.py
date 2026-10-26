@@ -73,14 +73,21 @@ def test_three_for_two_split_gives_the_right_return():
     assert 61.0 / 90.0 - 1.0 == pytest.approx(-0.3222222, abs=1e-6)
 
 
-def test_a_back_adjustment_with_no_split_record_stops_the_run():
-    with pytest.raises(ValueError) as err:
+def test_a_split_with_no_record_resolves_to_nothing():
+    """The decision to drop the name is the append path's, not this function's.
+
+    `resolve_split` answers one question - which recorded split is this ratio - and a
+    ratio with no records at all is not that question. Returning None here is what
+    lets the caller suspend the name for the session instead of stopping a run that
+    has a whole book to hold; `test_the_append_path_drops_a_name_no_record_explains`
+    is the other half.
+    """
+    assert (
         ca.resolve_split(
             "ZZZ", ratio=0.5, splits=[], session=pd.Timestamp("2026-09-04")
         )
-    message = str(err.value)
-    assert "ZZZ" in message
-    assert "no split record" in message
+        is None
+    )
 
 
 def test_a_back_adjustment_that_disagrees_with_the_record_stops_the_run():
@@ -365,9 +372,16 @@ def test_the_append_path_stops_when_the_vendor_flags_a_split_with_no_record():
     assert "AAA" in str(err.value)
 
 
-def test_the_append_path_stops_on_a_back_adjustment_no_record_explains():
-    # Nothing flags AAA on 2026-09-04, but its appended move is -50%, so the
-    # cross-check runs and the vendor's refetched adjusted close has halved.
+def test_the_append_path_drops_a_name_no_record_explains():
+    """The name is out of the book for that session, and the run goes on.
+
+    Nothing flags AAA on 2026-09-04, but its appended move is -50%, so the
+    cross-check runs and the vendor's refetched adjusted close has halved: a
+    restatement with no split record and no recorded spin-off behind it. The name
+    cannot be priced, so it is dropped for the session with the ratio that did it -
+    not left raw in the panel for the fit to read, and not a reason to leave a whole
+    book unheld.
+    """
     prices = prices_frame(
         [
             ("2026-09-03", "AAA", 100.0, 100.0, 0.0),
@@ -375,16 +389,24 @@ def test_the_append_path_stops_on_a_back_adjustment_no_record_explains():
         ]
     )
     frame = returns_frame([("2026-09-03", "AAA", 0.0), ("2026-09-04", "AAA", -0.50)])
-    with pytest.raises(ValueError) as err:
-        ca.apply_to_append(
-            frame,
-            prices,
-            since=pd.Timestamp("2026-09-03"),
-            split_fetcher=fake_splits({}),
-            close_fetcher=lambda ticker, session: 50.0,
-        )
-    assert "AAA" in str(err.value)
-    assert "no split record" in str(err.value)
+
+    outcome = ca.apply_to_append(
+        frame,
+        prices,
+        since=pd.Timestamp("2026-09-03"),
+        split_fetcher=fake_splits({}),
+        close_fetcher=lambda ticker, session: 50.0,
+    )
+
+    assert len(outcome.suspended) == 1
+    dropped = outcome.suspended[0]
+    assert dropped.ticker == "AAA"
+    assert dropped.session == pd.Timestamp("2026-09-04")
+    assert dropped.ratio == pytest.approx(0.5, abs=1e-9)
+    assert "AAA" in dropped.describe()
+    assert "no split record or recorded spin-off explains it" in dropped.describe()
+    # No split was invented, and the returns frame is the one the caller passed.
+    assert outcome.splits == []
 
 
 def test_a_real_crash_cross_checks_clean_and_is_only_flagged():
@@ -596,3 +618,47 @@ def test_the_cross_check_cap_is_recorded_when_it_is_hit():
         cross_checks_capped=ca.cap_note(outcome.unchecked),
     )
     assert "Cross-check capped: 1 unchecked (CCC)." in message.splitlines()
+
+
+def test_an_unexplained_adjustment_drops_exactly_one_name_and_the_run_completes():
+    """The contract, end to end: one name out, the rest of the book untouched.
+
+    Two names on the same session, one of which the vendor restated by a ratio nothing
+    explains. The run does not raise; the restated name is dropped with its ratio and
+    session on the record; and the other name's return is exactly what the prices
+    alone give.
+    """
+    prices = prices_frame(
+        [
+            ("2026-09-03", "AAA", 100.0, 100.0, 0.0),
+            ("2026-09-03", "BBB", 50.0, 50.0, 0.0),
+            # AAA halved with no split record behind it; BBB is untouched.
+            ("2026-09-04", "AAA", 50.0, 50.0, 0.0),
+            ("2026-09-04", "BBB", 51.0, 51.0, 0.0),
+        ]
+    )
+    frame = returns_frame(
+        [
+            ("2026-09-03", "AAA", 0.0),
+            ("2026-09-03", "BBB", 0.0),
+            ("2026-09-04", "AAA", -0.50),
+            ("2026-09-04", "BBB", 0.02),
+        ]
+    )
+
+    outcome = ca.apply_to_append(
+        frame,
+        prices,
+        since=pd.Timestamp("2026-09-03"),
+        split_fetcher=fake_splits({}),
+        close_fetcher=lambda ticker, session: 50.0 if ticker == "AAA" else 51.0,
+    )
+
+    assert [record.ticker for record in outcome.suspended] == ["AAA"]
+    assert outcome.splits == []
+    # The other name is priced from the prices alone, and the frame is still a frame
+    # the fit can read: nothing was nulled in it and nothing raised.
+    assert float(outcome.returns.loc[(pd.Timestamp("2026-09-04"), "BBB"), "r"]) == (
+        pytest.approx(0.02, abs=1e-9)
+    )
+    assert outcome.returns.loc[(pd.Timestamp("2026-09-04"), "AAA"), "r"] is not pd.NA
