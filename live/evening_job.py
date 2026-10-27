@@ -420,6 +420,52 @@ def _with_deferred_targets(
     return vector, applied
 
 
+def _filled_dollars(
+    fills: pd.DataFrame | None,
+    last: pd.Timestamp,
+    tickers: pd.Series,
+    intended: pd.Series,
+) -> pd.Series | None:
+    """The dollars each leg of the `last` close filled, per ticker, signed.
+
+    `efb.fills` carries a positive amount for a buy and for a sell alike, so every
+    row is signed by the direction of the leg it belongs to before the rows are
+    summed per ticker: two partial fills of one sell add up to the negative the leg
+    asked for, and a name traded twice on the close nets to what the account did. A
+    ticker with no fill row at all - a leg the broker refused, a name that never
+    filled - answers 0 and stays owed.
+
+    Returns `None` when there is no usable fills frame, which is the caller's signal
+    to read the legs' own column instead.
+    """
+    if fills is None or len(fills) == 0:
+        return None
+    if not {"trade_date", "ticker", "filled_notional"} <= set(fills.columns):
+        return None
+    days = pd.to_datetime(fills["trade_date"]).dt.normalize()
+    rows = fills.loc[days == last]
+    names = rows["ticker"].astype(str)
+    magnitude = pd.to_numeric(rows["filled_notional"], errors="coerce").fillna(0.0).abs()
+    # The leg's own direction is the fallback: a fill row whose intent reads 0 cannot
+    # say which way it went, and the order it belongs to can.
+    leg_sign = pd.Series(
+        np.sign(intended.to_numpy(dtype=float)), index=tickers.to_numpy(dtype=str)
+    )
+    direction = names.map(leg_sign).astype(float).fillna(0.0)
+    if "intended_notional" in rows.columns:
+        own = pd.Series(
+            np.sign(
+                pd.to_numeric(rows["intended_notional"], errors="coerce").fillna(0.0)
+            ),
+            index=rows.index,
+            dtype=float,
+        )
+        direction = own.where(own != 0, direction)
+    signed = magnitude * direction
+    per_ticker = signed.groupby(names).sum()
+    return tickers.map(per_ticker).astype(float).fillna(0.0)
+
+
 def unfilled_remainder(
     proposals: pd.DataFrame,
     orders: pd.DataFrame,
@@ -427,6 +473,7 @@ def unfilled_remainder(
     *,
     as_of: Any,
     minimum: float,
+    fills: pd.DataFrame | None = None,
 ) -> dict[str, float]:
     """The last rebalance's legs that did not complete, as weights still owed.
 
@@ -437,12 +484,21 @@ def unfilled_remainder(
     same statement - the book is not the book the rebalance asked for.
 
     The last rebalance is the newest close before `as_of` whose own manifest says
-    `cadence.day == "rebalance"`, read from `efb.proposals`. Its legs are
-    `intended_notional - filled_notional`, which is what `efb.orders` holds after the
-    morning reconciliation; a leg under `minimum` is one the order path would not
-    send anyway and is left out. The weight is the *target* weight from the book the
-    loop published for that close, not the leg's size: completing a leg means
-    reaching the target, and the two differ whenever the account had drifted.
+    `cadence.day == "rebalance"`, read from `efb.proposals`. What each of its legs
+    filled comes from `efb.fills`, the record the morning writes when it reconciles
+    that close: the fills are summed per ticker and signed by the direction of the
+    leg they belong to, because the vendor's fill amounts are magnitudes on both
+    sides. A leg under `minimum` is one the order path would not send anyway and is
+    left out. The weight is the *target* weight from the book the loop published for
+    that close, not the leg's size: completing a leg means reaching the target, and
+    the two differ whenever the account had drifted.
+
+    `fills` is the whole `efb.fills` frame. It is the only record that carries a
+    fill: `efb.orders.filled_notional` is written before the open and never updated,
+    so on the live store it is 0 in every row, and a remainder read from it says the
+    whole rebalance is outstanding - which is what put 180 names of a settled
+    rebalance back into the 2026-10-26 hold day. When no fills frame is passed the
+    legs' own column is used, which is the behaviour a caller without a store gets.
     """
     if (
         proposals is None
@@ -478,13 +534,16 @@ def unfilled_remainder(
     legs = orders.loc[pd.to_datetime(orders["trade_date"]).dt.normalize() == last]
     if legs.empty:
         return {}
+    tickers = legs["ticker"].astype(str)
     intended = pd.to_numeric(legs["intended_notional"], errors="coerce").fillna(0.0)
-    filled = pd.to_numeric(legs["filled_notional"], errors="coerce").fillna(0.0)
+    filled = _filled_dollars(fills, last, tickers, intended)
+    if filled is None:
+        filled = pd.to_numeric(legs["filled_notional"], errors="coerce").fillna(0.0)
     remainder = (intended - filled).abs()
     incomplete = sorted(
         {
             str(ticker)
-            for ticker, gap in zip(legs["ticker"].astype(str), remainder, strict=True)
+            for ticker, gap in zip(tickers, remainder, strict=True)
             if float(gap) >= float(minimum)
         }
     )

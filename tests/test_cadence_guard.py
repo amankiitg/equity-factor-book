@@ -439,6 +439,107 @@ def test_a_leg_under_the_order_minimum_is_not_carried() -> None:
     assert carried == {}
 
 
+def _fills(day: str, rows: list[tuple[str, float, float]]) -> pd.DataFrame:
+    """`efb.fills` as the morning writes it: a positive dollar amount per row.
+
+    `intended_notional` is the leg's own signed size and `filled_notional` the
+    magnitude that filled, which is the shape the live table has on both sides.
+    """
+    return pd.DataFrame(
+        {
+            "trade_date": [day] * len(rows),
+            "ticker": [ticker for ticker, _, _ in rows],
+            "intended_notional": [intended for _, intended, _ in rows],
+            "filled_notional": [filled for _, _, filled in rows],
+        }
+    )
+
+
+def test_a_rebalance_fully_filled_in_the_fills_forces_nothing() -> None:
+    """The live store's shape: `orders.filled_notional` is 0 and the fills hold it all.
+
+    Both sides are checked. A sell's fill is stored as a positive amount, so a reader
+    that did not sign it by the leg's direction would read a $100,000 hole in a leg
+    that completed to the dollar.
+    """
+    proposals = _proposals([("2026-10-01", "rebalance"), ("2026-10-02", "hold")])
+    orders = _orders(
+        "2026-10-01", [("AAA", 100_000.0, 0.0), ("BBB", -50_000.0, 0.0)]
+    )
+    fills = _fills(
+        "2026-10-01", [("AAA", 100_000.0, 100_060.0), ("BBB", -50_000.0, 49_930.0)]
+    )
+    book = pd.DataFrame({"ticker": ["AAA", "BBB"], "weight": [0.10, -0.05]})
+    carried = evening_job.unfilled_remainder(
+        proposals,
+        orders,
+        book,
+        as_of=pd.Timestamp("2026-10-03"),
+        minimum=250.0,
+        fills=fills,
+    )
+    assert carried == {}, carried
+    assert evening_job.forced_names_for_hold({"unfilled_remainder": carried}) == set()
+
+
+def test_a_leg_forty_percent_filled_in_the_fills_is_owed_the_rest() -> None:
+    """A partial fill is read from the fills, not from the orders column."""
+    proposals = _proposals([("2026-10-01", "rebalance"), ("2026-10-02", "hold")])
+    orders = _orders(
+        "2026-10-01", [("AAA", 100_000.0, 0.0), ("BBB", -50_000.0, 0.0)]
+    )
+    fills = _fills(
+        "2026-10-01",
+        [
+            # Two partial fills of the one buy, 40% together.
+            ("AAA", 100_000.0, 25_000.0),
+            ("AAA", 100_000.0, 15_000.0),
+            ("BBB", -50_000.0, 50_000.0),
+        ],
+    )
+    book = pd.DataFrame({"ticker": ["AAA", "BBB"], "weight": [0.10, -0.05]})
+    carried = evening_job.unfilled_remainder(
+        proposals,
+        orders,
+        book,
+        as_of=pd.Timestamp("2026-10-03"),
+        minimum=250.0,
+        fills=fills,
+    )
+    assert carried == {"AAA": 0.10}, carried
+    forced = evening_job.forced_names_for_hold({"unfilled_remainder": carried})
+    assert forced == {"AAA"}
+    orders_next = morning_job.target_orders(
+        pd.DataFrame({"ticker": ["AAA", "BBB"], "weight": [0.10, -0.05]}),
+        nav=1_000_000.0,
+        current={"AAA": 40_000.0},
+        forced=forced,
+    )
+    assert [order.ticker for order in orders_next] == ["AAA"]
+    assert orders_next[0].trade_notional == pytest.approx(60_000.0)
+
+
+def test_a_leg_the_broker_refused_stays_owed_with_the_fills_read() -> None:
+    """The JBL case: a sized leg with no fill row at all is still outstanding."""
+    proposals = _proposals([("2026-10-01", "rebalance"), ("2026-10-02", "hold")])
+    orders = _orders(
+        "2026-10-01", [("AAA", 100_000.0, 0.0), ("JBL", 269.37, 0.0)]
+    )
+    fills = _fills("2026-10-01", [("AAA", 100_000.0, 100_000.0)])
+    book = pd.DataFrame({"ticker": ["AAA", "JBL"], "weight": [0.10, 0.0003]})
+    carried = evening_job.unfilled_remainder(
+        proposals,
+        orders,
+        book,
+        as_of=pd.Timestamp("2026-10-03"),
+        minimum=250.0,
+        fills=fills,
+    )
+    # JBL is carried at 269.37 against a $250 minimum, and the name that filled to
+    # the dollar is not: the refusal is what a fills read cannot discharge.
+    assert carried == {"JBL": 0.0003}, carried
+
+
 def test_the_daily_loop_carries_nothing_into_a_rebalance() -> None:
     """At `k = 1` every close is a rebalance, and that path never reads the key."""
     proposals = _proposals([("2026-10-01", "rebalance")])
