@@ -101,6 +101,18 @@ create table if not exists efb.orders (
   -- an activity against an order id, so this is the key the evening that
   -- reconciles fills has to match on.
   broker_order_id text,
+  -- What the order saw when it was sent: the bid, the ask, their mid and the
+  -- instant the quote was read. `realized_cost_bps` measures a fill against the
+  -- close the book was *sized* from, and the loop submits about two hours later, so
+  -- the overnight move and the drift to submission are both inside that number.
+  -- Nullable and additive: a row written before this existed reads as "no quote was
+  -- recorded", which is the honest answer, and `scripts/cost_split.py` splits at the
+  -- quote only when it is there. Applied by hand via
+  -- `docs/migrations/e13_order_quotes.sql`.
+  submitted_bid double precision,
+  submitted_ask double precision,
+  submitted_mid double precision,
+  quoted_at timestamptz,
   primary key (trade_date, ticker)
 );
 
