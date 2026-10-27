@@ -211,9 +211,15 @@ def test_the_message_says_the_day_and_labels_the_cost() -> None:
         store="postgres/efb",
     )
     assert "Establishment:" not in rebalance
+    # The brake sentence is about size and says only that. Which day it is comes from
+    # the manifest's calendar block, and this message carries none: at `k = 1` there is
+    # no calendar, so the message makes no claim about a day type.
     assert (
-        "Day: rebalance. The absolute traded-notional brake of $2,000,000 " in rebalance
+        "The absolute traded-notional brake of $2,000,000 applies, because the account "
+        "already holds a book." in rebalance
     )
+    assert "Day: rebalance" not in rebalance
+    assert "Cadence:" not in rebalance
     assert "Cost: rebalance, 12.10 bps of NAV." in rebalance
 
 
