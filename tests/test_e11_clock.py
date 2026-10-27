@@ -123,6 +123,73 @@ def test_only_a_live_run_counts_as_the_first_live_run(
     assert clock.first_day(records) == "2026-09-30"
 
 
+def _framed_store(monkeypatch: pytest.MonkeyPatch, *, with_fills: bool) -> None:
+    import pandas as pd
+
+    from live import staleness, store
+
+    frames = {
+        staleness.TABLE: pd.DataFrame(
+            {
+                "target_close": ["2026-09-30"],
+                "job": ["live_daily"],
+                "dry_run": [False],
+                "n_orders": [178],
+            }
+        ),
+        "proposals": pd.DataFrame({"trade_date": ["2026-09-30"]}),
+        "orders": pd.DataFrame(
+            {
+                "trade_date": ["2026-09-30"],
+                "ticker": ["AAA"],
+                "filled_notional": [0.0],
+                "broker_order_id": ["b-1"],
+            }
+        ),
+        "fills": pd.DataFrame(
+            {
+                "trade_date": ["2026-09-30"] if with_fills else [],
+                "ticker": ["AAA"] if with_fills else [],
+                "filled_notional": [1_000.0] if with_fills else [],
+                "status": ["FILLED"] if with_fills else [],
+            }
+        ),
+    }
+    monkeypatch.setattr(
+        store, "select", lambda table: frames.get(table, pd.DataFrame())
+    )
+
+
+def test_a_start_registers_on_a_close_with_fills(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fills are read from `efb.fills`, so a reconciled close registers."""
+    _framed_store(monkeypatch, with_fills=True)
+    records = clock.records_from_store()
+    assert records["filled"] == ["2026-09-30"]
+    assert records["ordered"] == ["2026-09-30"]
+    assert clock.first_day(records) == "2026-09-30"
+
+
+def test_a_start_is_refused_on_a_close_with_orders_and_no_fills(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An order nobody has reconciled is not a session whose orders filled.
+
+    `efb.orders.filled_notional` is 0 in every row the live table holds, so a reader
+    of that column made this check pass on any close at all. The leg is in the store
+    and the fill is not, which is exactly the state the check has to refuse.
+    """
+    _framed_store(monkeypatch, with_fills=False)
+    records = clock.records_from_store()
+    assert records["filled"] == []
+    assert records["ordered"] == ["2026-09-30"]
+    path = tmp_path / "clock.json"
+    with pytest.raises(clock.RegistrationRefused, match="no fill for it"):
+        clock.start_clock("2026-09-30", path=path, records=records)
+    assert not path.exists(), "a refused registration still wrote a clock"
+
+
 def test_records_from_an_unseeded_store_are_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -133,7 +200,12 @@ def test_records_from_an_unseeded_store_are_empty(
     from live import store
 
     monkeypatch.setattr(store, "select", lambda table: pd.DataFrame())
-    assert clock.records_from_store() == {"run": [], "proposal": [], "filled": []}
+    assert clock.records_from_store() == {
+        "run": [],
+        "proposal": [],
+        "filled": [],
+        "ordered": [],
+    }
 
 
 def test_run_condition_is_open_ended() -> None:

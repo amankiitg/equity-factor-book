@@ -172,12 +172,13 @@ def records_from_store() -> dict[str, list[str]]:
     `proposal` is every close the loop stored a proposal for, which the same
     evening writes: the proposal is priced from that close.
 
-    `filled` is the sessions whose orders the store records as filled. Alpaca
-    accepts an order sent after the close and fills it at the next open, and the
-    evening does not wait for that fill, so until the fills reconciliation writer
-    lands this set is empty and the check falls back to the two that exist. It is
-    read anyway: the day the writer lands, the check tightens by itself rather
-    than by remembering to tighten it.
+    `filled` is the sessions whose legs the store records a fill for, read from
+    `efb.fills`, which is what the morning writes when it reconciles a close.
+    Alpaca accepts an order sent after the close and fills it at the next open,
+    and the evening does not wait for that fill, so `efb.orders.filled_notional`
+    is 0 in every row it holds: reading that column made this set permanently
+    empty and the third test of `check_registration` vacuous rather than passing
+    or failing on anything.
     """
     from live import staleness, store
 
@@ -194,19 +195,38 @@ def records_from_store() -> dict[str, list[str]]:
             & (runs["n_orders"].fillna(0) > 0),
         )
 
-    orders = store.select("orders")
+    fills = store.select("fills")
     filled = []
-    if not orders.empty and {"trade_date", "filled_notional"} <= set(orders.columns):
+    if not fills.empty and {"trade_date", "status"} <= set(fills.columns):
+        # A fill row is a leg that came back from the broker with something on it;
+        # a row the morning wrote for a leg that did not fill carries 0 and its own
+        # status, so the set is the sessions with a filled leg rather than the
+        # sessions with a leg.
         filled = _dates(
-            orders,
+            fills,
             "trade_date",
-            where=orders["filled_notional"].fillna(0).abs() > 0,
+            where=fills["status"].astype(str) == "FILLED",
         )
+
+    # The closes the loop actually put orders out for. `filled` is read from the
+    # fills and `ordered` from the legs, and the two are compared by
+    # `check_registration`: a close with an order and no fill is a close whose
+    # "orders filled" claim is not established.
+    orders = store.select("orders")
+    ordered = []
+    if not orders.empty and "trade_date" in orders.columns:
+        sent = (
+            orders["broker_order_id"].notna()
+            if "broker_order_id" in orders.columns
+            else pd.Series(False, index=orders.index)
+        )
+        ordered = _dates(orders, "trade_date", where=sent)
 
     return {
         "run": live_runs,
         "proposal": _dates(store.select("proposals"), "trade_date"),
         "filled": filled,
+        "ordered": ordered,
     }
 
 
@@ -240,6 +260,16 @@ def check_registration(day_1: str, records: dict[str, list[str]]) -> None:
         raise RegistrationRefused(
             f"day 1 {day_1} is not the first session whose orders filled: the "
             f"store records a fill on {filled[0]}"
+        )
+    # A close the loop sent legs on and the store holds no fill for is a close whose
+    # day-1 claim is unproven, and registering it would date the reporting window
+    # from a session nothing is known to have filled on.
+    ordered = [str(date) for date in records.get("ordered") or []]
+    if day_1 in ordered and day_1 not in filled:
+        raise RegistrationRefused(
+            f"day 1 {day_1} is a close the loop sent orders for and the store holds "
+            "no fill for it: day 1 is the first session whose orders filled, so the "
+            "fills have to be recorded before the clock can start on it"
         )
 
 
