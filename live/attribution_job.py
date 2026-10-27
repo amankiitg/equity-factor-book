@@ -160,13 +160,25 @@ def session_inputs(
                 "realized_cost_bps": realized,
             }
     if not orders.empty and "trade_date" in orders.columns:
+        from live import fills as fills_module
+
         stamp_column = orders["trade_date"].astype(str).str.slice(0, 10)
         for day, group in orders.groupby(stamp_column):
             stamp = pd.Timestamp(str(day)[:10])
-            intended = pd.to_numeric(group["intended_notional"], errors="coerce")
-            filled = pd.to_numeric(group["filled_notional"], errors="coerce")
+            intended = pd.to_numeric(
+                group["intended_notional"], errors="coerce"
+            ).fillna(0.0)
             status = group["status"].astype(str)
-            gap = _number((intended - filled).abs().max())
+            # The dollars each leg filled come from `efb.fills`, the record the
+            # morning writes; `orders.filled_notional` is written at submission and
+            # never updated, so reading it made this the largest *leg* of the day
+            # ($20,696 on the 2026-10-23 close) rather than the largest amount still
+            # owed. None when the close has no fills yet, which is a day whose
+            # remainder is not known rather than a day that filled nothing.
+            filled = fills_module.filled_dollars(
+                fills, stamp, group["ticker"].astype(str), intended
+            )
+            gap = None if filled is None else _number((intended - filled).abs().max())
             known = filled_by_day.get(str(day)[:10])
             forecasts.setdefault(stamp, {}).update(
                 {
@@ -174,7 +186,7 @@ def session_inputs(
                     "n_filled": (
                         known if known is not None else int((status == "FILLED").sum())
                     ),
-                    "max_fill_gap": gap if gap is not None else 0.0,
+                    "max_fill_gap": gap,
                 }
             )
     # The fill count is the fills' own. The loop above reads it per day that has an
