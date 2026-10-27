@@ -1291,3 +1291,109 @@ def test_the_real_skyd_record_would_have_moved_the_cell_without_the_filter() -> 
     assert ca.describe_spinoffs(ca.apply_recorded(frame, prices, [decision])) == [
         "spinoff: SKYD -> SKYD.WS 1:1 applied"
     ], "the line the email carried"
+
+
+# ------------------------- a ratio the vendor's own factor contradicts (HON, 2026-06)
+
+
+def _price_frame(rows: list[tuple[str, str, float, float]]) -> pd.DataFrame:
+    """`raw/prices.parquet` rows one spin-off needs: date, ticker, close, factor."""
+    index = pd.MultiIndex.from_tuples(
+        [(pd.Timestamp(day), ticker) for day, ticker, _, _ in rows],
+        names=["date", "ticker"],
+    )
+    return pd.DataFrame(
+        {
+            "close": [close for _, _, close, _ in rows],
+            "split_factor": [factor for _, _, _, factor in rows],
+        },
+        index=index,
+    )
+
+
+HON_PRICES = _price_frame(
+    [
+        ("2026-06-26", "HON", 243.534348, 0.0),
+        ("2026-06-29", "HON", 227.800003, 0.9535),
+        ("2026-06-29", "HONA", 220.190002, 0.0),
+    ]
+)
+
+
+def test_a_ratio_the_vendor_s_own_factor_contradicts_is_not_applied() -> None:
+    """HON 2026-06-29: `new_rate` 0.5 says 47% of the parent was distributed.
+
+    The vendor's own `split_factor` on the same row says 4.65%, and the parent's
+    as-traded price fell 6.46%. The record's ratio is wrong by an order of magnitude,
+    and applying it wrote +45.51% into a cell the session paid as -6.46%.
+    """
+    session = pd.Timestamp("2026-06-29")
+    frame = pd.DataFrame(
+        {"r": [0.45512682485681055], "g": [0.0]},
+        index=pd.MultiIndex.from_tuples([(session, "HON")], names=["date", "ticker"]),
+    )
+    spinoff = ca.Spinoff(
+        parent="HON", child="HONA", ex_date=session, child_per_parent=0.5, new_rate=0.5
+    )
+    outcome = ca._apply_spinoff(frame, HON_PRICES, spinoff, None)
+    assert outcome is not None
+    assert outcome.adjusted_return is None, "the contradicted ratio must not be applied"
+    assert outcome.contradicted_by_the_factor
+    implied, by_factor = outcome.disagreement
+    assert implied == pytest.approx(110.095 / 232.21, rel=1e-6)
+    assert by_factor == pytest.approx(0.0465, rel=1e-3)
+    # A nulled cell, in both columns, which the hygiene layer reports.
+    assert pd.isna(frame.loc[(session, "HON"), "r"])
+    assert pd.isna(frame.loc[(session, "HON"), "g"])
+    flags = ca.spinoff_flags([outcome], session)
+    assert [flag["ticker"] for flag in flags] == ["HON"]
+    assert flags[0]["adjusted_return"] is None
+
+
+def test_a_ratio_the_factor_agrees_with_is_still_applied() -> None:
+    """FDX 2026-06-01 is the control: 18.2% implied against 19.4% from the factor."""
+    session = pd.Timestamp("2026-06-01")
+    prices = _price_frame(
+        [
+            ("2026-05-29", "FDX", 331.788879, 0.0),
+            ("2026-06-01", "FDX", 338.489990, 1.241),
+            ("2026-06-01", "FDXF", 149.529999, 0.0),
+        ]
+    )
+    frame = pd.DataFrame(
+        {"r": [0.003655], "g": [0.0036]},
+        index=pd.MultiIndex.from_tuples([(session, "FDX")], names=["date", "ticker"]),
+    )
+    spinoff = ca.Spinoff(
+        parent="FDX", child="FDXF", ex_date=session, child_per_parent=0.5, new_rate=0.5
+    )
+    outcome = ca._apply_spinoff(frame, prices, spinoff, None)
+    assert outcome is not None
+    assert not outcome.contradicted_by_the_factor
+    assert outcome.adjusted_return == pytest.approx(
+        (338.489990 + 0.5 * 149.529999) / 331.788879 - 1
+    )
+    assert not pd.isna(frame.loc[(session, "FDX"), "r"])
+
+
+def test_a_row_with_no_factor_cannot_be_checked_and_is_unchanged() -> None:
+    """Nothing to compare against is not a disagreement: the record is applied."""
+    session = pd.Timestamp("2026-06-01")
+    prices = _price_frame(
+        [
+            ("2026-05-29", "HON", 100.0, 0.0),
+            ("2026-06-01", "HON", 98.0, 0.0),
+            ("2026-06-01", "HONA", 5.0, 0.0),
+        ]
+    )
+    frame = pd.DataFrame(
+        {"r": [-0.02], "g": [0.0]},
+        index=pd.MultiIndex.from_tuples([(session, "HON")], names=["date", "ticker"]),
+    )
+    spinoff = ca.Spinoff(
+        parent="HON", child="HONA", ex_date=session, child_per_parent=0.5
+    )
+    outcome = ca._apply_spinoff(frame, prices, spinoff, None)
+    assert outcome is not None
+    assert not outcome.contradicted_by_the_factor
+    assert outcome.adjusted_return == pytest.approx((98.0 + 2.5) / 100.0 - 1)
