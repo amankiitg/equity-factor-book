@@ -389,6 +389,78 @@ def never_sent_lines(rows: pd.DataFrame) -> list[str]:
     ]
 
 
+def filled_dollars(
+    fills: pd.DataFrame | None,
+    day: Any,
+    tickers: pd.Series,
+    intended: pd.Series,
+) -> pd.Series | None:
+    """The dollars each leg of one close filled, per ticker, signed like its leg.
+
+    The record of a fill is `efb.fills`, which the morning writes when it reconciles
+    a close. `efb.orders.filled_notional` is written at submission, before the open,
+    and never updated afterwards, so it is 0 in every row the live table has ever
+    held and a reader of it says nothing filled: that is how the 2026-10-26 hold day
+    came to carry all 180 names of a settled rebalance.
+
+    A fill's dollar amount is a magnitude on both sides of the book, so each row is
+    signed by the direction of the leg it belongs to before the rows are summed per
+    ticker: two partial fills of one sell add up to the negative the leg asked for,
+    and a name traded twice on the close nets to what the account did. A ticker with
+    no fill row at all - a leg the broker refused, a name that never filled - answers
+    0 and stays owed.
+
+    Returns `None` when there is no fills frame to read, which the caller states as
+    "not known" rather than as "nothing filled".
+    """
+    if fills is None or len(fills) == 0:
+        return None
+    if not {"trade_date", "ticker", "filled_notional"} <= set(fills.columns):
+        return None
+    days = pd.to_datetime(fills["trade_date"]).dt.normalize()
+    rows = fills.loc[days == pd.Timestamp(day).normalize()]
+    if rows.empty:
+        # No fill row at all for this close is a close whose fills were never
+        # recorded, which is "not known" and not "nothing filled": the two closes
+        # before the fills table's first row would otherwise report the size of their
+        # largest leg as the amount still owed.
+        return None
+    names = rows["ticker"].astype(str)
+    magnitude = (
+        pd.to_numeric(rows["filled_notional"], errors="coerce").fillna(0.0).abs()
+    )
+    ticker_values = pd.Series(tickers).astype(str)
+    # The leg's own direction is the fallback: a fill row whose intent reads 0 cannot
+    # say which way it went, and the order it belongs to can.
+    leg_sign = pd.Series(
+        _signs(pd.Series(intended)),
+        index=ticker_values.to_numpy(dtype=str),
+    )
+    direction = names.map(leg_sign).astype(float).fillna(0.0)
+    if "intended_notional" in rows.columns:
+        own = pd.Series(
+            _signs(rows["intended_notional"]), index=rows.index, dtype=float
+        )
+        direction = own.where(own != 0, direction)
+    per_ticker = (magnitude * direction).groupby(names).sum()
+    return (
+        pd.Series(
+            ticker_values.to_numpy(dtype=str),
+            index=ticker_values.index,
+            dtype=object,
+        )
+        .map(per_ticker)
+        .astype(float)
+        .fillna(0.0)
+    )
+
+
+def _signs(values: Any) -> list[float]:
+    """Plus one, minus one or zero, from a column of signed dollars."""
+    numbers = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0.0)
+    return [1.0 if value > 0 else (-1.0 if value < 0 else 0.0) for value in numbers]
+
+
 def realized_cost_bps(fills: pd.DataFrame, nav: float | None) -> float | None:
     """The fills' own cost against the close, in bp of NAV, or None.
 

@@ -1,6 +1,7 @@
-# The owner's fixes: four notes, nothing applied
+# The owner's fixes: five notes, nothing applied
 
-Everything here was prepared on 2026-10-20, read-only. **No row was written, no
+Everything here was prepared on 2026-10-20, read-only, except the fill-gap note of
+2026-10-27. **No row was written, no
 object was uploaded, no order was sent, and no run was triggered.** Each script is a
 dry run until you pass `--apply`.
 
@@ -10,6 +11,7 @@ dry run until you pass `--apply`.
 | [`attribution_recompute.md`](./attribution_recompute.md) | every stored attribution row's `pre_hedge_vol` is overstated (B4 landed after they were written) | run `scripts/recompute_attribution.py`, check the dry run, then `--apply` |
 | [`reconciliation_backfill.md`](./reconciliation_backfill.md) | 14 reconciliation rows carry the evening's `filled_notional = 0` / empty `realized_annual_vol` | run `scripts/backfill_reconciliation.py`, then `--apply` (after 2026-10-19's morning) |
 | [`key_rotation.md`](./key_rotation.md) | every credential, where it is configured, and the order to rotate it | when you choose to rotate |
+| [`attribution_fill_gap.md`](./attribution_fill_gap.md) | every stored `max_fill_gap` is the largest leg of the day, not the largest amount still owed; 14 of 21 rows move | needs an `--only-max-fill-gap` mode in `scripts/recompute_attribution.py`, then the dry run, then `--apply` |
 
 ## The commands, in the order to run them
 

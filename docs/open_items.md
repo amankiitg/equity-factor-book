@@ -462,3 +462,27 @@ happened to line up. On this branch the cache was moved aside
 could be rebuilt against the current panel. A later sprint should key the cache to
 the panel's own hash, or validate its date coverage, instead of trusting its
 existence.
+
+## 2026-10-27: the reporting clock cannot be registered on any date the store holds
+
+Owner: E11 follow-up, blocks the thirty-session reporting window.
+
+`live.clock.records_from_store` requires day 1 to be the first live run **and** the
+first stored proposal, and it refuses on either disagreement. Measured read-only
+against the live store on 2026-10-27, the two sets do not start on the same close:
+
+- `run` starts **2026-09-30**, the flip evening (16 closes);
+- `proposal` starts **2026-09-25**, a dry-run rehearsal (20 closes);
+- `filled` starts **2026-10-01** (15 closes, read from `efb.fills`);
+- `ordered` starts **2026-09-29** (18 closes).
+
+So `first_day()` refuses with "day 1 2026-09-30 is not the first stored proposal: the
+records start at 2026-09-25", and every later date refuses with "is not the first live
+run". The fills test this branch tightened is therefore not the binding one and cannot
+become binding until the proposal set is scoped to the live series.
+
+The smallest fix is to scope `proposal` the way `run` already is: a proposal row is a
+live close when `efb.run_status` holds a `live_daily` row for it with `dry_run` false.
+That is a reader change in `live/clock.py`, no data change, and it would let the clock
+start on 2026-09-30. It is not made here because the clock's start is the owner's
+decision and the reporting window is dated by it.

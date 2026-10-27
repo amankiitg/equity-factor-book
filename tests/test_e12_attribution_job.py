@@ -318,7 +318,90 @@ def test_the_fill_counts_come_from_the_order_rows(local_store: Path) -> None:
     row = store.select("attribution").iloc[0]
     assert int(row["n_target"]) == 2
     assert int(row["n_filled"]) == 1
-    assert float(row["max_fill_gap"]) == pytest.approx(5000.0)
+    # Nothing filled on this close in `efb.fills`, so how much is still owed is not
+    # known: a null says that. It used to read the legs' own filled column, which is
+    # 0 in every row the live table holds, and so answered "the largest leg".
+    assert row["max_fill_gap"] is None or pd.isna(row["max_fill_gap"])
+
+
+def _session_frames(nav: float = 1_000_000.0) -> tuple[pd.DataFrame, pd.DataFrame]:
+    day = pd.Timestamp(SESSION)
+    reconciliation = pd.DataFrame(
+        [
+            {
+                "trade_date": day,
+                "expected_cost_bps": 4.0,
+                "realized_cost_bps": None,
+                "expected_spread_bps": 2.0,
+                "expected_impact_bps": 0.2,
+                "expected_commission_bps": 0.5,
+                "expected_borrow_bps": 1.3,
+                "forecast_annual_vol": 0.02,
+            }
+        ]
+    )
+    orders = pd.DataFrame(
+        [
+            {
+                "trade_date": day,
+                "ticker": "AAA",
+                "intended_notional": 100_000.0,
+                "filled_notional": 0.0,
+                "status": "ACCEPTED",
+            },
+            {
+                "trade_date": day,
+                "ticker": "BBB",
+                "intended_notional": -50_000.0,
+                "filled_notional": 0.0,
+                "status": "ACCEPTED",
+            },
+        ]
+    )
+    return reconciliation, orders
+
+
+def _fills_rows(rows: list[tuple[str, float, float]]) -> pd.DataFrame:
+    day = pd.Timestamp(SESSION)
+    return pd.DataFrame(
+        [
+            {
+                "trade_date": day,
+                "ticker": ticker,
+                "intended_notional": intended,
+                "filled_notional": filled,
+                "status": "FILLED",
+            }
+            for ticker, intended, filled in rows
+        ]
+    )
+
+
+def test_the_fill_gap_is_the_unfilled_dollars_and_not_the_largest_leg() -> None:
+    """A close that filled to the dollar has nothing owed, whatever the legs cost."""
+    reconciliation, orders = _session_frames()
+    fills = _fills_rows([("AAA", 100_000.0, 100_060.0), ("BBB", -50_000.0, 49_930.0)])
+    _costs, forecasts = attribution_job.session_inputs(
+        reconciliation, orders, fills=fills
+    )
+    gap = forecasts[pd.Timestamp(SESSION)]["max_fill_gap"]
+    assert gap is not None and gap < 250.0, gap
+
+
+def test_a_leg_forty_percent_filled_has_sixty_percent_owed() -> None:
+    reconciliation, orders = _session_frames()
+    fills = _fills_rows(
+        [
+            ("AAA", 100_000.0, 25_000.0),
+            ("AAA", 100_000.0, 15_000.0),
+            ("BBB", -50_000.0, 50_000.0),
+        ]
+    )
+    _costs, forecasts = attribution_job.session_inputs(
+        reconciliation, orders, fills=fills
+    )
+    gap = forecasts[pd.Timestamp(SESSION)]["max_fill_gap"]
+    assert gap == pytest.approx(60_000.0), gap
 
 
 def test_a_book_with_no_session_after_it_is_not_attributed(local_store: Path) -> None:
