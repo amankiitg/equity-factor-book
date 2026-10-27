@@ -463,9 +463,7 @@ def test_a_rebalance_fully_filled_in_the_fills_forces_nothing() -> None:
     that completed to the dollar.
     """
     proposals = _proposals([("2026-10-01", "rebalance"), ("2026-10-02", "hold")])
-    orders = _orders(
-        "2026-10-01", [("AAA", 100_000.0, 0.0), ("BBB", -50_000.0, 0.0)]
-    )
+    orders = _orders("2026-10-01", [("AAA", 100_000.0, 0.0), ("BBB", -50_000.0, 0.0)])
     fills = _fills(
         "2026-10-01", [("AAA", 100_000.0, 100_060.0), ("BBB", -50_000.0, 49_930.0)]
     )
@@ -485,9 +483,7 @@ def test_a_rebalance_fully_filled_in_the_fills_forces_nothing() -> None:
 def test_a_leg_forty_percent_filled_in_the_fills_is_owed_the_rest() -> None:
     """A partial fill is read from the fills, not from the orders column."""
     proposals = _proposals([("2026-10-01", "rebalance"), ("2026-10-02", "hold")])
-    orders = _orders(
-        "2026-10-01", [("AAA", 100_000.0, 0.0), ("BBB", -50_000.0, 0.0)]
-    )
+    orders = _orders("2026-10-01", [("AAA", 100_000.0, 0.0), ("BBB", -50_000.0, 0.0)])
     fills = _fills(
         "2026-10-01",
         [
@@ -522,9 +518,7 @@ def test_a_leg_forty_percent_filled_in_the_fills_is_owed_the_rest() -> None:
 def test_a_leg_the_broker_refused_stays_owed_with_the_fills_read() -> None:
     """The JBL case: a sized leg with no fill row at all is still outstanding."""
     proposals = _proposals([("2026-10-01", "rebalance"), ("2026-10-02", "hold")])
-    orders = _orders(
-        "2026-10-01", [("AAA", 100_000.0, 0.0), ("JBL", 269.37, 0.0)]
-    )
+    orders = _orders("2026-10-01", [("AAA", 100_000.0, 0.0), ("JBL", 269.37, 0.0)])
     fills = _fills("2026-10-01", [("AAA", 100_000.0, 100_000.0)])
     book = pd.DataFrame({"ticker": ["AAA", "JBL"], "weight": [0.10, 0.0003]})
     carried = evening_job.unfilled_remainder(

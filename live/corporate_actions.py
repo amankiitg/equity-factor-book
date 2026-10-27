@@ -1237,15 +1237,18 @@ def apply_to_append(
                 suspended.append(dropped)
     last = sessions[-1]
     tail = frame.loc[last, "r"] if last in frame.index else pd.Series(dtype=float)
-    explained = {split.ticker: describe([split]) for split in splits}
-    explained.update(
+    # Its own name: inside the session loop `explained` is the set of parents whose
+    # record explains a ticker, and this is the move-to-label map `flag_large_moves`
+    # annotates flags with. One name for two shapes is how the two readers drift.
+    explained_moves = {split.ticker: describe([split]) for split in splits}
+    explained_moves.update(
         {
             event.spinoff.parent: event.spinoff.label
             for event in events
             if event.session == last and event.spinoff.applicable
         }
     )
-    flags = flag_large_moves(tail, explained=explained)
+    flags = flag_large_moves(tail, explained=explained_moves)
     # The spin-off's own flag replaces whatever the post-correction move produced for
     # that name, because the print worth recording is the one the rule replaced.
     corrected = {event.spinoff.parent for event in events if event.session == last}
