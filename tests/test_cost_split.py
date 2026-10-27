@@ -96,3 +96,67 @@ def test_no_fills_is_no_rows() -> None:
     rows, unpriced = split(pd.DataFrame(), OPENS, {})
     assert rows == []
     assert unpriced == []
+
+
+def test_a_quoted_leg_splits_into_three_parts_at_the_mid() -> None:
+    """With a submission quote the day is four numbers: overnight, drift, execution."""
+    quotes = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-15", "2026-10-15"],
+            "ticker": ["AAA", "BBB"],
+            "submitted_mid": [102.0, 101.0],
+            "quoted_at": ["2026-10-15T14:00:00Z"] * 2,
+        }
+    )
+    fills = FILLS.copy()
+    fills.loc[0, "fill_price"] = 102.51  # 50 bp above the mid
+    rows, unpriced = split(fills, OPENS, {"2026-10-15": 1_000_000.0}, quotes)
+
+    assert unpriced == []
+    (row,) = rows
+    assert row["n_quoted"] == 2
+    # Both names open at 101 against a 100 close. AAA (bought) saw a mid of 102 and
+    # paid 102.51, so it carries all of the drift and all of the execution; BBB's mid
+    # is its open, so neither.
+    # The two legs' dollars are no longer equal once AAA pays up, so the overnight
+    # legs do not cancel exactly: 0.74 bp is what is left of the +/-100 bp pair.
+    assert row["overnight_bp_traded"] == pytest.approx(0.74, abs=0.05)
+    assert row["drift_bp_traded"] == pytest.approx(49.9, abs=0.5)
+    assert row["execution_bp_traded"] == pytest.approx(25.2, abs=0.5)
+    # The three compose to the total the store's own column reports, to the cross
+    # terms of compounding ratios (overnight x drift x execution / 1e4 each): 1.0 bp
+    # on a day whose legs move 2.5% between them.
+    assert row["total_bp_traded"] == pytest.approx(
+        row["overnight_bp_traded"]
+        + row["drift_bp_traded"]
+        + row["execution_bp_traded"],
+        abs=2.0,
+    )
+
+
+def test_without_a_quote_the_open_is_the_reference_and_the_row_says_so() -> None:
+    rows, _unpriced = split(FILLS, OPENS, {"2026-10-15": 1_000_000.0})
+
+    (row,) = rows
+    assert row["n_quoted"] == 0
+    assert row["drift_bp_traded"] == pytest.approx(0.0, abs=1e-9)
+    assert row["basis"] == "open (no submission quote recorded)"
+
+
+def test_a_leg_with_no_quote_falls_back_to_the_open_on_its_own() -> None:
+    """One quoted leg and one not: the quoted one splits, the other does not."""
+    quotes = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-15"],
+            "ticker": ["AAA"],
+            "submitted_mid": [102.0],
+            "quoted_at": ["2026-10-15T14:00:00Z"],
+        }
+    )
+    rows, _unpriced = split(FILLS, OPENS, {"2026-10-15": 1_000_000.0}, quotes)
+
+    (row,) = rows
+    assert row["n_quoted"] == 1
+    # Half the dollars are quoted, so the day's drift is half of AAA's 99.0 bp
+    # (101 -> 102 on a book whose opens are 101).
+    assert row["drift_bp_traded"] == pytest.approx(49.5, abs=0.2)
