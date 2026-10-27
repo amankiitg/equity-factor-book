@@ -1,47 +1,50 @@
 # The known test failures, and what a report has to do with them
 
-## The list a report compares against today: five ids, four of them one held fix
+## The list a report compares against today: one id, and it is an artifact vintage
 
-Measured on `main` `041e8ad` on 2026-10-24 with the gate's own command on the tree
+Measured on `main` `1c98b53` on 2026-10-27 with the gate's own command on the tree
 `docs/branches.md` calls the gate tree (`/tmp/efb-gate`):
 
 ```
-5 failed, 1660 passed, 9 skipped, 54 deselected in 676.20s
+1 failed, 1662 passed, 9 skipped, 54 deselected
 ```
-
-The same five, id for id, on `main` `633fd89` before the studies came onto `main`, so the
-docs merge added nothing.
 
 ```
 .venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"
 ```
 
-What the five are, and where each one's fix sits:
-
-- **The four CTVA spin-off ids are one defect, and its fix is held under the trading
-  freeze, merged Monday 2026-10-26**: branch `spinoff-explains-adjustment` `91eed42`. On
-  `main` as it stands, a recorded spin-off back-adjusts the vendor's history exactly like
-  a split and reports no `split_factor`, so the cross check reads CTVA's 77.65 to 12.57
-  (ratio 0.150038, a VYLR share worth 68.26 paid alongside) as an unexplained split and
-  stops the run. The branch carries the owner's contract instead - an unexplained
-  adjustment excludes that name for the night - and rewrites these four ids to it. Full
-  gate there: **1 failed, 1665 passed**, the one failure being the APH id below.
-- **The APH id is an artifact vintage, not a code defect.** The brief's own allowance:
-  `test_the_aph_split_is_reproduced_from_the_real_rows` recovers the split the stored rows
-  carry, and the gate tree holds rows from a different vendor vintage than the branch was
-  measured against. Nothing is edited for it.
-
 | id | stale or real | cause, and where its fix sits |
 |---|---|---|
-| `tests/test_week2_spinoff.py::test_the_artifact_is_written_only_when_something_was_applied` | **real** (price path) | the CTVA refusal. Fixed on `spinoff-explains-adjustment` `91eed42`, which merges Monday night - `docs/monday_2026-10-26.md` B2 |
-| `tests/test_week2_spinoff.py::test_a_vendor_read_that_fails_leaves_the_print_and_the_flag` | **real** (the same) | the same branch |
-| `tests/test_week2_spinoff.py::test_a_hung_spin_off_read_is_named_in_the_evening_email` | **real** (the same) | the same branch |
-| `tests/test_week2_spinoff.py::test_the_read_that_answered_and_found_nothing_is_not_a_failure` | **real** (the same) | the same branch |
-| `tests/test_e11_corporate_actions.py::test_the_aph_split_is_reproduced_from_the_real_rows` | **artifact vintage** | the gate tree's stored rows differ from the vendor vintage the test reproduces; no code change is owed and none is made |
+| `tests/test_e11_corporate_actions.py::test_the_aph_split_is_reproduced_from_the_real_rows` | **artifact vintage** | the gate tree's stored rows differ from the vendor vintage the test reproduces (`assert today < previous * 0.9` reads 82.78 against 82.07); no code change is owed and none is made |
 
-A gate run whose failing set is a subset of these five plus the documented skips is clean.
-Anything else is new. After `91eed42` merges, this list reduces to the APH id alone, and
-that one reduces to nothing on a freshly seeded tree.
+A gate run whose failing set is a subset of this id plus the documented skips is clean.
+Anything else is new.
+
+## The four CTVA ids, which are gone
+
+The `spinoff-explains-adjustment` branch merged on 2026-10-27 in `1c98b53`, and the four
+ids it rewrote now pass on `main`:
+
+- `tests/test_week2_spinoff.py::test_the_artifact_is_written_only_when_something_was_applied`
+- `tests/test_week2_spinoff.py::test_a_vendor_read_that_fails_leaves_the_print_and_the_flag`
+- `tests/test_week2_spinoff.py::test_a_hung_spin_off_read_is_named_in_the_evening_email`
+- `tests/test_week2_spinoff.py::test_the_read_that_answered_and_found_nothing_is_not_a_failure`
+
+They were one defect: on `main` before the merge, a recorded spin-off back-adjusted the
+vendor's history exactly like a split and reported no `split_factor`, so the cross check
+read CTVA's 77.65 to 12.57 (ratio 0.150038, a VYLR share worth 68.26 paid alongside) as an
+unexplained split and stopped the run. The contract now excludes that name for the night.
+
+## The load-dependent timeouts, which are not code
+
+`tests/test_repair_session.py` runs eight refits at roughly 64 seconds each against the
+gate's own 120-second per-test ceiling (`pytest-timeout`, `timeout = 120` in
+`pyproject.toml`). On a loaded machine some of them time out, and the gate then reports
+`ERROR ... Failed: Timeout (>120.0s) from pytest-timeout`. Measured 2026-10-26 in the same
+environment and on the same data: **six** of the eight timed out on `origin/main` `d5c8eb0`
+and **three** on the merge `1c98b53`. The module passes alone in 510 seconds. A timeout in
+this module is the machine, not the branch, and the check that settles it is the two-tree
+comparison: no id may be red on a merge that is not red on `main`.
 
 ### The test that fails alone but passes in the suite: `test_the_hedge_drives_the_exposures_to_zero`
 
