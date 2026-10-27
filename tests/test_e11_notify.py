@@ -2001,3 +2001,57 @@ def test_the_run_logs_a_scrubbed_traceback(
     assert sent
     assert "sup3rSecret" not in str(sent[0]["text"])
     assert notify.REDACTION in str(sent[0]["text"])
+
+
+def test_the_day_line_is_the_calendar_s_and_not_the_brake_s() -> None:
+    """A hold day says so, and the brake sentence keeps its own subject.
+
+    The line used to read "Day: rebalance." whenever the traded-notional brake was
+    set, which is every night the account already holds a book: the 2026-10-26 hold
+    day's message called itself a rebalance while its cost label said hold.
+    """
+    hold = {"day": "hold", "k": 21, "next_rebalance": "2026-11-23"}
+    text = notify.compose(
+        status="ok",
+        target_close="2026-10-26",
+        dry_run=False,
+        orders=12,
+        gross=20_915.71,
+        cost_bps=0.31,
+        cost_label="hold",
+        brake_limit=250_000.0,
+        cadence=hold,
+    )
+    assert "Cadence: hold day (k=21, next rebalance 2026-11-23)" in text
+    assert "Day: rebalance" not in text
+    assert (
+        "The absolute traded-notional brake of $250,000 applies, because the "
+        "account already holds a book." in text
+    )
+
+
+def test_a_rebalance_day_says_so_and_a_daily_loop_says_nothing() -> None:
+    text = notify.compose(
+        status="ok",
+        target_close="2026-10-23",
+        dry_run=False,
+        orders=208,
+        gross=546_256.69,
+        cost_bps=4.76,
+        brake_limit=250_000.0,
+        cadence={"day": "rebalance", "k": 21, "next_rebalance": "2026-11-23"},
+    )
+    assert "Cadence: rebalance day" in text
+    # With no calendar block the message is the one the daily loop always sent: the
+    # brake sentence, and no claim about a day type it does not have.
+    text = notify.compose(
+        status="ok",
+        target_close="2026-10-13",
+        dry_run=False,
+        orders=191,
+        gross=447_195.23,
+        cost_bps=14.26,
+        brake_limit=250_000.0,
+    )
+    assert "Cadence:" not in text
+    assert "Day: rebalance" not in text

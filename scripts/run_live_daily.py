@@ -1474,6 +1474,7 @@ def finish_run(
         snapshot=snapshot_detail,
         page_book=page_book,
         cross_checks_capped=cross_checks_capped,
+        cadence=(manifest or {}).get("cadence"),
         no_price=no_price,
         no_risk=no_risk,
         missing_var=missing_var,
