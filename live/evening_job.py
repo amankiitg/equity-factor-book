@@ -428,42 +428,14 @@ def _filled_dollars(
 ) -> pd.Series | None:
     """The dollars each leg of the `last` close filled, per ticker, signed.
 
-    `efb.fills` carries a positive amount for a buy and for a sell alike, so every
-    row is signed by the direction of the leg it belongs to before the rows are
-    summed per ticker: two partial fills of one sell add up to the negative the leg
-    asked for, and a name traded twice on the close nets to what the account did. A
-    ticker with no fill row at all - a leg the broker refused, a name that never
-    filled - answers 0 and stays owed.
-
-    Returns `None` when there is no usable fills frame, which is the caller's signal
-    to read the legs' own column instead.
+    The rule lives in `live.fills.filled_dollars`, beside the rest of the fills'
+    readers, because the attribution's own `max_fill_gap` needs the same answer: one
+    implementation is what keeps the forced list and the row the page shows from
+    disagreeing about a leg. This is the name the evening has always called.
     """
-    if fills is None or len(fills) == 0:
-        return None
-    if not {"trade_date", "ticker", "filled_notional"} <= set(fills.columns):
-        return None
-    days = pd.to_datetime(fills["trade_date"]).dt.normalize()
-    rows = fills.loc[days == last]
-    names = rows["ticker"].astype(str)
-    magnitude = pd.to_numeric(rows["filled_notional"], errors="coerce").fillna(0.0).abs()
-    # The leg's own direction is the fallback: a fill row whose intent reads 0 cannot
-    # say which way it went, and the order it belongs to can.
-    leg_sign = pd.Series(
-        np.sign(intended.to_numpy(dtype=float)), index=tickers.to_numpy(dtype=str)
-    )
-    direction = names.map(leg_sign).astype(float).fillna(0.0)
-    if "intended_notional" in rows.columns:
-        own = pd.Series(
-            np.sign(
-                pd.to_numeric(rows["intended_notional"], errors="coerce").fillna(0.0)
-            ),
-            index=rows.index,
-            dtype=float,
-        )
-        direction = own.where(own != 0, direction)
-    signed = magnitude * direction
-    per_ticker = signed.groupby(names).sum()
-    return tickers.map(per_ticker).astype(float).fillna(0.0)
+    from live import fills as fills_module
+
+    return fills_module.filled_dollars(fills, last, tickers, intended)
 
 
 def unfilled_remainder(
