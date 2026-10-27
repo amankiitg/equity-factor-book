@@ -1,8 +1,8 @@
 # Branches, worktrees and scratch directories
 
-State after the 2026-10-24 close-out. **Three branches besides `main` - all of them held
-under the trading freeze - one worktree, and eleven archive tags.** Everything else is
-merged into `main` (so its commits are in history) or preserved as an `archive/<branch>`
+State after the 2026-10-27 merge. **Two branches besides `main` - both of them held,
+one under the trading freeze - one worktree, and twelve archive tags.** Everything else
+is merged into `main` (so its commits are in history) or preserved as an `archive/<branch>`
 tag on `origin`.
 
 The two study branches are gone as branches: their write-ups and result JSONs are in
@@ -13,9 +13,19 @@ The two study branches are gone as branches: their write-ups and result JSONs ar
 | branch | tip | worktree | why it stays |
 |---|---|---|---|
 | `main` | whatever `git log -1 origin/main` says - this file cannot record its own merge | `equity-factor-book` | production |
-| `spinoff-explains-adjustment` | `91eed42` | - | **held under the freeze**: the CTVA contract. An unexplained vendor back-adjustment excludes that name for the night instead of stopping the run. Merges Monday night, not before |
 | `order-time-quotes` | `4cdbc30` | - | **held under the freeze**: records the bid, ask and mid with every order. Changes the morning path and needs `docs/migrations/e13_order_quotes.sql` applied first |
 | `moo-orders` | `e7ad6c8` | - | **held for the owner's decision**: `EFB_ORDER_TIF` for market-on-open orders. Unset is byte-identical to today. The switch is the owner's, for the rebalance about 2026-11-23 |
+
+`order-time-quotes` also carries `docs/migrations/e13_order_quotes.sql` and its check
+query, which are **not on `main`**: applying the migration is the owner's step, and the
+checklist on `main` names files a reader of `main` cannot find. The DDL is quoted in
+`docs/monday_2026-10-26.md` for that reason.
+
+## The merge of 2026-10-26/27
+
+| branch | tip | merge commit | what merged | gate |
+|---|---|---|---|---|
+| `spinoff-explains-adjustment` | `91eed42` | `1c98b53` | the CTVA contract: an unexplained vendor back-adjustment excludes that name for the night instead of stopping the run. Branch deleted, local and on `origin`; `archive/spinoff-explains-adjustment` holds the tip | 1 failed, 1662 passed on the merge - the APH artifact vintage - plus three `pytest-timeout` errors in `tests/test_repair_session.py` that the same run reproduces six of on `origin/main`; zero ids red on the merge that are not red on `main` |
 
 ## The archive tags
 
@@ -34,14 +44,14 @@ Eleven, all on `origin`. Each is an annotated tag at the branch's last tip:
 | `archive/research-daily-design` | the daily-panel study, **including `scripts/daily_design_study.py`, `cadence_study.py`, `churn_study.py`, `churn_followup.py`, `build_daily_design_panel.py`, `validate_daily_panel.py`** - the scripts are not on `main` |
 | `archive/research-exec-timing` | the execution-timing study and its measurement script |
 
-### Held under the trading freeze, with their proofs
+### Held, with their proofs
 
-All three are pushed and all three have their own tests green. None may merge before
-Monday 2026-10-26 00:00 UTC, because each changes what the evening or the morning does.
+Both are pushed and both have their own tests green. `order-time-quotes` changes what
+the morning stores with every order and may not merge until a morning has reconciled on
+the current code; `moo-orders` changes what the morning sends and is the owner's call.
 
 | branch | proof | the exact merge |
 |---|---|---|
-| `spinoff-explains-adjustment` | the owner's contract, with the four `test_week2_spinoff.py` ids rewritten and an added test where an unexplained adjustment drops exactly one name and the run completes; full gate on `91eed42`: **1 failed, 1665 passed** (the one is the APH artifact vintage); weights identical to `main` on the last four closes (2026-10-16, 19, 20, 21), max abs difference **0.0**, same names, same `kept_gross` on each | the Monday checklist, part B2 |
 | `order-time-quotes` | 15 tests in `tests/test_order_quotes.py` and `tests/test_cost_split.py`; `test_e11_preflip_fixes.py` and `test_run_live_daily.py` unaffected (60 passed); ruff and black clean in the lint scope. Tolerates the four columns being absent, so it can merge before or after the migration | apply the migration (Monday), then merge **after 15:45 UTC Tuesday**, once that morning has reconciled - the Tuesday morning sends the reversal second legs on current code |
 | `moo-orders` | `tests/test_moo_orders.py` 9 passed: unset is `day` with the four `client_order_id`s pinned, `opg` is `opg` on every leg with the open sized in whole shares, a bad value raises before the first order, the 09:28 ET cutoff falls back to `day` with the reason recorded, and a rerun submits nothing | the owner's decision before the rebalance about 2026-11-23; see `docs/research/moo_orders.md` |
 

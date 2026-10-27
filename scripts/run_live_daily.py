@@ -1108,8 +1108,12 @@ def _excluded_rows(manifest: dict[str, Any] | None) -> list[dict[str, Any]]:
 def unfilled_remainders(as_of: Any) -> dict[str, float]:
     """The last rebalance's unfinished legs, as target weights, from the store.
 
-    Reads the three tables the answer lives in and hands them to
-    `evening_job.unfilled_remainder`, which is where the rule is. A store that cannot
+    Reads the four tables the answer lives in and hands them to
+    `evening_job.unfilled_remainder`, which is where the rule is. `fills` is one of
+    them because it is the only record of what a leg actually filled: the morning
+    writes it when it reconciles a close, while `efb.orders.filled_notional` is
+    written before the open and never updated, so a remainder read from that column
+    alone says every leg of a settled rebalance is outstanding. A store that cannot
     be read returns nothing and says so: a leg that is not carried waits for the next
     rebalance, which is the state this exists to avoid, so it is a warning.
     """
@@ -1118,6 +1122,7 @@ def unfilled_remainders(as_of: Any) -> dict[str, float]:
     try:
         proposals = store.select("proposals")
         orders = store.select("orders")
+        fills = store.select("fills")
         book = previous_book(str(as_of)[:10], [])
     except Exception as exc:  # noqa: BLE001 - the evening goes on without it
         logger.warning(
@@ -1133,6 +1138,7 @@ def unfilled_remainders(as_of: Any) -> dict[str, float]:
         book,
         as_of=pd.Timestamp(as_of),
         minimum=float(alpaca.DELTA_MIN_NOTIONAL),
+        fills=fills,
     )
 
 
@@ -1468,6 +1474,7 @@ def finish_run(
         snapshot=snapshot_detail,
         page_book=page_book,
         cross_checks_capped=cross_checks_capped,
+        cadence=(manifest or {}).get("cadence"),
         no_price=no_price,
         no_risk=no_risk,
         missing_var=missing_var,

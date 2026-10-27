@@ -398,6 +398,7 @@ def compose(
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
+    cadence: dict[str, Any] | None = None,
     cost_label: str | None = "rebalance",
     cost_bps: float | None = None,
     cost_breakdown: dict[str, float] | None = None,
@@ -689,10 +690,13 @@ def compose(
         )
     elif brake_limit:
         lines.append(
-            f"Day: rebalance. The absolute traded-notional brake of "
+            f"The absolute traded-notional brake of "
             f"${float(brake_limit):,.0f} applies, because the account already "
             "holds a book."
         )
+    cadence_line = _cadence_line(cadence)
+    if cadence_line:
+        lines.append(cadence_line)
     if cost_bps is not None:
         lines.append(_cost_line(float(cost_bps), cost_label, cost_breakdown))
     # The broker's book against the store's, every evening. A difference is the
@@ -781,6 +785,27 @@ def compose(
             lines.append(f"Error: {prefix}: {reason}")
 
     return "\n".join(lines)
+
+
+def _cadence_line(cadence: dict[str, Any] | None) -> str | None:
+    """The calendar's own statement of what day this close was, or nothing.
+
+    The manifest carries the block only when `EFB_CADENCE > 1`, so a daily-loop
+    message says nothing about a calendar it does not have. The day is read here
+    rather than inferred from the brake: the brake is about how much may trade,
+    and it applies on every night the account already holds a book.
+    """
+    if not isinstance(cadence, dict):
+        return None
+    day = str(cadence.get("day") or "")
+    length = cadence.get("k")
+    if day == "hold":
+        next_up = cadence.get("next_rebalance")
+        tail = f", next rebalance {next_up}" if next_up else ""
+        return f"Cadence: hold day (k={length}{tail})"
+    if day == "rebalance":
+        return "Cadence: rebalance day"
+    return None
 
 
 def _cost_line(
@@ -1432,6 +1457,7 @@ def notify_run(
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
+    cadence: dict[str, Any] | None = None,
     cost_label: str | None = "rebalance",
     cost_bps: float | None = None,
     cost_breakdown: dict[str, float] | None = None,
@@ -1503,6 +1529,7 @@ def notify_run(
         cross_checks_capped=cross_checks_capped,
         init=init,
         establishment=establishment,
+        cadence=cadence,
         cost_label=cost_label,
         cost_bps=cost_bps,
         cost_breakdown=cost_breakdown,
