@@ -1,9 +1,12 @@
--- The order-time quote, as a migration the owner applies by hand on Monday.
+-- The order-time quote, as a migration the owner applies by hand.
 --
--- NOT RUN BY THE BUILD AND NOT APPLIED ON 2026-10-23. This file is the statement set
--- for the owner to read and to apply through the Supabase SQL editor or
--- `scripts/provision_supabase.py`. It is additive and idempotent: four nullable
--- columns, no rewrite, no backfill, and every existing row keeps its values.
+-- Applied to the live database by 2026-10-27: the check file answers 4|4|t. It is
+-- not run by the build, so a database provisioned from `live/supabase_schema.sql`
+-- already has the columns and a database restored from an older backup has them
+-- again once this is re-run. This file is the statement set for the owner to read and
+-- to apply through the Supabase SQL editor or `scripts/provision_supabase.py`. It is
+-- additive and idempotent: four nullable columns, no rewrite, no backfill, and every
+-- existing row keeps its values.
 --
 -- Why. `realized_cost_bps` measures a fill against the close the book was *sized*
 -- from, and the loop sizes after one close and submits about two hours later, so the
