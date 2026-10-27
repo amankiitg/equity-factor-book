@@ -364,11 +364,12 @@ def forced_names_for_hold(
                 forced.add(str(name))
     # The last rebalance's unfinished legs: the book is owed them, and on a hold day
     # nothing else would send them.
-    carried = manifest.get("unfilled_remainder")
-    if isinstance(carried, Mapping):
-        for name, weight in carried.items():
-            if abs(float(weight)) > 1e-12:
-                forced.add(str(name))
+    for key in ("unfilled_remainder", "carried_forward"):
+        owed = manifest.get(key)
+        if isinstance(owed, Mapping):
+            for name, weight in owed.items():
+                if abs(float(weight)) > 1e-12:
+                    forced.add(str(name))
     # The drift guard's own legs: the refresh moves names the book already carries,
     # so every one of them is a delta the hold filter would otherwise drop.
     guard = manifest.get("drift_guard")
@@ -436,6 +437,122 @@ def _filled_dollars(
     from live import fills as fills_module
 
     return fills_module.filled_dollars(fills, last, tickers, intended)
+
+
+# The refusal codes that say the leg cannot be sent at this size, whatever the evening
+# does: the order path re-derives the same answer from the same prices. A leg refused
+# for one of these is reported rather than carried, so a hold day cannot spend the
+# month asking the broker the same question.
+UNREACHABLE_REFUSALS = frozenset({"COVER_UNDER_ONE_SHARE"})
+
+
+def carried_forward(
+    orders: pd.DataFrame,
+    fills: pd.DataFrame | None,
+    book: pd.DataFrame | None,
+    previous_manifest: Mapping[str, Any] | None,
+    *,
+    as_of: Any,
+    minimum: float,
+) -> tuple[dict[str, float], list[dict[str, Any]]]:
+    """What the last close left owing, as target weights, and what can never be sent.
+
+    A hold day publishes the book it holds, so a leg it was allowed to send and could
+    not is owed exactly like a rebalance's: the 2026-10-26 close sent twelve legs for
+    $10,672 and had one refused (`JBL`, `COVER_UNDER_ONE_SHARE`, $269.37 against a
+    $275.68 share), and nothing carried it, because the remainder reader looked only
+    at the last *rebalance*. The book then claims a position the account does not have
+    until the next rebalance, three weeks later.
+
+    Two sources, unioned so a leg stays owed across consecutive hold days:
+
+    - the last close's own legs, from `efb.orders` less the dollars `efb.fills`
+      records for them, the same arithmetic the rebalance's remainder uses;
+    - the last close's `carried_forward` block, which is how a leg that was owed last
+      night and still is tonight survives a close that had no order for it at all.
+
+    The weight is the target from the book the loop published for that close, as in
+    `unfilled_remainder`: completing a leg means reaching the target, and a name the
+    book no longer carries has no weight to reach and is left to the order path, which
+    closes it.
+
+    A leg whose refusal code is in `UNREACHABLE_REFUSALS` is not carried: it comes back
+    in the second list with its ticker, its dollars and its reason, so the message says
+    a leg is owed and cannot be sent instead of repeating the same refusal every
+    evening. The next rebalance re-sizes the name, which is the one thing that can
+    change the answer. Its own refusal is the evidence, so it is reported even when the
+    close's fills are not recorded yet - which is the state before that morning has run,
+    and the only state in which the arithmetic above has nothing to say: a close with no
+    fills row carries no leg on the strength of the arithmetic alone, because a missing
+    record is not evidence that a leg went unsent.
+
+    Returns `(carried, unreachable)`, both empty when nothing is owed.
+    """
+    day = pd.Timestamp(as_of).normalize()
+    # An unseeded store answers an empty frame with no columns at all, and "nothing is
+    # owed" is the answer there rather than a crash.
+    if orders is None or len(orders) == 0 or "trade_date" not in orders.columns:
+        return {}, []
+    days = pd.to_datetime(orders["trade_date"]).dt.normalize()
+    earlier = orders.loc[days < day]
+    carried: dict[str, float] = {}
+    unreachable: list[dict[str, Any]] = []
+    weights = (
+        book.assign(ticker=book["ticker"].astype(str)).set_index("ticker")["weight"]
+        if book is not None and len(book) and "ticker" in book.columns
+        else pd.Series(dtype=float)
+    )
+    previous = dict((previous_manifest or {}).get("carried_forward") or {})
+    if not earlier.empty:
+        last = pd.to_datetime(earlier["trade_date"]).dt.normalize().max()
+        legs = earlier.loc[pd.to_datetime(earlier["trade_date"]).dt.normalize() == last]
+        tickers = legs["ticker"].astype(str)
+        intended = pd.to_numeric(legs["intended_notional"], errors="coerce").fillna(0.0)
+        filled = _filled_dollars(fills, last, tickers, intended)
+        owed = (
+            pd.Series(0.0, index=legs.index)
+            if filled is None
+            else (intended - filled).abs()
+        )
+        reasons = (
+            legs["reason_code"].astype(str)
+            if "reason_code" in legs.columns
+            else pd.Series("", index=legs.index)
+        )
+        for ticker, gap, notional, reason in zip(
+            tickers, owed, intended, reasons, strict=True
+        ):
+            # A refused leg's own refusal is the evidence, not the fills: it never
+            # went to the broker, so the whole of it is owed and the gap arithmetic
+            # has nothing to add.
+            if reason in UNREACHABLE_REFUSALS:
+                if abs(float(notional)) >= float(minimum):
+                    unreachable.append(
+                        {
+                            "ticker": ticker,
+                            "unfilled_dollars": round(abs(float(notional)), 2),
+                            "reason_code": reason,
+                            "close": str(last.date()),
+                            "weight": (
+                                float(weights[ticker])
+                                if ticker in weights.index
+                                else None
+                            ),
+                        }
+                    )
+                continue
+            if float(gap) < float(minimum):
+                continue
+            if ticker in weights.index and abs(float(weights[ticker])) > 1e-12:
+                carried[ticker] = float(weights[ticker])
+    # Last night's carry survives: a leg owed on a close that had no order for it has
+    # nothing in this close's rows to find it by.
+    for ticker, weight in previous.items():
+        name = str(ticker)
+        if name in carried or any(row["ticker"] == name for row in unreachable):
+            continue
+        carried[name] = float(weight)
+    return carried, unreachable
 
 
 def unfilled_remainder(
@@ -2244,6 +2361,8 @@ def build_proposal(
     completed_rebalances: Iterable[Any] | None = None,
     reversal_targets: Mapping[str, float] | None = None,
     unfilled: Mapping[str, float] | None = None,
+    carried: Mapping[str, float] | None = None,
+    unreachable: Iterable[Mapping[str, Any]] | None = None,
     guard_threshold: float | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
@@ -2462,6 +2581,18 @@ def build_proposal(
     if carried_remainders and calendar["day"] != cadence.HOLD:
         carried_remainders = {}
     unfilled_remainders: dict[str, float] = {}
+    # The last *close* rather than the last rebalance: a leg a hold day was allowed to
+    # send and could not is owed the same way, and the remainder above never sees it.
+    carried_legs: dict[str, float] = {
+        str(name): float(weight)
+        for name, weight in (carried or {}).items()
+        if abs(float(weight)) > 1e-12
+    }
+    if carried_legs and calendar["day"] != cadence.HOLD:
+        carried_legs = {}
+    carried_unreachable = [
+        dict(row) for row in (unreachable or []) if calendar["day"] == cadence.HOLD
+    ]
     # A reversal the last close deferred is a leg the loop has already decided to
     # send, and the account is flat on the name until it lands. The held book is read
     # from the account, so it carries the name at zero - and publishing zero would
@@ -2479,6 +2610,7 @@ def build_proposal(
         # overlay. The unfinished leg wins where both name the same ticker, because
         # it is the newer target.
         combined = dict(reversal_targets or {}, **carried_remainders)
+        combined.update(carried_legs)
         held_weights, applied = _with_deferred_targets(
             held_weights, names, combined, as_of_ts
         )
@@ -2490,8 +2622,9 @@ def build_proposal(
         unfilled_remainders = {
             name: weight
             for name, weight in applied.items()
-            if name in carried_remainders
+            if name in carried_remainders or name in carried_legs
         }
+        carried_unreachable = [{**row, "sent": False} for row in carried_unreachable]
     holding = held_weights is not None
     # A calendar with hold days is the only reason any of the six keys below exists.
     # With `EFB_CADENCE` unset (or `1`) the manifest this function returns is the one
@@ -2811,6 +2944,11 @@ def build_proposal(
                 # still owed. A hold day forces them, so a rebalance is finished
                 # before the book is allowed to sit still for a month.
                 "unfilled_remainder": dict(sorted(unfilled_remainders.items())),
+                # The last close's legs that are still owed and cannot be sent at
+                # their size. Reported rather than forced: the order path would
+                # refuse them again with the same code, and the next rebalance is
+                # what changes the answer.
+                "unfilled_unreachable": carried_unreachable,
             }
             if cadence_on
             else {}
