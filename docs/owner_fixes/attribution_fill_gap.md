@@ -96,13 +96,28 @@ python scripts/restore_attribution.py --backup docs/owner_fixes/backups/attribut
 python scripts/restore_attribution.py --backup docs/owner_fixes/backups/attribution_fill_gap_before.json --apply
 ```
 
-`--only-max-fill-gap` does not exist yet: the repair script has `--only-pre-hedge-vol`
-for the one narrow mode it needed, and the same shape is what this repair needs, because
-a whole-row upsert re-derives columns from today's store and must not (see
-`attribution_recompute.md`, "Why the full-row upsert was rejected"). The forward fix is
-already in place: every row the evening writes from 2026-10-27 onward carries the number
-this note recomputes, and a close whose fills arrive later is restated by the same
-re-fill pass that already moves `pnl_cost`.
+**Applied on 2026-10-28.** `--only-max-fill-gap` now exists, with the same shape as
+`--only-pre-hedge-vol`, because a whole-row upsert would re-derive columns from today's
+store and must not (see `attribution_recompute.md`, "Why the full-row upsert was
+rejected"). It reads `efb.orders` and `efb.fills` and no data tree. Measured against the
+live store: 16 of the 21 stored rows moved, two already held the recomputed value
+(2026-10-01 and 2026-10-26) and three have no orders row at all (2026-09-28, 2026-10-07,
+2026-10-14). The rows dated 2026-09-29 and 2026-09-30 became null, because the store
+holds no fills for either close.
+
+The write touched `max_fill_gap` and `written_at` and no other column, checked by
+re-reading every row and comparing against the backup with the JSON and float columns
+normalized: zero columns moved besides those two. Re-running the dry run afterwards
+prints "every day already holds the recomputed max_fill_gap". The backup is
+`~/efb-backups/2026-10-28/attribution_before_max_fill_gap.json` and its restore is
+
+```
+python scripts/restore_attribution.py --backup ~/efb-backups/2026-10-28/attribution_before_max_fill_gap.json
+```
+
+which reported 16 rows differing from the backup, dry run, nothing written. The forward
+fix was already in place: every row the evening writes from 2026-10-27 onward carries the
+number this note recomputes.
 
 ## What this note does not do
 

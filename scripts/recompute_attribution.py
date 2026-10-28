@@ -193,9 +193,81 @@ def _apply_only_pre_hedge_vol(updates: list[tuple[float, Any]], apply: bool) -> 
     return 0
 
 
+def _only_max_fill_gap(apply: bool) -> int:
+    """Write only `max_fill_gap`, computed from `efb.fills`, and nothing else.
+
+    The column is a function of the close's orders and its fills, so this mode reads
+    those two tables and never the data tree: the recompute that the other modes run
+    rebuilds every column from the panel, and this repair is one number per day.
+    """
+    stored = _stored()
+    if stored.empty:
+        print("no stored attribution rows")
+        return 0
+    gaps = attribution_job.max_fill_gaps(store.select("orders"), store.select("fills"))
+
+    print(f"\n{'close':<12}{'stored':>14}{'from the fills':>18}{'moved':>12}")
+    updates: list[tuple[Any, Any]] = []
+    for record in stored.sort_values("trade_date").to_dict("records"):
+        day = pd.Timestamp(record["trade_date"])
+        old = record.get("max_fill_gap")
+        new = gaps.get(day, None)
+        if day not in gaps:
+            print(
+                f"{str(day.date()):<12}{_dollars(old):>14}{'no orders row':>18}{'':>12}"
+            )
+            continue
+        moved = not _same(old, new)
+        print(
+            f"{str(day.date()):<12}{_dollars(old):>14}{_dollars(new):>18}"
+            f"{('yes' if moved else '-'):>12}"
+        )
+        if moved:
+            updates.append((new, day.date()))
+
+    table = store._qualified("attribution")  # noqa: SLF001
+    statement = (
+        f'UPDATE {table} SET "max_fill_gap" = %s, "written_at" = now() '
+        'WHERE "trade_date" = %s'
+    )
+    print(f"\n{statement}")
+    if not updates:
+        print("every day already holds the recomputed max_fill_gap: nothing to write")
+        return 0
+    if not apply:
+        print(
+            f"\nDRY RUN (--only-max-fill-gap): {len(updates)} row(s) would have "
+            "max_fill_gap updated and no other column touched. Nothing was written."
+        )
+        return 0
+    connection = store.get_connection()
+    with connection.cursor() as cursor:
+        cursor.executemany(statement, updates)
+    connection.commit()
+    print(
+        f"\nAPPLIED (--only-max-fill-gap): {len(updates)} row(s) updated in "
+        "efb.attribution; only max_fill_gap and written_at changed"
+    )
+    return 0
+
+
+def _dollars(value: Any) -> str:
+    """A dollar amount for the report, or a dash for a null."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "-"
+    try:
+        return f"{float(value):,.2f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", required=True, help="the live data tree")
+    parser.add_argument(
+        "--root",
+        default=None,
+        help="the live data tree (not needed by --only-max-fill-gap)",
+    )
     parser.add_argument(
         "--apply",
         action="store_true",
@@ -219,7 +291,19 @@ def main(argv: list[str] | None = None) -> int:
             "as stored (default: upsert the whole recomputed row)"
         ),
     )
+    parser.add_argument(
+        "--only-max-fill-gap",
+        action="store_true",
+        help=(
+            "write only the max_fill_gap column, leaving every other column exactly "
+            "as stored; computed from efb.fills, so no data tree is read"
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.only_max_fill_gap:
+        return _only_max_fill_gap(args.apply)
+    if not args.root:
+        parser.error("--root is required unless --only-max-fill-gap is given")
     root = pathlib.Path(args.root).resolve()
 
     stored = _stored()
