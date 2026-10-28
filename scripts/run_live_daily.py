@@ -1142,6 +1142,52 @@ def unfilled_remainders(as_of: Any) -> dict[str, float]:
     )
 
 
+def carried_legs(as_of: Any) -> tuple[dict[str, float], list[dict[str, Any]]]:
+    """The last close's legs still owed, and the ones that cannot be sent at all.
+
+    Reads the same four tables the rebalance remainder does and hands them to
+    `evening_job.carried_forward`, which is where the rule is. The difference is the
+    window: this looks at the newest close of any kind, so a leg a hold day was
+    allowed to send and could not is owed on the next one, and it takes last night's
+    own carry with it so the obligation survives a close with no order for the name.
+    """
+    from live import alpaca, evening_job, store
+
+    try:
+        orders = store.select("orders")
+        fills = store.select("fills")
+        proposals = store.select("proposals")
+        book = previous_book(str(as_of)[:10], [])
+    except Exception as exc:  # noqa: BLE001 - the evening goes on without it
+        logger.warning(
+            "could not read the last close's legs (%s: %s), so a leg it left owing "
+            "is not carried",
+            type(exc).__name__,
+            exc,
+        )
+        return {}, []
+    previous_manifest = None
+    if not proposals.empty and "manifest" in proposals.columns:
+        days = pd.to_datetime(proposals["trade_date"]).dt.normalize()
+        earlier = proposals.loc[days < pd.Timestamp(as_of).normalize()]
+        if not earlier.empty:
+            newest = earlier.iloc[int(days.loc[earlier.index].argmax())]
+            previous_manifest = newest["manifest"]
+            if isinstance(previous_manifest, str):
+                try:
+                    previous_manifest = json.loads(previous_manifest)
+                except json.JSONDecodeError:
+                    previous_manifest = None
+    return evening_job.carried_forward(
+        orders,
+        fills,
+        book,
+        previous_manifest,
+        as_of=pd.Timestamp(as_of),
+        minimum=float(alpaca.DELTA_MIN_NOTIONAL),
+    )
+
+
 def reversal_weights(
     pending: Iterable[str] | None, previous: pd.DataFrame | None
 ) -> dict[str, float]:
@@ -2091,6 +2137,24 @@ def main() -> int:
         # next evening rebuilds the target and finishes them by itself; on a hold day
         # nothing would, so they are carried into the held book and forced.
         carried_remainders = unfilled_remainders(str(gate["target_close"]))
+        owed_legs, unreachable_legs = carried_legs(str(gate["target_close"]))
+        if owed_legs:
+            logger.info(
+                "%d leg(s) of the last close are still owed and are carried: %s",
+                len(owed_legs),
+                ", ".join(sorted(owed_legs)),
+            )
+        if unreachable_legs:
+            logger.warning(
+                "%d leg(s) of the last close cannot be sent at their size and are "
+                "reported rather than retried: %s",
+                len(unreachable_legs),
+                ", ".join(
+                    f"{row['ticker']} (${row['unfilled_dollars']:,.2f}, "
+                    f"{row['reason_code']})"
+                    for row in unreachable_legs
+                ),
+            )
         logger.info(
             "prior book: %s",
             (
@@ -2106,6 +2170,8 @@ def main() -> int:
             previous=prior_weights,
             reversal_targets=reversal_targets,
             unfilled=carried_remainders,
+            carried=owed_legs,
+            unreachable=unreachable_legs,
             nav=float(holdings["nav"]),
             nav_source=str(holdings["nav_source"]),
             shortable=shortable_flags(dry_run=dry_run),

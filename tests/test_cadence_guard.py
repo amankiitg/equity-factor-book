@@ -546,3 +546,105 @@ def test_the_daily_loop_carries_nothing_into_a_rebalance() -> None:
     # because a rebalance rebuilds the book and trades the whole difference itself.
     assert carried == {"AAA": 0.10}
     assert "unfilled_remainder" not in {"unfilled_remainder"} or True
+
+
+# ------------------------------------- the last close's refused or unfilled legs
+
+
+def _orders_with_reasons(day: str, legs: list[tuple[str, float, str]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "trade_date": [day] * len(legs),
+            "ticker": [ticker for ticker, _, _ in legs],
+            "intended_notional": [notional for _, notional, _ in legs],
+            "filled_notional": [0.0] * len(legs),
+            "reason_code": [code for _, _, code in legs],
+        }
+    )
+
+
+def test_a_leg_the_broker_refused_on_a_hold_day_is_carried_to_the_next_one() -> None:
+    """The 2026-10-26 shape, with a refusal that can clear: it is owed tomorrow."""
+    orders = _orders_with_reasons(
+        "2026-10-26",
+        [("AAA", 5_000.0, ""), ("BBB", -4_000.0, "INSUFFICIENT_BUYING_POWER")],
+    )
+    fills = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-26"],
+            "ticker": ["AAA"],
+            "intended_notional": [5_000.0],
+            "filled_notional": [5_000.0],
+        }
+    )
+    book = pd.DataFrame({"ticker": ["AAA", "BBB"], "weight": [0.005, -0.004]})
+    carried, unreachable = evening_job.carried_forward(
+        orders, fills, book, None, as_of=pd.Timestamp("2026-10-27"), minimum=250.0
+    )
+    assert carried == {"BBB": -0.004}, carried
+    assert unreachable == []
+    # It is forced, so tomorrow's morning sends it and nothing else.
+    assert evening_job.forced_names_for_hold({"carried_forward": carried}) == {"BBB"}
+
+
+def test_a_cover_under_one_share_is_reported_and_not_retried() -> None:
+    """JBL: $269.37 against a $275.68 share is a leg no evening can send.
+
+    Retrying it every hold day would spend a refusal a night for a month, so it is
+    reported on the manifest and in the message instead, and the next rebalance -
+    which re-sizes the name - is what changes the answer.
+    """
+    orders = _orders_with_reasons(
+        "2026-10-26", [("JBL", 269.37, "COVER_UNDER_ONE_SHARE")]
+    )
+    book = pd.DataFrame({"ticker": ["JBL"], "weight": [0.0003]})
+    carried, unreachable = evening_job.carried_forward(
+        orders, None, book, None, as_of=pd.Timestamp("2026-10-27"), minimum=250.0
+    )
+    assert carried == {}, "a leg nobody can send must not ride the allow list"
+    assert [row["ticker"] for row in unreachable] == ["JBL"]
+    assert unreachable[0]["reason_code"] == "COVER_UNDER_ONE_SHARE"
+    assert unreachable[0]["unfilled_dollars"] == pytest.approx(269.37)
+    assert evening_job.forced_names_for_hold({"carried_forward": carried}) == set()
+
+
+def test_a_leg_owed_last_night_survives_a_close_with_no_order_for_it() -> None:
+    """The chain: a hold day that sends nothing for a name must not end the debt."""
+    orders = _orders_with_reasons("2026-10-27", [("AAA", 5_000.0, "")])
+    fills = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-27"],
+            "ticker": ["AAA"],
+            "intended_notional": [5_000.0],
+            "filled_notional": [5_000.0],
+        }
+    )
+    book = pd.DataFrame({"ticker": ["AAA", "CCC"], "weight": [0.005, 0.003]})
+    carried, unreachable = evening_job.carried_forward(
+        orders,
+        fills,
+        book,
+        {"carried_forward": {"CCC": 0.003}},
+        as_of=pd.Timestamp("2026-10-28"),
+        minimum=250.0,
+    )
+    assert carried == {"CCC": 0.003}, carried
+    assert unreachable == []
+
+
+def test_a_close_that_filled_completely_carries_nothing() -> None:
+    orders = _orders_with_reasons("2026-10-27", [("AAA", 5_000.0, "")])
+    fills = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-27"],
+            "ticker": ["AAA"],
+            "intended_notional": [5_000.0],
+            "filled_notional": [5_010.0],
+        }
+    )
+    book = pd.DataFrame({"ticker": ["AAA"], "weight": [0.005]})
+    carried, unreachable = evening_job.carried_forward(
+        orders, fills, book, None, as_of=pd.Timestamp("2026-10-28"), minimum=250.0
+    )
+    assert carried == {}
+    assert unreachable == []
