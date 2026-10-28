@@ -78,6 +78,41 @@ def nav_equity(nav: pd.DataFrame | None) -> dict[str, float]:
     return out
 
 
+def max_fill_gaps(
+    orders: pd.DataFrame, fills: pd.DataFrame
+) -> dict[pd.Timestamp, float | None]:
+    """The largest amount each close still owes, in dollars, keyed by close.
+
+    The dollars each leg filled come from `efb.fills`, the record the morning
+    writes; `orders.filled_notional` is written at submission and never updated, so
+    reading it made this the largest *leg* of the day ($20,696 on the 2026-10-23
+    close) rather than the largest amount still owed. A close with no fills row is
+    `None`: its remainder is not known, which is not the same as a close that filled
+    nothing.
+
+    One reader, because the stored attribution rows are repaired from it and the
+    evening computes them from it; two implementations of this would drift.
+    """
+    from live import fills as fills_module
+
+    gaps: dict[pd.Timestamp, float | None] = {}
+    if orders is None or orders.empty or "trade_date" not in orders.columns:
+        return gaps
+    stamp_column = orders["trade_date"].astype(str).str.slice(0, 10)
+    for day, group in orders.groupby(stamp_column):
+        stamp = pd.Timestamp(str(day)[:10])
+        intended = pd.to_numeric(group["intended_notional"], errors="coerce").fillna(
+            0.0
+        )
+        filled = fills_module.filled_dollars(
+            fills, stamp, group["ticker"].astype(str), intended
+        )
+        gaps[stamp] = (
+            None if filled is None else _number((intended - filled).abs().max())
+        )
+    return gaps
+
+
 def session_inputs(
     reconciliation: pd.DataFrame,
     orders: pd.DataFrame,
@@ -160,25 +195,12 @@ def session_inputs(
                 "realized_cost_bps": realized,
             }
     if not orders.empty and "trade_date" in orders.columns:
-        from live import fills as fills_module
-
+        gaps = max_fill_gaps(orders, fills)
         stamp_column = orders["trade_date"].astype(str).str.slice(0, 10)
         for day, group in orders.groupby(stamp_column):
             stamp = pd.Timestamp(str(day)[:10])
-            intended = pd.to_numeric(
-                group["intended_notional"], errors="coerce"
-            ).fillna(0.0)
             status = group["status"].astype(str)
-            # The dollars each leg filled come from `efb.fills`, the record the
-            # morning writes; `orders.filled_notional` is written at submission and
-            # never updated, so reading it made this the largest *leg* of the day
-            # ($20,696 on the 2026-10-23 close) rather than the largest amount still
-            # owed. None when the close has no fills yet, which is a day whose
-            # remainder is not known rather than a day that filled nothing.
-            filled = fills_module.filled_dollars(
-                fills, stamp, group["ticker"].astype(str), intended
-            )
-            gap = None if filled is None else _number((intended - filled).abs().max())
+            gap = gaps.get(stamp)
             known = filled_by_day.get(str(day)[:10])
             forecasts.setdefault(stamp, {}).update(
                 {

@@ -510,3 +510,50 @@ def test_a_row_with_no_specific_volatility_still_refuses_the_vector() -> None:
         }
     )
     assert attribution._pre_hedge_vector(block, ["SMCI"]) is None
+
+
+def test_the_gap_is_the_largest_amount_still_owed() -> None:
+    """`max_fill_gaps` reads the fills, not `orders.filled_notional`, which is 0."""
+    import pandas as pd
+
+    day = pd.Timestamp("2026-10-23")
+    orders = pd.DataFrame(
+        {
+            "trade_date": [day, day, day],
+            "ticker": ["AAA", "BBB", "CCC"],
+            "intended_notional": [1_000.0, -2_000.0, 500.0],
+            "filled_notional": [0.0, 0.0, 0.0],
+        }
+    )
+    # AAA fully filled, BBB 40% filled, CCC not filled at all.
+    fills = pd.DataFrame(
+        {
+            "trade_date": [day, day, day],
+            "ticker": ["AAA", "BBB", "CCC"],
+            "intended_notional": [1_000.0, -2_000.0, 500.0],
+            "filled_notional": [1_000.0, 800.0, 0.0],
+            "status": ["FILLED", "PARTIAL", "CANCELED"],
+        }
+    )
+    gaps = attribution_job.max_fill_gaps(orders, fills)
+    assert gaps[day] == pytest.approx(1_200.0)  # BBB is owed 60% of 2,000
+
+
+def test_a_close_with_no_fills_row_has_no_known_gap() -> None:
+    """No fills for the close is "not known", not "filled nothing"."""
+    import pandas as pd
+
+    day = pd.Timestamp("2026-09-29")
+    orders = pd.DataFrame(
+        {
+            "trade_date": [day],
+            "ticker": ["AAA"],
+            "intended_notional": [1_000.0],
+            "filled_notional": [0.0],
+        }
+    )
+    no_rows = pd.DataFrame(
+        {"trade_date": [], "ticker": [], "filled_notional": [], "status": []}
+    )
+    assert attribution_job.max_fill_gaps(orders, no_rows)[day] is None
+    assert attribution_job.max_fill_gaps(pd.DataFrame(), no_rows) == {}
