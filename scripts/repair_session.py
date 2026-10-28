@@ -59,6 +59,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -572,7 +573,7 @@ def repair(
     return report
 
 
-def load_tree(work: Path, tree: Path | None) -> Path:
+def load_tree(work: Path, tree: Path | None, *, write: bool = False) -> Path:
     """The run's own tree, brought to the session the repair is for.
 
     Materializing from the bucket and hydrating the appendix is what the cron
@@ -580,12 +581,31 @@ def load_tree(work: Path, tree: Path | None) -> Path:
     appendix input, so it is the one artifact a hydrated tree has to rebuild from
     the prices before the model can be fitted. Nothing is fetched from the vendor:
     the prices and share counts the appendix supplied are the run's own.
+
+    **Hydrating and extending rewrite files, so a dry run does them on a copy.**
+    Pointed at an existing tree, a dry run used to hydrate and extend that tree in
+    place: on 2026-10-28 a dry run against `/tmp/efb-gate` turned the gate's
+    2026-10-02 research build into a live tree at the 2026-10-27 frontier, and
+    eighteen artifact-vintage test ids went with it. A dry run now copies `--tree`
+    under `--work` and never opens the original for writing; `--write` keeps the
+    old behaviour, because a repair that is being applied is applied to the tree it
+    was pointed at.
     """
-    root = tree
-    if root is None:
+    if tree is None:
         target = work / "data"
         target.parent.mkdir(parents=True, exist_ok=True)
         root = runroot.prepare(dest=target)
+    elif write:
+        root = Path(tree)
+    else:
+        source = Path(tree).resolve()
+        target = work / f"{source.name or 'tree'}-copy"
+        if target.exists():
+            shutil.rmtree(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source, target, symlinks=True)
+        print(f"dry run: working on a copy at {target}; {source} is not opened")
+        root = target
     appendix.open_store(root)
     extend.extend_returns(root)
     return root
@@ -618,7 +638,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     session = pd.Timestamp(args.session)
-    root = load_tree(args.work, args.tree)
+    root = load_tree(args.work, args.tree, write=args.write)
     report = repair(root, args.ticker, session, write=args.write, mask=not args.refit)
     print(json.dumps(report, indent=2, default=str))
     print()

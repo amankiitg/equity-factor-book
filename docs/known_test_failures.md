@@ -52,6 +52,37 @@ committed fixtures were built from, which is a rebuild on a machine that holds `
 not a code change. Until then a gate is judged against the nineteen ids, compared on
 `main` and on the branch in the same tree and the same session.
 
+### 2026-10-29: the dry run no longer rewrites the tree, and the old vintage is gone
+
+`scripts/repair_session.py` now hydrates and extends **a copy** of `--tree` under
+`--work` unless `--write` is given, so the mistake that moved the gate tree cannot be
+repeated; `tests/test_repair_session.py` hashes every file in the target tree before and
+after a dry run and asserts they are unchanged, and asserts `--write` still loads the tree
+it was pointed at.
+
+The 2026-10-02 vintage itself **cannot be rebuilt on this machine**, and the nineteen ids
+stay until it can. Measured on 2026-10-29:
+
+- the gate tree was `rsync -a data/ /tmp/efb-gate/` from this checkout's `data/`, which
+  today holds only the four tracked files (`VERSION.json`, `models/registry.json`,
+  `eval/e5_race_grid.json`) and empty directories: no parquet at all;
+- there is no other copy: `find ~ -name returns.parquet` outside `.venv` returns nothing,
+  and every `/tmp` tree but `/tmp/efb-gate` has been removed;
+- the seed bucket's artifacts end **2026-09-21**, so a `seed.download()` plus
+  `appendix.hydrate()` produces a 2026-09-21 tree with the store's rows on top, not the
+  research build at 2026-10-02 that the committed fixtures were generated from.
+
+What is missing, exactly: a research artifact tree of the kind `efb/build.py` produces
+whose last session is 2026-10-02, i.e. `raw/prices.parquet`, `processed/returns.parquet`
+and `models/XS-v1/*.parquet` at that vintage. Rebuilding it needs the raw inputs and a
+`make rebuild` on a machine that holds them; neither is on this machine.
+
+Part of the set shrinks on its own: the `test_e11_web_fixtures.py` ids compare the
+writer's output against committed fixtures, and the fixtures are regenerated whenever the
+snapshot writer changes. A regeneration against a current tree replaces those ids with a
+fixture set of the new vintage, which is a deliberate change with its own review, not a
+gate repair.
+
 ## The four CTVA ids, which are gone
 
 The `spinoff-explains-adjustment` branch merged on 2026-10-27 in `1c98b53`, and the four
