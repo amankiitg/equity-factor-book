@@ -774,6 +774,7 @@ criterion is a test rather than a claim.
 | docs/roadmap_v2.md | unchanged | the programme record |
 | handoff/ | unchanged | the handoff convention, which the credit port should adopt on day one |
 | scripts/backfill_reconciliation.py | unchanged | the one-off that writes a priced close's reconciliation row from the store, with its own dry run |
+| scripts/backfill_fills.py | new | writes the fill rows a close is owed, read back from the broker through the morning's own three calls, dry run by default and restorable from its own backup |
 | scripts/backup_attribution_rows.py | unchanged | the backup step every attribution write is proved against, and the restore script beside it |
 | scripts/cadence_shadow.py | re-specified | the offline shadow that replays a rebalance calendar stays as a shape, and its guard measures a credit book's factor exposure |
 | scripts/cost_split.py | re-specified | splitting a measured cost into drift and execution is asset-class-agnostic, and the reference price becomes TRACE's |
