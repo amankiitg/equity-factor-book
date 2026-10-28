@@ -552,3 +552,60 @@ def test_a_second_refit_changes_nothing(
     assert second["file_hash_after"] == first["file_hash_after"]
     assert second["history_hash_before"] == second["history_hash_after"]
     assert second["row_set_changed"] == {}
+
+
+def test_a_dry_run_never_writes_to_the_tree_it_is_pointed_at(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hydrating and extending rewrite files, so a dry run does them on a copy.
+
+    2026-10-28: a dry run pointed at `/tmp/efb-gate` hydrated that tree and ran
+    `extend_returns` on it, which turned a 2026-10-02 research build into a live
+    tree at the 2026-10-27 frontier and took eighteen artifact-vintage test ids
+    with it. `--tree` is a reader for a dry run and a writer only with `--write`.
+    """
+    target = tmp_path / "gate-tree"
+    (target / "raw").mkdir(parents=True)
+    (target / "processed").mkdir(parents=True)
+    (target / "raw" / "prices.parquet").write_bytes(b"a price panel")
+    (target / "processed" / "returns.parquet").write_bytes(b"a return panel")
+
+    def before() -> dict[str, str]:
+        return {
+            str(path.relative_to(target)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(target.rglob("*"))
+            if path.is_file()
+        }
+
+    stamp = before()
+    hydrated: list[Path] = []
+
+    def fake_open_store(root: Path, *args: object, **kwargs: object) -> None:
+        hydrated.append(Path(root))
+        (Path(root) / "HYDRATED").write_text("x")
+
+    def fake_extend(root: Path, *args: object, **kwargs: object) -> None:
+        (Path(root) / "EXTENDED").write_text("x")
+
+    monkeypatch.setattr(appendix, "open_store", fake_open_store)
+    monkeypatch.setattr(extend, "extend_returns", fake_extend)
+
+    root = repair_session.load_tree(tmp_path / "work", target, write=False)
+
+    assert root != target
+    assert root.name == "gate-tree-copy"
+    assert hydrated == [root], "the store was opened on the copy, not the target"
+    assert (root / "HYDRATED").exists() and (root / "EXTENDED").exists()
+    assert before() == stamp, "a dry run left the target tree's files alone"
+    assert not (target / "HYDRATED").exists()
+
+
+def test_a_write_loads_the_tree_it_was_pointed_at(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--write` is the exception: a repair being applied is applied in place."""
+    target = tmp_path / "gate-tree"
+    target.mkdir()
+    monkeypatch.setattr(appendix, "open_store", lambda *a, **k: None)
+    monkeypatch.setattr(extend, "extend_returns", lambda *a, **k: None)
+    assert repair_session.load_tree(tmp_path / "work", target, write=True) == target
