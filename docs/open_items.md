@@ -513,3 +513,26 @@ gate tree now holds a live tree at the 2026-10-27 frontier rather than the 2026-
 research build it held before. Eighteen artifact-vintage ids now fail against it on
 `main` and on every branch; `docs/known_test_failures.md` lists them and the fix, which is
 a rebuild of the gate tree, not a code change.
+
+## 2026-10-28: what today left open
+
+**The clock still cannot start.** Scoping the proposal set to the live series moved its
+first date from the 2026-09-25 rehearsal to 2026-09-30, so the refusal changed and did not
+go away: the store holds orders for the 2026-09-29 and 2026-09-30 closes and no fills row
+for either, so "day 1 is the first session whose orders filled" cannot be established
+from it. Either the fills are backfilled from the broker's history or day 1 is 2026-10-01,
+whose own fills are also incomplete (one row against 212 orders). The owner's decision.
+`tests/test_e11_clock.py::test_the_real_store_refuses_day_1_on_the_fills_it_does_not_hold`
+asserts the refusal, so the day it is fixed that test fails and says so.
+
+**The gate tree needs rebuilding.** See `docs/known_test_failures.md`. Until it is, a gate
+is judged against nineteen ids measured on `main` and on the branch in the same tree and
+the same session.
+
+**`moo-orders` is still held** for the owner's decision before the rebalance about
+2026-11-23. Nothing else is held.
+
+**Two scratch items in `/tmp` were left alone** because their origin is not recorded:
+`/tmp/efb-spinoff-read-failure` (a two-file probe tree, 8 KB) and `/tmp/bad_live.json`
+(28 bytes, a malformed liveness value). Both look like earlier sessions' probes and both
+are regenerable; neither is a backup of anything.
