@@ -366,6 +366,11 @@ class SpinoffOutcome:
     raw_return: float | None
     adjusted_return: float | None
     child_close: float | None
+    # The two shares of the parent's value when the record's ratio and the vendor's
+    # own split factor do not describe the same distribution: what the ratio and the
+    # child's price imply, and what the factor implies. None when they agree, or when
+    # the row carries no factor to check against.
+    disagreement: tuple[float, float] | None = None
 
     @property
     def unusable_record(self) -> bool:
@@ -377,6 +382,19 @@ class SpinoffOutcome:
         return self.child_close is None and not self.unusable_record
 
     @property
+    def contradicted_by_the_factor(self) -> bool:
+        """Whether the record's ratio and the vendor's factor price the same event.
+
+        The 2026-06-29 HON record is the case: `new_rate` 0.5 with the child at
+        $220.19 and the parent's prior close at $232.21 says 47% of the parent was
+        distributed, while the vendor's own `split_factor` on the same row, 0.9535,
+        says 4.7% and the parent's as-traded price fell 6.5%. One of the two fields
+        is wrong by an order of magnitude, and applying the rate wrote +45.5% into a
+        return the session actually paid as -6.5%.
+        """
+        return self.disagreement is not None
+
+    @property
     def raises_flag(self) -> bool:
         """Whether the print this replaced is worth a flag of its own.
 
@@ -385,6 +403,8 @@ class SpinoffOutcome:
         happen is a row that changed for a reason nothing records.
         """
         if self.missing_child or self.unusable_record:
+            return True
+        if self.contradicted_by_the_factor:
             return True
         raw = self.raw_return
         return raw is not None and abs(raw) > LARGE_MOVE
@@ -502,6 +522,50 @@ def spinoff_return(
     ) - 1.0
 
 
+# How far the record's own ratio and the vendor's split factor may disagree before the
+# record is treated as unusable, as a share of the parent's prior close. Measured over
+# the 21 stored share distributions that carry a factor: the widest legitimate
+# disagreement is 4.3 points (J/AMTM 2024, where the child is priced at a different
+# close from the one the factor used), and the HON 2026 row is 42.8 points. Ten
+# points sits between the two with room on both sides.
+DISTRIBUTION_TOLERANCE = 0.10
+
+
+def distribution_disagreement(
+    factor: float | None, child_value: float, previous_close: float
+) -> tuple[float, float] | None:
+    """The record's implied distribution against the vendor's own split factor.
+
+    Both are measured as a share of the parent's **restated** prior close, which is
+    the close the vendor's factor produces (`previous_close x factor`): the factor is
+    the restatement the series itself carries, so it is the denominator the two
+    readings have in common. `child_value` is the rate times the child's close, in
+    dollars per parent share. A factor above one scales the history up and a factor
+    below one scales it down, so the distribution the factor describes is
+    `1 - 1/factor` or `1 - factor` respectively. Returns None when there is no factor
+    to check against or the two agree inside `DISTRIBUTION_TOLERANCE`.
+    """
+    if factor is None or not math.isfinite(factor) or factor <= 0:
+        return None
+    if abs(factor - 1.0) <= 1e-9:
+        # A factor of exactly one is the vendor saying no adjustment happened on this
+        # row at all, which is the shape `wide_to_long` fills for a row it has no
+        # action for: there is nothing to compare the record with.
+        return None
+    if not math.isfinite(previous_close) or previous_close <= 0:
+        return None
+    restated = float(previous_close) * float(factor)
+    implied = float(child_value) / restated
+    if not math.isfinite(implied):
+        # A record with no usable child price or rate says nothing about the
+        # distribution; the missing-child and unusable-record paths report it.
+        return None
+    by_factor = (1.0 - 1.0 / factor) if factor > 1.0 else (1.0 - factor)
+    if abs(implied - by_factor) <= DISTRIBUTION_TOLERANCE:
+        return None
+    return (float(implied), float(by_factor))
+
+
 def _close_before(
     prices_frame: pd.DataFrame, ticker: str, session: pd.Timestamp
 ) -> float | None:
@@ -562,6 +626,24 @@ def _apply_spinoff(
     if child is None or parent_close is None or previous is None:
         _set_return(frame, session, parent, float("nan"))
         return SpinoffOutcome(spinoff, session, raw_value, None, None)
+    # The record's ratio has to describe the same distribution the vendor's own
+    # adjustment describes. When it does not, the record is not applied: the cell is
+    # nulled and the disagreement is recorded, which is the CTVA shape - a number no
+    # run can reproduce is a hole the hygiene layer reports, not a value to write.
+    factor = split_factor_of(_cell(prices_frame, session, parent, "split_factor"))
+    disagreement = distribution_disagreement(
+        factor, float(ratio) * float(child), float(previous)
+    )
+    if disagreement is not None:
+        _set_return(frame, session, parent, float("nan"))
+        return SpinoffOutcome(
+            spinoff,
+            session,
+            raw_value,
+            None,
+            float(child),
+            disagreement=disagreement,
+        )
     value = spinoff_return(
         parent_close=parent_close,
         child_close=float(child),
@@ -587,7 +669,14 @@ def spinoff_flags(
         if event.session != session or not event.raises_flag:
             continue
         label = event.spinoff.label
-        if event.unusable_record:
+        if event.contradicted_by_the_factor:
+            implied, by_factor = event.disagreement or (0.0, 0.0)
+            label = (
+                f"{label}, the record's ratio and the child's price say {implied:.1%} "
+                f"of the parent was distributed and the vendor's own split factor "
+                f"says {by_factor:.1%}, so the return was nulled"
+            )
+        elif event.unusable_record:
             label = f"{label}, so the return was nulled"
         elif event.missing_child:
             label = (
