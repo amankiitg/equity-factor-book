@@ -190,6 +190,97 @@ def test_a_start_is_refused_on_a_close_with_orders_and_no_fills(
     assert not path.exists(), "a refused registration still wrote a clock"
 
 
+def test_a_rehearsal_proposal_is_not_a_live_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The proposal set is scoped by `run_status`, not read whole.
+
+    The loop stores a proposal on a dry run at a close before the flip. Read
+    unscoped, that rehearsal became the first proposal and no day-1 date could
+    agree with it; scoped, the set starts on the first close the live series ran on.
+    """
+    import pandas as pd
+
+    from live import staleness, store
+
+    frames = {
+        staleness.TABLE: pd.DataFrame(
+            {
+                "target_close": ["2026-09-25", "2026-09-30"],
+                "job": ["live_daily", "live_daily"],
+                "dry_run": [True, False],
+                "n_orders": [150, 178],
+            }
+        ),
+        "proposals": pd.DataFrame({"trade_date": ["2026-09-25", "2026-09-30"]}),
+        "orders": pd.DataFrame({"trade_date": [], "broker_order_id": []}),
+        "fills": pd.DataFrame({"trade_date": [], "status": []}),
+    }
+    monkeypatch.setattr(
+        store, "select", lambda table: frames.get(table, pd.DataFrame())
+    )
+    records = clock.records_from_store()
+    assert records["proposal"] == ["2026-09-30"]
+    assert records["run"] == ["2026-09-30"]
+
+
+def test_a_hold_day_proposal_is_a_live_close(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A hold day sends no order and is still a live close, and its proposal counts.
+
+    The `run` set requires an order, because a close that traded is what day 1 is;
+    the scope the proposal is read through must not inherit that condition or the
+    proposal set would skip every hold day between rebalances.
+    """
+    import pandas as pd
+
+    from live import staleness, store
+
+    frames = {
+        staleness.TABLE: pd.DataFrame(
+            {
+                "target_close": ["2026-10-23", "2026-10-26", "2026-10-27"],
+                "job": ["live_daily"] * 3,
+                "dry_run": [False] * 3,
+                "n_orders": [208, 13, 0],
+            }
+        ),
+        "proposals": pd.DataFrame(
+            {"trade_date": ["2026-10-23", "2026-10-26", "2026-10-27"]}
+        ),
+        "orders": pd.DataFrame({"trade_date": [], "broker_order_id": []}),
+        "fills": pd.DataFrame({"trade_date": [], "status": []}),
+    }
+    monkeypatch.setattr(
+        store, "select", lambda table: frames.get(table, pd.DataFrame())
+    )
+    records = clock.records_from_store()
+    assert records["proposal"] == ["2026-10-23", "2026-10-26", "2026-10-27"]
+    assert records["run"] == ["2026-10-23", "2026-10-26"]
+
+
+def test_the_real_store_refuses_day_1_on_the_fills_it_does_not_hold() -> None:
+    """Measured on the live store on 2026-10-28, read-only.
+
+    Scoping the proposal set moved its first date from the 2026-09-25 rehearsal to
+    2026-09-30 and `first_day()` still refuses, now on the fills: the store holds
+    orders for the 2026-09-29 and 2026-09-30 closes and no fill row for either, so
+    "day 1 is the first session whose orders filled" cannot be established from it.
+    That is a reconciliation gap, not a reader bug, and the assertion says so.
+    """
+    from live import store
+
+    if store.store_mode() != "supabase":  # pragma: no cover - local runs have no store
+        pytest.skip("the live store is not configured")
+
+    records = clock.records_from_store()
+    assert records["proposal"][0] == "2026-09-30", records["proposal"][:3]
+    assert records["run"][0] == "2026-09-30"
+    with pytest.raises(clock.RegistrationRefused) as refused:
+        clock.first_day(records)
+    assert "not the first session whose orders filled" in str(refused.value)
+    assert records["filled"][0] == "2026-10-01"
+
+
 def test_records_from_an_unseeded_store_are_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
