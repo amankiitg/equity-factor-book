@@ -169,8 +169,12 @@ def records_from_store() -> dict[str, list[str]]:
     refusal are all recorded and none of them is a live run, so the first date
     here is the flip evening.
 
-    `proposal` is every close the loop stored a proposal for, which the same
-    evening writes: the proposal is priced from that close.
+    `proposal` is every close the loop stored a proposal for **on the live series**,
+    which the same evening writes: the proposal is priced from that close. It is
+    scoped by `run_status` rather than read whole, because the loop also stores a
+    proposal on a rehearsal and on a dry run, and a rehearsal priced from a close
+    before the flip is not a live close. Unscoped, the set started on 2026-09-25, a
+    dry-run rehearsal, and no day-1 date could ever agree with it.
 
     `filled` is the sessions whose legs the store records a fill for, read from
     `efb.fills`, which is what the morning writes when it reconciles a close.
@@ -184,6 +188,7 @@ def records_from_store() -> dict[str, list[str]]:
 
     runs = store.select(staleness.TABLE)
     live_runs = []
+    live_closes: list[str] = []
     if not runs.empty and {"job", "dry_run", "n_orders", "target_close"} <= set(
         runs.columns
     ):
@@ -193,6 +198,13 @@ def records_from_store() -> dict[str, list[str]]:
             where=(runs["job"] == LIVE_JOB)
             & (~runs["dry_run"])
             & (runs["n_orders"].fillna(0) > 0),
+        )
+        # Every close the live series ran on, including the ones it sent no order
+        # for: a hold day is a live close with a proposal and nothing to trade.
+        live_closes = _dates(
+            runs,
+            "target_close",
+            where=(runs["job"] == LIVE_JOB) & (~runs["dry_run"]),
         )
 
     fills = store.select("fills")
@@ -222,9 +234,16 @@ def records_from_store() -> dict[str, list[str]]:
         )
         ordered = _dates(orders, "trade_date", where=sent)
 
+    proposed = _dates(store.select("proposals"), "trade_date")
+    if live_closes:
+        # Scoped, but only when there is a scope to apply: a store whose
+        # `run_status` is empty is one the scope cannot speak about, and reading it
+        # as "no live close was ever proposed" would refuse for the wrong reason.
+        proposed = [date for date in proposed if date in set(live_closes)]
+
     return {
         "run": live_runs,
-        "proposal": _dates(store.select("proposals"), "trade_date"),
+        "proposal": proposed,
         "filled": filled,
         "ordered": ordered,
     }
