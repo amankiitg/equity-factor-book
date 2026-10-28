@@ -258,14 +258,16 @@ def test_a_hold_day_proposal_is_a_live_close(monkeypatch: pytest.MonkeyPatch) ->
     assert records["run"] == ["2026-10-23", "2026-10-26"]
 
 
-def test_the_real_store_refuses_day_1_on_the_fills_it_does_not_hold() -> None:
-    """Measured on the live store on 2026-10-28, read-only.
+def test_the_real_store_registers_day_1_on_the_backfilled_fills() -> None:
+    """Measured on the live store on 2026-10-29, read-only.
 
-    Scoping the proposal set moved its first date from the 2026-09-25 rehearsal to
-    2026-09-30 and `first_day()` still refuses, now on the fills: the store holds
-    orders for the 2026-09-29 and 2026-09-30 closes and no fill row for either, so
-    "day 1 is the first session whose orders filled" cannot be established from it.
-    That is a reconciliation gap, not a reader bug, and the assertion says so.
+    Until 2026-10-29 this refused: the store held orders for the 2026-09-29 and
+    2026-09-30 closes and no fill row for either, so "day 1 is the first session whose
+    orders filled" could not be established. The 2026-09-29 close turned out to be a
+    dry run, all 177 legs `DRY_RUN` with no broker id, and the 2026-09-30 and
+    2026-10-01 fills were backfilled from the broker, so every set now starts on
+    2026-09-30 and the clock can be started. It is not started here, and a start is
+    the owner's call: this asserts the store's answer, not that the clock was started.
     """
     from live import store
 
@@ -273,12 +275,10 @@ def test_the_real_store_refuses_day_1_on_the_fills_it_does_not_hold() -> None:
         pytest.skip("the live store is not configured")
 
     records = clock.records_from_store()
-    assert records["proposal"][0] == "2026-09-30", records["proposal"][:3]
-    assert records["run"][0] == "2026-09-30"
-    with pytest.raises(clock.RegistrationRefused) as refused:
-        clock.first_day(records)
-    assert "not the first session whose orders filled" in str(refused.value)
-    assert records["filled"][0] == "2026-10-01"
+    for key in ("run", "proposal", "filled", "ordered"):
+        assert records[key][0] == "2026-09-30", (key, records[key][:3])
+    assert clock.first_day(records) == "2026-09-30"
+    assert clock.load_clock()["started"] is False
 
 
 def test_records_from_an_unseeded_store_are_empty(
@@ -357,3 +357,44 @@ def test_the_stored_clock_is_not_started() -> None:
     history = payload["history"]
     assert history, "the voided start is not on the record"
     assert all(entry["status"] == "void" for entry in history)
+
+
+def test_a_dry_run_leg_is_not_an_order_sent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty `broker_order_id` is the dry run's own record, not a broker id.
+
+    Measured on 2026-10-29: the 2026-09-29 close's 177 legs are all `DRY_RUN` with an
+    empty string in `broker_order_id`, and `notna()` counted them as orders sent, so
+    the `ordered` set started a close before the first live run.
+    """
+    import pandas as pd
+
+    from live import staleness, store
+
+    frames = {
+        staleness.TABLE: pd.DataFrame(
+            {
+                "target_close": ["2026-09-25", "2026-09-29", "2026-09-30"],
+                "job": ["live_daily"] * 3,
+                "dry_run": [True, True, False],
+                "n_orders": [150, 177, 178],
+            }
+        ),
+        "proposals": pd.DataFrame({"trade_date": ["2026-09-25", "2026-09-30"]}),
+        "orders": pd.DataFrame(
+            {
+                "trade_date": ["2026-09-25", "2026-09-29", "2026-09-30"],
+                "ticker": ["AAA", "BBB", "CCC"],
+                # A rehearsal with no id at all, a dry run with an empty one, and a
+                # leg that really went out.
+                "broker_order_id": [None, "", "b-3"],
+            }
+        ),
+        "fills": pd.DataFrame({"trade_date": [], "status": []}),
+    }
+    monkeypatch.setattr(
+        store, "select", lambda table: frames.get(table, pd.DataFrame())
+    )
+    records = clock.records_from_store()
+    assert records["ordered"] == ["2026-09-30"]
+    assert records["proposal"] == ["2026-09-30"]
+    assert records["run"] == ["2026-09-30"]
