@@ -20,6 +20,38 @@ Measured on `main` `1c98b53` on 2026-10-27 with the gate's own command on the tr
 A gate run whose failing set is a subset of this id plus the documented skips is clean.
 Anything else is new.
 
+## 2026-10-28: the gate tree was extended, and eighteen ids went with it
+
+The gate tree `/tmp/efb-gate` was a research build whose artifacts ended 2026-10-02. A
+dry run of `scripts/repair_session.py --tree /tmp/efb-gate` on 2026-10-28 hydrated it
+from the store and ran `extend_returns`, so the same directory now holds a live tree at
+the 2026-10-27 frontier. Every test that compares a committed fixture, map or evidence
+hash against what the generator produces from the tree now fails, on `main` and on any
+branch alike:
+
+```
+19 failed, 1674 passed, 1 skipped, 54 deselected
+```
+
+measured on `main` `d74fd93` on 2026-10-28 with the gate's command against that tree.
+The eighteen, all artifact vintage:
+
+```
+tests/test_allocate.py::test_the_stored_traded_book_figures_are_what_the_function_computes
+tests/test_e11_web_fixtures.py::test_every_fixture_is_what_the_writer_produces_now  (10 cases)
+tests/test_e12_attribution.py::test_the_stored_split_reconstructs_the_return_on_the_current_build
+tests/test_evidence.py::test_the_evidence_chain_verifies
+tests/test_statistical.py::test_the_real_panel_counts_match_the_stored_probe_arithmetic
+tests/test_web_sector_map.py::test_the_committed_map_is_exactly_what_the_generator_produces
+tests/test_web_sector_map.py::test_the_map_names_the_files_it_came_from_and_their_own_dates
+tests/test_web_sector_map.py::test_every_name_in_the_live_book_maps_unless_the_sources_lack_it
+```
+
+plus the APH id above makes nineteen. The fix is a gate tree at the vintage the
+committed fixtures were built from, which is a rebuild on a machine that holds `data/`,
+not a code change. Until then a gate is judged against the nineteen ids, compared on
+`main` and on the branch in the same tree and the same session.
+
 ## The four CTVA ids, which are gone
 
 The `spinoff-explains-adjustment` branch merged on 2026-10-27 in `1c98b53`, and the four

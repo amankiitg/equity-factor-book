@@ -486,3 +486,30 @@ live close when `efb.run_status` holds a `live_daily` row for it with `dry_run` 
 That is a reader change in `live/clock.py`, no data change, and it would let the clock
 start on 2026-09-30. It is not made here because the clock's start is the owner's
 decision and the reporting window is dated by it.
+
+## 2026-10-28: the HON repair is not a live-data repair, and the gate tree moved
+
+Two findings from the repair plan (`docs/owner_fixes/hon_repair_plan.md`), both measured
+read-only today.
+
+**The live path never carried HON's 2026-06-29 print.** The seed every live run starts
+from carries HON's specific return for that session as `-0.062064`, its variance as
+`0.000279` on 2026-09-10, and the store's `efb.e11_specific_var` runs `0.000268` on
+2026-09-25 down to `0.000226` on 2026-10-27. The `+45.51%` return and the fitted row it
+produced, `+0.441997`, exist in the research artifact set that `efb/build.py` builds from
+the recorded action, whose `new_rate` of 0.5 is wrong by a factor of ten. The recorded
+row is a store write and the owner's decision; the guard merged on 2026-10-28 nulls the
+session instead of writing it.
+
+**The variance range has no writer.** `fundamental.specific_variance` is called for the
+whole history by `efb/build.py`, for new sessions only by `live/extend.py`, and for one
+session by `scripts/repair_session.py`. Nothing recomputes `specific_var` from a date
+forward, in the artifact or in `efb.e11_specific_var`, so the repair as specified was not
+applied. The plan's section 7 has the three steps that unblock it.
+
+**The gate tree is now a frontier tree.** A dry run of `scripts/repair_session.py` with
+`--tree /tmp/efb-gate` hydrates the tree it is pointed at and extends the panel, so the
+gate tree now holds a live tree at the 2026-10-27 frontier rather than the 2026-10-02
+research build it held before. Eighteen artifact-vintage ids now fail against it on
+`main` and on every branch; `docs/known_test_failures.md` lists them and the fix, which is
+a rebuild of the gate tree, not a code change.
