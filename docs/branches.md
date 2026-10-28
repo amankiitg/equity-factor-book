@@ -1,9 +1,9 @@
 # Branches, worktrees and scratch directories
 
-State after the 2026-10-27 merge. **Two branches besides `main` - both of them held,
-one under the trading freeze - one worktree, and twelve archive tags.** Everything else
-is merged into `main` (so its commits are in history) or preserved as an `archive/<branch>`
-tag on `origin`.
+State after the 2026-10-28 cleanup. **One branch besides `main`, held for the owner's
+decision, one worktree, and eighteen archive tags.** Everything else is merged into
+`main` (so its commits are in history) or preserved as an `archive/<branch>` tag on
+`origin`. `/tmp/efb-gate` is the only scratch tree left on this machine.
 
 The two study branches are gone as branches: their write-ups and result JSONs are in
 `docs/research/` on `main`, and the scripts that produced them are in the archive tags.
@@ -13,13 +13,11 @@ The two study branches are gone as branches: their write-ups and result JSONs ar
 | branch | tip | worktree | why it stays |
 |---|---|---|---|
 | `main` | whatever `git log -1 origin/main` says - this file cannot record its own merge | `equity-factor-book` | production |
-| `order-time-quotes` | `4cdbc30` | - | **held under the freeze**: records the bid, ask and mid with every order. Changes the morning path and needs `docs/migrations/e13_order_quotes.sql` applied first |
 | `moo-orders` | `e7ad6c8` | - | **held for the owner's decision**: `EFB_ORDER_TIF` for market-on-open orders. Unset is byte-identical to today. The switch is the owner's, for the rebalance about 2026-11-23 |
 
-`order-time-quotes` also carries `docs/migrations/e13_order_quotes.sql` and its check
-query, which are **not on `main`**: applying the migration is the owner's step, and the
-checklist on `main` names files a reader of `main` cannot find. The DDL is quoted in
-`docs/monday_2026-10-26.md` for that reason.
+`order-time-quotes` merged on 2026-10-28 once its migration was applied: the check query
+`docs/migrations/e13_order_quotes_check.sql` reads `4|4|t` against the live database, so
+the four columns exist and `live/morning_job.py` writes them on the next morning.
 
 ## The merge of 2026-10-26/27
 
@@ -29,7 +27,7 @@ checklist on `main` names files a reader of `main` cannot find. The DDL is quote
 
 ## The archive tags
 
-Eleven, all on `origin`. Each is an annotated tag at the branch's last tip:
+Eighteen, all on `origin`. Each is an annotated tag at the branch's last tip:
 
 | tag | holds |
 |---|---|
@@ -43,6 +41,12 @@ Eleven, all on `origin`. Each is an annotated tag at the branch's last tip:
 | `archive/e12` | the E12 attribution work |
 | `archive/research-daily-design` | the daily-panel study, **including `scripts/daily_design_study.py`, `cadence_study.py`, `churn_study.py`, `churn_followup.py`, `build_daily_design_panel.py`, `validate_daily_panel.py`** - the scripts are not on `main` |
 | `archive/research-exec-timing` | the execution-timing study and its measurement script |
+| `archive/order-time-quotes` | the order-time quote work, merged 2026-10-28 |
+| `archive/hold-day-refusals` | a hold day carrying the previous close's refused legs |
+| `archive/hon-spinoff-return` | the spin-off ratio guard, merged 2026-10-28 |
+| `archive/clock-live-proposals` | the clock's proposal set scoped to the live series |
+| `archive/fill-gap-apply` | the stored `max_fill_gap` repair |
+| `archive/merge-1028` | the staging branch that carried the two held branches in |
 
 ### Held, with their proofs
 
@@ -54,6 +58,23 @@ the current code; `moo-orders` changes what the morning sends and is the owner's
 |---|---|---|
 | `order-time-quotes` | 15 tests in `tests/test_order_quotes.py` and `tests/test_cost_split.py`; `test_e11_preflip_fixes.py` and `test_run_live_daily.py` unaffected (60 passed); ruff and black clean in the lint scope. Tolerates the four columns being absent, so it can merge before or after the migration | apply the migration (Monday), then merge **after 15:45 UTC Tuesday**, once that morning has reconciled - the Tuesday morning sends the reversal second legs on current code |
 | `moo-orders` | `tests/test_moo_orders.py` 9 passed: unset is `day` with the four `client_order_id`s pinned, `opg` is `opg` on every leg with the open sized in whole shares, a bad value raises before the first order, the 09:28 ET cutoff falls back to `day` with the reason recorded, and a rerun submits nothing | the owner's decision before the rebalance about 2026-11-23; see `docs/research/moo_orders.md` |
+
+## The merges of 2026-10-28
+
+Four merges, all gated in the same environment as `main` in the same session, and all
+pushed by 12:48 UTC.
+
+| branch | tip | merge commit | what merged | gate |
+|---|---|---|---|---|
+| `merge-1028` (carrying `hold-day-refusals` and `hon-spinoff-return`) | `8b2f0f1` | `d6319ad` | a hold day carries the previous close's refused or unfilled legs forward until they fill, and reports the ones that can never be sent; a recorded share distribution whose ratio contradicts the vendor's own split factor by more than ten points is nulled instead of applied. Plus the HON repair plan and the known-failure record | 19 failed, 1681 passed - the same nineteen ids `main` fails against the same tree in the same session, of which eighteen are the gate tree's new vintage and one is the APH artifact. Zero new |
+| `clock-live-proposals` | `1725fa2` | `1a1252a` | the clock reads the proposal set through the live series, so it starts on 2026-09-30 instead of the 2026-09-25 rehearsal | 19 failed, 1683 passed, same nineteen; +2 new tests |
+| `fill-gap-apply` | `357be3c` | `62196c6` | `max_fill_gaps` as one reader, and `scripts/recompute_attribution.py --only-max-fill-gap`, applied to 16 stored rows | 19 failed, 1685 passed, same nineteen; +2 new tests |
+
+The nineteen-id set is new today and is documented in `docs/known_test_failures.md`: a
+dry run of `scripts/repair_session.py --tree /tmp/efb-gate` hydrates the tree it is
+pointed at, so the gate tree now holds a live tree at the 2026-10-27 frontier instead of
+the 2026-10-02 research build. Every test that compares a committed fixture or evidence
+hash against what the generator produces from the tree fails on `main` as well.
 
 ## The merges of 2026-10-23
 
