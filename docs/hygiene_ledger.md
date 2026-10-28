@@ -2934,3 +2934,45 @@ again with nothing behind it, the departure detector names it. The November 11 l
 carries the matching gap in the bridge itself: it can express a name that left without
 an order but not one that arrived without one, which is this case, and the term is to be
 added then rather than now (see the "2026-11-11" note in `docs/backport_runbook.md`).
+
+## 2026-10-29: the two closes that never got their fill rows, backfilled from the broker
+
+Decision. `efb.fills` now holds the rows for the 2026-09-30 and 2026-10-01 closes: 178
+and 183, read back from the broker by `scripts/backfill_fills.py`, which is the
+morning's own three calls (`fills.read_orders`, `fills.facts_rows`, `store.upsert`) and
+not a second writer. 2026-09-29 was **not** backfilled and needed nothing: all 177 of
+its legs carry `status = DRY_RUN` and an empty `broker_order_id`, because that evening
+was a dry run.
+
+Reason. The morning's reconciliation failed for both closes (2026-10-02's
+`fills_reconcile` row is `error` with one order), so the store held one fill row for
+2026-10-01 and none for 2026-09-30 while the broker had 177 and 181 filled legs. Every
+reader of the fills was therefore wrong about the flip week: the attribution's
+`max_fill_gap` had nothing to measure, and `live/clock.py` could not establish that the
+first live session's orders filled, so the clock could not be started at all.
+
+Evidence. The broker's own history, read by id for each stored leg: 2026-09-30 178 legs,
+178 found, **177 filled, 1 canceled**; 2026-10-01 183 legs with an id, 183 found, **181
+filled, 2 canceled**. The store now holds 358 `FILLED` and 3 `CANCELED` rows across the
+two closes, filled dollars $994,905.05 and $377,159.17. After the write
+`clock.first_day()` returns **2026-09-30**, and the clock is not started.
+
+**One row was deleted, and it is worth its own sentence.** The store held a 2026-10-01
+row for DG with `order_id = oid-dg`, a price of 12.62 and a $517.42 fill. `oid-dg` is
+not a broker order id and the `efb.fills.order_id` column is the broker's own id by
+construction: the row is the fixture from `tests/test_e11_fills.py` and
+`tests/test_week1_fills_cron.py`, written to the live store at some point when a run had
+the Supabase URL and no `EFB_STORE=local`. The broker's DG leg is
+`88efc2e0-71c0-428f-8065-388d04870891`, **canceled, nothing filled**, so the fixture did
+not merely duplicate the leg, it invented a fill. It was backed up before the delete and
+the backup's restore puts it back.
+
+Status. Written on 2026-10-29 through the writer the morning uses, one upsert of 361
+rows, with the pre-write state saved to
+`~/efb-backups/2026-10-29/fills_before_backfill.json`. The restore was proved inside a
+transaction: deleting the 361 ids and putting back the saved row returns the store to
+178 rows for 2026-09-30 and 1 for 2026-10-01, and rolling back leaves the applied state
+in place. `scripts/recompute_attribution.py --only-max-fill-gap` was then re-run, moving
+two rows: 2026-09-30 from null to **$680.97** and 2026-10-01 from $17,358.77 to
+**$4,975.86**; the previous values are in
+`~/efb-backups/2026-10-29/attribution_before_gap_refresh.json`.

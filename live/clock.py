@@ -227,8 +227,12 @@ def records_from_store() -> dict[str, list[str]]:
     orders = store.select("orders")
     ordered = []
     if not orders.empty and "trade_date" in orders.columns:
+        # A broker id that is present and non-empty. `notna()` counted the empty
+        # string too, and a dry run writes exactly that: measured on 2026-10-29, the
+        # 2026-09-29 close's 177 legs are all `DRY_RUN` with `broker_order_id = ''`
+        # and `notna()` read them as 177 orders sent.
         sent = (
-            orders["broker_order_id"].notna()
+            orders["broker_order_id"].astype("string").fillna("").str.strip() != ""
             if "broker_order_id" in orders.columns
             else pd.Series(False, index=orders.index)
         )

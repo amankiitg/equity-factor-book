@@ -357,3 +357,44 @@ def test_the_stored_clock_is_not_started() -> None:
     history = payload["history"]
     assert history, "the voided start is not on the record"
     assert all(entry["status"] == "void" for entry in history)
+
+
+def test_a_dry_run_leg_is_not_an_order_sent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty `broker_order_id` is the dry run's own record, not a broker id.
+
+    Measured on 2026-10-29: the 2026-09-29 close's 177 legs are all `DRY_RUN` with an
+    empty string in `broker_order_id`, and `notna()` counted them as orders sent, so
+    the `ordered` set started a close before the first live run.
+    """
+    import pandas as pd
+
+    from live import staleness, store
+
+    frames = {
+        staleness.TABLE: pd.DataFrame(
+            {
+                "target_close": ["2026-09-25", "2026-09-29", "2026-09-30"],
+                "job": ["live_daily"] * 3,
+                "dry_run": [True, True, False],
+                "n_orders": [150, 177, 178],
+            }
+        ),
+        "proposals": pd.DataFrame({"trade_date": ["2026-09-25", "2026-09-30"]}),
+        "orders": pd.DataFrame(
+            {
+                "trade_date": ["2026-09-25", "2026-09-29", "2026-09-30"],
+                "ticker": ["AAA", "BBB", "CCC"],
+                # A rehearsal with no id at all, a dry run with an empty one, and a
+                # leg that really went out.
+                "broker_order_id": [None, "", "b-3"],
+            }
+        ),
+        "fills": pd.DataFrame({"trade_date": [], "status": []}),
+    }
+    monkeypatch.setattr(
+        store, "select", lambda table: frames.get(table, pd.DataFrame())
+    )
+    records = clock.records_from_store()
+    assert records["ordered"] == ["2026-09-30"]
+    assert records["proposal"] == ["2026-09-30"]
+    assert records["run"] == ["2026-09-30"]
