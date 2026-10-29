@@ -55,6 +55,28 @@ def _number(value: Any) -> float | None:
     return None if pd.isna(number) else number
 
 
+def guard_threshold_from_env() -> float | None:
+    """`EFB_DRIFT_GUARD` as a fraction, read exactly as `live.evening_job` reads it.
+
+    A hold-day manifest records `drift_guard` as null when the guard **looked and
+    left the book alone**, which is not the same as the guard being off: the
+    threshold it compared against is a setting, not a measurement, and a strip that
+    showed null for it said "no threshold" on every quiet evening. `EFB_DRIFT_GUARD`
+    is where the evening gets it, so it is where this reads it, with the same
+    unset/off/typo rule: only a fraction strictly between 0 and 1 is a threshold.
+    """
+    import os
+
+    raw = os.environ.get("EFB_DRIFT_GUARD", "").strip().lower()
+    if not raw or raw in {"off", "none", "0", "false"}:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return value if 0.0 < value < 1.0 else None
+
+
 def _trading_bps(manifest: dict[str, Any]) -> float | None:
     """Spread plus impact plus commission: the half of the cost a fill can move.
 
@@ -151,34 +173,46 @@ def _sides(frame: pd.DataFrame) -> dict[str, str]:
 
 def _leg_dollars(
     orders: pd.DataFrame, fills: pd.DataFrame, ticker: str, close: str
-) -> tuple[float | None, str | None]:
-    """One name's filled dollars on one close, and the date it filled."""
+) -> tuple[float | None, str | None, str | None]:
+    """One name's filled dollars on one close, that close, and the day it filled.
+
+    The third value is the fill's own date, read from `efb.fills.updated_at`: the
+    evening sends after the close and the fill lands at the next open, so a leg
+    priced from the 2026-10-23 close filled on 2026-10-26. None when the store holds
+    no fill row for it, which is not the same as a fill on the close's own date and
+    the page labels the column for which of the two it is showing.
+    """
     if orders is None or orders.empty:
-        return None, None
+        return None, None, None
     sub = orders.loc[
         (orders["ticker"].astype(str) == ticker)
         & (orders["trade_date"].astype(str).str.slice(0, 10) == close)
     ]
     if sub.empty:
-        return None, None
+        return None, None, None
+    if fills is None or fills.empty:
+        return None, None, None
+    match = fills.loc[
+        (fills["ticker"].astype(str) == ticker)
+        & (fills["trade_date"].astype(str).str.slice(0, 10) == close)
+    ]
     total = 0.0
-    stamped = False
+    filled_at: str | None = None
     for row in sub.itertuples(index=False):
         intended = _number(getattr(row, "intended_notional", None)) or 0.0
-        if fills is not None and not fills.empty:
-            match = fills.loc[
-                (fills["ticker"].astype(str) == ticker)
-                & (fills["trade_date"].astype(str).str.slice(0, 10) == close)
-            ]
-            for fill in match.itertuples(index=False):
-                if str(getattr(fill, "status", "")).upper() != "FILLED":
-                    continue
-                amount = _number(getattr(fill, "filled_notional", None)) or 0.0
-                total += amount if intended >= 0 else -amount
-                stamped = True
-            if stamped:
-                return total, close
-    return None, None
+        for fill in match.itertuples(index=False):
+            if str(getattr(fill, "status", "")).upper() != "FILLED":
+                continue
+            amount = _number(getattr(fill, "filled_notional", None)) or 0.0
+            total += amount if intended >= 0 else -amount
+            stamp = getattr(fill, "updated_at", None)
+            day = _day(stamp)
+            if day and (filled_at is None or day < filled_at):
+                filled_at = day
+    # The dollars are the evidence that it filled; the timestamp is what says when.
+    # A fill row without one still means the leg is filled, and its close date is the
+    # honest answer to "which day", marked as the close rather than as the fill.
+    return total, close, filled_at
 
 
 def flip_rows(
@@ -206,15 +240,17 @@ def flip_rows(
         wanted = target_side.get(ticker)
         if wanted is None or wanted == before:
             continue
-        close_leg, close_leg_day = _leg_dollars(orders, fills, ticker, anchor)
-        open_leg = open_day = None
+        close_leg, close_leg_day, close_leg_filled = _leg_dollars(
+            orders, fills, ticker, anchor
+        )
+        open_leg = open_day = open_filled = None
         later = (
             orders.loc[orders["trade_date"].astype(str).str.slice(0, 10) > anchor]
             if orders is not None and not orders.empty
             else pd.DataFrame()
         )
         for day in sorted(later["trade_date"].astype(str).str.slice(0, 10).unique()):
-            open_leg, open_day = _leg_dollars(orders, fills, ticker, day)
+            open_leg, open_day, open_filled = _leg_dollars(orders, fills, ticker, day)
             if open_leg is not None:
                 break
         lying = now_side.get(ticker)
@@ -226,8 +262,10 @@ def flip_rows(
                 "to_side": wanted,
                 "close_dollars": None if close_leg is None else abs(close_leg),
                 "close_filled": close_leg_day,
+                "close_filled_at": close_leg_filled,
                 "open_dollars": None if open_leg is None else abs(open_leg),
                 "open_filled": open_day,
+                "open_filled_at": open_filled,
                 "now_dollars": dollars,
                 "on_target_side": lying == wanted,
                 "complete": lying == wanted and abs(dollars) > MINIMUM_DOLLARS,
@@ -371,6 +409,28 @@ def drift(
     }
 
 
+def _filled_order_ids(day_fills: pd.DataFrame) -> set[str]:
+    """The order ids the close's fills record as FILLED."""
+    if day_fills is None or day_fills.empty or "order_id" not in day_fills.columns:
+        return set()
+    status = day_fills["status"].astype(str).str.upper()
+    done = day_fills.loc[status == "FILLED"]
+    return {str(value) for value in done["order_id"].dropna()}
+
+
+def _shortfall(sent: pd.DataFrame, filled_ids: set[str]) -> float:
+    """What the sent legs still owe: the dollars of the ones with no fill."""
+    if sent is None or sent.empty:
+        return 0.0
+    ids = (
+        sent["broker_order_id"].astype("string").fillna("").str.strip()
+        if "broker_order_id" in sent.columns
+        else pd.Series("", index=sent.index)
+    )
+    owed = pd.to_numeric(sent["intended_notional"], errors="coerce").fillna(0.0).abs()
+    return float(owed.loc[~ids.isin(filled_ids)].sum())
+
+
 def rebalance_card(
     anchor: str,
     anchor_manifest: dict[str, Any],
@@ -384,47 +444,80 @@ def rebalance_card(
     legs = orders.loc[orders["trade_date"].astype(str).str.slice(0, 10) == anchor]
     if legs.empty:
         return {"close": anchor}
-    intended = pd.to_numeric(legs["intended_notional"], errors="coerce").fillna(0.0)
-    sent = float(intended.abs().sum())
+    intended = (
+        pd.to_numeric(legs["intended_notional"], errors="coerce").fillna(0.0).abs()
+    )
+    # Two different counts, and the card said one number for both. A leg under the
+    # $250 minimum is built and never sent: it is not an order the broker answered,
+    # and calling it an unfilled leg overstates what the rebalance owes. Measured on
+    # the 2026-10-23 anchor: 224 legs built, 208 sent (every one of them filled), and
+    # 16 under the minimum carrying $2,253.26 that was never meant to trade.
+    codes = (
+        legs["reason_code"].fillna("").astype(str)
+        if "reason_code" in legs.columns
+        else pd.Series("", index=legs.index)
+    )
+    # A frame without the column is a book written before the column existed, and
+    # every leg in it was sent; reading it as "none sent" would report the whole
+    # rebalance as never sent.
+    sent_mask = (
+        legs["broker_order_id"].astype("string").fillna("").str.strip() != ""
+        if "broker_order_id" in legs.columns
+        else pd.Series(True, index=legs.index)
+    )
+    sent = legs.loc[sent_mask]
+    skipped = legs.loc[~sent_mask]
+    under_minimum = skipped.loc[codes.loc[~sent_mask] == "BELOW_MIN_NOTIONAL"]
+    other_skipped = skipped.loc[codes.loc[~sent_mask] != "BELOW_MIN_NOTIONAL"]
+    sent_usd = float(intended.loc[sent_mask].sum())
+    under_usd = float(intended.loc[under_minimum.index].sum())
+
     costs = anchor_manifest.get("cost_breakdown_bps") or {}
     day_fills = (
         fills.loc[fills["trade_date"].astype(str).str.slice(0, 10) == anchor]
         if fills is not None and not fills.empty
         else pd.DataFrame()
     )
-    filled = (
-        float(
-            pd.to_numeric(day_fills.get("filled_notional"), errors="coerce")
-            .fillna(0.0)
-            .sum()
+    filled_usd = 0.0
+    if not day_fills.empty:
+        status = day_fills["status"].astype(str).str.upper()
+        done = day_fills.loc[status == "FILLED"]
+        filled_usd = float(
+            pd.to_numeric(done["filled_notional"], errors="coerce").fillna(0.0).sum()
         )
-        if not day_fills.empty
-        else 0.0
+    filled_ids = _filled_order_ids(day_fills)
+    # A sent leg is filled when its own fill row says so, counted leg by leg.
+    sent_ids = (
+        sent["broker_order_id"].astype("string").fillna("").str.strip()
+        if "broker_order_id" in sent.columns
+        else pd.Series("", index=sent.index)
     )
+    filled_legs = int(sent_ids.isin(filled_ids).sum())
     realized = None
-    if nav and filled:
+    if nav and filled_usd:
         from live import fills as fills_module
 
         try:
             realized = fills_module.realized_cost_bps(day_fills, nav)
         except Exception as exc:  # noqa: BLE001 - one field, not the block
-            # A fill frame without the columns the measurement needs loses this one
-            # number and nothing else. The block is reporting inside the evening.
             logger.warning(
                 "the rebalance's realized cost could not be measured: %s",
                 type(exc).__name__,
             )
             realized = None
-    complete = (
-        int((day_fills["status"].astype(str).str.upper() == "FILLED").sum())
-        if not day_fills.empty
-        else 0
-    )
     return {
         "close": anchor,
         "orders": int(len(legs)),
-        "notional": sent,
-        "pct_nav": None if not nav else sent / float(nav),
+        # The legs that were meant to be sent, and how many of those filled. The
+        # shortfall is what is owed; the under-minimum legs are reported beside it
+        # because they explain the gap between the leg count and the sent count.
+        "sent_legs": int(len(sent)),
+        "filled_legs": filled_legs,
+        "under_minimum_legs": int(len(under_minimum)),
+        "under_minimum_usd": under_usd,
+        "skipped_other_legs": int(len(other_skipped)),
+        "notional": sent_usd,
+        "pct_nav": None if not nav else sent_usd / float(nav),
         "expected_cost_bps": _number(
             anchor_manifest.get("expected_establishment_cost_bps") or costs.get("total")
         ),
@@ -435,9 +528,12 @@ def rebalance_card(
         ),
         "realized_cost_bps": realized,
         "legs_total": int(len(legs)),
-        "legs_complete": complete,
-        "legs_incomplete": int(len(legs)) - complete,
-        "dollars_owed": max(sent - filled, 0.0),
+        "legs_complete": filled_legs,
+        "legs_incomplete": max(int(len(sent)) - filled_legs, 0),
+        # Owed is the sent legs with no fill, in dollars: the leg-level rule the page
+        # states, and not a sum of dollar gaps, which reported a fully filled
+        # rebalance as owing whatever the prices moved.
+        "dollars_owed": _shortfall(sent, filled_ids),
     }
 
 
@@ -541,6 +637,7 @@ def _block(
 
     cadence = tonight_manifest.get("cadence") or anchor_manifest.get("cadence") or {}
     guard = tonight_manifest.get("drift_guard") or {}
+    _env_threshold = guard_threshold_from_env()
 
     since = (
         orders.loc[orders["trade_date"].astype(str).str.slice(0, 10) >= anchor]
@@ -592,7 +689,9 @@ def _block(
                     or tonight_manifest.get("max_abs_exposure_after_fmp")
                 ),
                 "exposure_after": _number(guard.get("exposure_after")),
-                "threshold": _number(guard.get("threshold")),
+                "threshold": (
+                    _number(guard.get("threshold")) or guard_threshold or _env_threshold
+                ),
                 "fired": bool(guard.get("fired", False)),
                 "ran": bool(guard),
             },

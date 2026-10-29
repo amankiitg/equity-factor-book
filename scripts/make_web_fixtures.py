@@ -115,6 +115,10 @@ DATED_DOCUMENTS: tuple[str, ...] = (
     # only fixture whose `monthly` key is real rather than written by hand, and the one
     # the panel tests use for the four 2026-10-23 flips.
     "snapshot_2026-10-28_monthly.json",
+    # The 2026-10-29 document exactly as the page was served it, with the real
+    # anchored block: the fixture the panel tests render, because a hand-built one is
+    # what let them pass while the live page served a bundle that had no panels in it.
+    "snapshot_2026-10-29_evening.json",
 )
 
 
