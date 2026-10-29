@@ -491,6 +491,93 @@ export interface Snapshot {
   // present block always carries a `live` period, which may itself be empty; the
   // `backtest` period is null on a host that has no research artifact.
   attribution?: Attribution | null;
+  /**
+   * The anchored panels: every number measured from the last rebalance rather than
+   * from last night, which is what a monthly cadence needs a page to do. **Absent**
+   * when the run could not build it, and absent on every document written before it
+   * existed, so the page renders exactly as it did then.
+   */
+  monthly?: MonthlyBlock | null;
+}
+
+/** One flip: a name whose side before the rebalance differs from its target side. */
+export interface FlipRow {
+  ticker: string;
+  from_side: string;
+  to_side: string;
+  close_dollars: number | null;
+  close_filled: string | null;
+  open_dollars: number | null;
+  open_filled: string | null;
+  now_dollars: number;
+  on_target_side: boolean;
+  complete: boolean;
+}
+
+/** The pages measured from the anchor, built by `live/monthly_view.py`. */
+export interface MonthlyBlock {
+  anchor?: { close: string | null; day: "rebalance" | "cadence" | "daily"; account_read: string | null };
+  cadence_strip?: {
+    k: number | null;
+    offset: number | null;
+    sessions_since: number | null;
+    last_rebalance: string | null;
+    next_rebalance: string | null;
+    guard: {
+      worst_abs_exposure: number | null;
+      exposure_after?: number | null;
+      threshold: number | null;
+      fired: boolean;
+      ran: boolean;
+    };
+  };
+  rebalance_card?: {
+    close: string | null;
+    orders?: number;
+    notional?: number;
+    pct_nav?: number | null;
+    expected_cost_bps?: number | null;
+    expected_cost_usd?: number | null;
+    realized_cost_bps?: number | null;
+    legs_total?: number;
+    legs_complete?: number;
+    legs_incomplete?: number;
+    dollars_owed?: number;
+  };
+  bridge_anchor?: {
+    before_dollars: number;
+    after_dollars: number;
+    opened: number;
+    exited: number;
+    resized: number;
+    flipped: number;
+    under_minimum: number;
+    opened_usd?: number;
+    exited_usd?: number;
+    resized_usd?: number;
+    flipped_usd?: number;
+    complete_flips: number;
+    flip_rows: FlipRow[];
+    identities: BridgeIdentity[];
+    holds: boolean;
+  };
+  drift?: {
+    half_turnover_pct: number;
+    half_turnover_usd: number | null;
+    traded_usd: number | null;
+    estimated_cost_usd: number | null;
+    largest: Array<{
+      ticker: string;
+      weight_now: number;
+      weight_target: number;
+      usd: number | null;
+    }>;
+  };
+  since_anchor?: {
+    trades_by_reason: Array<{ reason: string; legs: number; usd: number }>;
+  };
+  tonight?: { forced_legs: number; forced_usd: number };
+  rebalance_dates?: string[];
 }
 
 export interface RiskConcentration {

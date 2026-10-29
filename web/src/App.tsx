@@ -33,6 +33,7 @@ import { ExposuresSection } from "./ExposuresSection";
 import { Movers, RiskConcentration } from "./FutureSections";
 import { HedgePanel } from "./HedgePanel";
 import { MetricsRow } from "./MetricsRow";
+import { MonthlyPanels } from "./Monthly";
 import { Glossary, Panel } from "./Panel";
 import { SectorSection } from "./SectorSection";
 import { StatusStrip } from "./StatusStrip";
@@ -102,13 +103,24 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
             reconciled={reconciled}
             exceptions={exceptions}
           />
-          <MetricsRow snapshot={snapshot} facts={facts} />
-          <Bridge snapshot={snapshot} />
+          {/* The anchored panels when the document carries them, and the nightly
+              ones when it does not. A monthly book's hold day has nothing to say in a
+              comparison with last night, and the anchor is what the page is about;
+              every document published before the block existed still renders exactly
+              as it did, because the block is absent rather than empty. */}
+          {snapshot.monthly ? (
+            <MonthlyPanels monthly={snapshot.monthly} />
+          ) : (
+            <>
+              <MetricsRow snapshot={snapshot} facts={facts} />
+              <Bridge snapshot={snapshot} />
+            </>
+          )}
           <div data-columns="true" className="grid gap-3 lg:grid-cols-2">
             <div className="flex flex-col gap-3">
               <HedgePanel snapshot={snapshot} facts={facts} />
               <ExposuresSection snapshot={snapshot} />
-              <Reasons facts={facts} snapshot={snapshot} />
+              {snapshot.monthly ? null : <Reasons facts={facts} snapshot={snapshot} />}
             </div>
             <div className="flex flex-col gap-3">
               <SectorSection snapshot={snapshot} sectors={facts.sectors} />

@@ -38,7 +38,7 @@ The eighteen, all artifact vintage:
 
 ```
 tests/test_allocate.py::test_the_stored_traded_book_figures_are_what_the_function_computes
-tests/test_e11_web_fixtures.py::test_every_fixture_is_what_the_writer_produces_now  (10 cases)
+tests/test_e11_web_fixtures.py::test_every_fixture_is_what_the_writer_produces_now  (12 cases)
 tests/test_e12_attribution.py::test_the_stored_split_reconstructs_the_return_on_the_current_build
 tests/test_evidence.py::test_the_evidence_chain_verifies
 tests/test_statistical.py::test_the_real_panel_counts_match_the_stored_probe_arithmetic
@@ -47,7 +47,8 @@ tests/test_web_sector_map.py::test_the_map_names_the_files_it_came_from_and_thei
 tests/test_web_sector_map.py::test_every_name_in_the_live_book_maps_unless_the_sources_lack_it
 ```
 
-plus the APH id above makes nineteen. The fix is a gate tree at the vintage the
+plus the APH id above makes nineteen, and twenty-two once the 2026-10-28 monthly fixture
+joins the writer's own set. The fix is a gate tree at the vintage the
 committed fixtures were built from, which is a rebuild on a machine that holds `data/`,
 not a code change. Until then a gate is judged against the nineteen ids, compared on
 `main` and on the branch in the same tree and the same session.
