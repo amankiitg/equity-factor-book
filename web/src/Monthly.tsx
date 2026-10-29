@@ -17,7 +17,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   return (
     <section
       data-panel="monthly"
-      className="rounded border border-slate-200 bg-white px-3 py-2"
+      className="min-w-0 rounded border border-slate-200 bg-white px-3 py-2"
     >
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
         {title}
@@ -131,7 +131,8 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
         <Stat label="now" value={dollars(bridge.after_dollars)} detail="account, latest close" />
       </dl>
       {flips.length ? (
-        <table data-flip-table="true" className="mt-2 w-full text-left text-xs">
+        <div className="mt-2 overflow-x-auto">
+        <table data-flip-table="true" className="w-full min-w-[34rem] text-left text-xs">
           <thead className="text-slate-500">
             <tr>
               <th className="font-medium">name</th>
@@ -163,6 +164,7 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
             ))}
           </tbody>
         </table>
+        </div>
       ) : null}
       <p className="mt-1 text-xs text-slate-500">
         a flip counts once, with both legs, and is complete when the account is on the
@@ -195,7 +197,8 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
         />
       </dl>
       {drift.largest?.length ? (
-        <table data-drift-table="true" className="mt-2 w-full text-left text-xs">
+        <div className="mt-2 overflow-x-auto">
+        <table data-drift-table="true" className="w-full min-w-[22rem] text-left text-xs">
           <thead className="text-slate-500">
             <tr>
               <th className="font-medium">name</th>
@@ -215,6 +218,7 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
             ))}
           </tbody>
         </table>
+        </div>
       ) : null}
     </Card>
   );
@@ -225,7 +229,8 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
   if (!trades.length) return null;
   return (
     <Card title="every leg since the rebalance, by why it went">
-      <table data-trades-reason="true" className="w-full text-left text-xs">
+      <div className="overflow-x-auto">
+        <table data-trades-reason="true" className="w-full min-w-[16rem] text-left text-xs">
         <tbody className="font-mono">
           {trades.map((row) => (
             <tr key={row.reason}>
@@ -236,6 +241,7 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
           ))}
         </tbody>
       </table>
+      </div>
     </Card>
   );
 }
@@ -255,12 +261,12 @@ export function TonightLine({ monthly }: { monthly: MonthlyBlock }) {
 export function MonthlyPanels({ monthly }: { monthly?: MonthlyBlock | null }) {
   if (!monthly) return null;
   return (
-    <div data-monthly="true" className="flex flex-col gap-3">
+    <div data-monthly="true" className="flex min-w-0 flex-col gap-3">
       <CadenceStrip monthly={monthly} />
       <RebalanceCard monthly={monthly} />
       <FlipBridge monthly={monthly} />
       <DriftCard monthly={monthly} />
-      <div data-columns="true" className="grid gap-3 lg:grid-cols-2">
+      <div data-columns="true" className="grid min-w-0 gap-3 lg:grid-cols-2">
         <TradesSinceAnchor monthly={monthly} />
         <Card title="tonight">
           <TonightLine monthly={monthly} />

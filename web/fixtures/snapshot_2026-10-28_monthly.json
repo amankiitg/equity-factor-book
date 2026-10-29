@@ -1,0 +1,4747 @@
+{
+  "actual_holdings": {
+    "as_of": "2026-10-28T22:48:02+00:00",
+    "close": null,
+    "exits": {
+      "feed": "no previous read",
+      "names": [],
+      "previous_read": "2026-10-27T00:00:00",
+      "window": ""
+    },
+    "fills": null,
+    "gross_notional": 986541.276822,
+    "n_names": 196,
+    "names": [
+      {
+        "notional": 15901.307826,
+        "side": "long",
+        "ticker": "STX",
+        "weight": 0.016231264270152583
+      },
+      {
+        "notional": 14450.058547,
+        "side": "long",
+        "ticker": "INTC",
+        "weight": 0.014749901175552154
+      },
+      {
+        "notional": 13716.501093,
+        "side": "long",
+        "ticker": "MRVL",
+        "weight": 0.014001122205702514
+      },
+      {
+        "notional": 13629.55628,
+        "side": "long",
+        "ticker": "KVUE",
+        "weight": 0.013912373264284341
+      },
+      {
+        "notional": -12867.82,
+        "side": "short",
+        "ticker": "AES",
+        "weight": -0.013134830750163154
+      },
+      {
+        "notional": 12407.35126,
+        "side": "long",
+        "ticker": "KO",
+        "weight": 0.012664807159093268
+      },
+      {
+        "notional": -11887.2,
+        "side": "short",
+        "ticker": "BNY",
+        "weight": -0.012133862619568773
+      },
+      {
+        "notional": 11795.184014,
+        "side": "long",
+        "ticker": "PRU",
+        "weight": 0.012039937276937357
+      },
+      {
+        "notional": 11765.111909,
+        "side": "long",
+        "ticker": "TRV",
+        "weight": 0.012009241167613777
+      },
+      {
+        "notional": 11217.620348,
+        "side": "long",
+        "ticker": "WDC",
+        "weight": 0.011450389008438594
+      },
+      {
+        "notional": 11104.765137,
+        "side": "long",
+        "ticker": "MET",
+        "weight": 0.011335192021244262
+      },
+      {
+        "notional": 11100.580462,
+        "side": "long",
+        "ticker": "ED",
+        "weight": 0.01133092051310462
+      },
+      {
+        "notional": -10521.6,
+        "side": "short",
+        "ticker": "KLAC",
+        "weight": -0.010739926049705128
+      },
+      {
+        "notional": -9856.14,
+        "side": "short",
+        "ticker": "AXP",
+        "weight": -0.010060657574469728
+      },
+      {
+        "notional": 9458.805619,
+        "side": "long",
+        "ticker": "UNP",
+        "weight": 0.009655078397448615
+      },
+      {
+        "notional": -9382.5,
+        "side": "short",
+        "ticker": "C",
+        "weight": -0.009577189416187496
+      },
+      {
+        "notional": -9324.0,
+        "side": "short",
+        "ticker": "CHRW",
+        "weight": -0.009517475525343162
+      },
+      {
+        "notional": -9273.6,
+        "side": "short",
+        "ticker": "BG",
+        "weight": -0.009466029711692659
+      },
+      {
+        "notional": -9240.84,
+        "side": "short",
+        "ticker": "VICI",
+        "weight": -0.009432589932819832
+      },
+      {
+        "notional": -9142.8,
+        "side": "short",
+        "ticker": "WMT",
+        "weight": -0.00933251557626635
+      },
+      {
+        "notional": -8861.85,
+        "side": "short",
+        "ticker": "FLEX",
+        "weight": -0.00904573578767292
+      },
+      {
+        "notional": 8820.284645,
+        "side": "long",
+        "ticker": "WAB",
+        "weight": 0.00900330794029897
+      },
+      {
+        "notional": 8675.368071,
+        "side": "long",
+        "ticker": "HPE",
+        "weight": 0.008855384308138784
+      },
+      {
+        "notional": -8607.06,
+        "side": "short",
+        "ticker": "LUV",
+        "weight": -0.008785658826164748
+      },
+      {
+        "notional": 8503.962757,
+        "side": "long",
+        "ticker": "COIN",
+        "weight": 0.008680422287449297
+      },
+      {
+        "notional": -8443.7056,
+        "side": "short",
+        "ticker": "DDOG",
+        "weight": -0.008618914778121298
+      },
+      {
+        "notional": 8348.655387,
+        "side": "long",
+        "ticker": "USB",
+        "weight": 0.008521892247457835
+      },
+      {
+        "notional": -8336.64,
+        "side": "short",
+        "ticker": "NVDA",
+        "weight": -0.008509627537923297
+      },
+      {
+        "notional": -8299.74,
+        "side": "short",
+        "ticker": "GILD",
+        "weight": -0.008471961852929177
+      },
+      {
+        "notional": -8213.7,
+        "side": "short",
+        "ticker": "ON",
+        "weight": -0.008384136499625819
+      },
+      {
+        "notional": 8106.203227,
+        "side": "long",
+        "ticker": "PNC",
+        "weight": 0.008274409139471285
+      },
+      {
+        "notional": -8077.08,
+        "side": "short",
+        "ticker": "CAH",
+        "weight": -0.008244681597623203
+      },
+      {
+        "notional": -8043.65,
+        "side": "short",
+        "ticker": "SRE",
+        "weight": -0.00821055791606891
+      },
+      {
+        "notional": 7952.016196,
+        "side": "long",
+        "ticker": "SPG",
+        "weight": 0.008117022685817507
+      },
+      {
+        "notional": 7875.555223,
+        "side": "long",
+        "ticker": "LULU",
+        "weight": 0.008038975126918813
+      },
+      {
+        "notional": -7855.11,
+        "side": "short",
+        "ticker": "JBL",
+        "weight": -0.00801810566000411
+      },
+      {
+        "notional": 7713.828206,
+        "side": "long",
+        "ticker": "CMG",
+        "weight": 0.00787389223051338
+      },
+      {
+        "notional": 7652.445938,
+        "side": "long",
+        "ticker": "AMCR",
+        "weight": 0.007811236263827402
+      },
+      {
+        "notional": 7598.269161,
+        "side": "long",
+        "ticker": "CHTR",
+        "weight": 0.007755935304031234
+      },
+      {
+        "notional": -7575.16,
+        "side": "short",
+        "ticker": "SBAC",
+        "weight": -0.0077323466216815216
+      },
+      {
+        "notional": 7402.016283,
+        "side": "long",
+        "ticker": "GEN",
+        "weight": 0.007555610125658951
+      },
+      {
+        "notional": 7302.910786,
+        "side": "long",
+        "ticker": "KMB",
+        "weight": 0.00745444816275414
+      },
+      {
+        "notional": 7296.55714,
+        "side": "long",
+        "ticker": "KEYS",
+        "weight": 0.007447962676878796
+      },
+      {
+        "notional": -7293.0,
+        "side": "short",
+        "ticker": "CSCO",
+        "weight": -0.0074443317252603685
+      },
+      {
+        "notional": 7195.566068,
+        "side": "long",
+        "ticker": "CHD",
+        "weight": 0.007344876012782039
+      },
+      {
+        "notional": 7149.682407,
+        "side": "long",
+        "ticker": "GPN",
+        "weight": 0.0072980402533890055
+      },
+      {
+        "notional": -7121.08,
+        "side": "short",
+        "ticker": "PEP",
+        "weight": -0.0072688443386969845
+      },
+      {
+        "notional": -7075.28,
+        "side": "short",
+        "ticker": "CF",
+        "weight": -0.00722209397629236
+      },
+      {
+        "notional": -7037.25,
+        "side": "short",
+        "ticker": "ECHO",
+        "weight": -0.007183274843492188
+      },
+      {
+        "notional": -6965.2,
+        "side": "short",
+        "ticker": "MCHP",
+        "weight": -0.007109729786477927
+      },
+      {
+        "notional": 6901.358251,
+        "side": "long",
+        "ticker": "STT",
+        "weight": 0.007044563303895065
+      },
+      {
+        "notional": 6727.510991,
+        "side": "long",
+        "ticker": "AEE",
+        "weight": 0.006867108666164696
+      },
+      {
+        "notional": 6530.753661,
+        "side": "long",
+        "ticker": "BMY",
+        "weight": 0.006666268568276785
+      },
+      {
+        "notional": 6497.398093,
+        "side": "long",
+        "ticker": "PNW",
+        "weight": 0.006632220863206653
+      },
+      {
+        "notional": -6481.68,
+        "side": "short",
+        "ticker": "IVZ",
+        "weight": -0.006616176615519762
+      },
+      {
+        "notional": 6452.509155,
+        "side": "long",
+        "ticker": "PKG",
+        "weight": 0.006586400467585283
+      },
+      {
+        "notional": -6452.1,
+        "side": "short",
+        "ticker": "AKAM",
+        "weight": -0.0065859828225082176
+      },
+      {
+        "notional": 6401.301602,
+        "side": "long",
+        "ticker": "BAX",
+        "weight": 0.006534130343991309
+      },
+      {
+        "notional": 6270.060247,
+        "side": "long",
+        "ticker": "GRMN",
+        "weight": 0.006400165695329215
+      },
+      {
+        "notional": 6258.536284,
+        "side": "long",
+        "ticker": "AWK",
+        "weight": 0.0063884026069757766
+      },
+      {
+        "notional": -6256.7,
+        "side": "short",
+        "ticker": "WFC",
+        "weight": -0.006386528219585431
+      },
+      {
+        "notional": -6255.63,
+        "side": "short",
+        "ticker": "ADM",
+        "weight": -0.006385436016795629
+      },
+      {
+        "notional": 6240.693851,
+        "side": "long",
+        "ticker": "BDX",
+        "weight": 0.0063701899386585225
+      },
+      {
+        "notional": 6203.927355,
+        "side": "long",
+        "ticker": "IP",
+        "weight": 0.006332660527908563
+      },
+      {
+        "notional": 6165.917225,
+        "side": "long",
+        "ticker": "CL",
+        "weight": 0.006293861677416273
+      },
+      {
+        "notional": -6108.83,
+        "side": "short",
+        "ticker": "LYB",
+        "weight": -0.006235589877035828
+      },
+      {
+        "notional": -6052.68,
+        "side": "short",
+        "ticker": "HAS",
+        "weight": -0.0061782747493279765
+      },
+      {
+        "notional": -6030.64,
+        "side": "short",
+        "ticker": "TXT",
+        "weight": -0.00615577741335859
+      },
+      {
+        "notional": -5963.0,
+        "side": "short",
+        "ticker": "ROL",
+        "weight": -0.006086733865038747
+      },
+      {
+        "notional": 5891.460533,
+        "side": "long",
+        "ticker": "COO",
+        "weight": 0.00601370993472251
+      },
+      {
+        "notional": 5872.371861,
+        "side": "long",
+        "ticker": "SMCI",
+        "weight": 0.005994225167608469
+      },
+      {
+        "notional": 5861.596661,
+        "side": "long",
+        "ticker": "DOC",
+        "weight": 0.005983226379290079
+      },
+      {
+        "notional": -5817.6,
+        "side": "short",
+        "ticker": "ALB",
+        "weight": -0.005938316775658128
+      },
+      {
+        "notional": -5749.77,
+        "side": "short",
+        "ticker": "STLD",
+        "weight": -0.0058690792847868245
+      },
+      {
+        "notional": -5613.15,
+        "side": "short",
+        "ticker": "BIIB",
+        "weight": -0.005729624382784209
+      },
+      {
+        "notional": 5608.351672,
+        "side": "long",
+        "ticker": "TGT",
+        "weight": 0.005724726488178614
+      },
+      {
+        "notional": 5585.208438,
+        "side": "long",
+        "ticker": "RDDT",
+        "weight": 0.005701103025804923
+      },
+      {
+        "notional": -5559.05,
+        "side": "short",
+        "ticker": "APO",
+        "weight": -0.0056744017931315855
+      },
+      {
+        "notional": -5525.21,
+        "side": "short",
+        "ticker": "BKNG",
+        "weight": -0.005639859603966247
+      },
+      {
+        "notional": -5354.24,
+        "side": "short",
+        "ticker": "NEM",
+        "weight": -0.005465341930160164
+      },
+      {
+        "notional": -5309.76,
+        "side": "short",
+        "ticker": "TEL",
+        "weight": -0.005419938958113053
+      },
+      {
+        "notional": -5299.14,
+        "side": "short",
+        "ticker": "DG",
+        "weight": -0.005409098590236697
+      },
+      {
+        "notional": 5212.007864,
+        "side": "long",
+        "ticker": "D",
+        "weight": 0.00532015843881554
+      },
+      {
+        "notional": -5124.48,
+        "side": "short",
+        "ticker": "SYF",
+        "weight": -0.0052308143479312015
+      },
+      {
+        "notional": -5049.018,
+        "side": "short",
+        "ticker": "GLW",
+        "weight": -0.005153786490992823
+      },
+      {
+        "notional": -5045.05,
+        "side": "short",
+        "ticker": "NI",
+        "weight": -0.005149736153918116
+      },
+      {
+        "notional": 5019.75033,
+        "side": "long",
+        "ticker": "CTAS",
+        "weight": 0.00512391150891337
+      },
+      {
+        "notional": 4982.65231,
+        "side": "long",
+        "ticker": "PODD",
+        "weight": 0.005086043694950619
+      },
+      {
+        "notional": -4811.48,
+        "side": "short",
+        "ticker": "KR",
+        "weight": -0.004911319513157241
+      },
+      {
+        "notional": 4760.715525,
+        "side": "long",
+        "ticker": "EVRG",
+        "weight": 0.004859501661551771
+      },
+      {
+        "notional": 4752.433608,
+        "side": "long",
+        "ticker": "AEP",
+        "weight": 0.0048510478925309205
+      },
+      {
+        "notional": -4641.3,
+        "side": "short",
+        "ticker": "NTRS",
+        "weight": -0.004737608232065124
+      },
+      {
+        "notional": 4547.17557,
+        "side": "long",
+        "ticker": "FRT",
+        "weight": 0.004641530694649651
+      },
+      {
+        "notional": -4523.25,
+        "side": "short",
+        "ticker": "BF.B",
+        "weight": -0.00461710866259207
+      },
+      {
+        "notional": 4502.836398,
+        "side": "long",
+        "ticker": "KHC",
+        "weight": 0.004596271472821682
+      },
+      {
+        "notional": -4478.0,
+        "side": "short",
+        "ticker": "EXC",
+        "weight": -0.004570919712836409
+      },
+      {
+        "notional": -4413.6,
+        "side": "short",
+        "ticker": "ANET",
+        "weight": -0.0045051833953941
+      },
+      {
+        "notional": 4257.733904,
+        "side": "long",
+        "ticker": "DUK",
+        "weight": 0.004346083035686807
+      },
+      {
+        "notional": -4130.1,
+        "side": "short",
+        "ticker": "EW",
+        "weight": -0.004215800693610017
+      },
+      {
+        "notional": 4110.051958,
+        "side": "long",
+        "ticker": "FE",
+        "weight": 0.004195336649308638
+      },
+      {
+        "notional": 4040.455465,
+        "side": "long",
+        "ticker": "NCLH",
+        "weight": 0.004124296010229143
+      },
+      {
+        "notional": -4013.36,
+        "side": "short",
+        "ticker": "XEL",
+        "weight": -0.004096638306991767
+      },
+      {
+        "notional": -4011.28,
+        "side": "short",
+        "ticker": "WRB",
+        "weight": -0.004094515146428413
+      },
+      {
+        "notional": 3969.663583,
+        "side": "long",
+        "ticker": "BALL",
+        "weight": 0.004052035177504134
+      },
+      {
+        "notional": -3943.2,
+        "side": "short",
+        "ticker": "KEY",
+        "weight": -0.004025022467989399
+      },
+      {
+        "notional": -3876.56,
+        "side": "short",
+        "ticker": "GM",
+        "weight": -0.003956999669940399
+      },
+      {
+        "notional": -3867.85,
+        "side": "short",
+        "ticker": "CVS",
+        "weight": -0.003948108935081354
+      },
+      {
+        "notional": -3822.56,
+        "side": "short",
+        "ticker": "DOW",
+        "weight": -0.00390187915531486
+      },
+      {
+        "notional": -3822.3,
+        "side": "short",
+        "ticker": "EBAY",
+        "weight": -0.003901613760244441
+      },
+      {
+        "notional": -3818.6,
+        "side": "short",
+        "ticker": "HBAN",
+        "weight": -0.0038978369842423205
+      },
+      {
+        "notional": -3787.7212,
+        "side": "short",
+        "ticker": "CSGP",
+        "weight": -0.0038663174407790038
+      },
+      {
+        "notional": -3706.29,
+        "side": "short",
+        "ticker": "EIX",
+        "weight": -0.0037831965213239067
+      },
+      {
+        "notional": 3666.060599,
+        "side": "long",
+        "ticker": "SW",
+        "weight": 0.003742132349357292
+      },
+      {
+        "notional": 3655.415585,
+        "side": "long",
+        "ticker": "VTR",
+        "weight": 0.0037312664484336613
+      },
+      {
+        "notional": -3587.89,
+        "side": "short",
+        "ticker": "NRG",
+        "weight": -0.003662339689256057
+      },
+      {
+        "notional": -3587.3,
+        "side": "short",
+        "ticker": "CBRE",
+        "weight": -0.00366173744659626
+      },
+      {
+        "notional": -3551.03,
+        "side": "short",
+        "ticker": "PEG",
+        "weight": -0.003624714834272772
+      },
+      {
+        "notional": -3534.0,
+        "side": "short",
+        "ticker": "FOX",
+        "weight": -0.0036073314571603106
+      },
+      {
+        "notional": -3516.75,
+        "side": "short",
+        "ticker": "STZ",
+        "weight": -0.003589723514988263
+      },
+      {
+        "notional": -3500.0,
+        "side": "short",
+        "ticker": "DVA",
+        "weight": -0.003572625947951637
+      },
+      {
+        "notional": -3402.84,
+        "side": "short",
+        "ticker": "NEE",
+        "weight": -0.0034734498516365
+      },
+      {
+        "notional": -3388.61,
+        "side": "short",
+        "ticker": "EL",
+        "weight": -0.0034589245752823993
+      },
+      {
+        "notional": 3333.00053,
+        "side": "long",
+        "ticker": "IFF",
+        "weight": 0.0034021611937184453
+      },
+      {
+        "notional": -3272.36,
+        "side": "short",
+        "ticker": "INCY",
+        "weight": -0.0033402623562968628
+      },
+      {
+        "notional": 3261.649118,
+        "side": "long",
+        "ticker": "DXCM",
+        "weight": 0.003329329220594392
+      },
+      {
+        "notional": -3223.58,
+        "side": "short",
+        "ticker": "LVS",
+        "weight": -0.0032904701580851255
+      },
+      {
+        "notional": 3220.201211,
+        "side": "long",
+        "ticker": "ZTS",
+        "weight": 0.0032870212582982532
+      },
+      {
+        "notional": -3179.5,
+        "side": "short",
+        "ticker": "DLTR",
+        "weight": -0.0032454754861463517
+      },
+      {
+        "notional": 3173.929848,
+        "side": "long",
+        "ticker": "SO",
+        "weight": 0.0032397897519837134
+      },
+      {
+        "notional": 3173.895701,
+        "side": "long",
+        "ticker": "SWK",
+        "weight": 0.0032397548964242144
+      },
+      {
+        "notional": -3115.44,
+        "side": "short",
+        "ticker": "CRH",
+        "weight": -0.0031800862237961283
+      },
+      {
+        "notional": -3106.11,
+        "side": "short",
+        "ticker": "FOXA",
+        "weight": -0.00317056262376916
+      },
+      {
+        "notional": 3075.24937,
+        "side": "long",
+        "ticker": "PCAR",
+        "weight": 0.0031390616273382645
+      },
+      {
+        "notional": -3039.75,
+        "side": "short",
+        "ticker": "EXR",
+        "weight": -0.003102825635795997
+      },
+      {
+        "notional": 2970.022318,
+        "side": "long",
+        "ticker": "HSIC",
+        "weight": 0.0030316510855092197
+      },
+      {
+        "notional": 2924.721945,
+        "side": "long",
+        "ticker": "SOLV",
+        "weight": 0.002985410717500166
+      },
+      {
+        "notional": 2914.291533,
+        "side": "long",
+        "ticker": "KIM",
+        "weight": 0.002974763871626159
+      },
+      {
+        "notional": 2910.733309,
+        "side": "long",
+        "ticker": "PFG",
+        "weight": 0.002971131813514438
+      },
+      {
+        "notional": -2869.71,
+        "side": "short",
+        "ticker": "CNP",
+        "weight": -0.002929257259741798
+      },
+      {
+        "notional": 2814.714389,
+        "side": "long",
+        "ticker": "HST",
+        "weight": 0.002873120474918354
+      },
+      {
+        "notional": 2792.036688,
+        "side": "long",
+        "ticker": "DECK",
+        "weight": 0.0028499722054805
+      },
+      {
+        "notional": -2768.0,
+        "side": "short",
+        "ticker": "TSN",
+        "weight": -0.0028254367496943233
+      },
+      {
+        "notional": -2734.05,
+        "side": "short",
+        "ticker": "IBKR",
+        "weight": -0.0027907822779991926
+      },
+      {
+        "notional": -2733.5414,
+        "side": "short",
+        "ticker": "WYNN",
+        "weight": -0.0027902631244114415
+      },
+      {
+        "notional": -2667.41,
+        "side": "short",
+        "ticker": "WY",
+        "weight": -0.0027227594799501932
+      },
+      {
+        "notional": -2631.75,
+        "side": "short",
+        "ticker": "PPL",
+        "weight": -0.0026863595252919203
+      },
+      {
+        "notional": -2631.73,
+        "side": "short",
+        "ticker": "PFE",
+        "weight": -0.0026863391102865037
+      },
+      {
+        "notional": -2629.2,
+        "side": "short",
+        "ticker": "ORLY",
+        "weight": -0.0026837566121012697
+      },
+      {
+        "notional": -2566.26,
+        "side": "short",
+        "ticker": "TFC",
+        "weight": -0.0026195105900543914
+      },
+      {
+        "notional": -2546.65,
+        "side": "short",
+        "ticker": "SYY",
+        "weight": -0.0025994936772431535
+      },
+      {
+        "notional": -2541.5,
+        "side": "short",
+        "ticker": "WEC",
+        "weight": -0.0025942368133483103
+      },
+      {
+        "notional": -2540.0,
+        "side": "short",
+        "ticker": "PLD",
+        "weight": -0.002592705687942045
+      },
+      {
+        "notional": 2504.308143,
+        "side": "long",
+        "ticker": "PPG",
+        "weight": 0.002556273215242394
+      },
+      {
+        "notional": 2489.36776,
+        "side": "long",
+        "ticker": "GEHC",
+        "weight": 0.002541022815248641
+      },
+      {
+        "notional": -2471.46,
+        "side": "short",
+        "ticker": "TECH",
+        "weight": -0.0025227434643784437
+      },
+      {
+        "notional": -2431.688,
+        "side": "short",
+        "ticker": "VZ",
+        "weight": -0.002482146184606463
+      },
+      {
+        "notional": 2346.031343,
+        "side": "long",
+        "ticker": "GIS",
+        "weight": 0.0023947121287741795
+      },
+      {
+        "notional": -2304.58,
+        "side": "short",
+        "ticker": "VTRS",
+        "weight": -0.0023524006591801095
+      },
+      {
+        "notional": -2224.8,
+        "side": "short",
+        "ticker": "TPR",
+        "weight": -0.0022709652025722296
+      },
+      {
+        "notional": 2221.326322,
+        "side": "long",
+        "ticker": "APTV",
+        "weight": 0.0022674194448129067
+      },
+      {
+        "notional": 2194.06136,
+        "side": "long",
+        "ticker": "HRL",
+        "weight": 0.002239588727466874
+      },
+      {
+        "notional": 2175.209971,
+        "side": "long",
+        "ticker": "NWSA",
+        "weight": 0.0022203461670393513
+      },
+      {
+        "notional": 2118.206951,
+        "side": "long",
+        "ticker": "MOS",
+        "weight": 0.0021621603189354638
+      },
+      {
+        "notional": 2079.376082,
+        "side": "long",
+        "ticker": "HOOD",
+        "weight": 0.002122523698886632
+      },
+      {
+        "notional": 2050.412209,
+        "side": "long",
+        "ticker": "ACGL",
+        "weight": 0.0020929588176772105
+      },
+      {
+        "notional": -2041.74,
+        "side": "short",
+        "ticker": "HAL",
+        "weight": -0.0020841066579916504
+      },
+      {
+        "notional": -2023.37,
+        "side": "short",
+        "ticker": "CFG",
+        "weight": -0.0020653554755162584
+      },
+      {
+        "notional": 1977.009779,
+        "side": "long",
+        "ticker": "IR",
+        "weight": 0.002018033267374152
+      },
+      {
+        "notional": -1952.72,
+        "side": "short",
+        "ticker": "SCHW",
+        "weight": -0.0019932394688811773
+      },
+      {
+        "notional": 1910.635859,
+        "side": "long",
+        "ticker": "CMCSA",
+        "weight": 0.0019502820705572187
+      },
+      {
+        "notional": 1876.984354,
+        "side": "long",
+        "ticker": "KDP",
+        "weight": 0.0019159322877141832
+      },
+      {
+        "notional": 1861.647497,
+        "side": "long",
+        "ticker": "LEN",
+        "weight": 0.001900277186777548
+      },
+      {
+        "notional": 1777.08192,
+        "side": "long",
+        "ticker": "MDLZ",
+        "weight": 0.001813956851150776
+      },
+      {
+        "notional": 1761.726763,
+        "side": "long",
+        "ticker": "UDR",
+        "weight": 0.001798283070484184
+      },
+      {
+        "notional": 1710.459164,
+        "side": "long",
+        "ticker": "OXY",
+        "weight": 0.0017459516549194472
+      },
+      {
+        "notional": 1692.21756,
+        "side": "long",
+        "ticker": "ARE",
+        "weight": 0.0017273315326958305
+      },
+      {
+        "notional": -1678.08,
+        "side": "short",
+        "ticker": "FIS",
+        "weight": -0.0017129006144967667
+      },
+      {
+        "notional": 1654.660033,
+        "side": "long",
+        "ticker": "PYPL",
+        "weight": 0.0016889946768383751
+      },
+      {
+        "notional": -1624.26,
+        "side": "short",
+        "ticker": "F",
+        "weight": -0.001657963834919979
+      },
+      {
+        "notional": 1581.290188,
+        "side": "long",
+        "ticker": "SLB",
+        "weight": 0.0016141023876828922
+      },
+      {
+        "notional": -1555.5,
+        "side": "short",
+        "ticker": "NFLX",
+        "weight": -0.001587777046296792
+      },
+      {
+        "notional": 1546.83663,
+        "side": "long",
+        "ticker": "REG",
+        "weight": 0.001578933909022876
+      },
+      {
+        "notional": -1438.92,
+        "side": "short",
+        "ticker": "DVN",
+        "weight": -0.0014687779797218773
+      },
+      {
+        "notional": -1381.8,
+        "side": "short",
+        "ticker": "MKC",
+        "weight": -0.0014104727242513064
+      },
+      {
+        "notional": -1338.54,
+        "side": "short",
+        "ticker": "CVNA",
+        "weight": -0.001366315067534624
+      },
+      {
+        "notional": -1278.06,
+        "side": "short",
+        "ticker": "AOS",
+        "weight": -0.0013045800911540197
+      },
+      {
+        "notional": -1261.74,
+        "side": "short",
+        "ticker": "NKE",
+        "weight": -0.0012879214467338568
+      },
+      {
+        "notional": 1248.497871,
+        "side": "long",
+        "ticker": "MGM",
+        "weight": 0.0012744045399705646
+      },
+      {
+        "notional": 1125.001198,
+        "side": "long",
+        "ticker": "HPQ",
+        "weight": 0.0011483452775575649
+      },
+      {
+        "notional": -1122.85,
+        "side": "short",
+        "ticker": "PCG",
+        "weight": -0.0011461494416164274
+      },
+      {
+        "notional": -1116.44,
+        "side": "short",
+        "ticker": "CPRT",
+        "weight": -0.0011396064323803217
+      },
+      {
+        "notional": -1107.21,
+        "side": "short",
+        "ticker": "RF",
+        "weight": -0.001130184907380438
+      },
+      {
+        "notional": 1062.780147,
+        "side": "long",
+        "ticker": "FAST",
+        "weight": 0.0010848331228971587
+      },
+      {
+        "notional": 1029.312262,
+        "side": "long",
+        "ticker": "CSX",
+        "weight": 0.0010506707702188554
+      },
+      {
+        "notional": -973.14,
+        "side": "short",
+        "ticker": "MNST",
+        "weight": -0.0009933329185684732
+      },
+      {
+        "notional": 687.272727,
+        "side": "long",
+        "ticker": "CCL",
+        "weight": 0.0007015338222284806
+      }
+    ],
+    "net_notional": -1876.811577999998,
+    "read_by": "evening"
+  },
+  "attribution": {
+    "backtest": null,
+    "live": {
+      "by_factor": {
+        "beta": 2.2269778177095048e-06,
+        "liquidity": 0.0003373919060453165,
+        "market": -1.4383889830314019e-05,
+        "momentum": 7.87124940030318e-05,
+        "resid_vol": -3.654672811591468e-05,
+        "reversal": 0.00010298399005619595,
+        "sector_10": -2.499889036700654e-06,
+        "sector_15": -4.203973889036577e-06,
+        "sector_20": 7.111504404802193e-09,
+        "sector_25": 1.3484186133819106e-06,
+        "sector_30": 4.070970212297069e-06,
+        "sector_35": 1.535682765895766e-06,
+        "sector_40": -3.3354250619359172e-06,
+        "sector_45": 1.0465092976894044e-05,
+        "sector_50": 1.609573521717721e-07,
+        "sector_55": 1.1060881455611604e-06,
+        "sector_60": -7.562309924255082e-07,
+        "size": -0.0006211121212732748
+      },
+      "cost": {
+        "expected_borrow_bps": 6.807353545371187,
+        "expected_bps": 11.592226211485304,
+        "expected_trading_bps": 4.784872666114112,
+        "n_realized": 16,
+        "realized_bps": 9.092805669655693
+      },
+      "cumulative": {
+        "max_identity_residual": 1.5388297502617e-06,
+        "n_computed_specific": 41,
+        "pnl_cost": -0.014843060998439454,
+        "pnl_factor": -0.00014282856870674176,
+        "pnl_idio": -0.003670847111123822,
+        "pnl_total": -0.018655197848520225,
+        "pnl_unexplained": 1.5388297498090456e-06
+      },
+      "daily": [
+        {
+          "book_beta": 0.0385103827597735,
+          "factor_var_share": 0.0574709862001205,
+          "forecast_vol": 0.0271845018959165,
+          "hedged_vol": 0.02757578319792,
+          "idio_var_share": 0.942529013799879,
+          "market_return": 0.00192513333670318,
+          "pnl_beta": 7.41376216600393e-05,
+          "pnl_cost": 4.9269944598751e-06,
+          "pnl_factor": -0.000217806822017465,
+          "pnl_idio": -6.21266062824851e-05,
+          "pnl_timing": -6.08168828102077e-05,
+          "pnl_total": -0.000275006433840075,
+          "pnl_unexplained": 3.25260651745651e-19,
+          "pre_hedge_vol": 0.0892808194396127,
+          "realized_vol": 0.0282893304581952,
+          "trade_date": "2026-10-01"
+        },
+        {
+          "book_beta": 0.0358483741819814,
+          "factor_var_share": 0.000234570513009133,
+          "forecast_vol": 0.0247757556887483,
+          "hedged_vol": 0.0267683251046987,
+          "idio_var_share": 0.999765429486991,
+          "market_return": 0.00681392780068015,
+          "pnl_beta": 0.000244268233447788,
+          "pnl_cost": 0.000445169265475728,
+          "pnl_factor": -7.28518032909109e-06,
+          "pnl_idio": -0.00276693320433155,
+          "pnl_timing": 5.97800786815282e-05,
+          "pnl_total": -0.00232904911918491,
+          "pnl_unexplained": 3.46944695195361e-18,
+          "pre_hedge_vol": 0.090139565282151,
+          "realized_vol": 0.0280675714577912,
+          "trade_date": "2026-10-02"
+        },
+        {
+          "book_beta": 0.01868812226888,
+          "factor_var_share": 0.000150924195933133,
+          "forecast_vol": 0.0253803348960301,
+          "hedged_vol": 0.0247795575913608,
+          "idio_var_share": 0.999849075804067,
+          "market_return": 0.00523365323948919,
+          "pnl_beta": 9.78071516524941e-05,
+          "pnl_cost": 0.000103499104255344,
+          "pnl_factor": 9.13397549470936e-06,
+          "pnl_idio": -0.00241339052221885,
+          "pnl_timing": 0.000105511790594191,
+          "pnl_total": -0.00230075744246866,
+          "pnl_unexplained": 1.43548367637081e-16,
+          "pre_hedge_vol": 0.0845904163469297,
+          "realized_vol": 0.0269561893481509,
+          "trade_date": "2026-10-05"
+        },
+        {
+          "book_beta": 0.018063999909602,
+          "factor_var_share": 0.00664789420078112,
+          "forecast_vol": 0.0250730253862868,
+          "hedged_vol": 0.0254651207571641,
+          "idio_var_share": 0.993352105799219,
+          "market_return": 0.00525571836841826,
+          "pnl_beta": 9.49392961320008e-05,
+          "pnl_cost": -0.00102448002778421,
+          "pnl_factor": -4.30231718207217e-05,
+          "pnl_idio": -0.000941890697411738,
+          "pnl_timing": -4.24670647357096e-05,
+          "pnl_total": -0.00200785506726641,
+          "pnl_unexplained": 1.5388297502617e-06,
+          "pre_hedge_vol": 0.0784723985779657,
+          "realized_vol": 0.0252859070209908,
+          "trade_date": "2026-10-06"
+        },
+        {
+          "book_beta": 0.0227749047238227,
+          "factor_var_share": 1.41962599102553e-06,
+          "forecast_vol": null,
+          "hedged_vol": 0.025073043183465,
+          "idio_var_share": 0.999998580374009,
+          "market_return": -0.00106816505093296,
+          "pnl_beta": -2.43273572643153e-05,
+          "pnl_cost": 0.0,
+          "pnl_factor": -1.76609703228027e-06,
+          "pnl_idio": -0.00134772109628419,
+          "pnl_timing": -6.76888707734611e-05,
+          "pnl_total": -0.00134948719331636,
+          "pnl_unexplained": 1.16876994193937e-16,
+          "pre_hedge_vol": 0.0762257992391744,
+          "realized_vol": 0.0234302696172741,
+          "trade_date": "2026-10-07"
+        },
+        {
+          "book_beta": 0.0227749047238227,
+          "factor_var_share": 1.41962599102553e-06,
+          "forecast_vol": 0.02655676896843,
+          "hedged_vol": 0.025073043183465,
+          "idio_var_share": 0.999998580374009,
+          "market_return": -0.00483682021517936,
+          "pnl_beta": -0.000110158119566969,
+          "pnl_cost": -0.0011560104466452,
+          "pnl_factor": 4.70586875752473e-05,
+          "pnl_idio": -0.000212316940222618,
+          "pnl_timing": 7.72544489510462e-05,
+          "pnl_total": -0.00132126869929268,
+          "pnl_unexplained": -1.0993810029003e-16,
+          "pre_hedge_vol": 0.0762257992391744,
+          "realized_vol": 0.0219266622490725,
+          "trade_date": "2026-10-08"
+        },
+        {
+          "book_beta": 0.0315177417816758,
+          "factor_var_share": 1.47990953410911e-28,
+          "forecast_vol": 0.0276532414219329,
+          "hedged_vol": 0.02655676896843,
+          "idio_var_share": 1.0,
+          "market_return": 0.0058635934840157,
+          "pnl_beta": 0.000184807225341923,
+          "pnl_cost": -0.00121514063985759,
+          "pnl_factor": 3.55572569963343e-17,
+          "pnl_idio": -0.0029014008221217,
+          "pnl_timing": 0.000160246018233025,
+          "pnl_total": -0.00411654146197931,
+          "pnl_unexplained": -5.29090660172926e-17,
+          "pre_hedge_vol": 0.0747610697873429,
+          "realized_vol": 0.0252973552565099,
+          "trade_date": "2026-10-09"
+        },
+        {
+          "book_beta": 0.043290067969411,
+          "factor_var_share": 2.83105874221641e-28,
+          "forecast_vol": 0.0263653849408487,
+          "hedged_vol": 0.0276532414219329,
+          "idio_var_share": 1.0,
+          "market_return": -0.00152566501640895,
+          "pnl_beta": -6.6046142258896e-05,
+          "pnl_cost": -0.00131398269968303,
+          "pnl_factor": -1.22835625230335e-17,
+          "pnl_idio": 2.30723136725795e-05,
+          "pnl_timing": 7.54769555017919e-05,
+          "pnl_total": -0.00129091038601041,
+          "pnl_unexplained": 4.9439619065339e-17,
+          "pre_hedge_vol": 0.0729839645092268,
+          "realized_vol": 0.0240205264803854,
+          "trade_date": "2026-10-12"
+        },
+        {
+          "book_beta": 0.026974124759439,
+          "factor_var_share": 7.43363415063609e-29,
+          "forecast_vol": 0.0275992544314798,
+          "hedged_vol": 0.0263653849408487,
+          "idio_var_share": 1.0,
+          "market_return": -0.0011014425002729,
+          "pnl_beta": -2.97104474177096e-05,
+          "pnl_cost": -0.00243970355566561,
+          "pnl_factor": -1.92628283805997e-17,
+          "pnl_idio": 0.00277434979681078,
+          "pnl_timing": 0.00011225466510535,
+          "pnl_total": 0.000334646241145058,
+          "pnl_unexplained": -9.4542429440736e-17,
+          "pre_hedge_vol": 0.0804211939095517,
+          "realized_vol": 0.0243706698155719,
+          "trade_date": "2026-10-13"
+        },
+        {
+          "book_beta": 0.0268009275736183,
+          "factor_var_share": 6.15390746085407e-29,
+          "forecast_vol": null,
+          "hedged_vol": 0.0275992544314798,
+          "idio_var_share": 1.0,
+          "market_return": -0.013430056168761,
+          "pnl_beta": -0.000359937962688589,
+          "pnl_cost": 0.0,
+          "pnl_factor": 8.96976766496419e-18,
+          "pnl_idio": 0.000393689901091201,
+          "pnl_timing": -0.000172414827096051,
+          "pnl_total": 0.000393689901091274,
+          "pnl_unexplained": 6.41847686111419e-17,
+          "pre_hedge_vol": 0.0743192668098027,
+          "realized_vol": 0.0245386367226873,
+          "trade_date": "2026-10-14"
+        },
+        {
+          "book_beta": 0.0268009275736183,
+          "factor_var_share": 6.15390746085407e-29,
+          "forecast_vol": 0.0274794188111414,
+          "hedged_vol": 0.0275992544314798,
+          "idio_var_share": 1.0,
+          "market_return": 0.00272695262561289,
+          "pnl_beta": 7.30848598157393e-05,
+          "pnl_cost": -0.00102897578445036,
+          "pnl_factor": -3.83133771623326e-05,
+          "pnl_idio": 0.00165976032257702,
+          "pnl_timing": -2.89204923065922e-05,
+          "pnl_total": 0.000592471160964289,
+          "pnl_unexplained": -3.20923843055709e-17,
+          "pre_hedge_vol": 0.0743192668098027,
+          "realized_vol": 0.0247708441116141,
+          "trade_date": "2026-10-15"
+        },
+        {
+          "book_beta": 0.019540731337567,
+          "factor_var_share": 4.71033071361419e-29,
+          "forecast_vol": 0.0301092483411234,
+          "hedged_vol": 0.0274794188111414,
+          "idio_var_share": 1.0,
+          "market_return": -0.0144681793911119,
+          "pnl_beta": -0.000282718806425441,
+          "pnl_cost": -0.00150127647017643,
+          "pnl_factor": 9.83485077273005e-18,
+          "pnl_idio": 0.000224719789382092,
+          "pnl_timing": 1.34129700283928e-06,
+          "pnl_total": -0.00127655668079444,
+          "pnl_unexplained": -1.0842021724855e-16,
+          "pre_hedge_vol": 0.0785916276396725,
+          "realized_vol": 0.0238846415497613,
+          "trade_date": "2026-10-16"
+        },
+        {
+          "book_beta": 0.0472826667568128,
+          "factor_var_share": 7.91104547734909e-29,
+          "forecast_vol": 0.0296085451490231,
+          "hedged_vol": 0.0301092483411234,
+          "idio_var_share": 1.0,
+          "market_return": 0.00506006593562802,
+          "pnl_beta": 0.0002392534114018,
+          "pnl_cost": -0.00139291865794725,
+          "pnl_factor": 8.95713500261942e-18,
+          "pnl_idio": 0.000896305359320512,
+          "pnl_timing": 4.46358481732027e-06,
+          "pnl_total": -0.000496613298627016,
+          "pnl_unexplained": -2.85795692667179e-16,
+          "pre_hedge_vol": 0.0813058116446199,
+          "realized_vol": 0.0231925033290908,
+          "trade_date": "2026-10-19"
+        },
+        {
+          "book_beta": 0.0475186601270838,
+          "factor_var_share": 1.76709801350602e-28,
+          "forecast_vol": 0.0292015864490882,
+          "hedged_vol": 0.0296085451490231,
+          "idio_var_share": 1.0,
+          "market_return": 0.00148573609987734,
+          "pnl_beta": 7.06001887686104e-05,
+          "pnl_cost": -0.000667650384940471,
+          "pnl_factor": -7.39474496358576e-19,
+          "pnl_idio": 0.00116440408267692,
+          "pnl_timing": 6.48119682049171e-05,
+          "pnl_total": 0.000496753697736568,
+          "pnl_unexplained": 1.23815888097845e-16,
+          "pre_hedge_vol": 0.0768907797894189,
+          "realized_vol": 0.0232302832451771,
+          "trade_date": "2026-10-20"
+        },
+        {
+          "book_beta": 0.0422793179297985,
+          "factor_var_share": 6.80299977346376e-29,
+          "forecast_vol": 0.0286496020246274,
+          "hedged_vol": 0.0292015864490882,
+          "idio_var_share": 1.0,
+          "market_return": 0.0050711880834574,
+          "pnl_beta": 0.000214406373262301,
+          "pnl_cost": -0.000564246996850166,
+          "pnl_factor": -2.20763355161862e-19,
+          "pnl_idio": -0.000560607316613427,
+          "pnl_timing": 2.20584410930014e-05,
+          "pnl_total": -0.00112485431346386,
+          "pnl_unexplained": -2.7148422399037e-16,
+          "pre_hedge_vol": 0.0770742037193948,
+          "realized_vol": 0.0225454224984566,
+          "trade_date": "2026-10-21"
+        },
+        {
+          "book_beta": 0.0632157792299504,
+          "factor_var_share": 9.14996759889237e-29,
+          "forecast_vol": 0.0286018097750155,
+          "hedged_vol": 0.0286496020246274,
+          "idio_var_share": 1.0,
+          "market_return": -0.0167233541962756,
+          "pnl_beta": -0.00105717986685602,
+          "pnl_cost": -0.00175044255743527,
+          "pnl_factor": 1.47288022645385e-17,
+          "pnl_idio": 0.00306595726421964,
+          "pnl_timing": 0.000141023884023577,
+          "pnl_total": 0.00131551470678423,
+          "pnl_unexplained": -1.53089346754953e-16,
+          "pre_hedge_vol": 0.0788287466285081,
+          "realized_vol": 0.0234333653463051,
+          "trade_date": "2026-10-22"
+        },
+        {
+          "book_beta": 0.0572462472399979,
+          "factor_var_share": 3.11033940878828e-28,
+          "forecast_vol": 0.027929290997962,
+          "hedged_vol": 0.0286018097750155,
+          "idio_var_share": 1.0,
+          "market_return": -0.00456698027531279,
+          "pnl_beta": -0.000261442481980749,
+          "pnl_cost": -0.00109045269459868,
+          "pnl_factor": -3.18303067330259e-17,
+          "pnl_idio": -0.00256140953542488,
+          "pnl_timing": 2.18975081933402e-05,
+          "pnl_total": -0.00365186223002334,
+          "pnl_unexplained": 2.46330733588707e-16,
+          "pre_hedge_vol": 0.0735911240198918,
+          "realized_vol": 0.0248876666356941,
+          "trade_date": "2026-10-23"
+        },
+        {
+          "book_beta": 0.0395182877872085,
+          "factor_var_share": 3.1208496272475e-29,
+          "forecast_vol": 0.0279192437797102,
+          "hedged_vol": 0.027929290997962,
+          "idio_var_share": 1.0,
+          "market_return": 0.0060551225010639,
+          "pnl_beta": 0.000239288073583845,
+          "pnl_cost": 4.31964803942107e-05,
+          "pnl_factor": 2.23277677869441e-18,
+          "pnl_idio": -0.00110841157352608,
+          "pnl_timing": 9.40312189755291e-06,
+          "pnl_total": -0.00106521509313196,
+          "pnl_unexplained": -9.21571846612679e-17,
+          "pre_hedge_vol": 0.0768523349978197,
+          "realized_vol": 0.0242590251086711,
+          "trade_date": "2026-10-26"
+        },
+        {
+          "book_beta": 0.038380433387892,
+          "factor_var_share": 0.00208962064702749,
+          "forecast_vol": 0.0281934468480375,
+          "hedged_vol": 0.0279192437797102,
+          "idio_var_share": 0.997910379352973,
+          "market_return": 0.00642549243030706,
+          "pnl_beta": 0.000246613184205804,
+          "pnl_cost": -0.000147436589071907,
+          "pnl_factor": 0.000123799176896391,
+          "pnl_idio": -0.000550979305641588,
+          "pnl_timing": 0.000147970507328835,
+          "pnl_total": -0.000574616717817104,
+          "pnl_unexplained": -2.16840434497101e-19,
+          "pre_hedge_vol": 0.0759633680604195,
+          "realized_vol": 0.0237161598212572,
+          "trade_date": "2026-10-27"
+        },
+        {
+          "book_beta": 0.0334309499920726,
+          "factor_var_share": 0.00578772785967459,
+          "forecast_vol": 0.0283498862950596,
+          "hedged_vol": 0.0281934468480375,
+          "idio_var_share": 0.994212272140325,
+          "market_return": 0.00451452863120193,
+          "pnl_beta": 0.000150924980907492,
+          "pnl_cost": -0.000147135337918441,
+          "pnl_factor": -1.46257603112147e-05,
+          "pnl_idio": 0.00155408167920454,
+          "pnl_timing": -3.90865796475904e-06,
+          "pnl_total": 0.00139232058097489,
+          "pnl_unexplained": 0.0,
+          "pre_hedge_vol": 0.0751543218141062,
+          "realized_vol": 0.0244562654987294,
+          "trade_date": "2026-10-28"
+        }
+      ],
+      "first_day": "2026-10-01",
+      "label": "the live book, from 2026-10-01",
+      "last_day": "2026-10-28",
+      "monthly": [],
+      "n_days": 20,
+      "n_days_carried": 20,
+      "note": "3 rehearsal session(s) before 2026-10-01 are stored and are not part of the live book's own period",
+      "risk": {
+        "as_of": "2026-10-28",
+        "factor_share": 0.00578772785967459,
+        "hedged_vol": 0.0281934468480375,
+        "idio_share": 0.994212272140325,
+        "path": [
+          {
+            "factor_share": 0.0574709862001205,
+            "hedged_vol": 0.02757578319792,
+            "idio_share": 0.942529013799879,
+            "pre_hedge_vol": 0.0892808194396127,
+            "trade_date": "2026-10-01"
+          },
+          {
+            "factor_share": 0.000234570513009133,
+            "hedged_vol": 0.0267683251046987,
+            "idio_share": 0.999765429486991,
+            "pre_hedge_vol": 0.090139565282151,
+            "trade_date": "2026-10-02"
+          },
+          {
+            "factor_share": 0.000150924195933133,
+            "hedged_vol": 0.0247795575913608,
+            "idio_share": 0.999849075804067,
+            "pre_hedge_vol": 0.0845904163469297,
+            "trade_date": "2026-10-05"
+          },
+          {
+            "factor_share": 0.00664789420078112,
+            "hedged_vol": 0.0254651207571641,
+            "idio_share": 0.993352105799219,
+            "pre_hedge_vol": 0.0784723985779657,
+            "trade_date": "2026-10-06"
+          },
+          {
+            "factor_share": 1.41962599102553e-06,
+            "hedged_vol": 0.025073043183465,
+            "idio_share": 0.999998580374009,
+            "pre_hedge_vol": 0.0762257992391744,
+            "trade_date": "2026-10-07"
+          },
+          {
+            "factor_share": 1.41962599102553e-06,
+            "hedged_vol": 0.025073043183465,
+            "idio_share": 0.999998580374009,
+            "pre_hedge_vol": 0.0762257992391744,
+            "trade_date": "2026-10-08"
+          },
+          {
+            "factor_share": 1.47990953410911e-28,
+            "hedged_vol": 0.02655676896843,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0747610697873429,
+            "trade_date": "2026-10-09"
+          },
+          {
+            "factor_share": 2.83105874221641e-28,
+            "hedged_vol": 0.0276532414219329,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0729839645092268,
+            "trade_date": "2026-10-12"
+          },
+          {
+            "factor_share": 7.43363415063609e-29,
+            "hedged_vol": 0.0263653849408487,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0804211939095517,
+            "trade_date": "2026-10-13"
+          },
+          {
+            "factor_share": 6.15390746085407e-29,
+            "hedged_vol": 0.0275992544314798,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0743192668098027,
+            "trade_date": "2026-10-14"
+          },
+          {
+            "factor_share": 6.15390746085407e-29,
+            "hedged_vol": 0.0275992544314798,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0743192668098027,
+            "trade_date": "2026-10-15"
+          },
+          {
+            "factor_share": 4.71033071361419e-29,
+            "hedged_vol": 0.0274794188111414,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0785916276396725,
+            "trade_date": "2026-10-16"
+          },
+          {
+            "factor_share": 7.91104547734909e-29,
+            "hedged_vol": 0.0301092483411234,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0813058116446199,
+            "trade_date": "2026-10-19"
+          },
+          {
+            "factor_share": 1.76709801350602e-28,
+            "hedged_vol": 0.0296085451490231,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0768907797894189,
+            "trade_date": "2026-10-20"
+          },
+          {
+            "factor_share": 6.80299977346376e-29,
+            "hedged_vol": 0.0292015864490882,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0770742037193948,
+            "trade_date": "2026-10-21"
+          },
+          {
+            "factor_share": 9.14996759889237e-29,
+            "hedged_vol": 0.0286496020246274,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0788287466285081,
+            "trade_date": "2026-10-22"
+          },
+          {
+            "factor_share": 3.11033940878828e-28,
+            "hedged_vol": 0.0286018097750155,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0735911240198918,
+            "trade_date": "2026-10-23"
+          },
+          {
+            "factor_share": 3.1208496272475e-29,
+            "hedged_vol": 0.027929290997962,
+            "idio_share": 1.0,
+            "pre_hedge_vol": 0.0768523349978197,
+            "trade_date": "2026-10-26"
+          },
+          {
+            "factor_share": 0.00208962064702749,
+            "hedged_vol": 0.0279192437797102,
+            "idio_share": 0.997910379352973,
+            "pre_hedge_vol": 0.0759633680604195,
+            "trade_date": "2026-10-27"
+          },
+          {
+            "factor_share": 0.00578772785967459,
+            "hedged_vol": 0.0281934468480375,
+            "idio_share": 0.994212272140325,
+            "pre_hedge_vol": 0.0751543218141062,
+            "trade_date": "2026-10-28"
+          }
+        ],
+        "pre_hedge_vol": 0.0751543218141062
+      }
+    },
+    "note": "",
+    "notes": [
+      {
+        "date": "2026-09-28",
+        "text": "the live book opens on an establishment book: 150 names, with the hedge not yet complete, so the predicted volatility on 09-28 and 09-29 is not comparable with the sessions that follow. The 09-28 row holds no positions of its own and is rebuilt from the 09-29 book."
+      },
+      {
+        "date": "2026-10-20",
+        "text": "pre-hedge volatility formula corrected: the reconstruction squares the stored idio volatility, which every earlier row was built without. Every stored attribution day from 2026-09-28 on was recomputed, so the series before this date is lower than it was drawn."
+      },
+      {
+        "date": "2026-10-21",
+        "text": "cost terms recomputed against the actual fills on the eight days whose rows were written before their fills existed (2026-10-09 to 2026-10-20): pnl_cost, the day's total, realized volatility and the vol ratio."
+      }
+    ]
+  },
+  "book": {
+    "achieved_annual_vol": 0.028349886295059603,
+    "expected_cost_bps": 1.4713533791844147,
+    "expected_cost_split": {
+      "borrow": 1.4713533791844147,
+      "commission": 0.0,
+      "impact": 0.0,
+      "spread": 0.0,
+      "total": 1.4713533791844147,
+      "trading": 0.0
+    },
+    "full_book_achieved_annual_vol": 0.028349886295059603,
+    "full_book_gross": 1.0070122755141762,
+    "full_book_net": -0.0019157559265653643,
+    "gross": 1.0070122755141762,
+    "gross_notional": 986541.276822,
+    "max_kept_weight": 0.016231264270152583,
+    "n_kept": 196,
+    "n_long": 97,
+    "n_names": 196,
+    "n_short": 102,
+    "names": [
+      {
+        "alpha": 0.0001418431968254909,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "STX",
+        "traded_notional": 0.0,
+        "weight": 0.016231264270152583,
+        "z": 3.631023127092667
+      },
+      {
+        "alpha": 8.364305281175916e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "INTC",
+        "traded_notional": 0.0,
+        "weight": 0.014749901175552154,
+        "z": 2.5190367057548966
+      },
+      {
+        "alpha": 0.0001449892592853168,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "MRVL",
+        "traded_notional": 0.0,
+        "weight": 0.014001122205702514,
+        "z": 3.570749917383623
+      },
+      {
+        "alpha": 1.600836493774508e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "KVUE",
+        "traded_notional": 0.0,
+        "weight": 0.013912373264284341,
+        "z": 1.0522845411963462
+      },
+      {
+        "alpha": -4.514845904968082e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "AES",
+        "traded_notional": 0.0,
+        "weight": -0.013134830750163154,
+        "z": -0.21663148717848585
+      },
+      {
+        "alpha": 8.234227669083702e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "KO",
+        "traded_notional": 0.0,
+        "weight": 0.012664807159093268,
+        "z": 0.7324241861201983
+      },
+      {
+        "alpha": -7.111754401485772e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "BNY",
+        "traded_notional": 0.0,
+        "weight": -0.012133862619568773,
+        "z": -0.046966764811113434
+      },
+      {
+        "alpha": 9.779184559071363e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "PRU",
+        "traded_notional": 0.0,
+        "weight": 0.012039937276937357,
+        "z": 0.78778783182451
+      },
+      {
+        "alpha": 1.97040339750611e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "TRV",
+        "traded_notional": 0.0,
+        "weight": 0.012009241167613777,
+        "z": 1.3160135053451718
+      },
+      {
+        "alpha": 0.00012924082325044896,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "WDC",
+        "traded_notional": 0.0,
+        "weight": 0.011450389008438594,
+        "z": 3.1567016722336354
+      },
+      {
+        "alpha": 1.3130438715872707e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "MET",
+        "traded_notional": 0.0,
+        "weight": 0.011335192021244262,
+        "z": 0.9575204805500667
+      },
+      {
+        "alpha": 6.36184451784536e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "ED",
+        "traded_notional": 0.0,
+        "weight": 0.01133092051310462,
+        "z": 0.7168275087609552
+      },
+      {
+        "alpha": 4.0670559415698505e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "KLAC",
+        "traded_notional": 0.0,
+        "weight": -0.010739926049705128,
+        "z": 0.14653993131224657
+      },
+      {
+        "alpha": -8.858171997708943e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "AXP",
+        "traded_notional": 0.0,
+        "weight": -0.010060657574469728,
+        "z": -0.6936318341167462
+      },
+      {
+        "alpha": 1.544983710152416e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "UNP",
+        "traded_notional": 0.0,
+        "weight": 0.009655078397448615,
+        "z": 1.0747029278887685
+      },
+      {
+        "alpha": -8.001305688783309e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "C",
+        "traded_notional": 0.0,
+        "weight": -0.009577189416187496,
+        "z": -0.04697670134337715
+      },
+      {
+        "alpha": -2.9358123381910126e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CHRW",
+        "traded_notional": 0.0,
+        "weight": -0.009517475525343162,
+        "z": -0.7357101622268187
+      },
+      {
+        "alpha": -1.805090814748637e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "BG",
+        "traded_notional": 0.0,
+        "weight": -0.009466029711692659,
+        "z": -0.6506906650632637
+      },
+      {
+        "alpha": -7.067651733990288e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "VICI",
+        "traded_notional": 0.0,
+        "weight": -0.009432589932819832,
+        "z": -0.6096211945746308
+      },
+      {
+        "alpha": -4.09825206570189e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "WMT",
+        "traded_notional": 0.0,
+        "weight": -0.00933251557626635,
+        "z": -0.34249193546263046
+      },
+      {
+        "alpha": 1.4451803882644033e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "FLEX",
+        "traded_notional": 0.0,
+        "weight": -0.00904573578767292,
+        "z": 0.36849480081474534
+      },
+      {
+        "alpha": 1.8005358105273307e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "WAB",
+        "traded_notional": 0.0,
+        "weight": 0.00900330794029897,
+        "z": 1.2040215945503518
+      },
+      {
+        "alpha": 0.0001028814306975616,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "HPE",
+        "traded_notional": 0.0,
+        "weight": 0.008855384308138784,
+        "z": 2.6257902023496182
+      },
+      {
+        "alpha": 1.0333643432616369e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "LUV",
+        "traded_notional": 0.0,
+        "weight": -0.008785658826164748,
+        "z": 0.384534954036389
+      },
+      {
+        "alpha": -6.797991513400076e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "COIN",
+        "traded_notional": 0.0,
+        "weight": 0.008680422287449297,
+        "z": -1.5451594917678
+      },
+      {
+        "alpha": 4.124799108674587e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "DDOG",
+        "traded_notional": 0.0,
+        "weight": -0.008618914778121298,
+        "z": 0.9072509189216275
+      },
+      {
+        "alpha": 6.752769174650861e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "USB",
+        "traded_notional": 0.0,
+        "weight": 0.008521892247457835,
+        "z": 0.6228225492783268
+      },
+      {
+        "alpha": -5.142706353642416e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "NVDA",
+        "traded_notional": 0.0,
+        "weight": -0.008509627537923297,
+        "z": -0.3738008024905335
+      },
+      {
+        "alpha": -3.6203658972998234e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "GILD",
+        "traded_notional": 0.0,
+        "weight": -0.008471961852929177,
+        "z": -0.22778832850673825
+      },
+      {
+        "alpha": -3.794284444259363e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "ON",
+        "traded_notional": 0.0,
+        "weight": -0.008384136499625819,
+        "z": -0.010624729167826502
+      },
+      {
+        "alpha": 4.712678351437276e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "PNC",
+        "traded_notional": 0.0,
+        "weight": 0.008274409139471285,
+        "z": 0.4799577117542009
+      },
+      {
+        "alpha": -4.308154446611732e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CAH",
+        "traded_notional": 0.0,
+        "weight": -0.008244681597623203,
+        "z": -0.19768907931069768
+      },
+      {
+        "alpha": -1.7112647164644717e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "SRE",
+        "traded_notional": 0.0,
+        "weight": -0.00821055791606891,
+        "z": -0.17512330035900162
+      },
+      {
+        "alpha": 6.10798169588745e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "SPG",
+        "traded_notional": 0.0,
+        "weight": 0.008117022685817507,
+        "z": 0.5941796937398852
+      },
+      {
+        "alpha": -3.215331422623787e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "LULU",
+        "traded_notional": 0.0,
+        "weight": 0.008038975126918813,
+        "z": -0.9788045428555797
+      },
+      {
+        "alpha": 3.1659596532630278e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "JBL",
+        "traded_notional": 0.0,
+        "weight": -0.00801810566000411,
+        "z": 0.11439824354800714
+      },
+      {
+        "alpha": -4.3767744337349435e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "CMG",
+        "traded_notional": 0.0,
+        "weight": 0.00787389223051338,
+        "z": -0.13390270183940475
+      },
+      {
+        "alpha": 3.397870095113733e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "AMCR",
+        "traded_notional": 0.0,
+        "weight": 0.007811236263827402,
+        "z": 0.22714375546912352
+      },
+      {
+        "alpha": -5.708487225284097e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "CHTR",
+        "traded_notional": 0.0,
+        "weight": 0.007755935304031234,
+        "z": -1.4672934657916394
+      },
+      {
+        "alpha": -2.788781350555598e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "SBAC",
+        "traded_notional": 0.0,
+        "weight": -0.0077323466216815216,
+        "z": -1.1146010157290835
+      },
+      {
+        "alpha": -1.7052134092871456e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "GEN",
+        "traded_notional": 0.0,
+        "weight": 0.007555610125658951,
+        "z": -0.5546167656692662
+      },
+      {
+        "alpha": 7.839082375251551e-07,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "KMB",
+        "traded_notional": 0.0,
+        "weight": 0.00745444816275414,
+        "z": 0.04978467539175195
+      },
+      {
+        "alpha": 3.43271872430559e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "KEYS",
+        "traded_notional": 0.0,
+        "weight": 0.007447962676878796,
+        "z": 1.5683317607885416
+      },
+      {
+        "alpha": 8.700642079933377e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CSCO",
+        "traded_notional": 0.0,
+        "weight": -0.0074443317252603685,
+        "z": 0.35155063631398603
+      },
+      {
+        "alpha": 6.309057789417759e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "CHD",
+        "traded_notional": 0.0,
+        "weight": 0.007344876012782039,
+        "z": 0.47576804908300097
+      },
+      {
+        "alpha": 1.1051253096590984e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "GPN",
+        "traded_notional": 0.0,
+        "weight": 0.0072980402533890055,
+        "z": 0.4344425798737243
+      },
+      {
+        "alpha": -7.397679356830598e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "PEP",
+        "traded_notional": 0.0,
+        "weight": -0.0072688443386969845,
+        "z": -0.5820195315889615
+      },
+      {
+        "alpha": -9.477749118562657e-08,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CF",
+        "traded_notional": 0.0,
+        "weight": -0.00722209397629236,
+        "z": -0.002716032021533604
+      },
+      {
+        "alpha": -2.2110400044830175e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "ECHO",
+        "traded_notional": 0.0,
+        "weight": -0.007183274843492188,
+        "z": -0.5645672926482443
+      },
+      {
+        "alpha": -1.220886742421088e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "MCHP",
+        "traded_notional": 0.0,
+        "weight": -0.007109729786477927,
+        "z": -0.45646915408188315
+      },
+      {
+        "alpha": 1.3404907359306325e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "STT",
+        "traded_notional": 0.0,
+        "weight": 0.007044563303895065,
+        "z": 0.9834865994993556
+      },
+      {
+        "alpha": 2.7695172358149912e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "AEE",
+        "traded_notional": 0.0,
+        "weight": 0.006867108666164696,
+        "z": 0.3888782916012003
+      },
+      {
+        "alpha": 1.783759758540745e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "BMY",
+        "traded_notional": 0.0,
+        "weight": 0.006666268568276785,
+        "z": 1.0186661276335862
+      },
+      {
+        "alpha": 6.182691792862232e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "PNW",
+        "traded_notional": 0.0,
+        "weight": 0.006632220863206653,
+        "z": 0.6310502875708331
+      },
+      {
+        "alpha": 3.1461094042072614e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "IVZ",
+        "traded_notional": 0.0,
+        "weight": -0.006616176615519762,
+        "z": 0.1496967073858079
+      },
+      {
+        "alpha": 6.938513415351689e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "PKG",
+        "traded_notional": 0.0,
+        "weight": 0.006586400467585283,
+        "z": 0.4088407120108366
+      },
+      {
+        "alpha": 1.2410991125771622e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "AKAM",
+        "traded_notional": 0.0,
+        "weight": -0.0065859828225082176,
+        "z": 0.3055589545949305
+      },
+      {
+        "alpha": -6.653277330414811e-07,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "BAX",
+        "traded_notional": 0.0,
+        "weight": 0.006534130343991309,
+        "z": -0.024868693334676416
+      },
+      {
+        "alpha": 3.402489170695116e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "GRMN",
+        "traded_notional": 0.0,
+        "weight": 0.006400165695329215,
+        "z": 1.239307778589618
+      },
+      {
+        "alpha": 9.320253953947971e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "AWK",
+        "traded_notional": 0.0,
+        "weight": 0.0063884026069757766,
+        "z": 0.6807104435546327
+      },
+      {
+        "alpha": -5.938017142532875e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "WFC",
+        "traded_notional": 0.0,
+        "weight": -0.006386528219585431,
+        "z": -0.43089668668352293
+      },
+      {
+        "alpha": 3.331606194756223e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "ADM",
+        "traded_notional": 0.0,
+        "weight": -0.006385436016795629,
+        "z": 0.1353040405437728
+      },
+      {
+        "alpha": 8.183937255165078e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "BDX",
+        "traded_notional": 0.0,
+        "weight": 0.0063701899386585225,
+        "z": 0.542055523748808
+      },
+      {
+        "alpha": -1.752787257848247e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "IP",
+        "traded_notional": 0.0,
+        "weight": 0.006332660527908563,
+        "z": -0.7040195552650678
+      },
+      {
+        "alpha": 4.178873885333658e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "CL",
+        "traded_notional": 0.0,
+        "weight": 0.006293861677416273,
+        "z": 0.3748748997877038
+      },
+      {
+        "alpha": -5.784049376387348e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "LYB",
+        "traded_notional": 0.0,
+        "weight": -0.006235589877035828,
+        "z": -0.19250081427661522
+      },
+      {
+        "alpha": -2.5790782788737515e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "HAS",
+        "traded_notional": 0.0,
+        "weight": -0.0061782747493279765,
+        "z": -0.09679247584127577
+      },
+      {
+        "alpha": -4.939375596386819e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "TXT",
+        "traded_notional": 0.0,
+        "weight": -0.00615577741335859,
+        "z": -0.2868195662830031
+      },
+      {
+        "alpha": -3.467156176053273e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "ROL",
+        "traded_notional": 0.0,
+        "weight": -0.006086733865038747,
+        "z": -1.5419287313403471
+      },
+      {
+        "alpha": -1.6129905503911667e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "COO",
+        "traded_notional": 0.0,
+        "weight": 0.00601370993472251,
+        "z": -0.6349296989493638
+      },
+      {
+        "alpha": -6.0656324222928016e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "SMCI",
+        "traded_notional": 0.0,
+        "weight": 0.005994225167608469,
+        "z": -1.0400012487402928
+      },
+      {
+        "alpha": 1.245384471446277e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "DOC",
+        "traded_notional": 0.0,
+        "weight": 0.005983226379290079,
+        "z": 0.6612969696293356
+      },
+      {
+        "alpha": -3.5528712940754436e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "ALB",
+        "traded_notional": 0.0,
+        "weight": -0.005938316775658128,
+        "z": -1.0745478385350977
+      },
+      {
+        "alpha": 6.2679719433569375e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "STLD",
+        "traded_notional": 0.0,
+        "weight": -0.0058690792847868245,
+        "z": 0.2441225755938484
+      },
+      {
+        "alpha": 7.159534732030366e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "BIIB",
+        "traded_notional": 0.0,
+        "weight": -0.005729624382784209,
+        "z": 0.32667574297600477
+      },
+      {
+        "alpha": 3.3152466626255577e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "TGT",
+        "traded_notional": 0.0,
+        "weight": 0.005724726488178614,
+        "z": 1.5118053765041277
+      },
+      {
+        "alpha": -6.212851137068184e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "RDDT",
+        "traded_notional": 0.0,
+        "weight": 0.005701103025804923,
+        "z": -1.3936674885912625
+      },
+      {
+        "alpha": -1.1231442155732046e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "APO",
+        "traded_notional": 0.0,
+        "weight": -0.0056744017931315855,
+        "z": -0.5540590619058646
+      },
+      {
+        "alpha": -2.823474811889314e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "BKNG",
+        "traded_notional": 0.0,
+        "weight": -0.005639859603966247,
+        "z": -1.1038818152242391
+      },
+      {
+        "alpha": 6.698034341379767e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "NEM",
+        "traded_notional": 0.0,
+        "weight": -0.005465341930160164,
+        "z": 0.026213223033701338
+      },
+      {
+        "alpha": -2.4901142550168295e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "TEL",
+        "traded_notional": 0.0,
+        "weight": -0.005419938958113053,
+        "z": -1.0284263883025435
+      },
+      {
+        "alpha": -2.3460222786571373e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "DG",
+        "traded_notional": 0.0,
+        "weight": -0.005409098590236697,
+        "z": -0.09154411810407267
+      },
+      {
+        "alpha": 5.638340658712697e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "D",
+        "traded_notional": 0.0,
+        "weight": 0.00532015843881554,
+        "z": 0.5192196483202082
+      },
+      {
+        "alpha": -6.197729683952617e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "SYF",
+        "traded_notional": 0.0,
+        "weight": -0.0052308143479312015,
+        "z": -0.3722714288956468
+      },
+      {
+        "alpha": 2.5728707003956815e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "GLW",
+        "traded_notional": 0.0,
+        "weight": -0.005153786490992823,
+        "z": 0.6941830212597818
+      },
+      {
+        "alpha": 3.6316868499202136e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "NI",
+        "traded_notional": 0.0,
+        "weight": -0.005149736153918116,
+        "z": 0.035188401292757944
+      },
+      {
+        "alpha": 1.0489576719672299e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "CTAS",
+        "traded_notional": 0.0,
+        "weight": 0.00512391150891337,
+        "z": 0.6300547804008713
+      },
+      {
+        "alpha": -6.226452078828705e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "PODD",
+        "traded_notional": 0.0,
+        "weight": 0.005086043694950619,
+        "z": -1.8877101046205278
+      },
+      {
+        "alpha": -1.0323985780869439e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "KR",
+        "traded_notional": 0.0,
+        "weight": -0.004911319513157241,
+        "z": -0.5166186585395163
+      },
+      {
+        "alpha": 4.004451404856643e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "EVRG",
+        "traded_notional": 0.0,
+        "weight": 0.004859501661551771,
+        "z": 0.4720204895757735
+      },
+      {
+        "alpha": 3.1462465257350155e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "AEP",
+        "traded_notional": 0.0,
+        "weight": 0.0048510478925309205,
+        "z": 0.4144864747762169
+      },
+      {
+        "alpha": 5.098749848159898e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "NTRS",
+        "traded_notional": 0.0,
+        "weight": -0.004737608232065124,
+        "z": 0.3555198674522949
+      },
+      {
+        "alpha": 5.095389863429316e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "FRT",
+        "traded_notional": 0.0,
+        "weight": 0.004641530694649651,
+        "z": 0.41910767174277874
+      },
+      {
+        "alpha": -1.302552743329795e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "BF.B",
+        "traded_notional": 0.0,
+        "weight": -0.00461710866259207,
+        "z": -0.5511659917937373
+      },
+      {
+        "alpha": 1.7576665973700835e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "KHC",
+        "traded_notional": 0.0,
+        "weight": 0.004596271472821682,
+        "z": 0.09404112186871524
+      },
+      {
+        "alpha": -2.3682697315741696e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "EXC",
+        "traded_notional": 0.0,
+        "weight": -0.004570919712836409,
+        "z": -0.025996748833692115
+      },
+      {
+        "alpha": -4.55930328345932e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "ANET",
+        "traded_notional": 0.0,
+        "weight": -0.0045051833953941,
+        "z": -0.15862885841341404
+      },
+      {
+        "alpha": 2.1421273458944035e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "DUK",
+        "traded_notional": 0.0,
+        "weight": 0.004346083035686807,
+        "z": 0.28714283451386763
+      },
+      {
+        "alpha": -8.295496943816297e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "EW",
+        "traded_notional": 0.0,
+        "weight": -0.004215800693610017,
+        "z": -0.4643703395884922
+      },
+      {
+        "alpha": 4.038127225516584e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "FE",
+        "traded_notional": 0.0,
+        "weight": 0.004195336649308638,
+        "z": 0.419936687551814
+      },
+      {
+        "alpha": -2.711065450048974e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "NCLH",
+        "traded_notional": 0.0,
+        "weight": 0.004124296010229143,
+        "z": -0.9450054206664069
+      },
+      {
+        "alpha": 4.541617158331132e-08,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "XEL",
+        "traded_notional": 0.0,
+        "weight": -0.004096638306991767,
+        "z": 0.0059752930331372755
+      },
+      {
+        "alpha": -5.252890296910706e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "WRB",
+        "traded_notional": 0.0,
+        "weight": -0.004094515146428413,
+        "z": -0.2927458068382945
+      },
+      {
+        "alpha": 4.1019788734083366e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "BALL",
+        "traded_notional": 0.0,
+        "weight": 0.004052035177504134,
+        "z": 0.27606736091004436
+      },
+      {
+        "alpha": 1.0155608276281678e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "KEY",
+        "traded_notional": 0.0,
+        "weight": -0.004025022467989399,
+        "z": 0.08772137740504478
+      },
+      {
+        "alpha": 6.0379225237762116e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "GM",
+        "traded_notional": 0.0,
+        "weight": -0.003956999669940399,
+        "z": 0.21643926048569195
+      },
+      {
+        "alpha": -8.801754804340915e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CVS",
+        "traded_notional": 0.0,
+        "weight": -0.003948108935081354,
+        "z": -0.4243710106702102
+      },
+      {
+        "alpha": -1.531226275427926e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "DOW",
+        "traded_notional": 0.0,
+        "weight": -0.00390187915531486,
+        "z": -0.5187920291855359
+      },
+      {
+        "alpha": 2.9627144642298834e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "EBAY",
+        "traded_notional": 0.0,
+        "weight": -0.003901613760244441,
+        "z": 0.013080646342510717
+      },
+      {
+        "alpha": -2.8251605286068098e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "HBAN",
+        "traded_notional": 0.0,
+        "weight": -0.0038978369842423205,
+        "z": -0.19606724655820026
+      },
+      {
+        "alpha": 0.0,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CSGP",
+        "traded_notional": 0.0,
+        "weight": -0.0038663174407790038,
+        "z": 0.0
+      },
+      {
+        "alpha": 3.2828131522190944e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "EIX",
+        "traded_notional": 0.0,
+        "weight": -0.0037831965213239067,
+        "z": 0.10487558740385508
+      },
+      {
+        "alpha": 5.568897276044877e-07,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "SW",
+        "traded_notional": 0.0,
+        "weight": 0.003742132349357292,
+        "z": 0.02195875953737065
+      },
+      {
+        "alpha": 9.350947644049552e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "VTR",
+        "traded_notional": 0.0,
+        "weight": 0.0037312664484336613,
+        "z": 0.6057572135935029
+      },
+      {
+        "alpha": -4.574748048574815e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "NRG",
+        "traded_notional": 0.0,
+        "weight": -0.003662339689256057,
+        "z": -1.4531469791212441
+      },
+      {
+        "alpha": -2.0152873090532177e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CBRE",
+        "traded_notional": 0.0,
+        "weight": -0.00366173744659626,
+        "z": -0.8714761050949182
+      },
+      {
+        "alpha": -1.0046359058248226e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "PEG",
+        "traded_notional": 0.0,
+        "weight": -0.003624714834272772,
+        "z": -0.012164936439497759
+      },
+      {
+        "alpha": -6.721093509003563e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "FOX",
+        "traded_notional": 0.0,
+        "weight": -0.0036073314571603106,
+        "z": -0.2499885821409804
+      },
+      {
+        "alpha": -1.4001631947792248e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "STZ",
+        "traded_notional": 0.0,
+        "weight": -0.003589723514988263,
+        "z": -0.7104638170254971
+      },
+      {
+        "alpha": 9.412121895325096e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "DVA",
+        "traded_notional": 0.0,
+        "weight": -0.003572625947951637,
+        "z": 0.26189033190575883
+      },
+      {
+        "alpha": -7.84801004819652e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "NEE",
+        "traded_notional": 0.0,
+        "weight": -0.0034734498516365,
+        "z": -0.07117504318680734
+      },
+      {
+        "alpha": -3.941638091266984e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "EL",
+        "traded_notional": 0.0,
+        "weight": -0.0034589245752823993,
+        "z": -1.1036590962233226
+      },
+      {
+        "alpha": 1.6455507299687034e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "IFF",
+        "traded_notional": 0.0,
+        "weight": 0.0034021611937184453,
+        "z": 0.7166788226692667
+      },
+      {
+        "alpha": -1.522464368713367e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "INCY",
+        "traded_notional": 0.0,
+        "weight": -0.0033402623562968628,
+        "z": -0.00765736001997313
+      },
+      {
+        "alpha": 7.891164998339747e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "DXCM",
+        "traded_notional": 0.0,
+        "weight": 0.003329329220594392,
+        "z": 0.2922966009869715
+      },
+      {
+        "alpha": -2.9698063774078113e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "LVS",
+        "traded_notional": 0.0,
+        "weight": -0.0032904701580851255,
+        "z": -1.2532619440482375
+      },
+      {
+        "alpha": -4.06585889154443e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "ZTS",
+        "traded_notional": 0.0,
+        "weight": 0.0032870212582982532,
+        "z": -1.5886642951314436
+      },
+      {
+        "alpha": -7.430649801979754e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "DLTR",
+        "traded_notional": 0.0,
+        "weight": -0.0032454754861463517,
+        "z": -0.24435557161155502
+      },
+      {
+        "alpha": 1.7548284601299436e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "SO",
+        "traded_notional": 0.0,
+        "weight": 0.0032397897519837134,
+        "z": 0.24176868704017104
+      },
+      {
+        "alpha": 1.729129586574799e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "SWK",
+        "traded_notional": 0.0,
+        "weight": 0.0032397548964242144,
+        "z": 0.7976729557406409
+      },
+      {
+        "alpha": -1.8347778852262245e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CRH",
+        "traded_notional": 0.0,
+        "weight": -0.0031800862237961283,
+        "z": -1.0756231103054752
+      },
+      {
+        "alpha": -8.570932312873698e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "FOXA",
+        "traded_notional": 0.0,
+        "weight": -0.00317056262376916,
+        "z": -0.3122079936099248
+      },
+      {
+        "alpha": 5.870908269331655e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "PCAR",
+        "traded_notional": 0.0,
+        "weight": 0.0031390616273382645,
+        "z": 0.35942113515006063
+      },
+      {
+        "alpha": -1.0707643107456153e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "EXR",
+        "traded_notional": 0.0,
+        "weight": -0.003102825635795997,
+        "z": -0.09381659589470549
+      },
+      {
+        "alpha": 9.034945487842968e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "HSIC",
+        "traded_notional": 0.0,
+        "weight": 0.0030316510855092197,
+        "z": 0.487121497284823
+      },
+      {
+        "alpha": 8.878894535330536e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "SOLV",
+        "traded_notional": 0.0,
+        "weight": 0.002985410717500166,
+        "z": 0.420308157932917
+      },
+      {
+        "alpha": 2.6384948779443246e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "KIM",
+        "traded_notional": 0.0,
+        "weight": 0.002974763871626159,
+        "z": 0.26015764600661184
+      },
+      {
+        "alpha": 1.6459539688841447e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "PFG",
+        "traded_notional": 0.0,
+        "weight": 0.002971131813514438,
+        "z": 1.041879962054339
+      },
+      {
+        "alpha": 1.0804286969680424e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CNP",
+        "traded_notional": 0.0,
+        "weight": -0.002929257259741798,
+        "z": 0.11776880448029685
+      },
+      {
+        "alpha": 1.8488892056712694e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "HST",
+        "traded_notional": 0.0,
+        "weight": 0.002873120474918354,
+        "z": 1.1054752256025118
+      },
+      {
+        "alpha": -3.1258523907022656e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "DECK",
+        "traded_notional": 0.0,
+        "weight": 0.0028499722054805,
+        "z": -0.1356511655189962
+      },
+      {
+        "alpha": -5.230405303645073e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "TSN",
+        "traded_notional": 0.0,
+        "weight": -0.0028254367496943233,
+        "z": -0.25966448448790974
+      },
+      {
+        "alpha": 3.247832225978727e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "IBKR",
+        "traded_notional": 0.0,
+        "weight": -0.0027907822779991926,
+        "z": 0.014631796687803037
+      },
+      {
+        "alpha": -2.9925517533462543e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "WYNN",
+        "traded_notional": 0.0,
+        "weight": -0.0027902631244114415,
+        "z": -1.2336524094623984
+      },
+      {
+        "alpha": -1.0336691837364779e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "WY",
+        "traded_notional": 0.0,
+        "weight": -0.0027227594799501932,
+        "z": -0.5713219432895148
+      },
+      {
+        "alpha": 7.70695907263715e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "PPL",
+        "traded_notional": 0.0,
+        "weight": -0.0026863595252919203,
+        "z": 0.07994267305805695
+      },
+      {
+        "alpha": -3.346695884459083e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "PFE",
+        "traded_notional": 0.0,
+        "weight": -0.0026863391102865037,
+        "z": -0.02077806127119484
+      },
+      {
+        "alpha": -3.366091030009783e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "ORLY",
+        "traded_notional": 0.0,
+        "weight": -0.0026837566121012697,
+        "z": -0.16936742380030967
+      },
+      {
+        "alpha": -3.3049271616914136e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "TFC",
+        "traded_notional": 0.0,
+        "weight": -0.0026195105900543914,
+        "z": -0.028890124617133268
+      },
+      {
+        "alpha": -3.5087402323566273e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "SYY",
+        "traded_notional": 0.0,
+        "weight": -0.0025994936772431535,
+        "z": -0.19826709325447123
+      },
+      {
+        "alpha": 8.470924773384066e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "WEC",
+        "traded_notional": 0.0,
+        "weight": -0.0025942368133483103,
+        "z": 0.10685339813055138
+      },
+      {
+        "alpha": 2.2366000711902775e-07,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "PLD",
+        "traded_notional": 0.0,
+        "weight": -0.002592705687942045,
+        "z": 0.01794279097987919
+      },
+      {
+        "alpha": -1.7317836066013124e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "PPG",
+        "traded_notional": 0.0,
+        "weight": 0.002556273215242394,
+        "z": -0.10613628769204424
+      },
+      {
+        "alpha": -1.481388612331731e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "GEHC",
+        "traded_notional": 0.0,
+        "weight": 0.002541022815248641,
+        "z": -0.6391467255740044
+      },
+      {
+        "alpha": -1.2836842438968078e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "TECH",
+        "traded_notional": 0.0,
+        "weight": -0.0025227434643784437,
+        "z": -0.4744272000845904
+      },
+      {
+        "alpha": 1.1573586026157013e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "VZ",
+        "traded_notional": 0.0,
+        "weight": -0.002482146184606463,
+        "z": 0.43316391744736615
+      },
+      {
+        "alpha": -1.2081024438939535e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "GIS",
+        "traded_notional": 0.0,
+        "weight": 0.0023947121287741795,
+        "z": -0.5843783528687586
+      },
+      {
+        "alpha": 1.9943532384321004e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "VTRS",
+        "traded_notional": 0.0,
+        "weight": -0.0023524006591801095,
+        "z": 0.9475800763999276
+      },
+      {
+        "alpha": -7.804145086060589e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "TPR",
+        "traded_notional": 0.0,
+        "weight": -0.0022709652025722296,
+        "z": -0.26441053839369577
+      },
+      {
+        "alpha": -4.6178008911101157e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "APTV",
+        "traded_notional": 0.0,
+        "weight": 0.0022674194448129067,
+        "z": -1.493748219181198
+      },
+      {
+        "alpha": -3.906533460262509e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "HRL",
+        "traded_notional": 0.0,
+        "weight": 0.002239588727466874,
+        "z": -0.19013950391801449
+      },
+      {
+        "alpha": 6.042516141304812e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "NWSA",
+        "traded_notional": 0.0,
+        "weight": 0.0022203461670393513,
+        "z": 0.3018316968183804
+      },
+      {
+        "alpha": -3.9535678337742334e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "MOS",
+        "traded_notional": 0.0,
+        "weight": 0.0021621603189354638,
+        "z": -1.1638326114851276
+      },
+      {
+        "alpha": -5.058543566026115e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "HOOD",
+        "traded_notional": 0.0,
+        "weight": 0.002122523698886632,
+        "z": -1.2102524040224707
+      },
+      {
+        "alpha": 5.830863071391073e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "ACGL",
+        "traded_notional": 0.0,
+        "weight": 0.0020929588176772105,
+        "z": 0.3840153105963145
+      },
+      {
+        "alpha": -1.7193221659563042e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "HAL",
+        "traded_notional": 0.0,
+        "weight": -0.0020841066579916504,
+        "z": -0.9014469821829024
+      },
+      {
+        "alpha": 3.378029817760622e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CFG",
+        "traded_notional": 0.0,
+        "weight": -0.0020653554755162584,
+        "z": 0.2506357221359995
+      },
+      {
+        "alpha": 4.3240688541300577e-07,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "IR",
+        "traded_notional": 0.0,
+        "weight": 0.002018033267374152,
+        "z": 0.02340667590361324
+      },
+      {
+        "alpha": -1.0078289962789604e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "SCHW",
+        "traded_notional": 0.0,
+        "weight": -0.0019932394688811773,
+        "z": -0.0621923791634107
+      },
+      {
+        "alpha": -1.228373457459141e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "CMCSA",
+        "traded_notional": 0.0,
+        "weight": 0.0019502820705572187,
+        "z": -0.4895571204868614
+      },
+      {
+        "alpha": 3.131861608422768e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "KDP",
+        "traded_notional": 0.0,
+        "weight": 0.0019159322877141832,
+        "z": 0.18527804451100624
+      },
+      {
+        "alpha": -2.7804440843133025e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "LEN",
+        "traded_notional": 0.0,
+        "weight": 0.001900277186777548,
+        "z": -0.9555735015764885
+      },
+      {
+        "alpha": -5.262686881918166e-07,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "MDLZ",
+        "traded_notional": 0.0,
+        "weight": 0.001813956851150776,
+        "z": -0.0438385904873694
+      },
+      {
+        "alpha": 2.0673106395025025e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "UDR",
+        "traded_notional": 0.0,
+        "weight": 0.001798283070484184,
+        "z": 0.1495726492920635
+      },
+      {
+        "alpha": -3.916550750057504e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "OXY",
+        "traded_notional": 0.0,
+        "weight": 0.0017459516549194472,
+        "z": -0.2822693718842245
+      },
+      {
+        "alpha": -3.1782148824149424e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "ARE",
+        "traded_notional": 0.0,
+        "weight": 0.0017273315326958305,
+        "z": -1.0438965109428362
+      },
+      {
+        "alpha": -2.447263102091112e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "FIS",
+        "traded_notional": 0.0,
+        "weight": -0.0017129006144967667,
+        "z": -1.2181716020635494
+      },
+      {
+        "alpha": -2.1302206459830132e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "PYPL",
+        "traded_notional": 0.0,
+        "weight": 0.0016889946768383751,
+        "z": -0.7095072079679755
+      },
+      {
+        "alpha": -6.0532256449235736e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "F",
+        "traded_notional": 0.0,
+        "weight": -0.001657963834919979,
+        "z": -0.24651909063312374
+      },
+      {
+        "alpha": -1.0744719115997956e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "SLB",
+        "traded_notional": 0.0,
+        "weight": 0.0016141023876828922,
+        "z": -0.40932902931928694
+      },
+      {
+        "alpha": -2.733214969022587e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "NFLX",
+        "traded_notional": 0.0,
+        "weight": -0.001587777046296792,
+        "z": -1.1878456206370083
+      },
+      {
+        "alpha": 2.225572781361971e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "REG",
+        "traded_notional": 0.0,
+        "weight": 0.001578933909022876,
+        "z": 0.1845538508732918
+      },
+      {
+        "alpha": -4.8478266503128596e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "DVN",
+        "traded_notional": 0.0,
+        "weight": -0.0014687779797218773,
+        "z": -0.3119064570939604
+      },
+      {
+        "alpha": -1.5726795651453632e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "MKC",
+        "traded_notional": 0.0,
+        "weight": -0.0014104727242513064,
+        "z": -0.7298655272453989
+      },
+      {
+        "alpha": -3.179561031539402e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CVNA",
+        "traded_notional": 0.0,
+        "weight": -0.001366315067534624,
+        "z": -0.8962614465719336
+      },
+      {
+        "alpha": -3.972470289974568e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "AOS",
+        "traded_notional": 0.0,
+        "weight": -0.0013045800911540197,
+        "z": -0.26380619317834314
+      },
+      {
+        "alpha": -2.7149318129456118e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "NKE",
+        "traded_notional": 0.0,
+        "weight": -0.0012879214467338568,
+        "z": -1.2122437818738916
+      },
+      {
+        "alpha": -4.175437104517283e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "MGM",
+        "traded_notional": 0.0,
+        "weight": 0.0012744045399705646,
+        "z": -0.14033507550948193
+      },
+      {
+        "alpha": 9.102823479757215e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "HPQ",
+        "traded_notional": 0.0,
+        "weight": 0.0011483452775575649,
+        "z": 0.2570959512303972
+      },
+      {
+        "alpha": -1.1460091187444111e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "PCG",
+        "traded_notional": 0.0,
+        "weight": -0.0011461494416164274,
+        "z": -0.3864608810202674
+      },
+      {
+        "alpha": -2.4040252299925147e-05,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "CPRT",
+        "traded_notional": 0.0,
+        "weight": -0.0011396064323803217,
+        "z": -1.029329954605834
+      },
+      {
+        "alpha": 1.588402457008829e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "RF",
+        "traded_notional": 0.0,
+        "weight": -0.001130184907380438,
+        "z": 0.13920782904226747
+      },
+      {
+        "alpha": 5.942072651624684e-06,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "FAST",
+        "traded_notional": 0.0,
+        "weight": 0.0010848331228971587,
+        "z": 0.40487659108801094
+      },
+      {
+        "alpha": 1.1483816098386777e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "CSX",
+        "traded_notional": 0.0,
+        "weight": 0.0010506707702188554,
+        "z": 0.7047489902799249
+      },
+      {
+        "alpha": 3.6568081658807747e-06,
+        "reason": "no trade",
+        "side": "short",
+        "ticker": "MNST",
+        "traded_notional": 0.0,
+        "weight": -0.0009933329185684732,
+        "z": 0.1915647130493009
+      },
+      {
+        "alpha": -1.913307904283635e-05,
+        "reason": "no trade",
+        "side": "long",
+        "ticker": "CCL",
+        "traded_notional": 0.0,
+        "weight": 0.0007015338222284806,
+        "z": -0.6239500117612341
+      }
+    ],
+    "net": -0.0019157559265653643,
+    "reason": null
+  },
+  "book_as_of": "2026-10-28T00:00:00",
+  "breadth": {
+    "dropped_no_risk": [
+      {
+        "reason": "no specific variance",
+        "ticker": "FDXF"
+      },
+      {
+        "reason": "no specific variance",
+        "ticker": "HONA"
+      }
+    ],
+    "full_book_label": "the full 499-name book's, before the floor",
+    "kept_label": "the book's effective breadth",
+    "n_dropped_no_risk": 2,
+    "n_eff_full_book": 143.01526851686836,
+    "n_eff_kept": 143.01526851686836
+  },
+  "bridge": {
+    "arrived_without_order": [],
+    "book": 196,
+    "changed": 0,
+    "close": "2026-10-28T00:00:00",
+    "did_not_fill": null,
+    "exited": 0,
+    "exited_without_order": [],
+    "filled": null,
+    "held_after": null,
+    "held_before": 196,
+    "holds": true,
+    "identities": [
+      {
+        "holds": true,
+        "left": 196,
+        "name": "in both + opened = the book",
+        "right": 196
+      },
+      {
+        "holds": true,
+        "left": 196,
+        "name": "in both + exited = held before trading",
+        "right": 196
+      },
+      {
+        "holds": true,
+        "left": 196,
+        "name": "changed + the continuing legs not sent = in both",
+        "right": 196
+      },
+      {
+        "holds": true,
+        "left": 0,
+        "name": "changed + opened + exited - the legs not sent = orders sent",
+        "right": 0
+      }
+    ],
+    "in_both": 196,
+    "not_sent_continuing": 196,
+    "opened": 0,
+    "opened_without_order": [],
+    "orders_sent": 0,
+    "previous_reversals_pending": [],
+    "removed_without_order": [],
+    "reversals_pending": [],
+    "seen_by": "evening",
+    "skipped_continuing": [
+      {
+        "reason": "",
+        "ticker": "ACGL"
+      },
+      {
+        "reason": "",
+        "ticker": "ADM"
+      },
+      {
+        "reason": "",
+        "ticker": "AEE"
+      },
+      {
+        "reason": "",
+        "ticker": "AEP"
+      },
+      {
+        "reason": "",
+        "ticker": "AES"
+      },
+      {
+        "reason": "",
+        "ticker": "AKAM"
+      },
+      {
+        "reason": "",
+        "ticker": "ALB"
+      },
+      {
+        "reason": "",
+        "ticker": "AMCR"
+      },
+      {
+        "reason": "",
+        "ticker": "ANET"
+      },
+      {
+        "reason": "",
+        "ticker": "AOS"
+      },
+      {
+        "reason": "",
+        "ticker": "APO"
+      },
+      {
+        "reason": "",
+        "ticker": "APTV"
+      },
+      {
+        "reason": "",
+        "ticker": "ARE"
+      },
+      {
+        "reason": "",
+        "ticker": "AWK"
+      },
+      {
+        "reason": "",
+        "ticker": "AXP"
+      },
+      {
+        "reason": "",
+        "ticker": "BALL"
+      },
+      {
+        "reason": "",
+        "ticker": "BAX"
+      },
+      {
+        "reason": "",
+        "ticker": "BDX"
+      },
+      {
+        "reason": "",
+        "ticker": "BF.B"
+      },
+      {
+        "reason": "",
+        "ticker": "BG"
+      },
+      {
+        "reason": "",
+        "ticker": "BIIB"
+      },
+      {
+        "reason": "",
+        "ticker": "BKNG"
+      },
+      {
+        "reason": "",
+        "ticker": "BMY"
+      },
+      {
+        "reason": "",
+        "ticker": "BNY"
+      },
+      {
+        "reason": "",
+        "ticker": "C"
+      },
+      {
+        "reason": "",
+        "ticker": "CAH"
+      },
+      {
+        "reason": "",
+        "ticker": "CBRE"
+      },
+      {
+        "reason": "",
+        "ticker": "CCL"
+      },
+      {
+        "reason": "",
+        "ticker": "CF"
+      },
+      {
+        "reason": "",
+        "ticker": "CFG"
+      },
+      {
+        "reason": "",
+        "ticker": "CHD"
+      },
+      {
+        "reason": "",
+        "ticker": "CHRW"
+      },
+      {
+        "reason": "",
+        "ticker": "CHTR"
+      },
+      {
+        "reason": "",
+        "ticker": "CL"
+      },
+      {
+        "reason": "",
+        "ticker": "CMCSA"
+      },
+      {
+        "reason": "",
+        "ticker": "CMG"
+      },
+      {
+        "reason": "",
+        "ticker": "CNP"
+      },
+      {
+        "reason": "",
+        "ticker": "COIN"
+      },
+      {
+        "reason": "",
+        "ticker": "COO"
+      },
+      {
+        "reason": "",
+        "ticker": "CPRT"
+      },
+      {
+        "reason": "",
+        "ticker": "CRH"
+      },
+      {
+        "reason": "",
+        "ticker": "CSCO"
+      },
+      {
+        "reason": "",
+        "ticker": "CSGP"
+      },
+      {
+        "reason": "",
+        "ticker": "CSX"
+      },
+      {
+        "reason": "",
+        "ticker": "CTAS"
+      },
+      {
+        "reason": "",
+        "ticker": "CVNA"
+      },
+      {
+        "reason": "",
+        "ticker": "CVS"
+      },
+      {
+        "reason": "",
+        "ticker": "D"
+      },
+      {
+        "reason": "",
+        "ticker": "DDOG"
+      },
+      {
+        "reason": "",
+        "ticker": "DECK"
+      },
+      {
+        "reason": "",
+        "ticker": "DG"
+      },
+      {
+        "reason": "",
+        "ticker": "DLTR"
+      },
+      {
+        "reason": "",
+        "ticker": "DOC"
+      },
+      {
+        "reason": "",
+        "ticker": "DOW"
+      },
+      {
+        "reason": "",
+        "ticker": "DUK"
+      },
+      {
+        "reason": "",
+        "ticker": "DVA"
+      },
+      {
+        "reason": "",
+        "ticker": "DVN"
+      },
+      {
+        "reason": "",
+        "ticker": "DXCM"
+      },
+      {
+        "reason": "",
+        "ticker": "EBAY"
+      },
+      {
+        "reason": "",
+        "ticker": "ECHO"
+      },
+      {
+        "reason": "",
+        "ticker": "ED"
+      },
+      {
+        "reason": "",
+        "ticker": "EIX"
+      },
+      {
+        "reason": "",
+        "ticker": "EL"
+      },
+      {
+        "reason": "",
+        "ticker": "EVRG"
+      },
+      {
+        "reason": "",
+        "ticker": "EW"
+      },
+      {
+        "reason": "",
+        "ticker": "EXC"
+      },
+      {
+        "reason": "",
+        "ticker": "EXR"
+      },
+      {
+        "reason": "",
+        "ticker": "F"
+      },
+      {
+        "reason": "",
+        "ticker": "FAST"
+      },
+      {
+        "reason": "",
+        "ticker": "FE"
+      },
+      {
+        "reason": "",
+        "ticker": "FIS"
+      },
+      {
+        "reason": "",
+        "ticker": "FLEX"
+      },
+      {
+        "reason": "",
+        "ticker": "FOX"
+      },
+      {
+        "reason": "",
+        "ticker": "FOXA"
+      },
+      {
+        "reason": "",
+        "ticker": "FRT"
+      },
+      {
+        "reason": "",
+        "ticker": "GEHC"
+      },
+      {
+        "reason": "",
+        "ticker": "GEN"
+      },
+      {
+        "reason": "",
+        "ticker": "GILD"
+      },
+      {
+        "reason": "",
+        "ticker": "GIS"
+      },
+      {
+        "reason": "",
+        "ticker": "GLW"
+      },
+      {
+        "reason": "",
+        "ticker": "GM"
+      },
+      {
+        "reason": "",
+        "ticker": "GPN"
+      },
+      {
+        "reason": "",
+        "ticker": "GRMN"
+      },
+      {
+        "reason": "",
+        "ticker": "HAL"
+      },
+      {
+        "reason": "",
+        "ticker": "HAS"
+      },
+      {
+        "reason": "",
+        "ticker": "HBAN"
+      },
+      {
+        "reason": "",
+        "ticker": "HOOD"
+      },
+      {
+        "reason": "",
+        "ticker": "HPE"
+      },
+      {
+        "reason": "",
+        "ticker": "HPQ"
+      },
+      {
+        "reason": "",
+        "ticker": "HRL"
+      },
+      {
+        "reason": "",
+        "ticker": "HSIC"
+      },
+      {
+        "reason": "",
+        "ticker": "HST"
+      },
+      {
+        "reason": "",
+        "ticker": "IBKR"
+      },
+      {
+        "reason": "",
+        "ticker": "IFF"
+      },
+      {
+        "reason": "",
+        "ticker": "INCY"
+      },
+      {
+        "reason": "",
+        "ticker": "INTC"
+      },
+      {
+        "reason": "",
+        "ticker": "IP"
+      },
+      {
+        "reason": "",
+        "ticker": "IR"
+      },
+      {
+        "reason": "",
+        "ticker": "IVZ"
+      },
+      {
+        "reason": "",
+        "ticker": "JBL"
+      },
+      {
+        "reason": "",
+        "ticker": "KDP"
+      },
+      {
+        "reason": "",
+        "ticker": "KEY"
+      },
+      {
+        "reason": "",
+        "ticker": "KEYS"
+      },
+      {
+        "reason": "",
+        "ticker": "KHC"
+      },
+      {
+        "reason": "",
+        "ticker": "KIM"
+      },
+      {
+        "reason": "",
+        "ticker": "KLAC"
+      },
+      {
+        "reason": "",
+        "ticker": "KMB"
+      },
+      {
+        "reason": "",
+        "ticker": "KO"
+      },
+      {
+        "reason": "",
+        "ticker": "KR"
+      },
+      {
+        "reason": "",
+        "ticker": "KVUE"
+      },
+      {
+        "reason": "",
+        "ticker": "LEN"
+      },
+      {
+        "reason": "",
+        "ticker": "LULU"
+      },
+      {
+        "reason": "",
+        "ticker": "LUV"
+      },
+      {
+        "reason": "",
+        "ticker": "LVS"
+      },
+      {
+        "reason": "",
+        "ticker": "LYB"
+      },
+      {
+        "reason": "",
+        "ticker": "MCHP"
+      },
+      {
+        "reason": "",
+        "ticker": "MDLZ"
+      },
+      {
+        "reason": "",
+        "ticker": "MET"
+      },
+      {
+        "reason": "",
+        "ticker": "MGM"
+      },
+      {
+        "reason": "",
+        "ticker": "MKC"
+      },
+      {
+        "reason": "",
+        "ticker": "MNST"
+      },
+      {
+        "reason": "",
+        "ticker": "MOS"
+      },
+      {
+        "reason": "",
+        "ticker": "MRVL"
+      },
+      {
+        "reason": "",
+        "ticker": "NCLH"
+      },
+      {
+        "reason": "",
+        "ticker": "NEE"
+      },
+      {
+        "reason": "",
+        "ticker": "NEM"
+      },
+      {
+        "reason": "",
+        "ticker": "NFLX"
+      },
+      {
+        "reason": "",
+        "ticker": "NI"
+      },
+      {
+        "reason": "",
+        "ticker": "NKE"
+      },
+      {
+        "reason": "",
+        "ticker": "NRG"
+      },
+      {
+        "reason": "",
+        "ticker": "NTRS"
+      },
+      {
+        "reason": "",
+        "ticker": "NVDA"
+      },
+      {
+        "reason": "",
+        "ticker": "NWSA"
+      },
+      {
+        "reason": "",
+        "ticker": "ON"
+      },
+      {
+        "reason": "",
+        "ticker": "ORLY"
+      },
+      {
+        "reason": "",
+        "ticker": "OXY"
+      },
+      {
+        "reason": "",
+        "ticker": "PCAR"
+      },
+      {
+        "reason": "",
+        "ticker": "PCG"
+      },
+      {
+        "reason": "",
+        "ticker": "PEG"
+      },
+      {
+        "reason": "",
+        "ticker": "PEP"
+      },
+      {
+        "reason": "",
+        "ticker": "PFE"
+      },
+      {
+        "reason": "",
+        "ticker": "PFG"
+      },
+      {
+        "reason": "",
+        "ticker": "PKG"
+      },
+      {
+        "reason": "",
+        "ticker": "PLD"
+      },
+      {
+        "reason": "",
+        "ticker": "PNC"
+      },
+      {
+        "reason": "",
+        "ticker": "PNW"
+      },
+      {
+        "reason": "",
+        "ticker": "PODD"
+      },
+      {
+        "reason": "",
+        "ticker": "PPG"
+      },
+      {
+        "reason": "",
+        "ticker": "PPL"
+      },
+      {
+        "reason": "",
+        "ticker": "PRU"
+      },
+      {
+        "reason": "",
+        "ticker": "PYPL"
+      },
+      {
+        "reason": "",
+        "ticker": "RDDT"
+      },
+      {
+        "reason": "",
+        "ticker": "REG"
+      },
+      {
+        "reason": "",
+        "ticker": "RF"
+      },
+      {
+        "reason": "",
+        "ticker": "ROL"
+      },
+      {
+        "reason": "",
+        "ticker": "SBAC"
+      },
+      {
+        "reason": "",
+        "ticker": "SCHW"
+      },
+      {
+        "reason": "",
+        "ticker": "SLB"
+      },
+      {
+        "reason": "",
+        "ticker": "SMCI"
+      },
+      {
+        "reason": "",
+        "ticker": "SO"
+      },
+      {
+        "reason": "",
+        "ticker": "SOLV"
+      },
+      {
+        "reason": "",
+        "ticker": "SPG"
+      },
+      {
+        "reason": "",
+        "ticker": "SRE"
+      },
+      {
+        "reason": "",
+        "ticker": "STLD"
+      },
+      {
+        "reason": "",
+        "ticker": "STT"
+      },
+      {
+        "reason": "",
+        "ticker": "STX"
+      },
+      {
+        "reason": "",
+        "ticker": "STZ"
+      },
+      {
+        "reason": "",
+        "ticker": "SW"
+      },
+      {
+        "reason": "",
+        "ticker": "SWK"
+      },
+      {
+        "reason": "",
+        "ticker": "SYF"
+      },
+      {
+        "reason": "",
+        "ticker": "SYY"
+      },
+      {
+        "reason": "",
+        "ticker": "TECH"
+      },
+      {
+        "reason": "",
+        "ticker": "TEL"
+      },
+      {
+        "reason": "",
+        "ticker": "TFC"
+      },
+      {
+        "reason": "",
+        "ticker": "TGT"
+      },
+      {
+        "reason": "",
+        "ticker": "TPR"
+      },
+      {
+        "reason": "",
+        "ticker": "TRV"
+      },
+      {
+        "reason": "",
+        "ticker": "TSN"
+      },
+      {
+        "reason": "",
+        "ticker": "TXT"
+      },
+      {
+        "reason": "",
+        "ticker": "UDR"
+      },
+      {
+        "reason": "",
+        "ticker": "UNP"
+      },
+      {
+        "reason": "",
+        "ticker": "USB"
+      },
+      {
+        "reason": "",
+        "ticker": "VICI"
+      },
+      {
+        "reason": "",
+        "ticker": "VTR"
+      },
+      {
+        "reason": "",
+        "ticker": "VTRS"
+      },
+      {
+        "reason": "",
+        "ticker": "VZ"
+      },
+      {
+        "reason": "",
+        "ticker": "WAB"
+      },
+      {
+        "reason": "",
+        "ticker": "WDC"
+      },
+      {
+        "reason": "",
+        "ticker": "WEC"
+      },
+      {
+        "reason": "",
+        "ticker": "WFC"
+      },
+      {
+        "reason": "",
+        "ticker": "WMT"
+      },
+      {
+        "reason": "",
+        "ticker": "WRB"
+      },
+      {
+        "reason": "",
+        "ticker": "WY"
+      },
+      {
+        "reason": "",
+        "ticker": "WYNN"
+      },
+      {
+        "reason": "",
+        "ticker": "XEL"
+      },
+      {
+        "reason": "",
+        "ticker": "ZTS"
+      }
+    ],
+    "under_minimum": 0,
+    "under_minimum_tickers": [],
+    "under_minimum_usd": 250.0,
+    "unexplained": []
+  },
+  "construction": "min 20 shares (iterated to a fixed point)",
+  "dry_run": false,
+  "expected_next_by": "2026-10-30T01:30:00Z",
+  "exposures": {
+    "realized_market_beta": 0.01879789363744936,
+    "realized_market_beta_shrunk": 0.010374359308025879,
+    "residual_exposure_shrunk": 0.007428070791247366,
+    "residual_exposure_winsor": 0.019517275205706175
+  },
+  "exposures_after_hedge": {
+    "beta": -0.005502315114074129,
+    "liquidity": -0.0007756691437714016,
+    "market": -0.0019157559265653543,
+    "momentum": 0.02000209357098963,
+    "resid_vol": -0.017179435960598184,
+    "reversal": -0.03408878182270237,
+    "sector_10": -0.00019283059511118858,
+    "sector_15": -0.0011673277089653154,
+    "sector_20": 0.0013248193774740083,
+    "sector_25": 0.000406533032422959,
+    "sector_30": 0.0008423421768244642,
+    "sector_35": 0.0007602285776289043,
+    "sector_40": -0.0006672800470729151,
+    "sector_45": -0.0021011952761106484,
+    "sector_50": -0.0004034255878921874,
+    "sector_55": -0.0010318166971369086,
+    "size": -0.0033428596668114473
+  },
+  "exposures_before_hedge": {
+    "beta": -0.005502315114074164,
+    "liquidity": -0.0007756691437714267,
+    "market": -0.0019157559265653486,
+    "momentum": 0.020002093570989685,
+    "resid_vol": -0.017179435960598174,
+    "reversal": -0.034088781822702384,
+    "sector_10": -0.00019283059511118858,
+    "sector_15": -0.001167327708965318,
+    "sector_20": 0.0013248193774740135,
+    "sector_25": 0.00040653303242295987,
+    "sector_30": 0.0008423421768244659,
+    "sector_35": 0.0007602285776289013,
+    "sector_40": -0.0006672800470729056,
+    "sector_45": -0.00210119527611065,
+    "sector_50": -0.0004034255878921883,
+    "sector_55": -0.0010318166971369138,
+    "size": -0.0033428596668114534
+  },
+  "generated_at": "2026-10-28T22:48:26.685211Z",
+  "hedge": {
+    "idio_share_after_fmp": 0.9870307059151903,
+    "max_abs_exposure_after_fmp": 0.03408878182270237,
+    "post_hedge_idio_share": 1.0,
+    "post_hedge_max_abs_exposure": 2.42861286636753e-15
+  },
+  "positions": {
+    "matches": false,
+    "max_abs_drift": 1240.7253689999998,
+    "missing_at_broker": [],
+    "missing_in_store": [],
+    "n_broker": 196,
+    "n_store": 196,
+    "note": "mismatch: the account holds 196 name(s) and the store 196: 195 name(s) drifted, up to $1,241",
+    "source": "alpaca paper account"
+  },
+  "reconciliation": {
+    "expected_cost_bps": 1.4713533791844147,
+    "filled_notional": 0.0,
+    "full_risk": {
+      "forecast_annual_vol": 0.028349886295059603,
+      "gross": 1.0070122755141762,
+      "idio_share": 0.9870307059151903,
+      "max_abs_exposure": 0.03408878182270237,
+      "n_eff": 143.01526851686836,
+      "n_names": 494,
+      "net": -0.0019157559265653643
+    },
+    "intended_notional": 0.0,
+    "realized_annual_vol": null,
+    "sent_notional": 0.0,
+    "traded_risk": {
+      "forecast_annual_vol": 0.028349886295059603,
+      "gross": 1.0070122755141762,
+      "idio_share": 0.9870307059151903,
+      "max_abs_exposure": 0.03408878182270237,
+      "max_weight": 0.016231264270152583,
+      "n_eff": 143.01526851686836,
+      "net": -0.0019157559265653643,
+      "top_variance_shares": [
+        {
+          "ticker": "STX",
+          "variance_share": 0.08720022139550165
+        },
+        {
+          "ticker": "MRVL",
+          "variance_share": 0.07010231886298983
+        },
+        {
+          "ticker": "INTC",
+          "variance_share": 0.052026292574041615
+        },
+        {
+          "ticker": "WDC",
+          "variance_share": 0.04766797823030739
+        },
+        {
+          "ticker": "DDOG",
+          "variance_share": 0.03330503097457095
+        }
+      ],
+      "variance_share_cap_binds": false
+    },
+    "unexplained_adjustment": 0.0,
+    "unsent_notional": 0.0
+  },
+  "run_status": {
+    "cadence": {
+      "anchor": "2026-10-23",
+      "anchor_session": "2026-10-23",
+      "day": "hold",
+      "held": true,
+      "k": 21,
+      "label": "hold day, next rebalance 2026-11-23",
+      "missed": [],
+      "next_rebalance": "2026-11-23",
+      "offset": 3,
+      "pending": false,
+      "scheduled": false,
+      "sessions_since": 3
+    },
+    "catch_up": false,
+    "catch_up_sessions": [
+      "2026-10-28"
+    ],
+    "cost_label": "hold",
+    "detail": "",
+    "establishment": false,
+    "failing_inputs": [],
+    "flags": [
+      {
+        "kind": "attribution",
+        "n_done": 22,
+        "n_refinalized": 0,
+        "n_stored": 1,
+        "outcome": "stored"
+      }
+    ],
+    "notify_status": "pending",
+    "snapshot": null,
+    "splits": [],
+    "status": "ok",
+    "worst_input": null,
+    "worst_sessions_behind": null
+  },
+  "schema_version": 1,
+  "store": "postgres/efb",
+  "target_close": "2026-10-28T00:00:00",
+  "monthly": {
+    "anchor": {
+      "close": "2026-10-23",
+      "day": "cadence",
+      "account_read": "2026-10-28"
+    },
+    "cadence_strip": {
+      "k": 21,
+      "offset": 3,
+      "sessions_since": 3,
+      "last_rebalance": "2026-10-23",
+      "next_rebalance": "2026-11-23",
+      "guard": {
+        "worst_abs_exposure": 0.03408878182270237,
+        "exposure_after": null,
+        "threshold": null,
+        "fired": false,
+        "ran": false
+      }
+    },
+    "rebalance_card": {
+      "close": "2026-10-23",
+      "orders": 224,
+      "notional": 546256.6863849056,
+      "pct_nav": 0.5575916605773696,
+      "expected_cost_bps": 4.761868917990796,
+      "expected_cost_usd": 466.50675037848663,
+      "realized_cost_bps": 10.92627853045127,
+      "legs_total": 224,
+      "legs_complete": 208,
+      "legs_incomplete": 16,
+      "dollars_owed": 5534.479225200135
+    },
+    "bridge_anchor": {
+      "before_dollars": 973233.813683,
+      "after_dollars": 986541.276822,
+      "opened": 50,
+      "exited": 28,
+      "resized": 142,
+      "flipped": 4,
+      "under_minimum": 0,
+      "opened_usd": 225691.389562,
+      "exited_usd": 129256.584332,
+      "resized_usd": -86137.036968,
+      "flipped_usd": 3009.6948770000004,
+      "flip_rows": [
+        {
+          "ticker": "GEHC",
+          "from_side": "short",
+          "to_side": "long",
+          "close_dollars": 2012.799992,
+          "close_filled": "2026-10-23",
+          "open_dollars": 2328.08000097928,
+          "open_filled": "2026-10-26",
+          "now_dollars": 2489.36776,
+          "on_target_side": true,
+          "complete": true
+        },
+        {
+          "ticker": "VZ",
+          "from_side": "long",
+          "to_side": "short",
+          "close_dollars": 961.389640654958,
+          "close_filled": "2026-10-23",
+          "open_dollars": 2417.710008,
+          "open_filled": "2026-10-26",
+          "now_dollars": -2431.688,
+          "on_target_side": true,
+          "complete": true
+        },
+        {
+          "ticker": "F",
+          "from_side": "long",
+          "to_side": "short",
+          "close_dollars": 637.329526227199,
+          "close_filled": "2026-10-23",
+          "open_dollars": 1609.030044,
+          "open_filled": "2026-10-26",
+          "now_dollars": -1624.26,
+          "on_target_side": true,
+          "complete": true
+        },
+        {
+          "ticker": "CCL",
+          "from_side": "short",
+          "to_side": "long",
+          "close_dollars": 605.470009,
+          "close_filled": "2026-10-23",
+          "open_dollars": 677.69999998745,
+          "open_filled": "2026-10-26",
+          "now_dollars": 687.272727,
+          "on_target_side": true,
+          "complete": true
+        }
+      ],
+      "complete_flips": 4,
+      "identities": [
+        {
+          "name": "gross before + opened - exited + resized + flipped",
+          "left": 986541.2768219999,
+          "right": 986541.276822,
+          "holds": true
+        }
+      ],
+      "holds": true
+    },
+    "drift": {
+      "half_turnover_pct": 0.015371948742592064,
+      "half_turnover_usd": 15059.46085117572,
+      "traded_usd": 30118.92170235144,
+      "estimated_cost_usd": 9.949892961522991,
+      "largest": [
+        {
+          "ticker": "KLAC",
+          "weight_now": -0.0107399260497051,
+          "weight_target": -0.00955134555283852,
+          "usd": -1164.4184976650515
+        },
+        {
+          "ticker": "CHRW",
+          "weight_now": -0.00951747552534316,
+          "weight_target": -0.0106675160936857,
+          "usd": 1126.6620261510166
+        },
+        {
+          "ticker": "FLEX",
+          "weight_now": -0.00904573578767292,
+          "weight_target": -0.00795116687832382,
+          "usd": -1072.3180200038407
+        },
+        {
+          "ticker": "CSGP",
+          "weight_now": -0.003866317440779,
+          "weight_target": -0.0047218465380814,
+          "usd": 838.137516824343
+        },
+        {
+          "ticker": "CMG",
+          "weight_now": 0.00787389223051338,
+          "weight_target": 0.00703214104575273,
+          "usd": 824.6396878888019
+        }
+      ]
+    },
+    "since_anchor": {
+      "trades_by_reason": [
+        {
+          "reason": "rebalance",
+          "legs": 224,
+          "usd": 546256.686384906
+        },
+        {
+          "reason": "reversal second leg",
+          "legs": 12,
+          "usd": 10672.478379763503
+        },
+        {
+          "reason": "guard",
+          "legs": 167,
+          "usd": 9973.866493178062
+        },
+        {
+          "reason": "carried leg",
+          "legs": 1,
+          "usd": 269.368978165385
+        }
+      ]
+    },
+    "tonight": {
+      "forced_legs": 1,
+      "forced_usd": 269.37
+    },
+    "rebalance_dates": [
+      "2026-10-23"
+    ]
+  }
+}
