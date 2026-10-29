@@ -506,9 +506,12 @@ export interface FlipRow {
   from_side: string;
   to_side: string;
   close_dollars: number | null;
+  /** The close the leg was priced from, and the day it actually filled. */
   close_filled: string | null;
+  close_filled_at?: string | null;
   open_dollars: number | null;
   open_filled: string | null;
+  open_filled_at?: string | null;
   now_dollars: number;
   on_target_side: boolean;
   complete: boolean;
@@ -534,6 +537,13 @@ export interface MonthlyBlock {
   rebalance_card?: {
     close: string | null;
     orders?: number;
+    /** Legs meant to be sent, and how many of those filled. */
+    sent_legs?: number;
+    filled_legs?: number;
+    /** Legs under the $250 minimum: built, never sent, and not owed. */
+    under_minimum_legs?: number;
+    under_minimum_usd?: number;
+    skipped_other_legs?: number;
     notional?: number;
     pct_nav?: number | null;
     expected_cost_bps?: number | null;

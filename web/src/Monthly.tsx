@@ -10,7 +10,7 @@
 // That is every document published before the block existed, and the page has to
 // look exactly as it did then: the nightly panels still carry those evenings.
 
-import { dateOnly, dollars, exposure, percent, signedDollars } from "./format";
+import { dateOnly, dollars, percent, signedDollars } from "./format";
 import type { MonthlyBlock } from "./types";
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
@@ -59,11 +59,16 @@ export function CadenceStrip({ monthly }: { monthly: MonthlyBlock }) {
         <Stat label="next rebalance" value={dateOnly(strip.next_rebalance) ?? "-"} />
         <Stat
           label="drift guard"
-          value={`${exposure(guard.worst_abs_exposure)} worst`}
+          value={
+            guard.worst_abs_exposure === null ||
+            guard.worst_abs_exposure === undefined
+              ? "-"
+              : `${percent(guard.worst_abs_exposure)} of ${percent(guard.threshold)}`
+          }
           detail={
             guard.threshold === null || guard.threshold === undefined
-              ? `threshold not recorded, ${fired}`
-              : `threshold ${exposure(guard.threshold)}, ${fired}`
+              ? `threshold not set, ${fired}`
+              : `${fired}`
           }
         />
       </dl>
@@ -102,8 +107,21 @@ export function RebalanceCard({ monthly }: { monthly: MonthlyBlock }) {
         />
         <Stat
           label="completion"
-          value={`${card.legs_complete ?? 0} of ${card.legs_total ?? 0} legs`}
-          detail={`${dollars(card.dollars_owed)} still owed`}
+          value={`${card.filled_legs ?? card.legs_complete ?? 0} of ${
+            card.sent_legs ?? card.legs_complete ?? 0
+          } sent legs filled`}
+          detail={[
+            (card.under_minimum_legs ?? 0) > 0
+              ? `${card.under_minimum_legs} under $250 not sent (${dollars(
+                  card.under_minimum_usd,
+                )})`
+              : null,
+            (card.dollars_owed ?? 0) > 0
+              ? `${dollars(card.dollars_owed)} owed on sent legs`
+              : "nothing owed",
+          ]
+            .filter(Boolean)
+            .join("; ")}
         />
       </dl>
     </Card>
@@ -114,6 +132,14 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
   const bridge = monthly.bridge_anchor;
   if (!bridge) return null;
   const flips = bridge.flip_rows ?? [];
+  // The date a leg carries is the fill's own when the store has one, and the close
+  // it was priced from when it does not. The column says which, because a reader who
+  // takes a close date for a fill date reads two days of a flip as one.
+  const legsFilled = flips.some(
+    (flip) => flip.close_filled_at || flip.open_filled_at,
+  );
+  const legDate = (filledAt: string | null | undefined, close: string | null): string =>
+    dateOnly(filledAt ?? close) ?? "-";
   return (
     <Card title="the rebalance, from the account before it to the account now">
       <dl data-flips={bridge.flipped} className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
@@ -137,8 +163,12 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
             <tr>
               <th className="font-medium">name</th>
               <th className="font-medium">side</th>
-              <th className="font-medium text-right">closed</th>
-              <th className="font-medium text-right">opened</th>
+              <th className="font-medium text-right">
+                closed leg {legsFilled ? "(filled)" : "(order close)"}
+              </th>
+              <th className="font-medium text-right">
+                opened leg {legsFilled ? "(filled)" : "(order close)"}
+              </th>
               <th className="font-medium text-right">now</th>
               <th className="font-medium">state</th>
             </tr>
@@ -152,11 +182,17 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
                 </td>
                 <td className="text-right">
                   {dollars(flip.close_dollars)}
-                  <span className="text-slate-500"> {dateOnly(flip.close_filled)}</span>
+                  <span className="text-slate-500">
+                    {" "}
+                    {legDate(flip.close_filled_at, flip.close_filled)}
+                  </span>
                 </td>
                 <td className="text-right">
                   {dollars(flip.open_dollars)}
-                  <span className="text-slate-500"> {dateOnly(flip.open_filled)}</span>
+                  <span className="text-slate-500">
+                    {" "}
+                    {legDate(flip.open_filled_at, flip.open_filled)}
+                  </span>
                 </td>
                 <td className="text-right">{signedDollars(flip.now_dollars)}</td>
                 <td>{flip.complete ? "complete" : "still owed"}</td>
@@ -257,11 +293,45 @@ export function TonightLine({ monthly }: { monthly: MonthlyBlock }) {
   );
 }
 
+/** The fields a panel cannot be drawn without, in the order the page reads them. */
+const REQUIRED: Array<[string, (monthly: MonthlyBlock) => boolean]> = [
+  ["anchor", (monthly) => Boolean(monthly.anchor?.close)],
+  ["cadence_strip", (monthly) => Boolean(monthly.cadence_strip)],
+  ["rebalance_card", (monthly) => Boolean(monthly.rebalance_card?.close)],
+  [
+    "bridge_anchor",
+    (monthly) => Boolean(monthly.bridge_anchor?.flip_rows),
+  ],
+  ["drift", (monthly) => Boolean(monthly.drift?.largest)],
+  ["since_anchor", (monthly) => Boolean(monthly.since_anchor?.trades_by_reason)],
+];
+
+/**
+ * What the block is missing, so a partial one is visible rather than silent.
+ *
+ * The rule the panels follow is render what is there and say what is not: a document
+ * whose block arrived half-built must not look like a complete one, and it must not
+ * fall back to the nightly panels either, because the reader asked for the rebalance.
+ */
+export function incompleteFields(monthly?: MonthlyBlock | null): string[] {
+  if (!monthly) return [];
+  return REQUIRED.filter(([, present]) => !present(monthly)).map(([name]) => name);
+}
+
 /** Every anchored panel, or nothing at all when the document carries no block. */
 export function MonthlyPanels({ monthly }: { monthly?: MonthlyBlock | null }) {
   if (!monthly) return null;
+  const missing = incompleteFields(monthly);
   return (
     <div data-monthly="true" className="flex min-w-0 flex-col gap-3">
+      {missing.length ? (
+        <p
+          data-monthly-incomplete={missing.join(",")}
+          className="rounded border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          monthly view incomplete: {missing.join(", ")}
+        </p>
+      ) : null}
       <CadenceStrip monthly={monthly} />
       <RebalanceCard monthly={monthly} />
       <FlipBridge monthly={monthly} />

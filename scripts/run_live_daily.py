@@ -1142,6 +1142,20 @@ def unfilled_remainders(as_of: Any) -> dict[str, float]:
     )
 
 
+def _manifest_nav(manifest: dict | None, row: dict) -> float | None:
+    """The NAV the proposal was sized on, from the manifest, then the run's own row."""
+    for source in (manifest or {}, row):
+        for key in ("nav", "nav_source"):
+            value = source.get(key) if isinstance(source, dict) else None
+            try:
+                number = float(value)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                continue
+            if number > 0:
+                return number
+    return None
+
+
 def carried_legs(as_of: Any) -> tuple[dict[str, float], list[dict[str, Any]]]:
     """The last close's legs still owed, and the ones that cannot be sent at all.
 
@@ -1438,10 +1452,14 @@ def finish_run(
             # and a None block is an absent key: the page then renders exactly as it
             # did before these panels existed, which is the right failure for a page.
             try:
+                # NAV comes from the proposal, not from `gross`: `gross` is a
+                # fraction of NAV (1.007 tonight), so pricing a drift in dollars off
+                # it is wrong by six orders of magnitude. The manifest carries the
+                # number the proposal was sized on.
                 monthly_block = monthly_view.from_store(
                     today=str(row.get("target_close") or "")[:10],
                     tonight_manifest=manifest,
-                    nav=float(gross) if gross else None,
+                    nav=_manifest_nav(manifest, row),
                 )
             except Exception as exc:  # noqa: BLE001 - reporting, never the run
                 logger.warning("the anchored block was skipped: %s", type(exc).__name__)

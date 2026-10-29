@@ -274,3 +274,141 @@ def test_the_block_carries_no_identifier() -> None:
     for shape in ("order_id", "account_id", "client_order_id", "oid-"):
         assert shape not in text
     assert block["anchor"]["close"] == anchor
+
+
+def test_sent_legs_are_counted_apart_from_under_minimum_legs() -> None:
+    """A leg under the $250 minimum was built and never sent, so it is not owed.
+
+    Measured on the 2026-10-23 anchor: 224 legs built, 208 sent and all 208 filled,
+    16 under the minimum carrying $2,253.26 that was never meant to trade. The card
+    reported one number for both and called the under-minimum legs unfilled.
+    """
+    anchor = "2026-10-23"
+    tickers = [f"T{i:02d}" for i in range(3)]
+    orders = pd.DataFrame(
+        {
+            "trade_date": [anchor] * 4,
+            "ticker": tickers[:3] + ["SMALL"],
+            "intended_notional": [1000.0, -500.0, 800.0, 120.0],
+            "reason_code": ["", "", "", "BELOW_MIN_NOTIONAL"],
+            "broker_order_id": ["b-1", "b-2", "b-3", ""],
+            "status": ["ACCEPTED", "ACCEPTED", "ACCEPTED", "SKIPPED"],
+        }
+    )
+    fills = pd.DataFrame(
+        {
+            "trade_date": [anchor] * 3,
+            "ticker": tickers,
+            "order_id": ["b-1", "b-2", "b-3"],
+            "intended_notional": [1000.0, -500.0, 800.0],
+            "filled_notional": [1002.0, 499.0, 805.0],
+            "fill_price": [10.0, 10.0, 10.0],
+            "status": ["FILLED", "FILLED", "FILLED"],
+            "slippage_bps": [1.0, 1.0, 1.0],
+        }
+    )
+    card = monthly_view.rebalance_card(anchor, {}, orders, fills, 1_000_000.0)
+    assert card["orders"] == 4
+    assert card["sent_legs"] == 3
+    assert card["filled_legs"] == 3
+    assert card["under_minimum_legs"] == 1
+    assert card["under_minimum_usd"] == pytest.approx(120.0)
+    assert card["legs_incomplete"] == 0
+    assert card["dollars_owed"] == 0.0, "every sent leg filled, so nothing is owed"
+
+
+def test_a_sent_leg_with_no_fill_is_what_is_owed() -> None:
+    anchor = "2026-10-23"
+    orders = pd.DataFrame(
+        {
+            "trade_date": [anchor, anchor],
+            "ticker": ["AAA", "BBB"],
+            "intended_notional": [900.0, -400.0],
+            "reason_code": ["", ""],
+            "broker_order_id": ["b-1", "b-2"],
+            "status": ["ACCEPTED", "ACCEPTED"],
+        }
+    )
+    fills = pd.DataFrame(
+        {
+            "trade_date": [anchor],
+            "ticker": ["AAA"],
+            "order_id": ["b-1"],
+            "intended_notional": [900.0],
+            "filled_notional": [910.0],
+            "fill_price": [9.0],
+            "status": ["FILLED"],
+            "slippage_bps": [2.0],
+        }
+    )
+    card = monthly_view.rebalance_card(anchor, {}, orders, fills, 1_000_000.0)
+    assert card["filled_legs"] == 1
+    assert card["legs_incomplete"] == 1
+    assert card["dollars_owed"] == pytest.approx(400.0), "only the leg with no fill"
+
+
+def test_each_flip_leg_carries_the_day_it_filled() -> None:
+    """A leg priced from the 10-23 close filled on the 10-26 open, and says so."""
+    anchor, later = "2026-10-23", "2026-10-26"
+    target = pd.DataFrame(
+        {"trade_date": [anchor], "ticker": ["CCL"], "side": ["long"], "weight": [0.01]}
+    )
+    before = pd.DataFrame(
+        {
+            "trade_date": [anchor],
+            "ticker": ["CCL"],
+            "side": ["short"],
+            "market_value": [-600.0],
+        }
+    )
+    now = pd.DataFrame(
+        {
+            "trade_date": [later],
+            "ticker": ["CCL"],
+            "side": ["long"],
+            "market_value": [700.0],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [anchor, later],
+            "ticker": ["CCL", "CCL"],
+            "intended_notional": [600.0, 700.0],
+            "reason_code": ["", ""],
+            "position_intent": ["buy_to_close", "buy_to_open"],
+        }
+    )
+    fills = pd.DataFrame(
+        {
+            "trade_date": [anchor, later],
+            "ticker": ["CCL", "CCL"],
+            "filled_notional": [605.0, 699.0],
+            "status": ["FILLED", "FILLED"],
+            "updated_at": ["2026-10-26T13:31:00+00:00", "2026-10-27T13:31:00+00:00"],
+        }
+    )
+    rows = monthly_view.flip_rows(target, before, now, orders, fills, anchor)
+    assert len(rows) == 1
+    assert rows[0]["close_filled"] == "2026-10-23"
+    assert rows[0]["close_filled_at"] == "2026-10-26"
+    assert rows[0]["open_filled"] == "2026-10-26"
+    assert rows[0]["open_filled_at"] == "2026-10-27"
+
+
+def test_the_guard_threshold_is_the_setting_not_the_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A quiet evening records `drift_guard: null`; the 5% is a setting.
+
+    Measured on the live 2026-10-29 manifest, whose `drift_guard` is null while
+    `EFB_DRIFT_GUARD` is 0.05 on the evening: the strip showed no threshold at all.
+    """
+    monkeypatch.setenv("EFB_DRIFT_GUARD", "0.05")
+    assert monthly_view.guard_threshold_from_env() == pytest.approx(0.05)
+    for value in ("", "off", "none", "0", "false"):
+        monkeypatch.setenv("EFB_DRIFT_GUARD", value)
+        assert monthly_view.guard_threshold_from_env() is None
+    monkeypatch.setenv("EFB_DRIFT_GUARD", "5")
+    assert monthly_view.guard_threshold_from_env() is None, "5 is not a fraction"
+    monkeypatch.setenv("EFB_DRIFT_GUARD", "typo")
+    assert monthly_view.guard_threshold_from_env() is None
