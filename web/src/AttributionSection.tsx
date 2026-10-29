@@ -191,7 +191,14 @@ const runningTotals = (
  * container, so the same drawing is readable on a phone and on a laptop; the first
  * and last dates are labelled rather than every tick.
  */
-function CumulativeChart({ points }: { points: CumulativePoint[] }) {
+function CumulativeChart({
+  points,
+  rebalances = [],
+}: {
+  points: CumulativePoint[];
+  /** The rebalance closes, drawn as vertical markers. Empty leaves the chart as it was. */
+  rebalances?: string[];
+}) {
   const W = 320;
   const H = 150;
   const L = 42;
@@ -251,6 +258,26 @@ function CumulativeChart({ points }: { points: CumulativePoint[] }) {
               .join(" ")}
           />
         ))}
+        {/* One marker per rebalance close that this series holds. A monthly book's
+            chart is a line with no calendar on it until these are drawn: the steps in
+            it are the rebalances, and the reader cannot see which days they were. */}
+        {rebalances.map((close) => {
+          const index = points.findIndex((point) => point.label === close);
+          if (index < 0) return null;
+          return (
+            <g key={close} data-rebalance-marker={close}>
+              <line
+                x1={x(index)}
+                y1={T}
+                x2={x(index)}
+                y2={T + ph}
+                stroke="#94a3b8"
+                strokeWidth="1"
+                strokeDasharray="3 2"
+              />
+            </g>
+          );
+        })}
         <text x={L} y={H - 6} textAnchor="start" fontSize="8" fill="#64748b">
           {first.label}
         </text>
@@ -1203,7 +1230,12 @@ function PeriodView({
         stored.
       </p>
 
-      {points.length >= 1 ? <CumulativeChart points={points} /> : null}
+      {points.length >= 1 ? (
+        <CumulativeChart
+          points={points}
+          rebalances={snapshot?.monthly?.rebalance_dates ?? []}
+        />
+      ) : null}
       {live ? <DailyBars days={carried} /> : null}
       <CostLine period={period} snapshot={snapshot} />
       {live ? <VolatilityPanel period={period} /> : null}
