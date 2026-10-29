@@ -299,3 +299,34 @@ describe("the attribution tab when the document has no attribution", () => {
     expect(document.querySelector("[data-section='attribution']")).toBeTruthy();
   });
 });
+
+describe("the rebalance markers", () => {
+  // The chart is a line with no calendar on it until the rebalance closes are drawn:
+  // on a monthly book the steps in the line are the rebalances, and a reader cannot
+  // see which days they were. The dates come from the document's own anchored block,
+  // so a document without one draws exactly the chart it drew before.
+  const withRebalances = (dates: string[]): Snapshot => ({
+    ...OK,
+    monthly: { rebalance_dates: dates },
+  });
+
+  it("draws one marker per rebalance close the series holds", () => {
+    const rows = LIVE_PERIOD.daily ?? [];
+    const first = String(rows[0]?.trade_date).slice(0, 10);
+    render(
+      <SnapshotView snapshot={withRebalances([first, "2000-01-03"])} now={NOW} />,
+    );
+    openAttribution();
+    const markers = document.querySelectorAll("[data-rebalance-marker]");
+    // The 2000 date is not in the series, and a marker with no point to sit on is
+    // not drawn rather than drawn at the first one.
+    expect(markers).toHaveLength(1);
+    expect(markers[0].getAttribute("data-rebalance-marker")).toBe(first);
+  });
+
+  it("draws none when the document carries no anchored block", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
+    expect(document.querySelectorAll("[data-rebalance-marker]")).toHaveLength(0);
+  });
+});
