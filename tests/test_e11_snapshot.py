@@ -855,3 +855,23 @@ def test_a_manifest_with_no_kept_count_still_reports_an_empty_book(
     )
     assert carried == snapshot.PAGE_BOOK_MATCH
     assert carried_line == ""
+
+
+def test_the_anchored_block_travels_when_it_is_built() -> None:
+    """`monthly` is present when the run built it and absent when it did not.
+
+    Absent is the shape every document written before the block existed has, and the
+    page renders as it did then, so the two cases have to be distinguishable in the
+    document rather than both arriving as an empty object.
+    """
+    payload = snapshot.build(
+        run={"target_close": "2026-10-28", "status": "ok"},
+        monthly={"anchor": {"close": "2026-10-23", "day": "cadence"}},
+    )
+    assert payload["monthly"]["anchor"]["close"] == "2026-10-23"
+    without = snapshot.build(run={"target_close": "2026-10-28", "status": "ok"})
+    assert "monthly" not in without
+    empty = snapshot.build(
+        run={"target_close": "2026-10-28", "status": "ok"}, monthly={}
+    )
+    assert "monthly" not in empty

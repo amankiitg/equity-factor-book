@@ -198,6 +198,7 @@ def build(
     book_reason: str | None = None,
     actual: dict[str, Any] | None = None,
     bridge_block: dict[str, Any] | None = None,
+    monthly: dict[str, Any] | None = None,
     generated_at: datetime | None = None,
 ) -> dict[str, Any]:
     """The document the page reads, assembled from what the run already knows.
@@ -427,6 +428,11 @@ def build(
         # Absent (not null) when nobody built one, which is a stopped run: a bridge of
         # zeroes would read as an evening that moved nothing.
         **({"bridge": _bridge_block(bridge_block)} if bridge_block else {}),
+        # The anchored panels: every one of them measured from the last rebalance, so
+        # a hold day's page is about the rebalance rather than about a night with no
+        # orders. **Absent** when the run could not build it, which is the shape a
+        # document written before it existed has, and the page renders as it did then.
+        **({"monthly": monthly} if monthly else {}),
         # E12: what the book earned, split into factor, idio and cost, with the
         # hedge's own factor P&L and the raw-beta line beside it. The block is
         # built by `attribution_block` from the store's attribution table and
@@ -1280,6 +1286,7 @@ def write_snapshot(
     book_reason: str | None = None,
     actual: dict[str, Any] | None = None,
     bridge_block: dict[str, Any] | None = None,
+    monthly: dict[str, Any] | None = None,
     dry_run: bool = True,
     mode: str | None = None,
     poster: Callable[..., Any] | None = None,
@@ -1300,6 +1307,7 @@ def write_snapshot(
         book_reason=book_reason,
         actual=actual,
         bridge_block=bridge_block,
+        monthly=monthly,
         generated_at=generated_at,
     )
     if resolved == OFF:

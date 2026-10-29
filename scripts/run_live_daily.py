@@ -1317,6 +1317,7 @@ def finish_run(
     not do its job.
     """
     from live import notify, seed, staleness, store
+    from live import monthly_view
     from live import snapshot as snapshot_module
     from live.store import store_label
 
@@ -1433,6 +1434,18 @@ def finish_run(
                 notify.scrub(str(exc)),
             )
         try:
+            # The anchored panels, read from the store. None when it cannot be built,
+            # and a None block is an absent key: the page then renders exactly as it
+            # did before these panels existed, which is the right failure for a page.
+            try:
+                monthly_block = monthly_view.from_store(
+                    today=str(row.get("target_close") or "")[:10],
+                    tonight_manifest=manifest,
+                    nav=float(gross) if gross else None,
+                )
+            except Exception as exc:  # noqa: BLE001 - reporting, never the run
+                logger.warning("the anchored block was skipped: %s", type(exc).__name__)
+                monthly_block = None
             written = snapshot_module.write_snapshot(
                 run={
                     **row,
@@ -1457,6 +1470,7 @@ def finish_run(
                 book_reason=book_reason,
                 actual=actual,
                 bridge_block=bridge_block,
+                monthly=monthly_block,
                 dry_run=dry_run,
                 poster=snapshot_poster,
             )

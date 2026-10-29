@@ -536,3 +536,26 @@ the same session.
 `/tmp/efb-spinoff-read-failure` (a two-file probe tree, 8 KB) and `/tmp/bad_live.json`
 (28 bytes, a malformed liveness value). Both look like earlier sessions' probes and both
 are regenerable; neither is a backup of anything.
+
+## 2026-10-29: parked, cleaned, and one name that left the drop list
+
+**Parked: the HON research-tree repair.** `docs/owner_fixes/hon_repair_plan.md` stays
+parked, and it affects **research artifacts only, not trading**. The live seed carries
+HON's 2026-06-29 specific return as `-0.062064` and the store's variance series shows no
+trace of the print, so nothing the book does is affected. What is wrong is the research
+artifact set that `efb/build.py` builds from the recorded action, whose `new_rate` of 0.5
+is wrong by a factor of ten. The guard merged on 2026-10-28 stops the next rebuild
+writing it; the stored cell and the fitted research model need the two steps in the
+plan's section 7, and the first of them is a `--variance-from` writer that does not exist.
+
+**Cleaned.** `/tmp/efb-spinoff-read-failure`, `/tmp/bad_live.json`, the page screenshots
+in `/tmp`, `/tmp/serve8793.log` and the untracked `artifacts/live-page-review-2026-10-11/`
+are deleted. `/tmp/efb-gate` is the one scratch tree left.
+
+**Q left the "dropped for no risk estimate" list on 2026-10-28** because it gained its
+first specific variance row that day: one observation, raw variance 0.0004318, shrunk to
+0.0009752 toward its bucket mean (Information Technology|1, 0.0009843). It also left the
+universe the same day, `efb.e11_universe` holding it on 2026-10-27 and not on 2026-10-28,
+so the 2026-11-23 rebalance will not size it: a name out of the universe is not a
+candidate. It was never traded and never held, `efb.orders` and `efb.fills` having no row
+for it at all.

@@ -142,3 +142,10 @@ the same rule the `cadence` block already follows.
 - The sanitizer's tests pass unmodified.
 - The evening's hot path never fails on this: the block is computed in one function that
   returns `None` on any exception, and a `None` block is simply absent.
+
+## What landed first
+
+The block itself lands before the panels: `live/monthly_view.py` builds it and
+`live/snapshot.py` publishes it under a `monthly` key, absent when the run cannot build
+it. The page ignores it until the panels land, which is the order this document asks for
+and the reason the Worker is deployed last.
