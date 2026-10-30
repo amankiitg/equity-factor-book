@@ -189,3 +189,37 @@ describe("the hedge footprint against the rebalance", () => {
     expect(container.querySelector('[data-hedge-anchored="true"]')).toBeNull();
   });
 });
+
+// The phone layout, as a property of the markup rather than of a stylesheet.
+describe("the flip and drift lists do not need a sideways scroll", () => {
+  it("carries no minimum width and no horizontal overflow on either list", () => {
+    render(<MonthlyPanels monthly={MONTHLY} />);
+    for (const list of document.querySelectorAll("[data-flip-table], [data-drift-table]")) {
+      const className = list.getAttribute("class") ?? "";
+      expect(className).not.toMatch(/min-w-\[/);
+      expect(list.parentElement?.getAttribute("class") ?? "").not.toContain("overflow-x-auto");
+    }
+  });
+
+  it("keeps the name, the side, the dollars and the state on the flip row", () => {
+    render(<MonthlyPanels monthly={MONTHLY} />);
+    const ccl = document.querySelector('[data-flip="CCL"]')?.textContent ?? "";
+    expect(ccl).toContain("CCL");
+    expect(ccl).toContain("short to long");
+    expect(ccl).toContain("$605");
+    expect(ccl).toContain("$678");
+    expect(ccl).toContain("complete");
+    expect(
+      document.querySelector('[data-flip="CCL"] [data-flip-state]')?.getAttribute("data-flip-state"),
+    ).toBe("complete");
+  });
+
+  it("keeps the name, the two weights and the gap on the drift row", () => {
+    render(<MonthlyPanels monthly={MONTHLY} />);
+    const intc = document.querySelector('[data-drift-row="INTC"]')?.textContent ?? "";
+    expect(intc).toContain("INTC");
+    expect(intc).toContain("1.13%");
+    expect(intc).toContain("1.44%");
+    expect(intc).toContain("$3,030");
+  });
+});

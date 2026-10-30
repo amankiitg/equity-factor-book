@@ -157,50 +157,51 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
         <Stat label="now" value={dollars(bridge.after_dollars)} detail="account, latest close" />
       </dl>
       {flips.length ? (
-        <div className="mt-2 overflow-x-auto">
-        <table data-flip-table="true" className="w-full min-w-[34rem] text-left text-xs">
-          <thead className="text-slate-500">
-            <tr>
-              <th className="font-medium">name</th>
-              <th className="font-medium">side</th>
-              <th className="font-medium text-right">
-                closed leg {legsFilled ? "(filled)" : "(order close)"}
-              </th>
-              <th className="font-medium text-right">
-                opened leg {legsFilled ? "(filled)" : "(order close)"}
-              </th>
-              <th className="font-medium text-right">now</th>
-              <th className="font-medium">state</th>
-            </tr>
-          </thead>
-          <tbody className="font-mono">
-            {flips.map((flip) => (
-              <tr key={flip.ticker} data-flip={flip.ticker}>
-                <td className="font-semibold">{flip.ticker}</td>
-                <td>
+        // Two lines per flip rather than six columns: at 390 px a six-column table
+        // scrolled sideways, and the three things a reader needs - which name, which
+        // way round, and how much - have to be readable without scrolling. The
+        // dollars and their dates sit under the name and the side, so nothing is
+        // dropped to make it fit.
+        <ul data-flip-table="true" className="mt-2 flex flex-col gap-2 text-xs">
+          {flips.map((flip) => (
+            <li
+              key={flip.ticker}
+              data-flip={flip.ticker}
+              className="border-b border-slate-100 pb-1.5"
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-mono text-sm font-semibold">{flip.ticker}</span>
+                <span className="flex-1 truncate text-slate-700">
                   {flip.from_side} to {flip.to_side}
-                </td>
-                <td className="text-right">
-                  {dollars(flip.close_dollars)}
+                </span>
+                <span className="font-mono tabular-nums">{signedDollars(flip.now_dollars)}</span>
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 font-mono text-slate-600">
+                <span>
+                  closed {dollars(flip.close_dollars)}
                   <span className="text-slate-500">
                     {" "}
                     {legDate(flip.close_filled_at, flip.close_filled)}
                   </span>
-                </td>
-                <td className="text-right">
-                  {dollars(flip.open_dollars)}
+                </span>
+                <span aria-hidden="true">→</span>
+                <span>
+                  opened {dollars(flip.open_dollars)}
                   <span className="text-slate-500">
                     {" "}
                     {legDate(flip.open_filled_at, flip.open_filled)}
                   </span>
-                </td>
-                <td className="text-right">{signedDollars(flip.now_dollars)}</td>
-                <td>{flip.complete ? "complete" : "still owed"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+                </span>
+                <span
+                  data-flip-state={flip.complete ? "complete" : "owed"}
+                  className="ml-auto font-sans"
+                >
+                  {flip.complete ? "complete" : "still owed"}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : null}
       <p className="mt-1 text-xs text-slate-500">
         a flip counts once, with both legs, and is complete when the account is on the
@@ -233,28 +234,27 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
         />
       </dl>
       {drift.largest?.length ? (
-        <div className="mt-2 overflow-x-auto">
-        <table data-drift-table="true" className="w-full min-w-[22rem] text-left text-xs">
-          <thead className="text-slate-500">
-            <tr>
-              <th className="font-medium">name</th>
-              <th className="font-medium text-right">now</th>
-              <th className="font-medium text-right">target</th>
-              <th className="font-medium text-right">gap</th>
-            </tr>
-          </thead>
-          <tbody className="font-mono">
-            {drift.largest.map((row) => (
-              <tr key={row.ticker}>
-                <td className="font-semibold">{row.ticker}</td>
-                <td className="text-right">{percent(row.weight_now)}</td>
-                <td className="text-right">{percent(row.weight_target)}</td>
-                <td className="text-right">{signedDollars(row.usd)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+        // Three columns and no sideways scroll: the name, the two weights it is
+        // between, and the dollars that separate them. The gap leads because it is
+        // the number the card is about.
+        <ul data-drift-table="true" className="mt-2 flex flex-col gap-1 text-xs">
+          <li className="flex items-baseline justify-between gap-2 text-slate-500">
+            <span>name</span>
+            <span className="ml-auto mr-1">now → target</span>
+            <span>gap</span>
+          </li>
+          {drift.largest.map((row) => (
+            <li key={row.ticker} data-drift-row={row.ticker} className="flex items-baseline gap-2">
+              <span className="w-14 shrink-0 font-mono font-semibold">{row.ticker}</span>
+              <span className="flex-1 truncate text-right font-mono tabular-nums text-slate-600">
+                {percent(row.weight_now)} → {percent(row.weight_target)}
+              </span>
+              <span className="w-16 shrink-0 text-right font-mono tabular-nums">
+                {signedDollars(row.usd)}
+              </span>
+            </li>
+          ))}
+        </ul>
       ) : null}
     </Card>
   );
