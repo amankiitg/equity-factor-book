@@ -98,6 +98,28 @@ conftest had scrubbed the credentials since `3837ff6`, which is precisely why th
 looked like a local one and the run stayed green. Now the environment is captured before
 it is scrubbed, and a gate must be run in a fresh shell that has not sourced `.env`.
 
+## The merges of 2026-10-30 (the anchored page)
+
+Eight merges, all cut from `origin/main`, gated on the gate tree against the nineteen ids
+in `docs/known_test_failures.md` and nothing else, and merged `--no-ff`. The four page
+merges were deployed with `npm run deploy` (which now builds, see below) and the 2026-10-29
+close was republished after each so the live page could be checked.
+
+| branch | tip | merge commit | what merged | gate |
+|---|---|---|---|---|
+| `sector-anchored-1030` | `ca62aca` | `348d47d` | the sector panel measured from the rebalance target (`monthly.sectors`, from `efb.e11_sectors`), and `scripts/republish_monthly.py` | 19 failed, 1706 passed |
+| `sector-deterministic` | `e55f615` | `5c32fbc` | the gap sums run in a sorted order, so a republish reproduces the document byte for byte | 19 failed, 1708 passed |
+| `hedge-anchored` | `61414df` | `774bb6e` | the hedge footprint measured from the rebalance (`monthly.hedge`: 88 of 196 names, $122,327 of legs) and the panel audit | 19 failed, 1711 passed |
+| `deploy-guard` | `390481c` | `ea75735` | `build.command` in `wrangler.jsonc` and `web/src/deploy.test.ts`: a deploy builds the page first | 19 failed, 1711 passed |
+| `email-monthly-line` | `bfd89da` | `bd61b79` | "Monthly view: built (anchor …)" or the reason it was not, in the evening's email | 19 failed, 1712 passed |
+| `tonight-cannot-send` | `32019f8` | `7836d8d` | `owed_*` and `cannot_send_*`: a leg under one share is a refusal, not a leg in flight | 19 failed, 1713 passed |
+| `phone-table-layout` | `0310797` | `1aaf7b7` | the flip and drift lists reflow for a 390 px screen instead of scrolling sideways | 19 failed, 1713 passed |
+| `moo-research-1023` | `23df56f` | `3a7d0a1` | `docs/research/moo_rebalance_1023.md` | docs only; the two data-tree ids were run separately |
+
+Every new module also needs a row in `docs/credit_port_design.md` and a recount in
+`sprints/E13/RESULTS.json` — `tests/test_e13_design_note.py` fails by design otherwise,
+and it caught `republish_monthly.py` and `deploy.test.ts` on the way through.
+
 ## The merges of 2026-10-23
 
 | branch | tip | merge commit | what merged | gate |
