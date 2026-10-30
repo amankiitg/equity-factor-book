@@ -662,3 +662,49 @@ def test_the_email_line_says_whether_the_block_was_built() -> None:
         monthly_view=monthly_view.state_line(None),
     )
     assert "Monthly view: not built: the block raised" in failed
+
+
+def test_a_leg_that_cannot_be_sent_is_not_counted_as_one_that_will() -> None:
+    """JBL's $269 is under one share: no order can be placed, so it is not in flight."""
+    proposals = _proposals(("2026-10-23", "rebalance"), ("2026-10-29", "cadence"))
+    target = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-23"],
+            "ticker": ["AAA"],
+            "side": ["long"],
+            "weight": [0.01],
+        }
+    )
+    manifest = {
+        "cadence": {"k": 21, "offset": 4},
+        "unfilled_remainder": {"AAA": 120.0},
+        "unfilled_unreachable": [
+            {
+                "ticker": "JBL",
+                "unfilled_dollars": 269.37,
+                "reason_code": "COVER_UNDER_ONE_SHARE",
+                "sent": False,
+                "close": "2026-10-26",
+            }
+        ],
+    }
+    block = monthly_view.block(
+        proposals=proposals,
+        targets=target,
+        account=target.assign(trade_date="2026-10-29"),
+        orders=pd.DataFrame(),
+        fills=pd.DataFrame(),
+        today="2026-10-29",
+        tonight_manifest=manifest,
+        nav=1_000_000.0,
+    )
+    tonight = block["tonight"]
+    assert tonight["owed_legs"] == 1
+    assert tonight["owed_usd"] == pytest.approx(120.0)
+    assert tonight["cannot_send_legs"] == 1
+    assert tonight["cannot_send_usd"] == pytest.approx(269.37)
+    assert tonight["cannot_send"] == [
+        {"ticker": "JBL", "usd": pytest.approx(269.37), "code": "COVER_UNDER_ONE_SHARE"}
+    ]
+    # The old total is still there, and still the sum of both.
+    assert tonight["forced_usd"] == pytest.approx(389.37)

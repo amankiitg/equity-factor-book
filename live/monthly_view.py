@@ -946,6 +946,21 @@ def _block(
         for item in unreachable
         if isinstance(item, dict)
     )
+    # Two different things, and until now one line said "1 forced leg, $269" for both:
+    # a leg that is owed and will be sent on the next close, and a leg that is owed and
+    # can never be sent - JBL's $269 on 2026-10-26 is under one share, so there is no
+    # order to place and retrying it every close would be a loop that never ends.
+    owed_usd = sum(abs(_number(value) or 0.0) for value in remainder.values())
+    cannot_send: list[dict[str, Any]] = [
+        {
+            "ticker": str(item.get("ticker")),
+            "usd": abs(_number(item.get("unfilled_dollars")) or 0.0),
+            "code": str(item.get("reason_code") or ""),
+        }
+        for item in unreachable
+        if isinstance(item, dict)
+    ]
+    cannot_send_usd = sum(float(item["usd"]) for item in cannot_send)
     out = {
         "anchor": {"close": anchor, "day": source, "account_read": now_close},
         "cadence_strip": {
@@ -987,6 +1002,14 @@ def _block(
         "tonight": {
             "forced_legs": len(remainder) + len(unreachable),
             "forced_usd": forced_usd,
+            # What will be sent, and what cannot be. The count of owed legs is the
+            # remainder's: an unreachable leg is owed too, but it is not a leg that
+            # will go out, and adding the two was what the line got wrong.
+            "owed_legs": len(remainder),
+            "owed_usd": owed_usd,
+            "cannot_send_legs": len(cannot_send),
+            "cannot_send_usd": cannot_send_usd,
+            "cannot_send": cannot_send,
         },
         "rebalance_dates": sorted(
             {

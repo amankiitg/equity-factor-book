@@ -285,10 +285,33 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
 export function TonightLine({ monthly }: { monthly: MonthlyBlock }) {
   const tonight = monthly.tonight;
   if (!tonight) return null;
+  const owed = tonight.owed_legs ?? 0;
+  const cannotSend = tonight.cannot_send_legs ?? 0;
+  const unsendable = (tonight.cannot_send ?? [])
+    .map((leg) => `${leg.ticker}${leg.code ? ` (${leg.code})` : ""}`)
+    .join(", ");
+  // A leg that will be sent on the next close and a leg that can never be sent are
+  // both "forced", and one line said "1 forced leg, $269" for either. The refusal is
+  // stated as a refusal: there is no order to place under one share, so it is not a
+  // leg in flight and it is not retried forever.
+  const parts: string[] = [];
+  if (owed > 0) {
+    parts.push(
+      `${owed} leg${owed === 1 ? "" : "s"} owed, ${dollars(tonight.owed_usd ?? 0)}, to be sent on the next close`,
+    );
+  }
+  if (cannotSend > 0) {
+    parts.push(
+      `${cannotSend} owed, cannot be sent, ${dollars(tonight.cannot_send_usd ?? 0)}${
+        unsendable ? ` (${unsendable})` : ""
+      }`,
+    );
+  }
   return (
     <p data-tonight="true" className="text-xs text-slate-600">
-      tonight: {tonight.forced_legs} forced leg{tonight.forced_legs === 1 ? "" : "s"},{" "}
-      {dollars(tonight.forced_usd)}
+      {parts.length > 0
+        ? `tonight: ${parts.join("; ")}`
+        : "tonight: nothing owed, nothing to send"}
     </p>
   );
 }
