@@ -118,7 +118,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
           )}
           <div data-columns="true" className="grid gap-3 lg:grid-cols-2">
             <div className="flex flex-col gap-3">
-              <HedgePanel snapshot={snapshot} facts={facts} />
+              <HedgePanel snapshot={snapshot} facts={facts} monthly={snapshot.monthly} />
               <ExposuresSection snapshot={snapshot} />
               {snapshot.monthly ? null : <Reasons facts={facts} snapshot={snapshot} />}
             </div>
@@ -128,7 +128,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
                 sectors={facts.sectors}
                 monthly={snapshot.monthly}
               />
-              <TopNames facts={facts} />
+              <TopNames facts={facts} monthly={snapshot.monthly} />
             </div>
           </div>
           <DrawerSection snapshot={snapshot} facts={facts} />

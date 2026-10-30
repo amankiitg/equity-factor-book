@@ -9,7 +9,9 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { incompleteFields, MonthlyPanels } from "./Monthly";
+import { HedgePanel } from "./HedgePanel";
 import { SectorSection } from "./SectorSection";
+import { bookFacts } from "./book";
 import type { MonthlyBlock, Snapshot } from "./types";
 import served from "../fixtures/snapshot_2026-10-29_evening.json";
 
@@ -149,5 +151,35 @@ describe("the sector panel against the rebalance target", () => {
       <SectorSection snapshot={SERVED} sectors={[]} monthly={null} />,
     );
     expect(container.querySelector('[data-sector-anchored="true"]')).toBeNull();
+  });
+});
+
+// The hedge footprint, on the same real document.
+describe("the hedge footprint against the rebalance", () => {
+  const HEDGE = MONTHLY.hedge;
+  if (!HEDGE) throw new Error("the served fixture carries no anchored hedge");
+
+  it("reports the close that hedged rather than a hold day's nothing", () => {
+    render(<HedgePanel snapshot={SERVED} facts={bookFacts(SERVED)} monthly={MONTHLY} />);
+    const panel = document.querySelector('[data-hedge-anchored="true"]');
+    expect(panel).not.toBeNull();
+    const text = panel?.textContent ?? "";
+    // 88 of 196 names and $122,327 of legs, on 2026-10-23 - not "0 of 196".
+    expect(text).toContain("88");
+    expect(text).toContain("196");
+    expect(text).toContain("$122,327");
+    expect(text).toContain("2026-10-23");
+    expect(text).toContain("Nothing was hedged tonight");
+  });
+
+  it("leaves a rebalance day to tonight's own legs", () => {
+    const rebalance: MonthlyBlock = {
+      ...MONTHLY,
+      anchor: { close: "2026-10-29", day: "rebalance", account_read: "2026-10-29" },
+    };
+    const { container } = render(
+      <HedgePanel snapshot={SERVED} facts={bookFacts(SERVED)} monthly={rebalance} />,
+    );
+    expect(container.querySelector('[data-hedge-anchored="true"]')).toBeNull();
   });
 });

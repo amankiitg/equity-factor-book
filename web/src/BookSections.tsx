@@ -9,7 +9,7 @@
 import { Details } from "./Details";
 import type { BookFacts } from "./book";
 import { dollars, percent } from "./format";
-import type { BookName, Snapshot } from "./types";
+import type { BookName, MonthlyBlock, Snapshot } from "./types";
 
 function NameRow({ name, nav }: { name: BookName; nav: number | null }) {
   const weight = name.weight ?? 0;
@@ -28,7 +28,14 @@ function NameRow({ name, nav }: { name: BookName; nav: number | null }) {
 }
 
 /** The ten largest on each side, side by side on a wide screen and stacked on a phone. */
-export function TopNames({ facts }: { facts: BookFacts }) {
+export function TopNames({
+  facts,
+  monthly,
+}: {
+  facts: BookFacts;
+  /** The anchored block: on a hold day the book below *is* the account. */
+  monthly?: MonthlyBlock | null;
+}) {
   if (!facts.hasBook) return null;
   const panel = (title: string, names: BookName[], hook: string) => (
     <div data-top={hook}>
@@ -48,6 +55,9 @@ export function TopNames({ facts }: { facts: BookFacts }) {
         the largest position is {facts.largest?.ticker ?? "n/a"}
         {facts.largest ? ` at ${percent(facts.largest.weight)} of NAV` : ""}; the two lists of ten
         are below.
+        {monthly?.anchor?.day === "cadence"
+          ? " These are what the account holds now, not the rebalance's book: the drift card measures the distance between the two."
+          : ""}
       </p>
       <Details hook="top-names" summary={<>the ten largest on each side</>}>
         <div className="mt-1 grid gap-4 sm:grid-cols-2">

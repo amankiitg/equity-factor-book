@@ -21,7 +21,97 @@
 import { Details } from "./Details";
 import { count, dateOnly, dollars, percent } from "./format";
 import type { BookFacts } from "./book";
-import type { Snapshot } from "./types";
+import type { MonthlyBlock, Snapshot } from "./types";
+
+/**
+ * The block's hedge footprint, when it is the one to show.
+ *
+ * `null` on a rebalance day, on a daily book and on any document written before the
+ * field existed: those are the closes where tonight's own legs are the right answer,
+ * because tonight is the close that hedged.
+ */
+export function anchoredHedge(monthly?: MonthlyBlock | null) {
+  const block = monthly?.hedge;
+  if (!block || !block.anchor) return null;
+  if (monthly?.anchor?.day !== "cadence") return null;
+  return block;
+}
+
+/** The rebalance's footprint: the same two numbers, measured on the close that hedged. */
+function AnchoredHedge({ block }: { block: NonNullable<MonthlyBlock["hedge"]> }) {
+  const shares = block.variance_shares ?? [];
+  return (
+    <>
+      <p className="mt-1 text-sm text-slate-700" data-hedge="opening">
+        The hedge re-weights the stocks we already hold so the book does not move with the market,
+        sectors or style factors. On the {block.anchor} close it moved {count(block.moved_names)}{" "}
+        names, {dollars(block.moved_usd)} of trading
+        {block.share_of_turnover === null
+          ? ""
+          : ` (${percent(block.share_of_turnover, 0)} of that rebalance's turnover)`}
+        . Nothing was hedged tonight, which is what a hold day is.
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+        <div data-card="hedge-moved">
+          <div className="text-[0.65rem] uppercase tracking-wide text-slate-500">
+            names the hedge moved
+          </div>
+          <div className="font-mono text-base tabular-nums">
+            {count(block.moved_names)} of {count(block.book_names)}
+          </div>
+          <div className="text-xs text-slate-600">{dollars(block.moved_usd)} of legs</div>
+        </div>
+        <div data-card="hedge-share">
+          <div className="text-[0.65rem] uppercase tracking-wide text-slate-500">
+            largest share of specific risk
+          </div>
+          <div className="font-mono text-base tabular-nums">
+            {percent(shares[0]?.variance_share, 1)}
+          </div>
+          <div className="text-xs text-slate-600">
+            {shares[0]?.ticker ?? "n/a"} at that share, {percent(shares[0]?.weight)} of NAV
+          </div>
+        </div>
+      </div>
+      {shares.length > 0 ? (
+        <Details
+          hook="hedge-shares"
+          summary={
+            <>
+              {shares[0]?.ticker} carries {percent(shares[0]?.variance_share, 1)} of the
+              rebalance book&apos;s predicted stock-specific risk
+            </>
+          }
+        >
+          <table aria-label="top variance shares" className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-slate-500">
+                <th className="py-1 pr-2">name</th>
+                <th className="py-1 pr-2">share of the book&apos;s predicted specific risk</th>
+                <th className="py-1">weight</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shares.map((entry) => (
+                <tr key={entry.ticker} data-variance-share={entry.ticker}>
+                  <td className="py-1 pr-2 font-mono">{entry.ticker}</td>
+                  <td className="py-1 pr-2 tabular-nums">{percent(entry.variance_share, 2)}</td>
+                  <td className="py-1 tabular-nums">{percent(entry.weight)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-1 text-xs text-slate-500">
+            From <code>reconciliation.traded_risk</code> for the {block.anchor} close
+            {block.n_eff === null ? "" : `; effective breadth ${count(Math.round(block.n_eff))}`}
+            {block.max_weight === null ? "" : `, largest weight ${percent(block.max_weight)}`}
+            .
+          </p>
+        </Details>
+      ) : null}
+    </>
+  );
+}
 
 /** The reason string the loop writes on a name the hedge moved. */
 const HEDGE_REASON = "the hedge moved";
@@ -29,9 +119,12 @@ const HEDGE_REASON = "the hedge moved";
 export function HedgePanel({
   snapshot,
   facts,
+  monthly,
 }: {
   snapshot: Snapshot;
   facts: BookFacts;
+  /** The anchored block: a hold day's hedge is the rebalance's, not tonight's. */
+  monthly?: MonthlyBlock | null;
 }) {
   const names = snapshot.book?.names ?? [];
   const moved = names.filter((name) => (name.reason ?? "").trim() === HEDGE_REASON);
@@ -45,11 +138,31 @@ export function HedgePanel({
     snapshot.reconciliation?.sent_notional ?? snapshot.reconciliation?.intended_notional ?? null;
   const shareOfTurnover = turnover === null || turnover === 0 ? null : movedNotional / turnover;
   const shares = risk?.top_variance_shares ?? [];
-  if (names.length === 0) return null;
+  const anchored = anchoredHedge(monthly);
+  if (names.length === 0 && !anchored) return null;
+
+  if (anchored) {
+    return (
+      <section
+        data-section="hedge"
+        data-hedge-anchored="true"
+        className="rounded border border-slate-200 bg-white p-3"
+      >
+        <h2 className="text-base font-semibold">The hedge&apos;s own footprint</h2>
+        <AnchoredHedge block={anchored} />
+        <p className="mt-1 text-xs text-slate-600">
+          <span className="font-medium">A proxy.</span> The names carry the loop&apos;s own
+          record that the hedge moved them, and the shares are that close&apos;s
+          reconciliation of the traded book&apos;s predicted specific variance. Neither says a
+          position exists <em>because</em> of the hedge.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section data-section="hedge" className="rounded border border-slate-200 bg-white p-3">
-      <h2 className="text-base font-semibold">The hedge's own footprint</h2>
+      <h2 className="text-base font-semibold">The hedge&apos;s own footprint</h2>
       <p className="mt-1 text-sm text-slate-700" data-hedge="opening">
         The hedge re-weights the stocks we already hold so the book does not move with the market,
         sectors or style factors. On {dateOnly(snapshot.target_close) ?? "this"} close it moved{" "}

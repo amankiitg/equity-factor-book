@@ -546,3 +546,89 @@ def test_the_store_map_is_empty_rather_than_raising(
 
     monkeypatch.setattr(appendix, "read_appendix", boom)
     assert monthly_view.sector_map_from_store() == {}
+
+
+def test_the_hedge_footprint_is_the_rebalances_and_not_tonights() -> None:
+    """The page's hedge panel reads tonight's book, which on a hold day is nothing."""
+    target = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-23"] * 3,
+            "ticker": ["AAA", "BBB", "CCC"],
+            "side": ["long", "short", "long"],
+            "weight": [0.10, -0.12, 0.05],
+            "previous_weight": [0.08, -0.10, 0.05],
+            "reason": ["the hedge moved", "the hedge moved", "new name"],
+        }
+    )
+    reconciliation = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-23"],
+            "traded_risk": [
+                json.dumps(
+                    {
+                        "n_eff": 143.7,
+                        "max_weight": 0.0154,
+                        "top_variance_shares": [
+                            {"ticker": "AAA", "variance_share": 0.0837},
+                            {"ticker": "CCC", "variance_share": 0.05},
+                        ],
+                    }
+                )
+            ],
+        }
+    )
+    measured = monthly_view.hedge(
+        target, reconciliation, "2026-10-23", nav=1_000_000.0, turnover_usd=500_000.0
+    )
+    assert measured["anchor"] == "2026-10-23"
+    assert measured["moved_names"] == 2
+    assert measured["book_names"] == 3
+    # |0.10 - 0.08| + |-0.12 + 0.10| = 0.04, and the new name is not the hedge's.
+    assert measured["moved_usd"] == pytest.approx(40_000.0)
+    assert measured["share_of_turnover"] == pytest.approx(0.08)
+    assert measured["n_eff"] == pytest.approx(143.7)
+    assert [entry["ticker"] for entry in measured["variance_shares"]] == ["AAA", "CCC"]
+    assert measured["variance_shares"][0]["weight"] == pytest.approx(0.10)
+
+
+def test_a_close_with_no_risk_block_still_reports_the_footprint() -> None:
+    target = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-23"],
+            "ticker": ["AAA"],
+            "weight": [0.10],
+            "previous_weight": [0.09],
+            "reason": ["the hedge moved"],
+        }
+    )
+    measured = monthly_view.hedge(target, None, "2026-10-23", 1_000_000.0, 500_000.0)
+    assert measured["variance_shares"] == []
+    assert measured["n_eff"] is None
+    assert measured["moved_usd"] == pytest.approx(10_000.0)
+    assert monthly_view.hedge(pd.DataFrame(), None, "2026-10-23", 1.0, 1.0) == {}
+
+
+def test_the_block_carries_the_hedge_with_the_anchor() -> None:
+    proposals = _proposals(("2026-10-23", "rebalance"), ("2026-10-29", "cadence"))
+    anchor = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-23"],
+            "ticker": ["AAA"],
+            "side": ["long"],
+            "weight": [0.10],
+            "previous_weight": [0.08],
+            "reason": ["the hedge moved"],
+        }
+    )
+    block = monthly_view.block(
+        proposals=proposals,
+        targets=anchor,
+        account=anchor.assign(trade_date="2026-10-29", weight=0.10),
+        orders=pd.DataFrame(),
+        fills=pd.DataFrame(),
+        today="2026-10-29",
+        tonight_manifest={"cadence": {"k": 21, "offset": 4}},
+        nav=1_000_000.0,
+    )
+    assert block["hedge"]["anchor"] == "2026-10-23"
+    assert block["hedge"]["moved_names"] == 1
