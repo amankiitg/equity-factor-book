@@ -559,3 +559,31 @@ universe the same day, `efb.e11_universe` holding it on 2026-10-27 and not on 20
 so the 2026-11-23 rebalance will not size it: a name out of the universe is not a
 candidate. It was never traded and never held, `efb.orders` and `efb.fills` having no row
 for it at all.
+
+## 2026-10-30: the anchored page finished, and two things it exposed
+
+**The anchored panels now cover the two panels that were still nightly.** "By sector:
+account against target" compared the account with tonight's book - on a hold day the
+account itself - and "the hedge's own footprint" read `reason == "the hedge moved"` off
+the same book, so both read zero on every hold day. Both are measured from the anchor
+now (`monthly.sectors` and `monthly.hedge`), and the audit of every other panel is in
+`docs/page_monthly_view.md`.
+
+**The deploy could ship a stale bundle, and did.** `wrangler deploy` uploads `dist` as it
+finds it; on 2026-10-29 the panels were merged and deployed and the page went on serving
+a three-day-old bundle. `build.command` in `web/src/wrangler.jsonc` now builds first, and
+`web/src/deploy.test.ts` asserts it. Anything that deploys this Worker must still go
+through `npm run deploy` or a bare `wrangler deploy`, both of which now build.
+
+**`EFB_ORDER_TIF` is still unset, and now has a number beside it.**
+`docs/research/moo_rebalance_1023.md` measures the 2026-10-23 rebalance: 11.24 bp of NAV
+realized against 4.76 expected, of which 19.35 bp of notional is execution and 0.82 bp
+the overnight gap. The execution half is what an opening auction would remove, but the
+fills are the paper engine's simulation, so the recommendation is to leave the flag off
+for 2026-11-23 and settle it with the order-time quotes the store has recorded since the
+E13 migration - a measurement that changes nothing that is sent.
+
+**The `tonight` line's parentheses read awkwardly.** It prints
+`1 owed, cannot be sent, $269 (JBL (COVER_UNDER_ONE_SHARE))`. The information is right and
+the nesting is one format string away from `JBL, COVER_UNDER_ONE_SHARE`; it was left
+rather than re-deploying for a comma.
