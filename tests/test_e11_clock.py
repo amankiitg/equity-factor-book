@@ -258,7 +258,10 @@ def test_a_hold_day_proposal_is_a_live_close(monkeypatch: pytest.MonkeyPatch) ->
     assert records["run"] == ["2026-10-23", "2026-10-26"]
 
 
-def test_the_real_store_registers_day_1_on_the_backfilled_fills() -> None:
+@pytest.mark.live_readonly
+def test_the_real_store_registers_day_1_on_the_backfilled_fills(
+    live_store_env: dict[str, str],
+) -> None:
     """Measured on the live store on 2026-10-29, read-only.
 
     Until 2026-10-29 this refused: the store held orders for the 2026-09-29 and
@@ -269,10 +272,10 @@ def test_the_real_store_registers_day_1_on_the_backfilled_fills() -> None:
     2026-09-30 and the clock can be started. It is not started here, and a start is
     the owner's call: this asserts the store's answer, not that the clock was started.
     """
-    from live import store
-
-    if store.store_mode() != "supabase":  # pragma: no cover - local runs have no store
-        pytest.skip("the live store is not configured")
+    if not live_store_env:  # pragma: no cover - a gate shell has no .env
+        pytest.skip(
+            "the live store is not configured: run this test in a shell with .env"
+        )
 
     records = clock.records_from_store()
     for key in ("run", "proposal", "filled", "ordered"):

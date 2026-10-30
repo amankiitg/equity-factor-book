@@ -62,6 +62,7 @@ markers = [
     "slow: over about two seconds, or it touches the network, runs the whole evening job or executes a notebook; `make test` skips it and `make test-all` does not",
     "requires_live_tree: needs a live-shaped run root (one descriptor row per session), supplied by EFB_RUN_ROOT; the test fails, never skips, when it is missing",
     "merge_guard: fails on this branch by design and passes only after the 2026-11-11 merge commit; deselected by default, run by the merge checklist in docs/backport_runbook.md",
+    "live_readonly: reads the live store and writes nothing; the only tests allowed to run in a shell that holds live credentials, and it takes the `live_store_env` fixture",
 ]
 
 [tool.black]
