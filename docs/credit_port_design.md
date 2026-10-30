@@ -779,6 +779,7 @@ criterion is a test rather than a claim.
 | live/monthly_view.py | new | the page's anchored block: every panel measured from the last rebalance, built from the store and absent when it cannot be built |
 | web/src/Monthly.tsx | new | the anchored panels: the cadence strip, the rebalance card, the flip bridge, the drift card and the leg counts, rendered only when the document carries the block |
 | web/src/monthly.test.tsx | new | the anchored panels under vitest: the four 2026-10-23 flips as four rows, the strip, the drift card, and nothing at all without a block |
+| web/src/deploy.test.ts | new | the deploy must build the page before it uploads `dist`, checked against the Worker's own config, so a stale bundle cannot ship |
 | scripts/backup_attribution_rows.py | unchanged | the backup step every attribution write is proved against, and the restore script beside it |
 | scripts/cadence_shadow.py | re-specified | the offline shadow that replays a rebalance calendar stays as a shape, and its guard measures a credit book's factor exposure |
 | scripts/cost_split.py | re-specified | splitting a measured cost into drift and execution is asset-class-agnostic, and the reference price becomes TRACE's |

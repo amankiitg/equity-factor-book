@@ -1,8 +1,9 @@
 {
   // The EFB live book monitor on Cloudflare.
   //
-  // `npm run deploy` = `vite build && wrangler deploy`. One Worker serves the
-  // built page and one API route. `preview_urls: false` matters: without it the
+  // `npm run deploy` = `vite build && wrangler deploy`, and `build.command` below makes
+  // even a bare `wrangler deploy` build first. One Worker serves the built page and one
+  // API route. `preview_urls: false` matters: without it the
   // Worker gets a second hostname (the *.workers.dev preview) that Cloudflare
   // Access does not cover, which would put positions outside the policy.
   //
@@ -25,6 +26,17 @@
   "name": "efb-live-book",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-01",
+  // The deploy builds the page first, whatever command it was reached by.
+  //
+  // `wrangler deploy` uploads `./dist` exactly as it finds it, and `main` here is the
+  // Worker's own TypeScript, so a deploy run without a build ships the *old* bundle
+  // beside the *new* Worker and nothing fails. That is not hypothetical: on 2026-10-29
+  // the anchored panels were merged and deployed and the live page went on rendering
+  // the nightly ones, because `dist/assets/index-CRtu51cm.js` was three days old. The
+  // build is now part of the deploy, so there is no path that skips it.
+  "build": {
+    "command": "npx vite build"
+  },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
