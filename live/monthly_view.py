@@ -372,9 +372,13 @@ def _gaps(target: pd.DataFrame, now: pd.DataFrame) -> dict[str, float]:
     """
     wanted = _weights(target)
     have = _weights(now)
+    # Sorted, because this dict decides the order two sums run in and floating point
+    # addition is not associative: an unsorted set made a republish of the same close
+    # differ from the first write in the twelfth decimal, which turns "the fixture is
+    # the published document" into a claim about the machine rather than the data.
     return {
         ticker: have.get(ticker, 0.0) - wanted.get(ticker, 0.0)
-        for ticker in set(wanted) | set(have)
+        for ticker in sorted(set(wanted) | set(have))
     }
 
 
