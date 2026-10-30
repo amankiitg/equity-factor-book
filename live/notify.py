@@ -386,6 +386,7 @@ def compose(
     store: str | None = None,
     snapshot: str | None = None,
     page_book: str | None = None,
+    monthly_view: str | None = None,
     fills: dict[str, Any] | None = None,
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
@@ -623,6 +624,12 @@ def compose(
         # number around it still reads right. The writer reads the object back
         # and this is where it says so out loud.
         lines.append(f"Page book: {page_book}.")
+    if monthly_view:
+        # The anchored panels are computed inside the evening and a block that never
+        # got built publishes a page that still looks complete, with the nightly
+        # panels in place of the anchored ones. One line, so a silent failure is
+        # visible in the message rather than only on a page nobody compares.
+        lines.append(f"Monthly view: {monthly_view}.")
     for line in _fills_lines(fills, cost_bps):
         lines.append(line)
     if splits:
@@ -1449,6 +1456,7 @@ def notify_run(
     store: str | None = None,
     snapshot: str | None = None,
     page_book: str | None = None,
+    monthly_view: str | None = None,
     fills: dict[str, Any] | None = None,
     cross_checks_capped: str | None = None,
     no_price: list[str] | None = None,
@@ -1525,6 +1533,7 @@ def notify_run(
         store=store,
         snapshot=snapshot,
         page_book=page_book,
+        monthly_view=monthly_view,
         fills=fills,
         cross_checks_capped=cross_checks_capped,
         init=init,

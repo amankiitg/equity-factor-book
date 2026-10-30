@@ -1423,6 +1423,9 @@ def finish_run(
     # nothing. The page keeps what the first attempt wrote, and the run row says so,
     # because that row is the only place the reader can learn this start did not
     # publish.
+    # Whether the anchored block got built, for the email. Left at this when no
+    # document was published at all: there is no page of this run's to speak for.
+    monthly_state = "not built: this run published no document"
     if not publish_snapshot:
         snapshot_detail = (
             "snapshot: left as it was (this run did not price a book, so it does not "
@@ -1468,6 +1471,11 @@ def finish_run(
             except Exception as exc:  # noqa: BLE001 - reporting, never the run
                 logger.warning("the anchored block was skipped: %s", type(exc).__name__)
                 monthly_block = None
+            # Whether it was built, in the email: a block that never got built leaves
+            # a page that still looks complete, with the nightly panels in place of
+            # the anchored ones.
+            monthly_state = monthly_view.state_line(monthly_block)
+            logger.info("monthly view: %s", monthly_state)
             written = snapshot_module.write_snapshot(
                 run={
                     **row,
@@ -1555,6 +1563,7 @@ def finish_run(
         store=store_name,
         snapshot=snapshot_detail,
         page_book=page_book,
+        monthly_view=monthly_state,
         cross_checks_capped=cross_checks_capped,
         cadence=(manifest or {}).get("cadence"),
         no_price=no_price,
