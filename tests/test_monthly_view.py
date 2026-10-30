@@ -632,3 +632,33 @@ def test_the_block_carries_the_hedge_with_the_anchor() -> None:
     )
     assert block["hedge"]["anchor"] == "2026-10-23"
     assert block["hedge"]["moved_names"] == 1
+
+
+def test_the_email_line_says_whether_the_block_was_built() -> None:
+    """A block that never got built still leaves a page, so the message must say so."""
+    from live import notify
+
+    assert monthly_view.state_line(None).startswith("not built: the block raised")
+    assert monthly_view.state_line({}).startswith("not built: the store had no anchor")
+    assert monthly_view.state_line({"anchor": {}}).startswith(
+        "not built: the block carries"
+    )
+    assert monthly_view.state_line({"anchor": {"close": "2026-10-23"}}) == (
+        "built (anchor 2026-10-23)"
+    )
+    body = notify.compose(
+        status="ok",
+        target_close="2026-10-29",
+        dry_run=False,
+        monthly_view=monthly_view.state_line({"anchor": {"close": "2026-10-23"}}),
+    )
+    assert "Monthly view: built (anchor 2026-10-23)." in body
+    without = notify.compose(status="ok", target_close="2026-10-29", dry_run=False)
+    assert "Monthly view" not in without
+    failed = notify.compose(
+        status="ok",
+        target_close="2026-10-29",
+        dry_run=False,
+        monthly_view=monthly_view.state_line(None),
+    )
+    assert "Monthly view: not built: the block raised" in failed

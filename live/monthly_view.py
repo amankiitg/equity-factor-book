@@ -819,6 +819,24 @@ def sector_map_from_store() -> dict[str, int]:
     }
 
 
+def state_line(block: dict[str, Any] | None) -> str:
+    """One line for the evening's email: whether the anchored block was built.
+
+    A block that fails to build publishes a page that still looks complete - the
+    nightly panels take its place - so the failure is invisible unless the message
+    says it. `block()` returns `{}` when the frames cannot answer and `None` when it
+    raised, and the two are different failures worth telling apart.
+    """
+    if block is None:
+        return "not built: the block raised while it was being built"
+    if not block:
+        return "not built: the store had no anchor close to build from"
+    anchor = (block.get("anchor") or {}).get("close")
+    if not anchor:
+        return "not built: the block carries no anchor"
+    return f"built (anchor {anchor})"
+
+
 def from_store(
     *,
     today: str,
