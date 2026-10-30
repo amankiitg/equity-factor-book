@@ -85,7 +85,13 @@ describe("the anchored panels", () => {
     ]) {
       expect(trades).toContain(reason);
     }
-    expect(document.querySelector("[data-tonight]")?.textContent).toContain("1 forced leg");
+    // JBL's $269 is under one share, so it is stated as a refusal rather than as a
+    // leg in flight, and the count that would be sent is stated separately.
+    const tonight = document.querySelector("[data-tonight]")?.textContent ?? "";
+    expect(tonight).toContain("cannot be sent");
+    expect(tonight).toContain("$269");
+    expect(tonight).toContain("JBL");
+    expect(tonight).toContain("COVER_UNDER_ONE_SHARE");
   });
 
   it("renders nothing at all when the document carries no block", () => {

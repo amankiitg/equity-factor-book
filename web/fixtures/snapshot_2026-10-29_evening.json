@@ -5053,8 +5053,19 @@
       ]
     },
     "tonight": {
+      "cannot_send": [
+        {
+          "code": "COVER_UNDER_ONE_SHARE",
+          "ticker": "JBL",
+          "usd": 269.37
+        }
+      ],
+      "cannot_send_legs": 1,
+      "cannot_send_usd": 269.37,
       "forced_legs": 1,
-      "forced_usd": 269.37
+      "forced_usd": 269.37,
+      "owed_legs": 0,
+      "owed_usd": 0
     }
   },
   "positions": {

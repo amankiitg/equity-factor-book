@@ -624,7 +624,16 @@ export interface MonthlyBlock {
     n_eff: number | null;
     max_weight: number | null;
   };
-  tonight?: { forced_legs: number; forced_usd: number };
+  tonight?: {
+    forced_legs: number;
+    forced_usd: number;
+    /** Legs the next close will send, and legs that can never be sent. */
+    owed_legs?: number;
+    owed_usd?: number;
+    cannot_send_legs?: number;
+    cannot_send_usd?: number;
+    cannot_send?: Array<{ ticker: string; usd: number; code: string }>;
+  };
   rebalance_dates?: string[];
 }
 
