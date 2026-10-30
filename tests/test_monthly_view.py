@@ -412,3 +412,137 @@ def test_the_guard_threshold_is_the_setting_not_the_manifest(
     assert monthly_view.guard_threshold_from_env() is None, "5 is not a fraction"
     monkeypatch.setenv("EFB_DRIFT_GUARD", "typo")
     assert monthly_view.guard_threshold_from_env() is None
+
+
+def _two_sector_books() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Two names in one sector, one in another, and one the map does not carry."""
+    target = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-23"] * 4,
+            "ticker": ["AAA", "BBB", "CCC", "ZZZ"],
+            "side": ["long", "short", "long", "long"],
+            "weight": [0.10, -0.10, 0.05, 0.02],
+        }
+    )
+    now = pd.DataFrame(
+        {
+            "trade_date": ["2026-10-29"] * 4,
+            "ticker": ["AAA", "BBB", "CCC", "ZZZ"],
+            "side": ["long", "short", "long", "long"],
+            "weight": [0.12, -0.12, 0.05, 0.02],
+        }
+    )
+    return target, now
+
+
+def test_the_sector_net_is_signed_and_the_traded_total_is_the_drift() -> None:
+    """The identity the panel leans on: sectors add up to the drift card, exactly.
+
+    Netting inside a sector cancels a long that is too small against a short that is
+    too big, and a market- and sector-neutral book has that in every sector by design,
+    so the net alone would report almost no drift. The traded figure is the one that
+    reconciles: `sum(traded_usd) / 2 == drift.half_turnover_usd`.
+    """
+    target, now = _two_sector_books()
+    sector_of = {"AAA": 45, "BBB": 45, "CCC": 20}
+    nav = 1_000_000.0
+    measured = monthly_view.sectors(target, now, nav, sector_of, anchor="2026-10-23")
+    drift = monthly_view.drift(target, now, nav, trading_bps=None)
+
+    by_code = {row["code"]: row for row in measured["rows"]}
+    # 45 nets to zero (AAA +2%, BBB -2%) and trades $40,000 both sides;
+    # 20 is at target and the unmapped name is untouched.
+    assert by_code[45]["delta_usd"] == pytest.approx(0.0, abs=1e-6)
+    assert by_code[45]["traded_usd"] == pytest.approx(40_000.0)
+    assert by_code[20]["delta_usd"] == pytest.approx(0.0, abs=1e-6)
+    assert by_code[None]["traded_usd"] == pytest.approx(0.0)
+    assert by_code[None]["label"] == "Unmapped"
+
+    assert measured["both_sides_usd"] == pytest.approx(drift["traded_usd"])
+    assert measured["one_side_usd"] == pytest.approx(drift["half_turnover_usd"])
+    assert measured["one_side_usd"] == pytest.approx(20_000.0)
+    assert measured["n_names"] == 4
+    assert measured["n_mapped"] == 3
+
+
+def test_a_sector_net_moves_when_the_account_does_and_the_map_is_ranked() -> None:
+    """The rows are the signed differences, largest absolute first, with drivers."""
+    target, now = _two_sector_books()
+    now.loc[now["ticker"] == "CCC", "weight"] = 0.03  # 20 drifts by -2%
+    now.loc[now["ticker"] == "ZZZ", "weight"] = 0.03  # the unmapped name drifts +1%
+    measured = monthly_view.sectors(
+        target, now, 1_000_000.0, {"AAA": 45, "BBB": 45, "CCC": 20}, anchor="2026-10-23"
+    )
+    rows = measured["rows"]
+    assert [row["code"] for row in rows][0] == 20, "the largest net comes first"
+    # 45 is flat net but $40,000 away name by name: the traded figure says so.
+    assert rows[0]["traded_usd"] == pytest.approx(20_000.0)
+    unmapped = [row for row in rows if row["code"] is None][0]
+    assert unmapped["delta_usd"] == pytest.approx(10_000.0)
+    assert measured["unmapped_usd"] == pytest.approx(10_000.0)
+    assert [driver["ticker"] for driver in rows[0]["drivers"]] == ["CCC"]
+
+
+def test_no_map_or_no_nav_leaves_the_field_out_entirely() -> None:
+    """An absent field is the page rendering exactly as it did before."""
+    target, now = _two_sector_books()
+    assert monthly_view.sectors(target, now, 1_000_000.0, None) == {}
+    assert monthly_view.sectors(target, now, 1_000_000.0, {}) == {}
+    assert monthly_view.sectors(target, now, None, {"AAA": 45}) == {}
+    assert monthly_view.sectors(pd.DataFrame(), now, 1_000_000.0, {"AAA": 45}) == {}
+
+
+def test_the_block_carries_the_sectors_only_when_it_is_given_a_map() -> None:
+    proposals = _proposals(("2026-10-23", "rebalance"), ("2026-10-29", "cadence"))
+    target, now = _two_sector_books()
+    target = target.assign(trade_date="2026-10-23")
+    now = now.assign(trade_date="2026-10-29")
+    account = now.assign(market_value=None)
+    common = {
+        "proposals": proposals,
+        "targets": target,
+        "account": now,
+        "orders": pd.DataFrame(),
+        "fills": pd.DataFrame(),
+        "today": "2026-10-29",
+        "tonight_manifest": {"cadence": {"k": 21, "offset": 4}},
+        "nav": 1_000_000.0,
+    }
+    without = monthly_view.block(**common)
+    assert "sectors" not in without
+    with_map = monthly_view.block(**common, sector_of={"AAA": 45, "BBB": 45, "CCC": 20})
+    assert with_map["sectors"]["anchor"] == "2026-10-23"
+    assert with_map["sectors"]["one_side_usd"] == pytest.approx(
+        with_map["drift"]["half_turnover_usd"]
+    )
+    del account
+
+
+def test_the_store_map_is_labels_to_codes_and_unknown_labels_are_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`efb.e11_sectors` holds GICS names; the block files dollars by code."""
+    from live import appendix
+
+    rows = pd.DataFrame(
+        {
+            "trade_date": ["2026-09-11"] * 3,
+            "ticker": ["AAA", "BBB", "CCC"],
+            "gics_sector": ["Information Technology", "Energy", "Something Else"],
+        }
+    )
+    monkeypatch.setattr(appendix, "read_appendix", lambda spec: rows)
+    measured = monthly_view.sector_map_from_store()
+    assert measured == {"AAA": 45, "BBB": 10}
+
+
+def test_the_store_map_is_empty_rather_than_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from live import appendix
+
+    def boom(spec):  # noqa: ANN001 - the store is unreachable
+        raise RuntimeError("no store")
+
+    monkeypatch.setattr(appendix, "read_appendix", boom)
+    assert monthly_view.sector_map_from_store() == {}

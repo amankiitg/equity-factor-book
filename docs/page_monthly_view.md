@@ -90,6 +90,33 @@ each one row, each complete.
   existing `web/src/sector_map.json`), `efb.broker_positions` at the latest close,
   `efb.orders.reason_code` and `efb.orders.trade_date` since the anchor.
 
+**Landed 2026-10-30: the sector panel itself.** It was re-based in name only until now:
+the panel kept comparing the account with *tonight's* book, and on a hold day tonight's
+book is the account, so every sector read `+$0`. It now reads a new `monthly.sectors`
+field instead, and the writer builds it from the same name-level gaps the drift card is
+made from, grouped by GICS sector:
+
+- **Net per sector** (signed dollars, the bar): the account's sector net minus the
+  rebalance target's. It is small **by construction**, because the book is built
+  sector-neutral - on 2026-10-29 every target sector net is zero to the cent - so a
+  reader who only saw this bar would think the book was at target.
+- **Traded per sector** (the second line): `sum(|w_now - w_target|) x NAV` inside the
+  sector, which is where the drift actually lives. Its total reconciles with the drift
+  card exactly, because it is the same sum:
+
+  ```
+  sum(sectors.rows[].traded_usd) / 2  ==  drift.half_turnover_usd
+  sum(sectors.rows[].traded_usd)      ==  drift.traded_usd
+  ```
+
+  asserted in `tests/test_monthly_view.py` and again in `web/src/monthly.test.tsx`
+  against the served 2026-10-29 document (22,400.37 and 44,800.75).
+- **Sector source:** `efb.e11_sectors` through `live/appendix.py`, the store's copy of
+  `data/processed/sectors.parquet`, which is also what `web/src/sector_map.json` is
+  generated from, so the writer's sector for a dollar and the page's colour for it
+  cannot disagree. A name the map does not carry is its own row ("Unmapped"). No map,
+  no NAV, or no block means **no field**, and the panel renders exactly as before.
+
 ### 6. Tonight (new one-line panel)
 
 - **Old:** nothing; tonight's forced legs appeared only in the email.
@@ -124,8 +151,12 @@ bridge_anchor     {before_dollars, opened, exited, resized, flips, under_minimum
                                 complete}]}
 drift             {half_turnover_pct, half_turnover_usd, estimated_cost_usd,
                    largest: [{ticker, weight_now, weight_target, usd}]}
-since_anchor      {sectors: [...], hedge: {...}, trades_by_reason: [{reason, legs, usd}],
-                   largest: [{ticker, weight_now, weight_target, usd}]}
+since_anchor      {trades_by_reason: [{reason, legs, usd}]}
+sectors           {anchor, nav, n_names, n_mapped, one_side_usd, both_sides_usd,
+                   unmapped_usd,
+                   rows: [{code, label, target_usd, account_usd, delta_usd, traded_usd,
+                           n_target, n_account,
+                           drivers: [{ticker, usd, weight_now, weight_target}]}]}
 tonight           {forced_legs, forced_usd}
 rebalance_dates   [close, ...]
 ```

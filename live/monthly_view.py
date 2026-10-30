@@ -348,6 +348,36 @@ def bridge(
     }
 
 
+def _weights(frame: pd.DataFrame | None) -> dict[str, float]:
+    """Signed weight per ticker, from a book frame's own `weight` column."""
+    if frame is None or frame.empty or "weight" not in frame.columns:
+        return {}
+    return {
+        str(ticker): float(weight)
+        for ticker, weight in zip(
+            frame["ticker"],
+            pd.to_numeric(frame["weight"], errors="coerce"),
+            strict=False,
+        )
+        if weight is not None and not pd.isna(weight)
+    }
+
+
+def _gaps(target: pd.DataFrame, now: pd.DataFrame) -> dict[str, float]:
+    """`w_now - w_target` per ticker, over the union of the two books.
+
+    One function because three panels read it - the drift card, the sector deltas and
+    the drift list - and a page whose sector bars summed to a different number from
+    the drift above them would be worse than either alone.
+    """
+    wanted = _weights(target)
+    have = _weights(now)
+    return {
+        ticker: have.get(ticker, 0.0) - wanted.get(ticker, 0.0)
+        for ticker in set(wanted) | set(have)
+    }
+
+
 def drift(
     target: pd.DataFrame,
     now: pd.DataFrame,
@@ -363,28 +393,9 @@ def drift(
     """
     if target is None or target.empty or "weight" not in target.columns:
         return {}
-    wanted = {
-        str(ticker): float(weight)
-        for ticker, weight in zip(
-            target["ticker"],
-            pd.to_numeric(target["weight"], errors="coerce"),
-            strict=False,
-        )
-        if weight is not None and not pd.isna(weight)
-    }
-    have: dict[str, float] = {}
-    if now is not None and not now.empty and "weight" in now.columns:
-        have = {
-            str(ticker): float(weight)
-            for ticker, weight in zip(
-                now["ticker"],
-                pd.to_numeric(now["weight"], errors="coerce"),
-                strict=False,
-            )
-            if weight is not None and not pd.isna(weight)
-        }
-    names = set(wanted) | set(have)
-    gaps = {ticker: have.get(ticker, 0.0) - wanted.get(ticker, 0.0) for ticker in names}
+    wanted = _weights(target)
+    have = _weights(now)
+    gaps = _gaps(target, now)
     half = sum(abs(gap) for gap in gaps.values()) / 2.0
     traded = sum(abs(gap) for gap in gaps.values())
     largest = sorted(gaps.items(), key=lambda item: -abs(item[1]))[:5]
@@ -406,6 +417,108 @@ def drift(
             }
             for ticker, gap in largest
         ],
+    }
+
+
+def _labels() -> dict[int, str]:
+    """GICS code to name, from the table the risk model's sector columns use."""
+    from efb.models.fundamental import SECTOR_CODES
+
+    return {int(code): name for name, code in SECTOR_CODES.items()}
+
+
+def sectors(
+    target: pd.DataFrame,
+    now: pd.DataFrame,
+    nav: float | None,
+    sector_of: dict[str, int] | None,
+    *,
+    anchor: str | None = None,
+    drivers: int = 3,
+) -> dict[str, Any]:
+    """The account against the **anchor rebalance's** target, by sector, in dollars.
+
+    The page's own sector panel compares the account against tonight's book, and on a
+    hold day tonight's book *is* the account: eleven rows of `+$0`, which is a true
+    reading of nothing. This is the same comparison against the book the last rebalance
+    asked for, so a hold day answers where the account has drifted from - and the
+    answer is the same set of name-level gaps the drift card is made from, grouped.
+
+    Two numbers per sector, because a market- and sector-neutral book needs both: the
+    **net** delta says which way the sector is away from target, and it is small by
+    construction because the book is built sector-neutral; the **traded** dollars say
+    how far the names inside it are from their own targets, which is where the drift
+    actually lives - a sector flat net and eight percent away name by name is a stale
+    book, not an aligned one. The identity is on the traded side and is asserted in the
+    tests:
+
+        sum over sectors of traded_usd / 2  ==  drift.half_turnover_usd
+
+    Names the sector map does not carry are their own row rather than a guessed one,
+    as they are on the page, and a name in neither book contributes nothing.
+    """
+    if nav is None or not sector_of:
+        return {}
+    if target is None or target.empty or "weight" not in target.columns:
+        return {}
+    wanted = _weights(target)
+    have = _weights(now)
+    gaps = _gaps(target, now)
+    labels = _labels()
+
+    grouped: dict[int | None, dict[str, Any]] = {}
+    for ticker, gap in gaps.items():
+        code = sector_of.get(ticker)
+        code = None if code is None else int(code)
+        row = grouped.get(code)
+        if row is None:
+            row = grouped[code] = {
+                "code": code,
+                "label": (
+                    labels.get(code, "Unmapped") if code is not None else "Unmapped"
+                ),
+                "target_usd": 0.0,
+                "account_usd": 0.0,
+                "delta_usd": 0.0,
+                "traded_usd": 0.0,
+                "n_target": 0,
+                "n_account": 0,
+                "_drivers": [],
+            }
+        if ticker in wanted:
+            row["target_usd"] += wanted[ticker] * nav
+            row["n_target"] += 1
+        if ticker in have:
+            row["account_usd"] += have[ticker] * nav
+            row["n_account"] += 1
+        row["delta_usd"] += gap * nav
+        row["traded_usd"] += abs(gap) * nav
+        row["_drivers"].append(
+            {
+                "ticker": ticker,
+                "usd": gap * nav,
+                "weight_now": have.get(ticker, 0.0),
+                "weight_target": wanted.get(ticker, 0.0),
+            }
+        )
+
+    rows: list[dict[str, Any]] = []
+    for row in grouped.values():
+        top = sorted(row.pop("_drivers"), key=lambda item: -abs(item["usd"]))[:drivers]
+        row["drivers"] = top
+        rows.append(row)
+    rows.sort(key=lambda row: -abs(row["delta_usd"]))
+    both = sum(row["traded_usd"] for row in rows)
+    one_side = both / 2.0
+    return {
+        "anchor": anchor,
+        "nav": nav,
+        "rows": rows,
+        "one_side_usd": one_side,
+        "both_sides_usd": both,
+        "unmapped_usd": sum(row["delta_usd"] for row in rows if row["code"] is None),
+        "n_names": len(gaps),
+        "n_mapped": sum(1 for ticker in gaps if sector_of.get(ticker) is not None),
     }
 
 
@@ -548,6 +661,7 @@ def block(
     tonight_manifest: dict[str, Any] | None = None,
     nav: float | None = None,
     guard_threshold: float | None = None,
+    sector_of: dict[str, int] | None = None,
 ) -> dict[str, Any] | None:
     """The whole anchored block, or `None` when it cannot be built.
 
@@ -565,6 +679,7 @@ def block(
             tonight_manifest=tonight_manifest or {},
             nav=nav,
             guard_threshold=guard_threshold,
+            sector_of=sector_of,
         )
     except Exception as exc:  # noqa: BLE001 - reporting must never stop the evening
         logger.warning(
@@ -573,8 +688,52 @@ def block(
         return None
 
 
+def sector_map_from_store() -> dict[str, int]:
+    """Ticker to GICS code, from the store's own `efb.e11_sectors`.
+
+    The page's sector panel reads a bundled map generated from
+    `data/processed/sectors.parquet`, and this is the same table in the store (the
+    appendix keeps them in step), so a dollar the writer files under "Information
+    Technology" is the sector the page colours it with. Labels the risk model does not
+    know are left out rather than guessed: they land in the page's Unmapped row, which
+    is the truth about them.
+
+    Empty rather than raising: no map means no sector field, and the page then renders
+    its own panel exactly as before.
+    """
+    from efb.models.fundamental import SECTOR_CODES
+    from live import appendix
+
+    try:
+        rows = appendix.read_appendix(appendix.SPEC_BY_NAME["sectors"])
+    except Exception as exc:  # noqa: BLE001 - a page field, never the evening
+        logger.warning(
+            "the sector map could not be read: %s: %s", type(exc).__name__, exc
+        )
+        return {}
+    if rows is None or rows.empty or "ticker" not in rows.columns:
+        return {}
+    frame = rows.copy()
+    for column in ("trade_date", "as_of"):
+        if column in frame.columns:
+            frame = frame.sort_values(column)
+            break
+    codes = {name: int(code) for name, code in SECTOR_CODES.items()}
+    labels = frame["gics_sector"].astype(str)
+    return {
+        str(ticker): codes[label]
+        for ticker, label in zip(frame["ticker"], labels, strict=False)
+        if label in codes
+    }
+
+
 def from_store(
-    *, today: str, tonight_manifest: dict[str, Any] | None, nav: float | None
+    *,
+    today: str,
+    tonight_manifest: dict[str, Any] | None,
+    nav: float | None,
+    sector_of: dict[str, int] | None = None,
+    guard_threshold: float | None = None,
 ) -> dict[str, Any] | None:
     """The block, read from the store: the one place the evening's frames come from.
 
@@ -594,6 +753,8 @@ def from_store(
             today=today,
             tonight_manifest=tonight_manifest,
             nav=nav,
+            sector_of=sector_of,
+            guard_threshold=guard_threshold,
         )
     except Exception as exc:  # noqa: BLE001 - reporting must never stop the evening
         logger.warning(
@@ -615,6 +776,7 @@ def _block(
     tonight_manifest: dict[str, Any],
     nav: float | None,
     guard_threshold: float | None = None,
+    sector_of: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     anchor, source = anchor_close(proposals)
     if anchor is None:
@@ -672,7 +834,7 @@ def _block(
         for item in unreachable
         if isinstance(item, dict)
     )
-    return {
+    out = {
         "anchor": {"close": anchor, "day": source, "account_read": now_close},
         "cadence_strip": {
             "k": cadence.get("k"),
@@ -729,3 +891,11 @@ def _block(
             }
         ),
     }
+    # The same name-level gaps the drift card is made from, grouped by sector: on a
+    # hold day the page's own sector panel compares the account with tonight's book,
+    # which is the account, and reads eleven rows of +$0. Left out entirely when the
+    # map or the NAV is missing, which is the page rendering as it did before.
+    anchored = sectors(target, now, nav, sector_of, anchor=anchor)
+    if anchored:
+        out["sectors"] = anchored
+    return out

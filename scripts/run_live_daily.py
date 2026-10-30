@@ -1460,6 +1460,10 @@ def finish_run(
                     today=str(row.get("target_close") or "")[:10],
                     tonight_manifest=manifest,
                     nav=_manifest_nav(manifest, row),
+                    # The sector map the anchored sector panel needs, read from the
+                    # store's own table: a store that cannot answer gives {}, the
+                    # field is left out, and the page's own panel renders as before.
+                    sector_of=monthly_view.sector_map_from_store(),
                 )
             except Exception as exc:  # noqa: BLE001 - reporting, never the run
                 logger.warning("the anchored block was skipped: %s", type(exc).__name__)

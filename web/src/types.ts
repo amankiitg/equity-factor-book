@@ -586,8 +586,46 @@ export interface MonthlyBlock {
   since_anchor?: {
     trades_by_reason: Array<{ reason: string; legs: number; usd: number }>;
   };
+  /**
+   * The account against the anchor rebalance's target, by sector, in dollars.
+   *
+   * Absent from every document written before this existed, and absent when the
+   * writer could not read the sector map: the page's own sector panel then renders
+   * as it always has, which is the right failure for a panel.
+   */
+  sectors?: {
+    anchor: string | null;
+    nav: number;
+    rows: MonthlySectorRow[];
+    /** `both_sides_usd / 2`: the drift card's one-side turnover, sector by sector. */
+    one_side_usd: number;
+    both_sides_usd: number;
+    unmapped_usd: number;
+    n_names: number;
+    n_mapped: number;
+  };
   tonight?: { forced_legs: number; forced_usd: number };
   rebalance_dates?: string[];
+}
+
+/** One sector's distance from the rebalance target, net and name by name. */
+export interface MonthlySectorRow {
+  code: number | null;
+  label: string;
+  /** The target's and the account's signed net, and the difference, in dollars. */
+  target_usd: number;
+  account_usd: number;
+  delta_usd: number;
+  /** Sum of |name gap| in this sector: what closing it would trade, both sides. */
+  traded_usd: number;
+  n_target: number;
+  n_account: number;
+  drivers: Array<{
+    ticker: string;
+    usd: number;
+    weight_now: number;
+    weight_target: number;
+  }>;
 }
 
 export interface RiskConcentration {
