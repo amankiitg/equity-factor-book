@@ -604,6 +604,26 @@ export interface MonthlyBlock {
     n_names: number;
     n_mapped: number;
   };
+  /**
+   * The rebalance's own hedge footprint, from its target rows and its stored risk.
+   *
+   * Absent before this existed and absent when the anchor's target rows carry no leg
+   * column: the page's nightly hedge panel then renders as it always has.
+   */
+  hedge?: {
+    anchor: string | null;
+    moved_names: number;
+    book_names: number;
+    moved_usd: number | null;
+    share_of_turnover: number | null;
+    variance_shares: Array<{
+      ticker: string;
+      variance_share: number | null;
+      weight: number | null;
+    }>;
+    n_eff: number | null;
+    max_weight: number | null;
+  };
   tonight?: { forced_legs: number; forced_usd: number };
   rebalance_dates?: string[];
 }

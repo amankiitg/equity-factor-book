@@ -17,6 +17,7 @@ untouched.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -25,6 +26,9 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 REBALANCE = "rebalance"
+# The reason the loop records on a name the hedge moved, and the one the page's own
+# hedge panel filters on.
+HEDGE_REASON = "the hedge moved"
 # The floor the sizing already uses: a position under it is a leg the book asked for
 # and the account does not hold, which is a different statement from a name it never
 # wanted.
@@ -526,6 +530,88 @@ def sectors(
     }
 
 
+def hedge(
+    target: pd.DataFrame,
+    reconciliation: pd.DataFrame | None,
+    close: str,
+    nav: float | None,
+    turnover_usd: float | None,
+) -> dict[str, Any]:
+    """The rebalance's own hedge: what it moved, and what carries the risk.
+
+    The page's hedge panel reads tonight's book, so on a hold day it reports "0 of 196
+    names, $0 of legs" - true, and about a night that did nothing. This is the same
+    footprint for the close that actually hedged, from the target rows' own `reason`
+    and the leg between `previous_weight` and `weight`, and from that close's
+    `reconciliation.traded_risk` for the risk shares.
+
+    Read-only and descriptive: nothing here is a causal claim, and the page keeps
+    saying so.
+    """
+    if target is None or target.empty or "weight" not in target.columns:
+        return {}
+    frame = target.copy()
+    weight = pd.to_numeric(frame["weight"], errors="coerce")
+    previous = pd.to_numeric(frame.get("previous_weight"), errors="coerce")
+    legs = (weight - previous).abs() if previous is not None else weight * 0
+    reasons = (
+        frame["reason"].astype(str)
+        if "reason" in frame.columns
+        else pd.Series("", index=frame.index, dtype=str)
+    )
+    moved = reasons.str.strip() == HEDGE_REASON
+    moved_legs = float(legs.where(moved, 0.0).fillna(0.0).sum())
+    moved_usd = None if nav is None else moved_legs * nav
+    risk = _traded_risk(reconciliation, close)
+    anchors = {
+        str(ticker): float(value)
+        for ticker, value in zip(frame["ticker"], weight, strict=False)
+        if value is not None and not pd.isna(value)
+    }
+    return {
+        "anchor": close,
+        "moved_names": int(moved.sum()),
+        "book_names": int(len(frame)),
+        "moved_usd": moved_usd,
+        "share_of_turnover": (
+            None
+            if not turnover_usd or moved_legs == 0
+            else moved_legs * (nav or 0.0) / turnover_usd
+        ),
+        "variance_shares": [
+            {
+                "ticker": str(entry.get("ticker")),
+                "variance_share": _number(entry.get("variance_share")),
+                "weight": anchors.get(str(entry.get("ticker"))),
+            }
+            for entry in (risk.get("top_variance_shares") or [])
+            if isinstance(entry, dict)
+        ],
+        "n_eff": _number(risk.get("n_eff")),
+        "max_weight": _number(risk.get("max_weight")),
+    }
+
+
+def _traded_risk(reconciliation: pd.DataFrame | None, close: str) -> dict[str, Any]:
+    """One close's stored risk block, or `{}` when the store has none for it."""
+    if reconciliation is None or reconciliation.empty:
+        return {}
+    if "trade_date" not in reconciliation.columns:
+        return {}
+    frame = reconciliation.copy()
+    frame["trade_date"] = frame["trade_date"].astype(str).str.slice(0, 10)
+    rows = frame.loc[frame["trade_date"] == close]
+    if rows.empty:
+        return {}
+    value = rows.iloc[-1].get("traded_risk")
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {}
+    return value if isinstance(value, dict) else {}
+
+
 def _filled_order_ids(day_fills: pd.DataFrame) -> set[str]:
     """The order ids the close's fills record as FILLED."""
     if day_fills is None or day_fills.empty or "order_id" not in day_fills.columns:
@@ -662,6 +748,7 @@ def block(
     orders: pd.DataFrame,
     fills: pd.DataFrame,
     today: str,
+    reconciliation: pd.DataFrame | None = None,
     tonight_manifest: dict[str, Any] | None = None,
     nav: float | None = None,
     guard_threshold: float | None = None,
@@ -680,6 +767,7 @@ def block(
             orders=orders,
             fills=fills,
             today=today,
+            reconciliation=reconciliation,
             tonight_manifest=tonight_manifest or {},
             nav=nav,
             guard_threshold=guard_threshold,
@@ -755,6 +843,7 @@ def from_store(
             orders=store.select("orders"),
             fills=store.select("fills"),
             today=today,
+            reconciliation=store.select("reconciliation"),
             tonight_manifest=tonight_manifest,
             nav=nav,
             sector_of=sector_of,
@@ -778,7 +867,8 @@ def _block(
     fills: pd.DataFrame,
     today: str,
     tonight_manifest: dict[str, Any],
-    nav: float | None,
+    reconciliation: pd.DataFrame | None = None,
+    nav: float | None = None,
     guard_threshold: float | None = None,
     sector_of: dict[str, int] | None = None,
 ) -> dict[str, Any]:
@@ -902,4 +992,14 @@ def _block(
     anchored = sectors(target, now, nav, sector_of, anchor=anchor)
     if anchored:
         out["sectors"] = anchored
+    card = rebalance_card(anchor, anchor_manifest, orders, fills, nav)
+    footprint = hedge(
+        target,
+        reconciliation,
+        anchor,
+        nav,
+        _number(card.get("notional")),
+    )
+    if footprint:
+        out["hedge"] = footprint
     return out

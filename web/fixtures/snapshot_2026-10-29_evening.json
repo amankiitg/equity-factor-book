@@ -4630,6 +4630,42 @@
       ],
       "traded_usd": 44800.74827339265
     },
+    "hedge": {
+      "anchor": "2026-10-23",
+      "book_names": 196,
+      "max_weight": 0.015476269574238647,
+      "moved_names": 88,
+      "moved_usd": 122327.36104762908,
+      "n_eff": 143.75887426212566,
+      "share_of_turnover": 0.22486505476777602,
+      "variance_shares": [
+        {
+          "ticker": "STX",
+          "variance_share": 0.08374508563810572,
+          "weight": 0.0154762695742386
+        },
+        {
+          "ticker": "MRVL",
+          "variance_share": 0.07753552063372578,
+          "weight": 0.0142788385596019
+        },
+        {
+          "ticker": "INTC",
+          "variance_share": 0.05289942682151358,
+          "weight": 0.014430228774904
+        },
+        {
+          "ticker": "WDC",
+          "variance_share": 0.04269716976182286,
+          "weight": 0.0106230959789906
+        },
+        {
+          "ticker": "COIN",
+          "variance_share": 0.03427836451532033,
+          "weight": 0.00884275133935098
+        }
+      ]
+    },
     "rebalance_card": {
       "close": "2026-10-23",
       "dollars_owed": 0.0,

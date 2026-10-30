@@ -180,3 +180,32 @@ The block itself lands before the panels: `live/monthly_view.py` builds it and
 `live/snapshot.py` publishes it under a `monthly` key, absent when the run cannot build
 it. The page ignores it until the panels land, which is the order this document asks for
 and the reason the Worker is deployed last.
+
+## The hold-day audit of every panel (2026-10-30)
+
+The question was not only "does this panel read +$0" but "does this panel answer a
+night-against-night question with tonight's own book". Every panel on the book tab, and
+what it does on a hold day:
+
+| panel | what it read | on a hold day | what was done |
+|---|---|---|---|
+| status strip | tonight's run, its close, the account read | correct: it is about the run | unchanged |
+| alerts, incl. "last night's check" | tonight's exceptions against last night's | correct: the referent *is* last night | unchanged |
+| cadence strip | the calendar and the drift guard | already anchored | unchanged (2026-10-29) |
+| rebalance card | the anchor close's orders and fills | already anchored | unchanged (2026-10-29) |
+| flip bridge | the account before the rebalance to now | already anchored | unchanged (2026-10-29) |
+| drift card | the name gaps to the anchor target | already anchored | unchanged (2026-10-29) |
+| trades by reason | every leg since the anchor, by why | already anchored | unchanged (2026-10-29) |
+| tonight line | tonight's forced legs | correct: it says "tonight" | unchanged here; reworded to separate the legs that cannot be sent (below) |
+| **by sector: account against target** | tonight's book against the account | **the account against itself: +$0 twice over** | **anchored** on the rebalance target, `monthly.sectors` |
+| **the hedge's own footprint** | tonight's book, filtered to `reason == "the hedge moved"` | **0 of 196 names, $0 of legs** | **anchored** on the rebalance, `monthly.hedge`: 88 of 196, $122,327 of legs, 22.5% of that rebalance's turnover |
+| the hedge (factor exposures) | the book's exposures before and after the hedge | a state, not a comparison; the hedge exposure is what the book carries now | unchanged — it is a current reading, and the sentence says so |
+| the largest longs and shorts | tonight's book | tonight's book **is** the account | **labelled**: "These are what the account holds now, not the rebalance's book: the drift card measures the distance between the two." |
+| where the trades came from | tonight's legs by reason | hidden when the block is present | unchanged |
+| drawer: the book / actual holdings | two explicit tables with their own dates | they are inventories, not comparisons | unchanged |
+| the metrics row and the nightly bridge | tonight's numbers | hidden when the block is present | unchanged |
+| attribution tab | the stored session's attribution | a property of a session, not of a hold day | unchanged |
+
+The two anchors are the two panels whose *subject* was the rebalance and whose data was
+tonight: the sector comparison and the hedge's footprint. Everything else either already
+measured from the anchor, or is a reading about tonight that says so.
