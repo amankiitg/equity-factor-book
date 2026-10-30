@@ -4660,7 +4660,7 @@
       "one_side_usd": 22400.374136696326,
       "rows": [
         {
-          "account_usd": -6413.039436000022,
+          "account_usd": -6413.039436000023,
           "code": 45,
           "delta_usd": -6413.039435999955,
           "drivers": [
@@ -4686,13 +4686,13 @@
           "label": "Information Technology",
           "n_account": 21,
           "n_target": 21,
-          "target_usd": -7.003109203651547e-11,
+          "target_usd": -7.275957614183426e-11,
           "traded_usd": 12694.614086987058
         },
         {
-          "account_usd": -1453.496244999989,
+          "account_usd": -1453.4962449999898,
           "code": 50,
-          "delta_usd": -1453.4962449999794,
+          "delta_usd": -1453.4962449999791,
           "drivers": [
             {
               "ticker": "RDDT",
@@ -4716,13 +4716,13 @@
           "label": "Communication Services",
           "n_account": 9,
           "n_target": 9,
-          "target_usd": -1.000444171950221e-11,
+          "target_usd": -1.0913936421275139e-11,
           "traded_usd": 2896.7832474678794
         },
         {
-          "account_usd": 1440.3025089999664,
+          "account_usd": 1440.302508999972,
           "code": 30,
-          "delta_usd": 1440.3025089999992,
+          "delta_usd": 1440.3025089999994,
           "drivers": [
             {
               "ticker": "BG",
@@ -4746,11 +4746,11 @@
           "label": "Consumer Staples",
           "n_account": 25,
           "n_target": 25,
-          "target_usd": -3.2741809263825417e-11,
-          "traded_usd": 3299.02280580752
+          "target_usd": -2.546585164964199e-11,
+          "traded_usd": 3299.022805807521
         },
         {
-          "account_usd": -1304.8622539999506,
+          "account_usd": -1304.862253999952,
           "code": 55,
           "delta_usd": -1304.862253999938,
           "drivers": [
@@ -4776,13 +4776,13 @@
           "label": "Utilities",
           "n_account": 23,
           "n_target": 23,
-          "target_usd": -1.1823431123048067e-11,
+          "target_usd": -7.73070496506989e-12,
           "traded_usd": 3008.8713353834537
         },
         {
-          "account_usd": 1016.3472950000078,
+          "account_usd": 1016.3472950000059,
           "code": 25,
-          "delta_usd": 1016.3472950000089,
+          "delta_usd": 1016.3472950000095,
           "drivers": [
             {
               "ticker": "CMG",
@@ -4806,13 +4806,13 @@
           "label": "Consumer Discretionary",
           "n_account": 20,
           "n_target": 20,
-          "target_usd": -1.8189894035458565e-12,
+          "target_usd": -3.637978807091713e-12,
           "traded_usd": 4985.741956827214
         },
         {
-          "account_usd": -800.6073369999895,
+          "account_usd": -800.6073369999831,
           "code": 40,
-          "delta_usd": -800.6073370000563,
+          "delta_usd": -800.6073370000562,
           "drivers": [
             {
               "ticker": "BNY",
@@ -4836,11 +4836,11 @@
           "label": "Financials",
           "n_account": 29,
           "n_target": 29,
-          "target_usd": 7.003109203651547e-11,
-          "traded_usd": 5269.6555875128115
+          "target_usd": 7.048583938740194e-11,
+          "traded_usd": 5269.655587512813
         },
         {
-          "account_usd": 704.8692170000077,
+          "account_usd": 704.8692170000086,
           "code": 20,
           "delta_usd": 704.8692169999565,
           "drivers": [
@@ -4866,13 +4866,13 @@
           "label": "Industrials",
           "n_account": 14,
           "n_target": 14,
-          "target_usd": 4.160938260611147e-11,
+          "target_usd": 5.275069270282984e-11,
           "traded_usd": 3462.556250783974
         },
         {
-          "account_usd": -527.7239769999806,
+          "account_usd": -527.7239769999796,
           "code": 35,
-          "delta_usd": -527.7239769999986,
+          "delta_usd": -527.7239769999984,
           "drivers": [
             {
               "ticker": "GILD",
@@ -4896,13 +4896,13 @@
           "label": "Health Care",
           "n_account": 20,
           "n_target": 20,
-          "target_usd": 2.0463630789890885e-11,
+          "target_usd": 1.8189894035458565e-11,
           "traded_usd": 3547.994726191638
         },
         {
-          "account_usd": 463.7913140000037,
+          "account_usd": 463.7913139999987,
           "code": 60,
-          "delta_usd": 463.79131399998766,
+          "delta_usd": 463.7913139999877,
           "drivers": [
             {
               "ticker": "CSGP",
@@ -4926,13 +4926,13 @@
           "label": "Real Estate",
           "n_account": 16,
           "n_target": 16,
-          "target_usd": 1.0913936421275139e-11,
+          "target_usd": 1.2278178473934531e-11,
           "traded_usd": 2685.5197170337515
         },
         {
-          "account_usd": 260.35687700001245,
+          "account_usd": 260.35687700001154,
           "code": 15,
-          "delta_usd": 260.35687700000346,
+          "delta_usd": 260.35687700000335,
           "drivers": [
             {
               "ticker": "IP",
@@ -4956,13 +4956,13 @@
           "label": "Materials",
           "n_account": 15,
           "n_target": 15,
-          "target_usd": 8.185452315956354e-12,
+          "target_usd": 7.73070496506989e-12,
           "traded_usd": 2746.2307461522555
         },
         {
           "account_usd": -194.05123500000536,
           "code": 10,
-          "delta_usd": -194.05123499999613,
+          "delta_usd": -194.05123499999615,
           "drivers": [
             {
               "ticker": "DVN",
