@@ -32,7 +32,7 @@ import { Details } from "./Details";
 import { count, dollars, percent, signedDollars } from "./format";
 import { UNMAPPED, sectorCodeFor, sectorLabel } from "./sectors";
 import type { BookFacts, SectorBucket } from "./book";
-import type { Snapshot } from "./types";
+import type { MonthlyBlock, MonthlySectorRow, Snapshot } from "./types";
 
 /** How many driver names a sector row prints before the rest are left to the drawer. */
 const DRIVERS = 3;
@@ -183,15 +183,142 @@ function DeltaRow({ row, scale }: { row: SectorDelta; scale: number }) {
   );
 }
 
+/**
+ * The anchored sector field, when the document carries one and the close is a hold day.
+ *
+ * `null` on a rebalance day, on a document with no cadence block, and on every document
+ * written before the field existed: those are the days the panel's own comparison is
+ * the right one, because tonight's book is not the account.
+ */
+export function anchoredSectors(monthly?: MonthlyBlock | null) {
+  const block = monthly?.sectors;
+  if (!block || !block.rows?.length) return null;
+  if (monthly?.anchor?.day !== "cadence") return null;
+  return block;
+}
+
+/** One sector row, measured from the rebalance target. */
+function AnchoredRow({ row, scale }: { row: MonthlySectorRow; scale: number }) {
+  const share = scale > 0 ? Math.min(1, Math.abs(row.delta_usd) / scale) : 0;
+  const over = row.delta_usd >= 0;
+  return (
+    <div
+      data-sector={row.code === null ? "unmapped" : String(row.code)}
+      data-delta={row.delta_usd.toFixed(2)}
+      data-traded={row.traded_usd.toFixed(2)}
+      className="border-b border-slate-100"
+    >
+      <div className="grid grid-cols-[6.5rem_1fr_5rem] items-center gap-x-2 py-1 sm:grid-cols-[9rem_1fr_6rem]">
+        <div className="truncate text-sm font-medium" title={row.label}>
+          {row.label}
+        </div>
+        <div className="relative h-3 w-full rounded-sm bg-slate-100">
+          <span className="absolute left-1/2 top-0 h-full w-px bg-slate-300" />
+          <span
+            data-side={over ? "over" : "under"}
+            title={`account ${signedDollars(row.account_usd)} against target ${signedDollars(
+              row.target_usd,
+            )}, ${signedDollars(row.traded_usd)} to trade`}
+            className={`absolute top-0 h-full rounded-sm ${over ? "bg-sky-600" : "bg-violet-500"}`}
+            style={
+              over
+                ? { left: "50%", width: `${share * 50}%` }
+                : { right: "50%", width: `${share * 50}%` }
+            }
+          />
+        </div>
+        <div className="text-right font-mono text-xs tabular-nums">{signedDollars(row.delta_usd)}</div>
+      </div>
+      <p className="pb-1 text-xs text-slate-500">
+        {signedDollars(row.traded_usd)} to trade
+        {row.drivers.length > 0
+          ? ` · of which ${row.drivers
+              .map((driver) => `${driver.ticker} ${signedDollars(driver.usd)}`)
+              .join(", ")}`
+          : ""}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * By sector against the rebalance target.
+ *
+ * The net is small by construction - the book is built sector-neutral - so the net bar
+ * alone would say the book is at target when the names inside each sector are not. The
+ * traded figure is the honest one, and its total is the drift card's: `$44,801` both
+ * sides, `$22,400` one side on 2026-10-29.
+ */
+export function AnchoredSectorSection({ block }: { block: NonNullable<MonthlyBlock["sectors"]> }) {
+  const rows = block.rows;
+  const scale = Math.max(...rows.map((row) => Math.abs(row.delta_usd)), 1);
+  const worst = rows[0];
+  const worstDriver = worst?.drivers[0] ?? null;
+  const anchor = block.anchor ?? null;
+  return (
+    <section
+      data-section="sector"
+      data-sector-anchored="true"
+      className="min-w-0 rounded border border-slate-200 bg-white p-3"
+    >
+      <h2 className="text-base font-semibold">
+        By sector: account against the {anchor ?? "rebalance"} target
+      </h2>
+      <p className="mt-1 text-xs text-slate-600">
+        Signed dollars, net by sector, at the NAV the rebalance was sized on (
+        {dollars(block.nav)}). The net is small because the book is built sector-neutral, so
+        the second line is the reading that matters:{" "}
+        <span data-sector-traded-total="true" className="font-medium">
+          {dollars(block.both_sides_usd)}
+        </span>{" "}
+        to trade both sides, {dollars(block.one_side_usd)} one side - the drift card&apos;s
+        figure, name by name.
+      </p>
+      {worst ? (
+        <p data-sector-largest="true" className="mt-1 text-sm">
+          largest net: <span className="font-medium">{worst.label}</span>{" "}
+          <span className="font-mono tabular-nums">{signedDollars(worst.delta_usd)}</span>
+          {worstDriver ? <>, of which {worstDriver.ticker} {signedDollars(worstDriver.usd)}</> : null}
+          {block.nav ? ` (${percent(worst.delta_usd / block.nav)} of NAV)` : null}
+        </p>
+      ) : null}
+      <div className="mt-2" data-sector-deltas="true">
+        {rows.map((row) => (
+          <AnchoredRow
+            key={row.code === null ? "unmapped" : String(row.code)}
+            row={row}
+            scale={scale}
+          />
+        ))}
+      </div>
+      <p className="mt-1 text-xs text-slate-500">
+        {count(block.n_mapped)} of {count(block.n_names)} name(s) placed in a sector
+        {block.unmapped_usd === 0
+          ? "."
+          : `; ${signedDollars(block.unmapped_usd)} is in names the map does not carry.`}
+      </p>
+    </section>
+  );
+}
+
 export function SectorSection({
   snapshot,
   sectors,
   facts: _facts,
+  monthly,
 }: {
   snapshot: Snapshot;
   sectors: SectorBucket[];
   facts?: BookFacts;
+  /** The anchored block, when the document carries one: a hold day's whole point. */
+  monthly?: MonthlyBlock | null;
 }) {
+  // A hold day is the one day the panel's own comparison cannot say anything: tonight's
+  // book is the account, so every sector reads +$0. When the block carries the anchored
+  // sectors, that is the panel, and a rebalance day or a flag-less document falls
+  // through to the comparison below exactly as before.
+  const anchored = anchoredSectors(monthly);
+  if (anchored) return <AnchoredSectorSection block={anchored} />;
   const read = snapshot.actual_holdings ?? null;
   if (sectors.length === 0) return null;
   if (!read) {

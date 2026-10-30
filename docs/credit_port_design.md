@@ -775,6 +775,7 @@ criterion is a test rather than a claim.
 | handoff/ | unchanged | the handoff convention, which the credit port should adopt on day one |
 | scripts/backfill_reconciliation.py | unchanged | the one-off that writes a priced close's reconciliation row from the store, with its own dry run |
 | scripts/backfill_fills.py | new | writes the fill rows a close is owed, read back from the broker through the morning's own three calls, dry run by default and restorable from its own backup |
+| scripts/republish_monthly.py | new | rewrites one published close's `monthly` block from the store, keeping every other key as published, with a backup and a read-back; a credit book's page needs the same one-key repair path |
 | live/monthly_view.py | new | the page's anchored block: every panel measured from the last rebalance, built from the store and absent when it cannot be built |
 | web/src/Monthly.tsx | new | the anchored panels: the cadence strip, the rebalance card, the flip bridge, the drift card and the leg counts, rendered only when the document carries the block |
 | web/src/monthly.test.tsx | new | the anchored panels under vitest: the four 2026-10-23 flips as four rows, the strip, the drift card, and nothing at all without a block |

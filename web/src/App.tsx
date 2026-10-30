@@ -123,7 +123,11 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
               {snapshot.monthly ? null : <Reasons facts={facts} snapshot={snapshot} />}
             </div>
             <div className="flex flex-col gap-3">
-              <SectorSection snapshot={snapshot} sectors={facts.sectors} />
+              <SectorSection
+                snapshot={snapshot}
+                sectors={facts.sectors}
+                monthly={snapshot.monthly}
+              />
               <TopNames facts={facts} />
             </div>
           </div>

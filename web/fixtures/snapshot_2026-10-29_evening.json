@@ -4493,181 +4493,525 @@
   },
   "monthly": {
     "anchor": {
+      "account_read": "2026-10-29",
       "close": "2026-10-23",
-      "day": "cadence",
-      "account_read": "2026-10-29"
-    },
-    "cadence_strip": {
-      "k": 21,
-      "offset": 4,
-      "sessions_since": 4,
-      "last_rebalance": "2026-10-23",
-      "next_rebalance": "2026-11-23",
-      "guard": {
-        "worst_abs_exposure": 0.030165094207095334,
-        "exposure_after": null,
-        "threshold": 0.05,
-        "fired": false,
-        "ran": false
-      }
-    },
-    "rebalance_card": {
-      "close": "2026-10-23",
-      "orders": 224,
-      "sent_legs": 208,
-      "filled_legs": 208,
-      "under_minimum_legs": 16,
-      "under_minimum_usd": 2253.2565324560983,
-      "skipped_other_legs": 0,
-      "notional": 544003.4298524496,
-      "pct_nav": 0.5580824950624111,
-      "expected_cost_bps": 4.761868917990796,
-      "expected_cost_usd": 464.1738536531359,
-      "realized_cost_bps": 10.981193039752796,
-      "legs_total": 224,
-      "legs_complete": 208,
-      "legs_incomplete": 0,
-      "dollars_owed": 0.0
+      "day": "cadence"
     },
     "bridge_anchor": {
-      "before_dollars": 973233.813683,
       "after_dollars": 991726.674328,
-      "opened": 50,
+      "before_dollars": 973233.813683,
+      "complete_flips": 4,
       "exited": 28,
-      "resized": 142,
-      "flipped": 4,
-      "under_minimum": 0,
-      "opened_usd": 227668.075343,
       "exited_usd": 129256.584332,
-      "resized_usd": -83054.750621,
-      "flipped_usd": 3136.1202550000003,
       "flip_rows": [
         {
-          "ticker": "GEHC",
-          "from_side": "short",
-          "to_side": "long",
           "close_dollars": 2012.799992,
           "close_filled": "2026-10-23",
           "close_filled_at": "2026-10-26",
+          "complete": true,
+          "from_side": "short",
+          "now_dollars": 2502.693792,
+          "on_target_side": true,
           "open_dollars": 2328.08000097928,
           "open_filled": "2026-10-26",
           "open_filled_at": "2026-10-27",
-          "now_dollars": 2502.693792,
-          "on_target_side": true,
-          "complete": true
+          "ticker": "GEHC",
+          "to_side": "long"
         },
         {
-          "ticker": "VZ",
-          "from_side": "long",
-          "to_side": "short",
           "close_dollars": 961.389640654958,
           "close_filled": "2026-10-23",
           "close_filled_at": "2026-10-26",
+          "complete": true,
+          "from_side": "long",
+          "now_dollars": -2461.76,
+          "on_target_side": true,
           "open_dollars": 2417.710008,
           "open_filled": "2026-10-26",
           "open_filled_at": "2026-10-27",
-          "now_dollars": -2461.76,
-          "on_target_side": true,
-          "complete": true
+          "ticker": "VZ",
+          "to_side": "short"
         },
         {
-          "ticker": "F",
-          "from_side": "long",
-          "to_side": "short",
           "close_dollars": 637.329526227199,
           "close_filled": "2026-10-23",
           "close_filled_at": "2026-10-26",
+          "complete": true,
+          "from_side": "long",
+          "now_dollars": -1694.0328,
+          "on_target_side": true,
           "open_dollars": 1609.030044,
           "open_filled": "2026-10-26",
           "open_filled_at": "2026-10-27",
-          "now_dollars": -1694.0328,
-          "on_target_side": true,
-          "complete": true
+          "ticker": "F",
+          "to_side": "short"
         },
         {
-          "ticker": "CCL",
-          "from_side": "short",
-          "to_side": "long",
           "close_dollars": 605.470009,
           "close_filled": "2026-10-23",
           "close_filled_at": "2026-10-26",
+          "complete": true,
+          "from_side": "short",
+          "now_dollars": 700.527273,
+          "on_target_side": true,
           "open_dollars": 677.69999998745,
           "open_filled": "2026-10-26",
           "open_filled_at": "2026-10-27",
-          "now_dollars": 700.527273,
-          "on_target_side": true,
-          "complete": true
+          "ticker": "CCL",
+          "to_side": "long"
         }
       ],
-      "complete_flips": 4,
+      "flipped": 4,
+      "flipped_usd": 3136.1202550000003,
+      "holds": true,
       "identities": [
         {
-          "name": "gross before + opened - exited + resized + flipped",
+          "holds": true,
           "left": 991726.6743280002,
-          "right": 991726.674328,
-          "holds": true
+          "name": "gross before + opened - exited + resized + flipped",
+          "right": 991726.674328
         }
       ],
-      "holds": true
+      "opened": 50,
+      "opened_usd": 227668.075343,
+      "resized": 142,
+      "resized_usd": -83054.750621,
+      "under_minimum": 0
+    },
+    "cadence_strip": {
+      "guard": {
+        "exposure_after": null,
+        "fired": false,
+        "ran": false,
+        "threshold": 0.05,
+        "worst_abs_exposure": 0.030165094207095334
+      },
+      "k": 21,
+      "last_rebalance": "2026-10-23",
+      "next_rebalance": "2026-11-23",
+      "offset": 4,
+      "sessions_since": 4
     },
     "drift": {
+      "estimated_cost_usd": 14.8000866140434,
       "half_turnover_pct": 0.022980106378979476,
       "half_turnover_usd": 22400.374136696326,
-      "traded_usd": 44800.74827339265,
-      "estimated_cost_usd": 14.8000866140434,
       "largest": [
         {
           "ticker": "INTC",
+          "usd": -3030.312064369071,
           "weight_now": 0.0113214908058079,
-          "weight_target": 0.014430228774904,
-          "usd": -3030.312064369071
+          "weight_target": 0.014430228774904
         },
         {
           "ticker": "MRVL",
+          "usd": -1537.4353623208908,
           "weight_now": 0.012701613645351,
-          "weight_target": 0.0142788385596019,
-          "usd": -1537.4353623208908
+          "weight_target": 0.0142788385596019
         },
         {
           "ticker": "RDDT",
+          "usd": -1487.9087030846197,
           "weight_now": 0.00455786784408747,
-          "weight_target": 0.006084284325814,
-          "usd": -1487.9087030846197
+          "weight_target": 0.006084284325814
         },
         {
           "ticker": "FLEX",
+          "usd": -1249.4217406807736,
           "weight_now": -0.00923292424263579,
-          "weight_target": -0.00795116687832382,
-          "usd": -1249.4217406807736
+          "weight_target": -0.00795116687832382
         },
         {
           "ticker": "KLAC",
+          "usd": -1150.0916856899294,
           "weight_now": -0.0107312021535119,
-          "weight_target": -0.00955134555283852,
-          "usd": -1150.0916856899294
+          "weight_target": -0.00955134555283852
         }
-      ]
+      ],
+      "traded_usd": 44800.74827339265
+    },
+    "rebalance_card": {
+      "close": "2026-10-23",
+      "dollars_owed": 0.0,
+      "expected_cost_bps": 4.761868917990796,
+      "expected_cost_usd": 464.1738536531359,
+      "filled_legs": 208,
+      "legs_complete": 208,
+      "legs_incomplete": 0,
+      "legs_total": 224,
+      "notional": 544003.4298524496,
+      "orders": 224,
+      "pct_nav": 0.5580824950624111,
+      "realized_cost_bps": 10.981193039752796,
+      "sent_legs": 208,
+      "skipped_other_legs": 0,
+      "under_minimum_legs": 16,
+      "under_minimum_usd": 2253.2565324560983
+    },
+    "rebalance_dates": [
+      "2026-10-23"
+    ],
+    "sectors": {
+      "anchor": "2026-10-23",
+      "both_sides_usd": 44800.74827339265,
+      "n_mapped": 196,
+      "n_names": 196,
+      "nav": 974772.43,
+      "one_side_usd": 22400.374136696326,
+      "rows": [
+        {
+          "account_usd": -6413.039436000022,
+          "code": 45,
+          "delta_usd": -6413.039435999955,
+          "drivers": [
+            {
+              "ticker": "INTC",
+              "usd": -3030.312064369071,
+              "weight_now": 0.0113214908058079,
+              "weight_target": 0.014430228774904
+            },
+            {
+              "ticker": "MRVL",
+              "usd": -1537.4353623208908,
+              "weight_now": 0.012701613645351,
+              "weight_target": 0.0142788385596019
+            },
+            {
+              "ticker": "FLEX",
+              "usd": -1249.4217406807736,
+              "weight_now": -0.00923292424263579,
+              "weight_target": -0.00795116687832382
+            }
+          ],
+          "label": "Information Technology",
+          "n_account": 21,
+          "n_target": 21,
+          "target_usd": -7.003109203651547e-11,
+          "traded_usd": 12694.614086987058
+        },
+        {
+          "account_usd": -1453.496244999989,
+          "code": 50,
+          "delta_usd": -1453.4962449999794,
+          "drivers": [
+            {
+              "ticker": "RDDT",
+              "usd": -1487.9087030846197,
+              "weight_now": 0.00455786784408747,
+              "weight_target": 0.006084284325814
+            },
+            {
+              "ticker": "ECHO",
+              "usd": -567.4693079417203,
+              "weight_now": -0.00740403583224035,
+              "weight_target": -0.00682188015110181
+            },
+            {
+              "ticker": "CHTR",
+              "usd": 503.07804379271494,
+              "weight_now": 0.00806192085059279,
+              "weight_target": 0.00754582290987373
+            }
+          ],
+          "label": "Communication Services",
+          "n_account": 9,
+          "n_target": 9,
+          "target_usd": -1.000444171950221e-11,
+          "traded_usd": 2896.7832474678794
+        },
+        {
+          "account_usd": 1440.3025089999664,
+          "code": 30,
+          "delta_usd": 1440.3025089999992,
+          "drivers": [
+            {
+              "ticker": "BG",
+              "usd": 529.9194728787508,
+              "weight_now": -0.00916439542714601,
+              "weight_target": -0.00970802946578901
+            },
+            {
+              "ticker": "CHD",
+              "usd": 348.5890877799132,
+              "weight_now": 0.00762195417139568,
+              "weight_target": 0.00726434343369774
+            },
+            {
+              "ticker": "ADM",
+              "usd": 323.4082756608014,
+              "weight_now": -0.00633193944559962,
+              "weight_target": -0.00666371767989047
+            }
+          ],
+          "label": "Consumer Staples",
+          "n_account": 25,
+          "n_target": 25,
+          "target_usd": -3.2741809263825417e-11,
+          "traded_usd": 3299.02280580752
+        },
+        {
+          "account_usd": -1304.8622539999506,
+          "code": 55,
+          "delta_usd": -1304.862253999938,
+          "drivers": [
+            {
+              "ticker": "EXC",
+              "usd": -327.661614584603,
+              "weight_now": -0.00482163821559869,
+              "weight_target": -0.00448549656396765
+            },
+            {
+              "ticker": "NRG",
+              "usd": -305.615231631589,
+              "weight_now": -0.00370238210368752,
+              "weight_target": -0.00338885740579307
+            },
+            {
+              "ticker": "AEE",
+              "usd": 290.1355193196206,
+              "weight_now": 0.00704284978494929,
+              "weight_target": 0.00674520542161864
+            }
+          ],
+          "label": "Utilities",
+          "n_account": 23,
+          "n_target": 23,
+          "target_usd": -1.1823431123048067e-11,
+          "traded_usd": 3008.8713353834537
+        },
+        {
+          "account_usd": 1016.3472950000078,
+          "code": 25,
+          "delta_usd": 1016.3472950000089,
+          "drivers": [
+            {
+              "ticker": "CMG",
+              "usd": 917.5112207288693,
+              "weight_now": 0.0079733978893925,
+              "weight_target": 0.00703214104575273
+            },
+            {
+              "ticker": "LULU",
+              "usd": 831.8788892325842,
+              "weight_now": 0.00846769071115399,
+              "weight_target": 0.00761428240411705
+            },
+            {
+              "ticker": "NCLH",
+              "usd": 774.3672810661226,
+              "weight_now": 0.00468343799690765,
+              "weight_target": 0.00388902972556772
+            }
+          ],
+          "label": "Consumer Discretionary",
+          "n_account": 20,
+          "n_target": 20,
+          "target_usd": -1.8189894035458565e-12,
+          "traded_usd": 4985.741956827214
+        },
+        {
+          "account_usd": -800.6073369999895,
+          "code": 40,
+          "delta_usd": -800.6073370000563,
+          "drivers": [
+            {
+              "ticker": "BNY",
+              "usd": -472.4675552335719,
+              "weight_now": -0.012258861281089,
+              "weight_target": -0.0117741660428029
+            },
+            {
+              "ticker": "C",
+              "usd": -424.565985581849,
+              "weight_now": -0.00969457045476758,
+              "weight_target": -0.00925901650133678
+            },
+            {
+              "ticker": "MET",
+              "usd": 404.6865128639499,
+              "weight_now": 0.0115853848287441,
+              "weight_target": 0.0111702248381564
+            }
+          ],
+          "label": "Financials",
+          "n_account": 29,
+          "n_target": 29,
+          "target_usd": 7.003109203651547e-11,
+          "traded_usd": 5269.6555875128115
+        },
+        {
+          "account_usd": 704.8692170000077,
+          "code": 20,
+          "delta_usd": 704.8692169999565,
+          "drivers": [
+            {
+              "ticker": "CHRW",
+              "usd": 968.580584706116,
+              "weight_now": -0.00967386818685465,
+              "weight_target": -0.0106675160936857
+            },
+            {
+              "ticker": "TXT",
+              "usd": -832.5981970498684,
+              "weight_now": -0.0069158193158992,
+              "weight_target": -0.00606167308501958
+            },
+            {
+              "ticker": "LUV",
+              "usd": -431.0001637196549,
+              "weight_now": -0.00887247088020329,
+              "weight_target": -0.00843031622907138
+            }
+          ],
+          "label": "Industrials",
+          "n_account": 14,
+          "n_target": 14,
+          "target_usd": 4.160938260611147e-11,
+          "traded_usd": 3462.556250783974
+        },
+        {
+          "account_usd": -527.7239769999806,
+          "code": 35,
+          "delta_usd": -527.7239769999986,
+          "drivers": [
+            {
+              "ticker": "GILD",
+              "usd": -785.4257932737729,
+              "weight_now": -0.00884467977823295,
+              "weight_target": -0.00803892679517641
+            },
+            {
+              "ticker": "BAX",
+              "usd": -413.73891479550247,
+              "weight_now": 0.00606142192388433,
+              "weight_target": 0.00648586859683291
+            },
+            {
+              "ticker": "DXCM",
+              "usd": 318.9906376412884,
+              "weight_now": 0.00339954937379589,
+              "weight_target": 0.00307230310807899
+            }
+          ],
+          "label": "Health Care",
+          "n_account": 20,
+          "n_target": 20,
+          "target_usd": 2.0463630789890885e-11,
+          "traded_usd": 3547.994726191638
+        },
+        {
+          "account_usd": 463.7913140000037,
+          "code": 60,
+          "delta_usd": 463.79131399998766,
+          "drivers": [
+            {
+              "ticker": "CSGP",
+              "usd": 747.5458240126967,
+              "weight_now": -0.00395495387574718,
+              "weight_target": -0.0047218465380814
+            },
+            {
+              "ticker": "VICI",
+              "usd": -379.6991057384031,
+              "weight_now": -0.0097215511111655,
+              "weight_target": -0.00933202521357892
+            },
+            {
+              "ticker": "KIM",
+              "usd": 362.1370979446933,
+              "weight_now": 0.00312003567130022,
+              "weight_target": 0.00274852629454785
+            }
+          ],
+          "label": "Real Estate",
+          "n_account": 16,
+          "n_target": 16,
+          "target_usd": 1.0913936421275139e-11,
+          "traded_usd": 2685.5197170337515
+        },
+        {
+          "account_usd": 260.35687700001245,
+          "code": 15,
+          "delta_usd": 260.35687700000346,
+          "drivers": [
+            {
+              "ticker": "IP",
+              "usd": 551.8270316020516,
+              "weight_now": 0.0066542862378658,
+              "weight_target": 0.00608817766255243
+            },
+            {
+              "ticker": "STLD",
+              "usd": -376.88859858540604,
+              "weight_now": -0.00598210394604615,
+              "weight_target": -0.00559546129286257
+            },
+            {
+              "ticker": "CRH",
+              "usd": -232.15051769696547,
+              "weight_now": -0.0033585685225012,
+              "weight_target": -0.00312040983996956
+            }
+          ],
+          "label": "Materials",
+          "n_account": 15,
+          "n_target": 15,
+          "target_usd": 8.185452315956354e-12,
+          "traded_usd": 2746.2307461522555
+        },
+        {
+          "account_usd": -194.05123500000536,
+          "code": 10,
+          "delta_usd": -194.05123499999613,
+          "drivers": [
+            {
+              "ticker": "DVN",
+              "usd": -82.51320788112221,
+              "weight_now": -0.00147213847646471,
+              "weight_target": -0.00138748978786657
+            },
+            {
+              "ticker": "HAL",
+              "usd": -75.0703643470014,
+              "weight_now": -0.00210803048666446,
+              "weight_target": -0.00203101726589969
+            },
+            {
+              "ticker": "SLB",
+              "usd": -41.32095189442127,
+              "weight_now": 0.0016141156485109,
+              "weight_target": 0.00165650600611921
+            }
+          ],
+          "label": "Energy",
+          "n_account": 4,
+          "n_target": 4,
+          "target_usd": -9.322320693172514e-12,
+          "traded_usd": 203.75781324509364
+        }
+      ],
+      "unmapped_usd": 0
     },
     "since_anchor": {
       "trades_by_reason": [
         {
-          "reason": "rebalance",
           "legs": 224,
+          "reason": "rebalance",
           "usd": 546256.686384906
         },
         {
-          "reason": "reversal second leg",
           "legs": 12,
+          "reason": "reversal second leg",
           "usd": 10672.478379763503
         },
         {
-          "reason": "guard",
           "legs": 167,
+          "reason": "guard",
           "usd": 9973.866493178062
         },
         {
-          "reason": "carried leg",
           "legs": 1,
+          "reason": "carried leg",
           "usd": 269.368978165385
         }
       ]
@@ -4675,10 +5019,7 @@
     "tonight": {
       "forced_legs": 1,
       "forced_usd": 269.37
-    },
-    "rebalance_dates": [
-      "2026-10-23"
-    ]
+    }
   },
   "positions": {
     "matches": false,

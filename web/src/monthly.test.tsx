@@ -9,6 +9,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { incompleteFields, MonthlyPanels } from "./Monthly";
+import { SectorSection } from "./SectorSection";
 import type { MonthlyBlock, Snapshot } from "./types";
 import served from "../fixtures/snapshot_2026-10-29_evening.json";
 
@@ -89,5 +90,64 @@ describe("the anchored panels", () => {
     const { container } = render(<MonthlyPanels monthly={null} />);
     expect(container.querySelector("[data-monthly]")).toBeNull();
     expect(container.textContent).toBe("");
+  });
+});
+
+// The sector panel, on the same real document.
+//
+// The page's own sector panel compares the account with tonight's book, and on a hold
+// day tonight's book *is* the account: eleven rows of +$0, which is why the panel had
+// to be measured from the rebalance instead. These tests are on the served document,
+// so the numbers are the ones the page is reading.
+describe("the sector panel against the rebalance target", () => {
+  const SECTORS = MONTHLY.sectors;
+  if (!SECTORS) throw new Error("the served fixture carries no anchored sectors");
+
+  it("measures the account against the 2026-10-23 target and not against tonight", () => {
+    render(<SectorSection snapshot={SERVED} sectors={[]} monthly={MONTHLY} />);
+    const panel = document.querySelector('[data-sector-anchored="true"]');
+    expect(panel).not.toBeNull();
+    expect(panel?.textContent).toContain("account against the 2026-10-23 target");
+    // Crucially not the nightly panel: that one reads +$0 for every sector on a hold
+    // day, and this one must not render it.
+    expect(document.querySelector('[data-sector-deltas="no-account"]')).toBeNull();
+  });
+
+  it("shows non-zero differences, and the traded total is the drift card's", () => {
+    render(<SectorSection snapshot={SERVED} sectors={[]} monthly={MONTHLY} />);
+    const rows = [...document.querySelectorAll("[data-delta]")];
+    expect(rows.length).toBeGreaterThanOrEqual(10);
+    const deltas = rows.map((row) => Number(row.getAttribute("data-delta")));
+    expect(deltas.some((delta) => Math.abs(delta) > 100)).toBe(true);
+    // The identity: sum(traded) / 2 is the drift card's one-side turnover, and
+    // sum(traded) is its both-sides figure, name for name.
+    const traded = rows
+      .map((row) => Number(row.getAttribute("data-traded")))
+      .reduce((total, value) => total + value, 0);
+    // The rows carry cents, so the sums are to the cent rather than to the machine.
+    expect(traded / 2).toBeCloseTo(MONTHLY.drift?.half_turnover_usd ?? -1, 1);
+    expect(traded).toBeCloseTo(MONTHLY.drift?.traded_usd ?? -1, 1);
+    expect(traded).toBeCloseTo(44800.75, 1);
+    expect(screen.getByText("$44,801")).toBeTruthy();
+  });
+
+  it("leaves a rebalance day to the panel's own comparison", () => {
+    // Same document, anchor moved to tonight: the nightly comparison is the right one
+    // there, because tonight's book is not the account.
+    const rebalance: MonthlyBlock = {
+      ...MONTHLY,
+      anchor: { close: "2026-10-29", day: "rebalance", account_read: "2026-10-29" },
+    };
+    const { container } = render(
+      <SectorSection snapshot={SERVED} sectors={[]} monthly={rebalance} />,
+    );
+    expect(container.querySelector('[data-sector-anchored="true"]')).toBeNull();
+  });
+
+  it("leaves a document with no block exactly as it was", () => {
+    const { container } = render(
+      <SectorSection snapshot={SERVED} sectors={[]} monthly={null} />,
+    );
+    expect(container.querySelector('[data-sector-anchored="true"]')).toBeNull();
   });
 });
