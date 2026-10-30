@@ -76,6 +76,28 @@ pointed at, so the gate tree now holds a live tree at the 2026-10-27 frontier in
 the 2026-10-02 research build. Every test that compares a committed fixture or evidence
 hash against what the generator produces from the tree fails on `main` as well.
 
+## The merges of 2026-10-29 and 2026-10-30
+
+Seven merges. Every one was gated on the gate tree with the gate's own command, and each
+failing set was the nineteen ids in `docs/known_test_failures.md` and nothing else.
+
+| branch | tip | merge commit | what merged | gate |
+|---|---|---|---|---|
+| `gate-tree-dry-run` | `f6f823d` | (in `main`) | a dry run of `scripts/repair_session.py` hydrates and extends a copy under `--work`, never the tree it is pointed at, with two tests that hash every file before and after | 19 failed, same ids |
+| `fills-backfill` | `5b244a9` | (in `main`) | `scripts/backfill_fills.py` and 361 fill rows backfilled from the broker, the synthetic `oid-dg` row removed, `max_fill_gap` refreshed on the rows it moved, and the clock's empty-broker-id fix | 19 failed, same ids |
+| `page-monthly-block` | `ee855e2` | `ee855e2` | `live/monthly_view.py`, the `monthly` snapshot key, and `docs/page_monthly_view.md` | 19 failed, same ids; +2 new tests |
+| `page-monthly-panels` | `57cc0f3` | `57cc0f3` | `web/src/Monthly.tsx`, the types, the fixture and the mount in `SnapshotView` | 19 failed, same ids |
+| `page-rebalance-markers` | `735541b` | `735541b` | a vertical marker on each rebalance date on the cumulative chart | 19 failed, same ids |
+| `page-monthly-fixes` | `97ed0ac` | `3e6dee5` | the deployed bundle built before the deploy (the one-line deploy bug that hid the panels), sent-leg wording on the rebalance card, per-leg fill dates on the flip table, the guard threshold read from `EFB_DRIFT_GUARD`, and the "monthly view incomplete" note | 19 failed, 1702 passed, same ids |
+| `tests-never-touch-live` | `3c335a6` | `499877a` | the conftest guard: a shell holding live credentials fails every test that is not marked `live_readonly` before it runs | 19 failed, 1702 passed, same ids |
+
+The last one answers a data incident rather than a code bug: an `efb.fills` row
+(`oid-dg`, DG, 2026-10-01, $517.42) was in the live database with the exact values
+`tests/test_week1_fills_cron._order()` builds, so a test fixture reached Postgres. The
+conftest had scrubbed the credentials since `3837ff6`, which is precisely why the write
+looked like a local one and the run stayed green. Now the environment is captured before
+it is scrubbed, and a gate must be run in a fresh shell that has not sourced `.env`.
+
 ## The merges of 2026-10-23
 
 | branch | tip | merge commit | what merged | gate |
