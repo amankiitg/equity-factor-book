@@ -363,9 +363,16 @@ def test_the_stored_clock_is_started_on_the_first_filled_session() -> None:
     history = payload["history"]
     assert history, "the voided start is not on the record"
     assert all(entry["status"] == "void" for entry in history)
-    assert clock.first_day(
-        {"run": ["2026-09-30"], "proposal": ["2026-09-30"], "filled": ["2026-09-30"]}
-    ) == payload["day_1"]
+    assert (
+        clock.first_day(
+            {
+                "run": ["2026-09-30"],
+                "proposal": ["2026-09-30"],
+                "filled": ["2026-09-30"],
+            }
+        )
+        == payload["day_1"]
+    )
 
 
 def test_a_dry_run_leg_is_not_an_order_sent(monkeypatch: pytest.MonkeyPatch) -> None:
