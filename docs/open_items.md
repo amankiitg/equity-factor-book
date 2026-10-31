@@ -614,3 +614,27 @@ marker, which is what stops a no-op from making a later close look done before i
 **`tests/test_week2_spinoff.py` no longer writes a hard-coded `/tmp` tree**, which is why
 `/tmp/efb-spinoff-read-failure` came back after every gate that ran it and every cleanup
 that deleted it.
+
+## 2026-10-31: eight names the model cannot size, and one fix that is not the fix
+
+Owner: the evening's universe and model coverage. `docs/research/excluded_names.md` has
+the evidence. The rule is now stated in the email ("a finite, positive specific variance
+on the close"), and the 2026-10-30 run drops ten names under it: the eight `excluded`
+(2602335D, BE, DD, ILMN, P, SKYD, TWLO, VYLR) and FDXF and HONA after sizing.
+
+Two of those groups are ordinary and one is not. SKYD, TWLO and VYLR have 19-22 return
+sessions, so the minimum-history rule is doing its job. DD is dropped by the ticker
+identity rule (symbol reused, break date undeterminable) and 2602335D is a Hologic CVR
+line that should never be sized. But BE, ILMN and P have complete prices, returns and
+membership through 2026-10-30 and their **descriptor panel stops on 2026-08-31**, so the
+model has published no variance for them since 2026-09-01. FDXF and HONA are in the
+descriptor panel on the close and still have no fitted variance. That coverage loss is
+the open item: it is a model-input question, not a sector-row question.
+
+The sector-row repair was tried and reverted. `scripts/refresh_sectors.py` adds the six
+GICS rows the newest constituent snapshot carries (BE, ILMN, P, SKYD, TWLO, VYLR);
+applied, it moves those six from "no GICS row" to "no risk estimate" - the correct
+label - but the paired build changes `n_kept` from 169 to 163 with 17 names entering and
+23 leaving, because sector labels feed the descriptor cross-section and the variance
+shrinkage's bucket means. The identity proof fails, so the store was reverted to 503 rows
+and the change is not merged.

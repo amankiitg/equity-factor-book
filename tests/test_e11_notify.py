@@ -2104,3 +2104,30 @@ def test_the_message_states_what_the_drift_guard_did() -> None:
     assert "Drift guard" not in notify.compose(
         status="ok", target_close="2026-10-20", dry_run=False
     )
+
+
+def test_the_exclusion_line_states_the_rule_and_not_only_the_names() -> None:
+    """A name out of the book for want of a risk estimate says what the rule is.
+
+    The owner's ask on 2026-10-31: the rule has to be explicit, tested and in the
+    message, because "no risk estimate" is a fact about the model rather than about
+    the name - and the fix is different depending on which of the two it is.
+    """
+    from live import notify
+
+    body = notify.compose(
+        status="ok",
+        target_close="2026-10-30",
+        dry_run=False,
+        no_risk=[
+            {"ticker": "FDXF", "reason": "no specific variance"},
+            {"ticker": "HONA", "reason": "no specific variance"},
+        ],
+    )
+    line = next(row for row in body.splitlines() if "no risk estimate" in row)
+    assert "FDXF, HONA" in line
+    assert "The rule is a finite, positive specific variance on the close" in line
+    assert "too little history, or outside its covered set" in line
+    # And a night with nothing dropped says nothing about it.
+    quiet = notify.compose(status="ok", target_close="2026-10-30", dry_run=False)
+    assert "no risk estimate" not in quiet
