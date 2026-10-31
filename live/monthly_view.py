@@ -59,6 +59,21 @@ def _number(value: Any) -> float | None:
     return None if pd.isna(number) else number
 
 
+def _count(value: Any) -> int:
+    """A manifest count, whether the block stored the count or the legs themselves.
+
+    `drift_guard.legs_under_minimum` is an integer in the 2026-10-30 manifest and a
+    list in none of the ones this reads; taking `len()` of it raised, the anchored
+    block was dropped, and a republish wrote a document with no monthly view at all.
+    """
+    if isinstance(value, list | tuple):
+        return len(value)
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def guard_threshold_from_env() -> float | None:
     """`EFB_DRIFT_GUARD` as a fraction, read exactly as `live.evening_job` reads it.
 
@@ -991,7 +1006,7 @@ def _block(
                     for leg in (guard.get("legs") or [])
                     if isinstance(leg, dict) and leg.get("traded")
                 ),
-                "legs_under_minimum": len(guard.get("legs_under_minimum") or []),
+                "legs_under_minimum": _count(guard.get("legs_under_minimum")),
             },
         },
         "rebalance_card": rebalance_card(anchor, anchor_manifest, orders, fills, nav),
