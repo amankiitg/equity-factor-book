@@ -288,8 +288,8 @@ export function TonightLine({ monthly }: { monthly: MonthlyBlock }) {
   const owed = tonight.owed_legs ?? 0;
   const cannotSend = tonight.cannot_send_legs ?? 0;
   const unsendable = (tonight.cannot_send ?? [])
-    .map((leg) => `${leg.ticker}${leg.code ? ` (${leg.code})` : ""}`)
-    .join(", ");
+    .map((leg) => (leg.code ? `${leg.ticker}, ${leg.code}` : leg.ticker))
+    .join("; ");
   // A leg that will be sent on the next close and a leg that can never be sent are
   // both "forced", and one line said "1 forced leg, $269" for either. The refusal is
   // stated as a refusal: there is no order to place under one share, so it is not a
@@ -303,7 +303,7 @@ export function TonightLine({ monthly }: { monthly: MonthlyBlock }) {
   if (cannotSend > 0) {
     parts.push(
       `${cannotSend} owed, cannot be sent, ${dollars(tonight.cannot_send_usd ?? 0)}${
-        unsendable ? ` (${unsendable})` : ""
+        unsendable ? `: ${unsendable}` : ""
       }`,
     );
   }

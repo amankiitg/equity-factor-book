@@ -2055,3 +2055,52 @@ def test_a_rebalance_day_says_so_and_a_daily_loop_says_nothing() -> None:
     )
     assert "Cadence:" not in text
     assert "Day: rebalance" not in text
+
+
+def test_the_message_states_what_the_drift_guard_did() -> None:
+    """On 2026-10-30 the guard fired and sent 109 legs, and the message said nothing.
+
+    Both answers are statements the owner has to be able to read without opening the
+    page: the night it fired, with what it cost, and the night it looked and left the
+    book alone.
+    """
+    from live import notify
+
+    fired = {
+        "exposure_before": 0.06410461628864253,
+        "exposure_after": 0.00409252023773441,
+        "threshold": 0.05,
+        "fired": True,
+        "nav": 975819.58,
+        "turnover": 0.07056446,
+        "legs": [
+            {
+                "ticker": "AAA",
+                "traded": True,
+                "weight_before": 0.01,
+                "weight_after": 0.02,
+            },
+            {
+                "ticker": "BBB",
+                "traded": True,
+                "weight_before": 0.03,
+                "weight_after": 0.02,
+            },
+            {"ticker": "CCC", "traded": False, "weight_before": 0.01},
+        ],
+    }
+    body = notify.compose(
+        status="ok", target_close="2026-10-30", dry_run=False, drift_guard=fired
+    )
+    assert "Drift guard: fired, worst exposure 6.41% -> 0.41%, 2 legs, $19,516" in body
+
+    looked = {"exposure_before": 0.0302, "threshold": 0.05, "fired": False}
+    body = notify.compose(
+        status="ok", target_close="2026-10-29", dry_run=False, drift_guard=looked
+    )
+    assert "Drift guard: looked, 3.02% of 5.00%, not fired" in body
+
+    # A daily book has no guard reading and must not grow a line about one.
+    assert "Drift guard" not in notify.compose(
+        status="ok", target_close="2026-10-20", dry_run=False
+    )

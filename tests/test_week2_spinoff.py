@@ -737,7 +737,7 @@ def test_the_artifact_is_written_only_when_something_was_applied(tmp_path: Path)
     )
 
 
-def test_a_vendor_read_that_fails_leaves_the_print_and_the_flag():
+def test_a_vendor_read_that_fails_leaves_the_print_and_the_flag(tmp_path: Path):
     """The fetch is the one piece here that can fail without the run failing.
 
     The rule is skipped for that session, which leaves exactly the position the loop
@@ -747,7 +747,7 @@ def test_a_vendor_read_that_fails_leaves_the_print_and_the_flag():
     """
     from live.corporate_actions import apply_to_artifact
 
-    root = Path("/tmp") / "efb-spinoff-read-failure"
+    root = tmp_path / "efb-spinoff-read-failure"
     (root / "processed").mkdir(parents=True, exist_ok=True)
     (root / "raw").mkdir(parents=True, exist_ok=True)
     frame, prices = ctva_frames()

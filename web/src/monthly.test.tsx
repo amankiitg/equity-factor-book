@@ -223,3 +223,13 @@ describe("the flip and drift lists do not need a sideways scroll", () => {
     expect(intc).toContain("$3,030");
   });
 });
+
+describe("the tonight line's refusal reads as a sentence", () => {
+  it("puts the ticker and its reason after a colon, not in nested brackets", () => {
+    render(<MonthlyPanels monthly={MONTHLY} />);
+    const text = document.querySelector("[data-tonight]")?.textContent ?? "";
+    expect(text).toContain("$269: JBL, COVER_UNDER_ONE_SHARE");
+    expect(text).not.toContain("(JBL");
+    expect(text).not.toContain("(COVER_UNDER_ONE_SHARE)");
+  });
+});
