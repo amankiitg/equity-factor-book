@@ -587,3 +587,30 @@ E13 migration - a measurement that changes nothing that is sent.
 `1 owed, cannot be sent, $269 (JBL (COVER_UNDER_ONE_SHARE))`. The information is right and
 the nesting is one format string away from `JBL, COVER_UNDER_ONE_SHARE`; it was left
 rather than re-deploying for a comma.
+
+## 2026-10-31: the guard was right, the morning was invisible, and the marks
+
+**The 2026-10-30 drift guard firing was real.** It fired at 6.41% against 5.00% and sent
+109 legs ($68,858.57) that fill at the 2026-11-02 open; every one of them is a guard leg
+(the exact set in `manifest.drift_guard.legs` where `traded` is true), with no reversal,
+carry or remainder among them. Re-priced at the session closes the same weights read
+**6.42%**, so the orders were left alone. See `docs/research/mark_source.md`: the held book
+is the broker's `market_value` over the account's equity, which carries extended-hours
+trades, and on 2026-10-29 the largest of those (`INTC`, -22.7% against an official close of
+$92.07) was the price the next session confirmed at **$65.88**. On the four evenings before
+2026-10-30 neither valuation came within 1.7 points of the threshold.
+
+**A morning that reconciles nothing is now visible.** The 2026-10-28, 10-29 and 10-30
+mornings recorded themselves in `efb.cron_runs` and left `efb.run_status` with no row, so
+"today's morning shows ok" could not be answered from the table the rule names. Both
+nothing-to-do paths now write a `run_status` row keyed to the day they ran, with a detail
+that opens `nothing was reconciled`; `last_reconciled_close` ignores any row carrying that
+marker, which is what stops a no-op from making a later close look done before its fills
+(the 2026-10-30 guard legs on 2026-11-02) are reconciled.
+
+**The email now states the guard.** `Drift guard: fired, worst exposure 6.41% -> 0.41%,
+109 legs, $68,858` or `Drift guard: looked, 3.02% of 5.00%, not fired`.
+
+**`tests/test_week2_spinoff.py` no longer writes a hard-coded `/tmp` tree**, which is why
+`/tmp/efb-spinoff-read-failure` came back after every gate that ran it and every cleanup
+that deleted it.

@@ -1,7 +1,7 @@
 # Branches, worktrees and scratch directories
 
-State after the 2026-10-28 cleanup. **One branch besides `main`, held for the owner's
-decision, one worktree, and eighteen archive tags.** Everything else is merged into
+State after the 2026-10-31 cleanup. **One branch besides `main`, held for the owner's
+decision, one worktree, and an archive tag for every branch that has merged since.** Everything else is merged into
 `main` (so its commits are in history) or preserved as an `archive/<branch>` tag on
 `origin`. `/tmp/efb-gate` is the only scratch tree left on this machine.
 
@@ -97,6 +97,16 @@ The last one answers a data incident rather than a code bug: an `efb.fills` row
 conftest had scrubbed the credentials since `3837ff6`, which is precisely why the write
 looked like a local one and the run stayed green. Now the environment is captured before
 it is scrubbed, and a gate must be run in a fresh shell that has not sourced `.env`.
+
+## The merges of 2026-10-31
+
+Two merges, both gated against the nineteen ids in `docs/known_test_failures.md` and
+nothing else, and both pushed.
+
+| branch | tip | merge commit | what merged | gate |
+|---|---|---|---|---|
+| `weekend-fixes` | `6c5913a` | `01f0263` | the mark-source study; the drift guard's line in the email; the tonight line's refusal as a sentence; the spinoff probe on `tmp_path` | 19 failed, 1714 passed |
+| `morning-run-status` | `570f64d` | `4f53c9e` | a morning that reconciles nothing writes a `run_status` row too, and the reader ignores it | 19 failed, 1716 passed |
 
 ## The merges of 2026-10-30 (the anchored page)
 
