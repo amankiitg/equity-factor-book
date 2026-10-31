@@ -760,7 +760,7 @@ def _anchored_block(anchor_manifest: dict) -> dict:
 
 
 def test_the_block_carries_the_anchors_own_exposures() -> None:
-    """A hold day's own before/after pair is one vector twice, so the pair is the anchor's.
+    """A hold day's own pair is one vector twice, so the pair shown is the anchor's.
 
     The numbers are the 2026-10-23 rebalance's own: the book carried 87.2% of a unit
     exposure at its worst factor going into that hedge, and 3.3e-17 after it.

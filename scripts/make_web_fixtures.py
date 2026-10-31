@@ -119,6 +119,10 @@ DATED_DOCUMENTS: tuple[str, ...] = (
     # anchored block: the fixture the panel tests render, because a hand-built one is
     # what let them pass while the live page served a bundle that had no panels in it.
     "snapshot_2026-10-29_evening.json",
+    # The 2026-10-30 document as the page serves it, plus the anchor close's own
+    # exposure vectors: the fixture the hold-day "hedge" panel is tested on, because
+    # on a hold day the document's own before/after pair is one vector twice.
+    "snapshot_2026-10-30_evening.json",
 )
 
 
