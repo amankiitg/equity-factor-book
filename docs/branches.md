@@ -1,9 +1,14 @@
 # Branches, worktrees and scratch directories
 
-State after the 2026-10-31 cleanup. **One branch besides `main`, held for the owner's
-decision, one worktree, and an archive tag for every branch that has merged since.** Everything else is merged into
-`main` (so its commits are in history) or preserved as an `archive/<branch>` tag on
-`origin`. `/tmp/efb-gate` is the only scratch tree left on this machine.
+State after the weekend of 2026-10-31/11-01. **One branch besides `main`, held for the
+owner's decision, one worktree, and an archive tag for every branch that has merged
+since.** Everything else is merged into `main` (so its commits are in history) or
+preserved as an `archive/<branch>` tag on `origin`. `/tmp/efb-gate` is the only scratch
+tree kept on this machine.
+
+`moo-orders` is **gone as a branch**: the owner decided against market-on-open on
+2026-10-31 (`docs/decisions.md`), so its tip `e7ad6c8` is on `origin` as
+`archive/moo-orders` and `EFB_ORDER_TIF` is unset. That leaves `held-marks-close`.
 
 The two study branches are gone as branches: their write-ups and result JSONs are in
 `docs/research/` on `main`, and the scripts that produced them are in the archive tags.
@@ -13,7 +18,12 @@ The two study branches are gone as branches: their write-ups and result JSONs ar
 | branch | tip | worktree | why it stays |
 |---|---|---|---|
 | `main` | whatever `git log -1 origin/main` says - this file cannot record its own merge | `equity-factor-book` | production |
-| `moo-orders` | `e7ad6c8` | - | **held for the owner's decision**: `EFB_ORDER_TIF` for market-on-open orders. Unset is byte-identical to today. The switch is the owner's, for the rebalance about 2026-11-23 |
+| `held-marks-close` | `826d2c5` | - | **held for the owner's decision**: `EFB_HELD_MARKS=close` values the held book at the vendor close times the broker's quantity instead of the broker's `market_value`. Unset is what runs today, and `docs/research/held_marks_switch.md` has the replay showing the mark source never changed a guard decision |
+
+`variance-cap-final` merged on 2026-10-31 as `d919913` and is deleted as a branch;
+`archive/variance-cap-final` holds tip `6731a29`. `p1c-exclusion-rule`,
+`p3b-fixture-refresh` and `p5a-variance-writer` merged the same day, local and remote,
+and are in history.
 
 `order-time-quotes` merged on 2026-10-28 once its migration was applied: the check query
 `docs/migrations/e13_order_quotes_check.sql` reads `4|4|t` against the live database, so

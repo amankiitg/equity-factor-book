@@ -638,3 +638,33 @@ label - but the paired build changes `n_kept` from 169 to 163 with 17 names ente
 23 leaving, because sector labels feed the descriptor cross-section and the variance
 shrinkage's bucket means. The identity proof fails, so the store was reverted to 503 rows
 and the change is not merged.
+
+## 2026-11-01: what the weekend left open
+
+Owner: the evening's cost and the page's artifacts. Four items, none of them blocking a
+run.
+
+**The monthly cadence pays a monthly borrow accrual for a weekly trade.**
+`docs/research/cadence_weekly_vs_monthly.md`: the 5% guard fired on day 5 of 21 on
+2026-10-30, so the book was rebuilt after a week while its borrow is charged over 21
+sessions. Weekly (k=5) or a wider guard, not both as they stand. The tolerance is the
+owner's.
+
+**The store does not record the broker's mark, so a mark-source audit cannot be run
+after the fact.** `docs/research/mark_source_history.md`: the five closes that could be
+audited were audited while the account was reachable, and the earlier ones cannot be
+reconstructed because neither `market_value` nor the quantity is stored. Storing the
+mark and the quantity per held name in the manifest - and the mark source summary the
+parked `held-marks-close` branch already returns - makes every future audit a join.
+
+**The page's sector map is a vintage behind the live table.**
+`docs/known_test_failures.md`: the committed map came from the 2026-10-03 sectors table,
+while both the gate tree and the live seed hold 2026-09-11, so its two generator ids stay
+red rather than regenerating a map that would drop three names from the page. The fix is
+a sectors table at the live vintage in the tree, or a generator that reads the store.
+
+**The README screenshots were not refreshed.** The live page screenshots for this
+weekend are in `~/efb-backups/2026-10-31/` at 1280 and 390 px, and the page renders every
+monthly panel; the headless capture in this environment produced a header-only frame at
+CSS scale, so `docs/img/book.png` and `docs/img/attribution.png` are the images from
+2026-10-25 rather than a worse replacement.
