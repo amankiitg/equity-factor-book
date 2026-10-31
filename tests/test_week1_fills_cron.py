@@ -1117,8 +1117,13 @@ def test_a_morning_with_nothing_new_reconciles_nothing(
     assert harness.recorded == [(reconcile_fills.JOB, TODAY, "ok")]
     # And nothing was done: no broker read, no fill written, no message, no page.
     assert harness.broker.asked == []
-    # The two writes are the test's own setup rows; the job added none.
-    assert harness.written == ["fills", staleness.TABLE]
+    # Two writes are the test's own setup rows, and the third is the morning's own
+    # record that it ran and reconciled nothing: until 2026-10-30 a morning with
+    # nothing to do was invisible to anything reading `run_status`.
+    assert harness.written == ["fills", staleness.TABLE, staleness.TABLE]
+    noop = store.select(staleness.TABLE).iloc[-1]
+    assert str(noop["detail"]).startswith(reconcile_fills.NOTHING_RECONCILED)
+    assert str(noop["run_date"])[:10] == TODAY
     assert harness.sent == []
     assert harness.published == []
 
@@ -1172,7 +1177,12 @@ def test_a_close_whose_page_block_is_up_reconciles_nothing(
     assert reconcile_fills.main([]) == 0
 
     assert harness.recorded == [(reconcile_fills.JOB, TODAY, "ok")]
-    assert harness.written[before:] == []
+    # The one write is the morning's own "nothing was reconciled" row, which is the
+    # point of it: the day is visible in `run_status` as well as in `cron_runs`.
+    assert harness.written[before:] == [staleness.TABLE]
+    noop = store.select(staleness.TABLE).iloc[-1]
+    assert str(noop["detail"]).startswith(reconcile_fills.NOTHING_RECONCILED)
+    assert "already reconciled" in str(noop["detail"])
     assert harness.broker.asked == []
     assert harness.published == []
 
@@ -1228,3 +1238,67 @@ def test_a_new_close_is_reconciled_as_it_always_was(
     # The setup row, the reconciled close, and the day's own row.
     assert harness.written == ["fills", "fills", "run_status"]
     assert harness.recorded == [(reconcile_fills.JOB, TODAY, "ok")]
+
+
+def test_a_morning_that_reconciles_nothing_still_writes_a_run_status_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The day is visible to anything reading run_status, not only to cron_runs.
+
+    Measured on the live store: the 2026-10-28, 10-29 and 10-30 mornings each
+    reconciled no new close, recorded the day in `efb.cron_runs`, and left
+    `efb.run_status` with no row at all - so the push checklist's "today's morning
+    shows ok" could not be answered, and a person reading run status could not see
+    that a morning had run.
+    """
+    harness = _install(
+        monkeypatch, tmp_path, broker_orders={"oid-dg": _order("filled")}
+    )
+    monkeypatch.setattr(reconcile_fills, "last_reconciled_close", lambda: CLOSE)
+
+    code = reconcile_fills.main([])
+
+    assert code == 0
+    assert harness.sent == [], "a morning with nothing to do sends nothing"
+    rows = store.select(staleness.TABLE)
+    assert len(rows) == 1, "one row, and it is the morning's"
+    row = rows.iloc[0]
+    assert row["job"] == reconcile_fills.JOB
+    assert row["status"] == "ok"
+    assert str(row["detail"]).startswith(reconcile_fills.NOTHING_RECONCILED)
+    assert str(row["run_date"])[:10] == TODAY
+    # And it says which close it looked at and why that was not a new one.
+    assert CLOSE in str(row["detail"])
+
+
+def test_the_nothing_row_is_never_read_as_a_reconciliation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A no-op row must not make its own close look reconciled.
+
+    The row is keyed to the day it ran, which is a close later. If
+    `last_reconciled_close` counted it, the next morning would skip the fills of the
+    very close whose legs are still owed - on 2026-11-02 the 2026-10-30 guard legs
+    fill, and that morning has to reconcile them.
+    """
+    harness = _install(
+        monkeypatch, tmp_path, broker_orders={"oid-dg": _order("filled")}
+    )
+    real_reader = reconcile_fills.last_reconciled_close
+    monkeypatch.setattr(reconcile_fills, "last_reconciled_close", lambda: CLOSE)
+    reconcile_fills.main([])
+
+    seen = store.select(staleness.TABLE)
+    assert len(seen) == 1
+    # With the row in hand, the reader must ignore it: no published document, no
+    # other row, so the answer is None rather than TODAY.
+    from live import snapshot as snapshot_module
+
+    monkeypatch.setattr(
+        snapshot_module,
+        "get_object_text",
+        lambda key, **kwargs: (_ for _ in ()).throw(FileNotFoundError(key)),
+    )
+    monkeypatch.setattr(reconcile_fills, "last_reconciled_close", real_reader)
+    assert real_reader() is None
+    del harness

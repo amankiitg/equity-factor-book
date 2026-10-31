@@ -86,6 +86,44 @@ JOB = "fills_reconcile"
 # blueprint's `1-5`. See the module docstring for why 14:00 was wrong.
 RUN_SLOT_UTC = (15, 30)
 COMPLETED_STATUSES = frozenset({"ok"})
+# The first words of the detail on a morning that reconciled nothing. It is a
+# constant because two pieces of code read it: the writer below, and
+# `last_reconciled_close`, which must never treat such a row as the record that the
+# close beside it was reconciled.
+NOTHING_RECONCILED = "nothing was reconciled"
+
+
+def record_nothing(today: str, detail: str) -> None:
+    """Record a morning that had nothing to reconcile, in both tables.
+
+    Until 2026-10-30 this wrote only `cron_runs`. The 2026-10-28, 10-29 and 10-30
+    mornings each reconciled no new close, so each recorded the day in `cron_runs`
+    and left `efb.run_status` with no row at all - and anything reading run status
+    (the push checklist, the page's staleness line, a person) could not see that a
+    morning had run, let alone that it had nothing to do.
+
+    The row is keyed to the day it ran, not to the close it looked at: the close it
+    looked at is one an earlier morning reconciled, and that morning's row is the
+    record of it, so writing over that key would erase it. The detail opens with
+    `NOTHING_RECONCILED` so `last_reconciled_close` can tell the two apart.
+    """
+    from live import staleness
+
+    run_live_daily.record_run(JOB, today, "ok", detail)
+    staleness.write_run_status(
+        {
+            "target_close": today,
+            "job": JOB,
+            "status": "ok",
+            "checked_at": datetime.now(UTC).isoformat(),
+            "detail": detail,
+        },
+        run_date=today,
+        status="ok",
+        detail=detail,
+        dry_run=False,
+        notify_status="not needed",
+    )
 
 
 def previous_orders(as_of: str | None = None) -> tuple[str, pd.DataFrame] | None:
@@ -147,10 +185,18 @@ def last_reconciled_close() -> str | None:
     else:
         columns = {"job", "target_close", "status"}
         if len(frame) and columns <= set(frame.columns):
-            done = frame.loc[
-                frame["job"].astype(str).eq(JOB)
-                & frame["status"].astype(str).isin(COMPLETED_STATUSES)
-            ]
+            keep = frame["job"].astype(str).eq(JOB) & frame["status"].astype(str).isin(
+                COMPLETED_STATUSES
+            )
+            if "detail" in frame.columns:
+                # A morning that reconciled nothing writes a row of its own with
+                # `NOTHING_RECONCILED` at the front of its detail. It is a record
+                # that the morning ran, never that the close beside it was
+                # reconciled, and the two are one string apart.
+                keep = keep & ~frame["detail"].astype(str).str.startswith(
+                    NOTHING_RECONCILED
+                )
+            done = frame.loc[keep]
             days = done["target_close"].astype(str).str.slice(0, 10)
             if len(days):
                 candidates.append(str(days.max()))
@@ -439,8 +485,10 @@ def _reconcile(argv: list[str] | None = None) -> int:
     found = previous_orders(today.isoformat())
     if found is None:
         logger.info("no orders are stored before %s: nothing to reconcile", today)
-        run_live_daily.record_run(
-            JOB, today.isoformat(), "ok", "no orders to reconcile"
+        record_nothing(
+            today.isoformat(),
+            f"{NOTHING_RECONCILED}: the store holds no orders before {today}, so "
+            "there is no close to reconcile this morning",
         )
         return 0
     close, orders = found
@@ -450,15 +498,14 @@ def _reconcile(argv: list[str] | None = None) -> int:
     reconciled = last_reconciled_close()
     if reconciled is not None and close <= reconciled:
         detail = (
-            f"the {close} close was already reconciled ({reconciled} is the newest "
-            "close whose reconciliation completed): the newest orders before today "
-            "are not a new close, so this morning reconciled nothing. The day is "
-            "recorded rather than repeated - a second pass would rewrite the same "
-            "fills, send a second message for that close and republish the page's "
-            "block for it"
+            f"{NOTHING_RECONCILED}: the {close} close was already reconciled "
+            f"({reconciled} is the newest close whose reconciliation completed), so "
+            "the newest orders before today are not a new close. The day is recorded "
+            "rather than repeated - a second pass would rewrite the same fills, send "
+            "a second message for that close and republish the page's block for it"
         )
         logger.info("%s", detail)
-        run_live_daily.record_run(JOB, today.isoformat(), "ok", detail)
+        record_nothing(today.isoformat(), detail)
         return 0
 
     detail = ""
