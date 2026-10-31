@@ -59,3 +59,58 @@ back under it, and the floor search itself is recorded in every manifest
 `n_kept_one_pass_admission`). A band would add a second, fuzzier rule on top of a
 mechanism that is measured and reported; the churn it would hide is better seen than
 smoothed.
+
+## Open question 2026-10-31: the 10% volatility target is unreachable at gross 1.0
+
+**Not a decision yet.** The 2026-11-23 rehearsal built the book with the live settings
+and read **2.31% predicted annual volatility against a 10.00% target**. That is not a
+one-off: across the 24 stored proposals the achieved figure runs 2.22%-2.86% on every
+close but one, `gross_cap_bound` is true on 18 of them, and the four closes from
+2026-10-27 to 2026-10-30 all sit at 2.8% with gross at 1.0. The one exception is
+2026-09-25 at exactly 10.0%, before the book was gross-capped.
+
+### Where the number comes from
+
+`TARGET_ANNUAL_VOL = 0.10` is declared in three modules - `live/evening_job.py` ("the
+E10 target"), `efb/allocate.py` and `efb/size.py` - and it is a *research* parameter:
+E10 was the vol-targeting study, and E8 sized synthetic books to it. The live loop
+inherited it as the scale it aims at.
+
+### What acts on it
+
+`live/evening_job.py::_scale_to_target` scales the sized book so its predicted annual
+volatility equals 10%, and then refuses: if that scale would need gross above
+`GROSS_CAP = 1.0` it scales to gross 1.0 instead, sets `gross_cap_bound = true` and
+stores the achieved vol beside the target. So the target is consulted on every close
+and overruled on 18 of 24 - the manifest says both numbers and the page shows neither
+prominently.
+
+### Is it a real gap or a stale setting?
+
+**Both, and they are the same fact from two ends.** The book's unlevered predicted vol
+is about 2.8%; reaching 10% needs roughly 3.6x gross, which a `GROSS_CAP` of 1.0
+forbids by construction. So either
+
+- the *cap* is the binding decision and the target is stale - a number from a research
+  design that assumed leverage the live book may not take; or
+- the *target* is the decision and the cap is too low - the owner wants a 10%-vol book
+  and must allow gross ~3.6, which changes the position sizes, the cost model and the
+  capacity numbers along with it.
+
+Nothing else in the loop reads `target_annual_vol`, so this is a reporting and
+intent question rather than a sizing bug: no order is wrong today, and the book is
+doing exactly what the cap says.
+
+### Recommendation for the owner
+
+1. **Decide which number is the promise.** If gross 1.0 stands, restate the target as
+   "10% at gross 3.6, capped at gross 1.0: 2.8% delivered" wherever it is printed, so
+   the manifest and the page stop implying a book that is not there. That is a docs
+   and page change, and it can be made this week.
+2. **Do not raise the gross cap as a side effect.** Leverage is a risk decision with a
+   cost and capacity consequence; it needs its own identity proof (expected cost,
+   borrow, and the drift guard's readings all move with gross), not a constant edit.
+3. If a 10%-vol book is what is wanted, the clean route is an explicit leverage step in
+   the allocation layer, sized off the *achieved* vol the manifest already records, so
+   the loop keeps building a gross-1 book and the lever is one number with its own
+   audit trail.

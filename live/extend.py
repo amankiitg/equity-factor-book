@@ -397,6 +397,7 @@ def extend_model(data_root: Path | None = None) -> dict[str, object]:
     mapped = inputs["mapped"]
     shares = inputs["shares"]
     look_ahead = inputs["look_ahead"]
+    assert isinstance(mapped, list)
     assert isinstance(returns_frame, pd.DataFrame)
     assert isinstance(close, pd.DataFrame)
     assert isinstance(volume, pd.DataFrame)
@@ -420,8 +421,17 @@ def extend_model(data_root: Path | None = None) -> dict[str, object]:
     existing_desc = pd.read_parquet(descriptors_path)
     last = pd.to_datetime(existing_desc["date"]).max()
     new_dates = sorted(day.date for day in design.days if day.date > last)
+    # A name that has just become sector-mapped is in this design and has no rows in
+    # the artifact: the label is what maps it, so the weeks it spent unmapped left a
+    # hole that the "new sessions" append below cannot fill. This does it, on the
+    # design already in hand, whether or not there is a session to append.
+    people = _backfill(root, design, look_ahead[mapped], mapped)
     if not new_dates:
-        return {"extended": 0, "last_date": str(last.date())}
+        return {
+            "extended": 0,
+            "last_date": str(last.date()),
+            "backfilled": people,
+        }
 
     new_desc = _descriptor_rows_for_dates(design, new_dates, look_ahead[mapped], mapped)
     pd.concat([existing_desc, new_desc], ignore_index=True).to_parquet(
@@ -480,7 +490,551 @@ def extend_model(data_root: Path | None = None) -> dict[str, object]:
         "extended": len(new_dates),
         "new_dates": [str(d.date()) for d in new_dates],
         "last_date": str(new_dates[-1].date()),
+        "backfilled": people,
     }
+
+
+def fill_missing_sessions(
+    data_root: Path | None = None,
+    tickers: list[str] | None = None,
+    start: object = None,
+    end: object = None,
+    *,
+    write: bool = True,
+) -> dict[str, object]:
+    """Fetch the sessions the price panel has no bar for, for the named tickers.
+
+    A vendor hole is not a delisting: BE and P have no close for the eleven sessions
+    from 2026-09-04 to 2026-09-21 and a full series either side, and every rolling
+    descriptor - momentum is a 231-session product - is NaN from the hole to the end
+    of the panel. That is why the two names had no descriptors after 2026-08-31 while
+    their prices, returns and index membership were all present, and no sector row
+    could have fixed it.
+
+    So this asks the vendor for the sessions the panel is missing inside a range,
+    writes the bars, and recomputes that ticker's own return rows - returns, flags and
+    all - from the repaired series. It is a *hole* repair: a name whose series was
+    rewritten by a corporate action is the business of
+    `live/corporate_actions.py`, not this.
+    """
+    root = Path(data_root) if data_root is not None else DATA_ROOT
+    path = root / "raw" / "prices.parquet"
+    existing = pd.read_parquet(path)
+    names = [str(name) for name in (tickers or [])]
+    if not names:
+        raise ValueError("fill_missing_sessions needs at least one ticker")
+    first = pd.Timestamp(start) if start is not None else None
+    last = pd.Timestamp(end) if end is not None else None
+    session_index = pd.DatetimeIndex(
+        sorted({pd.Timestamp(day) for day in existing.index.get_level_values("date")})
+    )
+    window = [
+        day
+        for day in session_index
+        if (first is None or day >= first) and (last is None or day <= last)
+    ]
+    stored_returns = pd.read_parquet(root / "processed" / "returns.parquet")
+    holes: dict[str, list[pd.Timestamp]] = {}
+    stale: dict[str, list[pd.Timestamp]] = {}
+    for name in names:
+        if name not in set(existing.index.get_level_values("ticker")):
+            raise ValueError(f"{name} is not in the price panel at all")
+        series = existing.xs(name, level="ticker")["close"]
+        missing = [
+            day for day in window if day not in series.index or pd.isna(series.get(day))
+        ]
+        if missing:
+            holes[name] = missing
+        # A bar that is there while its return row is not is a half-applied repair,
+        # and this is what finishes one instead of refusing to.
+        present = [
+            day
+            for day in window
+            if day not in missing and day in series.index and pd.notna(series.get(day))
+        ]
+        absent_rows = []
+        for day in present:
+            key = (day, name)
+            if key not in stored_returns.index:
+                absent_rows.append(day)
+                continue
+            value = stored_returns.loc[key, "r"]
+            if pd.isna(value if not isinstance(value, pd.Series) else value.iloc[0]):
+                absent_rows.append(day)
+        if absent_rows:
+            stale[name] = absent_rows
+    report: dict[str, object] = {
+        "tickers": names,
+        "sessions": {
+            name: [str(day.date()) for day in days] for name, days in holes.items()
+        },
+        "filled": {},
+        "not_served": {},
+        "returns_rows": 0,
+    }
+    if not holes:
+        return report
+    if not holes:
+        return _repair_returns(root, stored_returns, names, stale, report)
+    fetch_start = str(min(min(days) for days in holes.values()).date())
+    fetch_end = str(
+        (max(max(days) for days in holes.values()) + pd.Timedelta(days=1)).date()
+    )
+    bars = prices.download_prices(
+        sorted(holes), start=fetch_start, end=fetch_end, threads=False
+    )
+    if bars is None or len(bars) == 0:
+        raise ValueError(
+            f"the vendor served no bars between {fetch_start} and {fetch_end}"
+        )
+    filled: dict[str, int] = {}
+    not_served: dict[str, list[str]] = {}
+    for name, days in holes.items():
+        have = (
+            bars.xs(name, level="ticker")
+            if name in set(bars.index.get_level_values("ticker"))
+            else None
+        )
+        missing = [] if have is None else [day for day in days if day not in have.index]
+        if missing:
+            not_served[name] = [str(day.date()) for day in missing]
+        count = 0
+        for day in days:
+            if have is None or day not in have.index:
+                continue
+            row = have.loc[day]
+            if pd.isna(row.get("close")):
+                continue
+            existing.loc[(day, name), list(existing.columns)] = [
+                row.get(column) for column in existing.columns
+            ]
+            count += 1
+        filled[name] = count
+    report["filled"] = filled
+    report["not_served"] = not_served
+    if not write:
+        return report
+
+    # The panel's key is its index; writing it without one loses date and ticker.
+    existing.to_parquet(path)
+    for name, days in holes.items():
+        stale.setdefault(name, []).extend(days)
+    return _repair_returns(root, stored_returns, names, stale, report)
+
+
+def _repair_returns(
+    root: Path,
+    stored: pd.DataFrame,
+    names: list[str],
+    stale: dict[str, list[pd.Timestamp]],
+    report: dict[str, object],
+) -> dict[str, object]:
+    """Rewrite the named sessions' return rows from the repaired price series.
+
+    Flags are rolling and per name, so they are rebuilt over that name's whole
+    history and only the repaired sessions are written back.
+    """
+    pairs = [(day, name) for name, days in stale.items() for day in days]
+    if not pairs:
+        return report
+    prices_frame = pd.read_parquet(root / "raw" / "prices.parquet")
+    factors_frame = pd.read_parquet(root / "raw" / "factors_ff.parquet")
+    subset = prices_frame.loc[
+        prices_frame.index.get_level_values("ticker").isin(sorted(stale))
+    ]
+    recomputed = returns.compute_returns(subset, factors_frame["rf"])
+    recomputed["stale"] = False
+    recomputed["outlier"] = False
+    recomputed = hygiene.apply_flags(recomputed)
+    keys = pd.MultiIndex.from_tuples(
+        [pair for pair in pairs if pair in recomputed.index], names=["date", "ticker"]
+    )
+    fresh = recomputed.reindex(keys)
+    fresh = fresh.loc[fresh["r"].notna()]
+    kept = stored.drop(index=keys.intersection(stored.index))
+    merged = pd.concat([kept, fresh.loc[:, stored.columns]]).sort_index()
+    merged.to_parquet(root / "processed" / "returns.parquet")
+    report["returns_rows"] = int(len(fresh))
+    return report
+
+
+def refresh_variance(
+    tree: Path | None = None,
+    start: pd.Timestamp | None = None,
+    end: pd.Timestamp | None = None,
+    *,
+    dates: list[pd.Timestamp] | None = None,
+    write: bool = True,
+) -> dict[str, object]:
+    """Recompute `specific_var` for a set of sessions out of the stored returns.
+
+    The specific variance is an EWMA over the stored specific returns, shrunk toward
+    the name's sector-size bucket mean, so it is a *function* of the artifact beside
+    it. Anything that adds or repairs a specific return - a backfilled newcomer, a
+    re-fit of one session - leaves every later variance row reading a history that no
+    longer exists unless this runs over the range.
+
+    `dates` wins over `start`/`end` when given. Rows outside the range are kept as
+    they are, in their own order, with their own dtypes.
+    """
+    root = Path(tree) if tree is not None else DATA_ROOT
+    xs_dir = root / "models" / "XS-v1"
+    variance_path = xs_dir / "specific_var.parquet"
+    specific_path = xs_dir / "specific_returns.parquet"
+    prior = pd.read_parquet(variance_path)
+    specific = pd.read_parquet(specific_path)
+    wide = specific.pivot(
+        index="date", columns="ticker", values="specific_return"
+    ).sort_index()
+    wide.index = pd.to_datetime(wide.index)
+    if dates is None:
+        first = pd.Timestamp(start) if start is not None else wide.index.min()
+        last = pd.Timestamp(end) if end is not None else wide.index.max()
+        wanted = [day for day in wide.index if first <= day <= last]
+    else:
+        wanted = [day for day in wide.index if day in set(pd.to_datetime(dates))]
+    # The bucket terciles are ranked across the *columns of the cap frame*, so the
+    # name set matters: restricting to the mapped names is what `extend_model` does,
+    # and ranking over every name in the market cap panel puts each name in a
+    # different tercile and rewrites the whole book's variance.
+    inputs = probes.load_panel(root)
+    labels = inputs["sectors"]
+    close = inputs["close"]
+    shares = inputs["shares"]
+    mapped_names = inputs["mapped"]
+    assert isinstance(labels, pd.Series)
+    assert isinstance(close, pd.DataFrame)
+    assert isinstance(shares, pd.DataFrame)
+    assert isinstance(mapped_names, list)
+    names = [str(name) for name in mapped_names]
+    cap = fx.market_cap(close[names], shares[names])
+    fresh = fx.specific_variance(wide, labels, cap, dates=wanted)
+    changed = prior.loc[pd.to_datetime(prior["date"]).isin(wanted)]
+    # The artifact's own order is kept: replace rows in place rather than resorting a
+    # file every later step reads positionally.
+    ordered = prior.reset_index(drop=True).assign(_order=range(len(prior)))
+    kept = ordered.drop(index=changed.index)
+    renewed = fresh.loc[:, prior.columns].merge(
+        ordered[["date", "ticker", "_order"]], on=["date", "ticker"], how="left"
+    )
+    gaps = renewed["_order"].isna()
+    renewed.loc[gaps, "_order"] = range(len(ordered), len(ordered) + int(gaps.sum()))
+    merged = (
+        pd.concat([kept, renewed], ignore_index=True)
+        .sort_values("_order", kind="stable")
+        .drop(columns="_order")
+        .reset_index(drop=True)
+    )
+    for column in prior.columns:
+        if column not in merged.columns:
+            continue
+        try:
+            merged[column] = merged[column].astype(prior[column].dtype)
+        except (TypeError, ValueError):
+            pass
+    if write:
+        merged.to_parquet(variance_path, index=False)
+    return {
+        "sessions": [str(day.date()) for day in wanted],
+        "n_sessions": len(wanted),
+        "rows_before": int(len(changed)),
+        "rows_after": int(len(merged) - len(kept)),
+        "written": bool(write),
+    }
+
+
+def variance_for_newcomers(
+    root: Path, newcomers: list[str], dates: list[pd.Timestamp]
+) -> dict[str, object]:
+    """Write the specific variance for the newcomers only, over the named sessions.
+
+    `refresh_variance` recomputes the range for every name, which is right after a
+    re-fit and wrong after a backfill: the bucket terciles are ranked across the
+    mapped names and the shrink target is a bucket mean, so adding three names to the
+    sector map moves *everyone's* shrunk variance - measured on 2026-10-30, a median
+    of 0.37% and 3.6x on HON - and with it a fifth of the book. A newcomer's own rows
+    are what the backfill is for; the rest of the table is left as it was, and the
+    one inconsistency that buys (the newcomer is shrunk toward a bucket mean that does
+    not count it) is what keeps every other name's row the row it was.
+    """
+    xs_dir = root / "models" / "XS-v1"
+    prior = pd.read_parquet(xs_dir / "specific_var.parquet")
+    specific = pd.read_parquet(xs_dir / "specific_returns.parquet")
+    wide = specific.pivot(
+        index="date", columns="ticker", values="specific_return"
+    ).sort_index()
+    wide.index = pd.to_datetime(wide.index)
+    inputs = probes.load_panel(root)
+    labels = inputs["sectors"]
+    close = inputs["close"]
+    shares = inputs["shares"]
+    mapped_names = inputs["mapped"]
+    assert isinstance(labels, pd.Series)
+    assert isinstance(close, pd.DataFrame)
+    assert isinstance(shares, pd.DataFrame)
+    assert isinstance(mapped_names, list)
+    names = [str(name) for name in mapped_names]
+    cap = fx.market_cap(close[names], shares[names])
+    fresh = fx.specific_variance(wide, labels, cap, dates=dates)
+    fresh = fresh.loc[fresh["ticker"].astype(str).isin(set(newcomers))]
+    if fresh.empty:
+        return {"rows": 0}
+    keys = pd.MultiIndex.from_arrays(
+        [pd.to_datetime(fresh["date"]), fresh["ticker"].astype(str)],
+        names=["date", "ticker"],
+    )
+    # The artifact's own order is kept: an untouched row stays where it was, and a
+    # newcomer's rows land where the rows they replace would have been.
+    ordered = prior.reset_index(drop=True).assign(_order=range(len(prior)))
+    kept = ordered.drop(index=keys.intersection(prior.index))
+    renewed = fresh.loc[:, prior.columns].merge(
+        ordered[["date", "ticker", "_order"]], on=["date", "ticker"], how="left"
+    )
+    gaps = renewed["_order"].isna()
+    renewed.loc[gaps, "_order"] = range(len(ordered), len(ordered) + int(gaps.sum()))
+    merged = (
+        pd.concat([kept, renewed], ignore_index=True)
+        .sort_values("_order", kind="stable")
+        .drop(columns="_order")
+        .reset_index(drop=True)
+    )
+    for column in prior.columns:
+        try:
+            merged[column] = merged[column].astype(prior[column].dtype)
+        except (TypeError, ValueError):
+            pass
+    merged.to_parquet(xs_dir / "specific_var.parquet", index=False)
+    return {"rows": int(len(fresh)), "names": sorted(set(fresh["ticker"].astype(str)))}
+
+
+def backfill_new_names(data_root: Path | None = None) -> dict[str, object]:
+    """Load the panel and backfill every mapped name the artifact does not carry."""
+    root = Path(data_root) if data_root is not None else DATA_ROOT
+    inputs = probes.load_panel(root)
+    returns_frame = race.design_panel(inputs)
+    close = inputs["close"]
+    volume = inputs["volume"]
+    sectors = inputs["sectors"]
+    mapped_names = inputs["mapped"]
+    shares = inputs["shares"]
+    look_ahead = inputs["look_ahead"]
+    assert isinstance(mapped_names, list)
+    assert isinstance(returns_frame, pd.DataFrame)
+    assert isinstance(close, pd.DataFrame)
+    assert isinstance(volume, pd.DataFrame)
+    assert isinstance(sectors, pd.Series)
+    assert isinstance(shares, pd.DataFrame)
+    assert isinstance(look_ahead, pd.DataFrame)
+    mapped: list[str] = [str(name) for name in mapped_names]
+    cap = fx.market_cap(close[mapped], shares[mapped])
+    proxy = fx.market_proxy(returns_frame[mapped], cap)
+    design = fx.build_design(
+        returns=returns_frame[mapped],
+        close=close[mapped],
+        volume=volume[mapped],
+        market_cap=cap,
+        sectors=sectors,
+        proxy=proxy,
+    )
+    return _backfill(root, design, look_ahead[mapped], mapped)
+
+
+def _backfill(
+    root: Path, design: fx.DesignResult, look_ahead: pd.DataFrame, mapped: list[str]
+) -> dict[str, object]:
+    """Give a name that has just become sector-mapped the rows it never got.
+
+    A GICS row is what puts a name into the design: `probes.load_panel` maps a ticker
+    only when the sector table carries it, so a missing label does not just leave a
+    name unlabelled, it removes the name from every cross-section until the label
+    comes back. The label came back for BE, ILMN and P on 2026-10-31 and the design
+    would only see them from the next session on: the artifact's descriptor and
+    specific-return rows for the weeks they were out were never written, and without
+    them there is no specific variance to size on either.
+
+    So: for every mapped name the descriptor artifact has no rows for, rebuild the
+    design over the whole panel and append that name's rows for the dates the artifact
+    already covers - only the dates the cross-section itself accepts it, which is what
+    keeps a name below the model's minimum history (momentum needs 231 sessions) out,
+    exactly as it would be out of a fresh fit. The specific returns are the stored
+    factor returns applied to that day's design row, not a re-fit, so the factor
+    returns of those sessions stay the artifact they are; `reconstruction_error`
+    measures that this reproduces the names that were already there.
+
+    Nothing else is rewritten: no other name's descriptor or specific row changes.
+    The specific variance is then refreshed over the backfilled sessions, which is the
+    one place the rest of the book can move, because the bucket means it shrinks
+    toward are cross-sectional.
+    """
+    xs_dir = root / "models" / "XS-v1"
+    descriptor_path = xs_dir / "descriptors.parquet"
+    existing = pd.read_parquet(descriptor_path)
+    existing["date"] = pd.to_datetime(existing["date"])
+    last = existing["date"].max()
+    present = set(existing.loc[existing["date"] == last, "ticker"].astype(str))
+    newcomers = sorted(name for name in mapped if name not in present)
+    report: dict[str, object] = {
+        "newcomers": newcomers,
+        "descriptor_rows": 0,
+        "specific_rows": 0,
+        "sessions": [],
+        "reconstruction_error": None,
+    }
+    if not newcomers:
+        return report
+
+    covered = set(existing["date"])
+    # A newcomer is missing rows for *some* dates, not necessarily all of them: BE,
+    # ILMN and P each have descriptor and specific rows up to the session the label
+    # went missing. Only the dates it has no row for are the hole to fill; writing
+    # over the ones it has would duplicate a key and rewrite a stored row with a
+    # rebuild.
+    have = set(
+        zip(
+            existing["date"].to_numpy(),
+            existing["ticker"].astype(str).to_numpy(),
+            strict=True,
+        )
+    )
+    accepted: dict[pd.Timestamp, list[str]] = {}
+    for day in design.days:
+        if day.date not in covered:
+            continue
+        hits = [
+            name
+            for name in newcomers
+            if name in set(day.tickers) and (day.date, name) not in have
+        ]
+        if hits:
+            accepted[day.date] = hits
+    if not accepted:
+        return report
+
+    wanted = sorted(accepted)
+    descriptor_rows = _descriptor_rows_for_dates(
+        design, wanted, look_ahead[mapped], newcomers
+    )
+    keep = pd.MultiIndex.from_tuples(
+        [(day, name) for day in wanted for name in accepted[day]],
+        names=["date", "ticker"],
+    )
+    descriptor_rows = descriptor_rows.set_index(["date", "ticker"])
+    descriptor_rows = descriptor_rows.loc[
+        descriptor_rows.index.isin(keep)
+    ].reset_index()
+
+    factor_path = xs_dir / "factor_returns.parquet"
+    specific_path = xs_dir / "specific_returns.parquet"
+    factor = pd.read_parquet(factor_path)
+    factor["date"] = pd.to_datetime(factor["date"])
+    # The fit's own vector is the pre-identification one: `identify` picks a
+    # representative of the collinear family for reporting, and the residuals were
+    # formed before it. Using the identified column instead moves a residual by up to
+    # 2e-3, which is what the reconstruction check below would have caught.
+    stored_factor = factor.pivot(
+        index="date", columns="factor", values="f_pre_identification"
+    )
+    specific = pd.read_parquet(specific_path)
+    specific["date"] = pd.to_datetime(specific["date"])
+    prior_specific = specific.set_index(["date", "ticker"])["specific_return"]
+    stored_z = existing.loc[
+        existing["date"].isin(wanted), ["date", "ticker", "descriptor", "value_z_orth"]
+    ].pivot(index=["date", "ticker"], columns="descriptor", values="value_z_orth")
+    styles = list(fx.STYLE_NAMES)
+    columns = styles + [
+        f"sector_{fx.SECTOR_CODES[sector]}" for sector in fx.SECTOR_NAMES[:-1]
+    ]
+
+    rows: list[dict[str, object]] = []
+    kept_dates: list[pd.Timestamp] = []
+    skipped: list[str] = []
+    error = 0.0
+    drift = 0.0
+    for day in design.days:
+        wanted_names = accepted.get(day.date)
+        if not wanted_names:
+            continue
+        factors = stored_factor.loc[day.date].reindex(columns).to_numpy(dtype=float)
+        # The newcomer's own design row comes from this rebuild; every other name's
+        # comes from the artifact, so `reconstruction_error` measures the factor
+        # vector and `design_drift` how far the rebuild is from the rows the session
+        # was fitted on. A session whose own stored rows do not come back is not one
+        # to write a residual for, so it is left alone and named.
+        residual = day.returns - day.design @ factors
+        positions = {str(name): index for index, name in enumerate(day.tickers)}
+        labels = dict(
+            zip([str(t) for t in day.tickers], list(day.sector_names), strict=True)
+        )
+        held = [name for name in positions if name not in set(wanted_names)]
+        held = [name for name in held if (day.date, name) in stored_z.index]
+        session_error = 0.0
+        checked = 0
+        for name in held:
+            stored_row = stored_z.loc[(day.date, name)].reindex(styles).to_numpy(float)
+            if np.isnan(stored_row).any():
+                continue
+            dummy = np.array(
+                [
+                    1.0 if labels[name] == sector else 0.0
+                    for sector in fx.SECTOR_NAMES[:-1]
+                ]
+            )
+            rebuilt = (
+                day.returns[positions[name]]
+                - np.concatenate([stored_row, dummy]) @ factors
+            )
+            value = prior_specific.get((day.date, name))
+            if value is None or pd.isna(value):
+                continue
+            session_error = max(session_error, abs(float(value) - rebuilt))
+            checked += 1
+            design_row = day.design[positions[name]][: len(styles)]
+            drift = max(drift, float(np.nanmax(np.abs(stored_row - design_row))))
+        if checked and session_error > 1e-9:
+            skipped.append(str(day.date.date()))
+            continue
+        error = max(error, session_error)
+        kept_dates.append(day.date)
+        for name in wanted_names:
+            rows.append(
+                {
+                    "date": day.date,
+                    "ticker": name,
+                    "specific_return": float(residual[positions[name]]),
+                }
+            )
+    report["reconstruction_error"] = error
+    report["design_drift"] = drift
+    report["sessions_not_reproduced"] = skipped
+    wanted_kept = sorted(kept_dates)
+    if not wanted_kept:
+        raise ValueError(
+            "no session's stored factor returns reproduce its stored specific "
+            "returns, so a backfilled row would not be the one a fit wrote"
+        )
+    if error > 1e-9:
+        raise ValueError(
+            "the stored factor returns do not reproduce the stored specific "
+            f"returns (max |gap| {error:g}) on a session that would be written"
+        )
+    if not rows:
+        return report
+    descriptor_rows = descriptor_rows.loc[
+        descriptor_rows["date"].isin(wanted_kept)
+    ].reset_index(drop=True)
+
+    pd.concat([existing, descriptor_rows], ignore_index=True).to_parquet(
+        descriptor_path, index=False
+    )
+    pd.concat([specific, pd.DataFrame(rows)], ignore_index=True).to_parquet(
+        specific_path, index=False
+    )
+    variance = variance_for_newcomers(root, newcomers, wanted_kept)
+    report["descriptor_rows"] = int(len(descriptor_rows))
+    report["specific_rows"] = int(len(rows))
+    report["sessions"] = [str(day.date()) for day in wanted_kept]
+    report["variance_rows"] = variance.get("rows", 0)
+    return report
 
 
 def revert_model_to_frozen(data_root: Path | None = None) -> None:
