@@ -1923,6 +1923,7 @@ def main() -> int:
         # short. The price download, the share lookups and the corporate-action
         # cross-check all run in this process and share this one directory.
         from efb import prices as prices_module
+        from live import held_marks
 
         logger.info("yfinance cache: %s", prices_module.use_private_tz_cache())
         # The run's own tree, built before anything is read. Every live module's
@@ -1946,6 +1947,19 @@ def main() -> int:
         # page with no attribution section - and this says so while stopping is still
         # free.
         logger.info("seed inputs: %s path(s) checked", seed.preflight_inputs(run_tree))
+        # Which price the held book is marked at, decided once the tree is known:
+        # EFB_HELD_MARKS=close values a position at the newest vendor close times
+        # the broker's quantity instead of the broker's own market value. Unset is
+        # the broker's value, which is what every run before 2026-10-31 did.
+        if held_marks.mode() == held_marks.MODE_CLOSE:
+            # No upper bound: the tree holds no close past the session this run
+            # is pricing, and the run tree is extended after this point.
+            held_marks.configure(held_marks.tree_closes(run_tree))
+            logger.warning(
+                "%s=close: the held book is marked at the vendor close times the "
+                "quantity, not the broker's market value",
+                held_marks.HELD_MARKS_ENV,
+            )
         # The proposal files move with the tree, so a local run does not add a
         # proposal to the repository either.
         global PROPOSAL_DIR

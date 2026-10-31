@@ -34,7 +34,7 @@ from typing import Any
 
 import pandas as pd
 
-from live import store
+from live import held_marks, store
 
 logger = logging.getLogger(__name__)
 
@@ -510,6 +510,25 @@ def account_read(*, raise_on_failure: bool = False) -> dict[str, Any]:
                 "establishing over an order it cannot see"
             ) from None
     check_establishment_state(positions, working_orders, establishment=not positions)
+    marks: dict[str, Any] = {"mode": held_marks.MODE_BROKER}
+    if positions and held_marks.mode() == held_marks.MODE_CLOSE:
+        positions, marks = held_marks.at_close(
+            positions, quantities, held_marks.marks_for(positions)
+        )
+        logger.info(
+            "held marks: %s name(s) at the vendor close, %s at the broker's "
+            "market value%s",
+            marks["n_remark"],
+            marks["n_kept_broker"],
+            (
+                ""
+                if marks["largest_move"] is None
+                else (
+                    f"; largest move {marks['largest_move']['ticker']} "
+                    f"{marks['largest_move']['usd']:+,.0f}"
+                )
+            ),
+        )
     if raise_on_failure and figures["equity"] is None:
         raise RuntimeError(
             "the account's equity could not be read, so the run stopped before "
@@ -523,6 +542,7 @@ def account_read(*, raise_on_failure: bool = False) -> dict[str, Any]:
         "account_number": number,
         "account_identity": identity,
         "open_orders": working_orders,
+        "mark_source": marks,
         "source": f"{BROKER_SOURCE} {number or getattr(account, 'id', '?')}",
     }
 
