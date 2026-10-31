@@ -583,7 +583,9 @@ def compose(
         # are said out loud for the reason the line above gives.
         lines.append(
             f"Dropped for no risk estimate: {_no_risk_names(no_risk)} "
-            "(out of the book before sizing)."
+            "(out of the book before sizing). The rule is a finite, positive "
+            "specific variance on the close; a name the model has not fitted - too "
+            "little history, or outside its covered set - has none."
         )
     if no_short:
         # Item 18's precheck, on a night it is on: the broker's own lending flag took

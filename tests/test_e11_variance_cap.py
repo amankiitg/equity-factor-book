@@ -323,13 +323,14 @@ def test_the_flag_puts_the_cap_on_the_book_that_trades(
     """The whole point of the construction, on the traded vector.
 
     The control is the same fixture and the same call with the flag unset: that book
-    is the one the loop builds today, and its worst name is 11.94% of the book's
-    predicted specific variance against the 10% rule. With the flag on the worst
-    name is at the cap to within the last re-projection's own move (10.00508%), which
-    is what the research measured on the live books (9.6%). The neutrality is
-    unchanged either way, and that is what the re-projections buy: the cap is applied
-    *after* the hedge here and nowhere else, and the book ends on the neutral space
-    the hedge put it on.
+    is the one the loop builds today, and its worst name was 11.94% of the book's
+    predicted specific variance against the 10% rule before the final pass existed.
+    Both modes now land under the cap, and on this fixture they land on the same
+    book: the final pass caps and renormalizes until the vector that trades meets the
+    rule, so the flag no longer has anything to add here. The neutrality is unchanged
+    either way, and that is what the re-projections buy: the cap is applied *after*
+    the hedge and nowhere else, and the book ends on the neutral space the hedge put
+    it on.
     """
     names, alpha, specific, design, close = _cap_fixture()
     args = (
@@ -358,19 +359,22 @@ def test_the_flag_puts_the_cap_on_the_book_that_trades(
     shares_on = sizing.variance_shares(traded_on, specific)
 
     assert idx_off.tolist() == idx_on.tolist() == list(range(len(names)))
-    # Before 2026-10-31 the default shipped 11.94% here; the final pass takes it to
-    # the cap and the flag lands a shade closer, because it caps at every pass
-    # rather than once at the end.
-    assert shares_off.max() == pytest.approx(0.1000508, abs=1e-6), "the default's book"
-    assert shares_on.max() == pytest.approx(0.1000001, abs=1e-6), "the flag's book"
-    assert shares_off.max() <= 0.10 + 2e-4
-    assert shares_on.max() <= 0.10 + 2e-4
-    assert shares_on.max() <= shares_off.max()
+    # Before 2026-10-31 the default shipped 11.94% here. The final pass caps and
+    # renormalizes until the traded vector meets the rule, which on this fixture is
+    # 9.9661% - under the cap, and no longer a shade over it as it was when the
+    # renormalization to gross was allowed the last word.
+    assert shares_off.max() <= 0.10, "the default's book"
+    assert shares_on.max() <= 0.10, "the flag's book"
+    assert shares_off.max() == pytest.approx(0.0996612, abs=1e-4)
+    assert shares_on.max() == pytest.approx(0.0996106, abs=1e-4)
     # Both books are factor-neutral to machine precision: the flag does not trade
     # the neutrality for the cap, and it does not need to.
     assert np.abs(design.T @ traded_off).max() < 1e-12
     assert np.abs(design.T @ traded_on).max() < 1e-12
-    assert not np.allclose(traded_on, traded_off), "the flag has to change the book"
+    # With the final pass in place the flag and the default land on the same book to
+    # within the last re-projection's own move: the default now delivers what the
+    # flag was added to deliver.
+    assert float(np.abs(traded_on - traded_off).max()) < 1e-4
 
 
 def test_the_cap_holds_on_the_vector_that_trades_and_not_only_before_the_hedge() -> (
@@ -441,3 +445,24 @@ def test_the_floor_that_pushes_a_name_over_the_cap_is_caught() -> None:
     assert np.abs(design[keep].T @ final).max() < 1e-12
     assert float(np.abs(final).sum()) == pytest.approx(float(np.abs(floored).sum()))
     del alpha, close
+
+
+def test_a_book_under_the_cap_is_returned_untouched_and_never_rehedged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The four live closes sit at 7.7-8.7% of the cap: the final pass is free.
+
+    The stored books for 2026-10-27..30 cleared the cap before this pass existed, so
+    the identity proof is that the pass cannot touch them at all: under the cap it
+    returns the same array object for object, and it never reaches the re-hedge.
+    """
+    names, _alpha, specific, design, _close = _cap_fixture()
+    book = np.full(len(names), 1.0 / len(names))
+    assert sizing.variance_shares(book, specific).max() < sizing.VARIANCE_SHARE_CAP
+
+    def _boom(*_args: object, **_kwargs: object) -> np.ndarray:
+        raise AssertionError("a book under the cap must not be re-hedged")
+
+    monkeypatch.setattr(sizing, "cap_then_rehedge", _boom)
+    after = sizing.enforce_final_cap(book, design, specific)
+    assert np.array_equal(after, book)

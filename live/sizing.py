@@ -208,8 +208,31 @@ def enforce_final_cap(
     shares = variance_shares(weights, specific)
     if float(shares.max()) <= max(cap, 1.0 / live) + 1e-12:
         return weights.copy()
+    target = float(np.abs(weights).sum())
+    # The renormalization to gross is a scale on the capped vector and a variance
+    # share moves with the square of the weight, so scaling a capped book back up
+    # to gross can put the largest share back over the cap: measured on 2026-10-30,
+    # capping to 10% and renormalizing arrived at 10.0069%. Ask the fixed point for a
+    # proportionally lower cap until the vector that trades meets it, and keep the
+    # best feasible one when the neutral space holds none.
+    low, high = 0.0, cap
+    best: np.ndarray | None = None
+    for _ in range(8):
+        level = 0.5 * (low + high)
+        capped = renormalize(
+            cap_then_rehedge(weights, design, specific, cap=level, rounds=rounds),
+            gross=target,
+        )
+        share = float(variance_shares(capped, specific).max())
+        if share <= cap + 1e-12:
+            best = capped
+            low = level
+        else:
+            high = level
+    if best is not None:
+        return best
     capped = cap_then_rehedge(weights, design, specific, cap=cap, rounds=rounds)
-    return renormalize(capped, gross=float(np.abs(weights).sum()))
+    return renormalize(capped, gross=target)
 
 
 def procedure_6_3_robust(
