@@ -609,3 +609,96 @@ def test_a_write_loads_the_tree_it_was_pointed_at(
     monkeypatch.setattr(appendix, "open_store", lambda *a, **k: None)
     monkeypatch.setattr(extend, "extend_returns", lambda *a, **k: None)
     assert repair_session.load_tree(tmp_path / "work", target, write=True) == target
+
+
+def _variance_tree(tmp_path: Path) -> Path:
+    """A tree with the three inputs `refresh_variance` reads, and nothing else."""
+    root = tmp_path / "tree"
+    xs = root / "models" / "XS-v1"
+    xs.mkdir(parents=True)
+    (root / "processed").mkdir()
+    days = pd.bdate_range("2026-09-01", periods=30)
+    rng = np.random.default_rng(7)
+    names = [f"V{index:02d}" for index in range(12)]
+    specific = pd.DataFrame(
+        rng.normal(0.0, 0.01, size=(len(days), len(names))),
+        index=days,
+        columns=names,
+    )
+    long = (
+        specific.rename_axis("date")
+        .reset_index()
+        .melt(id_vars="date", var_name="ticker", value_name="specific_return")
+    )
+    long.to_parquet(xs / "specific_returns.parquet", index=False)
+    # A prior variance table: the same shape, deliberately not what the EWMA says,
+    # so a refresh that rewrites the wrong sessions is visible.
+    prior = long.drop(columns=["specific_return"]).assign(
+        specific_var_raw=1e-4,
+        specific_var=1e-4,
+        bucket="Tech|1",
+        bucket_mean=1e-4,
+        n_obs=30,
+    )
+    prior.to_parquet(xs / "specific_var.parquet", index=False)
+    pd.DataFrame({"ticker": names, "gics_sector": ["Tech"] * len(names)}).to_parquet(
+        root / "processed" / "sectors.parquet", index=False
+    )
+    # Long, as the artifact is: close and shares per name per day.
+    pd.DataFrame(
+        {
+            "date": list(days) * len(names),
+            "ticker": [name for name in names for _ in days],
+            "close": 100.0,
+            "shares": 1e7,
+        }
+    ).to_parquet(root / "processed" / "market_cap.parquet", index=False)
+    return root
+
+
+def test_the_variance_range_writer_touches_the_range_and_nothing_else(
+    tmp_path: Path,
+) -> None:
+    """A repaired return leaves a year of variance reading it.
+
+    So the writer rewrites the sessions asked for, in place, and leaves every other
+    row exactly as it was - same value, same position, same dtype.
+    """
+    root = _variance_tree(tmp_path)
+    path = root / "models" / "XS-v1" / "specific_var.parquet"
+    before = pd.read_parquet(path)
+    start = pd.Timestamp("2026-10-01")
+    end = pd.Timestamp("2026-10-07")
+
+    dry = repair_session.refresh_variance(root, start, end, write=False)
+    assert dry["n_sessions"] == 5, "the range's sessions, not the whole panel"
+    assert dry["backup"] is None
+    assert dry["file_hash_after"] == dry["file_hash_before"]
+    assert pd.read_parquet(path).equals(before), "a dry run writes nothing"
+
+    report = repair_session.refresh_variance(root, start, end, write=True)
+    after = pd.read_parquet(path)
+    assert report["backup"] and Path(str(report["backup"])).exists()
+    stamp = pd.to_datetime(after["date"])
+    touched = after.loc[stamp.between(start, end)]
+    untouched = after.loc[~stamp.between(start, end)]
+    origin = before.loc[pd.to_datetime(before["date"]).between(start, end)]
+    assert len(touched) == len(origin)
+    assert not touched["specific_var"].equals(origin["specific_var"]), "the range moved"
+    # Every session outside the range is the row it was, column for column.
+    outside = ~pd.to_datetime(before["date"]).between(start, end)
+    outside_before = before.loc[outside]
+    assert untouched.reset_index(drop=True).equals(
+        outside_before.reset_index(drop=True)
+    )
+    assert len(after) == len(before), "no row is added or lost"
+
+
+def test_an_empty_range_is_refused_rather_than_writing_nothing(
+    tmp_path: Path,
+) -> None:
+    root = _variance_tree(tmp_path)
+    with pytest.raises(SystemExit, match="no session between"):
+        repair_session.refresh_variance(
+            root, pd.Timestamp("2027-01-01"), pd.Timestamp("2027-01-05"), write=False
+        )

@@ -611,10 +611,175 @@ def load_tree(work: Path, tree: Path | None, *, write: bool = False) -> Path:
     return root
 
 
+def load_research_tree(work: Path, tree: Path | None, *, write: bool) -> Path:
+    """The tree a variance refresh reads, and the copy it writes.
+
+    A variance refresh rewrites one research artifact and nothing else, so it does
+    not hydrate from the store: the store is the live path and this tool never takes
+    it. A dry run reads the tree where it is; `--write` works on a copy under
+    `--work`, so the tree pointed at is never the one modified.
+    """
+    if tree is None:
+        raise SystemExit(
+            "--variance-from needs --tree: point it at a prepared run tree"
+        )
+    source = Path(tree).resolve()
+    if not write:
+        print(f"dry run: reading {source}; nothing is written")
+        return source
+    target = work / f"{source.name or 'tree'}-copy"
+    if target.exists():
+        shutil.rmtree(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, target, symlinks=True)
+    print(f"--write: working on a copy at {target}; {source} is not opened")
+    return target
+
+
+def refresh_variance(
+    root: Path,
+    start: pd.Timestamp,
+    end: pd.Timestamp | None = None,
+    *,
+    write: bool,
+) -> dict[str, object]:
+    """Recompute `specific_var` over a range of sessions from the stored returns.
+
+    The specific variance is an EWMA over the stored specific returns, shrunk toward
+    the name's sector-size bucket mean (`efb.models.fundamental.specific_variance`).
+    So a repaired `specific_returns` row leaves every later variance row reading a
+    print that no longer exists, and the signal keeps multiplying it for a year. This
+    rewrites the variance for the sessions asked for and leaves every other row alone.
+
+    Artifacts only: the store's appendix is refreshed by the live hydrate path, not
+    here, so a research tree can be repaired without a store write.
+
+    It recomputes from `specific_returns` **as stored**. If that artifact still
+    carries a flagged print - the CTVA 2026-10-01 spinoff is in it - the variance will
+    carry it too, which is why `--variance-from` runs after the repair, not instead of
+    it. `largest_gap` in the report is the number to read before `--write`: on the
+    2026-10-31 gate tree a range that includes the CTVA print moves a variance by
+    0.024, two orders of magnitude more than a normal refresh.
+    """
+    last = end or start
+    xs = root / "models" / "XS-v1"
+    variance_path = xs / "specific_var.parquet"
+    returns_path = xs / "specific_returns.parquet"
+    if not variance_path.exists() or not returns_path.exists():
+        raise SystemExit(
+            f"no specific variance to refresh under {xs}: a prepared run tree is "
+            "needed (--tree, or --work to materialize one)"
+        )
+    prior = pd.read_parquet(variance_path)
+    specific = pd.read_parquet(returns_path)
+    wide = specific.pivot(
+        index="date", columns="ticker", values="specific_return"
+    ).sort_index()
+    wide.index = pd.to_datetime(wide.index)
+    sectors = pd.read_parquet(root / "processed" / "sectors.parquet")
+    labels = pd.Series(
+        sectors["gics_sector"].to_numpy(), index=sectors["ticker"].astype(str)
+    )
+    # `processed/market_cap.parquet` is long (close and shares per name per day);
+    # the bucket terciles need the wide cap the model itself uses.
+    stored = pd.read_parquet(root / "processed" / "market_cap.parquet")
+    caps = fx.market_cap(
+        stored.pivot(index="date", columns="ticker", values="close"),
+        stored.pivot(index="date", columns="ticker", values="shares"),
+    )
+    dates = [day for day in wide.index if start <= day <= last]
+    if not dates:
+        raise SystemExit(
+            f"no session between {start.date()} and {last.date()} in the panel"
+        )
+    fresh = fx.specific_variance(wide, labels, caps, dates=dates)
+
+    def _rows(frame: pd.DataFrame, days: list[pd.Timestamp]) -> pd.DataFrame:
+        stamp = pd.to_datetime(frame["date"])
+        return frame.loc[stamp.isin(days)]
+
+    before = _rows(prior, dates)
+    keys = ["date", "ticker"]
+    # Keep the artifact's own row order: a refresh replaces rows in place rather
+    # than resorting a file that every later step reads positionally.
+    ordered = prior.reset_index(drop=True).assign(_order=range(len(prior)))
+    kept = ordered.drop(index=before.index)
+    renewed = fresh.loc[:, prior.columns].merge(
+        ordered[keys + ["_order"]], on=keys, how="left"
+    )
+    missing = renewed["_order"].isna()
+    renewed.loc[missing, "_order"] = range(
+        len(ordered), len(ordered) + int(missing.sum())
+    )
+    merged = (
+        pd.concat([kept, renewed], ignore_index=True)
+        .sort_values("_order", kind="stable")
+        .drop(columns="_order")
+        .reset_index(drop=True)
+    )
+    # And keep its dtypes: a concat upcasts an integer count beside a float one, and
+    # a rewrite that changes a column's type without changing a value is a diff
+    # nobody asked for.
+    for column in prior.columns:
+        if column not in merged.columns:
+            continue
+        try:
+            merged[column] = merged[column].astype(prior[column].dtype)
+        except (TypeError, ValueError):
+            pass
+    after = _rows(merged, dates)
+
+    report: dict[str, object] = {
+        "sessions": [str(day.date()) for day in dates],
+        "n_sessions": len(dates),
+        "rows_before": int(len(before)),
+        "rows_after": int(len(after)),
+        "rows_total_before": int(len(prior)),
+        "rows_total_after": int(len(merged)),
+        "names_added": int(
+            len(set(zip(after["date"], after["ticker"], strict=False)))
+            - len(set(zip(before["date"], before["ticker"], strict=False)))
+        ),
+        "file_hash_before": _file_hash(variance_path),
+        "backup": None,
+    }
+    overlap = before.merge(after, on=keys, suffixes=("_old", "_new"))
+    if len(overlap):
+        gap = (overlap["specific_var_old"] - overlap["specific_var_new"]).abs()
+        report["largest_gap"] = float(gap.max())
+        report["names_moved"] = int((gap.fillna(0.0) > 0).sum())
+    if not write:
+        report["file_hash_after"] = _file_hash(variance_path)
+        return report
+
+    stamp = pd.Timestamp.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    backup = variance_path.with_suffix(f".parquet.bak-{stamp}")
+    shutil.copy2(variance_path, backup)
+    merged.to_parquet(variance_path, index=False)
+    report["backup"] = str(backup)
+    report["file_hash_after"] = _file_hash(variance_path)
+    return report
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--ticker", required=True, help="the name to re-fit out")
-    parser.add_argument("--session", required=True, help="the session, YYYY-MM-DD")
+    parser.add_argument("--ticker", help="the name to re-fit out")
+    parser.add_argument("--session", help="the session, YYYY-MM-DD")
+    parser.add_argument(
+        "--variance-from",
+        type=pd.Timestamp,
+        default=None,
+        help=(
+            "recompute specific_var from this session onward, out of the stored "
+            "specific returns, instead of re-fitting one session"
+        ),
+    )
+    parser.add_argument(
+        "--variance-to",
+        type=pd.Timestamp,
+        default=None,
+        help="the last session to recompute, with --variance-from (default: same day)",
+    )
     parser.add_argument("--tree", type=Path, default=None, help="a prepared run tree")
     parser.add_argument(
         "--work",
@@ -637,8 +802,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    session = pd.Timestamp(args.session)
+    if args.variance_from is None and (not args.ticker or not args.session):
+        parser.error(
+            "--ticker and --session are required unless --variance-from is given"
+        )
+    if args.variance_from is not None and args.ticker:
+        parser.error("--variance-from rewrites a range; do not name one ticker with it")
+    if args.variance_from is not None:
+        root = load_research_tree(args.work, args.tree, write=args.write)
+        report = refresh_variance(
+            root, args.variance_from, args.variance_to, write=args.write
+        )
+        print(json.dumps(report, indent=2, default=str))
+        print()
+        print(f"tree: {root}")
+        print("dry run: nothing was written" if not args.write else "written")
+        return 0
     root = load_tree(args.work, args.tree, write=args.write)
+    session = pd.Timestamp(args.session)
     report = repair(root, args.ticker, session, write=args.write, mask=not args.refit)
     print(json.dumps(report, indent=2, default=str))
     print()
