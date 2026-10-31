@@ -84,6 +84,49 @@ snapshot writer changes. A regeneration against a current tree replaces those id
 fixture set of the new vintage, which is a deliberate change with its own review, not a
 gate repair.
 
+## 2026-10-31: the web fixtures were regenerated, and the set is seven
+
+`scripts/make_web_fixtures.py` was re-run against the current gate tree (P3b, item 3 of
+the weekend brief), so the eleven committed fixture files now carry the writer's output
+for this tree instead of the 2026-10-02 vintage. The eleven
+`test_e11_web_fixtures.py::test_every_fixture_is_what_the_writer_produces_now[...]` ids
+go green, one `test_web_sector_map.py` id goes with them, and the current list is:
+
+```
+7 failed, 1732 passed, 2 skipped, 54 deselected
+```
+
+```
+.venv/bin/python -m pytest tests/ -q -m "not slow and not requires_live_tree and not merge_guard"
+```
+
+measured on `main` `fb39bd9` plus the fixture commit, on 2026-10-31, with `data` a
+symlink to `/tmp/efb-gate`:
+
+```
+tests/test_allocate.py::test_the_stored_traded_book_figures_are_what_the_function_computes
+tests/test_e11_corporate_actions.py::test_the_aph_split_is_reproduced_from_the_real_rows
+tests/test_e12_attribution.py::test_the_stored_split_reconstructs_the_return_on_the_current_build
+tests/test_evidence.py::test_the_evidence_chain_verifies
+tests/test_statistical.py::test_the_real_panel_counts_match_the_stored_probe_arithmetic
+tests/test_web_sector_map.py::test_the_committed_map_is_exactly_what_the_generator_produces
+tests/test_web_sector_map.py::test_the_map_names_the_files_it_came_from_and_their_own_dates
+```
+
+The fixtures are pure generator output, which is why they were the part worth
+regenerating. The **sector map is not**, and it stays in the list: its generator reads
+`data/processed/sectors.parquet` and the newest `spy_holdings` file, and both the gate
+tree and the live seed hold the **2026-09-11** sectors vintage while the committed map
+was generated from the newer 2026-10-03 table. Regenerating from today's tree would drop
+BE, ILMN and P from the page's map and add BLDR, TAP and TTD - three names in and three
+out of a label table the live book still needs - so the map keeps its committed vintage
+and its two ids rather than trading a page for a green tick. The repair is a sectors
+table at the live vintage in the tree (or a generator that reads the store), not a
+regeneration.
+
+The other five are the evidence-chain, statistical, allocate, attribution and APH ids the
+earlier sections describe: all artifact vintage, none of them a code change.
+
 ## The four CTVA ids, which are gone
 
 The `spinoff-explains-adjustment` branch merged on 2026-10-27 in `1c98b53`, and the four
