@@ -10,11 +10,15 @@ was written down before it traded.
 **The live page: <https://efb-live-book.nutritrack.workers.dev>** (public, paper account,
 no login).
 
-[![The book monitor after the 2026-10-23 close, the first monthly rebalance: the status
-strip, the headline metrics and the top of the exposure and sector panels. Real data,
-paper account.](docs/img/book.png)](https://efb-live-book.nutritrack.workers.dev)
+[![The book monitor after the 2026-10-30 close, a hold day five sessions into the
+2026-10-23 rebalance: the status strip, the cadence line (hold day 5 of 21, the drift
+guard at 6.41% of 5.00%, fired), the rebalance card, the four flips, the account's
+factor exposures against the rebalance's, and the book by sector against the 2026-10-23
+target. Real data, paper account.](docs/img/book.png)](https://efb-live-book.nutritrack.workers.dev)
 
-Screenshot from the 2026-10-23 close; the live page updates every evening.
+Screenshot from the 2026-10-30 close, a hold day: the anchored panels read the
+2026-10-23 rebalance, because on a hold day the account is the book. The live page
+updates every evening.
 
 ## At a glance
 
@@ -208,7 +212,7 @@ pre-commit install
 | `make lint` | ruff, mypy and black over the package, the page and the scripts |
 | `make dashboard` | the local research console, one Streamlit tab per sprint |
 | `make web-build` | type-check and build the page, then its tests |
-| `.venv/bin/python scripts/readme_screenshots.py` | rebuild `docs/img/book.png` and `docs/img/attribution.png` from the 2026-10-23 document |
+| `.venv/bin/python scripts/readme_screenshots.py --snapshot web/fixtures/snapshot_2026-10-30_evening.json --book-height 2200` | rebuild `docs/img/book.png` and `docs/img/attribution.png`; the 2026-10-30 document and the taller crop are what put the anchored panels in the book shot |
 | `PYTHONPATH=. .venv/bin/python scripts/review_week.py` | one row a day with the P&L split into factor, idiosyncratic and cost |
 
 The page is a Cloudflare Worker serving one built page and one read route,
