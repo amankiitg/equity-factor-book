@@ -983,6 +983,15 @@ def _block(
                 ),
                 "fired": bool(guard.get("fired", False)),
                 "ran": bool(guard),
+                # The legs the guard actually sent: the candidates it could not size
+                # (under the order minimum) are in the list too, and counting them
+                # would say 196 for a night that sent 109.
+                "legs": sum(
+                    1
+                    for leg in (guard.get("legs") or [])
+                    if isinstance(leg, dict) and leg.get("traded")
+                ),
+                "legs_under_minimum": len(guard.get("legs_under_minimum") or []),
             },
         },
         "rebalance_card": rebalance_card(anchor, anchor_manifest, orders, fills, nav),
@@ -1033,6 +1042,19 @@ def _block(
     anchored = sectors(target, now, nav, sector_of, anchor=anchor)
     if anchored:
         out["sectors"] = anchored
+    # The anchor close's own hedge, for the exposures panel: on a hold day tonight's
+    # book is the account and nothing is hedged, so the only before/after pair that
+    # says anything is the rebalance's. Absent when the anchor manifest carries no
+    # vectors - a document written before the field existed renders as it did.
+    anchor_before = anchor_manifest.get("exposures_before_hedge") or {}
+    anchor_after = anchor_manifest.get("exposures_after_hedge") or {}
+    if isinstance(anchor_before, dict) and isinstance(anchor_after, dict):
+        if anchor_before and anchor_after:
+            out["anchor_exposures"] = {
+                "anchor": anchor,
+                "before": anchor_before,
+                "after": anchor_after,
+            }
     card = rebalance_card(anchor, anchor_manifest, orders, fills, nav)
     footprint = hedge(
         target,

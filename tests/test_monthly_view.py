@@ -708,3 +708,75 @@ def test_a_leg_that_cannot_be_sent_is_not_counted_as_one_that_will() -> None:
     ]
     # The old total is still there, and still the sum of both.
     assert tonight["forced_usd"] == pytest.approx(389.37)
+
+
+def _anchored_block(anchor_manifest: dict) -> dict:
+    anchor, later = "2026-10-23", "2026-10-30"
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [anchor, later],
+            "manifest": [
+                {"cadence": {"day": "rebalance"}, **anchor_manifest},
+                {"cadence": {"day": "hold", "k": 21}},
+            ],
+        }
+    )
+    target = pd.DataFrame(
+        {"trade_date": [anchor], "ticker": ["AAA"], "side": ["long"], "weight": [0.01]}
+    )
+    account = pd.DataFrame(
+        {
+            "trade_date": [later],
+            "ticker": ["AAA"],
+            "side": ["long"],
+            "market_value": [10_000.0],
+        }
+    )
+    return monthly_view.block(
+        proposals=proposals,
+        targets=target,
+        account=account,
+        orders=pd.DataFrame(
+            {
+                "trade_date": [anchor],
+                "ticker": ["AAA"],
+                "intended_notional": [10.0],
+                "reason_code": [""],
+                "position_intent": ["buy_to_open"],
+            }
+        ),
+        fills=pd.DataFrame(
+            {
+                "trade_date": [anchor],
+                "ticker": ["AAA"],
+                "filled_notional": [10.0],
+                "status": ["FILLED"],
+            }
+        ),
+        today=later,
+        tonight_manifest={"cadence": {"k": 21}},
+        nav=1_000_000.0,
+    )
+
+
+def test_the_block_carries_the_anchors_own_exposures() -> None:
+    """A hold day's own pair is one vector twice, so the pair shown is the anchor's.
+
+    The numbers are the 2026-10-23 rebalance's own: the book carried 87.2% of a unit
+    exposure at its worst factor going into that hedge, and 3.3e-17 after it.
+    """
+    block = _anchored_block(
+        {
+            "exposures_before_hedge": {"market": 0.872, "beta": -0.31},
+            "exposures_after_hedge": {"market": 3.3e-17, "beta": -1e-17},
+        }
+    )
+    carried = block["anchor_exposures"]
+    assert carried["anchor"] == "2026-10-23"
+    assert carried["before"]["market"] == pytest.approx(0.872)
+    assert abs(carried["after"]["market"]) < 1e-12
+
+
+def test_a_close_whose_anchor_carries_no_vectors_leaves_the_field_out() -> None:
+    block = _anchored_block({})
+    assert "anchor_exposures" not in block

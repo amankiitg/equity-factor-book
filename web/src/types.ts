@@ -520,6 +520,18 @@ export interface FlipRow {
 /** The pages measured from the anchor, built by `live/monthly_view.py`. */
 export interface MonthlyBlock {
   anchor?: { close: string | null; day: "rebalance" | "cadence" | "daily"; account_read: string | null };
+  /**
+   * The anchor close's own factor exposures, before and after its hedge.
+   *
+   * On a hold day nothing is hedged tonight, so the document's own before/after pair
+   * is the same vector twice; the only pair that shows a hedge working is the one
+   * from the close that actually hedged.
+   */
+  anchor_exposures?: {
+    anchor: string | null;
+    before: Record<string, number | null>;
+    after: Record<string, number | null>;
+  } | null;
   cadence_strip?: {
     k: number | null;
     offset: number | null;
@@ -532,6 +544,9 @@ export interface MonthlyBlock {
       threshold: number | null;
       fired: boolean;
       ran: boolean;
+      /** Legs the guard sent, and the candidates it could not size. */
+      legs?: number;
+      legs_under_minimum?: number;
     };
   };
   rebalance_card?: {

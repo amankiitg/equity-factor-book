@@ -801,6 +801,7 @@ criterion is a test rather than a claim.
 | web/src/Details.tsx | re-specified | the detail drawer's rows become issue terms: coupon, maturity, rating, parent |
 | web/src/DrawerSection.tsx | unchanged | the drawer's shell |
 | web/src/ExposuresSection.tsx | re-specified | the exposures become credit factors and DTS rather than equity factors |
+| web/src/exposures.test.tsx | new | the hold-day exposures panel's tests: an anchored before/after pair and tonight's book beside it, which is the shape a credit book's factor report takes when the sleeve did not rebalance that day |
 | web/src/HedgePanel.tsx | re-specified | the hedge panel shows CDX and Treasury legs, and its neutrality check is the same projection |
 | web/src/MetricsRow.tsx | re-specified | the headline row's volatility and cost become spread duration and carry |
 | web/src/Panel.tsx | unchanged | the panel shell every section is built on |
