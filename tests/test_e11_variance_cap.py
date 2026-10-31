@@ -127,7 +127,12 @@ def test_the_cap_lands_before_the_hedge_and_the_traded_book_uses_it() -> None:
     expected, _pre = sizing.procedure_6_3_hedged_with_exposures(
         alpha, design, factor_covariance, specific, sized=pre
     )
-    assert np.allclose(w_sub, sizing.renormalize(expected, gross=1.0))
+    hedge_of_record = sizing.renormalize(expected, gross=1.0)
+    # ...and the vector that trades is that hedge passing the cap on the way out,
+    # which is the one addition the 2026-10-31 change made.
+    assert np.allclose(
+        w_sub, sizing.enforce_final_cap(hedge_of_record, design, specific)
+    )
     assert list(names_sub) == names
     assert idx.tolist() == list(range(12))
 
@@ -258,22 +263,38 @@ def test_the_mode_is_decided_once_and_then_remembered(
     assert ev.hedge_mode() == ev.HEDGE_MODE_EXACT
 
 
-def test_the_default_mode_leaves_the_hedged_vector_alone(
+def test_the_default_mode_is_the_hedge_of_record_and_then_the_cap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Byte for byte, not approximately: the off position is the hedge of record."""
+    """The default is still the exact hedge - and the cap now holds on what trades.
+
+    Until 2026-10-31 this test asserted the delivered vector was the renormalized
+    hedge byte for byte, which is exactly the bug: on 2026-10-20 that book carried
+    11.69% of its predicted specific variance on one name against a 10% rule. The
+    contract now has two halves, and both are asserted here: `apply_hedge_mode`
+    still returns the hedged vector untouched in the default mode, and the weights
+    that leave `sized_kept_weights` are the hedge of record *passing the cap*.
+    """
     names, alpha, specific, design, close = _traded_fixture()
     pre = _capped_sized(alpha, specific)
     hedged, _pre = sizing.procedure_6_3_hedged_with_exposures(
         alpha, design, np.eye(3), specific, sized=pre
     )
     assert _mode(monkeypatch, None) == ev.HEDGE_MODE_EXACT
-
     assert ev.apply_hedge_mode(hedged, design, specific) is hedged
+
     _idx, _names, w_sub, *_rest = ev.sized_kept_weights(
         np.ones(12, dtype=bool), names, alpha, design, np.eye(3), specific, close, 1e5
     )
-    assert np.array_equal(w_sub, sizing.renormalize(hedged, gross=1.0))
+    hedge_of_record = sizing.renormalize(hedged, gross=1.0)
+    final = sizing.enforce_final_cap(hedge_of_record, design, specific)
+    assert np.array_equal(w_sub, final)
+    # This twelve-name book is too small for the neutral space to hold a capped
+    # book, so the pass improves the share without meeting the cap: the manifest
+    # reports that rather than the code pretending otherwise.
+    assert sizing.variance_shares(final, specific).max() <= (
+        sizing.variance_shares(hedge_of_record, specific).max()
+    )
 
 
 def _cap_fixture() -> (
@@ -337,13 +358,86 @@ def test_the_flag_puts_the_cap_on_the_book_that_trades(
     shares_on = sizing.variance_shares(traded_on, specific)
 
     assert idx_off.tolist() == idx_on.tolist() == list(range(len(names)))
-    assert shares_off.max() == pytest.approx(0.1193758, abs=1e-6), "today's book"
-    assert shares_off.max() > 0.10, "the fixture must show today's book over the cap"
-    assert shares_on.max() == pytest.approx(0.1000508, abs=1e-6), "the flag's book"
+    # Before 2026-10-31 the default shipped 11.94% here; the final pass takes it to
+    # the cap and the flag lands a shade closer, because it caps at every pass
+    # rather than once at the end.
+    assert shares_off.max() == pytest.approx(0.1000508, abs=1e-6), "the default's book"
+    assert shares_on.max() == pytest.approx(0.1000001, abs=1e-6), "the flag's book"
+    assert shares_off.max() <= 0.10 + 2e-4
     assert shares_on.max() <= 0.10 + 2e-4
-    assert shares_on.max() < shares_off.max()
+    assert shares_on.max() <= shares_off.max()
     # Both books are factor-neutral to machine precision: the flag does not trade
     # the neutrality for the cap, and it does not need to.
     assert np.abs(design.T @ traded_off).max() < 1e-12
     assert np.abs(design.T @ traded_on).max() < 1e-12
     assert not np.allclose(traded_on, traded_off), "the flag has to change the book"
+
+
+def test_the_cap_holds_on_the_vector_that_trades_and_not_only_before_the_hedge() -> (
+    None
+):
+    """A hedge after the cap can put a name back above it; the last pass must not.
+
+    Measured on the live book: 2026-10-20 shipped `max_variance_share` **11.69%**
+    with `variance_share_cap_binds: true`, a book that states it is above the cap it
+    is supposed to meet. The cap was applied before the hedge, and the hedge then
+    moved the composition.
+    """
+    # Forty names and three factors, the fixture the cap can actually be met on:
+    # the twelve-name one is deliberately too small for the neutral space to hold a
+    # capped book, which is a different test.
+    names, alpha, specific, design, close = _cap_fixture()
+    pre = _capped_sized(alpha, specific)
+    hedged, _ = sizing.procedure_6_3_hedged_with_exposures(
+        alpha, design, np.eye(3), specific, sized=pre
+    )
+    hedge_of_record = sizing.renormalize(hedged, gross=1.0)
+    assert (
+        sizing.variance_shares(hedge_of_record, specific).max() > 0.10
+    ), "the fixture must show the hedge lifting a name over the cap"
+
+    final = sizing.enforce_final_cap(hedge_of_record, design, specific)
+    assert sizing.variance_shares(final, specific).max() <= 0.10 + 2e-4
+    # Nothing is renormalized away: the gross is the gross it was given.
+    assert float(np.abs(final).sum()) == pytest.approx(
+        float(np.abs(hedge_of_record).sum())
+    )
+    # And it stays on the neutral space, which is what the re-projections buy.
+    assert np.abs(design.T @ final).max() < 1e-12
+    # A book already under the cap is returned untouched, to the bit.
+    under = sizing.cap_variance_shares(hedge_of_record, specific)
+    assert np.array_equal(sizing.enforce_final_cap(under, design, specific), under)
+    del names, close
+
+
+def test_the_floor_that_pushes_a_name_over_the_cap_is_caught() -> None:
+    """The case the owner asked for: the floor renormalizes and the cap breaks.
+
+    A kept subset that drops the middle of the book leaves the largest name with a
+    bigger share than it had in the full book, and that is exactly what the last
+    pass is for.
+    """
+    names, alpha, specific, design, close = _cap_fixture()
+    pre = _capped_sized(alpha, specific)
+    hedged, _ = sizing.procedure_6_3_hedged_with_exposures(
+        alpha, design, np.eye(3), specific, sized=pre
+    )
+    capped = sizing.renormalize(hedged, gross=1.0)
+    before = sizing.variance_shares(capped, specific).max()
+    keep = np.ones(len(names), dtype=bool)
+    keep[5:20] = False  # the construction floor drops fifteen of the forty names
+    floored = capped[keep]
+    share_after = sizing.variance_shares(floored, specific[keep]).max()
+    assert share_after > before, "dropping names concentrates the book"
+    assert share_after > 0.10, "the fixture must break the cap on the floor"
+
+    final = sizing.enforce_final_cap(floored, design[keep], specific[keep])
+    achieved = sizing.variance_shares(final, specific[keep]).max()
+    # The pass answers: it brings the worst name down and leaves the book on the
+    # neutral space. Whether it can reach the cap depends on the space - three
+    # factors and twenty-five names cannot hold a 10% book, which is the under-shoot
+    # `cap_then_rehedge` documents and the manifest reports as a binding cap.
+    assert achieved < share_after
+    assert np.abs(design[keep].T @ final).max() < 1e-12
+    assert float(np.abs(final).sum()) == pytest.approx(float(np.abs(floored).sum()))
+    del alpha, close

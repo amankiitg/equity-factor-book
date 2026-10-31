@@ -177,6 +177,41 @@ def cap_then_rehedge(
     return current
 
 
+def enforce_final_cap(
+    weights: np.ndarray,
+    design: np.ndarray,
+    specific: np.ndarray,
+    cap: float = VARIANCE_SHARE_CAP,
+    rounds: int = REHEDGE_ROUNDS,
+) -> np.ndarray:
+    """The cap, on the vector that trades: re-cap and re-project only when it binds.
+
+    The default sizing caps before the hedge, and the hedge then moves the
+    composition: it is a projection of the sized vector onto the factor-neutral
+    space, so a name the cap had just brought to 10% of the specific variance can
+    come back above it once the projection and the renormalization to gross 1 are
+    done. Measured on the live book, that is not hypothetical - 2026-10-20 shipped
+    `max_variance_share` **11.69%** with `variance_share_cap_binds: true`, a book
+    that states it is above the cap it is supposed to meet.
+
+    So this runs at the end, on the vector that is about to trade: unchanged when
+    the cap already holds (the ordinary case, and free), and otherwise capping and
+    re-projecting to the fixed point `cap_then_rehedge` describes, so the book meets
+    the cap *and* stays factor-neutral rather than trading one for the other. It
+    can still under-shoot when the neutral space holds no book that meets the cap;
+    the caller reports the achieved share rather than assuming it.
+    """
+    weights = np.asarray(weights, dtype=float)
+    live = int((weights != 0).sum())
+    if live == 0:
+        return weights.copy()
+    shares = variance_shares(weights, specific)
+    if float(shares.max()) <= max(cap, 1.0 / live) + 1e-12:
+        return weights.copy()
+    capped = cap_then_rehedge(weights, design, specific, cap=cap, rounds=rounds)
+    return renormalize(capped, gross=float(np.abs(weights).sum()))
+
+
 def procedure_6_3_robust(
     alpha: np.ndarray,
     design: np.ndarray,

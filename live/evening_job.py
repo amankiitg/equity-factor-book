@@ -1216,6 +1216,10 @@ def sized_kept_weights(
     )
     w_sub = apply_hedge_mode(w_sub, design[idx], specific[idx])
     w_sub = sizing.renormalize(w_sub, gross=1.0)
+    # The cap has to hold on the vector that trades, not only on the one the hedge
+    # read: the projection moves the composition, and on 2026-10-20 the delivered
+    # book carried 11.69% of its specific variance on one name against a 10% cap.
+    w_sub = sizing.enforce_final_cap(w_sub, design[idx], specific[idx])
     prices = usable_prices(names_sub, close)
     return idx, names_sub, w_sub, prices, design[idx], specific[idx], pre_hedge
 
