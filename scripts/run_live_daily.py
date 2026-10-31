@@ -1566,6 +1566,9 @@ def finish_run(
         monthly_view=monthly_state,
         cross_checks_capped=cross_checks_capped,
         cadence=(manifest or {}).get("cadence"),
+        # The guard's own reading, so a night it fired is in the message rather
+        # than only on the page.
+        drift_guard=(manifest or {}).get("drift_guard"),
         no_price=no_price,
         no_risk=no_risk,
         missing_var=missing_var,

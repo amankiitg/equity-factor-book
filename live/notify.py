@@ -171,6 +171,11 @@ def _money(value: float | None) -> str:
     return f"${float(value or 0.0):,.0f}"
 
 
+def _pct(value: Any) -> str:
+    """A fraction as a percentage with two decimals: 0.064105 -> "6.41%"."""
+    return f"{float(value or 0.0) * 100:.2f}%"
+
+
 def _sessions(value: Any) -> str:
     if value is None:
         return "no date at all"
@@ -400,6 +405,7 @@ def compose(
     init: bool = False,
     establishment: bool = False,
     cadence: dict[str, Any] | None = None,
+    drift_guard: dict[str, Any] | None = None,
     cost_label: str | None = "rebalance",
     cost_bps: float | None = None,
     cost_breakdown: dict[str, float] | None = None,
@@ -704,6 +710,9 @@ def compose(
     cadence_line = _cadence_line(cadence)
     if cadence_line:
         lines.append(cadence_line)
+    guard_line = _drift_guard_line(drift_guard)
+    if guard_line:
+        lines.append(guard_line)
     if cost_bps is not None:
         lines.append(_cost_line(float(cost_bps), cost_label, cost_breakdown))
     # The broker's book against the store's, every evening. A difference is the
@@ -792,6 +801,58 @@ def compose(
             lines.append(f"Error: {prefix}: {reason}")
 
     return "\n".join(lines)
+
+
+def _drift_guard_line(guard: dict[str, Any] | None) -> str | None:
+    """What the drift guard did, in one line, or nothing when it has no reading.
+
+    The guard is the only thing in the evening that trades on a factor exposure
+    rather than on the alpha, and until now the message said nothing about it: on
+    2026-10-30 it fired at 6.41% against 5.00% and sent 109 legs, and the only way
+    to know was the page. So one line, in the same shape either way - it fired and
+    what it cost, or it looked and left the book alone - because "not fired" is
+    also an answer the owner has to be able to read without opening anything.
+    """
+    if not isinstance(guard, dict):
+        return None
+    before = guard.get("exposure_before")
+    threshold = guard.get("threshold")
+    if before is None and threshold is None:
+        return None
+    fired = bool(guard.get("fired"))
+    legs = guard.get("legs") or []
+    traded = [leg for leg in legs if isinstance(leg, dict) and leg.get("traded")]
+    nav = guard.get("nav")
+    dollars = 0.0
+    if nav is not None and traded:
+        # The dollars the guard actually moved, leg by leg, rather than the target
+        # turnover: the two agree on a normal evening and the legs are the thing the
+        # order list is made of.
+        def _move(leg: dict[str, Any]) -> float:
+            return abs(
+                float(leg.get("weight_after") or 0.0)
+                - float(leg.get("weight_before") or 0.0)
+            )
+
+        moved = [_move(leg) for leg in traded]
+        dollars = float(nav) * sum(moved)
+    elif nav is not None:
+        dollars = float(nav) * float(guard.get("turnover") or 0.0)
+    if fired:
+        after = guard.get("exposure_after")
+        count = len(traded)
+        tail = (
+            f", {count} leg{'' if count == 1 else 's'}, {_money(dollars)}"
+            if traded
+            else ", no leg to send"
+        )
+        return (
+            "Drift guard: fired, worst exposure "
+            f"{_pct(before)} -> {_pct(after)}{tail}"
+        )
+    if threshold is not None:
+        return f"Drift guard: looked, {_pct(before)} of {_pct(threshold)}, not fired"
+    return f"Drift guard: looked, {_pct(before)}, not fired"
 
 
 def _cadence_line(cadence: dict[str, Any] | None) -> str | None:
@@ -1466,6 +1527,7 @@ def notify_run(
     init: bool = False,
     establishment: bool = False,
     cadence: dict[str, Any] | None = None,
+    drift_guard: dict[str, Any] | None = None,
     cost_label: str | None = "rebalance",
     cost_bps: float | None = None,
     cost_breakdown: dict[str, float] | None = None,
@@ -1539,6 +1601,7 @@ def notify_run(
         init=init,
         establishment=establishment,
         cadence=cadence,
+        drift_guard=drift_guard,
         cost_label=cost_label,
         cost_bps=cost_bps,
         cost_breakdown=cost_breakdown,
