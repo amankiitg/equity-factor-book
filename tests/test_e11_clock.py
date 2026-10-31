@@ -345,21 +345,27 @@ def test_load_clock_fails_before_it_has_started(tmp_path: Path) -> None:
         clock.load_clock(tmp_path / "clock.json")
 
 
-def test_the_stored_clock_is_not_started() -> None:
-    """The repository's own clock carries no day 1 until a session fills.
+def test_the_stored_clock_is_started_on_the_first_filled_session() -> None:
+    """The repository's own clock carries day 1, and only after a session filled.
 
-    Day 1 is the first session whose orders filled after the flip. The earlier
-    start was voided and stays on the record, and every other start the file has
-    ever held is on it too, so the history is what shows the clock was restarted
-    rather than quietly edited.
+    Day 1 is the first session whose orders filled after the flip, and registration
+    refuses a date the store's records do not support. The owner started it on
+    2026-10-31 (P2b): day 1 2026-09-30, the thirty business days to 2026-11-10. The
+    earlier starts were voided and stay on the record - every start the file has ever
+    held is on it - so the history is what shows the clock was restarted rather than
+    quietly edited.
     """
     payload = clock.load_clock()
-    assert payload["started"] is False
-    assert payload["day_1"] is None and payload["end_date"] is None
+    assert payload["started"] is True
+    assert payload["day_1"] == "2026-09-30"
+    assert payload["end_date"] == "2026-11-10"
     assert payload["trading_days"] == 30
     history = payload["history"]
     assert history, "the voided start is not on the record"
     assert all(entry["status"] == "void" for entry in history)
+    assert clock.first_day(
+        {"run": ["2026-09-30"], "proposal": ["2026-09-30"], "filled": ["2026-09-30"]}
+    ) == payload["day_1"]
 
 
 def test_a_dry_run_leg_is_not_an_order_sent(monkeypatch: pytest.MonkeyPatch) -> None:

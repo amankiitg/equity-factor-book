@@ -1,6 +1,6 @@
 {
-  "day_1": null,
-  "end_date": null,
+  "day_1": "2026-09-30",
+  "end_date": "2026-11-10",
   "history": [
     {
       "day_1": "2026-09-22",
@@ -19,6 +19,6 @@
   ],
   "reporting_window_days": 30,
   "run_condition": "open_ended",
-  "started": false,
+  "started": true,
   "trading_days": 30
 }
