@@ -329,3 +329,14 @@ supported is applied, verified, and backed up under `docs/owner_fixes/backups/` 
 restore script proved by dry run.
 
 Deleted in the 2026-10-21 cleanup: `/tmp/icdecay` (873 MB) and `/tmp/cadence` (0 B).
+
+## The 2026-10-31 session: two merges and one parked branch
+
+| branch | tip | merge | what | gate |
+|---|---|---|---|---|
+| `hedge-hold-day` | `e762c42` | `10b54c6` | "The hedge" panel on a hold day shows the rebalance's own before/after pair and tonight's book beside it, with the machine-precision claim attached to the anchor's after column and the drift guard's line under it; `monthly.anchor_exposures` and `guard.legs` in the block | 7 failed, 1736 passed - the documented baseline, zero new |
+| `sector-descriptors-backfill` | `1729f00` | **not merged** | fills the bars BE and P never got for 2026-09-04..09-21, backfills a newly sector-mapped name's descriptors, specific returns and variance, and runs on the design `extend_model` already holds. Parked: the identity proof the brief asks for cannot hold, because the kept set is a floor-search fixed point (20-34 names enter or leave beside BE and ILMN). The evidence is in `docs/research/excluded_names.md` | not gated: it is a parked branch |
+
+`bfec5fd` is the follow-up on main for the republish that dropped the monthly block:
+`drift_guard.legs_under_minimum` is an integer, and `len()` of it raised inside the block
+builder. `bfdb6d8` refreshes the README screenshots from the live page.
