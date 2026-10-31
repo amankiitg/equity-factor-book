@@ -7,8 +7,8 @@
 // has taken out, and a reader who cannot see the flatness cannot see the hedge.
 
 import { Details } from "./Details";
-import { dollars, exposure, percent } from "./format";
-import type { Snapshot } from "./types";
+import { count, dateOnly, dollars, exposure, percent } from "./format";
+import type { MonthlyBlock, Snapshot } from "./types";
 
 // The factor vocabulary, styles first then sectors, in the order the reader wants
 // them: what the portfolio is tilted towards, then where it sits. The sector labels
@@ -43,6 +43,36 @@ const SECTOR_ROWS: Array<[string, string]> = [
 const REFERENCE_SECTOR = "60 Real Estate";
 
 /**
+ * The anchor close's own before/after pair, when tonight is a hold day.
+ *
+ * A hold day builds no hedge: the evening sizes nothing, the guard may trade the
+ * held book, and the document's own `exposures_before_hedge` and
+ * `exposures_after_hedge` are the same vector twice. So the pair that means anything
+ * is the rebalance's, and this is where the page gets it. `null` on a rebalance day,
+ * on the daily loop and on any document written before the field existed, all of
+ * which render exactly as they did.
+ */
+export function anchoredExposures(
+  monthly?: MonthlyBlock | null,
+): NonNullable<MonthlyBlock["anchor_exposures"]> | null {
+  if (monthly?.anchor?.day !== "cadence") return null;
+  const block = monthly?.anchor_exposures;
+  if (!block) return null;
+  const before = block.before ?? {};
+  const after = block.after ?? {};
+  if (Object.keys(before).length === 0 || Object.keys(after).length === 0) return null;
+  return block;
+}
+
+/** The largest absolute value in a factor vector. */
+function worstOf(vector: Record<string, number | null>): number {
+  return Object.values(vector).reduce<number>(
+    (worst, value) => Math.max(worst, Math.abs(value ?? 0)),
+    0,
+  );
+}
+
+/**
  * The rows of the exposure table: styles, sectors, then anything the design carries
  * that this list does not know about, so a new factor cannot disappear from the page
  * by being unlisted.
@@ -70,7 +100,7 @@ function ExposureBar({ value, scale, tone }: { value: number; scale: number; ton
         data-sign={value >= 0 ? "positive" : "negative"}
         title={`${tone} ${exposure(value)}`}
         className={`absolute top-0 h-full rounded-sm ${
-          tone === "before" ? "bg-slate-500" : "bg-emerald-600"
+          tone === "before" ? "bg-slate-500" : tone === "now" ? "bg-amber-600" : "bg-emerald-600"
         }`}
         style={style}
       />
@@ -82,26 +112,43 @@ function ExposureBars({
   before,
   after,
   scale,
+  now,
 }: {
   before: number;
   after: number;
   scale: number;
+  now?: number | null;
 }) {
   return (
     <div className="flex w-full flex-col gap-[2px]" data-factor-bars="true">
       <ExposureBar value={before} scale={scale} tone="before" />
       <ExposureBar value={after} scale={scale} tone="after" />
+      {now === undefined ? null : <ExposureBar value={now ?? 0} scale={scale} tone="now" />}
     </div>
   );
 }
 
 export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
-  const before = snapshot.exposures_before_hedge ?? {};
-  const after = snapshot.exposures_after_hedge ?? {};
-  if (Object.keys(before).length === 0 && Object.keys(after).length === 0) return null;
-  const rows = exposureRows(before);
+  const tonightBefore = snapshot.exposures_before_hedge ?? {};
+  const tonightAfter = snapshot.exposures_after_hedge ?? {};
+  if (Object.keys(tonightBefore).length === 0 && Object.keys(tonightAfter).length === 0) {
+    return null;
+  }
+  // A hold day anchors the pair on the close that hedged; every other document uses
+  // its own, which is tonight's own.
+  const anchor = anchoredExposures(snapshot.monthly);
+  const before = anchor ? anchor.before : tonightBefore;
+  const after = anchor ? anchor.after : tonightAfter;
+  const anchorClose = anchor ? (anchor.anchor ?? "") : "";
+  const guard = snapshot.monthly?.cadence_strip?.guard;
+  const guardFired = Boolean(anchor && guard?.fired);
+  const rows = exposureRows({ ...tonightBefore, ...before });
   const scale = Math.max(
-    ...[...Object.values(before), ...Object.values(after)].map((value) => Math.abs(value ?? 0)),
+    ...[
+      ...Object.values(before),
+      ...Object.values(after),
+      ...(anchor ? Object.values(tonightBefore) : []),
+    ].map((value) => Math.abs(value ?? 0)),
     0.0001,
   );
   // Present only when the evening recorded one: the key is absent on a document
@@ -111,15 +158,42 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
   return (
     <section data-section="exposures" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">The hedge</h2>
-      <p className="mt-1 text-sm" data-hedge-verdict="true">
-        worst residual factor exposure after the hedge:{" "}
-        <span className="font-mono tabular-nums">
-          {exposure(snapshot.hedge?.max_abs_exposure_after_fmp)}
-        </span>{" "}
-        of a unit exposure — the hedge is exact, so every factor&apos;s after value is zero to
-        machine precision, and the eighteen rows behind the disclosure below are the audit of
-        that rather than a reading in themselves.
-      </p>
+      {anchor ? (
+        <>
+          <p className="mt-1 text-sm" data-hedge-verdict="true" data-hedge-anchor={anchorClose}>
+            worst residual factor exposure after the {anchorClose} hedge:{" "}
+            <span className="font-mono tabular-nums">
+              {exposure(anchor.after && worstOf(anchor.after))}
+            </span>{" "}
+            of a unit exposure — that close hedged, so every factor&apos;s after value{" "}
+            <em>there</em> is zero to machine precision. Nothing was hedged tonight, so the
+            &quot;now&quot; column is the book as it stands, not a hedge&apos;s output.
+          </p>
+          {guardFired ? (
+            <p className="mt-1 text-sm text-amber-800" data-hedge-guard="true">
+              drift guard tonight: worst{" "}
+              <span className="font-mono tabular-nums">
+                {percent(guard?.worst_abs_exposure)}
+              </span>{" "}
+              →{" "}
+              <span className="font-mono tabular-nums">{percent(guard?.exposure_after)}</span>{" "}
+              against{" "}
+              <span className="font-mono tabular-nums">{percent(guard?.threshold)}</span>,{" "}
+              {count(guard?.legs ?? null)} sent leg(s); the after value assumes they fill.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="mt-1 text-sm" data-hedge-verdict="true">
+          worst residual factor exposure after the hedge:{" "}
+          <span className="font-mono tabular-nums">
+            {exposure(snapshot.hedge?.max_abs_exposure_after_fmp)}
+          </span>{" "}
+          of a unit exposure — the hedge is exact, so every factor&apos;s after value is zero to
+          machine precision, and the eighteen rows behind the disclosure below are the audit of
+          that rather than a reading in themselves.
+        </p>
+      )}
       <Details
         hook="exposures"
         summary={<>every factor, before and after the hedge — {rows.length} row(s)</>}
@@ -138,10 +212,21 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
         >
           <thead>
             <tr className="border-b border-slate-300 text-left">
-              <th className="w-[36%] py-1 pr-1">factor</th>
-              <th className="w-[15%] py-1 text-right">before</th>
-              <th className="w-[15%] py-1 text-right">after</th>
-              <th className="w-[34%] py-1 pl-1">before / after</th>
+              <th className={anchor ? "w-[28%] py-1 pr-1" : "w-[36%] py-1 pr-1"}>factor</th>
+              <th className="w-[15%] py-1 text-right" data-column="before">
+                {anchor ? `before the hedge (${anchorClose})` : "before"}
+              </th>
+              <th className="w-[15%] py-1 text-right" data-column="after">
+                {anchor ? `after the hedge (${anchorClose})` : "after"}
+              </th>
+              {anchor ? (
+                <th className="w-[15%] py-1 text-right" data-column="now">
+                  now ({dateOnly(snapshot.target_close) ?? "tonight"})
+                </th>
+              ) : null}
+              <th className={anchor ? "w-[27%] py-1 pl-1" : "w-[34%] py-1 pl-1"}>
+                {anchor ? "before / after / now" : "before / after"}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -163,11 +248,20 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
                   <td className="py-1 text-right font-mono tabular-nums">
                     {exposure(after[key])}
                   </td>
+                  {anchor ? (
+                    <td
+                      className="py-1 text-right font-mono tabular-nums"
+                      data-now={key}
+                    >
+                      {exposure(tonightBefore[key])}
+                    </td>
+                  ) : null}
                   <td className="py-1 pl-1">
                     <ExposureBars
                       before={before[key] ?? 0}
                       after={after[key] ?? 0}
                       scale={scale}
+                      now={anchor ? (tonightBefore[key] ?? 0) : undefined}
                     />
                   </td>
                 </tr>
