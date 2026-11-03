@@ -1263,6 +1263,36 @@ def dropped_for_no_price(
     return priced, dropped
 
 
+def drop_unpriced_held(
+    weights: np.ndarray, names: list[str], priced: np.ndarray
+) -> tuple[np.ndarray, list[str]]:
+    """Zero the held names the vendor did not price tonight, and name them.
+
+    A hold day publishes the book the account holds, and that book is not built
+    through the floor search, which is the only place `priced` was consumed. So a
+    held name with no usable close stayed in the published book and reached the
+    whole-share quantization, where a NaN close divided into `int()`: that is what
+    stopped the 2026-11-02 evening on KVUE, a name whose guard close the broker had
+    canceled that morning and whose session the vendor never printed.
+
+    The name leaves the published book and the gross falls with it, exactly as a
+    name that leaves the universe does on this calendar, because no leg can be
+    priced or sent for it. The account's position stays where it is: a name with no
+    price is owed a leg, not given one, and the manifest and the message carry it
+    by name.
+
+    `priced` is the mask `priced_names_or_stop` returns, aligned with `names`.
+    """
+    mask = np.asarray(priced, dtype=bool)
+    held = np.abs(np.asarray(weights, dtype=float)) > 1e-12
+    hit = (~mask) & held
+    if not hit.any():
+        return weights, []
+    dropped = np.asarray(weights, dtype=float).copy()
+    dropped[hit] = 0.0
+    return dropped, [str(names[index]) for index in np.flatnonzero(hit)]
+
+
 def priced_names_or_stop(
     names: list[str],
     close: dict[str, float],
@@ -2674,6 +2704,21 @@ def build_proposal(
                 len(dropped_no_short),
                 ", ".join(str(row["ticker"]) for row in dropped_no_short),
             )
+    # The close, and the names it cannot price, before anything is measured on the
+    # book: a hold day's guard measures the book it will actually hold, and a name
+    # with no print is not in that book.
+    close = _close_prices(as_of_ts, root)
+    priced, dropped_no_price = priced_names_or_stop(names, close)
+    if holding:
+        weights, dropped_held = drop_unpriced_held(weights, names, priced)
+        if dropped_held:
+            dropped_no_price = sorted({*dropped_no_price, *dropped_held})
+            logger.warning(
+                "%d held name(s) had no usable close tonight and left the published "
+                "book, owed a leg they cannot be sent: %s",
+                len(dropped_held),
+                ", ".join(dropped_held),
+            )
     weights = apply_hedge_mode(weights, design, specific)
     weights, gross_cap_bound = _scale_to_target(
         weights, design, factor_covariance, specific
@@ -2718,13 +2763,6 @@ def build_proposal(
     # vector that actually trades, not the pre-drop full-book weights.
     reg = registry.load(root / "models" / "registry.json")
     construction = registry.live_construction(reg, MODEL_VERSION)
-    close = _close_prices(as_of_ts, root)
-    # A name the book cannot be quantized on is dropped, not fatal: the rest are
-    # priced, hedged, quantized and renormalized to gross 1.0 without it, and the
-    # names travel to the email on the same "dropped for no price" line as the
-    # universe members with no print tonight. Too many of them at once is the fetch
-    # having broken rather than names delisting, and that stops the run.
-    priced, dropped_no_price = priced_names_or_stop(names, close)
     started = time.perf_counter()
     release = (
         resolve_floor_release(os.environ.get(FLOOR_RELEASE_ENV))
@@ -2750,6 +2788,12 @@ def build_proposal(
         # trade the book back to a target the calendar said not to take today.
         # The held names keep their sizes exactly, so `finalize` is assembled from
         # the held vector itself and the search reports what it did - nothing.
+        # The book published here is the held one again, because the block above
+        # re-read it, so the no-price drop is re-applied: a name with no print
+        # tonight is out of the book, and out of the quantization with it.
+        weights, dropped_held = drop_unpriced_held(weights, names, priced)
+        if dropped_held:
+            dropped_no_price = sorted({*dropped_no_price, *dropped_held})
         idx = np.where(np.abs(weights) > 1e-12)[0]
         enforced_keep = np.abs(weights) > 1e-12
         finalize = {

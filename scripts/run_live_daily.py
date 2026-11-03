@@ -1088,6 +1088,22 @@ def shortable_flags(*, dry_run: bool) -> dict[str, bool] | None:
         return None
 
 
+def _manifest_is_tonight(
+    manifest: dict[str, Any] | None, target_close: object
+) -> bool:
+    """Whether a proposal manifest describes the close this run was pricing.
+
+    The message quotes the guard's reading, and a run that failed before it built a
+    book has no manifest of its own. Anything read from another close is not
+    tonight's answer, so it is refused here rather than printed beside the failure.
+    """
+    if not isinstance(manifest, dict):
+        return False
+    as_of = str(manifest.get("as_of") or "")[:10]
+    close = str(target_close or "")[:10]
+    return bool(as_of) and as_of == close
+
+
 def _rows(manifest: dict[str, Any] | None, key: str) -> list[dict[str, Any]]:
     """One of the manifest's own step lists as rows, or nothing when it has none.
 
@@ -1536,6 +1552,9 @@ def finish_run(
             verdict = snapshot_module.PAGE_BOOK_UNREAD
             page_book = f"could not be read back ({type(exc).__name__})"
         logger.info("page book: %s%s", verdict, f" ({page_book})" if page_book else "")
+    tonight_manifest = (
+        manifest if _manifest_is_tonight(manifest, result.get("target_close")) else None
+    )
     notified = notify.notify_run(
         status=status,
         target_close=result.get("target_close"),
@@ -1567,8 +1586,11 @@ def finish_run(
         cross_checks_capped=cross_checks_capped,
         cadence=(manifest or {}).get("cadence"),
         # The guard's own reading, so a night it fired is in the message rather
-        # than only on the page.
-        drift_guard=(manifest or {}).get("drift_guard"),
+        # than only on the page, and only when the reading is *this* close's: a run
+        # that stopped before it built a book has no reading, and the message says
+        # the guard did not run rather than quoting an older close's numbers.
+        drift_guard=(tonight_manifest or {}).get("drift_guard"),
+        drift_guard_ran=tonight_manifest is not None,
         no_price=no_price,
         no_risk=no_risk,
         missing_var=missing_var,

@@ -819,6 +819,45 @@ def test_the_book_stops_when_more_than_ten_names_drop_for_no_price() -> None:
         ev.priced_names_or_stop(names, {})
 
 
+def test_drop_unpriced_held_zeroes_only_the_unpriced_names() -> None:
+    """A held name with no print leaves the book; the priced ones keep their size.
+
+    On a hold day the published book is the held one, and the priced mask was only
+    ever consumed by the floor search, which a hold day does not run. So this is the
+    one step that keeps a NaN close out of the quantization. The name and the row
+    are the 2026-11-02 case: KVUE was held, its guard close was canceled that
+    morning, and the vendor returned no print for it that session.
+    """
+    names = ["AAPL", "KVUE", "MSFT"]
+    weights = np.array([0.01, -0.002, -0.008])
+    priced = np.array([True, False, True])
+    dropped_weights, dropped = ev.drop_unpriced_held(weights, names, priced)
+    assert dropped == ["KVUE"]
+    assert dropped_weights[1] == 0.0
+    # the other two are untouched: a hold day renormalizes nothing
+    assert dropped_weights[0] == pytest.approx(0.01)
+    assert dropped_weights[2] == pytest.approx(-0.008)
+    assert float(np.abs(dropped_weights).sum()) == pytest.approx(0.018)
+
+
+def test_drop_unpriced_held_is_a_no_op_when_every_name_is_priced() -> None:
+    names = ["AAPL", "MSFT"]
+    weights = np.array([0.01, -0.01])
+    same, dropped = ev.drop_unpriced_held(weights, names, np.array([True, True]))
+    assert dropped == []
+    assert same is weights
+
+
+def test_drop_unpriced_held_ignores_a_name_the_book_does_not_hold() -> None:
+    names = ["AAPL", "KVUE"]
+    weights = np.array([0.01, 0.0])
+    dropped_weights, dropped = ev.drop_unpriced_held(
+        weights, names, np.array([True, False])
+    )
+    assert dropped == []
+    assert dropped_weights.tolist() == [0.01, 0.0]
+
+
 def test_merged_no_price_names_both_rules_once() -> None:
     """The email's one line carries the universe's members and the book's drops.
 

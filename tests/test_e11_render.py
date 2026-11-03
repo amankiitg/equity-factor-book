@@ -174,6 +174,33 @@ def test_whole_share_quantization_counts_zero_rounds() -> None:
     assert result["gross_weight_error"] > 0
 
 
+def test_whole_share_quantization_skips_a_nan_close() -> None:
+    """A row with no print is absent, not a price to divide into.
+
+    The guard used to be `if price <= 0: continue`, which is False for NaN, so a
+    name the vendor returned with a row and no close reached `int(notional/price)`
+    and raised. That is the 2026-11-02 evening exactly: KVUE came back with a NaN
+    close on 2026-11-02 and stopped the run before sizing, with no orders sent.
+    """
+    rows = pd.DataFrame({"ticker": ["KVUE", "AAPL"], "weight": [-0.002, 0.01]})
+    prices = {"KVUE": float("nan"), "AAPL": 230.0}
+    result = alpaca.whole_share_quantization(rows, prices, 1_000_000.0)
+    # the priced name is quantized and the NaN one is not a target at all
+    assert result["distribution"]["n"] == 1
+    assert result["long_targets_rounding_to_zero"] == 0
+    assert result["short_targets_rounding_to_zero"] == 0
+    # 43 shares at 230 leave $110 of the $10,000 target unrounded
+    assert result["gross_notional_error_usd"] == pytest.approx(10_000.0 - 43 * 230.0)
+
+
+def test_whole_share_quantization_skips_a_missing_price() -> None:
+    """The same rule for a name the map does not carry at all."""
+    rows = pd.DataFrame({"ticker": ["NOPE"], "weight": [0.01]})
+    result = alpaca.whole_share_quantization(rows, {}, 1_000_000.0)
+    assert result["distribution"] == {"n": 0}
+    assert result["gross_notional_error_usd"] == 0.0
+
+
 def test_require_empty_account_rejects_existing_positions() -> None:
     class Account:
         id = "acct-efb"
