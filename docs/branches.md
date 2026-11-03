@@ -352,3 +352,16 @@ the live seed extended to 2026-11-02, which carries none of the research artifac
 committed fixtures were built from, so 79 ids fail on both versions for artifact vintage.
 The rule the baseline protects is zero new, and the comparison was made on `main` and on the
 branch in the same tree, the same session, with identical id sets.
+
+## The 2026-11-03 session: a retired asset, and the leg it can never send
+
+| branch | tip | merge | what | gate |
+|---|---|---|---|---|
+| `fix-retired-asset` | `ccecbd6` | `d57adb5` | no leg is submitted for an asset the broker reports not active and not tradable: the resolver reads the inactive half of the asset feed once per run, names the broker's own reason from one merger/spinoff announcement read, records the leg `ASSET_INACTIVE`, and the code is in `UNREACHABLE_REFUSALS` so the carry, the remainder, the left-universe close and the guard paths all stop re-proposing it; the message names it on the refused line with the reason. `docs/research/kvue_merger.md` records the true 2026-11-02 KVUE return and how a cash-and-stock merger should be recorded | 79 failed, 1601 passed against 79 failed, 1595 passed on `origin/main` in the same tree, identical ids, zero new, plus six new tests |
+
+KVUE completed its merger into KMB on 2026-11-02 (0.14625 KMB shares plus $3.50 cash
+a share, KMB Form 8-K Item 2.01). The broker reports the asset inactive and
+`tradable=false`; the paper account still holds 705.098617682 shares at the stale
+2026-10-30 mark of $19.31 because the action has not been posted. The true value on
+the completion session was $19.3315625, so the mark is 11 basis points light rather
+than a total loss.
