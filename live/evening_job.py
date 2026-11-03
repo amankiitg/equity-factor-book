@@ -443,7 +443,20 @@ def _filled_dollars(
 # does: the order path re-derives the same answer from the same prices. A leg refused
 # for one of these is reported rather than carried, so a hold day cannot spend the
 # month asking the broker the same question.
-UNREACHABLE_REFUSALS = frozenset({"COVER_UNDER_ONE_SHARE"})
+UNREACHABLE_REFUSALS = frozenset(
+    {
+        # A leg smaller than the share it must trade: owed, and not sendable until the
+        # next rebalance re-sizes the name.
+        "COVER_UNDER_ONE_SHARE",
+        # The broker reports the asset itself retired. 2026-11-02 is the case: KVUE
+        # completed its merger into KMB, the asset went inactive, and a leg for it is
+        # refused every evening for as long as the name is carried. Recorded once, as
+        # owed, and never resent.
+        "ASSET_INACTIVE",
+        # The broker will not let this account trade a live asset. Same answer.
+        "ASSET_NOT_TRADABLE",
+    }
+)
 
 
 def carried_forward(

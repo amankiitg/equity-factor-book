@@ -713,3 +713,203 @@ def test_include_close_is_the_mornings_question_and_not_the_evenings(
     # before tonight's target, which is the previous close's row.
     assert without == {"PSKY": pytest.approx(3_055.42)}
     assert other == "the 2026-10-02 position row"
+
+
+# --------------------------------------- a retired asset: acquired, not renamed
+#
+# 2026-11-02: KVUE completed its merger into KMB. The broker keeps the asset and
+# reports it INACTIVE with tradable=false, so it is in neither the active feed the
+# resolver reads first nor the history's live index. Before this, the leg came back
+# "the feed carries no asset for this ticker" and was carried forward every evening.
+
+
+class _RetiredAsset:
+    """An asset the broker still carries, with the status it reports."""
+
+    def __init__(
+        self, symbol: str, status: str = "inactive", asset_id: str = ""
+    ) -> None:
+        self.symbol = symbol
+        self.status = status
+        self.tradable = False
+        self.id = asset_id or f"asset-{symbol}"
+
+
+class _SubType:
+    """The SDK hands back an enum; its `.value` is what the reason quotes."""
+
+    value = "merger_completion"
+
+
+class _Announcement:
+    def __init__(self, initiating: str, target: str) -> None:
+        self.initiating_symbol = initiating
+        self.target_symbol = target
+        self.ca_sub_type = _SubType()
+        self.ex_declaration = None
+        self.ex_date = None
+        self.declaration_date = None
+        self.payable_date = None
+
+
+class _RetiringClient(_Client):
+    """The feed split in two, the way the broker splits it: active and inactive."""
+
+    def __init__(
+        self, active: list[Any], retired: list[Any], history: dict[str, str]
+    ) -> None:
+        super().__init__(feed=active, history=history)
+        self.retired = list(retired)
+        self.inactive_calls = 0
+        self.announcement_calls = 0
+
+    def get_all_assets(self, request: Any = None) -> list[Any]:
+        status = str(getattr(request, "status", ""))
+        if "INACTIVE" in status.upper():
+            self.inactive_calls += 1
+            return list(self.retired)
+        self.feed_calls += 1
+        return list(self.feed)
+
+    def get_corporate_announcements(self, request: Any = None) -> list[Any]:
+        self.announcement_calls += 1
+        return [_Announcement("KMB", "KVUE")]
+
+
+@pytest.fixture(autouse=True)
+def _no_merger_cache() -> Any:
+    """The per-run caches are module state, so a test must not inherit another's.
+
+    Read through `getattr` so the same suite still collects against a tree without
+    them, which is what makes "this test failed before the change" a statement about
+    the behaviour rather than about a missing attribute.
+    """
+    caches = [
+        item
+        for item in (
+            getattr(alpaca, "_MERGER_CACHE", None),
+            getattr(alpaca, "_MERGER_READ", None),
+        )
+        if item is not None
+    ]
+    for cache in caches:
+        cache.clear()
+    yield
+    for cache in caches:
+        cache.clear()
+
+
+def test_an_acquired_ticker_resolves_as_inactive_and_says_what_retired_it() -> None:
+    """KVUE's own case: still in the broker's records, no longer tradable."""
+    client = _RetiringClient(
+        active=[_Asset("KMB")],
+        retired=[
+            _RetiredAsset("KVUE", "inactive", "3bded6a8-55f6-40d0-8157-1d2eb50cf7d8")
+        ],
+        history={"KVUE": "3bded6a8-55f6-40d0-8157-1d2eb50cf7d8"},
+    )
+    resolver = alpaca.SymbolResolver(client)
+
+    resolution = resolver.resolve("KVUE")
+
+    assert resolution.inactive is True
+    assert resolution.missing is True, "there is no symbol to submit under"
+    assert resolution.symbol == ""
+    assert "the broker reports the asset inactive" in resolution.detail
+    assert "merger completion" in resolution.detail
+    assert "KMB and KVUE" in resolution.detail
+    # one active read, one inactive read, one announcements read, for the whole run
+    assert client.feed_calls == 1
+    assert client.inactive_calls == 1
+    assert client.announcement_calls == 1
+    # the second ask for the same ticker costs nothing
+    resolver.resolve("KVUE")
+    assert client.inactive_calls == 1
+    assert client.announcement_calls == 1
+
+
+def test_a_live_asset_is_never_looked_up_in_the_retired_feed() -> None:
+    """The inactive read is paid only for a ticker the active feed does not have."""
+    client = _RetiringClient(active=[_Asset("KMB")], retired=[], history={})
+    resolver = alpaca.SymbolResolver(client)
+    assert resolver.resolve("KMB").inactive is False
+    assert client.inactive_calls == 0
+
+
+def test_an_inactive_leg_is_never_submitted_and_is_recorded_with_the_reason() -> None:
+    client = _RetiringClient(
+        active=[_Asset("KMB")],
+        retired=[_RetiredAsset("KVUE")],
+        history={"KVUE": "asset-KVUE"},
+    )
+    resolver = alpaca.SymbolResolver(client)
+    spec = guards.OrderSpec("KVUE", -13_615.45, -13_615.45)
+
+    fills = alpaca.submit_market_orders(
+        [spec], client, {"KVUE": 19.31}, resolver=resolver
+    )
+
+    assert client.submitted == [], "no order may go out for a retired asset"
+    assert len(fills) == 1
+    assert fills[0].status == alpaca.SKIPPED
+    assert fills[0].reason_code == alpaca.REASON_ASSET_INACTIVE
+    assert "inactive" in fills[0].detail
+    assert "merger completion" in fills[0].detail
+
+
+def test_an_inactive_leg_is_owed_and_never_carried_forward() -> None:
+    """The next evening reads the refusal and does not resend it.
+
+    Every path that can build a leg for a retired name - a remainder, a carried
+    leg, a left-universe close, a guard trade - ends in this record, and the code
+    being in `UNREACHABLE_REFUSALS` is what stops the next evening from carrying it.
+    """
+    from live import evening_job
+
+    assert alpaca.REASON_ASSET_INACTIVE in evening_job.UNREACHABLE_REFUSALS
+    assert alpaca.REASON_NOT_TRADABLE in evening_job.UNREACHABLE_REFUSALS
+    orders = pd.DataFrame(
+        {
+            "trade_date": [pd.Timestamp("2026-11-02")],
+            "ticker": ["KVUE"],
+            "intended_notional": [-13_615.45],
+            "reason_code": [alpaca.REASON_ASSET_INACTIVE],
+        }
+    )
+    book = pd.DataFrame({"ticker": ["KVUE"], "weight": [-0.014]})
+    carried, unreachable = evening_job.carried_forward(
+        orders,
+        None,
+        book,
+        None,
+        as_of=pd.Timestamp("2026-11-03"),
+        minimum=250.0,
+    )
+    assert carried == {}
+    assert [row["ticker"] for row in unreachable] == ["KVUE"]
+    assert unreachable[0]["reason_code"] == alpaca.REASON_ASSET_INACTIVE
+    assert unreachable[0]["unfilled_dollars"] == pytest.approx(13_615.45)
+
+
+def test_the_message_names_an_inactive_leg_with_the_brokers_own_reason() -> None:
+    """The refused line carries the broker's own sentence, not only the code."""
+    body = notify.compose(
+        status="incomplete",
+        target_close="2026-11-03",
+        dry_run=False,
+        refused_legs=[
+            {
+                "ticker": "KVUE",
+                "reason_code": alpaca.REASON_ASSET_INACTIVE,
+                "detail": (
+                    "KVUE: the broker reports the asset inactive, so no leg can be "
+                    "sent for it: merger completion, KMB and KVUE"
+                ),
+            }
+        ],
+    )
+    expected = (
+        "Refused by the broker, so not sent: KVUE "
+        "(ASSET_INACTIVE: merger completion, KMB and KVUE)."
+    )
+    assert expected in body
