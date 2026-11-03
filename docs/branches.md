@@ -340,3 +340,15 @@ Deleted in the 2026-10-21 cleanup: `/tmp/icdecay` (873 MB) and `/tmp/cadence` (0
 `bfec5fd` is the follow-up on main for the republish that dropped the monthly block:
 `drift_guard.legs_under_minimum` is an integer, and `len()` of it raised inside the block
 builder. `bfdb6d8` refreshes the README screenshots from the live page.
+
+## The 2026-11-02 session: one merge, and the name that stopped the evening
+
+| branch | tip | merge | what | gate |
+|---|---|---|---|---|
+| `fix-nan-close-hold-day` | `7e907f8` | `49082d7` | `drop_unpriced_held`: a held name with no print leaves the published book on a hold day instead of reaching the whole-share quantization with a NaN close, named on the `dropped_no_price` line; the quantization treats a non-finite price as absent; a failure mail says `Drift guard: not run tonight` and a guard block from another close is refused | 79 failed, 1595 passed - the same 79 ids as `origin/main` in the same tree, zero new, plus 7 new tests passing |
+
+The gate's own seven-id baseline could not be reproduced here: the tree this session had was
+the live seed extended to 2026-11-02, which carries none of the research artifacts the
+committed fixtures were built from, so 79 ids fail on both versions for artifact vintage.
+The rule the baseline protects is zero new, and the comparison was made on `main` and on the
+branch in the same tree, the same session, with identical id sets.
