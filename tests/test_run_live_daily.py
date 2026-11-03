@@ -1115,3 +1115,20 @@ def test_the_store_refuses_a_name_with_no_specific_variance(
     stored = store.select("positions").set_index("ticker")["idio_vol"]
     assert stored["EQT"] == pytest.approx(2.95e-04**0.5)
     assert stored.notna().all()
+
+
+def test_the_guard_reading_is_only_quoted_when_it_is_this_closure_s() -> None:
+    """A manifest from another close is not tonight's guard.
+
+    The message quotes the guard and the calendar, and on a run that failed before it
+    built a book there is no manifest at all. `_manifest_is_tonight` is the one test
+    for both: a manifest for the close being priced answers yes, a manifest for an
+    earlier close answers no, and a missing one answers no rather than raising.
+    """
+    tonight = {"as_of": "2026-11-02", "drift_guard": {"fired": False}}
+    assert run_live_daily._manifest_is_tonight(tonight, "2026-11-02") is True
+    assert run_live_daily._manifest_is_tonight(tonight, "2026-11-02T00:00:00") is True
+    earlier = {"as_of": "2026-10-30", "drift_guard": {"fired": True}}
+    assert run_live_daily._manifest_is_tonight(earlier, "2026-11-02") is False
+    assert run_live_daily._manifest_is_tonight(None, "2026-11-02") is False
+    assert run_live_daily._manifest_is_tonight({}, "2026-11-02") is False

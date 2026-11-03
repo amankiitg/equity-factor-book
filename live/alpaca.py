@@ -874,7 +874,11 @@ def whole_share_quantization(
     per_name: list[dict[str, object]] = []
     for row in rows.itertuples(index=False):
         price = prices.get(str(row.ticker), 0.0)
-        if price <= 0:
+        # A name the map lacks is absent and a name the vendor returned with no
+        # print is NaN; `NaN <= 0` is False, so the comparison alone let a NaN
+        # reach the division and stop the 2026-11-02 evening. One predicate,
+        # written so both answers are skips.
+        if not (price > 0):
             continue
         target_notional = float(row.weight) * nav
         shares = int(abs(target_notional) / price)

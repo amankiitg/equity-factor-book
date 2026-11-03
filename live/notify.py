@@ -406,6 +406,7 @@ def compose(
     establishment: bool = False,
     cadence: dict[str, Any] | None = None,
     drift_guard: dict[str, Any] | None = None,
+    drift_guard_ran: bool = True,
     cost_label: str | None = "rebalance",
     cost_bps: float | None = None,
     cost_breakdown: dict[str, float] | None = None,
@@ -712,7 +713,18 @@ def compose(
     cadence_line = _cadence_line(cadence)
     if cadence_line:
         lines.append(cadence_line)
-    guard_line = _drift_guard_line(drift_guard)
+    # A reading that is not this run's is not a reading at all: the caller says
+    # whether the guard ran on the book this message is about.
+    guard_line = _drift_guard_line(drift_guard) if drift_guard_ran else None
+    if guard_line is None and not drift_guard_ran:
+        # A run that stopped before a book was built has no reading of its own, and
+        # the message must not borrow one: on 2026-11-02 the failure mail carried the
+        # 2026-10-30 guard's line, which reads as a statement about tonight. Saying it
+        # did not run is the answer, and it is also the signal that the guard is not
+        # protecting a book that was never built.
+        guard_line = (
+            "Drift guard: not run tonight: the run stopped before a book was built"
+        )
     if guard_line:
         lines.append(guard_line)
     if cost_bps is not None:
@@ -1530,6 +1542,7 @@ def notify_run(
     establishment: bool = False,
     cadence: dict[str, Any] | None = None,
     drift_guard: dict[str, Any] | None = None,
+    drift_guard_ran: bool = True,
     cost_label: str | None = "rebalance",
     cost_bps: float | None = None,
     cost_breakdown: dict[str, float] | None = None,

@@ -2106,6 +2106,53 @@ def test_the_message_states_what_the_drift_guard_did() -> None:
     )
 
 
+def test_a_failed_run_says_the_guard_did_not_run_rather_than_quote_an_older_close():
+    """A failure is not a reading, and the message must not borrow one.
+
+    On 2026-11-02 the evening stopped at `int(NaN / price)` before a book existed, and
+    the failure mail carried the 2026-10-30 guard's numbers: 6.41% -> 0.41%, 109 legs.
+    That reads as a statement about tonight. The line now says the guard did not run,
+    and a guard block that is not this close's is refused rather than printed.
+    """
+    from live import notify
+
+    stale = {
+        "exposure_before": 0.06410461628864253,
+        "exposure_after": 0.00409252023773441,
+        "threshold": 0.05,
+        "fired": True,
+        "nav": 975819.58,
+        "legs": [],
+    }
+    body = notify.compose(
+        status="error",
+        target_close="2026-11-02",
+        dry_run=False,
+        detail="ValueError: cannot convert float NaN to integer",
+        error_type="ValueError",
+        drift_guard=stale,
+        drift_guard_ran=False,
+    )
+    assert "Drift guard: not run tonight" in body
+    assert "6.41%" not in body
+    assert "0.41%" not in body
+
+    # the same close, with a reading of its own, still prints that reading
+    tonight = {
+        "exposure_before": 0.024814545186269188,
+        "threshold": 0.05,
+        "fired": False,
+    }
+    body = notify.compose(
+        status="ok",
+        target_close="2026-11-02",
+        dry_run=False,
+        drift_guard=tonight,
+        drift_guard_ran=True,
+    )
+    assert "Drift guard: looked, 2.48% of 5.00%, not fired" in body
+
+
 def test_the_exclusion_line_states_the_rule_and_not_only_the_names() -> None:
     """A name out of the book for want of a risk estimate says what the rule is.
 

@@ -668,3 +668,32 @@ weekend are in `~/efb-backups/2026-10-31/` at 1280 and 390 px, and the page rend
 monthly panel; the headless capture in this environment produced a header-only frame at
 CSS scale, so `docs/img/book.png` and `docs/img/attribution.png` are the images from
 2026-10-25 rather than a worse replacement.
+
+## 2026-11-02: the evening stopped on a held name with no print
+
+Owner: the evening's hold-day path. The 2026-11-02 run failed before sizing with
+`ValueError: cannot convert float NaN to integer` and sent nothing. The name was KVUE.
+
+The chain is one line long. The 2026-10-30 drift guard sent a `sell_to_close` on KVUE for
+the 2026-11-02 open; the broker canceled it with nothing filled, the only leg of the 109 it
+did not fill; so KVUE was still held on 2026-11-02, a session the vendor returned for it as
+a row with no close. On a hold day the published book is the held vector
+(`weights = held_weights`), and the priced mask `priced_names_or_stop` returns is consumed
+only by the floor search, which a hold day does not run, so KVUE reached
+`whole_share_quantization` with a NaN price. The guard there was `if price <= 0: continue`,
+which is False for NaN, and `int(NaN / price)` raised.
+
+`drop_unpriced_held` now takes a held name out of the published book before the guard is
+measured and before anything is published, names it on the `dropped_no_price` line, and
+leaves the account's position where it is: a name with no price is owed a leg, not given
+one. The quantization also treats a non-finite price as absent. Identity proof on the four
+closes 2026-10-27 to 2026-10-30: same names, max |weight difference| 0.0, gross 1.0 on both
+code versions.
+
+The failure mail carried the 2026-10-30 guard's line, which reads as tonight's. A run that
+builds no book now says `Drift guard: not run tonight: the run stopped before a book was
+built`, and a guard block from another close is refused rather than printed.
+
+What is still owed to the owner: KVUE's position is still held and cannot be closed until
+the vendor prints a price for it. It leaves the book, so it is not sized, not hedged and not
+counted; the next session with a print for it is when the close can be sent.
