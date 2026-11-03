@@ -913,3 +913,47 @@ def test_the_message_names_an_inactive_leg_with_the_brokers_own_reason() -> None
         "(ASSET_INACTIVE: merger completion, KMB and KVUE)."
     )
     assert expected in body
+
+
+def test_a_retired_name_is_not_proposed_again_as_a_rebalance_remainder() -> None:
+    """The remainder path reads the same refusal and leaves the name out.
+
+    A rebalance whose KVUE leg was refused `ASSET_INACTIVE` owes nothing it can
+    trade. Without this filter the name comes back as a remainder weight on every
+    hold day for as long as the entry stays in `efb.orders`, which is the same
+    refusal with a fresh date on it every evening.
+    """
+    from live import evening_job
+
+    held = pd.DataFrame({"ticker": ["AAA", "KVUE"], "weight": [0.02, -0.014]})
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [pd.Timestamp("2026-10-23")],
+            "manifest": [{"cadence": {"day": "rebalance"}}],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [pd.Timestamp("2026-10-23"), pd.Timestamp("2026-10-23")],
+            "ticker": ["AAA", "KVUE"],
+            "intended_notional": [20_000.0, -13_615.45],
+            "filled_notional": [0.0, 0.0],
+            "reason_code": ["", alpaca.REASON_ASSET_INACTIVE],
+        }
+    )
+    fills = pd.DataFrame(
+        {
+            "trade_date": [pd.Timestamp("2026-10-23")],
+            "ticker": ["AAA"],
+            "filled_notional": [12_000.0],
+        }
+    )
+    remainder = evening_job.unfilled_remainder(
+        proposals,
+        orders,
+        held,
+        as_of=pd.Timestamp("2026-11-03"),
+        minimum=250.0,
+        fills=fills,
+    )
+    assert remainder == {"AAA": 0.02}

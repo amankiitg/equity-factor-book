@@ -642,11 +642,25 @@ def unfilled_remainder(
     if filled is None:
         filled = pd.to_numeric(legs["filled_notional"], errors="coerce").fillna(0.0)
     remainder = (intended - filled).abs()
+    # A leg the broker refused in a way that cannot change - a retired asset, an
+    # asset it will not lend - is not an unfinished trade to try again: proposing it
+    # every evening is the same refusal with a fresh date on it. It is reported as
+    # owed by `carried_forward`, which is the list that says so, and left out here.
+    refusals = (
+        legs["reason_code"].astype(str)
+        if "reason_code" in legs.columns
+        else pd.Series("", index=legs.index)
+    )
+    unretryable = {
+        str(ticker)
+        for ticker, reason in zip(tickers, refusals, strict=True)
+        if reason in UNREACHABLE_REFUSALS
+    }
     incomplete = sorted(
         {
             str(ticker)
             for ticker, gap in zip(tickers, remainder, strict=True)
-            if float(gap) >= float(minimum)
+            if float(gap) >= float(minimum) and str(ticker) not in unretryable
         }
     )
     if not incomplete:
