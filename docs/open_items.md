@@ -694,6 +694,25 @@ The failure mail carried the 2026-10-30 guard's line, which reads as tonight's. 
 builds no book now says `Drift guard: not run tonight: the run stopped before a book was
 built`, and a guard block from another close is refused rather than printed.
 
-What is still owed to the owner: KVUE's position is still held and cannot be closed until
-the vendor prints a price for it. It leaves the book, so it is not sized, not hedged and not
-counted; the next session with a print for it is when the close can be sent.
+**Corrected 2026-11-03: the vendor will never print a price for KVUE.** The sentence that
+stood here said the position could be closed "when the vendor prints a price for it". That
+is wrong and would have waited forever. Kimberly-Clark **completed** its acquisition of
+Kenvue on 2026-11-02: each KVUE share converted into 0.14625 KMB shares plus $3.50 cash
+(KMB Form 8-K, Item 2.01). The broker reports the asset `inactive` and `tradable=false`,
+and its own corporate-actions feed records the `merger_completion` with KMB as the
+initiating symbol. The security does not exist; there is no close to send.
+
+What is actually owed: the **consideration**, which the paper broker has not posted. The
+account still carries 705.098617682 KVUE shares at the stale 2026-10-30 mark of $19.31,
+and no stock or cash receipt for the action. The true value on 2026-11-02 was $19.3315625 a
+share (0.14625 x $108.25 plus $3.50), so 103.120672836 KMB shares and $2,467.85 of cash,
+$13,630.66 against the $13,615.45 the mark says. See `docs/research/kvue_merger.md`.
+
+**What now stops it recurring.** No leg is submitted for an asset the broker reports not
+active and not tradable. The resolver reads the inactive half of the asset feed once per
+run, only when a ticker is missing from the active half, and a retired name comes back
+`ASSET_INACTIVE` with the broker's own reason ("merger completion, KMB and KVUE"). That
+code is in `UNREACHABLE_REFUSALS`, so the leg is reported as owed and **never carried** to
+the next evening - the paths that could otherwise resend it (a remainder, a carried leg, a
+left-universe close, a guard trade) all end in the same submit loop. The message names it
+on the refused line with the reason.

@@ -308,6 +308,11 @@ REASON_COVER_UNDER_ONE_SHARE = "COVER_UNDER_ONE_SHARE"
 REASON_BELOW_MIN_NOTIONAL = "BELOW_MIN_NOTIONAL"
 REASON_SHORT_CHECK_FAILED = "SHORTABLE_CHECK_FAILED"
 REASON_NOT_TRADABLE = "ASSET_NOT_TRADABLE"
+# The asset itself is retired: acquired, delisted or otherwise not active. Distinct
+# from NOT_TRADABLE, which is a live asset the broker will not let this account trade,
+# because the two have different answers - one waits for a corporate action to be
+# applied, the other for the broker to change its mind.
+REASON_ASSET_INACTIVE = "ASSET_INACTIVE"
 REASON_NOT_SHORTABLE = "ASSET_NOT_SHORTABLE"
 REASON_NOT_EASY_TO_BORROW = "ASSET_NOT_EASY_TO_BORROW"
 # A ticker the broker's asset feed does not carry under any symbol, so there is
@@ -357,6 +362,88 @@ def asset_flags(
             "easy_to_borrow": bool(getattr(asset, "easy_to_borrow", False)),
         }
     return held[key]
+
+
+_MERGER_CACHE: dict[str, str] = {}
+_MERGER_READ: dict[str, bool] = {}
+
+
+def merger_reason(
+    symbol: str,
+    *,
+    client: Any = None,
+    window_days: int = 45,
+    cache: dict[str, str] | None = None,
+) -> str:
+    """What the broker's corporate-actions feed says happened to a retired asset.
+
+    One request per run, shared by every leg, and only ever made when a ticker was
+    missing from the active feed. The record the broker keeps for the Kenvue
+    acquisition is `merger_completion`, initiating symbol KMB, target symbol KVUE,
+    with no dates of its own, so the reason names the parties and says the completion
+    is what retired the asset; a record that carries an ex-date or a declaration date
+    is quoted with it. Anything that fails here returns "" and the leg is refused on
+    the asset status alone, which is still a refusal.
+    """
+    held = _MERGER_CACHE if cache is None else cache
+    key = str(symbol).upper().strip()
+    if key in held:
+        return held[key]
+    if cache is None and _MERGER_READ.get("done"):
+        return held.get(key, "")
+    if client is None:
+        return ""
+    try:
+        from datetime import datetime, timedelta
+
+        from alpaca.trading.requests import (  # type: ignore
+            GetCorporateAnnouncementsRequest,
+        )
+
+        until = datetime.now(UTC).date()
+        since = until - timedelta(days=int(window_days))
+        # The request's own enums, so the types agree with the SDK rather than with a
+        # string that happens to validate today.
+        from alpaca.trading.enums import CorporateActionType  # type: ignore
+
+        records = client.get_corporate_announcements(
+            GetCorporateAnnouncementsRequest(
+                ca_types=[CorporateActionType.MERGER, CorporateActionType.SPINOFF],
+                since=since,
+                until=until,
+            )
+        )
+        found: dict[str, str] = {}
+        for record in records or []:
+            target = str(getattr(record, "target_symbol", "") or "").upper()
+            initiating = str(getattr(record, "initiating_symbol", "") or "").upper()
+            if not target:
+                continue
+            raw_sub_type = getattr(record, "ca_sub_type", "") or ""
+            subtype = str(getattr(raw_sub_type, "value", raw_sub_type)).lower()
+            when = (
+                getattr(record, "ex_date", None)
+                or getattr(record, "declaration_date", None)
+                or getattr(record, "payable_date", None)
+            )
+            parts = [str(subtype).replace("_", " ") or "corporate action"]
+            if initiating:
+                parts.append(f"{initiating} and {target}")
+            if when:
+                parts.append(f"dated {when}")
+            found[target] = ", ".join(parts)
+        held.update(found)
+        held.setdefault(key, "")
+    except Exception as exc:  # noqa: BLE001 - the status alone still refuses the leg
+        logger.warning(
+            "the broker's corporate-actions feed could not be read (%s), so a "
+            "retired ticker is refused on its status alone",
+            type(exc).__name__,
+        )
+        held.setdefault(key, "")
+    if cache is None:
+        _MERGER_READ["done"] = True
+    return held.get(key, "")
 
 
 def short_refusal(
@@ -411,6 +498,11 @@ class SymbolResolution:
     renamed: bool
     missing: bool
     detail: str
+    # The broker carries the asset and reports it inactive, so no leg can ever be
+    # sent for it. `missing` is set too, because there is no symbol to submit under;
+    # this is what tells the caller *why*, which decides whether the leg is carried
+    # (a rename, a temporary refusal) or recorded as owed and never resent.
+    inactive: bool = False
 
 
 class SymbolResolver:
@@ -456,6 +548,11 @@ class SymbolResolver:
         self._by_symbol: dict[str, Any] | None = None
         self._by_id: dict[str, Any] = {}
         self._feed_failed = False
+        # The retired half of the feed, read at most once and only when a ticker is
+        # not in the active one. An acquired name is kept there by the broker, which
+        # is how a leg can say "acquired" rather than "no such ticker".
+        self._inactive_by_symbol: dict[str, Any] | None = None
+        self._inactive_failed = False
 
     def _load(self) -> None:
         """The feed, once per run, or the mark that it could not be read."""
@@ -489,6 +586,42 @@ class SymbolResolver:
         }
         self._by_id = {
             str(getattr(asset, "id", "") or ""): asset for asset in self._assets
+        }
+
+    def _load_inactive(self) -> None:
+        """The inactive half of the asset feed, once per run and only if needed.
+
+        The active feed is the batched read every run already makes; this is the
+        second, and it is asked for only when a ticker was not in the first. A
+        failure leaves the index empty rather than stopping anything: the leg is
+        then answered by the history lookup exactly as it was before this existed.
+        """
+        if self._inactive_by_symbol is not None or self._inactive_failed:
+            return
+        if self._client is None:
+            self._inactive_failed = True
+            return
+        try:
+            from alpaca.trading.enums import AssetClass, AssetStatus  # type: ignore
+            from alpaca.trading.requests import GetAssetsRequest  # type: ignore
+
+            assets = list(
+                self._client.get_all_assets(
+                    GetAssetsRequest(
+                        status=AssetStatus.INACTIVE, asset_class=AssetClass.US_EQUITY
+                    )
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - the history path still answers
+            logger.warning(
+                "the broker's inactive asset feed could not be read (%s), so a "
+                "retired ticker is reported as unresolved",
+                type(exc).__name__,
+            )
+            self._inactive_failed = True
+            return
+        self._inactive_by_symbol = {
+            str(getattr(asset, "symbol", "") or ""): asset for asset in assets
         }
 
     def _history_asset_id(self, ticker: str) -> str:
@@ -551,11 +684,22 @@ class SymbolResolver:
         return result
 
     def _resolve_stale(self, ticker: str) -> SymbolResolution:
-        """A ticker the active feed does not carry: renamed, or gone."""
+        """A ticker the active feed does not carry: renamed, retired, or gone."""
         asset_id = self._history_asset_id(ticker)
         asset = self._by_id.get(asset_id) if asset_id else None
         symbol = str(getattr(asset, "symbol", "") or "") if asset is not None else ""
         if not symbol:
+            retired = self._retired_asset(ticker)
+            if retired is not None:
+                return SymbolResolution(
+                    ticker,
+                    "",
+                    str(getattr(retired, "id", "") or asset_id),
+                    False,
+                    True,
+                    self._retired_detail(ticker, retired),
+                    True,
+                )
             return SymbolResolution(
                 ticker,
                 "",
@@ -572,6 +716,30 @@ class SymbolResolver:
             symbol != ticker,
             False,
             f"{ticker} now trades as {symbol}",
+        )
+
+    def _retired_asset(self, ticker: str) -> Any | None:
+        """The broker's own record of a ticker it carries but no longer trades."""
+        self._load_inactive()
+        if self._inactive_by_symbol is None:
+            return None
+        return self._inactive_by_symbol.get(ticker)
+
+    def _retired_detail(self, ticker: str, asset: Any) -> str:
+        """Why a leg cannot be sent, in the broker's own terms.
+
+        The asset says only that it is inactive; the corporate-actions feed is what
+        says what happened, so one request for the recent merger and spin-off
+        announcements turns "inactive" into "acquired on 2026-11-02", which is the
+        difference between a leg to owe and a bug to chase. A read that fails leaves
+        the status alone rather than inventing a reason.
+        """
+        status = str(getattr(asset, "status", "") or "inactive")
+        reason = merger_reason(ticker, client=self._client)
+        tail = f": {reason}" if reason else ""
+        return (
+            f"{ticker}: the broker reports the asset {status}, so no leg can be "
+            f"sent for it{tail}"
         )
 
     def renames(self, tickers: Any) -> dict[str, str]:
@@ -1344,6 +1512,22 @@ def submit_market_orders(
             )
             continue
         resolution = symbols[order.ticker]
+        if resolution.inactive:
+            # The broker carries the asset and reports it retired, so no side of this
+            # leg can ever be sent: not the close, not a reversal's second half, not a
+            # guard trade, not a remainder. It is recorded with the broker's own reason
+            # and the code puts it in the owed-and-never-resent column, so tomorrow
+            # does not try again and the message says so.
+            fills.append(
+                _skipped(
+                    order.ticker,
+                    trade,
+                    REASON_ASSET_INACTIVE,
+                    resolution.detail,
+                    intent,
+                )
+            )
+            continue
         if resolution.missing:
             # The broker's feed carries no asset for this ticker under any symbol,
             # so an order here is refused every evening and purchases nothing but a

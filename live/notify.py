@@ -1010,7 +1010,8 @@ def _refused_list(rows: list[dict[str, Any]]) -> str:
     """
     named = [
         f"{str(row.get('ticker'))} "
-        f"({row.get('reason_code') or row.get('status') or 'refused'})"
+        f"({row.get('reason_code') or row.get('status') or 'refused'}"
+        f"{_refusal_reason(row)})"
         for row in sorted(rows, key=lambda item: str(item.get("ticker")))
     ]
     count = len(named)
@@ -1018,6 +1019,24 @@ def _refused_list(rows: list[dict[str, Any]]) -> str:
     if count > MINIMUM_SKIP_NAMES:
         shown += f"; and {count - MINIMUM_SKIP_NAMES} more"
     return shown
+
+
+def _refusal_reason(row: dict[str, Any]) -> str:
+    """The broker's own sentence after the code, when it said anything.
+
+    "ASSET_INACTIVE" says the leg was refused; what retired the asset is what the
+    owner needs in order to know it is a merger and not a data problem. The detail
+    reads `<ticker>: the broker reports the asset inactive, so no leg can be sent for
+    it: merger completion, KMB and KVUE`, and the last clause is the whole point, so
+    that is what is quoted.
+    """
+    detail = str(row.get("detail") or "")
+    if not detail:
+        return ""
+    tail = detail.rsplit(": ", 1)[-1].strip()
+    if tail == detail.strip():
+        return ""
+    return f": {tail}" if len(tail) <= 80 else ""
 
 
 def _skipped_minimum_list(rows: list[dict[str, Any]]) -> str:

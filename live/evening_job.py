@@ -443,7 +443,20 @@ def _filled_dollars(
 # does: the order path re-derives the same answer from the same prices. A leg refused
 # for one of these is reported rather than carried, so a hold day cannot spend the
 # month asking the broker the same question.
-UNREACHABLE_REFUSALS = frozenset({"COVER_UNDER_ONE_SHARE"})
+UNREACHABLE_REFUSALS = frozenset(
+    {
+        # A leg smaller than the share it must trade: owed, and not sendable until the
+        # next rebalance re-sizes the name.
+        "COVER_UNDER_ONE_SHARE",
+        # The broker reports the asset itself retired. 2026-11-02 is the case: KVUE
+        # completed its merger into KMB, the asset went inactive, and a leg for it is
+        # refused every evening for as long as the name is carried. Recorded once, as
+        # owed, and never resent.
+        "ASSET_INACTIVE",
+        # The broker will not let this account trade a live asset. Same answer.
+        "ASSET_NOT_TRADABLE",
+    }
+)
 
 
 def carried_forward(
@@ -629,11 +642,25 @@ def unfilled_remainder(
     if filled is None:
         filled = pd.to_numeric(legs["filled_notional"], errors="coerce").fillna(0.0)
     remainder = (intended - filled).abs()
+    # A leg the broker refused in a way that cannot change - a retired asset, an
+    # asset it will not lend - is not an unfinished trade to try again: proposing it
+    # every evening is the same refusal with a fresh date on it. It is reported as
+    # owed by `carried_forward`, which is the list that says so, and left out here.
+    refusals = (
+        legs["reason_code"].astype(str)
+        if "reason_code" in legs.columns
+        else pd.Series("", index=legs.index)
+    )
+    unretryable = {
+        str(ticker)
+        for ticker, reason in zip(tickers, refusals, strict=True)
+        if reason in UNREACHABLE_REFUSALS
+    }
     incomplete = sorted(
         {
             str(ticker)
             for ticker, gap in zip(tickers, remainder, strict=True)
-            if float(gap) >= float(minimum)
+            if float(gap) >= float(minimum) and str(ticker) not in unretryable
         }
     )
     if not incomplete:
