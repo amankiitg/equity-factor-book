@@ -365,3 +365,15 @@ a share, KMB Form 8-K Item 2.01). The broker reports the asset inactive and
 2026-10-30 mark of $19.31 because the action has not been posted. The true value on
 the completion session was $19.3315625, so the mark is 11 basis points light rather
 than a total loss.
+
+## The 2026-11-04 session: the share counts, and the class behind the incidents
+
+| branch | tip | merge | what | gate |
+|---|---|---|---|---|
+| `fix-shares-catchup` | `3d776b0` | `3dffe52` | `extend_shares` takes the close and, when the artifact's fetch stamp is behind it, asks again for the names that printed on that close, replacing their rows; names that have left trading are skipped. The gate keeps its fetch date and its zero-session allowance, and a failed refresh leaves the stamp where it was | 79 failed, 1606 passed against 79 failed, 1601 passed on `origin/main` in the same tree, identical ids, zero new, plus five new tests |
+
+The 2026-11-03 evening stopped at `shares 1 session behind (allowed 0)`. The stamp advanced
+only on an evening that added a ticker, and the two names added on 2026-11-02 stamped it
+there. Proof on a copy of the live tree extended to 2026-11-03: the gate reads every input
+at zero sessions behind (universe 1 of allowed 1) and the proposal completes as a hold day,
+195 names, gross 0.984666, worst exposure 2.4973%, guard not fired.
