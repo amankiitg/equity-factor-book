@@ -1318,6 +1318,7 @@ def finish_run(
     actual: dict[str, Any] | None = None,
     init: bool = False,
     excluded_tonight: list[dict[str, Any]] | None = None,
+    pending_acquisitions: list[dict[str, Any]] | None = None,
     no_price: list[str] | None = None,
     no_risk: list[dict[str, Any]] | None = None,
     missing_var: int | None = None,
@@ -1595,6 +1596,7 @@ def finish_run(
                 excluded_tonight or [],
             )
         ),
+        pending_acquisitions=pending_acquisitions or [],
         # The guard's own reading, so a night it fired is in the message rather
         # than only on the page, and only when the reading is *this* close's: a run
         # that stopped before it built a book has no reading, and the message says
@@ -2170,6 +2172,31 @@ def main() -> int:
                 "the account could not be read, so this is not an establishment "
                 "day and the store's book is what the orders are measured against"
             )
+        # A read-only note, once a night: an announced merger the account is on
+        # either side of. It changes nothing that is sent; it is the sentence that
+        # would have flagged KVUE weeks before its asset went inactive.
+        pending_mergers: list[dict[str, Any]] = []
+        try:
+            from live import alpaca as alpaca_module  # noqa: PLC0415 - path setup
+
+            pending_mergers = alpaca_module.pending_acquisitions(
+                [str(name) for name in held],
+                client=alpaca_module.connect(dry_run=dry_run),
+            )
+            if pending_mergers:
+                logger.info(
+                    "pending acquisitions: %s",
+                    ", ".join(
+                        f"{row['target']} by {row['acquirer']}"
+                        for row in pending_mergers
+                    ),
+                )
+        except Exception as exc:  # noqa: BLE001 - a note, never a step
+            logger.warning(
+                "the pending-acquisition note could not be built: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
         logger.info("nav: %s", holdings["nav_source"])
         logger.info(
             "positions: %s; held %d name(s) from %s, establishment=%s",
@@ -2548,6 +2575,7 @@ def main() -> int:
         # Tonight's exclusions from the corporate-actions rule, which are decided
         # before a proposal exists and so are not on its manifest.
         excluded_tonight=suspended_names,
+        pending_acquisitions=pending_mergers,
         no_short=_rows(manifest, "dropped_no_short"),
         thin_adv=thin_adv,
         init=first_run,

@@ -402,6 +402,7 @@ def compose(
     unconfirmed_legs: int | None = None,
     excluded: list[dict[str, Any]] | None = None,
     excluded_tonight: list[dict[str, Any]] | None = None,
+    pending_acquisitions: list[dict[str, Any]] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
@@ -777,6 +778,8 @@ def compose(
         # outside the book for a fortnight is not the same fact as one excluded
         # tonight, and the owner is the only one who can fix either.
         lines.append(f"Excluded from the universe: {_excluded_list(excluded)}.")
+    for acquisition in _pending_acquisition_lines(pending_acquisitions):
+        lines.append(acquisition)
     tonight_line = _excluded_tonight_line(excluded_tonight)
     if tonight_line:
         # One sentence, every name, with the reason beside it. This is the line the
@@ -1027,6 +1030,27 @@ def _refused_list(rows: list[dict[str, Any]]) -> str:
     if count > MINIMUM_SKIP_NAMES:
         shown += f"; and {count - MINIMUM_SKIP_NAMES} more"
     return shown
+
+
+def _pending_acquisition_lines(rows: list[dict[str, Any]] | None) -> list[str]:
+    """One line per announced merger the account is on either side of, or none.
+
+    "Pending acquisition: KVUE by KMB (0.14625 acquirer shares a share plus $3.50 a
+    share in cash)" is the warning the KVUE evening did not have: the deal was public
+    for weeks before the asset went inactive, and nothing in the message said the
+    book held the target. Terms come from the broker's record when it carries them
+    and are said to be unpublished when it does not, rather than invented.
+    """
+    out: list[str] = []
+    for row in rows or ():
+        target = str(row.get("target") or "").strip()
+        acquirer = str(row.get("acquirer") or "").strip()
+        if not target or not acquirer:
+            continue
+        terms = str(row.get("terms") or "").strip()
+        tail = terms if terms else "terms not published"
+        out.append(f"Pending acquisition: {target} by {acquirer} ({tail}).")
+    return out
 
 
 def _excluded_tonight_line(rows: list[dict[str, Any]] | None) -> str:
@@ -1605,6 +1629,7 @@ def notify_run(
     unconfirmed_legs: int | None = None,
     excluded: list[dict[str, Any]] | None = None,
     excluded_tonight: list[dict[str, Any]] | None = None,
+    pending_acquisitions: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -1635,6 +1660,7 @@ def notify_run(
         unconfirmed_legs=unconfirmed_legs,
         excluded=excluded,
         excluded_tonight=excluded_tonight,
+        pending_acquisitions=pending_acquisitions,
         no_short=no_short,
         gross=gross,
         worst_input=worst_input,

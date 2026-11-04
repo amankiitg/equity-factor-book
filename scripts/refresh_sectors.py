@@ -75,9 +75,12 @@ def page_map(sectors: pd.DataFrame) -> dict[str, Any]:
     from efb.models.fundamental import SECTOR_CODES
 
     codes = {
-        str(row["ticker"]).strip().upper(): SECTOR_CODES[str(row["gics_sector"]).strip()]
+        str(row["ticker"])
+        .strip()
+        .upper(): SECTOR_CODES[str(row["gics_sector"]).strip()]
         for _, row in sectors.iterrows()
-        if pd.notna(row.get("gics_sector")) and str(row["gics_sector"]).strip() in SECTOR_CODES
+        if pd.notna(row.get("gics_sector"))
+        and str(row["gics_sector"]).strip() in SECTOR_CODES
     }
     return {
         "source": {
@@ -108,7 +111,9 @@ def main(argv: list[str] | None = None) -> int:
     sectors, added = union(current, snapshot, args.as_of)
     print(f"snapshot: {newest_snapshot(root).name} ({len(snapshot)} rows)")
     print(f"table: {len(current)} rows -> {len(sectors)}; added {len(added)}: {added}")
-    before = sorted(set(current["ticker"].astype(str)) - set(sectors["ticker"].astype(str)))
+    before = sorted(
+        set(current["ticker"].astype(str)) - set(sectors["ticker"].astype(str))
+    )
     if before:
         raise SystemExit(f"the union would drop {before}, which it must never do")
 
@@ -155,9 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         after = appendix.read_appendix(appendix.SPEC_BY_NAME["sectors"])
         print(f"{APPENDIX_TABLE}: {len(current)} -> {len(after)} rows")
         missing = [
-            ticker
-            for ticker in added
-            if ticker not in set(after["ticker"].astype(str))
+            ticker for ticker in added if ticker not in set(after["ticker"].astype(str))
         ]
         if missing:
             raise SystemExit(f"the store did not take {missing}")

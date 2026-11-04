@@ -344,6 +344,8 @@ def fills_report_rejected() -> dict[str, Any]:
         ],
         "unread": [],
     }
+
+
 def attribution() -> dict[str, Any]:
     """The page's attribution block: the live book, and the research panel beside it.
 
@@ -356,9 +358,11 @@ def attribution() -> dict[str, Any]:
     backtest = (
         (
             pd.read_parquet(ATTRIBUTION),
-            pd.read_parquet(ATTRIBUTION_MONTHLY)
-            if ATTRIBUTION_MONTHLY.exists()
-            else pd.DataFrame(),
+            (
+                pd.read_parquet(ATTRIBUTION_MONTHLY)
+                if ATTRIBUTION_MONTHLY.exists()
+                else pd.DataFrame()
+            ),
         )
         if ATTRIBUTION.exists()
         else None

@@ -36,7 +36,6 @@ if str(ROOT) not in sys.path:  # so the script runs from anywhere
 
 from live import monthly_view, snapshot, store  # noqa: E402
 
-
 BUCKET = "efb-snapshots"
 WEB = ROOT / "web"
 
@@ -144,9 +143,11 @@ def rebuilt(
         # The guard's threshold is a setting on the evening (`EFB_DRIFT_GUARD`), not
         # something a quiet manifest records, so a rebuild here must be given it or
         # the strip loses the "5.00%" it is measured against.
-        guard_threshold=guard_threshold
-        if guard_threshold is not None
-        else monthly_view.guard_threshold_from_env(),
+        guard_threshold=(
+            guard_threshold
+            if guard_threshold is not None
+            else monthly_view.guard_threshold_from_env()
+        ),
     )
     if block is None:
         payload.pop("monthly", None)
@@ -161,7 +162,9 @@ def rebuilt(
     text = _restyle(payload, published)
     changed = differs_only_in_monthly(as_published, json.loads(text))
     if changed not in ([], ["monthly"]):
-        raise SystemExit(f"the rewrite would change more than the monthly key: {changed}")
+        raise SystemExit(
+            f"the rewrite would change more than the monthly key: {changed}"
+        )
     return payload, text, state
 
 
@@ -179,7 +182,9 @@ def _restyle(payload: dict[str, Any], original: str) -> str:
 
 def differs_only_in_monthly(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
     """The top-level keys whose value changed, so a rewrite can be proved narrow."""
-    changed = [key for key in set(before) | set(after) if before.get(key) != after.get(key)]
+    changed = [
+        key for key in set(before) | set(after) if before.get(key) != after.get(key)
+    ]
     return sorted(changed)
 
 

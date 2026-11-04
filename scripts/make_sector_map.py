@@ -118,9 +118,7 @@ def bundle(document: dict[str, Any]) -> dict[str, Any]:
     would put several hundred strings into the browser bundle to describe names
     that are not there.
     """
-    return {
-        key: document[key] for key in ("source", "sectors", "tickers")
-    }
+    return {key: document[key] for key in ("source", "sectors", "tickers")}
 
 
 def main() -> int:
