@@ -275,7 +275,9 @@ def row_level_security_probe() -> tuple[list[dict[str, Any]], list[str]]:
             "schema has not been provisioned from live/supabase_schema.sql"
         ]
     elif enabled:
-        read_back = f"{checked} tables, {len(enabled)} with RLS on: {', '.join(enabled)}"
+        read_back = (
+            f"{checked} tables, {len(enabled)} with RLS on: {', '.join(enabled)}"
+        )
         status = "MISMATCH"
         problems = [
             "row level security is on for "

@@ -37,10 +37,14 @@ def main() -> None:
 
     positions = store.select("positions")
     positions["trade_date"] = pd.to_datetime(positions["trade_date"])
-    book = positions.pivot_table(index="trade_date", columns="ticker", values="weight").fillna(0.0)
+    book = positions.pivot_table(
+        index="trade_date", columns="ticker", values="weight"
+    ).fillna(0.0)
     book = book.sort_index()
     closes = list(book.index)
-    print(f"live closes in efb.positions: {len(closes)}  {closes[0].date()} -> {closes[-1].date()}")
+    print(
+        f"live closes in efb.positions: {len(closes)}  {closes[0].date()} -> {closes[-1].date()}"
+    )
 
     nav = store.select("proposals")[["trade_date", "nav"]].dropna()
     nav["trade_date"] = pd.to_datetime(nav["trade_date"])
@@ -73,7 +77,7 @@ def main() -> None:
     )
 
     # Item 12: a name that leaves and comes back within k sessions, and its two legs.
-    present = (book.abs() > 0)
+    present = book.abs() > 0
     trips: list[dict[str, object]] = []
     for ticker in present.columns:
         series = present[ticker].to_numpy()

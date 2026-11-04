@@ -24,7 +24,7 @@ import math
 import os
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC
 from typing import Any, TypeVar, cast
@@ -444,6 +444,98 @@ def merger_reason(
     if cache is None:
         _MERGER_READ["done"] = True
     return held.get(key, "")
+
+
+def pending_acquisitions(
+    symbols: Iterable[str],
+    *,
+    client: Any = None,
+    window_days: int = 90,
+    cache: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Announced mergers the loop holds the target or the acquirer of, read-only.
+
+    One request for the window, shared by every held name, and it never touches an
+    order: the answer is a sentence in the owner's mail, not a trading decision. The
+    request's own window is 90 days, which is the vendor's limit.
+
+    A record is **pending** when its subtype is not `merger_completion`. The three
+    states the feed carries are a completion, an update to an announced deal, and a
+    bare merger record; only the completion has happened. Terms are quoted when the
+    record carries them - `new_rate` acquirer shares and `cash` a target share - and
+    said to be unpublished when it does not, which is the KVUE case: its completion
+    record carried `cash=0.0` and `new_rate=0.0` while the filing said 0.14625 plus
+    $3.50, so the filing, not the feed, is where terms come from.
+    """
+    wanted = {str(symbol).upper().strip() for symbol in symbols if str(symbol).strip()}
+    if not wanted or client is None:
+        return []
+    held = {} if cache is None else cache
+    if "rows" not in held:
+        try:
+            from datetime import datetime, timedelta
+
+            from alpaca.trading.enums import CorporateActionType  # type: ignore
+            from alpaca.trading.requests import (  # type: ignore
+                GetCorporateAnnouncementsRequest,
+            )
+
+            until = datetime.now(UTC).date()
+            since = until - timedelta(days=int(window_days))
+            records = client.get_corporate_announcements(
+                GetCorporateAnnouncementsRequest(
+                    ca_types=[CorporateActionType.MERGER],
+                    since=since,
+                    until=until,
+                )
+            )
+            held["rows"] = list(records or [])
+        except Exception as exc:  # noqa: BLE001 - a note, never a step
+            logger.warning(
+                "the broker's merger announcements could not be read (%s), so the "
+                "message says nothing about pending acquisitions",
+                type(exc).__name__,
+            )
+            held["rows"] = []
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for record in held["rows"]:
+        target = str(getattr(record, "target_symbol", "") or "").upper()
+        acquirer = str(getattr(record, "initiating_symbol", "") or "").upper()
+        if target not in wanted and acquirer not in wanted:
+            continue
+        raw_sub = getattr(record, "ca_sub_type", "") or ""
+        subtype = str(getattr(raw_sub, "value", raw_sub))
+        if subtype == "merger_completion":
+            continue
+        key = (target, acquirer)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "target": target,
+                "acquirer": acquirer,
+                "subtype": subtype,
+                "terms": _merger_terms(record),
+            }
+        )
+    return sorted(out, key=lambda row: (row["target"], row["acquirer"]))
+
+
+def _merger_terms(record: Any) -> str:
+    """The terms the record carries, or "" when it carries none."""
+    try:
+        cash = float(getattr(record, "cash", 0.0) or 0.0)
+        rate = float(getattr(record, "new_rate", 0.0) or 0.0)
+    except (TypeError, ValueError):  # pragma: no cover - a malformed record
+        return ""
+    parts: list[str] = []
+    if rate > 0:
+        parts.append(f"{rate:g} acquirer share{'' if rate == 1 else 's'} a share")
+    if cash > 0:
+        parts.append(f"${cash:,.2f} a share in cash")
+    return " plus ".join(parts)
 
 
 def short_refusal(

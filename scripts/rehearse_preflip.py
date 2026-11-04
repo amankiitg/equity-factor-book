@@ -150,7 +150,9 @@ class FakeBroker:
     def get_orders(self, filter: Any = None) -> list[object]:
         """The orders the broker is still working, as Alpaca's list read returns."""
         return [
-            _order_model(record) for record in self.pending if record["status"] == "accepted"
+            _order_model(record)
+            for record in self.pending
+            if record["status"] == "accepted"
         ]
 
     def get_asset(self, symbol: str) -> object:
@@ -258,7 +260,9 @@ class FakeBroker:
             given = shares * child_per_parent
             self.holdings[child] = self.holdings.get(child, 0.0) + given
         self.prices[child] = float(child_price)
-        self.prices[parent] = self.prices[parent] - child_per_parent * float(child_price)
+        self.prices[parent] = self.prices[parent] - child_per_parent * float(
+            child_price
+        )
 
 
 def _proposal(weights: dict[str, float]) -> pd.DataFrame:
@@ -290,9 +294,7 @@ def _guard_the_account(broker: FakeBroker, *, establishing: bool) -> None:
         result["establishment"],
         establishing,
     )
-    prior = positions.prior_weights(
-        result, establishment=bool(result["establishment"])
-    )
+    prior = positions.prior_weights(result, establishment=bool(result["establishment"]))
     if establishing:
         assert prior is None, "an establishment evening must have no prior book"
         print(
@@ -311,9 +313,7 @@ def _guard_the_account(broker: FakeBroker, *, establishing: bool) -> None:
     )
     print(
         "  prior book: "
-        + ", ".join(
-            f"{name} {value:+.4f}" for name, value in sorted(prior.items())
-        )
+        + ", ".join(f"{name} {value:+.4f}" for name, value in sorted(prior.items()))
         + f" (gross {gross:.4f} of NAV)"
     )
     assert gross > 0.0
@@ -530,9 +530,9 @@ def main() -> int:
         "  accepted legs carry the broker's order id: "
         + ", ".join(f"{name} {value[:8]}" for name, value in sorted(ids.items()))
     )
-    assert str(records.iloc[0]["client_order_id"]).startswith("efb-"), (
-        "the deterministic ticket is still recorded beside the broker id"
-    )
+    assert str(records.iloc[0]["client_order_id"]).startswith(
+        "efb-"
+    ), "the deterministic ticket is still recorded beside the broker id"
 
     print("\nAll checks passed: every leg carried a position intent, the reversal")
     print("closed tonight and opened tomorrow, the removed name was closed, a")

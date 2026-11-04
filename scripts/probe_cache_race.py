@@ -96,35 +96,53 @@ if mode == "delayed-bar":
     short = [day for day, count in served.items() if count <= len(TICKERS) / 2]
 
     for day in sorted(short, reverse=True):
-        print(f"--- {day.date()}: the vendor served {int(served[day])} of {len(TICKERS)} closes")
-        print(f"    the window-wide check calls CSGP covered: {'CSGP' in prices.covered_tickers(frame)}")
+        print(
+            f"--- {day.date()}: the vendor served {int(served[day])} of {len(TICKERS)} closes"
+        )
+        print(
+            f"    the window-wide check calls CSGP covered: {'CSGP' in prices.covered_tickers(frame)}"
+        )
         want = prices.missing_tickers(frame, ["CSGP"], session=day)
         print(f"    the session check calls CSGP missing: {want}")
         if want:
             _frame, report = extend.retry_missing_closes(
                 frame, ["CSGP"], start=START, end=END, session=str(day.date())
             )
-            print(f"    the retry fired for {report['missing']} and recovered {report['recovered']}")
-            print(f"    still missing {report['still_missing']}: the name goes to the drop rule")
+            print(
+                f"    the retry fired for {report['missing']} and recovered {report['recovered']}"
+            )
+            print(
+                f"    still missing {report['still_missing']}: the name goes to the drop rule"
+            )
 
     if not complete:
         raise SystemExit("the vendor served no session in this window")
     session = max(complete)
     if pd.isna(frame.xs(session, level="date").loc["CSGP", "close"]):
-        raise SystemExit(f"CSGP is already missing from the real fetch on {session.date()}")
-    print(f"--- {session.date()}: the newest session with a served bar, {int(served[session])} of {len(TICKERS)} closes")
+        raise SystemExit(
+            f"CSGP is already missing from the real fetch on {session.date()}"
+        )
+    print(
+        f"--- {session.date()}: the newest session with a served bar, {int(served[session])} of {len(TICKERS)} closes"
+    )
     before = frame.xs(session, level="date").loc["CSGP", "close"]
     frame.loc[(session, "CSGP"), ["close", "adj_close"]] = float("nan")
     print(f"    injected: CSGP priced before {session.date()} and no bar on it now")
-    print(f"    the window-wide check calls CSGP covered: {'CSGP' in prices.covered_tickers(frame)}")
+    print(
+        f"    the window-wide check calls CSGP covered: {'CSGP' in prices.covered_tickers(frame)}"
+    )
     want = prices.missing_tickers(frame, ["CSGP"], session=session)
     print(f"    the session check calls CSGP missing: {want}")
     frame, report = extend.retry_missing_closes(
         frame, TICKERS, start=START, end=END, session=str(session.date())
     )
     recovered = frame.xs(session, level="date").loc["CSGP", "close"]
-    print(f"    the retry fired for {report['missing']} single-threaded and recovered {report['recovered']}")
-    print(f"    CSGP's close on {session.date()} is {recovered}, was {before} before the gap was made")
+    print(
+        f"    the retry fired for {report['missing']} single-threaded and recovered {report['recovered']}"
+    )
+    print(
+        f"    CSGP's close on {session.date()} is {recovered}, was {before} before the gap was made"
+    )
     raise SystemExit(0)
 
 started = time.perf_counter()
@@ -137,9 +155,7 @@ if mode == "prewarm":
     warm_seconds = time.perf_counter() - started
     writes["n"] = 0
 
-frame = prices.download_prices(
-    TICKERS, start=START, end=END, prewarm=False
-)
+frame = prices.download_prices(TICKERS, start=START, end=END, prewarm=False)
 fetch_seconds = time.perf_counter() - started
 missing = prices.missing_tickers(frame, TICKERS, session=SESSION)
 
@@ -156,5 +172,7 @@ if missing:
     _frame, report = extend.retry_missing_closes(
         frame, TICKERS, start=START, end=END, session=SESSION
     )
-    print(f"          | retry recovered {report['recovered']} of {report['missing']}, "
-          f"still missing {report['still_missing']}")
+    print(
+        f"          | retry recovered {report['recovered']} of {report['missing']}, "
+        f"still missing {report['still_missing']}"
+    )

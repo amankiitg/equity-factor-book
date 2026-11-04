@@ -101,8 +101,8 @@ def timeseries(daily: pd.DataFrame, panel: attribution.ModelPanel) -> pd.DataFra
     exposures = pd.DataFrame(list(daily["exposure_json"])).mean()
     frame["holdings_exposure"] = frame["term"].map(exposures)
     frame["within_one_se"] = (
-        (frame["beta"] - frame["holdings_exposure"]).abs() <= frame["se"]
-    )
+        frame["beta"] - frame["holdings_exposure"]
+    ).abs() <= frame["se"]
     return frame
 
 
@@ -190,23 +190,39 @@ def main() -> int:
 
     gap = timing(daily)
     residual = daily["identity_residual"].abs()
-    print(f"sessions attributed: {len(daily)} "
-          f"({daily['trade_date'].min().date()} to "
-          f"{daily['trade_date'].max().date()})")
-    print(f"reconciliation |total - (factor + idio + cost)|: "
-          f"median {residual.median():.3e} max {residual.max():.3e}")
-    print(f"cumulative P&L: total {daily['pnl_total'].sum():.6f} = factor "
-          f"{daily['pnl_factor'].sum():.6f} + idio {daily['pnl_idio'].sum():.6f} + "
-          f"cost {daily['pnl_cost'].sum():.6f}")
-    print(f"hedge timing: mean |gap| {gap['max_abs_gap'].max():.3e} max, "
-          f"mean per factor {gap['mean_gap'].abs().mean():.3e}, "
-          f"timing P&L sum {daily['pnl_timing'].sum():.6f}")
+    print(
+        f"sessions attributed: {len(daily)} "
+        f"({daily['trade_date'].min().date()} to "
+        f"{daily['trade_date'].max().date()})"
+    )
+    print(
+        f"reconciliation |total - (factor + idio + cost)|: "
+        f"median {residual.median():.3e} max {residual.max():.3e}"
+    )
+    print(
+        f"cumulative P&L: total {daily['pnl_total'].sum():.6f} = factor "
+        f"{daily['pnl_factor'].sum():.6f} + idio {daily['pnl_idio'].sum():.6f} + "
+        f"cost {daily['pnl_cost'].sum():.6f}"
+    )
+    print(
+        f"hedge timing: mean |gap| {gap['max_abs_gap'].max():.3e} max, "
+        f"mean per factor {gap['mean_gap'].abs().mean():.3e}, "
+        f"timing P&L sum {daily['pnl_timing'].sum():.6f}"
+    )
     print("largest exposure gaps:")
-    print(gap.reindex(gap["mean_gap"].abs().sort_values(ascending=False).index).head(5).to_string(index=False))
-    print("size column, the negative control (one day of returns cannot separate "
-          "the two vintages): " + json.dumps(size_column_check(panel, daily)))
-    print(f"timeseries: {int(timeseries_frame['within_one_se'].sum())} of "
-          f"{len(timeseries_frame)} terms agree with the holdings view within one SE")
+    print(
+        gap.reindex(gap["mean_gap"].abs().sort_values(ascending=False).index)
+        .head(5)
+        .to_string(index=False)
+    )
+    print(
+        "size column, the negative control (one day of returns cannot separate "
+        "the two vintages): " + json.dumps(size_column_check(panel, daily))
+    )
+    print(
+        f"timeseries: {int(timeseries_frame['within_one_se'].sum())} of "
+        f"{len(timeseries_frame)} terms agree with the holdings view within one SE"
+    )
     return 0
 
 

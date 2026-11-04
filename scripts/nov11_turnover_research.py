@@ -62,7 +62,9 @@ def design_config() -> dict[str, float]:
 def load_books(rho: float, phi: float, seed: float) -> pd.DataFrame:
     """One stored book: rebalance dates by ticker, renormalized to unit gross."""
     frame = pd.read_parquet(DATA / "portfolios" / "persistent_proportional.parquet")
-    frame = frame.loc[(frame["rho"] == rho) & (frame["phi"] == phi) & (frame["seed"] == seed)]
+    frame = frame.loc[
+        (frame["rho"] == rho) & (frame["phi"] == phi) & (frame["seed"] == seed)
+    ]
     frame["date"] = pd.to_datetime(frame["date"])
     wide = frame.pivot_table(index="date", columns="ticker", values="weight")
     wide = wide.sort_index().fillna(0.0)
@@ -106,13 +108,19 @@ def specific_return_std(names: list[str]) -> pd.Series:
     """The per-name specific-return standard deviation, the research model's sigma."""
     if not _SPECIFIC_STD:
         frame = pd.read_parquet(DATA / "models" / "XS-v1" / "specific_returns.parquet")
-        for ticker, value in frame.groupby("ticker")["specific_return"].std(ddof=1).items():
+        for ticker, value in (
+            frame.groupby("ticker")["specific_return"].std(ddof=1).items()
+        ):
             _SPECIFIC_STD[str(ticker)] = float(value)
     return pd.Series(_SPECIFIC_STD).reindex(names)
 
 
 def research_cost_per_rebalance(
-    books: pd.DataFrame, previous: pd.DataFrame, spread: pd.Series, adv: pd.Series, aum: float
+    books: pd.DataFrame,
+    previous: pd.DataFrame,
+    spread: pd.Series,
+    adv: pd.Series,
+    aum: float,
 ) -> pd.DataFrame:
     """The research engine's own cost: spread + commission + impact on the trade.
 
@@ -164,7 +172,9 @@ def alignment(returns: pd.DataFrame, books: pd.DataFrame) -> np.ndarray:
     return books.index.searchsorted(returns.index, side="left") - 1
 
 
-def gross_series(returns: pd.DataFrame, books: pd.DataFrame, rows: np.ndarray) -> pd.Series:
+def gross_series(
+    returns: pd.DataFrame, books: pd.DataFrame, rows: np.ndarray
+) -> pd.Series:
     """The book's gross return per session on the weights it held."""
     names = books.columns
     aligned = returns.reindex(columns=names).to_numpy(dtype=float)
@@ -174,7 +184,9 @@ def gross_series(returns: pd.DataFrame, books: pd.DataFrame, rows: np.ndarray) -
             continue
         day = aligned[index]
         mask = np.isfinite(day)
-        values[index] = float((books.iloc[row].to_numpy(dtype=float)[mask] * day[mask]).sum())
+        values[index] = float(
+            (books.iloc[row].to_numpy(dtype=float)[mask] * day[mask]).sum()
+        )
     return pd.Series(values, index=returns.index, name="gross")
 
 
@@ -202,8 +214,10 @@ def cost_per_rebalance(
         delta = weights - prior
         sigma = specific_vol(names, stamp).fillna(0.0).to_numpy(dtype=float)
         dollar_trade = np.abs(delta) * aum
-        impact = IMPACT_K * sigma * np.sqrt(
-            np.maximum(dollar_trade, 0.0) / np.maximum(adv_map, 1.0)
+        impact = (
+            IMPACT_K
+            * sigma
+            * np.sqrt(np.maximum(dollar_trade, 0.0) / np.maximum(adv_map, 1.0))
         )
         base = np.abs(delta) if charge_spread_on_trade else np.abs(weights)
         spread_bps = float(np.sum(spread_map * base)) * 1e4
@@ -245,7 +259,11 @@ def run(
         research_cost_per_rebalance(books, previous, spread, adv, aum)
         if cost_model == "research"
         else cost_per_rebalance(
-            books, previous, spread, adv, aum,
+            books,
+            previous,
+            spread,
+            adv,
+            aum,
             charge_spread_on_trade=charge_spread_on_trade,
         )
     )
@@ -268,8 +286,12 @@ def run(
         "geom_gross": float(np.prod(1.0 + gross_live.to_numpy()) ** annual - 1.0),
         "geom_net": float(np.prod(1.0 + net_live.to_numpy()) ** annual - 1.0),
         "vol": float(gross_live.std(ddof=1) * np.sqrt(TRADING_DAYS)),
-        "sharpe_gross": float(gross_live.mean() / gross_live.std(ddof=1) * np.sqrt(TRADING_DAYS)),
-        "sharpe_net": float(net_live.mean() / gross_live.std(ddof=1) * np.sqrt(TRADING_DAYS)),
+        "sharpe_gross": float(
+            gross_live.mean() / gross_live.std(ddof=1) * np.sqrt(TRADING_DAYS)
+        ),
+        "sharpe_net": float(
+            net_live.mean() / gross_live.std(ddof=1) * np.sqrt(TRADING_DAYS)
+        ),
         "turnover_mean": float(costs["turnover"].mean()),
         "turnover_annual": float(costs["turnover"].mean() * per_year),
         "cost_bps_annual": float(costs["total_bps"].mean() * per_year),
@@ -293,7 +315,9 @@ def banded(books: pd.DataFrame, band: float) -> pd.DataFrame:
     return pd.DataFrame(out).T
 
 
-def quantized(books: pd.DataFrame, close: pd.DataFrame, *, release: float) -> pd.DataFrame:
+def quantized(
+    books: pd.DataFrame, close: pd.DataFrame, *, release: float
+) -> pd.DataFrame:
     """The live construction: whole shares at NAV, a 20-share floor, and a band.
 
     A name is admitted at the floor and released only when its own shares fall
@@ -307,8 +331,12 @@ def quantized(books: pd.DataFrame, close: pd.DataFrame, *, release: float) -> pd
         price = close.reindex(columns=row.index).ffill().loc[:stamp].iloc[-1]
         usable = row.notna() & price.notna() & (price > 0)
         shares = np.floor(np.abs(row.where(usable, 0.0)) * NAV / price.where(usable))
-        inside = {name for name in shares.index if shares.get(name, 0.0) >= FLOOR_SHARES}
-        still = {name for name in admitted if shares.get(name, 0.0) >= release * FLOOR_SHARES}
+        inside = {
+            name for name in shares.index if shares.get(name, 0.0) >= FLOOR_SHARES
+        }
+        still = {
+            name for name in admitted if shares.get(name, 0.0) >= release * FLOOR_SHARES
+        }
         keep = inside | still
         kept = row.where(row.index.isin(keep), 0.0)
         gross = float(kept.abs().sum())
@@ -357,28 +385,43 @@ def main() -> None:
     trade_reading = run(books, returns, spread, adv, charge_spread_on_trade=True)
     live_reading = run(books, returns, spread, adv, charge_spread_on_trade=False)
     print("\n## three cost stacks on the same book and the same trades\n")
-    print(table({
-        "research engine: spread+commission+impact on the trade, no borrow": research_reading,
-        "live model, spread on the trade (adds borrow)": trade_reading,
-        "live model as written (spread+commission on the held book)": live_reading,
-    }, "NAV $1,000,000"))
+    print(
+        table(
+            {
+                "research engine: spread+commission+impact on the trade, no borrow": research_reading,
+                "live model, spread on the trade (adds borrow)": trade_reading,
+                "live model as written (spread+commission on the held book)": live_reading,
+            },
+            "NAV $1,000,000",
+        )
+    )
 
-    ref = run(books, returns, spread, adv, aum=REFERENCE_AUM, charge_spread_on_trade=True)
+    ref = run(
+        books, returns, spread, adv, aum=REFERENCE_AUM, charge_spread_on_trade=True
+    )
     print("\n## the same book at E6's reference AUM (impact scales with size)\n")
     print(table({"spread+commission on the trade, AUM $100m": ref}, "NAV $100,000,000"))
 
     print("\n## persistence, which the stored artifacts already carry\n")
-    rows = {f"phi = {value}": run(load_books(rho, value, seed), returns, spread, adv)
-            for value in (0.0, 0.8, 0.95)}
+    rows = {
+        f"phi = {value}": run(load_books(rho, value, seed), returns, spread, adv)
+        for value in (0.0, 0.8, 0.95)
+    }
     print(table(rows, "NAV $1,000,000"))
 
     print("\n## a no-trade band on each name's own change\n")
     rows = {"band 0 bp (the stored book)": trade_reading}
-    rows.update({f"band {bp} bp": run(banded(books, bp / 1e4), returns, spread, adv)
-                 for bp in (1, 2, 5, 10, 25, 50)})
+    rows.update(
+        {
+            f"band {bp} bp": run(banded(books, bp / 1e4), returns, spread, adv)
+            for bp in (1, 2, 5, 10, 25, 50)
+        }
+    )
     print(table(rows, "NAV $1,000,000"))
 
-    print("\n## the live construction: whole shares, a 20-share floor, an entry/exit band\n")
+    print(
+        "\n## the live construction: whole shares, a 20-share floor, an entry/exit band\n"
+    )
     rows = {}
     churn: dict[str, int] = {}
     for release in (1.0, 0.75, 0.5, 0.33):
