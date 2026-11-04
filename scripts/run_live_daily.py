@@ -1088,9 +1088,7 @@ def shortable_flags(*, dry_run: bool) -> dict[str, bool] | None:
         return None
 
 
-def _manifest_is_tonight(
-    manifest: dict[str, Any] | None, target_close: object
-) -> bool:
+def _manifest_is_tonight(manifest: dict[str, Any] | None, target_close: object) -> bool:
     """Whether a proposal manifest describes the close this run was pricing.
 
     The message quotes the guard's reading, and a run that failed before it built a
@@ -1585,6 +1583,10 @@ def finish_run(
         monthly_view=monthly_state,
         cross_checks_capped=cross_checks_capped,
         cadence=(manifest or {}).get("cadence"),
+        # Every name tonight's data could not support, from every reader, in one
+        # sentence. The evening's manifest carries the list; a run that built no book
+        # has none, and the line is absent rather than a stale one from an older close.
+        excluded_tonight=(manifest or {}).get("excluded_tonight") or [],
         # The guard's own reading, so a night it fired is in the message rather
         # than only on the page, and only when the reading is *this* close's: a run
         # that stopped before it built a book has no reading, and the message says
