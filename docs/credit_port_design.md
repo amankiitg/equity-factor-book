@@ -689,6 +689,7 @@ criterion is a test rather than a claim.
 | live/corporate_actions.py | re-specified | splits become coupons, calls, tenders and 144A exchanges, and the vendor sentinel lesson carries over |
 | live/dashboard_app.py | unchanged | the live view |
 | live/evening_job.py | re-specified | the same evening shape, with credit inputs, a per-bond staleness gate and the vintage recorded |
+| live/exclusions.py | re-specified | the one mechanism that takes a name out for the night with a reason, and the threshold that turns a broken input into a stop; in credit the name is an issuer or a CUSIP |
 | live/extend.py | unchanged | the append-only extension discipline, including the split guard, is the same problem in credit |
 | live/fills.py | unchanged | the morning reconciliation reads the broker's own order and fill records and is asset-class-agnostic; the close it prices a fill against comes from the credit feed |
 | live/guards.py | unchanged | the two fail-safe guards port, and their sizing lesson is on record |

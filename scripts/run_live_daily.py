@@ -1063,7 +1063,7 @@ def shortable_flags(*, dry_run: bool) -> dict[str, bool] | None:
     absent flag keeps a name, so the failure direction is the one the book already
     has, and a rehearsal does not call the broker to find out what it may not short.
     """
-    from live import alpaca, evening_job, notify
+    from live import alpaca, exclusions, evening_job, notify
 
     if not evening_job.resolve_shortability_precheck(
         os.environ.get(evening_job.SHORTABILITY_ENV)
@@ -1088,9 +1088,7 @@ def shortable_flags(*, dry_run: bool) -> dict[str, bool] | None:
         return None
 
 
-def _manifest_is_tonight(
-    manifest: dict[str, Any] | None, target_close: object
-) -> bool:
+def _manifest_is_tonight(manifest: dict[str, Any] | None, target_close: object) -> bool:
     """Whether a proposal manifest describes the close this run was pricing.
 
     The message quotes the guard's reading, and a run that failed before it built a
@@ -1319,6 +1317,7 @@ def finish_run(
     reconciliation: dict[str, Any] | None = None,
     actual: dict[str, Any] | None = None,
     init: bool = False,
+    excluded_tonight: list[dict[str, Any]] | None = None,
     no_price: list[str] | None = None,
     no_risk: list[dict[str, Any]] | None = None,
     missing_var: int | None = None,
@@ -1555,6 +1554,8 @@ def finish_run(
     tonight_manifest = (
         manifest if _manifest_is_tonight(manifest, result.get("target_close")) else None
     )
+    from live import exclusions  # noqa: PLC0415 - after the path setup above
+
     notified = notify.notify_run(
         status=status,
         target_close=result.get("target_close"),
@@ -1585,6 +1586,15 @@ def finish_run(
         monthly_view=monthly_state,
         cross_checks_capped=cross_checks_capped,
         cadence=(manifest or {}).get("cadence"),
+        # Every name tonight's data could not support, from every reader, in one
+        # sentence. The evening's manifest carries the list; a run that built no book
+        # has none, and the line is absent rather than a stale one from an older close.
+        excluded_tonight=exclusions.as_rows(
+            exclusions.collect(
+                (manifest or {}).get("excluded_tonight") or [],
+                excluded_tonight or [],
+            )
+        ),
         # The guard's own reading, so a night it fired is in the message rather
         # than only on the page, and only when the reading is *this* close's: a run
         # that stopped before it built a book has no reading, and the message says
@@ -2046,6 +2056,19 @@ def main() -> int:
                 "spin-off record unusable, parent return nulled: %s",
                 ", ".join(spinoff_unusable),
             )
+        # The names the corporate-actions rule dropped for the session: a vendor
+        # print nothing explains, a ratio its own factor contradicts, a child close
+        # that did not come back. The rule already refuses to guess; these are the
+        # names it refused for, and they belong on the one exclusion line rather than
+        # only in a flag nobody reads after the fact.
+        suspended_names = [
+            {
+                "ticker": str(record.ticker),
+                "reason": "the vendor restated the session and no record explains it",
+                "source": "corporate actions",
+            }
+            for record in getattr(outcome, "suspended", []) or []
+        ]
         capped = corporate_actions.cap_note(outcome.unchecked)
         if capped:
             logger.warning("%s", capped)
@@ -2522,6 +2545,9 @@ def main() -> int:
         # The names that never reached the book, with the reason and the age:
         # recorded on the manifest and said in the message (item 9).
         excluded=_excluded_rows(manifest),
+        # Tonight's exclusions from the corporate-actions rule, which are decided
+        # before a proposal exists and so are not on its manifest.
+        excluded_tonight=suspended_names,
         no_short=_rows(manifest, "dropped_no_short"),
         thin_adv=thin_adv,
         init=first_run,

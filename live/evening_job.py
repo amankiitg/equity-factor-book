@@ -32,7 +32,7 @@ from efb import alpha as alpha_mod
 from efb import costs as costs_mod
 from efb import eval_risk, race, registry, size
 from efb.build import hash_file
-from live import alpaca, cadence, sizing
+from live import alpaca, cadence, exclusions, sizing
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = ROOT / "data"
@@ -2935,6 +2935,33 @@ def build_proposal(
         kept_rows, _close_prices(as_of_ts, root), nav
     )
 
+    # One list of the names *tonight's data* could not support, from every reader that
+    # decided one, and one sentence for the message. The universe's own exclusions are
+    # not here: those are a standing rule over the artifacts, unchanged from evening to
+    # evening, reported on their own line with their ages (eight of them on 2026-10-30),
+    # and counting them would put the night over the threshold before a single name
+    # misbehaved. The individual drops keep their own thresholds; this is the line that
+    # catches what none of them sees - six names with no price and six with no risk
+    # estimate is twelve names out with each reader inside its own limit - and it is
+    # what the owner reads.
+    excluded_tonight = exclusions.collect(
+        (
+            exclusions.Exclusion(name, "no usable close at the close", "prices")
+            for name in dropped_no_price
+        ),
+        (
+            exclusions.Exclusion(str(row["ticker"]), "no risk estimate", "risk model")
+            for row in dropped_no_risk
+        ),
+        (
+            exclusions.Exclusion(
+                str(row["ticker"]), "the broker will not lend it", "broker"
+            )
+            for row in dropped_no_short
+        ),
+    )
+    exclusions.guard(excluded_tonight)
+
     input_as_of = _input_as_of(root, as_of_ts)
     input_as_of["universe"] = universe_as_of
     staleness = max(
@@ -2950,6 +2977,10 @@ def build_proposal(
         "n_names": len(names),
         "n_excluded": len(excluded),
         "excluded": excluded,
+        # Every name out tonight, from every reader, in one list with its reason.
+        # `excluded` above is the universe's own answer; this is the book's.
+        "excluded_tonight": exclusions.as_rows(excluded_tonight),
+        "n_excluded_tonight": len(excluded_tonight),
         # The names the broker will not lend, dropped before the sizing when the
         # precheck is on, and the count beside them so the two cannot disagree.
         "n_dropped_no_short": len(dropped_no_short),

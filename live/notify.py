@@ -401,6 +401,7 @@ def compose(
     refused_legs: list[dict[str, Any]] | None = None,
     unconfirmed_legs: int | None = None,
     excluded: list[dict[str, Any]] | None = None,
+    excluded_tonight: list[dict[str, Any]] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
@@ -776,6 +777,13 @@ def compose(
         # outside the book for a fortnight is not the same fact as one excluded
         # tonight, and the owner is the only one who can fix either.
         lines.append(f"Excluded from the universe: {_excluded_list(excluded)}.")
+    tonight_line = _excluded_tonight_line(excluded_tonight)
+    if tonight_line:
+        # One sentence, every name, with the reason beside it. This is the line the
+        # owner asked for after a week in which seven different faults each had their
+        # own wording: a reader should not have to know which reader found a name to
+        # know why it is out.
+        lines.append(tonight_line)
     if refused_legs:
         # The legs the shortability check or the broker refused. The same kind of
         # fact as "not easy to borrow", and the reason the run is incomplete without
@@ -1019,6 +1027,23 @@ def _refused_list(rows: list[dict[str, Any]]) -> str:
     if count > MINIMUM_SKIP_NAMES:
         shown += f"; and {count - MINIMUM_SKIP_NAMES} more"
     return shown
+
+
+def _excluded_tonight_line(rows: list[dict[str, Any]] | None) -> str:
+    """The one sentence naming every name out tonight, or "" when none is."""
+    if not rows:
+        return ""
+    from live import exclusions
+
+    return exclusions.sentence(
+        exclusions.Exclusion(
+            ticker=str(row.get("ticker") or ""),
+            reason=str(row.get("reason") or "excluded"),
+            source=str(row.get("source") or ""),
+        )
+        for row in rows
+        if str(row.get("ticker") or "").strip()
+    )
 
 
 def _refusal_reason(row: dict[str, Any]) -> str:
@@ -1579,6 +1604,7 @@ def notify_run(
     refused_legs: list[dict[str, Any]] | None = None,
     unconfirmed_legs: int | None = None,
     excluded: list[dict[str, Any]] | None = None,
+    excluded_tonight: list[dict[str, Any]] | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -1608,6 +1634,7 @@ def notify_run(
         refused_legs=refused_legs,
         unconfirmed_legs=unconfirmed_legs,
         excluded=excluded,
+        excluded_tonight=excluded_tonight,
         no_short=no_short,
         gross=gross,
         worst_input=worst_input,
