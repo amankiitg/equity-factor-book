@@ -377,3 +377,15 @@ only on an evening that added a ticker, and the two names added on 2026-11-02 st
 there. Proof on a copy of the live tree extended to 2026-11-03: the gate reads every input
 at zero sessions behind (universe 1 of allowed 1) and the proposal completes as a hold day,
 195 names, gross 0.984666, worst exposure 2.4973%, guard not fired.
+
+## The 2026-11-04 session, parts B and C: the class, and the warning
+
+| branch | tip | merge | what | gate |
+|---|---|---|---|---|
+| `fix-name-exclusions` | `0a91d73` | `6b2356a` | `live/exclusions.py`: one mechanism for every name-level refusal, one list on the manifest (`excluded_tonight`), one sentence in the mail, and one threshold (`MAX_EXCLUSIONS = 10`) that counts tonight's names rather than the standing universe exclusions. The corporate-actions suspensions, which reached neither the manifest nor the mail, are routed through it. `docs/name_level_checks.md` is the inventory of every check that can act on one name and what each does | 79 failed on both branch and `origin/main`, identical ids, zero new; identity proof on 2026-10-27..10-30 identical name sets, max weight difference 0.0, gross 1.0 |
+| `feat-pending-acquisitions` | `00d614a` | `52a684a` | `alpaca.pending_acquisitions`: the broker's merger announcements, once a run, held symbols only, any record that is not a completion counted as pending, terms quoted when the feed carries them. One mail line, read-only | 79 failed on both, identical ids, zero new, plus seven new tests |
+
+The threshold was measured before it was set: ten standing universe exclusions put a
+healthy evening over the line when they were counted, so the count is scoped to the names
+tonight's data could not support. The corporate-actions suspensions had no consumer in the
+runner at all, so the CTVA shape never reached the record; that is closed here.
