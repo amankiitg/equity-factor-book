@@ -291,25 +291,82 @@ def extend_returns(data_root: Path | None = None) -> int:
     return int(after - before)
 
 
-def extend_shares(
-    data_root: Path | None = None, tickers: list[str] | None = None
-) -> int:
-    """Fetch share counts for names not yet in the cache and append.
+def _shares_fetch_stamp(cache: Path) -> pd.Timestamp | None:
+    """The newest successful share fetch in the cache, or None."""
+    if not cache.exists():
+        return None
+    frame = pd.read_parquet(cache)
+    if "status" in frame.columns:
+        frame = frame.loc[frame["status"] == "ok"]
+    if frame.empty or "fetched_at" not in frame.columns:
+        return None
+    stamps = pd.to_datetime(frame["fetched_at"], errors="coerce").dropna()
+    return pd.Timestamp(stamps.max()).normalize() if len(stamps) else None
 
-    Returns the number of names newly fetched. Cached names are not
-    re-asked, because a share count does not change unless a corporate
-    action does.
+
+def _trading_names(root: Path, end: pd.Timestamp) -> list[str]:
+    """The names that printed on `end`, which are the ones a refresh can update.
+
+    A name that has left trading - acquired, delisted, inactive - cannot be given a
+    new row by asking again, so it is not part of the catch-up. On 2026-11-02 KVUE
+    completed its merger into KMB; a refresh that waited for it would wait forever.
+    """
+    path = root / "raw" / "prices.parquet"
+    if not path.exists():
+        return []
+    prices = pd.read_parquet(path, columns=["close"])
+    on_day = prices.index.get_level_values("date") == end
+    close = prices.loc[on_day, "close"]
+    tickers = prices.index.get_level_values("ticker")[on_day]
+    return sorted({str(ticker) for ticker, value in zip(tickers, close) if pd.notna(value)})
+
+
+def extend_shares(
+    data_root: Path | None = None,
+    tickers: list[str] | None = None,
+    end: str | pd.Timestamp | None = None,
+) -> int:
+    """Fetch share counts for names not yet cached, and catch the cache up.
+
+    Returns the number of names newly fetched. A cached name is normally not
+    re-asked, because a share count does not change unless a corporate action does.
+
+    The gate reads the **fetch** date of this artifact, though, and a cache that is
+    only ever added to can only get older: it advances on an evening that adds a
+    ticker and stands still on every other, so a run with no new name in the
+    universe is stale one session later and stops. Measured on 2026-11-03: the
+    stamp stood at 2026-11-02, the day the last two names (BE and P) were fetched,
+    and the evening stopped at "shares 1 session behind (allowed 0)".
+
+    So when the stamp is behind `end`, the names that printed on `end` are asked
+    again and their rows replaced. Those are exactly the names still trading; a
+    retired one cannot produce a new row and is skipped rather than waited for.
+    The gate's own rule is untouched: a refresh that fails leaves the stamp where
+    it was, and the evening still stops.
     """
     root = Path(data_root) if data_root is not None else DATA_ROOT
+    target = pd.Timestamp(end).normalize() if end is not None else pd.Timestamp.now().normalize()
     if tickers is None:
         tickers = _live_tickers(root)
     before = set()
     cache = root / "raw" / "shares_history.parquet"
     if cache.exists():
         before = set(pd.read_parquet(cache)["ticker"])
+    stamp = _shares_fetch_stamp(cache)
+    refresh: list[str] = []
+    if stamp is None or stamp < target:
+        trading = set(_trading_names(root, target))
+        refresh = [name for name in tickers if name in trading]
+        logger.info(
+            "the share counts are stamped %s and the close is %s, so %s name(s) "
+            "still trading are asked again and the retired ones are not",
+            "never" if stamp is None else stamp.date(),
+            target.date(),
+            len(refresh),
+        )
     # The cache path is passed rather than left to the module default: on a run
     # that works in its own tree, the default would fetch into the repository.
-    probes.fetch_share_history(tickers, cache_path=cache)
+    probes.fetch_share_history(tickers, cache_path=cache, refresh=refresh)
     after = set(pd.read_parquet(cache)["ticker"])
     return int(len(after - before))
 
