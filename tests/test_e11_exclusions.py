@@ -79,25 +79,29 @@ def test_five_price_drops_and_five_risk_drops_are_one_night_too_many() -> None:
         exclusions.guard(merged)
 
 
-def test_the_message_carries_one_line_for_every_name_out() -> None:
-    """The owner's ask: one sentence, every name, with the reason beside it."""
+def test_the_message_carries_one_line_for_every_name_out_tonight() -> None:
+    """The owner's ask: one sentence, every name, with the reason beside it.
+
+    Two lines, two different facts: the universe's standing exclusions with their
+    ages, and the names tonight's data could not support. Neither repeats the other,
+    because the second is scoped to what the loop would otherwise have traded.
+    """
     body = notify.compose(
         status="ok",
         target_close="2026-11-03",
         dry_run=False,
         excluded=[_row("DD", "symbol reused", "universe")],
         excluded_tonight=[
-            _row("DD", "symbol reused", "universe"),
             _row("KVUE", "no usable close at the close", "prices"),
+            _row("PSKY", "no usable close at the close", "prices"),
         ],
     )
     assert body.count("Excluded tonight:") == 1
     assert (
-        "Excluded tonight: DD (symbol reused), KVUE (no usable close at the close)."
-        in body
+        "Excluded tonight: KVUE (no usable close at the close), "
+        "PSKY (no usable close at the close)." in body
     )
-    # the universe's own line is not printed beside it: same fact, same night
-    assert "Excluded from the universe:" not in body
+    assert "Excluded from the universe:" in body, "the standing list keeps its own line"
 
 
 def test_a_manifest_without_the_merged_list_still_says_what_it_knows() -> None:

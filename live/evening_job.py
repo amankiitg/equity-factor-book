@@ -2935,20 +2935,16 @@ def build_proposal(
         kept_rows, _close_prices(as_of_ts, root), nav
     )
 
-    # One list of the names tonight's data could not support, from every reader that
-    # decided one, and one sentence for the message. The individual drops keep their
-    # own thresholds; this is the line that catches the case none of them sees - five
-    # names with no price and five with no risk estimate is ten names out and each
-    # reader inside its own limit - and it is what the owner reads.
+    # One list of the names *tonight's data* could not support, from every reader that
+    # decided one, and one sentence for the message. The universe's own exclusions are
+    # not here: those are a standing rule over the artifacts, unchanged from evening to
+    # evening, reported on their own line with their ages (eight of them on 2026-10-30),
+    # and counting them would put the night over the threshold before a single name
+    # misbehaved. The individual drops keep their own thresholds; this is the line that
+    # catches what none of them sees - six names with no price and six with no risk
+    # estimate is twelve names out with each reader inside its own limit - and it is
+    # what the owner reads.
     excluded_tonight = exclusions.collect(
-        (
-            exclusions.Exclusion(
-                str(row["ticker"]),
-                str(row.get("reason") or "not in the universe"),
-                "universe",
-            )
-            for row in excluded_detail
-        ),
         (
             exclusions.Exclusion(name, "no usable close at the close", "prices")
             for name in dropped_no_price

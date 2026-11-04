@@ -769,19 +769,15 @@ def compose(
             f"Not easy to borrow, so not opened: "
             f"{_borrow_skip_list(skipped_borrow)}."
         )
-    tonight_line = _excluded_tonight_line(excluded_tonight)
-    if excluded and not tonight_line:
+    if excluded:
         # The SPY names that never reached the sizing, each with the cause and how
         # long it has been out. The list is a rule over the artifacts, so it only
         # ever grows (4 names on 2026-09-25, 7 by 2026-10-06), and until this line
         # nothing in the message said the book was short of them at all: a name
         # outside the book for a fortnight is not the same fact as one excluded
         # tonight, and the owner is the only one who can fix either.
-        #
-        # One line, not two: when the evening's own list is here it already names
-        # these, with their reasons, and printing the universe's version beside it
-        # reads as two different problems about the same name.
         lines.append(f"Excluded from the universe: {_excluded_list(excluded)}.")
+    tonight_line = _excluded_tonight_line(excluded_tonight)
     if tonight_line:
         # One sentence, every name, with the reason beside it. This is the line the
         # owner asked for after a week in which seven different faults each had their
