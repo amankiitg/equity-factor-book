@@ -716,3 +716,30 @@ code is in `UNREACHABLE_REFUSALS`, so the leg is reported as owed and **never ca
 the next evening - the paths that could otherwise resend it (a remainder, a carried leg, a
 left-universe close, a guard trade) all end in the same submit loop. The message names it
 on the refused line with the reason.
+
+## 2026-11-03: the evening stopped because the share counts were one session old
+
+Owner: the evening's share-count cache. The run stopped before pricing with
+`shares 1 session behind (allowed 0)`. No book, no orders, the second missed close in a
+row (2026-11-02 was the NaN price, 2026-11-03 this).
+
+The gate reads the shares artifact's **fetch** date, with an allowance of zero, and the
+date is the newest successful fetch in the panel rather than any one name. The artifact is
+built by `efb.probes.fetch_share_history`, which asks the vendor only for tickers **not
+already cached**, because a share count does not change unless a corporate action does. So
+the stamp advances only on an evening that adds a ticker, and stands still on every other.
+Measured from the current seed: the universe is 503 names, the cache holds 858, and exactly
+BE and P are missing. Those two were the new price names on 2026-11-02, so the 2026-11-02
+run fetched them and stamped the artifact 2026-11-02. The 2026-11-03 run added no name, so
+the stamp stayed there: one session behind, and the gate refused.
+
+KVUE is not the cause: the check never looks at a name, and the panel's newest fetch is not
+the oldest name's. The failed 2026-11-02 run is not the cause either: its shares step
+completed, and what it left incomplete was the close.
+
+`extend_shares` now catches up. When the stamp is behind the close it asks again for the
+names that **printed on that close**, replacing their rows, and skips the names that have
+left trading: an acquired name cannot produce a new row, and waiting for one is waiting
+forever. The gate's rule is untouched, which the tests pin from both sides: a refresh that
+answers moves the stamp, and a refresh that raises leaves it where it was and the evening
+still stops.

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import io
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -417,6 +417,7 @@ def fetch_share_history(
     cache_path: Path | str = SHARES_CACHE,
     fetcher: Callable[[str], pd.Series | None] | None = None,
     attempts: int = 3,
+    refresh: Iterable[str] | None = None,
 ) -> pd.DataFrame:
     """Share-count history per ticker, cached so each symbol is asked once.
 
@@ -425,6 +426,14 @@ def fetch_share_history(
     date, so a rebuild does not re-ask, and a ticker whose calls all fail
     gets an `error` marker instead, because a network failure must not be
     recorded as "this company has no share count".
+
+    `refresh` names tickers to ask again even though they are cached, and their
+    stored rows are **replaced** rather than appended to. A share count does not
+    change unless a corporate action does, which is why a cached name is normally
+    never re-asked; but the freshness the gate reads is the fetch timestamp, and a
+    cache that is only ever added to can only get older. The evening passes the
+    names that are still trading when the stamp is behind, so the stamp advances
+    without inventing rows for a name that has left trading.
     """
     path = Path(cache_path)
     columns = ["ticker", "date", "shares", "source", "fetched_at", "status"]
@@ -441,11 +450,18 @@ def fetch_share_history(
     wanted = list(dict.fromkeys(tickers))
     known = set(cached["ticker"]) if len(cached) else set()
     missing = [t for t in wanted if t not in known]
-    if missing:
+    again = [t for t in dict.fromkeys(refresh or ()) if t in known]
+    if again:
+        # Replace, do not append: the stored rows for a refreshed name are the
+        # answer from an earlier evening, and keeping them would leave the file
+        # growing a series per night for the same name.
+        cached = cached.loc[~cached["ticker"].isin(again)].reset_index(drop=True)
+    ask = [*missing, *again]
+    if ask:
         fetch = fetcher or _yfinance_shares_fetcher
         now = pd.Timestamp.now().isoformat(timespec="seconds")
         rows: list[dict[str, object]] = []
-        for ticker in missing:
+        for ticker in ask:
             symbol = ticker.replace(".", "-")
             series: pd.Series | None = None
             failed = False
