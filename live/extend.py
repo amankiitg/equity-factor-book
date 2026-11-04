@@ -318,7 +318,13 @@ def _trading_names(root: Path, end: pd.Timestamp) -> list[str]:
     on_day = prices.index.get_level_values("date") == end
     close = prices.loc[on_day, "close"]
     tickers = prices.index.get_level_values("ticker")[on_day]
-    return sorted({str(ticker) for ticker, value in zip(tickers, close) if pd.notna(value)})
+    return sorted(
+        {
+            str(ticker)
+            for ticker, value in zip(tickers, close, strict=True)
+            if pd.notna(value)
+        }
+    )
 
 
 def extend_shares(
@@ -345,7 +351,11 @@ def extend_shares(
     it was, and the evening still stops.
     """
     root = Path(data_root) if data_root is not None else DATA_ROOT
-    target = pd.Timestamp(end).normalize() if end is not None else pd.Timestamp.now().normalize()
+    target = (
+        pd.Timestamp(end).normalize()
+        if end is not None
+        else pd.Timestamp.now().normalize()
+    )
     if tickers is None:
         tickers = _live_tickers(root)
     before = set()

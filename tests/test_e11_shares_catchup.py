@@ -76,14 +76,21 @@ def test_a_stale_cache_is_refreshed_for_the_names_that_still_trade(
 
     extend.extend_shares(data_root=tree, end=str(CLOSE.date()))
 
-    assert asked == ["AAPL"], "KVUE prints no close on the session, so it cannot be refreshed"
+    assert asked == [
+        "AAPL"
+    ], "KVUE prints no close on the session, so it cannot be refreshed"
     frame = pd.read_parquet(tree / "raw" / "shares_history.parquet")
     assert extend._shares_fetch_stamp(tree / "raw" / "shares_history.parquet") > STAMPED
     # the retired name keeps the row it had; nothing is invented for it
     kvue = frame.loc[frame["ticker"] == "KVUE"]
     assert len(kvue) == 1
     assert pd.Timestamp(kvue.iloc[0]["fetched_at"]) == STAMPED
-    assert staleness.sessions_behind(extend._shares_fetch_stamp(tree / "raw" / "shares_history.parquet"), CLOSE) == 0
+    assert (
+        staleness.sessions_behind(
+            extend._shares_fetch_stamp(tree / "raw" / "shares_history.parquet"), CLOSE
+        )
+        == 0
+    )
 
 
 def test_the_refresh_replaces_the_rows_rather_than_appending(
@@ -117,11 +124,20 @@ def test_a_failed_refresh_leaves_the_gate_closed(
 
     extend.extend_shares(data_root=tree, end=str(CLOSE.date()))
 
-    assert extend._shares_fetch_stamp(tree / "raw" / "shares_history.parquet") == STAMPED
-    assert staleness.sessions_behind(extend._shares_fetch_stamp(tree / "raw" / "shares_history.parquet"), CLOSE) == 1
+    assert (
+        extend._shares_fetch_stamp(tree / "raw" / "shares_history.parquet") == STAMPED
+    )
+    assert (
+        staleness.sessions_behind(
+            extend._shares_fetch_stamp(tree / "raw" / "shares_history.parquet"), CLOSE
+        )
+        == 1
+    )
 
 
-def test_a_fresh_cache_asks_nobody(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_fresh_cache_asks_nobody(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The catch-up is a repair, not a nightly full read."""
     tree = _tree(tmp_path)
     asked: list[str] = []
