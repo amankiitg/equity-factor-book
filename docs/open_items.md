@@ -743,3 +743,41 @@ left trading: an acquired name cannot produce a new row, and waiting for one is 
 forever. The gate's rule is untouched, which the tests pin from both sides: a refresh that
 answers moves the stamp, and a refresh that raises leaves it where it was and the evening
 still stops.
+
+## 2026-11-04: one name never stops the book, and a takeover is said in advance
+
+Owner: the evening's failure policy. Part B of the 2026-11-04 brief.
+
+Every failure since launch had one shape: a single name's data stopped the whole evening.
+The SKYD warrant with no price, SKYD.WS read as a spin-off child, CTVA's restatement, HON's
+contradicted ratio, KVUE's NaN close, KVUE retired at the broker, the share counts one
+session stale. Each was answered where it was found, with its own list, its own wording and
+its own threshold.
+
+`live/exclusions.py` is the one mechanism now. A name out tonight carries a reason and the
+reader that decided it; `collect` merges the readers' lists with the first reason winning;
+`guard` stops the night when more than ten names are out, which is the line the no-price and
+no-risk drops already drew and the point at which the input rather than the names is the
+suspect; `sentence` writes the one line the mail carries. `build_proposal` publishes the
+merged list as `excluded_tonight`, and the corporate-actions suspensions - which had no
+consumer in the runner at all, so the CTVA shape never reached the record - are now on the
+same line. `docs/name_level_checks.md` is the inventory.
+
+The threshold is scoped to *tonight*: eight names leave the universe every evening by the
+standing rule, and counting those put a healthy night over the line on the first attempt. The
+universe keeps its own line, with its ages.
+
+`alpaca.pending_acquisitions` is the read-only warning beside it: the broker's merger
+announcements once a run, held symbols only, any record that is not a completion counted as
+pending, and one mail line, `Pending acquisition: XYZ by ABC (terms)` or `(terms not
+published)`. It changes nothing that is sent. The feed carries no dates and no terms for the
+KVUE record, so the terms a reader needs still come from the filing; the line's job is to say
+the name is on either side of a deal before the asset stops trading.
+
+Identity proof for Part B: 2026-10-27 to 2026-10-30, identical name sets and a maximum weight
+difference of 0.0 between `main` and the branch in the same tree. Gate for both parts: the
+same 79 documented ids as `main`, zero new.
+
+What is still open from this: the pending-acquisition line has never fired on real data,
+because no held name in the 90-day window carries a non-completion merger record; the first
+real one will be the test that matters.
