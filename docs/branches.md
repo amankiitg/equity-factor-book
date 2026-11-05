@@ -13,6 +13,29 @@ tree kept on this machine.
 The two study branches are gone as branches: their write-ups and result JSONs are in
 `docs/research/` on `main`, and the scripts that produced them are in the archive tags.
 
+## The merge checklist for an evening-path change
+
+A change to anything the evening or the morning computes, sends or reports goes through
+these in order, and the report for it shows each result:
+
+1. Gates in a fresh shell without `.env`, compared with `main` in the same tree: zero new
+   failing ids.
+2. An identity proof on the last four good closes when the change can move a book.
+3. **The rehearsal** (`scripts/rehearse_evening.py`) for 2026-11-02, 2026-11-03 and
+   2026-11-04 - the three closes that stopped - and one ordinary close (2026-10-29).
+   Each must end `ok` and filed, with every name-level problem on the `Excluded tonight`
+   or refused line, and no stop, no crash and no `not confirmed`. The four end statuses
+   and the four message bodies go in the report.
+4. Merge inside a window: 16:00-21:30 UTC once that day's morning shows `ok`, or
+   23:15-14:30 UTC after the evening's run has finished. Never 14:30-16:00 or
+   21:30-23:15.
+
+The rehearsal never writes: `efb.proposals`, `positions`, `orders` and `run_status` are
+keyed by the trade date, so a plain dry run of a past close would overwrite the record of
+a night that has already traded. The script suppresses every store write and composes the
+message instead of sending it, and it stops at the decision path rather than
+`run_live_daily.main()` because `main()` takes its target close from the clock.
+
 ## What is left, and why
 
 | branch | tip | worktree | why it stays |

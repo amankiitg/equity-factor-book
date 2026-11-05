@@ -403,6 +403,7 @@ def compose(
     excluded: list[dict[str, Any]] | None = None,
     excluded_tonight: list[dict[str, Any]] | None = None,
     pending_acquisitions: list[dict[str, Any]] | None = None,
+    asset_check: dict[str, Any] | None = None,
     thin_adv: list[dict[str, Any]] | None = None,
     init: bool = False,
     establishment: bool = False,
@@ -778,6 +779,9 @@ def compose(
         # outside the book for a fortnight is not the same fact as one excluded
         # tonight, and the owner is the only one who can fix either.
         lines.append(f"Excluded from the universe: {_excluded_list(excluded)}.")
+    degraded = _asset_check_line(asset_check)
+    if degraded:
+        lines.append(degraded)
     for acquisition in _pending_acquisition_lines(pending_acquisitions):
         lines.append(acquisition)
     tonight_line = _excluded_tonight_line(excluded_tonight)
@@ -1030,6 +1034,27 @@ def _refused_list(rows: list[dict[str, Any]]) -> str:
     if count > MINIMUM_SKIP_NAMES:
         shown += f"; and {count - MINIMUM_SKIP_NAMES} more"
     return shown
+
+
+def _asset_check_line(summary: dict[str, Any] | None) -> str:
+    """One line when the broker's asset list could not be read, or "".
+
+    The asset-status check is what stops a leg for a security the broker has retired.
+    On 2026-11-04 its batched read failed silently - the broker's feed carried an
+    exchange value the SDK's model rejected - the resolver fell back to "assume the
+    name is live", and KVUE reached the broker. The fallback is a name-by-name read
+    now, and this line is how the owner sees that the night ran in the degraded mode.
+    """
+    if not isinstance(summary, dict):
+        return ""
+    if str(summary.get("feed") or "ok") != "unreadable":
+        return ""
+    checked = int(summary.get("checked_one_by_one") or 0)
+    reason = str(summary.get("reason") or "no reason recorded").strip()
+    return (
+        f"Broker asset list unreadable tonight ({reason}); {checked} name"
+        f"{'' if checked == 1 else 's'} checked one by one."
+    )
 
 
 def _pending_acquisition_lines(rows: list[dict[str, Any]] | None) -> list[str]:
@@ -1630,6 +1655,7 @@ def notify_run(
     excluded: list[dict[str, Any]] | None = None,
     excluded_tonight: list[dict[str, Any]] | None = None,
     pending_acquisitions: list[dict[str, Any]] | None = None,
+    asset_check: dict[str, Any] | None = None,
     api_key: str | None = None,
     poster: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
@@ -1661,6 +1687,7 @@ def notify_run(
         excluded=excluded,
         excluded_tonight=excluded_tonight,
         pending_acquisitions=pending_acquisitions,
+        asset_check=asset_check,
         no_short=no_short,
         gross=gross,
         worst_input=worst_input,

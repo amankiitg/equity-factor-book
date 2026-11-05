@@ -112,12 +112,13 @@ INCOMPLETE_STATUSES = frozenset(
 )
 INCOMPLETE_REASON_CODES = frozenset(
     {
+        # A 4xx the broker gave for a reason that is not the security itself. The
+        # asset refusals are in `REFUSAL_REASON_CODES` below and answer first.
         alpaca.REASON_ALPACA_ERROR,
         alpaca.REASON_SUBMIT_UNKNOWN,
         alpaca.REASON_SKIPPED_AFTER_HALT,
         alpaca.REASON_QTY_ROUNDS_TO_ZERO,
         alpaca.REASON_CLOSE_QTY_UNKNOWN,
-        alpaca.REASON_NOT_TRADABLE,
     }
 )
 
@@ -136,6 +137,15 @@ REFUSAL_REASON_CODES = frozenset(
     {
         alpaca.REASON_NOT_SHORTABLE,
         alpaca.REASON_SHORT_CHECK_FAILED,
+        # The broker's own answer that the security cannot be traded: an asset that
+        # is not active (KVUE on 2026-11-04, "asset KVUE is not active"), one this
+        # account may not trade, or a ticker the feed carries under no symbol. None
+        # of them can be accepted on a retry, so they are refusals and the close
+        # files. They were unreachable here while the broker's 4xx was recorded as a
+        # generic API error, which is what left that night unfiled.
+        alpaca.REASON_ASSET_INACTIVE,
+        alpaca.REASON_NOT_TRADABLE,
+        alpaca.REASON_SYMBOL_NOT_FOUND,
     }
 )
 
@@ -477,6 +487,18 @@ def connect(dry_run: bool = True) -> object | None:
     return alpaca.connect(dry_run)
 
 
+# The asset check of the last submit, as `alpaca.SymbolResolver.asset_check_summary`
+# reports it: `{"feed": "ok"|"unreadable", "reason": ..., "checked_one_by_one": N}`.
+# None before any live submit in this process, which is the honest answer for a dry
+# run and for a test that never reaches the broker.
+LAST_ASSET_CHECK: dict[str, object] | None = None
+
+
+def last_asset_check() -> dict[str, object] | None:
+    """The last live submit's asset-check summary, or None."""
+    return LAST_ASSET_CHECK
+
+
 def submit_orders(
     orders: list[OrderSpec],
     client: object | None,
@@ -548,7 +570,18 @@ def submit_orders(
         if client is None:  # pragma: no cover - guarded by connect()
             raise RuntimeError("live submission needs a client")
     if not dry_run and client is not None:
-        fills = alpaca.submit_market_orders(orders, client, prices or {}, close=close)
+        # One resolver for the whole book, so the book is checked against the
+        # broker's own assets once rather than once per leg, and so what the check
+        # had to do - the batched list or a name-by-name read - can be reported.
+        resolver = alpaca.SymbolResolver(client)
+        fills = alpaca.submit_market_orders(
+            orders, client, prices or {}, close=close, resolver=resolver
+        )
+        # How the asset check was made, for the record and the message. A degraded
+        # check must be visible, so the summary travels out of the submit rather than
+        # being recomputed from a second read.
+        global LAST_ASSET_CHECK
+        LAST_ASSET_CHECK = resolver.asset_check_summary()
         for fill in fills:
             record: dict[str, object] = {
                 "ticker": fill.ticker,
@@ -740,6 +773,11 @@ def run_morning(
         # the names it spells differently from the loop. Both are named in the
         # message, and the caller reads them from here.
         "no_asset": no_asset_rows(records),
+        # How the asset check was made on this submit: the batched list, or a
+        # name-by-name read with the reason it had to. The message says so when it
+        # degraded, because a safety check that quietly stops checking is worse
+        # than one that fails.
+        "asset_check": last_asset_check(),
         "renamed": renamed_symbols(records),
         # A leg that was halted, left in an unknown state or rejected leaves the
         # run incomplete: the day is not done, and the caller must not file it as

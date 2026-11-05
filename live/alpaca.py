@@ -24,7 +24,7 @@ import math
 import os
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC
 from typing import Any, TypeVar, cast
@@ -329,15 +329,47 @@ REASON_CLOSE_QTY_UNKNOWN = "CLOSE_QUANTITY_UNKNOWN"
 SKIPPED = "SKIPPED"
 
 
+# What the broker says when the security itself cannot be traded. Its words, not a
+# guess: on 2026-11-04 the answer to a KVUE close was `{"code":40010001,"message":
+# "asset KVUE is not active"}`, and the same code comes back for a name the account
+# may not trade. These are definitive - a retry is told the same thing - so the leg
+# is a refusal and the close files, rather than an uncertainty that keeps the day
+# open and the job reporting an error.
+PERMANENT_REFUSAL_PHRASES = (
+    "is not active",
+    "not tradable",
+    "is not tradable",
+    "asset is not active",
+    "cannot be traded",
+    "not allowed to trade",
+)
+
+
+def definitive_asset_refusal(exc: Exception) -> str | None:
+    """The asset code when the broker's own message says the security is unusable."""
+    text = str(exc).lower()
+    if not any(phrase in text for phrase in PERMANENT_REFUSAL_PHRASES):
+        return None
+    if "not tradable" in text or "cannot be traded" in text or "not allowed" in text:
+        return REASON_NOT_TRADABLE
+    return REASON_ASSET_INACTIVE
+
+
 def classify_submit_failure(exc: Exception) -> tuple[str, bool]:
     """(reason_code, halts_run) for a submit that raised.
 
     An `APIError` means the broker evaluated the order and declined it, so the
-    state is known, the leg is recorded and the book keeps trading. Anything else
-    is transport-class: the order may have arrived, so submission halts and the
-    remaining legs are recorded as not attempted.
+    state is known, the leg is recorded and the book keeps trading. A 4xx that says
+    the asset itself cannot be traded is stronger than "the broker declined": it
+    can never be accepted, so it is recorded with the asset code, which is in
+    `UNREACHABLE_REFUSALS` and in the refusal set the day is filed by. Anything
+    else is transport-class: the order may have arrived, so submission halts and
+    the remaining legs are recorded as not attempted.
     """
     if API_ERROR_CLS is not None and isinstance(exc, API_ERROR_CLS):
+        asset_code = definitive_asset_refusal(exc)
+        if asset_code is not None:
+            return asset_code, False
         return REASON_ALPACA_ERROR, False
     return REASON_SUBMIT_UNKNOWN, True
 
@@ -578,6 +610,66 @@ def _skipped(
     )
 
 
+class BrokerAsset:
+    """One asset as the checks need it, from a dict row or an SDK object.
+
+    The feed is read as raw dicts because the SDK's model validates `exchange`
+    against a fixed list, and the broker added one the model does not know (`TXSE`,
+    ten rows on 2026-11-04): the whole list failed to parse, the resolver fell back
+    to "keep the run's own spelling" for every ticker, and the asset-status check
+    was silently off for the night. A row that parses into this carries only what
+    the checks use, so a new enum value cannot disable them.
+    """
+
+    __slots__ = ("symbol", "id", "status", "tradable", "shortable", "easy_to_borrow")
+
+    def __init__(
+        self,
+        symbol: str,
+        id: str = "",
+        status: str = "",
+        tradable: bool = False,
+        shortable: bool = False,
+        easy_to_borrow: bool = False,
+    ) -> None:
+        self.symbol = symbol
+        self.id = id
+        self.status = status
+        self.tradable = tradable
+        self.shortable = shortable
+        self.easy_to_borrow = easy_to_borrow
+
+    def __repr__(self) -> str:  # pragma: no cover - a diagnostic
+        return (
+            f"BrokerAsset(symbol={self.symbol!r}, status={self.status!r}, "
+            f"tradable={self.tradable!r})"
+        )
+
+    @classmethod
+    def from_row(cls, row: Any) -> BrokerAsset:
+        def _flag(name: str) -> bool:
+            value = (
+                row.get(name) if isinstance(row, Mapping) else getattr(row, name, False)
+            )
+            return bool(value)
+
+        def _text(name: str) -> str:
+            value = (
+                row.get(name) if isinstance(row, Mapping) else getattr(row, name, "")
+            )
+            text = getattr(value, "value", value)
+            return str(text or "")
+
+        return cls(
+            symbol=_text("symbol"),
+            id=_text("id"),
+            status=_text("status"),
+            tradable=_flag("tradable"),
+            shortable=_flag("shortable"),
+            easy_to_borrow=_flag("easy_to_borrow"),
+        )
+
+
 @dataclass(frozen=True)
 class SymbolResolution:
     """Which symbol the broker carries a ticker under, and how that was found."""
@@ -645,6 +737,12 @@ class SymbolResolver:
         # is how a leg can say "acquired" rather than "no such ticker".
         self._inactive_by_symbol: dict[str, Any] | None = None
         self._inactive_failed = False
+        # How the status check was made, for the record and the message. A check
+        # that had to degrade must be visible: `reason` is the class and message of
+        # whatever stopped the batched read, and `checked_one_by_one` counts the
+        # names verified with a single-symbol read instead.
+        self._feed_reason = ""
+        self._checked_one_by_one = 0
 
     def _load(self) -> None:
         """The feed, once per run, or the mark that it could not be read."""
@@ -654,30 +752,67 @@ class SymbolResolver:
             if self._client is None:
                 self._feed_failed = True
                 return
-            try:
-                from alpaca.trading.enums import AssetClass, AssetStatus  # type: ignore
-                from alpaca.trading.requests import GetAssetsRequest  # type: ignore
-
-                self._assets = list(
-                    self._client.get_all_assets(
-                        GetAssetsRequest(
-                            status=AssetStatus.ACTIVE, asset_class=AssetClass.US_EQUITY
-                        )
-                    )
-                )
-            except Exception as exc:  # noqa: BLE001 - the fallback is the old path
-                logger.warning(
-                    "the broker's asset feed could not be read (%s), so every "
-                    "ticker keeps the run's own spelling",
-                    type(exc).__name__,
-                )
+            self._assets = self._read_feed("active")
+            if self._assets is None:
                 self._feed_failed = True
                 return
         self._by_symbol = {
-            str(getattr(asset, "symbol", "") or ""): asset for asset in self._assets
+            asset.symbol: asset for asset in self._assets if asset.symbol
         }
-        self._by_id = {
-            str(getattr(asset, "id", "") or ""): asset for asset in self._assets
+        self._by_id = {asset.id: asset for asset in self._assets if asset.id}
+
+    def _read_feed(self, status: str) -> list[BrokerAsset] | None:
+        """One status's US equities, as plain rows, or None when it cannot be read.
+
+        The raw endpoint first: its rows are dicts, so a value the SDK's model does
+        not know cannot fail the whole list. The SDK path is the fallback, and the
+        reason it failed is kept for the message rather than swallowed.
+        """
+        if self._client is None:
+            self._feed_reason = "no broker client"
+            return None
+        try:
+            rows = self._client.get(
+                "/assets",
+                data={"status": status, "asset_class": "us_equity"},
+            )
+            assets = [BrokerAsset.from_row(row) for row in rows or []]
+            if assets:
+                return assets
+            self._feed_reason = "the feed answered no rows"
+        except Exception as exc:  # noqa: BLE001 - the SDK path gets its own try
+            # Deliberately not silent: a degraded check says so in the message.
+            if not self._feed_reason:
+                self._feed_reason = f"{type(exc).__name__}: {exc}"
+            logger.warning(
+                "the raw asset feed could not be read (%s), trying the SDK",
+                type(exc).__name__,
+            )
+        try:
+            from alpaca.trading.enums import AssetClass, AssetStatus  # type: ignore
+            from alpaca.trading.requests import GetAssetsRequest  # type: ignore
+
+            wanted = AssetStatus.ACTIVE if status == "active" else AssetStatus.INACTIVE
+            rows = self._client.get_all_assets(
+                GetAssetsRequest(status=wanted, asset_class=AssetClass.US_EQUITY)
+            )
+            return [BrokerAsset.from_row(row) for row in rows or []]
+        except Exception as exc:  # noqa: BLE001 - reported through the reason
+            self._feed_reason = self._feed_reason or f"{type(exc).__name__}: {exc}"
+            logger.warning(
+                "the broker's asset feed could not be read (%s), so each name "
+                "submitted tonight is checked with a single-symbol read",
+                type(exc).__name__,
+            )
+            return None
+
+    def asset_check_summary(self) -> dict[str, Any]:
+        """How tonight's asset-status check was made, for the manifest and the mail."""
+        degraded = self._feed_failed or bool(self._checked_one_by_one)
+        return {
+            "feed": "unreadable" if self._feed_failed else "ok",
+            "reason": self._feed_reason if degraded else "",
+            "checked_one_by_one": int(self._checked_one_by_one),
         }
 
     def _load_inactive(self) -> None:
@@ -693,27 +828,16 @@ class SymbolResolver:
         if self._client is None:
             self._inactive_failed = True
             return
-        try:
-            from alpaca.trading.enums import AssetClass, AssetStatus  # type: ignore
-            from alpaca.trading.requests import GetAssetsRequest  # type: ignore
-
-            assets = list(
-                self._client.get_all_assets(
-                    GetAssetsRequest(
-                        status=AssetStatus.INACTIVE, asset_class=AssetClass.US_EQUITY
-                    )
-                )
-            )
-        except Exception as exc:  # noqa: BLE001 - the history path still answers
+        assets = self._read_feed("inactive")
+        if assets is None:
             logger.warning(
-                "the broker's inactive asset feed could not be read (%s), so a "
-                "retired ticker is reported as unresolved",
-                type(exc).__name__,
+                "the broker's inactive asset feed could not be read, so a retired "
+                "ticker is answered by a single-symbol read instead",
             )
             self._inactive_failed = True
             return
         self._inactive_by_symbol = {
-            str(getattr(asset, "symbol", "") or ""): asset for asset in assets
+            asset.symbol: asset for asset in assets if asset.symbol
         }
 
     def _history_asset_id(self, ticker: str) -> str:
@@ -762,9 +886,11 @@ class SymbolResolver:
             return self._cache[key]
         self._load()
         if self._by_symbol is None:
-            # The feed could not be read: keep the run's own spelling and let the
-            # broker answer, rather than stopping the book over a failed read.
-            result = SymbolResolution(key, key, "", False, False, "")
+            # The feed could not be read. Asking the broker about this one name is
+            # the fallback, and it is counted and reported: assuming the name is
+            # live because a batch read failed is how KVUE reached the broker on
+            # 2026-11-04 and came back "asset KVUE is not active".
+            result = self._check_one(key)
         elif key in self._by_symbol:
             asset = self._by_symbol[key]
             result = SymbolResolution(
@@ -774,6 +900,51 @@ class SymbolResolver:
             result = self._resolve_stale(key)
         self._cache[key] = result
         return result
+
+    def _check_one(self, ticker: str) -> SymbolResolution:
+        """One name's asset, read on its own, when the list could not be read.
+
+        A retired asset is reported as such; a live one keeps the run's spelling; a
+        read that fails is `SHORT_CHECK_FAILED`-class uncertainty and the leg is
+        refused rather than sent on an assumption. Every call is counted so the
+        message can say how many names were checked this way.
+        """
+        self._checked_one_by_one += 1
+        if self._client is None:
+            return SymbolResolution(
+                ticker, ticker, "", False, False, "no broker client to check the asset"
+            )
+        try:
+            asset = BrokerAsset.from_row(self._client.get_asset(ticker))
+        except Exception as exc:  # noqa: BLE001 - a failed check is not a licence
+            logger.warning(
+                "the asset for %s could not be checked (%s), so its leg is refused",
+                ticker,
+                type(exc).__name__,
+            )
+            return SymbolResolution(
+                ticker,
+                "",
+                "",
+                False,
+                True,
+                f"{ticker}: the broker's asset record could not be read "
+                f"({type(exc).__name__}), so no leg can be sent for it",
+                True,
+            )
+        if asset.status and asset.status.lower() != "active":
+            return SymbolResolution(
+                ticker,
+                "",
+                asset.id,
+                False,
+                True,
+                self._retired_detail(ticker, asset),
+                True,
+            )
+        return SymbolResolution(
+            ticker, asset.symbol or ticker, asset.id, False, False, ""
+        )
 
     def _resolve_stale(self, ticker: str) -> SymbolResolution:
         """A ticker the active feed does not carry: renamed, retired, or gone."""
@@ -811,11 +982,36 @@ class SymbolResolver:
         )
 
     def _retired_asset(self, ticker: str) -> Any | None:
-        """The broker's own record of a ticker it carries but no longer trades."""
+        """The broker's own record of a ticker it carries but no longer trades.
+
+        The inactive list answers in one request; when it could not be read, or does
+        not carry the ticker (as on 2026-11-04, when KVUE was in neither list), the
+        name is read on its own, because a status is the one thing a leg cannot be
+        sent without.
+        """
         self._load_inactive()
-        if self._inactive_by_symbol is None:
+        asset = (
+            None
+            if self._inactive_by_symbol is None
+            else self._inactive_by_symbol.get(ticker)
+        )
+        if asset is not None:
+            return asset
+        if self._client is None:
             return None
-        return self._inactive_by_symbol.get(ticker)
+        self._checked_one_by_one += 1
+        try:
+            single = BrokerAsset.from_row(self._client.get_asset(ticker))
+        except Exception as exc:  # noqa: BLE001 - unresolved, as before
+            logger.warning(
+                "the asset for %s could not be read (%s), so it stays unresolved",
+                ticker,
+                type(exc).__name__,
+            )
+            return None
+        if single.status and single.status.lower() != "active":
+            return single
+        return None
 
     def _retired_detail(self, ticker: str, asset: Any) -> str:
         """Why a leg cannot be sent, in the broker's own terms.

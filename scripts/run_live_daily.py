@@ -1319,6 +1319,7 @@ def finish_run(
     init: bool = False,
     excluded_tonight: list[dict[str, Any]] | None = None,
     pending_acquisitions: list[dict[str, Any]] | None = None,
+    asset_check: dict[str, Any] | None = None,
     no_price: list[str] | None = None,
     no_risk: list[dict[str, Any]] | None = None,
     missing_var: int | None = None,
@@ -1597,6 +1598,7 @@ def finish_run(
             )
         ),
         pending_acquisitions=pending_acquisitions or [],
+        asset_check=asset_check,
         # The guard's own reading, so a night it fired is in the message rather
         # than only on the page, and only when the reading is *this* close's: a run
         # that stopped before it built a book has no reading, and the message says
@@ -2378,6 +2380,36 @@ def main() -> int:
             forced_names=forced_names,
         )
         store_orders(as_of, dry_run)
+        # The asset check the submit just made, on the manifest and in the record.
+        # It is known only after the legs are built, so it is written here rather
+        # than at the build: a degraded check (the batched list unreadable, names
+        # verified one by one) must be visible in the document the run is read from,
+        # not only in the mail.
+        asset_check = morning.get("asset_check")
+        if isinstance(asset_check, dict):
+            manifest["asset_check"] = asset_check
+            try:
+                (PROPOSAL_DIR / f"proposal_{as_of}.json").write_text(
+                    json.dumps(manifest, indent=1, sort_keys=True) + "\n"
+                )
+                if str(asset_check.get("feed") or "ok") != "ok":
+                    # Degraded check: the stored copy of the manifest is the one the
+                    # page and the next run read, so it is rewritten from the file
+                    # just updated. The ordinary night - the list read once - is
+                    # already on the stored manifest under `feed: ok` from the build.
+                    store_proposal(
+                        as_of,
+                        run_tree,
+                        dry_run=dry_run,
+                        previous=prior,
+                        prior_settled=True,
+                    )
+            except Exception as exc:  # noqa: BLE001 - the record, not the trading
+                logger.warning(
+                    "the asset check could not be written onto the proposal (%s), "
+                    "so it travels in the message only",
+                    type(exc).__name__,
+                )
         # The dollars tonight's legs moved, per name, for the page's trades-by-reason
         # table. This is the one column there that says where the turnover came from,
         # and it comes from the run's own legs rather than from anything re-derived:
@@ -2576,6 +2608,9 @@ def main() -> int:
         # before a proposal exists and so are not on its manifest.
         excluded_tonight=suspended_names,
         pending_acquisitions=pending_mergers,
+        # How the morning's submit checked each leg's asset. Carried even when it
+        # is healthy, so the manifest records the mode the night was checked in.
+        asset_check=morning.get("asset_check"),
         no_short=_rows(manifest, "dropped_no_short"),
         thin_adv=thin_adv,
         init=first_run,
