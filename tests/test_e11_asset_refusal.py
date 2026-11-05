@@ -82,7 +82,9 @@ def test_tonights_close_files_and_the_other_legs_are_untouched() -> None:
     carried, unreachable = evening_job.carried_forward(
         legs[["trade_date", "ticker", "intended_notional", "reason_code"]],
         None,
-        pd.DataFrame({"ticker": ["AAPL", "KVUE", "MSFT"], "weight": [0.001, -0.014, -0.002]}),
+        pd.DataFrame(
+            {"ticker": ["AAPL", "KVUE", "MSFT"], "weight": [0.001, -0.014, -0.002]}
+        ),
         None,
         as_of=pd.Timestamp("2026-11-05"),
         minimum=250.0,
@@ -96,7 +98,11 @@ def test_tonights_close_files_and_the_other_legs_are_untouched() -> None:
         dry_run=False,
         refused_legs=refused,
         excluded_tonight=[
-            {"ticker": "KVUE", "reason": "the broker reports the asset inactive", "source": "broker"}
+            {
+                "ticker": "KVUE",
+                "reason": "the broker reports the asset inactive",
+                "source": "broker",
+            }
         ],
         unconfirmed_legs=0,
     )
@@ -104,12 +110,21 @@ def test_tonights_close_files_and_the_other_legs_are_untouched() -> None:
     assert "Excluded tonight: KVUE (the broker reports the asset inactive)." in body
     assert "Refused by the broker, so not sent: KVUE (ASSET_INACTIVE)" in body
     # the exclusions line and the refusal line are the same fact told once each way
-    assert exclusions.sentence(
-        [exclusions.Exclusion("KVUE", "the broker reports the asset inactive", "broker")]
-    ) in body
+    assert (
+        exclusions.sentence(
+            [
+                exclusions.Exclusion(
+                    "KVUE", "the broker reports the asset inactive", "broker"
+                )
+            ]
+        )
+        in body
+    )
 
 
-def test_a_feed_that_cannot_be_read_is_a_name_by_name_check_with_a_visible_reason() -> None:
+def test_a_feed_that_cannot_be_read_is_a_name_by_name_check_with_a_visible_reason() -> (
+    None
+):
     """The degraded mode says so, in the mail and in the manifest's own record."""
     summary = {
         "feed": "unreadable",
@@ -125,7 +140,10 @@ def test_a_feed_that_cannot_be_read_is_a_name_by_name_check_with_a_visible_reaso
     )
     assert "Broker asset list unreadable tonight" in body
     # a healthy check prints nothing at all
-    assert notify._asset_check_line({"feed": "ok", "reason": "", "checked_one_by_one": 0}) == ""
+    assert (
+        notify._asset_check_line({"feed": "ok", "reason": "", "checked_one_by_one": 0})
+        == ""
+    )
     assert "Broker asset list unreadable" not in notify.compose(
         status="ok",
         target_close="2026-11-04",
