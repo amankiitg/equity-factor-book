@@ -358,18 +358,22 @@ def test_the_append_path_corrects_the_new_session_and_leaves_history_alone():
     assert not outcome.flags
 
 
-def test_the_append_path_stops_when_the_vendor_flags_a_split_with_no_record():
+def test_a_split_factor_with_no_record_drops_the_name_instead_of_stopping():
     prices = prices_frame([("2026-09-04", "AAA", 51.0, 51.0, 2.0)])
     frame = returns_frame([("2026-09-04", "AAA", -0.49)])
-    with pytest.raises(ValueError) as err:
-        ca.apply_to_append(
-            frame,
-            prices,
-            since=pd.Timestamp("2026-09-03"),
-            split_fetcher=fake_splits({}),
-            close_fetcher=lambda ticker, session: 100.0,
-        )
-    assert "AAA" in str(err.value)
+    outcome = ca.apply_to_append(
+        frame,
+        prices,
+        since=pd.Timestamp("2026-09-03"),
+        split_fetcher=fake_splits({}),
+        close_fetcher=lambda ticker, session: 100.0,
+    )
+    assert len(outcome.suspended) == 1
+    dropped = outcome.suspended[0]
+    assert dropped.ticker == "AAA"
+    assert dropped.session == pd.Timestamp("2026-09-04")
+    assert dropped.ratio is None
+    assert dropped.reason == "the vendor's split factor has no split record behind it"
 
 
 def test_the_append_path_drops_a_name_no_record_explains():
@@ -662,3 +666,38 @@ def test_an_unexplained_adjustment_drops_exactly_one_name_and_the_run_completes(
         pytest.approx(0.02, abs=1e-9)
     )
     assert outcome.returns.loc[(pd.Timestamp("2026-09-04"), "AAA"), "r"] is not pd.NA
+
+
+def test_the_append_path_drops_a_name_the_vendor_has_no_close_for():
+    """A refetch that returns nothing drops the name, it does not stop the run.
+
+    The vendor's own column does not flag AAA, but its appended move is -50%, so
+    the cross-check runs and the refetch comes back empty: the vendor has no
+    adjusted close for that session. The name cannot be priced, so it is dropped
+    for the session with the reason on the record - not left raw, and not a reason
+    to leave a whole book unheld.
+    """
+    prices = prices_frame(
+        [
+            ("2026-09-03", "AAA", 100.0, 100.0, 0.0),
+            ("2026-09-04", "AAA", 50.0, 50.0, 0.0),
+        ]
+    )
+    frame = returns_frame([("2026-09-03", "AAA", 0.0), ("2026-09-04", "AAA", -0.50)])
+
+    outcome = ca.apply_to_append(
+        frame,
+        prices,
+        since=pd.Timestamp("2026-09-03"),
+        split_fetcher=fake_splits({}),
+        close_fetcher=lambda ticker, session: None,
+    )
+
+    assert len(outcome.suspended) == 1
+    dropped = outcome.suspended[0]
+    assert dropped.ticker == "AAA"
+    assert dropped.session == pd.Timestamp("2026-09-04")
+    assert dropped.ratio is None
+    assert dropped.reason == "the vendor returned no adjusted close to cross-check"
+    assert "returned no adjusted close" in dropped.describe()
+    assert outcome.splits == []
