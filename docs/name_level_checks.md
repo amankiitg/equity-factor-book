@@ -55,3 +55,22 @@ risk and broker drops and guards it; `scripts/run_live_daily.py` adds the corpor
 suspensions, which had no consumer before (the CTVA shape stopped at `Outcome.suspended`
 and reached neither the manifest nor the mail); `live/notify.py` prints the one sentence and
 keeps the universe's own standing list on its own line, because the two are different facts.
+
+## The asset check that degrades says so
+
+The broker's asset list is what tells the run a name is retired, and on 2026-11-04 that list
+could not be read at all: the SDK validates `exchange` against a fixed list and the broker
+added `TXSE`, so the whole active list failed to parse and the resolver's fallback answered
+`inactive=False` for every ticker. The check was silently off and one leg reached the broker.
+
+`SymbolResolver._read_feed` now reads the raw rows first, which no new enum value can break,
+and falls back to the SDK. When neither works the run does not go blind: each name it is
+about to submit is read on its own with `_check_one`, `checked_one_by_one` counts them, the
+manifest records `asset_check`, and the evening's message carries one line -
+`Broker asset list unreadable tonight (<reason>); N names checked one by one`. A safety check
+that degrades is visible, never silent, and the rehearsal asserts the line.
+
+The single-symbol read is also what turns KVUE's absence from both lists into "the broker
+reports the asset inactive: merger completion, KMB and KVUE": it is made for a ticker the
+account's own last order under that spelling carries an asset id for, and not for a ticker
+the book has never owned, which the feed simply does not list.

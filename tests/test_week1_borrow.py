@@ -130,9 +130,22 @@ def test_a_borrow_skip_does_not_make_the_run_incomplete() -> None:
     records = _flag_rows([alpaca.REASON_NOT_EASY_TO_BORROW])
     assert morning_job.incomplete_legs(records) == []
 
-    # the negative control: the same leg, refused for a reason that is not a skip
-    for code in (alpaca.REASON_NOT_TRADABLE, alpaca.REASON_SUBMIT_UNKNOWN):
+    # the negative control: the same leg, refused for a reason this run cannot
+    # resolve on its own. `REASON_NOT_TRADABLE` was here until 2026-11-04: the
+    # broker answers `not tradable` for a security it will never accept, which is a
+    # refusal like the rest (see `tests/test_e11_asset_refusal.py`), so the control
+    # is a submit whose outcome is unknown and a generic API error, both of which the
+    # next tick may read differently.
+    for code in (alpaca.REASON_SUBMIT_UNKNOWN, alpaca.REASON_ALPACA_ERROR):
         assert morning_job.incomplete_legs(_flag_rows([code])), code
+
+    # A security the broker says cannot be traded is filed, not retried all night.
+    for code in (
+        alpaca.REASON_NOT_TRADABLE,
+        alpaca.REASON_ASSET_INACTIVE,
+        alpaca.REASON_SYMBOL_NOT_FOUND,
+    ):
+        assert morning_job.incomplete_legs(_flag_rows([code])) == [], code
 
     # Item 19 moved the *shortability* refusal to its own list. The status is
     # `incomplete` either way - the book is a leg short of its target and the message

@@ -781,3 +781,58 @@ same 79 documented ids as `main`, zero new.
 What is still open from this: the pending-acquisition line has never fired on real data,
 because no held name in the 90-day window carries a non-completion merger record; the first
 real one will be the test that matters.
+
+## 2026-11-04 evening: the broker said no, and the run heard a transport error
+
+Owner: the night that finished but was filed INCOMPLETE.
+
+The evening sent 141 legs and the message read `1 leg not confirmed: KVUE
+(ALPACA_API_ERROR)`, so the close stayed unfiled and the job reported an error. Two defects
+behind one symptom.
+
+**The asset feed could not be read.** `GetAssetsRequest` validates each row's `exchange`
+against a fixed list, and the broker's feed now carries `TXSE` on ten rows, so the entire
+active list raised. `SymbolResolver._load` swallowed it and the fallback answered
+`missing=False, inactive=False` for every ticker: the ASSET_INACTIVE check was off for the
+night with no line anywhere saying so. The feed is read as raw dicts now, which no new enum
+value can break, and when neither read works every submitted name is checked one by one,
+counted, put on the manifest and said in the message.
+
+**The broker's own refusal was filed as uncertainty.** KVUE was submitted and the broker
+answered `{"code":40010001,"message":"asset KVUE is not active"}`; a 4xx, but
+`classify_submit_failure` called it a generic API error and `_leg_incomplete` counted that as
+unconfirmed. A 4xx that says the security cannot be traded is now `ASSET_INACTIVE` or
+`NOT_TRADABLE`, both in the refusal set, so the close files and the leg is owed. Only
+transport uncertainty - a timeout, a 5xx, no response - stays "not confirmed".
+
+**The re-run question, answered before anything was changed.** Nothing can be sent twice.
+The cron is `30 15,22 * * 1-5`, so the next tick is 2026-11-05 15:30 UTC and that is
+`reconcile_fills`, not the evening; the evening's target close is `staleness.target_close(now)`,
+so 11-04 is never priced again; every leg's `client_order_id` is deterministic and looked up
+before submit, so a resubmit is a no-op; and KVUE's row has an empty `broker_order_id`
+because no order ever existed. 11-04's 141 legs fill at the 2026-11-05 open.
+
+**The rehearsal.** `scripts/rehearse_evening.py` replays a past close's decision path with
+every store write suppressed and the message composed rather than sent. Four closes:
+2026-10-29, 2026-11-02, 2026-11-03 and 2026-11-04 all end `ok`, filed, with no stop, no
+crash and no "not confirmed", the name-level problems on the `Excluded tonight` line and the
+proposal file each night's morning would have read. It is now a precondition in the merge
+checklist in `docs/branches.md`.
+
+Identity proof: `build_proposal` for 2026-10-27 to 2026-10-30 on `main` and on the branch,
+same tree, same stored book: identical name sets, `max |dw|` 0.0 on all four, `kept_gross`
+1.0 both sides, identical `excluded_tonight`. Gate: the same 153 ids as `main` in the same
+tree, zero new.
+
+What is still open from this: a vendor that returns nothing inside the corporate-action
+cross-check still raises (`live/corporate_actions.py:1124` `_default_refetch`), and the
+rehearsal proved it by stopping on BRK.B's 2010 history when the harness replayed the whole
+record. The evening only re-checks flags from the last session or two, so the exposure is
+narrow, but it is the one name-shaped stop left in the evening path and it wants the CTVA
+treatment - the name dropped for the session and named - with its own replay.
+
+And OKTA joined the universe on 2026-11-04 with `no GICS row`. The GICS table is built from
+a constituents snapshot and a name that joins afterwards has no row; the exclusion is the
+standing universe rule, not tonight's, and it will catch every future addition the same way
+until `scripts/refresh_sectors.py` is applied, which is parked because it moves the whole
+book and needs its own identity proof.
