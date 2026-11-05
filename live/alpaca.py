@@ -952,7 +952,7 @@ class SymbolResolver:
         asset = self._by_id.get(asset_id) if asset_id else None
         symbol = str(getattr(asset, "symbol", "") or "") if asset is not None else ""
         if not symbol:
-            retired = self._retired_asset(ticker)
+            retired = self._retired_asset(ticker, known=bool(asset_id))
             if retired is not None:
                 return SymbolResolution(
                     ticker,
@@ -981,13 +981,18 @@ class SymbolResolver:
             f"{ticker} now trades as {symbol}",
         )
 
-    def _retired_asset(self, ticker: str) -> Any | None:
+    def _retired_asset(self, ticker: str, known: bool = False) -> Any | None:
         """The broker's own record of a ticker it carries but no longer trades.
 
         The inactive list answers in one request; when it could not be read, or does
         not carry the ticker (as on 2026-11-04, when KVUE was in neither list), the
         name is read on its own, because a status is the one thing a leg cannot be
         sent without.
+
+        `known` says the account's own last order under this spelling carries an
+        asset id, which is what makes the single read worth its request: a ticker the
+        book has never bought is simply not listed, and reading it one by one would
+        be a read of a symbol the broker does not have.
         """
         self._load_inactive()
         asset = (
@@ -997,7 +1002,7 @@ class SymbolResolver:
         )
         if asset is not None:
             return asset
-        if self._client is None:
+        if self._client is None or not (known or self._inactive_by_symbol is None):
             return None
         self._checked_one_by_one += 1
         try:
