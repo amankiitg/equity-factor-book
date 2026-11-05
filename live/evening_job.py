@@ -2438,7 +2438,9 @@ def refresh_sectors_additive(
     if snapshot is None:
         return sectors, []
     stamp = as_of or date.today().isoformat()
-    combined, added = universe.additive_sector_refresh(sectors, snapshot, stamp)
+    combined, added = universe.additive_sector_refresh(
+        sectors, snapshot, stamp, holds=universe.SECTOR_HOLDS
+    )
     if added:
         combined.to_parquet(root / "processed" / "sectors.parquet", index=False)
     return combined, added

@@ -259,19 +259,44 @@ def build_sectors(constituents: pd.DataFrame, as_of: str) -> pd.DataFrame:
     return out.sort_values("ticker").reset_index(drop=True)
 
 
+# Names whose sector row is parked. The additive refresh must not add a row for a
+# ticker whose release date is after the stamp date, because its book change is
+# parked until the 2026-11-24 rebalance window (see efb2's PR #2). SKYD, TWLO and
+# VYLR are deliberately NOT here: they may gain a row, and the minimum-history rule
+# (`efb/race.py` MIN_FACTOR_HISTORY / NEXT_DESIGN_WINDOW) keeps them out of the book
+# either way.
+SECTOR_HOLDS: dict[str, str] = {
+    "BE": "2026-11-24",
+    "ILMN": "2026-11-24",
+    "P": "2026-11-24",
+}
+
+
 def additive_sector_refresh(
-    current: pd.DataFrame, snapshot: pd.DataFrame, as_of: str
+    current: pd.DataFrame,
+    snapshot: pd.DataFrame,
+    as_of: str,
+    holds: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """Add a row for every name `snapshot` knows that `current` does not.
 
     Additive only: existing rows are returned exactly as they were, and no row is
     ever removed. A name that left the index still has a sector; a name that
-    joined it and has no row yet gets one stamped `as_of`. Returns the combined
-    frame, sorted by ticker, and the tickers that were added.
+    joined it and has no row yet gets one stamped `as_of`. `holds` parks a name:
+    a ticker whose release date is after `as_of` does not get a row, so a parked
+    book change stays parked. Returns the combined frame, sorted by ticker, and
+    the tickers that were added.
     """
     fresh = build_sectors(snapshot, as_of=as_of)
     known = set(current["ticker"].astype(str))
     added = fresh.loc[~fresh["ticker"].astype(str).isin(known)].copy()
+    if holds:
+        still_held = {
+            ticker.upper() for ticker, release in holds.items() if release > as_of
+        }
+        added = added.loc[
+            ~added["ticker"].astype(str).str.upper().isin(still_held)
+        ].copy()
     if added.empty:
         return current.copy(), []
     combined = pd.concat([current, added], ignore_index=True)

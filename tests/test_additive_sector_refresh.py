@@ -89,3 +89,31 @@ def test_refresh_with_no_snapshot_is_a_no_op(tmp_path) -> None:
     combined, added = evening_job.refresh_sectors_additive(root, as_of="2026-11-04")
     assert added == []
     assert set(combined["ticker"]) == {"AAPL"}
+
+
+def test_held_names_do_not_gain_a_row_before_their_release_date() -> None:
+    current = _sectors(["AAPL"])
+    snapshot = _snapshot(["AAPL", "BE", "SKYD"])
+    combined, added = universe.additive_sector_refresh(
+        current, snapshot, "2026-11-04", holds=universe.SECTOR_HOLDS
+    )
+    # BE is parked until 2026-11-24; SKYD is not held and gains a row.
+    assert added == ["SKYD"]
+    assert "BE" not in set(combined["ticker"])
+
+
+def test_held_names_gain_a_row_on_or_after_their_release_date() -> None:
+    current = _sectors(["AAPL"])
+    snapshot = _snapshot(["AAPL", "BE"])
+    combined, added = universe.additive_sector_refresh(
+        current, snapshot, "2026-11-24", holds=universe.SECTOR_HOLDS
+    )
+    assert added == ["BE"]
+    assert "BE" in set(combined["ticker"])
+
+
+def test_the_hold_list_names_exactly_the_parked_tickers() -> None:
+    assert set(universe.SECTOR_HOLDS) == {"BE", "ILMN", "P"}
+    assert universe.SECTOR_HOLDS["BE"] == "2026-11-24"
+    assert universe.SECTOR_HOLDS["ILMN"] == "2026-11-24"
+    assert universe.SECTOR_HOLDS["P"] == "2026-11-24"
