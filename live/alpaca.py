@@ -366,10 +366,14 @@ def classify_submit_failure(exc: Exception) -> tuple[str, bool]:
     else is transport-class: the order may have arrived, so submission halts and
     the remaining legs are recorded as not attempted.
     """
+    # The broker's own words are checked before the exception's class, because a
+    # refusal stays a refusal however it arrives: a wrapped or re-raised error whose
+    # message says the asset is not active cannot become "not confirmed" on the way
+    # up, which is the state that left 2026-11-04's close unfiled.
+    asset_code = definitive_asset_refusal(exc)
+    if asset_code is not None:
+        return asset_code, False
     if API_ERROR_CLS is not None and isinstance(exc, API_ERROR_CLS):
-        asset_code = definitive_asset_refusal(exc)
-        if asset_code is not None:
-            return asset_code, False
         return REASON_ALPACA_ERROR, False
     return REASON_SUBMIT_UNKNOWN, True
 

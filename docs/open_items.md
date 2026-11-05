@@ -803,7 +803,10 @@ answered `{"code":40010001,"message":"asset KVUE is not active"}`; a 4xx, but
 `classify_submit_failure` called it a generic API error and `_leg_incomplete` counted that as
 unconfirmed. A 4xx that says the security cannot be traded is now `ASSET_INACTIVE` or
 `NOT_TRADABLE`, both in the refusal set, so the close files and the leg is owed. Only
-transport uncertainty - a timeout, a 5xx, no response - stays "not confirmed".
+transport uncertainty - a timeout, a 5xx, no response - stays "not confirmed". The
+broker's words are read before the exception's class, so the same refusal wrapped or
+re-raised on its way up is still a refusal: a message that says the asset is not active or
+not tradable cannot become "not confirmed" by travelling in a different exception.
 
 **The re-run question, answered before anything was changed.** Nothing can be sent twice.
 The cron is `30 15,22 * * 1-5`, so the next tick is 2026-11-05 15:30 UTC and that is

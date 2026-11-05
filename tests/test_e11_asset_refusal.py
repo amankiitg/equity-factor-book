@@ -48,6 +48,32 @@ def test_a_refusal_files_the_close_and_an_uncertainty_does_not() -> None:
     assert morning_job._leg_incomplete("SKIPPED", alpaca.REASON_SUBMIT_UNKNOWN) is True
 
 
+def test_the_brokers_words_are_read_before_the_exceptions_class() -> None:
+    """A refusal stays a refusal however it arrives.
+
+    The 2026-11-04 message was wrapped on its way up in one path and bare in another.
+    Reading the words first means the wrapped copy is still `ASSET_INACTIVE` - filed,
+    named, owed - instead of a transport uncertainty that leaves the day open.
+    """
+    code, halts = alpaca.classify_submit_failure(
+        RuntimeError(f"submit failed: {KVUE_MESSAGE}")
+    )
+    assert code == alpaca.REASON_ASSET_INACTIVE
+    assert halts is False
+
+    # the same for a tradability refusal, which is the other asset code
+    code, halts = alpaca.classify_submit_failure(
+        RuntimeError('{"message":"MSFT is not tradable by this account"}')
+    )
+    assert code == alpaca.REASON_NOT_TRADABLE
+    assert halts is False
+
+    # and a transport failure still halts, because its words say nothing about the asset
+    code, halts = alpaca.classify_submit_failure(TimeoutError("the request timed out"))
+    assert code == alpaca.REASON_SUBMIT_UNKNOWN
+    assert halts is True
+
+
 def test_a_4xx_that_is_not_about_the_asset_stays_a_plain_broker_refusal() -> None:
     code, halts = alpaca.classify_submit_failure(
         _APIError('{"code":40310000,"message":"insufficient buying power"}')
