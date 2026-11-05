@@ -189,8 +189,8 @@ def rehearse(close: str, *, seed_tree: Path | None = None) -> dict[str, Any]:
         # directory: the build runs with `store=True` - the real path, and the only
         # way to get the same file the evening's morning sees - while the store
         # writes it makes are suppressed and counted.
-        saved_dirs = [(evening_job, evening_job.PROPOSAL_DIR)]
-        saved_dirs.append((morning_job, morning_job.PROPOSAL_DIR))
+        saved_evening_dir = evening_job.PROPOSAL_DIR
+        saved_morning_dir = morning_job.PROPOSAL_DIR
         evening_job.PROPOSAL_DIR = proposals
         morning_job.PROPOSAL_DIR = proposals
         try:
@@ -217,8 +217,8 @@ def rehearse(close: str, *, seed_tree: Path | None = None) -> dict[str, Any]:
                     forced_names=set(),
                 )
         finally:
-            for module, original in saved_dirs:
-                module.PROPOSAL_DIR = original
+            evening_job.PROPOSAL_DIR = saved_evening_dir
+            morning_job.PROPOSAL_DIR = saved_morning_dir
         order_path = notify_dry_run(
             notify, close, manifest, morning, outcome, gate, captured
         )
