@@ -2,11 +2,13 @@
 
 Runs `run_live_daily.main()` with the clock pinned to a past close, the dry-run
 flag on (orders are never sent), the out-of-hours window forced open, and the live
-settings applied. The store and the broker are the production ones: reads stay real,
-and the broker is read through the same clients the run uses. Every store *write*
-is patched to raise `RehearsalWrite`, so if the code path reaches a write the
-rehearsal fails closed - nothing is written and the failure is loud, never a silent
-drop or an overwrite of a close that already traded.
+settings applied. The store and the broker are the production ones: reads stay real.
+The dry run resolves each leg's asset read-only through a rehearsal-only broker
+connect (`alpaca.read_only_client`), which fails closed when the keys are absent,
+so a KVUE-type refusal shows in the rehearsal. Every store *write* is patched to
+raise `RehearsalWrite`, so if the code path reaches a write the rehearsal fails
+closed - nothing is written and the failure is loud, never a silent drop or an
+overwrite of a close that already traded.
 
 Usage (owner's machine, with the keys in the environment):
 
@@ -104,11 +106,28 @@ def _block_store_writes() -> ExitStack:
     return stack
 
 
+def _rehearsal_connect(dry_run: bool = False) -> object:
+    """The rehearsal's read-only broker connect, ignoring `dry_run`.
+
+    Fails closed: `alpaca.read_only_client()` raises when the paper keys are
+    absent, so a rehearsal that cannot read the broker stops instead of running
+    blind. The caller uses this client only for asset resolution; the order path
+    stays in dry run, so nothing can be submitted through it.
+    """
+    from live import alpaca
+
+    return alpaca.read_only_client()
+
+
 def rehearse(close: str) -> int:
     """Run the real evening entry point for `close`, writes fail-closed."""
+    from live import morning_job
+
     fixed = pinned_now(close)
-    with patch.object(run_live_daily, "datetime", _FixedClock(fixed)), patch.dict(
-        os.environ, LIVE_ENV
+    with (
+        patch.object(run_live_daily, "datetime", _FixedClock(fixed)),
+        patch.dict(os.environ, LIVE_ENV),
+        patch.object(morning_job, "connect", _rehearsal_connect),
     ):
         with _block_store_writes():
             return run_live_daily.main()
