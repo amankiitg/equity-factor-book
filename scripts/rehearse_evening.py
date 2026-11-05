@@ -110,9 +110,10 @@ def _prepare_tree(close: str, seed_tree: Path | None) -> tuple[Path, Path]:
     extend.extend_prices(data_root=tree, end=close)
     extend.extend_shares(data_root=tree, end=close)
     extend.extend_returns(data_root=tree)
-    from live import corporate_actions
-
-    corporate_actions.apply_to_artifact(tree, since=None)
+    # The corporate-actions rule is applied by `rehearse` with the evening's own
+    # window (`since=before_last`), not here over the whole history: a full replay
+    # re-checks every flag ever recorded, which is a different job and it asks the
+    # vendor for history the evening never touches.
     extend.extend_model(data_root=tree)
     proposals = root / "proposals"
     proposals.mkdir(exist_ok=True)
@@ -183,27 +184,41 @@ def rehearse(close: str, *, seed_tree: Path | None = None) -> dict[str, Any]:
                 for name, weight in held["held"].items()
             ]
         )
-        with _SuppressedWrites() as writes:
-            manifest = evening_job.build_proposal(
-                data_root=tree,
-                as_of=pd.Timestamp(close),
-                nav=float(held["nav"]),
-                store=False,
-                previous=(
-                    prior.set_index("ticker")["weight"].astype(float)
-                    if len(prior)
-                    else None
-                ),
-                shortable=None,
-            )
-            morning = morning_job.run_morning(
-                close,
-                dry_run=True,
-                positions=held["held"],
-                quantities=held.get("held_quantities"),
-                establishment=bool(held["establishment"]),
-                forced_names=set(),
-            )
+        # The proposal the morning reads is the file `build_proposal` writes, so the
+        # two modules' proposal directories are pointed at this close's own temp
+        # directory: the build runs with `store=True` - the real path, and the only
+        # way to get the same file the evening's morning sees - while the store
+        # writes it makes are suppressed and counted.
+        saved_dirs = [(evening_job, evening_job.PROPOSAL_DIR)]
+        saved_dirs.append((morning_job, morning_job.PROPOSAL_DIR))
+        evening_job.PROPOSAL_DIR = proposals
+        morning_job.PROPOSAL_DIR = proposals
+        try:
+            with _SuppressedWrites() as writes:
+                manifest = evening_job.build_proposal(
+                    data_root=tree,
+                    as_of=pd.Timestamp(close),
+                    nav=float(held["nav"]),
+                    store=True,
+                    previous=(
+                        prior.set_index("ticker")["weight"].astype(float)
+                        if len(prior)
+                        else None
+                    ),
+                    shortable=None,
+                )
+                morning = morning_job.run_morning(
+                    close,
+                    data_root=tree,
+                    dry_run=True,
+                    positions=held["held"],
+                    quantities=held.get("held_quantities"),
+                    establishment=bool(held["establishment"]),
+                    forced_names=set(),
+                )
+        finally:
+            for module, original in saved_dirs:
+                module.PROPOSAL_DIR = original
         order_path = notify_dry_run(
             notify, close, manifest, morning, outcome, gate, captured
         )
