@@ -257,3 +257,23 @@ def build_sectors(constituents: pd.DataFrame, as_of: str) -> pd.DataFrame:
         }
     )
     return out.sort_values("ticker").reset_index(drop=True)
+
+
+def additive_sector_refresh(
+    current: pd.DataFrame, snapshot: pd.DataFrame, as_of: str
+) -> tuple[pd.DataFrame, list[str]]:
+    """Add a row for every name `snapshot` knows that `current` does not.
+
+    Additive only: existing rows are returned exactly as they were, and no row is
+    ever removed. A name that left the index still has a sector; a name that
+    joined it and has no row yet gets one stamped `as_of`. Returns the combined
+    frame, sorted by ticker, and the tickers that were added.
+    """
+    fresh = build_sectors(snapshot, as_of=as_of)
+    known = set(current["ticker"].astype(str))
+    added = fresh.loc[~fresh["ticker"].astype(str).isin(known)].copy()
+    if added.empty:
+        return current.copy(), []
+    combined = pd.concat([current, added], ignore_index=True)
+    combined = combined.sort_values("ticker").reset_index(drop=True)
+    return combined, sorted(added["ticker"].astype(str))
