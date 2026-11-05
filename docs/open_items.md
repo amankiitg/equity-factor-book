@@ -839,3 +839,14 @@ a constituents snapshot and a name that joins afterwards has no row; the exclusi
 standing universe rule, not tonight's, and it will catch every future addition the same way
 until `scripts/refresh_sectors.py` is applied, which is parked because it moves the whole
 book and needs its own identity proof.
+
+## 2026-11-05: cvxpy is a research/test dependency missing from pyproject.toml
+
+Owner: research env. `efb/optimize.py` imports `cvxpy`, used only by the
+`mv_constrained` sizing construction; the live evening uses `procedure_6_3` and
+never imports it, so Render does not need it. But `cvxpy` is absent from
+`pyproject.toml` (and `requirements.txt`), so `pip install -e ".[dev]"` does not
+install it and `tests/test_optimize.py`, `tests/test_e11_breadth.py` and
+`tests/test_e11_deploy.py` fail collection with `ModuleNotFoundError`. Add it to
+the `dev` extra (or a research extra) so a fresh dev environment collects the
+full suite.
