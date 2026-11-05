@@ -85,4 +85,4 @@ def test_the_script_refuses_to_write_where_the_rebuild_does_not_read(
     monkeypatch.setattr(record_merger, "_seed_closes", lambda: {})
 
     with pytest.raises(SystemExit, match="EFB_SUPABASE_DB_URL"):
-        record_merger.main(["--session", SESSION, "--write"])
+        record_merger.main(["--session", SESSION, "--apply"])

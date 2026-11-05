@@ -26,13 +26,13 @@ the arithmetic. The return printed here is therefore the return the rebuild writ
 
 Idempotent: the key is '(trade_date, ticker)', so running it twice leaves one row.
 
-Dry run by default. '--write' writes to the store named by 'EFB_SUPABASE_DB_URL', which
+Dry run by default. '--apply' writes to the store named by 'EFB_SUPABASE_DB_URL', which
 is a DML role: the 'cash_per_share' column is added by the migration
 ('docs/migrations/e11_merger_cash.sql'), not from here.
 
     source .env
     python scripts/record_merger.py                 # what it would write
-    python scripts/record_merger.py --write         # the record
+    python scripts/record_merger.py --apply         # the record
 """
 
 from __future__ import annotations
@@ -178,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ratio", type=float, default=RATIO, help="acquirer shares per target share")
     parser.add_argument("--cash", type=float, default=CASH, help="cash per target share")
     parser.add_argument(
-        "--write",
+        "--apply",
         action="store_true",
         help="write the row to the store; otherwise print what would be written",
     )
@@ -212,9 +212,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     print(json.dumps({"row": row}, indent=2, default=str))
-    if not args.write:
+    if not args.apply:
         print()
-        print("dry run: nothing was written; pass --write to record it")
+        print("dry run: nothing was written; pass --apply to record it")
         return 0
     if not store.is_supabase():
         raise SystemExit(
