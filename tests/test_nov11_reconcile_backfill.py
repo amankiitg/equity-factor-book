@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -84,3 +86,36 @@ def test_the_realized_vol_is_the_window_the_page_uses() -> None:
     # One session is not a dispersion, and neither is none.
     assert reconcile.realized_annual_vol_for("2026-07-01", rows) is None
     assert reconcile.realized_annual_vol_for("2026-08-31", pd.DataFrame()) is None
+
+
+def test_backfill_reenodes_jsonb_read_back_as_text(monkeypatch) -> None:
+    """A row read back from Postgres carries jsonb columns as dicts, which the
+    store's write path binds straight to a placeholder and psycopg cannot adapt -
+    the first back-fill attempt for 2026-11-05 raised `ProgrammingError`. The
+    back-fill re-encodes them as JSON text, exactly as the evening wrote them, so
+    the same-day rerun upserts instead of failing again.
+    """
+    frame = pd.DataFrame(
+        [
+            evening_row(
+                traded_risk={"gross": 1.0, "net": 0.0, "top_variance_shares": []},
+                full_risk={"gross": 1.0, "n_names": 499},
+            )
+        ]
+    )
+    written: list[tuple[str, list[dict[str, object]]]] = []
+    monkeypatch.setattr(store, "select", lambda table: frame.copy())
+    monkeypatch.setattr(
+        store, "upsert", lambda table, rows: written.append((table, rows))
+    )
+
+    row = reconcile.backfill("2026-10-08", filled_notional=496340.86)
+
+    assert row is not None
+    upserted = written[0][1][0]
+    assert isinstance(upserted["traded_risk"], str)
+    assert isinstance(upserted["full_risk"], str)
+    assert json.loads(upserted["traded_risk"])["gross"] == 1.0
+    assert json.loads(upserted["full_risk"])["n_names"] == 499
+    # everything else the evening wrote is untouched
+    assert upserted["intended_notional"] == 506978.0
