@@ -294,16 +294,16 @@ def extend_returns(data_root: Path | None = None) -> int:
             outcome.adjusted_return,
             outcome.raw_return,
         )
-    for outcome in corporate_actions.apply_recorded_mergers(
+    for merger_outcome in corporate_actions.apply_recorded_mergers(
         returns_frame, prices_frame, recorded_mergers()
     ):
         logger.info(
             "re-applied %s: the %s return on %s is %s where the prices alone give %s",
-            outcome.merger.label,
-            outcome.merger.target,
-            outcome.session.date(),
-            outcome.adjusted_return,
-            outcome.raw_return,
+            merger_outcome.merger.label,
+            merger_outcome.merger.target,
+            merger_outcome.session.date(),
+            merger_outcome.adjusted_return,
+            merger_outcome.raw_return,
         )
     identity_table = pd.read_parquet(root / "processed" / "ticker_identity.parquet")
     readded_path = root / "processed" / "ticker_identity_readded.parquet"

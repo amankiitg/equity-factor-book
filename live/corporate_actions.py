@@ -1490,7 +1490,7 @@ def _check_one(
                 "%s: the vendor returned no adjusted close for %s; the name is "
                 "dropped for that session",
                 ticker,
-                when.date(),
+                None if when is None else when.date(),
             )
             return (
                 None,

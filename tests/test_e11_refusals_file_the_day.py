@@ -1,4 +1,4 @@
-"""A refusal files the night; the guard says what it looked at; the cap carries names."""
+"""A refusal files the night, the guard speaks, the cap carries."""
 
 from __future__ import annotations
 
@@ -65,11 +65,9 @@ def test_the_refused_line_says_the_leg_is_owed() -> None:
 
 def test_a_quiet_guard_still_reports_what_it_looked_at() -> None:
     """2026-11-05 carried no guard line because "not fired" was stored as None."""
-    names = ["AAA", "BBB", "CCC"]
     rng = np.random.default_rng(7)
     design = rng.normal(size=(3, 2))
     weights = np.array([0.10, -0.05, 0.02])
-    specific = np.array([1e-4, 2e-4, 3e-4])
 
     quiet = evening_job._quiet_guard_block(weights, design, 0.05, nav=1_000_000.0)
     assert quiet["fired"] is False
@@ -90,7 +88,6 @@ def test_a_capped_name_is_carried_to_the_next_session() -> None:
     returned in `unchecked`; passing it back as `carry` puts it at the head of the
     watched list, so it is answered before the budget is spent.
     """
-    session = pd.Timestamp("2026-11-05")
     dates = pd.to_datetime(["2026-11-04", "2026-11-05"])
     index = pd.MultiIndex.from_product(
         [dates, ["AAA", "BBB", "CCC"]], names=["date", "ticker"]

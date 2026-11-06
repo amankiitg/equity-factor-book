@@ -111,7 +111,13 @@ def _frames() -> tuple[pd.DataFrame, pd.DataFrame]:
     prices = pd.DataFrame(
         {
             "close": [KVUE_PREV_CLOSE, float("nan"), float("nan"), KMB_CLOSE, 109.0],
-            "adj_close": [KVUE_PREV_CLOSE, float("nan"), float("nan"), KMB_CLOSE, 109.0],
+            "adj_close": [
+                KVUE_PREV_CLOSE,
+                float("nan"),
+                float("nan"),
+                KMB_CLOSE,
+                109.0,
+            ],
             "split_factor": [1.0, 1.0, 1.0, 1.0, 1.0],
         },
         index=index,
