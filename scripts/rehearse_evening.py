@@ -120,7 +120,16 @@ def _rehearsal_connect(dry_run: bool = False) -> object:
 
 
 def rehearse(close: str) -> int:
-    """Run the real evening entry point for `close`, writes fail-closed."""
+    """Run the real evening entry point for `close`, writes fail-closed.
+
+    `already_ran` is defeated on purpose. A close that has already been filed is
+    exactly the close a rehearsal wants to re-run - it is the night whose behaviour
+    is being changed - and the runner's idempotence guard would otherwise return
+    "already ran" before a single line of the evening executed, which proves
+    nothing. Deleting the guard is safe here because the run is a dry run and every
+    store write raises: nothing is recorded, so the real record cannot be disturbed
+    by a rehearsal having looked at the same close twice.
+    """
     from live import morning_job
 
     fixed = pinned_now(close)
@@ -128,6 +137,7 @@ def rehearse(close: str) -> int:
         patch.object(run_live_daily, "datetime", _FixedClock(fixed)),
         patch.dict(os.environ, LIVE_ENV),
         patch.object(morning_job, "connect", _rehearsal_connect),
+        patch.object(run_live_daily, "already_ran", lambda *a, **k: False),
     ):
         with _block_store_writes():
             return run_live_daily.main()
