@@ -73,7 +73,7 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -1245,6 +1245,7 @@ def apply_to_append(
     max_cross_checks: int = MAX_CROSS_CHECKS,
     spinoffs: dict[pd.Timestamp, list[Spinoff]] | None = None,
     child_close: Callable[[str, pd.Timestamp], float | None] | None = None,
+    carry: Sequence[str] = (),
 ) -> Outcome:
     """Apply the corporate-actions rule to the sessions this run is appending.
 
@@ -1305,6 +1306,21 @@ def apply_to_append(
             for ticker, value in row.items()
             if not pd.isna(value) and abs(float(value)) > CROSS_CHECK_MOVE
         ]
+        if session == sessions[-1]:
+            # The names the last close's cap could not reach are asked first on this
+            # session, which is the one whose move was left unchecked. They are put
+            # ahead of the watched list rather than appended, because the budget is
+            # spent in order.
+            watched = list(
+                dict.fromkeys(
+                    [
+                        str(ticker)
+                        for ticker in carry
+                        if str(ticker) in row.index and str(ticker) not in cross_checked
+                    ]
+                    + watched
+                )
+            )
         for ticker in watched[:max_cross_checks]:
             if ticker in cross_checked:
                 continue
@@ -1349,6 +1365,18 @@ def apply_to_append(
         for ticker, value in tail.items()
         if not pd.isna(value) and abs(float(value)) > CROSS_CHECK_MOVE
     ]
+    # The names tonight's budget could not reach last time are asked first this time,
+    # because the cap bounds the requests and not the question: a name carried from
+    # yesterday is still in the panel, and the check that matters is the one on the
+    # session where it moved. Carrying them forward is what makes the cap a delay
+    # rather than a hole. `unchecked` is recomputed below from the same list, so a
+    # carried name that is answered tonight leaves it.
+    carried_in = [
+        str(ticker)
+        for ticker in carry
+        if str(ticker) in tail.index and str(ticker) not in cross_checked
+    ]
+    watched_last = list(dict.fromkeys([*carried_in, *watched_last]))
     unchecked = [ticker for ticker in watched_last if ticker not in cross_checked]
     return Outcome(
         frame,
@@ -1391,6 +1419,7 @@ def apply_to_artifact(
     child_closes_fetcher: (
         Callable[[list[str], pd.Timestamp], dict[str, float]] | None
     ) = None,
+    carry: Sequence[str] = (),
 ) -> Outcome:
     """Apply the rule to the artifact's appended sessions and write it back.
 

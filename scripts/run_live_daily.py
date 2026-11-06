@@ -275,6 +275,31 @@ def specific_std_or_refuse(
     return float(value)
 
 
+def carried_cross_checks(as_of: str) -> list[str]:
+    """The names the previous close's corporate-action cap left unchecked.
+
+    The cap bounds how many vendor refetches one evening spends, not the question the
+    check answers, so a name it could not reach is asked first the next evening while
+    its move is still inside the panel. Read from the previous proposal's manifest and
+    never from the network, and an absent or malformed list is simply no carry.
+    """
+    try:
+        stamps = sorted(PROPOSAL_DIR.glob("proposal_*.json"))
+    except OSError:
+        return []
+    earlier = [path for path in stamps if path.stem.split("_")[-1] < str(as_of)[:10]]
+    if not earlier:
+        return []
+    try:
+        manifest = json.loads(earlier[-1].read_text())
+    except (OSError, ValueError):
+        return []
+    carried = manifest.get("cross_check_carried")
+    if not isinstance(carried, list):
+        return []
+    return [str(ticker) for ticker in carried if isinstance(ticker, str)]
+
+
 def store_proposal(
     as_of: str,
     data_root: Path | None = None,
@@ -2015,7 +2040,17 @@ def main() -> int:
         # The appended session's return is computed from the raw closes and the
         # factor, so no stored row is restated. A back-adjustment no record
         # explains raises here, before the gate and before any sizing.
-        outcome = corporate_actions.apply_to_artifact(run_tree, since=before_last)
+        carried_names = carried_cross_checks(run_date)
+        if carried_names:
+            logger.info(
+                "%d name(s) the last close's cap left unchecked are cross-checked "
+                "first tonight: %s",
+                len(carried_names),
+                ", ".join(carried_names),
+            )
+        outcome = corporate_actions.apply_to_artifact(
+            run_tree, since=before_last, carry=carried_names
+        )
         if outcome.splits or outcome.spinoffs:
             close = outcome.sessions[-1] if outcome.sessions else before_last
             rows: list[dict[str, Any]] = []
@@ -2297,6 +2332,9 @@ def main() -> int:
             nav=float(holdings["nav"]),
             nav_source=str(holdings["nav_source"]),
             shortable=shortable_flags(dry_run=dry_run),
+            # Tonight's cap may leave names unchecked again; they are recorded on the
+            # manifest so the next evening asks them first.
+            cross_check_carried=outcome.unchecked,
         )
         as_of = str(manifest["as_of"])
         # The build drops a kept name it cannot quantize, and the day must not pass
@@ -2555,7 +2593,13 @@ def main() -> int:
     # `finish_run` takes the unconfirmed count.
     incomplete = morning.get("incomplete_legs") or []
     refused = morning.get("refused_legs") or []
-    if morning.get("complete") is False or incomplete or refused:
+    # A refusal is a fact about the book, not about tonight's connection: the leg was
+    # never sent, a retry would be told the same thing, and the name is owed. So a
+    # night whose only fault is a deliberate refusal is `ok` and filed, with the
+    # refusal on its own line - 2026-11-05 said INCOMPLETE in the subject while the
+    # body said the run completed, over one KVUE leg the broker reported inactive.
+    # `incomplete` is the status for legs whose fate is unknown.
+    if morning.get("complete") is False or incomplete:
         status = "incomplete"
         if incomplete:
             detail = f"{len(incomplete)} leg(s) not confirmed: " + ", ".join(
@@ -2563,14 +2607,15 @@ def main() -> int:
                 f"({leg.get('reason_code') or leg.get('status') or 'unknown'})"
                 for leg in incomplete[:6]
             )
-        elif refused:
-            detail = f"{len(refused)} leg(s) refused by the broker: " + ", ".join(
-                f"{leg.get('ticker')} "
-                f"({leg.get('reason_code') or leg.get('status') or 'refused'})"
-                for leg in refused[:6]
-            )
         else:
             detail = "the run reported itself incomplete"
+    elif refused:
+        status = "ok"
+        detail = f"{len(refused)} leg(s) refused and owed: " + ", ".join(
+            f"{leg.get('ticker')} "
+            f"({leg.get('reason_code') or leg.get('status') or 'refused'})"
+            for leg in refused[:6]
+        )
     else:
         status, detail = "ok", ""
     raw_missing_var = manifest.get("n_specific_var_missing")

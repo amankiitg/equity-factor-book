@@ -1024,6 +1024,37 @@ def restricted_correction(
     return delta
 
 
+def _quiet_guard_block(
+    weights: np.ndarray,
+    design: np.ndarray,
+    threshold: float,
+    *,
+    nav: float | None = None,
+) -> dict[str, Any]:
+    """The guard's reading on a night it looked and did not fire.
+
+    A hold day asks the guard every evening, and until 2026-11-05 the answer "not
+    past the threshold" was stored as `None`, which is indistinguishable from "never
+    asked". The message then had no guard line at all on a night the guard had run.
+    The block is the reading: the worst exposure, the threshold it was measured
+    against, no legs and no turnover.
+    """
+    before = worst_exposure(weights, design)
+    return {
+        "fired": False,
+        "exposure_before": float(before),
+        "exposure_after": float(before),
+        "threshold": float(threshold),
+        "legs": [],
+        "traded": [],
+        "turnover": 0.0,
+        "rounds": 0,
+        "dropped": 0,
+        "nav": nav,
+        "weights": weights,
+    }
+
+
 def _drift_guard_block(
     weights: np.ndarray,
     names: list[str],
@@ -2425,6 +2456,7 @@ def build_proposal(
     carried: Mapping[str, float] | None = None,
     unreachable: Iterable[Mapping[str, Any]] | None = None,
     guard_threshold: float | None = None,
+    cross_check_carried: Iterable[str] | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
@@ -2774,7 +2806,15 @@ def build_proposal(
                 nav=float(nav),
                 minimum=float(alpaca.DELTA_MIN_NOTIONAL),
             )
-            if guard_block is not None:
+            if guard_block is None:
+                # It looked and left the book alone, which is an answer the owner has
+                # to be able to read without opening anything. `None` said nothing at
+                # all, so the 2026-11-05 message carried no guard line on a night the
+                # guard had in fact run.
+                guard_block = _quiet_guard_block(
+                    weights, design, threshold, nav=float(nav)
+                )
+            else:
                 weights = cast(np.ndarray, guard_block["weights"])
         gross_cap_bound = False
         full_decomposition = _decomposition(
@@ -3034,6 +3074,12 @@ def build_proposal(
                         for key, value in guard_block.items()
                         if key != "weights"
                     }
+                ),
+                # The names tonight's corporate-action cap left unchecked, so the
+                # next evening cross-checks them first instead of dropping them: the
+                # cap bounds vendor requests, not the question the check answers.
+                "cross_check_carried": sorted(
+                    {str(ticker) for ticker in (cross_check_carried or ())}
                 ),
                 # The held names tonight's universe or model no longer carries, which
                 # are the closes a hold day sends.
