@@ -464,6 +464,14 @@ def compose(
             lines.append(
                 f"Orders: {sent} orders sent, " f"{_sized_sent(gross, sent_notional)}"
             )
+        if refused_legs:
+            # A night whose only fault is a refusal is ok and filed, so the message
+            # says both things plainly: nothing is outstanding at the broker, and the
+            # leg named below is a debt to the book rather than a retry.
+            lines.append(
+                "Filed: every leg that went out is confirmed; the refused leg(s) "
+                "below are owed, not unconfirmed."
+            )
     elif status == "stale_stopped":
         lines.append(
             "Orders: none. The run stopped on staleness before sizing, so no "
@@ -792,12 +800,13 @@ def compose(
         # know why it is out.
         lines.append(tonight_line)
     if refused_legs:
-        # The legs the shortability check or the broker refused. The same kind of
-        # fact as "not easy to borrow", and the reason the run is incomplete without
-        # being a failure: the book is one leg short of its own target and nothing
-        # else in the message would say which one.
+        # The legs the shortability check or the broker refused: never sent, owed to
+        # the book, and the one thing nothing else in the message would name. A night
+        # whose only fault is this one is `ok` and filed, so the line has to carry the
+        # whole story on its own.
         lines.append(
-            f"Refused by the broker, so not sent: {_refused_list(refused_legs)}."
+            "Refused by the broker, so not sent and owed: "
+            f"{_refused_list(refused_legs)}."
         )
     if no_asset:
         # A ticker the broker's feed carries under no symbol under any spelling.
