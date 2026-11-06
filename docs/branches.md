@@ -32,9 +32,9 @@ these in order, and the report for it shows each result:
 
 The rehearsal never writes: `efb.proposals`, `positions`, `orders` and `run_status` are
 keyed by the trade date, so a plain dry run of a past close would overwrite the record of
-a night that has already traded. The script suppresses every store write and composes the
-message instead of sending it, and it stops at the decision path rather than
-`run_live_daily.main()` because `main()` takes its target close from the clock.
+a night that has already traded. `scripts/rehearse_evening.py` runs the real
+`run_live_daily.main()` under a pinned clock (dry run, out-of-hours window forced) and
+blocks every store write fail-closed, so a rehearsal can never move the real store.
 
 ## What is left, and why
 

@@ -74,3 +74,22 @@ The single-symbol read is also what turns KVUE's absence from both lists into "t
 reports the asset inactive: merger completion, KMB and KVUE": it is made for a ticker the
 account's own last order under that spelling carries an asset id for, and not for a ticker
 the book has never owned, which the feed simply does not list.
+
+## 2026-11-05: the sector hold-list and the last single-name stops
+
+Three changes landed together (PRs #4, #6; efb2 #2, #5):
+
+- **The additive sector refresh** (PR #4). A name in the universe with no GICS row
+  now gets one from the newest archived Wikipedia constituents snapshot, additively,
+  before the panel is cut. `efb.universe.SECTOR_HOLDS` parks `BE`, `ILMN`, `P` until
+  2026-11-24 (their descriptor backfill is efb2 PR #2, itself do-not-merge before
+  2026-11-24); `SKYD`, `TWLO`, `VYLR` may gain a row and the minimum-history rule
+  (`efb/race.py` `MIN_FACTOR_HISTORY` / `NEXT_DESIGN_WINDOW`) keeps them out. A name
+  that *still* has no row goes through the shared `excluded_tonight` with reason
+  "no GICS row" and source "sectors".
+- **The last single-name stops are gone** (PR #6). `_default_refetch` returning
+  nothing, and a vendor split factor with no split record behind it, now suspend the
+  name for the session (`Suspended`, `excluded_tonight`) instead of raising and
+  stopping the run.
+- **KVUE -> KMB is a recorded merger** (efb2 PR #5): the third corporate-action
+  shape, applied in the returns panel and explained in the morning comparison.
