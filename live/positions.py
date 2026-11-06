@@ -558,18 +558,43 @@ def sizing_nav(equity: float | None) -> tuple[float, str]:
     return float(equity), f"the account's own equity (${equity:,.2f})"
 
 
+def recorded_mergers() -> list[Any]:
+    """Every cash-and-stock merger the appendix records, for the comparison to explain.
+
+    The broker converts a merged target into acquirer shares and cash with no order
+    behind it, so the target is missing at the broker and the acquirer grows; both
+    look like mismatches the loop caused. The record is what turns those into an
+    explanation instead of a mismatch. The store is asked and never written to.
+    """
+    from live import corporate_actions
+
+    try:
+        rows = store.select(corporate_actions.TABLE)
+    except Exception:  # noqa: BLE001 - a comparison that cannot read is not stopped
+        logger.warning("corporate actions could not be read", exc_info=True)
+        return []
+    return corporate_actions.mergers_from_rows(rows)
+
+
 def compare(
     broker: dict[str, float] | None,
     believed: dict[str, float],
     *,
     tolerance: float = TOLERANCE_USD,
+    mergers: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Where the two books disagree, name by name.
 
     A name in one and not the other is a mismatch, and so is a difference larger
-    than `tolerance`. `missing_at_broker` is the dangerous direction: the loop
-    believes it holds something the account does not have, which is the state a
-    dry-run store leaves behind.
+    than tolerance. missing_at_broker is the dangerous direction: the loop believes
+    it holds something the account does not have, which is the state a dry-run store
+    leaves behind.
+
+    mergers are the recorded cash-and-stock mergers. One explains a target that is
+    missing at the broker and an acquirer whose notional grew: the broker converted
+    the one into the other plus cash with no order behind it, so the target is
+    dropped from missing_at_broker and the acquirer's expectation is raised by the
+    target's stale mark before the drift is measured.
     """
     if broker is None:
         return {
@@ -580,6 +605,7 @@ def compare(
             "missing_in_store": [],
             "drift": {},
             "max_abs_drift": None,
+            "merger_notes": [],
         }
     names = sorted(set(broker) | set(believed))
     missing_at_broker = [name for name in names if name not in broker]
@@ -593,6 +619,23 @@ def compare(
         for name in both
         if abs(broker[name] - believed[name]) > tolerance
     }
+    notes: list[str] = []
+    adjusted = dict(believed)
+    for merger in mergers or []:
+        target, acquirer = merger.target, merger.acquirer
+        if target in missing_at_broker and acquirer in broker and acquirer in adjusted:
+            moved = adjusted[target]
+            adjusted[acquirer] = adjusted[acquirer] + moved
+            missing_at_broker.remove(target)
+            notes.append(
+                f"{target} -> {acquirer} ({merger.completion_date.date()}): the broker "
+                f"converted the {target} position into {acquirer} shares and cash with "
+                f"no order behind it"
+            )
+            if abs(broker[acquirer] - adjusted[acquirer]) <= tolerance:
+                drift.pop(acquirer, None)
+            else:
+                drift[acquirer] = broker[acquirer] - adjusted[acquirer]
     return {
         "matches": not (missing_at_broker or missing_in_store or drift),
         "n_broker": len(broker),
@@ -601,6 +644,7 @@ def compare(
         "missing_in_store": missing_in_store,
         "drift": drift,
         "max_abs_drift": max((abs(value) for value in drift.values()), default=0.0),
+        "merger_notes": notes,
     }
 
 
@@ -641,7 +685,7 @@ def check(
     renames = broker_renames(believed, broker)
     broker = _relabel(broker, renames)
     broker_quantities = _relabel(broker_quantities, renames)
-    result = compare(broker, believed)
+    result = compare(broker, believed, mergers=recorded_mergers())
     result.update(
         {
             "broker": broker,
@@ -702,6 +746,13 @@ def describe(result: dict[str, Any], *, dry_run: bool = True) -> str:
             f"against and no comparison was made"
         )
     if result["matches"]:
+        if result.get("merger_notes"):
+            explained = "; ".join(result["merger_notes"])
+            return (
+                f"the account matches the store ({result['n_broker']} name(s), "
+                f"nothing drifted; {len(result['merger_notes'])} corporate action "
+                f"explained: {explained})"
+            )
         return (
             f"the account matches the store ({result['n_broker']} name(s), "
             f"nothing drifted)"
@@ -730,6 +781,8 @@ def describe(result: dict[str, Any], *, dry_run: bool = True) -> str:
         f"mismatch: the account holds {result['n_broker']} name(s) and the store "
         f"{result['n_store']}: " + "; ".join(parts)
     )
+    if result.get("merger_notes"):
+        sentence += "; explained: " + "; ".join(result["merger_notes"])
     if dry_run and not result["broker"] and result["store"]:
         # Expected before the flip, and only before it: nothing has been sent, so
         # the account is flat while the store carries the intended book.

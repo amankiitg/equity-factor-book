@@ -505,6 +505,12 @@ alter table efb.e11_corporate_actions
   add column if not exists source_rate double precision;
 alter table efb.e11_corporate_actions
   add column if not exists new_rate double precision;
+-- Cash-and-stock mergers: the cash leg the spin-off rows never carried.
+-- The writer names the column, so a provisioned database without it would fail the
+-- first morning after a merger is recorded. A null reads as $0.00 (the reader's
+-- default), so older rows are unaffected.
+alter table efb.e11_corporate_actions
+  add column if not exists cash_per_share double precision;
 -- Pre-flip: the rerun-proof ticket for each leg.
 alter table efb.orders
   add column if not exists client_order_id text;
