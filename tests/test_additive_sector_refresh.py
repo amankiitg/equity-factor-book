@@ -1,4 +1,4 @@
-"""The additive sector refresh adds rows for new names and never changes existing ones."""
+"""The additive refresh adds rows for new names and never changes existing ones."""
 
 from __future__ import annotations
 
