@@ -957,20 +957,25 @@ MAX_CROSS_CHECKS = 30
 class Suspended:
     """A name dropped for one session because nothing explains its vendor print.
 
-    The vendor restated a stored session's adjusted close by a ratio that neither a
-    split record nor a recorded spin-off explains. The print cannot be priced, the
-    name cannot be sized on a return nobody can account for, and stopping the evening
-    would leave the whole book unheld for one name's data. So the name is dropped for
-    that session only: its close is nulled in the prices artifact before the evening
-    sizes, which the run already reports as a name with no price, and this record is
-    what tells the reader which name, which session and which ratio.
+    Either the vendor restated a stored session's adjusted close by a ratio that
+    neither a split record nor a recorded spin-off explains (`ratio`), or the vendor
+    returned no adjusted close at all to cross-check against (`reason`, with `ratio`
+    left `None`). The print cannot be priced, the name cannot be sized on a return
+    nobody can account for, and stopping the evening would leave the whole book
+    unheld for one name's data. So the name is dropped for that session only: its
+    close is nulled in the prices artifact before the evening sizes, which the run
+    already reports as a name with no price, and this record is what tells the
+    reader which name, which session and which ratio or reason.
     """
 
     ticker: str
     session: pd.Timestamp
-    ratio: float
+    ratio: float | None = None
+    reason: str | None = None
 
     def describe(self) -> str:
+        if self.reason is not None:
+            return f"{self.ticker} dropped for {self.session.date()}: {self.reason}"
         return (
             f"{self.ticker} dropped for {self.session.date()}: the vendor "
             f"back-adjusted the print (ratio {self.ratio:.6f}) and no split record or "
@@ -1113,15 +1118,19 @@ def _close_on(
     return float(value)
 
 
-def _default_refetch(ticker: str, session: pd.Timestamp) -> float:
-    """The vendor's adjusted close for one session, refetched today."""
+def _default_refetch(ticker: str, session: pd.Timestamp) -> float | None:
+    """The vendor's adjusted close for one session, refetched today.
+
+    `None` when the vendor has no row for the session: the caller drops the name
+    for that session rather than stopping the evening on one name's silence.
+    """
     import yfinance as yf  # noqa: PLC0415 - the vendor, imported late
 
     start = pd.Timestamp(session).date().isoformat()
     end = (pd.Timestamp(session) + pd.Timedelta(days=1)).date().isoformat()
     history = yf.Ticker(ticker).history(start=start, end=end, auto_adjust=True)
     if history.empty:
-        raise ValueError(f"{ticker}: the vendor returned no adjusted close for {start}")
+        return None
     return float(history["Close"].iloc[0])
 
 
@@ -1143,7 +1152,7 @@ def _check_one(
     session: pd.Timestamp,
     prices_frame: pd.DataFrame,
     split_fetcher: Callable[[str], Any] | None,
-    close_fetcher: Callable[[str, pd.Timestamp], float] | None,
+    close_fetcher: Callable[[str, pd.Timestamp], float | None] | None,
     patch: bool,
     frame: pd.DataFrame,
     *,
@@ -1171,15 +1180,35 @@ def _check_one(
     when, previous_close, stored_adjusted = _stored_pair(prices_frame, ticker, session)
     records = vendor_splits(ticker, fetcher=split_fetcher) if factor is not None else []
     ratio: float | None = None
-    spent = False
+    # A split fetch is a request too: a ticker whose split factor flags it is
+    # checked even when there is no stored adjusted close to refetch against, so
+    # the watched pass must not re-check it and count it twice.
+    spent = factor is not None
     if stored_adjusted is not None:
         refetched = (
             _default_refetch(ticker, when)
             if close_fetcher is None
-            else float(close_fetcher(ticker, when))
+            else close_fetcher(ticker, when)
         )
         spent = True
-        ratio = cross_check_ratio(stored_adjusted, refetched)
+        if refetched is None:
+            logger.warning(
+                "%s: the vendor returned no adjusted close for %s; the name is "
+                "dropped for that session",
+                ticker,
+                when.date(),
+            )
+            return (
+                None,
+                None,
+                spent,
+                Suspended(
+                    ticker=ticker,
+                    session=session,
+                    reason="the vendor returned no adjusted close to cross-check",
+                ),
+            )
+        ratio = cross_check_ratio(stored_adjusted, float(refetched))
     if ratio is not None and abs(ratio - 1.0) > CROSS_CHECK_TOLERANCE:
         if explained_by_spinoff and not records:
             # The move is the recorded spin-off's, and the return it really implies
@@ -1212,10 +1241,22 @@ def _check_one(
             if record.effective_date >= session - pd.Timedelta(days=SPLIT_LOOKBACK_DAYS)
         ]
         if not near:
-            raise ValueError(
-                f"{ticker}: the vendor's split factor {factor:g} on "
-                f"{session.date()} has no split record behind it, so the run stops "
-                f"rather than guessing"
+            logger.warning(
+                "%s: the vendor's split factor %g on %s has no split record behind "
+                "it; the name is dropped for that session",
+                ticker,
+                factor,
+                session.date(),
+            )
+            return (
+                None,
+                None,
+                spent,
+                Suspended(
+                    ticker=ticker,
+                    session=session,
+                    reason="the vendor's split factor has no split record behind it",
+                ),
             )
         split = near[-1]
     else:
@@ -1241,7 +1282,7 @@ def apply_to_append(
     prices_frame: pd.DataFrame,
     since: pd.Timestamp | None,
     split_fetcher: Callable[[str], Any] | None = None,
-    close_fetcher: Callable[[str, pd.Timestamp], float] | None = None,
+    close_fetcher: Callable[[str, pd.Timestamp], float | None] | None = None,
     max_cross_checks: int = MAX_CROSS_CHECKS,
     spinoffs: dict[pd.Timestamp, list[Spinoff]] | None = None,
     child_close: Callable[[str, pd.Timestamp], float | None] | None = None,
@@ -1383,7 +1424,7 @@ def apply_to_artifact(
     data_root: Any,
     since: pd.Timestamp | None,
     split_fetcher: Callable[[str], Any] | None = None,
-    close_fetcher: Callable[[str, pd.Timestamp], float] | None = None,
+    close_fetcher: Callable[[str, pd.Timestamp], float | None] | None = None,
     max_cross_checks: int = MAX_CROSS_CHECKS,
     spinoff_fetcher: (
         Callable[[list[str], pd.Timestamp], list[dict[str, Any]]] | None

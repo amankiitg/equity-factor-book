@@ -2068,7 +2068,10 @@ def main() -> int:
         suspended_names = [
             {
                 "ticker": str(record.ticker),
-                "reason": "the vendor restated the session and no record explains it",
+                "reason": (
+                    record.reason
+                    or "the vendor restated the session and no record explains it"
+                ),
                 "source": "corporate actions",
             }
             for record in getattr(outcome, "suspended", []) or []
