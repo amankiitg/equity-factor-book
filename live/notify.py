@@ -464,6 +464,14 @@ def compose(
             lines.append(
                 f"Orders: {sent} orders sent, " f"{_sized_sent(gross, sent_notional)}"
             )
+        if refused_legs:
+            # A night whose only fault is a refusal is ok and filed, so the message
+            # says both things plainly: nothing is outstanding at the broker, and the
+            # leg named below is a debt to the book rather than a retry.
+            lines.append(
+                "Filed: every leg that went out is confirmed; the refused leg(s) "
+                "below are owed, not unconfirmed."
+            )
     elif status == "stale_stopped":
         lines.append(
             "Orders: none. The run stopped on staleness before sizing, so no "

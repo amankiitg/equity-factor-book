@@ -909,7 +909,7 @@ def test_the_message_names_an_inactive_leg_with_the_brokers_own_reason() -> None
         ],
     )
     expected = (
-        "Refused by the broker, so not sent: KVUE "
+        "Refused by the broker, so not sent and owed: KVUE "
         "(ASSET_INACTIVE: merger completion, KMB and KVUE)."
     )
     assert expected in body
