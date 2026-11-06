@@ -131,6 +131,36 @@ def test_the_fetch_is_the_live_universe_and_the_book_not_the_frozen_panel(
     assert extend._frozen_tickers(root) == ["DELISTED", "HELD", "LIVE1", "LIVE2"]
 
 
+def test_a_broker_inactive_name_is_not_requested_from_the_vendor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """KVUE completed its merger into KMB and the broker reports it inactive, so
+    no price vendor is asked for it: a retired name has no close to return and the
+    request would fail every evening.
+    """
+    from live import alpaca, snapshot, store
+
+    root = tmp_path / "data"
+    _live_tree(root)
+    book = pd.DataFrame({"ticker": ["KVUE"], "weight": [-0.014]})
+    monkeypatch.setattr(snapshot, "previous_proposal", lambda: (None, book, None))
+    orders = pd.DataFrame(
+        {
+            "trade_date": [pd.Timestamp("2026-11-04")],
+            "ticker": ["KVUE"],
+            "reason_code": [alpaca.REASON_ASSET_INACTIVE],
+        }
+    )
+    monkeypatch.setattr(
+        store,
+        "select",
+        lambda table: orders.copy() if table == "orders" else pd.DataFrame(),
+    )
+
+    assert "KVUE" not in extend._live_tickers(root)
+    assert extend._live_tickers(root) == ["LIVE1", "LIVE2"]
+
+
 def test_the_fetch_asks_for_the_runs_own_close(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
