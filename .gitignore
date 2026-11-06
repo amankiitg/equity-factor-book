@@ -3,7 +3,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 .venv
+# a worktree's link to the shared virtualenv, which a bare `.venv` does match
+.venv/
+.venv*
 venv
+venv*
 env/
 .pytest_cache/
 .mypy_cache/
@@ -20,6 +24,10 @@ notebooks/**/*.html
 data/**/*.parquet
 data/**/*.csv
 data/**/*.feather
+# Links to a data tree live outside the repo, and are never tracked. A link *at*
+# `data` cannot be ignored without ignoring the tracked tree as well, so
+# `make symlink-guard` refuses that one instead.
+data-src*
 
 # Secrets and local config
 .env

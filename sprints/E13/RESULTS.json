@@ -4,13 +4,13 @@
    "criterion": "Every EFB module appears in the port map with a status: unchanged, re-specified, or dropped, with one sentence of reason.",
    "stored_numbers": [
     {
-     "source": "docs/credit_port_design.md section 13, counted over 163 mapped rows (153 modules in this tree, 4 that arrive with e12, and 10 repository items)",
-     "value": 162,
+     "source": "docs/credit_port_design.md section 13, counted over 164 mapped rows (154 modules in this tree, 4 that arrive with e12, and 10 repository items)",
+     "value": 163,
      "what": "modules in the map"
     },
     {
      "source": "tests/test_e13_design_note.py::test_every_module_in_the_repository_appears_in_the_map",
-     "value": 158,
+     "value": 159,
      "what": "modules in the repository"
     },
     {

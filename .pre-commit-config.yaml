@@ -14,3 +14,15 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: [numpy, pandas, types-requests]
+
+  # The symlink accident, twice in three weeks: a worktree's `.venv` link and a `data`
+  # link both reached the index because the working tree looked right. This refuses the
+  # commit instead of cleaning up after it.
+  - repo: local
+    hooks:
+      - id: symlink-guard
+        name: data/ and .venv are not symlinks, in the tree or the index
+        entry: python scripts/check_symlinks.py
+        language: system
+        pass_filenames: false
+        always_run: true
