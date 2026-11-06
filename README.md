@@ -219,6 +219,12 @@ The page is a Cloudflare Worker serving one built page and one read route,
 `/api/snapshot`, which answers with a sanitized copy of the snapshot the evening wrote
 ([`web/README.md`](web/README.md)).
 
+## Agent workflow
+
+Automated agent changes land as pull requests from `task/*` branches, never directly on
+`main`. Each task starts from an up-to-date `origin/main`, makes small, self-contained
+commits, and is pushed and opened as a PR for human review before it merges.
+
 ## Status and open items
 
 - **Paper only.** "Live" here means live data and a continuously running loop, never real
