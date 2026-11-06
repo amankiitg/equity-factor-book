@@ -204,7 +204,7 @@ else:
                 "net (fraction of NAV)": manifest["net"],
                 **_breadth_columns(manifest),
                 "idio share after FMP": manifest["idio_share_after_fmp"],
-                "target annual vol": manifest["target_annual_vol"],
+                "vol target — gross cap (1.0) overrides it": manifest["target_annual_vol"],
                 "achieved annual vol": manifest["achieved_annual_vol"],
                 "expected establishment cost (bp)": (
                     manifest["expected_establishment_cost_bps"]
