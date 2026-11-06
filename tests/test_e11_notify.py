@@ -1037,7 +1037,9 @@ def test_a_refused_leg_is_ok_and_the_day_is_filed(
     body = str(sent[0]["text"])
     assert str(sent[0]["subject"]).startswith("EFB ok 2026-09-22")
     assert "the run completed" in body
-    assert "Refused by the broker, so not sent and owed: SYY (ASSET_NOT_SHORTABLE)" in body
+    assert (
+        "Refused by the broker, so not sent and owed: SYY (ASSET_NOT_SHORTABLE)" in body
+    )
     assert "Filed: every leg that went out is confirmed" in body
     # Filed, because a retry would be told the same thing.
     filed = store.select("cron_runs")
