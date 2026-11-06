@@ -792,12 +792,13 @@ def compose(
         # know why it is out.
         lines.append(tonight_line)
     if refused_legs:
-        # The legs the shortability check or the broker refused. The same kind of
-        # fact as "not easy to borrow", and the reason the run is incomplete without
-        # being a failure: the book is one leg short of its own target and nothing
-        # else in the message would say which one.
+        # The legs the shortability check or the broker refused: never sent, owed to
+        # the book, and the one thing nothing else in the message would name. A night
+        # whose only fault is this one is `ok` and filed, so the line has to carry the
+        # whole story on its own.
         lines.append(
-            f"Refused by the broker, so not sent: {_refused_list(refused_legs)}."
+            "Refused by the broker, so not sent and owed: "
+            f"{_refused_list(refused_legs)}."
         )
     if no_asset:
         # A ticker the broker's feed carries under no symbol under any spelling.
