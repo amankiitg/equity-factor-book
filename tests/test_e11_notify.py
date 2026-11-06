@@ -990,17 +990,16 @@ def test_the_recorded_run_states_both_books_risk_figures(
     assert traded["top_variance_shares"] == [{"ticker": "AAA", "variance_share": 0.031}]
 
 
-def test_a_refused_leg_is_incomplete_and_the_day_is_filed(
+def test_a_refused_leg_is_ok_and_the_day_is_filed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """2026-10-08: one short leg the shortability check refused, before any order.
+    """2026-10-08 and 2026-11-05: a leg refused before any order is not a failure.
 
-    Item 19. The book was priced, the legs that could be sent went out, and the one
-    that could not was refused by the loop's own check - a fact about the name that a
-    retry would be told again. So the inbox reads `EFB INCOMPLETE` rather than
-    `EFB ERROR`, the day is filed, and the run exits 0; the refused leg is named in
-    the message, which is where the owner learns the book is a leg short of its
-    target.
+    Item 19 put the refusal in `REFUSAL_REASON_CODES` so the day could be filed; on
+    2026-11-05 the subject still read INCOMPLETE over one KVUE leg the broker reported
+    inactive, while the body said the run had completed. A refusal is a fact about the
+    book that a retry is told again, so the night is `ok`, the day is filed, the run
+    exits 0, and the refused leg is named - and owed - on its own line.
     """
     sent: list[dict[str, Any]] = []
     _no_work(monkeypatch)
@@ -1031,18 +1030,21 @@ def test_a_refused_leg_is_incomplete_and_the_day_is_filed(
 
     assert run_live_daily.main() == 0
 
-    row = store.select("run_status").iloc[0]
-    assert row["status"] == "incomplete"
+    rows = store.select("run_status")
+    row = rows.loc[rows["job"] == "live_daily"].iloc[-1]
+    assert row["status"] == "ok", "a refusal files the night"
     assert "SYY" in str(row["detail"]) and "ASSET_NOT_SHORTABLE" in str(row["detail"])
     body = str(sent[0]["text"])
-    assert str(sent[0]["subject"]).startswith("EFB INCOMPLETE 2026-09-22")
-    assert "a leg the broker refused or one that was not confirmed" in body
-    assert "Refused by the broker, so not sent: SYY (ASSET_NOT_SHORTABLE)" in body
-    assert "Filed: no leg was left unconfirmed" in body
+    assert str(sent[0]["subject"]).startswith("EFB ok 2026-09-22")
+    assert "the run completed" in body
+    assert (
+        "Refused by the broker, so not sent and owed: SYY (ASSET_NOT_SHORTABLE)" in body
+    )
+    assert "Filed: every leg that went out is confirmed" in body
     # Filed, because a retry would be told the same thing.
     filed = store.select("cron_runs")
     assert len(filed) == 1
-    assert str(filed.iloc[0]["status"]) == "incomplete"
+    assert str(filed.iloc[0]["status"]) == "ok"
 
 
 def test_an_unconfirmed_leg_is_incomplete_and_the_day_is_not_filed(
@@ -1083,8 +1085,9 @@ def test_an_unconfirmed_leg_is_incomplete_and_the_day_is_not_filed(
 
     assert run_live_daily.main() == 1
 
-    row = store.select("run_status").iloc[0]
-    assert row["status"] == "incomplete"
+    rows = store.select("run_status")
+    row = rows.loc[rows["job"] == "live_daily"].iloc[-1]
+    assert row["status"] == "incomplete", "an unconfirmed leg keeps the day open"
     assert "BBB" in str(row["detail"]) and "SKIPPED_AFTER_HALT" in str(row["detail"])
     # the day is not done: the next tick retries it
     assert store.select("cron_runs").empty
