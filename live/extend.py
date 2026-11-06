@@ -245,6 +245,23 @@ def recorded_spinoffs() -> list[corporate_actions.Spinoff]:
     return corporate_actions.spinoffs_from_rows(rows)
 
 
+def recorded_mergers() -> list[corporate_actions.Merger]:
+    """Every cash-and-stock merger the appendix records, for the rebuild to re-apply.
+
+    A merger ends the target's series and moves one session's return; neither price
+    vendor adjusts history for it, so the completion-session total return has to be
+    re-applied from its record every evening, exactly like a spin-off. The store is
+    asked and never written to, and a store that cannot answer is a warning rather
+    than a stopped evening.
+    """
+    try:
+        rows = store.select(corporate_actions.TABLE)
+    except Exception:  # noqa: BLE001 - the run goes on without its own record
+        logger.warning("corporate actions could not be read", exc_info=True)
+        return []
+    return corporate_actions.mergers_from_rows(rows)
+
+
 def extend_returns(data_root: Path | None = None) -> int:
     """Recompute returns and flags over the extended price frame.
 
@@ -273,6 +290,17 @@ def extend_returns(data_root: Path | None = None) -> int:
             "re-applied %s: the %s return on %s is %s where the prices alone give %s",
             outcome.spinoff.label,
             outcome.spinoff.parent,
+            outcome.session.date(),
+            outcome.adjusted_return,
+            outcome.raw_return,
+        )
+    for outcome in corporate_actions.apply_recorded_mergers(
+        returns_frame, prices_frame, recorded_mergers()
+    ):
+        logger.info(
+            "re-applied %s: the %s return on %s is %s where the prices alone give %s",
+            outcome.merger.label,
+            outcome.merger.target,
             outcome.session.date(),
             outcome.adjusted_return,
             outcome.raw_return,

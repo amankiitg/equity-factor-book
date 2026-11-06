@@ -273,6 +273,10 @@ def adjusted_return(close_t: float, factor: float, close_previous: float) -> flo
 # on their own bases, it restates no stored row, and it records the event.
 
 SPINOFF_SOURCE = "alpaca.corporate_actions"
+# A cash-and-stock merger is the third shape. Its terms come from the target's
+# filing, not the broker's announcement (which carried `cash=0.0` for KVUE -> KMB),
+# so the record is manual rather than the vendor's.
+MERGER_SOURCE = "manual.record"
 
 # The line markers that mean a symbol is not the issuer's share: a warrant, a unit
 # and a right are the three the vendor and the holdings files both spell with a
@@ -405,6 +409,87 @@ class SpinoffOutcome:
         if self.missing_child or self.unusable_record:
             return True
         if self.contradicted_by_the_factor:
+            return True
+        raw = self.raw_return
+        return raw is not None and abs(raw) > LARGE_MOVE
+
+
+@dataclass(frozen=True)
+class Merger:
+    """One cash-and-stock merger record: the target, the acquirer and the terms.
+
+    `acquirer_per_target` is the acquirer shares received per target share and
+    `cash_per_share` the cash leg, so a holder ends the completion session with
+    `acquirer_per_target x acquirer shares` plus cash for every target share. A
+    record whose ratio cannot be used is kept rather than dropped, with
+    `unusable_reason` saying in one phrase what is missing: the target's cell still
+    has to be nulled and the owner still has to be told the name.
+    """
+
+    target: str
+    acquirer: str
+    completion_date: pd.Timestamp
+    acquirer_per_target: float | None
+    cash_per_share: float = 0.0
+    source: str = MERGER_SOURCE
+    unusable_reason: str | None = None
+
+    @property
+    def applicable(self) -> bool:
+        """Whether the record carries a ratio the rule can apply."""
+        return self.unusable_reason is None
+
+    @property
+    def ratio_label(self) -> str:
+        """`0.14625 acquirer shares + $3.5 cash` style, for a message."""
+        if self.acquirer_per_target is None:
+            return "no ratio"
+        return (
+            f"{self.acquirer_per_target:g} acquirer shares + "
+            f"${self.cash_per_share:g} cash"
+        )
+
+    @property
+    def label(self) -> str:
+        """`merger: KVUE -> KMB 0.14625 shares + $3.5 cash applied`."""
+        if not self.applicable:
+            return (
+                f"merger: {self.target} -> {self.acquirer or '?'} not applied: "
+                f"{self.unusable_reason}"
+            )
+        return f"merger: {self.target} -> {self.acquirer} {self.ratio_label} applied"
+
+
+@dataclass(frozen=True)
+class MergerOutcome:
+    """What the rule did to one target's rows, for the record and the flag.
+
+    `raw_return` is the print the artifact carried before the rule touched it (a NaN
+    for a name whose close disappeared on the completion session). `adjusted_return`
+    is the completion session's total return, or None when the cell was nulled. The
+    target has no series to continue, so the rule also nulls its later rows and
+    `nulled_after` counts them.
+    """
+
+    merger: Merger
+    session: pd.Timestamp
+    raw_return: float | None
+    adjusted_return: float | None
+    acquirer_close: float | None
+    nulled_after: int = 0
+
+    @property
+    def unusable_record(self) -> bool:
+        """Whether the record itself carried no usable ratio."""
+        return not self.merger.applicable
+
+    @property
+    def missing_close(self) -> bool:
+        return self.adjusted_return is None and not self.unusable_record
+
+    @property
+    def raises_flag(self) -> bool:
+        if self.unusable_record or self.missing_close:
             return True
         raw = self.raw_return
         return raw is not None and abs(raw) > LARGE_MOVE
@@ -812,6 +897,215 @@ def spinoffs_from_rows(rows: pd.DataFrame) -> list[Spinoff]:
             )
         )
     return sorted(out, key=lambda spinoff: (spinoff.parent, spinoff.child))
+
+
+def merger_return(
+    target_previous_close: float,
+    acquirer_close: float,
+    acquirer_per_target: float,
+    cash_per_share: float,
+) -> float:
+    """The target's total return across the merger's completion session.
+
+    (acquirer_per_target x acquirer_close + cash_per_share) / target_previous_close - 1:
+    the holder's shares convert into acquirer shares plus cash, so the consideration is
+    what the session paid over the target's own prior close. Every input is a raw close
+    on its own basis, and no stored row is involved.
+    """
+    if not math.isfinite(target_previous_close) or target_previous_close <= 0:
+        raise ValueError("the target's previous close is not a usable price")
+    if not math.isfinite(acquirer_close) or acquirer_close <= 0:
+        raise ValueError("the acquirer's close is not a usable price")
+    if not math.isfinite(acquirer_per_target) or acquirer_per_target <= 0:
+        raise ValueError("the acquirer's shares per target share must be positive")
+    if not math.isfinite(cash_per_share) or cash_per_share < 0:
+        raise ValueError("the cash per share must be non-negative")
+    return (
+        float(acquirer_per_target) * float(acquirer_close) + float(cash_per_share)
+    ) / float(target_previous_close) - 1.0
+
+
+def _cash(value: Any) -> float:
+    """A stored cash-per-share, or zero when the column is absent or null.
+
+    The cash column arrived after the table did, so a record written before it - or
+    read from a store that has not been migrated - carries a null where the cash leg
+    belongs. Cash is informational to the ratio only in being added; a null is read
+    as zero rather than as a reason to refuse the record.
+    """
+    if value is None or pd.isna(value):
+        return 0.0
+    number = float(value)
+    return number if math.isfinite(number) and number >= 0 else 0.0
+
+
+def _apply_merger(
+    frame: pd.DataFrame, prices_frame: pd.DataFrame, merger: Merger
+) -> MergerOutcome | None:
+    """Write the target's completion-session return and null its later rows.
+
+    A merger ends the target's series: there is one completion-session total return
+    and no row after it, because the security stops printing and a later row would be
+    a return nobody paid. Returns None when the frame carries no row for the target on
+    the completion session. The return is nulled rather than guessed when the ratio or
+    a close cannot be read, exactly as the other two shapes null.
+    """
+    session = merger.completion_date
+    target = merger.target
+    if (session, target) not in frame.index:
+        return None
+    raw = frame.loc[(session, target), "r"]
+    raw_value = None if pd.isna(raw) else float(raw)
+    ratio = merger.acquirer_per_target
+    if ratio is None:
+        _set_return(frame, session, target, float("nan"))
+        return MergerOutcome(merger, session, raw_value, None, None)
+    previous = _close_before(prices_frame, target, session)
+    acquirer = _close_on(prices_frame, merger.acquirer, session)
+    if previous is None or acquirer is None:
+        _set_return(frame, session, target, float("nan"))
+        return MergerOutcome(merger, session, raw_value, None, None)
+    value = merger_return(
+        target_previous_close=previous,
+        acquirer_close=acquirer,
+        acquirer_per_target=float(ratio),
+        cash_per_share=float(merger.cash_per_share),
+    )
+    _set_return(frame, session, target, value)
+    nulled_after = 0
+    for date, ticker in frame.index:
+        if ticker == target and pd.Timestamp(date) > session:
+            _set_return(frame, date, ticker, float("nan"))
+            nulled_after += 1
+    return MergerOutcome(
+        merger, session, raw_value, value, float(acquirer), nulled_after
+    )
+
+
+def merger_flags(
+    events: list[MergerOutcome], session: pd.Timestamp
+) -> list[dict[str, Any]]:
+    """One flag per merger applied to one session, in the large-move shape.
+
+    return is the raw print (a NaN for a name whose close disappeared), and
+    adjusted_return is what the row holds now. explained_by is "merger".
+    """
+    out: list[dict[str, Any]] = []
+    for event in events:
+        if event.session != session or not event.raises_flag:
+            continue
+        label = event.merger.label
+        if event.unusable_record:
+            label = f"{label}, so the return was nulled"
+        elif event.missing_close:
+            label = f"{label}, a close is missing so the return was nulled"
+        out.append(
+            {
+                "ticker": event.merger.target,
+                "return": event.raw_return,
+                "adjusted_return": event.adjusted_return,
+                "new_ticker": event.merger.acquirer,
+                "new_close": event.acquirer_close,
+                "explained_by": "merger",
+                "flag": label,
+            }
+        )
+    return out
+
+
+def merger_rows(
+    events: list[MergerOutcome], trade_date: pd.Timestamp
+) -> list[dict[str, Any]]:
+    """The appendix rows for the mergers applied to one session.
+
+    factor is the acquirer's shares per target share, new_ticker is the acquirer and
+    cash_per_share is the cash leg. Only records that were applied get a row.
+    """
+    stamp = pd.Timestamp(trade_date).date().isoformat()
+    rows: list[dict[str, Any]] = []
+    for event in events:
+        ratio = event.merger.acquirer_per_target
+        if ratio is None:
+            continue
+        rows.append(
+            {
+                "trade_date": stamp,
+                "ticker": event.merger.target,
+                "effective_date": event.merger.completion_date.date().isoformat(),
+                "factor": float(ratio),
+                "source": event.merger.source,
+                "cross_check_ratio": None,
+                "explained_by": "merger",
+                "new_ticker": event.merger.acquirer,
+                "source_rate": 1.0,
+                "new_rate": float(ratio),
+                "cash_per_share": float(event.merger.cash_per_share),
+            }
+        )
+    return rows
+
+
+def mergers_from_rows(rows: pd.DataFrame) -> list[Merger]:
+    """The mergers an appendix table records, read back as the rule's records.
+
+    merger_rows writes them, so this is its reader and the two agree by construction:
+    factor is the acquirer's shares per target share, new_ticker is the acquirer,
+    effective_date is the completion date and cash_per_share is the cash leg. A row
+    explained_by something else is a split or a spin-off and is not a merger here, and
+    a frame without the column at all reads as no records.
+    """
+    if rows is None or len(rows) == 0 or "explained_by" not in rows.columns:
+        return []
+    wanted = rows.loc[rows["explained_by"].astype(str) == "merger"]
+    out: list[Merger] = []
+    for row in wanted.to_dict("records"):
+        target = str(row.get("ticker") or "").strip()
+        when = row.get("effective_date")
+        if not target or when is None or pd.isna(when):
+            continue
+        acquirer = str(row.get("new_ticker") or "").strip()
+        factor = row.get("factor")
+        usable = (
+            factor is not None
+            and not pd.isna(factor)
+            and math.isfinite(float(factor))
+            and float(factor) > 0
+        )
+        unusable: str | None = None
+        if not acquirer:
+            unusable = "no acquirer symbol"
+        elif not usable:
+            unusable = f"factor {factor!r} cannot form a share ratio"
+        out.append(
+            Merger(
+                target=target,
+                acquirer=acquirer,
+                completion_date=_normalized(when),
+                acquirer_per_target=None if unusable else float(factor),
+                cash_per_share=_cash(row.get("cash_per_share")),
+                source=str(row.get("source") or MERGER_SOURCE),
+                unusable_reason=unusable,
+            )
+        )
+    return sorted(out, key=lambda merger: (merger.target, merger.acquirer))
+
+
+def apply_recorded_mergers(
+    frame: pd.DataFrame, prices_frame: pd.DataFrame, mergers: list[Merger]
+) -> list[MergerOutcome]:
+    """Re-apply recorded mergers to a frame the rebuild has just recomputed.
+
+    The same reasoning as apply_recorded for spin-offs: neither price vendor adjusts
+    history for a merger, so the completion-session total return has to be put back
+    from its record on every rebuild, and the target's later rows have to be nulled so
+    the fit never reads a return from a security that stopped trading.
+    """
+    out: list[MergerOutcome] = []
+    for merger in mergers:
+        outcome = _apply_merger(frame, prices_frame, merger)
+        if outcome is not None:
+            out.append(outcome)
+    return out
 
 
 def apply_recorded(
