@@ -23,22 +23,25 @@ being attributed on 2026-11-06.
 ## The fix
 
 - `efb/attribution.py::_with_risk_lines` now counts **finite** z-scores, exactly as
-  `bias_statistics` does, and below 30 writes the sentence
-  `not enough data yet (N of 30)` instead of a number. The statistic can no longer
-  raise the attribution step, and the rest of the row (realized volatility and its
-  ratio) is still written.
-- `live/attribution_job.py` no longer assumes a stored number is always a float:
-  `_shown` renders the sentence, and `_same_number` treats a null and a NaN as the
-  same absence so the restatement stays idempotent.
-- `live/supabase_schema.sql` changes `bias_statistic` from `double precision` to
-  `text`, with `docs/migrations/e12_attribution_bias_text.sql` to apply by hand and
-  its check beside it.
+  `bias_statistics` does. Below 30 it stores `bias_statistic` as null and the finite
+  count in a new `bias_n_obs` column; the reader-facing sentence
+  `not enough data yet (N of 30)` is built from the two at display time. The
+  statistic can no longer raise the attribution step, and the rest of the row
+  (realized volatility and its ratio) is still written.
+- `live/attribution_job.py` renders the sentence from null plus the count
+  (`_bias_display`), and `_same_number` treats a null and a NaN as the same absence
+  so the restatement stays idempotent.
+- The schema change is additive only: `bias_statistic` stays `double precision`, and
+  `docs/migrations/e12_attribution_bias_n_obs.sql` adds the nullable
+  `bias_n_obs integer` column (with its check beside it). The code already running
+  against the table keeps reading a number where it expects one.
 
 ## Tests
 
-`tests/test_attribution_risk_lines.py` gains three cases: 28 observations report
-"not enough data yet (28 of 30)", 30 report a number, and 30 raw sessions with three
-missing forecasts report "not enough data yet (27 of 30)" without raising.
+`tests/test_attribution_risk_lines.py` gains the cases: 28 observations store a null
+statistic with a count of 28, 30 store a number, and 30 raw sessions with three
+missing forecasts store a null statistic with a count of 27 without raising. A
+fourth case pins the sentence to the null + count pair.
 
 ## Back-fill
 
@@ -61,4 +64,5 @@ python scripts/repair_risk_lines.py
 A pass looks like: exit 0 and **no** `ValueError: a bias statistic needs at least 30
 observations`. The diff shows the recent sessions - 2026-11-06 among them - with a
 numeric `realized_vol` and `vol_ratio`, and `bias_statistic` reading
-`not enough data yet (N of 30)` (a number once the book has 30 finite sessions).
+`not enough data yet (N of 30)` from its null plus `bias_n_obs` (a number once the
+book has 30 finite sessions).
