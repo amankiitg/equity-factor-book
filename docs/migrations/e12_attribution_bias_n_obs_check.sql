@@ -1,14 +1,18 @@
--- The check query for docs/migrations/e12_attribution_bias_text.sql.
+-- The check query for docs/migrations/e12_attribution_bias_n_obs.sql.
 --
 -- Read-only: one select over the catalog, no DDL and no writes, so it is safe to run
--- before and after the migration. Before it answers false and names the old type; after
--- it answers true. The column and its expected type are listed here rather than read
--- out of the code under test, because a check that reads its own list would pass on an
+-- before and after the migration. Before it answers false and names the missing
+-- column; after it answers true. The columns are listed here rather than read out of
+-- the code under test, because a check that reads its own list would pass on an
 -- empty one.
+--
+-- It also pins `bias_statistic` to `double precision`: the migration adds a column
+-- and must not re-type the one the running code already reads as a number.
 
 with expected(column_name, data_type) as (
   values
-    ('bias_statistic', 'text')
+    ('bias_n_obs', 'integer'),
+    ('bias_statistic', 'double precision')
 ),
 present as (
   select column_name, data_type
