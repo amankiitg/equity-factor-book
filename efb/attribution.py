@@ -928,7 +928,7 @@ def _with_risk_lines(frame: pd.DataFrame) -> pd.DataFrame:
 
     pnl = frame["pnl_total"].to_numpy(dtype=float)
     vol: list[float] = []
-    bias: list[float | None] = []
+    bias: list[float | str | None] = []
     for position in range(len(pnl)):
         window = pnl[max(0, position - REALIZED_VOL_WINDOW + 1) : position + 1]
         if len(window) < 2 or np.nanstd(window, ddof=1) == 0:
@@ -944,12 +944,18 @@ def _with_risk_lines(frame: pd.DataFrame) -> pd.DataFrame:
             predicted = frame["forecast_vol"].iloc[offset]
             if predicted:
                 z.append(pnl[offset] / (predicted / np.sqrt(TRADING_DAYS)))
-        # `bias_statistics` raises below 30 observations, which is its own
-        # contract, so the row carries null until the book has a month of z.
+        # `bias_statistics` raises below 30 *finite* observations, so the count
+        # is taken on what it actually measures rather than on the raw `z`: a
+        # session with no forecast is a NaN here, and the raw count reaching 30
+        # while the finite count is still short is exactly what failed the
+        # 2026-11-06 evening. Below the bar the statistic says how close it is
+        # instead of a number, and it is never allowed to raise the step.
+        finite = np.asarray(z, dtype=float)
+        finite = finite[np.isfinite(finite)]
         bias.append(
-            float(eval_risk.bias_statistics(np.asarray(z))["bias"])
-            if len(z) >= 30
-            else None
+            float(eval_risk.bias_statistics(finite)["bias"])
+            if len(finite) >= 30
+            else f"not enough data yet ({len(finite)} of 30)"
         )
     frame["realized_vol"] = vol
     frame["vol_ratio"] = frame["realized_vol"] / frame["forecast_vol"]

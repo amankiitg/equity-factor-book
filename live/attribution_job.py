@@ -263,17 +263,32 @@ def _stored_row(day: str) -> dict[str, Any] | None:
     return {str(key): value for key, value in rows.iloc[-1].to_dict().items()}
 
 
+def _absent(value: Any) -> bool:
+    """Whether a stored value means "no number": null, or a NaN read back as one.
+
+    A null column and a NaN that parquet read back as a float are the same absence,
+    so the restatement does not rewrite a row whose only change is how the store
+    spells "nothing here". A string - the bias statistic's "not enough data yet" -
+    is a real value and is never absent.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return False
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
 def _same_number(left: Any, right: Any, *, tolerance: float = 1e-12) -> bool:
     """Two stored numbers, equal to a tolerance that survives a jsonb round trip."""
-    for value in (left, right):
-        if value is None:
-            return left is None and right is None
+    if _absent(left) or _absent(right):
+        return _absent(left) and _absent(right)
     try:
         first, second = float(left), float(right)
     except (TypeError, ValueError):
         return str(left) == str(right)
-    if pd.isna(first) and pd.isna(second):
-        return True
     return abs(first - second) <= tolerance * max(1.0, abs(first), abs(second))
 
 
@@ -513,8 +528,18 @@ def refinalize(
 
 
 def _shown(value: Any) -> str:
-    """A stored number, short enough to sit in a log line."""
-    return "n/a" if value is None else f"{float(value):.6f}"
+    """A stored number, short enough to sit in a log line.
+
+    `bias_statistic` is a number once the book has thirty finite observations and a
+    sentence before then, so a value that will not parse is shown as itself rather
+    than failing the restatement's own log line.
+    """
+    if value is None:
+        return "n/a"
+    try:
+        return f"{float(value):.6f}"
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def refinalize_stale(

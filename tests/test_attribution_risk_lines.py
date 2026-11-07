@@ -179,6 +179,58 @@ def test_a_re_priced_session_moves_every_later_window() -> None:
     )
 
 
+def _synthetic_series(
+    n: int, *, missing_forecasts: tuple[int, ...] = ()
+) -> pd.DataFrame:
+    """`n` sessions of alternating P&L and a fixed forecast, a few without one.
+
+    The P&L alternates so the realized volatility is a real number rather than
+    the zero standard deviation a constant series would produce; `forecast_vol`
+    is NaN at the zero-based `missing_forecasts`, which is how a session with no
+    stored forecast reaches the history in `risk_lines_over`.
+    """
+    days = [f"2026-01-{day:02d}" for day in range(1, n + 1)]
+    pnl = [0.001 if day % 2 else -0.001 for day in range(1, n + 1)]
+    forecast = [
+        np.nan if day - 1 in missing_forecasts else 0.02 for day in range(1, n + 1)
+    ]
+    return pd.DataFrame(
+        {"trade_date": days, "pnl_total": pnl, "forecast_vol": forecast}
+    )
+
+
+def test_the_bias_statistic_reports_how_close_below_thirty() -> None:
+    """Below 30 observations the statistic is a sentence, never a failure."""
+    history = attribution.risk_lines_over(_synthetic_series(28))
+    line = _line(history, "2026-01-28")
+    assert line["bias_statistic"] == "not enough data yet (28 of 30)"
+
+
+def test_the_bias_statistic_is_a_number_at_thirty() -> None:
+    """At 30 observations the statistic is the dispersion it always computed."""
+    history = attribution.risk_lines_over(_synthetic_series(30))
+    line = _line(history, "2026-01-30")
+    assert isinstance(line["bias_statistic"], float)
+    assert np.isfinite(line["bias_statistic"])
+
+
+def test_a_missing_forecast_never_fails_the_attribution() -> None:
+    """Thirty raw sessions with three missing forecasts are 27 finite, not a crash.
+
+    This is the 2026-11-06 failure: the guard used to count the raw `z`, so a
+    history that reached 30 sessions while three carried no forecast handed
+    `bias_statistics` 27 observations and it raised, taking the whole attribution
+    step down with it.
+    """
+    history = attribution.risk_lines_over(
+        _synthetic_series(30, missing_forecasts=(0, 10, 20))
+    )
+    line = _line(history, "2026-01-30")
+    assert line["bias_statistic"] == "not enough data yet (27 of 30)"
+    # The rest of the row is still written: the volatility is a number, not a gap.
+    assert np.isfinite(line["realized_vol"])
+
+
 @pytest.fixture()
 def local_store(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
