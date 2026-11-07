@@ -1,8 +1,8 @@
 """Restore `efb.attribution` from the backup taken before the 2026-10-20 recompute.
 
 **Read-only unless `--apply` is passed.** The backup
-(`docs/owner_fixes/backups/attribution_before.json`) holds every row the recompute
-overwrote, exactly as it was stored. This script puts them back.
+(`~/efb-backups/2026-11-07/repo_backups/attribution_before.json`) holds every row the
+recompute overwrote, exactly as it was stored. This script puts them back.
 
     python scripts/restore_attribution.py            # dry run: show what would change
     python scripts/restore_attribution.py --apply    # write the backup rows back
