@@ -387,3 +387,54 @@ def test_the_row_it_writes_is_a_row_the_store_can_take() -> None:
     # The rest of the row is the row: only the four jsonb columns and the key change.
     assert written["realized_vol"] == 0.024771
     assert written["pnl_cost"] == -0.0001
+
+
+def test_the_repair_report_prints_the_null_statistic_reading() -> None:
+    """A null statistic is a reading, and the report has to show it.
+
+    The 2026-11-06 run reached its thirtieth session with three carrying no forecast, so
+    the statistic is null with `bias_n_obs` = 25 and the sentence a reader wants is
+    "not enough data yet (25 of 30)". The statistic never *moves* on those days, so a
+    report built from the moved columns alone showed only a count going from nothing to
+    a number and left the sentence out.
+    """
+    from scripts import repair_risk_lines
+
+    null_statistic = {
+        "before": {"bias_statistic": None, "bias_n_obs": None},
+        "after": {"bias_statistic": None, "bias_n_obs": 25},
+        "moved": ["bias_n_obs"],
+        "day": "2026-11-06",
+    }
+    assert repair_risk_lines._columns_to_print(null_statistic) == [
+        "bias_n_obs",
+        "bias_statistic",
+    ]
+    before, after = repair_risk_lines._column_text(null_statistic, "bias_statistic")
+    assert before == "n/a"
+    assert after == "not enough data yet (25 of 30)"
+
+    # a statistic that did move is printed once, not twice
+    moved = {
+        "before": {"bias_statistic": None, "bias_n_obs": 29},
+        "after": {"bias_statistic": 0.41, "bias_n_obs": 30},
+        "moved": ["bias_statistic", "bias_n_obs"],
+        "day": "2026-11-07",
+    }
+    assert repair_risk_lines._columns_to_print(moved) == [
+        "bias_statistic",
+        "bias_n_obs",
+    ]
+
+    # and a day whose only change is realized volatility says nothing about the bias
+    other = {
+        "before": {
+            "realized_vol": float("nan"),
+            "bias_statistic": None,
+            "bias_n_obs": 25,
+        },
+        "after": {"realized_vol": 0.027585, "bias_statistic": None, "bias_n_obs": 25},
+        "moved": ["realized_vol"],
+        "day": "2026-11-06",
+    }
+    assert repair_risk_lines._columns_to_print(other) == ["realized_vol"]

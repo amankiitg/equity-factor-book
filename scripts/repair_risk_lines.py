@@ -63,6 +63,26 @@ def _column_text(item: dict[str, Any], column: str) -> tuple[str, str]:
     )
 
 
+def _columns_to_print(item: dict[str, Any]) -> list[str]:
+    """The columns worth a line for one day, which is not quite "the ones that moved".
+
+    A null `bias_statistic` is a reading, not an absence: below thirty finite
+    observations the writer stores null plus the count, and the sentence a reader wants
+    - "not enough data yet (N of 30)" - is built from that pair. The statistic itself
+    never changes on those days, so a report that printed only the columns that moved
+    showed a count going from nothing to a number and left the sentence out. Whenever
+    the count moves under a null statistic, the statistic is printed too.
+    """
+    moved = list(item["moved"])
+    if (
+        "bias_statistic" not in moved
+        and "bias_n_obs" in moved
+        and attribution_job._absent(item["after"].get("bias_statistic"))
+    ):
+        moved.append("bias_statistic")
+    return moved
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -78,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     print(f"{'day':12s} {'column':16s} {'stored':>10s} {'restated':>10s}  moved")
     for item in changed:
-        for column in item["moved"]:
+        for column in _columns_to_print(item):
             before, after = _column_text(item, column)
             print(f"{item['day']:12s} {column:16s} " f"{before:>10s} {after:>10s}")
     verb = "wrote" if args.apply else "would write"
