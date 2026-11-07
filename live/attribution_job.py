@@ -268,8 +268,7 @@ def _absent(value: Any) -> bool:
 
     A null column and a NaN that parquet read back as a float are the same absence,
     so the restatement does not rewrite a row whose only change is how the store
-    spells "nothing here". A string - the bias statistic's "not enough data yet" -
-    is a real value and is never absent.
+    spells "nothing here".
     """
     if value is None:
         return True
@@ -351,8 +350,13 @@ def restate_risk_lines(
             {
                 "day": day,
                 "moved": moved,
-                "before": {column: row.get(column) for column in moved},
-                "after": {column: _none_if_nan(line.get(column)) for column in moved},
+                "before": {
+                    column: row.get(column) for column in attribution.RISK_LINE_COLUMNS
+                },
+                "after": {
+                    column: _none_if_nan(line.get(column))
+                    for column in attribution.RISK_LINE_COLUMNS
+                },
             }
         )
     if rows and not dry_run:
@@ -361,11 +365,7 @@ def restate_risk_lines(
         logger.info(
             "risk lines restated for %s: %s",
             item["day"],
-            ", ".join(
-                f"{column} {_shown(item['before'].get(column))} -> "
-                f"{_shown(item['after'].get(column))}"
-                for column in item["moved"]
-            ),
+            ", ".join(_moved_text(item, column) for column in item["moved"]),
         )
     return changed
 
@@ -405,6 +405,8 @@ def _as_stored(row: dict[str, Any]) -> dict[str, Any]:
 
 def _none_if_nan(value: Any) -> Any:
     """A number that jsonb and parquet both accept: NaN is absence, not a value."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -528,18 +530,49 @@ def refinalize(
 
 
 def _shown(value: Any) -> str:
-    """A stored number, short enough to sit in a log line.
-
-    `bias_statistic` is a number once the book has thirty finite observations and a
-    sentence before then, so a value that will not parse is shown as itself rather
-    than failing the restatement's own log line.
-    """
+    """A stored number, short enough to sit in a log line."""
     if value is None:
         return "n/a"
     try:
         return f"{float(value):.6f}"
     except (TypeError, ValueError):
         return str(value)
+
+
+def _bias_display(bias_statistic: Any, bias_n_obs: Any) -> str:
+    """The bias statistic as a reader reads it, from the stored pair.
+
+    `bias_statistic` is a number once the book has thirty finite observations and
+    null before then; `bias_n_obs` is the finite count the writer measured. From the
+    pair a null statistic reads "not enough data yet (N of 30)" rather than "n/a",
+    so a reader can tell "not yet" from "never".
+    """
+    if not _absent(bias_statistic):
+        return _shown(bias_statistic)
+    if _absent(bias_n_obs):
+        return "n/a"
+    try:
+        return f"not enough data yet ({int(bias_n_obs)} of 30)"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
+def _moved_text(item: dict[str, Any], column: str) -> str:
+    """One moved column, before and after, for a restatement log line.
+
+    `bias_statistic` is shown as a sentence from its null plus the finite count
+    beside it, rather than as a bare "n/a", so a reader can tell "not yet" from
+    "never".
+    """
+    before = item["before"].get(column)
+    after = item["after"].get(column)
+    if column == "bias_statistic":
+        before = _bias_display(before, item["before"].get("bias_n_obs"))
+        after = _bias_display(after, item["after"].get("bias_n_obs"))
+    else:
+        before = _shown(before)
+        after = _shown(after)
+    return f"{column} {before} -> {after}"
 
 
 def refinalize_stale(

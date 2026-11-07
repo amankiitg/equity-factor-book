@@ -126,6 +126,7 @@ TABLE_COLUMNS: tuple[str, ...] = (
     "realized_vol",
     "vol_ratio",
     "bias_statistic",
+    "bias_n_obs",
     "factor_var_share",
     "idio_var_share",
     "n_missing_specific_var",
@@ -879,7 +880,12 @@ def skill_test(frame: pd.DataFrame, *, target_t: float = DETECTION_T) -> dict[st
 # trailing-window standard deviation and `bias_statistic` a trailing dispersion of
 # z-scores: both read every session at or before the one they are reported on, so a
 # run that recomputes one session has to restate them from the whole history.
-RISK_LINE_COLUMNS: tuple[str, ...] = ("realized_vol", "vol_ratio", "bias_statistic")
+RISK_LINE_COLUMNS: tuple[str, ...] = (
+    "realized_vol",
+    "vol_ratio",
+    "bias_statistic",
+    "bias_n_obs",
+)
 
 
 def risk_lines_over(history: pd.DataFrame) -> pd.DataFrame:
@@ -928,7 +934,8 @@ def _with_risk_lines(frame: pd.DataFrame) -> pd.DataFrame:
 
     pnl = frame["pnl_total"].to_numpy(dtype=float)
     vol: list[float] = []
-    bias: list[float | str | None] = []
+    bias: list[float | None] = []
+    bias_n: list[int | None] = []
     for position in range(len(pnl)):
         window = pnl[max(0, position - REALIZED_VOL_WINDOW + 1) : position + 1]
         if len(window) < 2 or np.nanstd(window, ddof=1) == 0:
@@ -938,6 +945,7 @@ def _with_risk_lines(frame: pd.DataFrame) -> pd.DataFrame:
         forecast = frame["forecast_vol"].iloc[position]
         if not vol or not np.isfinite(vol[-1]) or not forecast:
             bias.append(None)
+            bias_n.append(None)
             continue
         z = []
         for offset in range(position + 1):
@@ -948,16 +956,21 @@ def _with_risk_lines(frame: pd.DataFrame) -> pd.DataFrame:
         # is taken on what it actually measures rather than on the raw `z`: a
         # session with no forecast is a NaN here, and the raw count reaching 30
         # while the finite count is still short is exactly what failed the
-        # 2026-11-06 evening. Below the bar the statistic says how close it is
-        # instead of a number, and it is never allowed to raise the step.
+        # 2026-11-06 evening. Below the bar the statistic stays null and carries
+        # the finite count beside it, so a reader can say how close the book is
+        # and the statistic is never allowed to raise the step.
         finite = np.asarray(z, dtype=float)
         finite = finite[np.isfinite(finite)]
+        n_obs = len(finite)
+        bias_n.append(n_obs)
         bias.append(
-            float(eval_risk.bias_statistics(finite)["bias"])
-            if len(finite) >= 30
-            else f"not enough data yet ({len(finite)} of 30)"
+            float(eval_risk.bias_statistics(finite)["bias"]) if n_obs >= 30 else None
         )
     frame["realized_vol"] = vol
     frame["vol_ratio"] = frame["realized_vol"] / frame["forecast_vol"]
     frame["bias_statistic"] = bias
+    # `Int64` keeps the count an integer even though the column is nullable: a
+    # float64 column would hand the store an 11.0 for an `integer` column, and
+    # the page and email read it as a count.
+    frame["bias_n_obs"] = pd.array(bias_n, dtype="Int64")
     return frame

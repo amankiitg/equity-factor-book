@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -30,7 +31,7 @@ if str(ROOT) not in sys.path:
 
 from live import attribution_job  # noqa: E402
 
-SHOWN = ("realized_vol", "vol_ratio", "bias_statistic")
+SHOWN = ("realized_vol", "vol_ratio", "bias_statistic", "bias_n_obs")
 
 
 def _shown(value: object) -> str:
@@ -40,6 +41,26 @@ def _shown(value: object) -> str:
         return f"{float(value):.6f}"  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return str(value)
+
+
+def _column_text(item: dict[str, Any], column: str) -> tuple[str, str]:
+    """The stored and restated text for one column.
+
+    `bias_statistic` is shown from its null plus the finite count beside it, so a
+    reader can tell "not yet" from "never".
+    """
+    if column == "bias_statistic":
+        before = attribution_job._bias_display(
+            item["before"].get("bias_statistic"), item["before"].get("bias_n_obs")
+        )
+        after = attribution_job._bias_display(
+            item["after"].get("bias_statistic"), item["after"].get("bias_n_obs")
+        )
+        return before, after
+    return (
+        _shown(item["before"].get(column)),
+        _shown(item["after"].get(column)),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -58,11 +79,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{'day':12s} {'column':16s} {'stored':>10s} {'restated':>10s}  moved")
     for item in changed:
         for column in item["moved"]:
-            print(
-                f"{item['day']:12s} {column:16s} "
-                f"{_shown(item['before'].get(column)):>10s} "
-                f"{_shown(item['after'].get(column)):>10s}"
-            )
+            before, after = _column_text(item, column)
+            print(f"{item['day']:12s} {column:16s} " f"{before:>10s} {after:>10s}")
     verb = "wrote" if args.apply else "would write"
     print(f"\n{verb} {len(changed)} row(s), columns {', '.join(SHOWN)} only")
     if not args.apply:

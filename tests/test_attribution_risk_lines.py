@@ -24,6 +24,8 @@ import pytest
 from efb import attribution
 from live import attribution_job, store
 
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+
 # The live store's own P&L, read on 2026-10-22 (`efb.attribution`, the refinalized
 # rows). Small enough to keep in the test, and real enough that the numbers below
 # are the numbers the page showed.
@@ -200,10 +202,11 @@ def _synthetic_series(
 
 
 def test_the_bias_statistic_reports_how_close_below_thirty() -> None:
-    """Below 30 observations the statistic is a sentence, never a failure."""
+    """Below 30 observations the statistic is null with the count beside it."""
     history = attribution.risk_lines_over(_synthetic_series(28))
     line = _line(history, "2026-01-28")
-    assert line["bias_statistic"] == "not enough data yet (28 of 30)"
+    assert line["bias_statistic"] is None
+    assert line["bias_n_obs"] == 28
 
 
 def test_the_bias_statistic_is_a_number_at_thirty() -> None:
@@ -212,6 +215,7 @@ def test_the_bias_statistic_is_a_number_at_thirty() -> None:
     line = _line(history, "2026-01-30")
     assert isinstance(line["bias_statistic"], float)
     assert np.isfinite(line["bias_statistic"])
+    assert line["bias_n_obs"] == 30
 
 
 def test_a_missing_forecast_never_fails_the_attribution() -> None:
@@ -226,9 +230,42 @@ def test_a_missing_forecast_never_fails_the_attribution() -> None:
         _synthetic_series(30, missing_forecasts=(0, 10, 20))
     )
     line = _line(history, "2026-01-30")
-    assert line["bias_statistic"] == "not enough data yet (27 of 30)"
+    assert line["bias_statistic"] is None
+    assert line["bias_n_obs"] == 27
     # The rest of the row is still written: the volatility is a number, not a gap.
     assert np.isfinite(line["realized_vol"])
+
+
+def test_the_bias_sentence_is_built_from_null_and_the_count() -> None:
+    """The reader-facing sentence comes from null + N, never a stored string."""
+    assert attribution_job._bias_display(None, 28) == "not enough data yet (28 of 30)"
+    assert (
+        attribution_job._bias_display(float("nan"), 27)
+        == "not enough data yet (27 of 30)"
+    )
+    assert attribution_job._bias_display(None, None) == "n/a"
+    assert attribution_job._bias_display(0.99, 30) == "0.990000"
+
+
+def test_the_additive_bias_column_keeps_the_statistics_type() -> None:
+    """The migration is additive and never re-types `bias_statistic`.
+
+    `bias_statistic` stays `double precision` because the code already running
+    reads it as a number; the migration only adds a nullable `bias_n_obs`, which a
+    writer that does not name it cannot trip over.
+    """
+    migration = (
+        ROOT / "docs" / "migrations" / "e12_attribution_bias_n_obs.sql"
+    ).read_text()
+    # Purely additive: no alter, no drop, and the new column is nullable.
+    assert "alter column" not in migration
+    assert "drop column" not in migration.lower()
+    assert "add column if not exists bias_n_obs int" in migration
+    assert "bias_n_obs int not null" not in migration
+    # The schema still types the statistic as a number, not text.
+    schema = (ROOT / "live" / "supabase_schema.sql").read_text()
+    assert "bias_statistic double precision" in schema
+    assert "bias_statistic text" not in schema
 
 
 @pytest.fixture()
@@ -241,7 +278,11 @@ def local_store(
 
 
 def _rows() -> list[dict[str, object]]:
-    """The store's rows as they were, with the three risk columns deliberately wrong."""
+    """The store's rows as they were, with the risk columns deliberately wrong.
+
+    `bias_n_obs` is absent, as it is on a store the old code wrote before the
+    additive column existed.
+    """
     out: list[dict[str, object]] = []
     for day in sorted(LIVE_PNL):
         out.append(
@@ -262,7 +303,7 @@ def _rows() -> list[dict[str, object]]:
     return out
 
 
-def test_the_restate_writes_the_three_columns_and_leaves_the_row_alone(
+def test_the_restate_writes_the_risk_line_columns_and_leaves_the_row_alone(
     local_store: pathlib.Path,
 ) -> None:
     store.upsert("attribution", _rows())
@@ -270,13 +311,16 @@ def test_the_restate_writes_the_three_columns_and_leaves_the_row_alone(
 
     # Every session with a P&L history to look back on: all but the first, which
     # established the book and has no earlier session to measure against, so its
-    # three columns are absent before and after and there is nothing to write.
+    # risk columns are absent before and after and there is nothing to write.
     assert {item["day"] for item in changed} == set(LIVE_PNL) - {"2026-09-28"}
     repair = _line(
         store.select("attribution").rename(columns={"trade_date": "trade_date"}),
         CLIFF_DAY,
     )
     assert float(repair["realized_vol"]) == pytest.approx(0.024771, abs=1e-6)
+    # The finite count the still-null statistic is based on is now stored beside
+    # it: 11 sessions through 10-15 with a forecast, 3 without.
+    assert int(repair["bias_n_obs"]) == 11
     # Nothing else about the row moved: the cost, the fill count and the timestamp
     # are the row's own, not this pass's.
     assert float(repair["pnl_cost"]) == pytest.approx(-0.0001)
