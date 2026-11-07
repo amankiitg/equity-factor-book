@@ -36,6 +36,7 @@ with expected(column_name, data_type) as (
     ('realized_vol', 'double precision'),
     ('vol_ratio', 'double precision'),
     ('bias_statistic', 'double precision'),
+    ('bias_n_obs', 'integer'),
     ('factor_var_share', 'double precision'),
     ('idio_var_share', 'double precision'),
     ('n_missing_specific_var', 'integer'),
@@ -85,7 +86,7 @@ select
   and cardinality(missing_columns) = 0
   and cardinality(mistyped_columns) = 0
   and text_columns = 0
-  and present_columns = 37
+  and present_columns = 38
   as ready,
 
 --

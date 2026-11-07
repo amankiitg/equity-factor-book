@@ -68,3 +68,7 @@ This agent does not run the rehearsal against the real store or broker and never
 loads keys. The owner's main agent runs the commands above and reports: each
 close's exit code, the "Excluded tonight" line, the KVUE/KMB handling, and the
 full-rebalance legs/turnover/cost/variance-share/exposures/flips.
+
+- [ ] Attribution bias fix (2026-11-06 failure): run
+      `python scripts/repair_risk_lines.py` (dry run) on the real store - see
+      `docs/owner_fixes/attribution_too_few_observations.md`.

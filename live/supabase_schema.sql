@@ -428,6 +428,7 @@ create table if not exists efb.attribution (
   realized_vol double precision,
   vol_ratio double precision,
   bias_statistic double precision,
+  bias_n_obs int,
   factor_var_share double precision,
   idio_var_share double precision,
   n_missing_specific_var int,
@@ -613,6 +614,8 @@ alter table efb.attribution
   add column if not exists expected_trading_bps double precision;
 alter table efb.attribution
   add column if not exists expected_borrow_bps double precision;
+alter table efb.attribution
+  add column if not exists bias_n_obs int;
 -- Row level security, off, last. Supabase enables row level security on the
 -- tables its SQL editor is asked to create, and an RLS table with no policy
 -- refuses everything: re-applying this file left the writer role unable to write
