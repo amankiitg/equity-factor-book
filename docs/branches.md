@@ -353,7 +353,7 @@ built is gone as of 2026-10-23:
 (`scripts/push_seed.py` pulls it, `live/seed.py` verifies every hash), the cut trees from
 the store plus the seed, and the daily-design panel by re-running
 `scripts/daily_design_study.py`, which lives in `archive/research-daily-design`. Every database write they
-supported is applied, verified, and backed up under `docs/owner_fixes/backups/` with a
+supported is applied, verified, and backed up under `~/efb-backups/2026-11-07/repo_backups/` with a
 restore script proved by dry run.
 
 Deleted in the 2026-10-21 cleanup: `/tmp/icdecay` (873 MB) and `/tmp/cadence` (0 B).

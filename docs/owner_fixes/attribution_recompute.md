@@ -228,8 +228,8 @@ Re-running either dry run reports `other cols = 0` on every row.
 Rollback, dry run first:
 
 ```bash
-python scripts/restore_attribution.py --backup docs/owner_fixes/backups/attribution_0928_before.json
-python scripts/restore_attribution.py --backup docs/owner_fixes/backups/attribution_fills_before.json --apply
+python scripts/restore_attribution.py --backup ~/efb-backups/2026-11-07/repo_backups/attribution_0928_before.json
+python scripts/restore_attribution.py --backup ~/efb-backups/2026-11-07/repo_backups/attribution_fills_before.json --apply
 ```
 
 Both backups were taken with `scripts/backup_attribution_rows.py` (new), and both
@@ -242,9 +242,9 @@ recorded. See the commit and `tests/test_attribution_refinalize.py`.
 ## Backup and rollback
 
 - Backup of the 14 + 2 rows written, every column:
-  `docs/owner_fixes/backups/attribution_before.json` (16 rows, `since` 09-29).
+  `~/efb-backups/2026-11-07/repo_backups/attribution_before.json` (16 rows, `since` 09-29).
 - Whole table before the write, for the "nothing else changed" check:
-  `docs/owner_fixes/backups/attribution_context_before.json` (17 rows).
+  `~/efb-backups/2026-11-07/repo_backups/attribution_context_before.json` (17 rows).
 - Restore, dry run by default:
 
 ```bash

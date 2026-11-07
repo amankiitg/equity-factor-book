@@ -29,6 +29,12 @@ data/**/*.feather
 # `make symlink-guard` refuses that one instead.
 data-src*
 
+# Restore dumps: the rows before an owner fix, which is book and account detail.
+# The repo is public, so they live in ~/efb-backups/<date>/repo_backups/ with a
+# manifest beside them, and an earlier copy is in the history only because it
+# was committed before this line existed.
+docs/owner_fixes/backups/
+
 # Secrets and local config
 .env
 .env.*

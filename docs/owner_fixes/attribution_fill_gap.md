@@ -82,7 +82,7 @@ cd <repo>
 set -a; source .env; set +a
 
 # 1. the backup, every column, the rows the dry run says move
-python scripts/backup_attribution_rows.py --out docs/owner_fixes/backups/attribution_fill_gap_before.json \
+python scripts/backup_attribution_rows.py --out ~/efb-backups/2026-11-07/repo_backups/attribution_fill_gap_before.json \
        --since 2026-09-29
 
 # 2. the repair, as a dry run: prints stored beside recomputed, writes nothing
@@ -92,8 +92,8 @@ python scripts/recompute_attribution.py --root <live data tree> --only-max-fill-
 python scripts/recompute_attribution.py --root <live data tree> --only-max-fill-gap --since 2026-09-29 --apply
 
 # 4. the restore, dry run first, then applied - only if the write has to come back out
-python scripts/restore_attribution.py --backup docs/owner_fixes/backups/attribution_fill_gap_before.json
-python scripts/restore_attribution.py --backup docs/owner_fixes/backups/attribution_fill_gap_before.json --apply
+python scripts/restore_attribution.py --backup ~/efb-backups/2026-11-07/repo_backups/attribution_fill_gap_before.json
+python scripts/restore_attribution.py --backup ~/efb-backups/2026-11-07/repo_backups/attribution_fill_gap_before.json --apply
 ```
 
 **Applied on 2026-10-28.** `--only-max-fill-gap` now exists, with the same shape as
