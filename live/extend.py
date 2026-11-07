@@ -81,7 +81,9 @@ def _live_tickers(data_root: Path) -> list[str]:
 
     The stored book is a convenience, not a requirement: if the store cannot
     answer, the universe alone is fetched, because a run must not stop over the
-    set it prices rather than the prices themselves.
+    set it prices rather than the prices themselves. A name the broker reports
+    `ASSET_INACTIVE` is dropped from the set rather than asked for: it is retired,
+    so no vendor has a close for it and the request is a failure every evening.
     """
     tickers = set(_spy_tickers(data_root))
     try:
@@ -92,7 +94,33 @@ def _live_tickers(data_root: Path) -> list[str]:
         book = None
     if book is not None and "ticker" in book.columns:
         tickers |= {str(name).upper().strip() for name in book["ticker"]}
+    tickers -= _inactive_tickers()
     return sorted(tickers)
+
+
+def _inactive_tickers() -> set[str]:
+    """The names the broker reports ASSET_INACTIVE, which no vendor can price.
+
+    A retired name - KVUE completed its merger into KMB on 2026-11-02 - answers
+    every price request with nothing, so it is never asked. The broker's report is
+    the stored order refusal (`reason_code = ASSET_INACTIVE`); a store that cannot
+    answer means no name is known inactive, and the name stays in the fetch rather
+    than being dropped on a guess.
+    """
+    from live import alpaca
+
+    try:
+        orders = store.select("orders")
+    except Exception:  # noqa: BLE001 - nothing is known inactive
+        return set()
+    if orders is None or orders.empty or "reason_code" not in orders.columns:
+        return set()
+    refused = orders.loc[
+        orders["reason_code"].astype(str) == alpaca.REASON_ASSET_INACTIVE
+    ]
+    if "ticker" not in refused.columns:
+        return set()
+    return {str(name).upper().strip() for name in refused["ticker"]}
 
 
 def retry_missing_closes(

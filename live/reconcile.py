@@ -326,6 +326,16 @@ def backfill(
         key: (None if isinstance(value, float) and pd.isna(value) else value)
         for key, value in row.items()
     }
+    # A row read back from Postgres carries its jsonb columns (`traded_risk` and
+    # `full_risk`) as dicts, and `store.upsert` binds each value straight to a
+    # placeholder; psycopg cannot adapt a dict for a jsonb column, so the first
+    # attempt at this back-fill raised `ProgrammingError: cannot adapt type
+    # 'dict'`. Re-encode them as JSON text, exactly as the evening wrote them, so
+    # the same-day rerun lands instead of failing again.
+    row = {
+        key: (store.json_text(value) if isinstance(value, dict | list) else value)
+        for key, value in row.items()
+    }
     store.upsert("reconciliation", [row])
     logger.info(
         "reconciliation %s back-filled: filled_notional %s, realized_annual_vol %s",

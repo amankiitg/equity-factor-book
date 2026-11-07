@@ -29,6 +29,11 @@ these in order, and the report for it shows each result:
 4. Merge inside a window: 16:00-21:30 UTC once that day's morning shows `ok`, or
    23:15-14:30 UTC after the evening's run has finished. Never 14:30-16:00 or
    21:30-23:15.
+5. A PR that changes `live/supabase_schema.sql` merges only after its migration is
+   applied to the live database. The preflight reads that file for the columns every
+   writer needs, so a schema change merged before its migration stops the next run
+   with `SchemaOutOfDate` before it trades (the 2026-11-05 `cash_per_share` column
+   was the case).
 
 The rehearsal never writes: `efb.proposals`, `positions`, `orders` and `run_status` are
 keyed by the trade date, so a plain dry run of a past close would overwrite the record of
