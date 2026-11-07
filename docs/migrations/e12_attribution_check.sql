@@ -35,7 +35,7 @@ with expected(column_name, data_type) as (
     ('hedged_vol', 'double precision'),
     ('realized_vol', 'double precision'),
     ('vol_ratio', 'double precision'),
-    ('bias_statistic', 'double precision'),
+    ('bias_statistic', 'text'),
     ('factor_var_share', 'double precision'),
     ('idio_var_share', 'double precision'),
     ('n_missing_specific_var', 'integer'),
@@ -84,7 +84,7 @@ select
   table_exists
   and cardinality(missing_columns) = 0
   and cardinality(mistyped_columns) = 0
-  and text_columns = 0
+  and text_columns = 1
   and present_columns = 37
   as ready,
 

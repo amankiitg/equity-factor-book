@@ -427,7 +427,7 @@ create table if not exists efb.attribution (
   hedged_vol double precision,
   realized_vol double precision,
   vol_ratio double precision,
-  bias_statistic double precision,
+  bias_statistic text,
   factor_var_share double precision,
   idio_var_share double precision,
   n_missing_specific_var int,
