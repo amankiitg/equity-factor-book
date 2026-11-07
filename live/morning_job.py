@@ -518,6 +518,14 @@ def submit_orders(
     records: list[dict[str, object]] = []
     from live import alpaca
 
+    # A dry rehearsal still resolves each leg's asset read-only when a client is
+    # available, so a KVUE-type refusal (asset inactive) shows up in a rehearsal
+    # instead of only in a live evening. The live path builds its own resolver
+    # below; this one is only for the dry run.
+    resolver = (
+        alpaca.SymbolResolver(client) if (dry_run and client is not None) else None
+    )
+
     for order in orders:
         if order.status != guards.PASSED:
             records.append(
@@ -538,13 +546,22 @@ def submit_orders(
             )
             continue
         if dry_run:
+            broker_symbol = ""
+            reason = "dry run: no order sent"
+            if resolver is not None:
+                resolution = resolver.resolve(order.ticker)
+                broker_symbol = resolution.symbol or ""
+                if resolution.inactive:
+                    reason += " (the broker reports the asset inactive)"
+                elif resolution.missing:
+                    reason += " (the broker carries no asset for this ticker)"
             records.append(
                 {
                     "ticker": order.ticker,
                     "intended_notional": order.trade_notional,
                     "filled_notional": 0.0,
                     "status": "DRY_RUN",
-                    "reason": "dry run: no order sent",
+                    "reason": reason,
                     "reason_code": "DRY_RUN",
                     # The id the leg would have carried, computed the same way the
                     # live path computes it, so a dry evening shows the rerun-proof
@@ -561,9 +578,9 @@ def submit_orders(
                     "position_intent": order.intent,
                     # No order exists yet, so there is no broker id to record.
                     "broker_order_id": "",
-                    # Nothing was resolved either: a dry evening asks the broker
-                    # nothing, so no rename can be reported from it.
-                    "broker_symbol": "",
+                    # What the read-only asset check resolved, so a refusal or a
+                    # rename is visible in a rehearsal. Empty is the refusal state.
+                    "broker_symbol": broker_symbol,
                 }
             )
             continue
