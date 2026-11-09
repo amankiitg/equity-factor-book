@@ -124,3 +124,171 @@ def test_a_date_column_is_written_so_the_run_can_append_to_it() -> None:
     assert pd.api.types.is_datetime64_any_dtype(coerced["trade_date"])
     assert coerced["weight"].dtype.kind == "f"
     assert isinstance(coerced["manifest"].iloc[0], str)
+
+
+def _filed_close_seed() -> pd.DataFrame:
+    """One non-empty table that reads as an already-filed 2026-10-29 close."""
+    return pd.DataFrame(
+        {
+            "run_date": pd.to_datetime(["2026-10-29"]),
+            "job": ["live_daily"],
+            "status": ["traded"],
+        }
+    )
+
+
+def test_a_filed_close_reruns_instead_of_short_circuiting() -> None:
+    """(a) already_ran is defeated: a filed close still runs the evening.
+
+    The runner's idempotence guard answers True for a close that was already
+    filed and returns before a line of the evening runs, which proves nothing.
+    The rehearsal must re-run that close, so the guard has to answer False inside
+    it - safe because the writes go to the sandbox, never the live store.
+    """
+    seen: dict[str, object] = {"main": False, "guard": None}
+
+    def fake_main() -> int:
+        seen["main"] = True
+        seen["guard"] = run_live_daily.already_ran("live_daily", "2026-10-29")
+        return 0
+
+    # The unpatched guard really does answer True for this seed, so the test
+    # proves the rehearsal defeats it rather than that the close never ran.
+    with patch.object(store, "select", lambda table: _filed_close_seed()):
+        assert run_live_daily.already_ran("live_daily", "2026-10-29") is True
+
+    with (
+        patch.object(store, "select", lambda table: _filed_close_seed()),
+        patch.object(run_live_daily, "main", fake_main),
+    ):
+        code = rehearse_evening.rehearse("2026-10-29")
+
+    assert seen["main"] is True, "the evening must run, not short-circuit"
+    assert seen["guard"] is False, "already_ran must answer False inside the rehearsal"
+    assert code == 0
+
+
+def test_the_clock_pin_reaches_main() -> None:
+    """(d) main() reads the close asked for, not today's.
+
+    The first attempt pinned only the runner's clock; `staleness.check()` reads
+    its own module clock, so rehearsing 10-29 produced an 11-05 subject. Both
+    modules are pinned now, and the rehearsal refuses to start if either is not.
+    """
+    from datetime import UTC
+
+    from live import staleness
+
+    seen: dict[str, object] = {}
+
+    def fake_main() -> int:
+        seen["runner"] = run_live_daily.datetime.now(UTC)
+        seen["staleness"] = staleness.datetime.now(UTC)
+        return 0
+
+    with (
+        patch.object(store, "select", lambda table: _filed_close_seed()),
+        patch.object(run_live_daily, "main", fake_main),
+    ):
+        rehearse_evening.rehearse("2026-10-29")
+
+    fixed = rehearse_evening.pinned_now("2026-10-29")
+    assert fixed.date().isoformat() == "2026-10-29"
+    assert seen["runner"] == fixed
+    assert seen["staleness"] == fixed
+
+
+def test_legitimate_writes_file_into_the_sandbox_not_a_wall() -> None:
+    """(b) The evening's own writes land in the copy, not a fail-closed wall.
+
+    The first harness patched every store write to raise `RehearsalWrite`, so a
+    real close died at its first legitimate write. The sandbox lets the run file
+    for real into the copy, which is what makes "ok and filed" checkable - and
+    the write the run makes is the one that appends to the copy, which is the
+    fifth round-trip the local writer now casts for.
+    """
+    from pathlib import Path
+
+    sandbox: dict[str, object] = {}
+
+    def fake_main() -> int:
+        sandbox["dir"] = store.LOCAL_DIR
+        store.upsert(
+            "cron_runs",
+            [{"run_date": "2026-10-29", "job": "live_daily", "status": "traded"}],
+        )
+        return 0
+
+    with (
+        patch.object(store, "select", lambda table: _filed_close_seed()),
+        patch.object(run_live_daily, "main", fake_main),
+    ):
+        assert rehearse_evening.rehearse("2026-10-29") == 0
+
+    frame = pd.read_parquet(Path(sandbox["dir"]) / "cron_runs.parquet")
+    assert frame["run_date"].astype(str).str.slice(0, 10).tolist() == [
+        "2026-10-29",
+    ]
+    assert pd.api.types.is_datetime64_any_dtype(frame["run_date"])
+
+
+def test_the_local_writer_casts_a_string_run_date_to_the_timestamp_schema(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """The cron row's own write: a string `run_date` appends to a timestamp column.
+
+    `coerce_for_parquet` seeds `run_date` as a timestamp, and `record_run` appends
+    the date as a string. `pd.concat` used to raise "object of type str cannot be
+    converted to int"; the local writer now casts the incoming column to the
+    file's schema first.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path)
+    monkeypatch.setenv("EFB_STORE", "local")
+    seed = pd.DataFrame(
+        {
+            "run_date": pd.to_datetime(["2026-10-28"]),
+            "job": ["live_daily"],
+            "status": ["traded"],
+        }
+    )
+    seed.to_parquet(tmp_path / "cron_runs.parquet", index=False)
+
+    store.upsert(
+        "cron_runs",
+        [{"run_date": "2026-10-29", "job": "live_daily", "status": "traded"}],
+    )
+
+    frame = store.select("cron_runs")
+    assert pd.api.types.is_datetime64_any_dtype(frame["run_date"])
+    assert frame["run_date"].astype(str).str.slice(0, 10).tolist() == [
+        "2026-10-28",
+        "2026-10-29",
+    ]
+
+
+def test_the_local_writer_casts_a_string_weight_to_the_float_schema(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A numeric column's own write: a text weight appends to a float column.
+
+    `coerce_for_parquet` seeds `weight` as a float and the run writes a number. A
+    copy written before the normalisation holds text, and `pd.concat` used to
+    raise "could not convert '7.917391' with type str". The local writer now
+    casts the incoming column to the file's schema first.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path)
+    monkeypatch.setenv("EFB_STORE", "local")
+    seed = pd.DataFrame(
+        {"trade_date": ["2026-10-28"], "ticker": ["AAA"], "weight": [0.01]}
+    )
+    seed.to_parquet(tmp_path / "positions.parquet", index=False)
+
+    store.replace_by_date(
+        "positions",
+        "2026-10-29",
+        [{"trade_date": "2026-10-29", "ticker": "AAA", "weight": "0.0123"}],
+    )
+
+    frame = store.select("positions")
+    assert frame["ticker"].tolist() == ["AAA", "AAA"]
+    assert frame["weight"].tolist() == pytest.approx([0.01, 0.0123])
