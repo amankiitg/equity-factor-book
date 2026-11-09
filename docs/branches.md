@@ -1,17 +1,30 @@
 # Branches, worktrees and scratch directories
 
-State after the weekend of 2026-10-31/11-01. **One branch besides `main`, held for the
-owner's decision, one worktree, and an archive tag for every branch that has merged
-since.** Everything else is merged into `main` (so its commits are in history) or
-preserved as an `archive/<branch>` tag on `origin`. `/tmp/efb-gate` is the only scratch
-tree kept on this machine.
+State after the cleanup of 2026-11-07. **Three branches besides `main` stay on purpose,
+two more are tagged and left, and two are checked out in the agent worktrees.**
+Everything else is merged into `main` (so its commits are in history) or preserved as an
+`archive/<branch>` tag on `origin`. `~/efb-gate` is the only scratch tree kept on this
+machine; the two `/tmp` trees are gone, see below.
+
+The 2026-11-07 cleanup archived and deleted eight merged branches (`fix-evening-email`,
+`task/additive-sector-refresh`, `task/corporate-actions-exclusion`, `task/final-docs`,
+`task/readiness-2026-11-23`, `task/readme-agent-workflow`, `task/reconcil-backfill-fix`,
+`task/vol-target-docs`) plus the two local agent branches `agent/efb1` and `agent/efb2`,
+pruned the worktree records and ran `git gc --prune=now`. No content was lost: every
+tip is an `archive/<branch>` tag on `origin`, and the merged ones are in `main` anyway.
 
 `moo-orders` is **gone as a branch**: the owner decided against market-on-open on
 2026-10-31 (`docs/decisions.md`), so its tip `e7ad6c8` is on `origin` as
-`archive/moo-orders` and `EFB_ORDER_TIF` is unset. That leaves `held-marks-close`.
+`archive/moo-orders` and `EFB_ORDER_TIF` is unset.
 
 The two study branches are gone as branches: their write-ups and result JSONs are in
 `docs/research/` on `main`, and the scripts that produced them are in the archive tags.
+
+**Backups live outside the repo.** The JSON dumps under `docs/owner_fixes/backups/` were
+tracked in a public repository until 2026-11-07; they now sit in
+`~/efb-backups/2026-11-07/repo_backups/` with a sha256 manifest beside them
+(`~/efb-backups/2026-11-07/manifest.json`), and `.gitignore` refuses the directory so a
+restore cannot be committed again. The docs that cite them name that path.
 
 ## The merge checklist for an evening-path change
 
@@ -29,12 +42,17 @@ these in order, and the report for it shows each result:
 4. Merge inside a window: 16:00-21:30 UTC once that day's morning shows `ok`, or
    23:15-14:30 UTC after the evening's run has finished. Never 14:30-16:00 or
    21:30-23:15.
+5. A PR that changes `live/supabase_schema.sql` merges only after its migration is
+   applied to the live database. The preflight reads that file for the columns every
+   writer needs, so a schema change merged before its migration stops the next run
+   with `SchemaOutOfDate` before it trades (the 2026-11-05 `cash_per_share` column
+   was the case).
 
 The rehearsal never writes: `efb.proposals`, `positions`, `orders` and `run_status` are
 keyed by the trade date, so a plain dry run of a past close would overwrite the record of
-a night that has already traded. The script suppresses every store write and composes the
-message instead of sending it, and it stops at the decision path rather than
-`run_live_daily.main()` because `main()` takes its target close from the clock.
+a night that has already traded. `scripts/rehearse_evening.py` runs the real
+`run_live_daily.main()` under a pinned clock (dry run, out-of-hours window forced) and
+blocks every store write fail-closed, so a rehearsal can never move the real store.
 
 ## What is left, and why
 
@@ -42,6 +60,16 @@ message instead of sending it, and it stops at the decision path rather than
 |---|---|---|---|
 | `main` | whatever `git log -1 origin/main` says - this file cannot record its own merge | `equity-factor-book` | production |
 | `held-marks-close` | `826d2c5` | - | **held for the owner's decision**: `EFB_HELD_MARKS=close` values the held book at the vendor close times the broker's quantity instead of the broker's `market_value`. Unset is what runs today, and `docs/research/held_marks_switch.md` has the replay showing the mark source never changed a guard decision |
+| `task/be-ilmn-p-descriptors` | `baadc43` | - | PR #2, parked: the sector, bar and row repair that makes BE, ILMN and P measurable. Not to be merged before 2026-11-24 |
+| `task/rehearse-evening` | `6149ad6` | - | PR #7, open for the owner's review: the rehearsal harness with a sandbox store, captured delivery and a pinned clock. `scripts/rehearse_evening.py` is on `main` in its first form; this branch is the hardened one |
+| `sector-descriptors-backfill` | `1729f00` | - | **tagged and left**: one commit of unmerged work that the cleanup could not account for, so `archive/sector-descriptors-backfill` records the tip and the branch stays until the owner decides |
+| `integration-1106` | `2fc8216` | - | **tagged and left, `origin` only**: eight commits of a scratch integration branch. Its port-map content landed as `ad31d6a`; the rest was not accounted for, so `archive/integration-1106` records the tip and the branch stays |
+| `task/attribution-bias-few-obs` | `fbcaacd` | `~/agents/efb1` | merged through PR #11 (`d30086c`); the branch is **left in place** because an agent worktree has it checked out |
+| `task/merger-accounting` | `3697e7c` | `~/agents/efb2` | merged through `4e4de7a`; **left in place** for the same reason. The merger accounting itself is not written: the `efb.mergers` row is the owner's to apply |
+
+`sector-descriptors-backfill` and `integration-1106` were the only two whose content the
+cleanup could not account for. Both are tagged, so
+`git checkout -b <name> archive/<name>` works whether or not the branch survives.
 
 `variance-cap-final` merged on 2026-10-31 as `d919913` and is deleted as a branch;
 `archive/variance-cap-final` holds tip `6731a29`. `p1c-exclusion-rule`,
@@ -60,7 +88,7 @@ the four columns exist and `live/morning_job.py` writes them on the next morning
 
 ## The archive tags
 
-Eighteen, all on `origin`. Each is an annotated tag at the branch's last tip:
+Fifty-two, all on `origin`. Each is an annotated tag at the branch's last tip:
 
 | tag | holds |
 |---|---|
@@ -81,16 +109,30 @@ Eighteen, all on `origin`. Each is an annotated tag at the branch's last tip:
 | `archive/fill-gap-apply` | the stored `max_fill_gap` repair |
 | `archive/merge-1028` | the staging branch that carried the two held branches in |
 
-### Held, with their proofs
+The ten added by the 2026-11-07 cleanup, each at a tip that was about to be the tag's
+only handle:
 
-Both are pushed and both have their own tests green. `order-time-quotes` changes what
-the morning stores with every order and may not merge until a morning has reconciled on
-the current code; `moo-orders` changes what the morning sends and is the owner's call.
-
-| branch | proof | the exact merge |
+| tag | sha | what was there |
 |---|---|---|
-| `order-time-quotes` | 15 tests in `tests/test_order_quotes.py` and `tests/test_cost_split.py`; `test_e11_preflip_fixes.py` and `test_run_live_daily.py` unaffected (60 passed); ruff and black clean in the lint scope. Tolerates the four columns being absent, so it can merge before or after the migration | apply the migration (Monday), then merge **after 15:45 UTC Tuesday**, once that morning has reconciled - the Tuesday morning sends the reversal second legs on current code |
-| `moo-orders` | `tests/test_moo_orders.py` 9 passed: unset is `day` with the four `client_order_id`s pinned, `opg` is `opg` on every leg with the open sized in whole shares, a bad value raises before the first order, the 09:28 ET cutoff falls back to `day` with the reason recorded, and a rerun submits nothing | the owner's decision before the rebalance about 2026-11-23; see `docs/research/moo_orders.md` |
+| `archive/fix-evening-email` | `52da5f5` | Part B of the 2026-11-05 email work, in `main` as `be134d6` |
+| `archive/task-additive-sector-refresh` | `843fccd` | the additive sector refresh, in `main` as `2175b2c` |
+| `archive/task-corporate-actions-exclusion` | `35a51f7` | the corporate-action exclusion, in `main` as `94de425` |
+| `archive/task-final-docs` | `bf9b1d7` | the 2026-11-05 doc close-out, in `main` as `5cfcb4c` |
+| `archive/task-readiness-2026-11-23` | `70b6d3e` | the 2026-11-23 readiness notes, in `main` as `e2d5fb7` |
+| `archive/task-readme-agent-workflow` | `cf8e868` | the agent-workflow README section, in `main` as `77f761a` |
+| `archive/task-reconcil-backfill-fix` | `c1420d0` | the reconciliation backfill fix, in `main` as `4e4de7a` |
+| `archive/task-vol-target-docs` | `6ddd74e` | the vol-target docs, in `main` as `8cdc4a2` |
+| `archive/sector-descriptors-backfill` | `1729f00` | **unmerged** - the branch is still there too, see the table at the top |
+| `archive/integration-1106` | `2fc8216` | **unmerged** - the branch is still on `origin` too, see the table at the top |
+
+### The two that were held, and how they resolved
+
+`order-time-quotes` merged on 2026-10-28 once its migration was applied, and
+`moo-orders` was decided against on 2026-10-31. Neither is a branch any more; both tips
+are `archive/` tags. The proofs they carried stand as the record of what a held branch
+needs before it merges: 15 tests in `tests/test_order_quotes.py` and
+`tests/test_cost_split.py` for the first, and 9 pinned `client_order_id`s in
+`tests/test_moo_orders.py` for the second.
 
 ## The merges of 2026-10-28
 
@@ -245,43 +287,58 @@ There was no `nov11-b3-*` branch to park.
 The nine branches merged on 2026-10-22 and deleted on 2026-10-23 are in the table at the
 top of this file with their tips; they are in `main`'s history, not archived.
 
-## The two `/tmp` trees a gate or an identity proof needs
+## The gate tree a check needs
 
-Both were rebuilt on 2026-10-24 and **both are kept on purpose**, because Monday night's
-merges and the identity proofs need them and each takes minutes to rebuild:
+The two `/tmp` trees (`efb-gate` 873 MB, `efb-pl-data` 882 MB) were **deleted on
+2026-11-06** when the disk filled and the session died with `No space left on device`.
+One replacement is kept on purpose, because every gate and identity proof needs it and it
+takes minutes to rebuild:
 
 | path | size | what it is |
 |---|---|---|
-| `/tmp/efb-gate` | 873 MB | a plain copy of the owner's `data/`. This is the only tree on which the failing set equals the known list; a gate run on the extended tree below shows research-artifact failures that are not code failures |
-| `/tmp/efb-pl-data` | 882 MB | the same copy, extended to the latest session, for `build_proposal` and the identity proofs |
+| `~/efb-gate` | 167 MB | a live-vintage copy of the owner's `data/`, built from the rehearsal seed and extended to 2026-11-05. This is the tree on which the failing set equals the known list; a gate run on the extended tree shows research-artifact failures that are not code failures |
+
+A worktree that gates **must hold a real copy, not a symlink**: `scripts/check_symlinks.py`
+runs as a pre-commit hook and as a gate test, and it refuses a commit where `data/` or
+`.venv/` is a link or is tracked as one. Copy, do not link:
+
+    rsync -a ~/efb-gate/ ../efb-<work>/data/
+
+The identity proofs (a `build_proposal` replay) run on a **copy of that copy** in
+`$TMPDIR`, so the shared gate tree is never extended or written by a proof.
 
 ### Recipe 1: the gate tree
 
 From the main checkout, on `main`:
 
-    rsync -a data/ /tmp/efb-gate/
-    cd ../efb-<work>; rm -rf data && ln -s /tmp/efb-gate data
+    rsync -a ~/efb-gate/ ../efb-<work>/data/
 
-`rm -rf data` first, every time: `ln -s` into a directory that already exists quietly
-creates `data/efb-gate` and the run then tests the wrong tree.
+Copied, not linked. The gate tree is the only one whose failing set equals the known
+list, and the symlink guard will refuse a commit that records `data` as a link.
 
 ### Recipe 2: the identity tree
 
-    rsync -a data/ /tmp/efb-pl-data/
-    cd ../efb-<work>; rm -rf data && ln -s /tmp/efb-pl-data data
+A copy of the gate tree in `$TMPDIR`, extended exactly as the evening does:
+
+    rsync -a ~/efb-gate/ "$TMPDIR/efb-proof/data/"
+    cd ../efb-<work>
     set -a; source .env; set +a
     .venv/bin/python -c "from live import seed, appendix; seed.download(); appendix.hydrate()"
 
-then extend exactly as the evening does, on the copy:
+then extend on that copy:
 
     .venv/bin/python - <<'EOF'
+    import os
     from pathlib import Path
     from live import extend
-    tree = Path("/tmp/efb-pl-data")
+    tree = Path(os.environ["TMPDIR"]) / "efb-proof" / "data"
     print(extend.extend_prices(tree), extend.extend_archives(tree))
     print(extend.extend_returns(tree), extend.extend_model(tree))
     print("last session:", extend.last_price_session(tree))
     EOF
+
+Delete the `$TMPDIR` copy afterwards. A proof that writes into `~/efb-gate` poisons
+every later gate in the session.
 
 ### The 2026-10-24 incident this warning exists for
 
@@ -319,7 +376,11 @@ git worktree add ../efb-<branch> -b <branch> archive/<branch>
 The 2026-10-24 close-out removed six with `git worktree remove --force`, each after
 `git status --porcelain` was empty: `efb-ctva2`, `efb-moo`, `efb-docs`, `efb-merge1`,
 `efb-docs2`, and `efb-daily-design` (whose `research-daily-design` branch is now
-`archive/research-daily-design`). **One worktree remains: the main checkout, on `main`.**
+`archive/research-daily-design`). **Three worktrees remain: the main checkout on `main`,
+and the two agent trees `~/agents/efb1` (on `task/attribution-bias-few-obs`) and
+`~/agents/efb2` (on `task/merger-accounting`).** The 2026-11-07 cleanup pruned the
+worktree records and removed nothing else; the two agent trees belong to the Telegram
+workers and are not touched from here.
 
 The 2026-10-23 close-out removed eleven more after `git status --porcelain` showed
 nothing but `.venv`, `web/node_modules` or the `data` symlink: `efb-borrow`, `efb-ctva`,
@@ -348,7 +409,7 @@ built is gone as of 2026-10-23:
 (`scripts/push_seed.py` pulls it, `live/seed.py` verifies every hash), the cut trees from
 the store plus the seed, and the daily-design panel by re-running
 `scripts/daily_design_study.py`, which lives in `archive/research-daily-design`. Every database write they
-supported is applied, verified, and backed up under `docs/owner_fixes/backups/` with a
+supported is applied, verified, and backed up under `~/efb-backups/2026-11-07/repo_backups/` with a
 restore script proved by dry run.
 
 Deleted in the 2026-10-21 cleanup: `/tmp/icdecay` (873 MB) and `/tmp/cadence` (0 B).

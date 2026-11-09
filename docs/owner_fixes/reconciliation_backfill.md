@@ -192,8 +192,8 @@ close         filled now    filled backup   realized now  realized backup  other
 
 ### Backup and rollback
 
-- `docs/owner_fixes/backups/reconciliation_before.json` - the 14 rows, every column.
-- `docs/owner_fixes/backups/reconciliation_context_before.json` - the whole table
+- `~/efb-backups/2026-11-07/repo_backups/reconciliation_before.json` - the 14 rows, every column.
+- `~/efb-backups/2026-11-07/repo_backups/reconciliation_context_before.json` - the whole table
   (15 rows) before the write.
 - Restore, dry run by default:
 

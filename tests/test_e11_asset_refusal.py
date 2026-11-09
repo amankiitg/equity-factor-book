@@ -134,7 +134,7 @@ def test_tonights_close_files_and_the_other_legs_are_untouched() -> None:
     )
     assert "not confirmed" not in body
     assert "Excluded tonight: KVUE (the broker reports the asset inactive)." in body
-    assert "Refused by the broker, so not sent: KVUE (ASSET_INACTIVE)" in body
+    assert "Refused by the broker, so not sent and owed: KVUE (ASSET_INACTIVE)" in body
     # the exclusions line and the refusal line are the same fact told once each way
     assert (
         exclusions.sentence(

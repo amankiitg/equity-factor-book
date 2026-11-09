@@ -59,3 +59,25 @@ back under it, and the floor search itself is recorded in every manifest
 `n_kept_one_pass_admission`). A band would add a second, fuzzier rule on top of a
 mechanism that is measured and reported; the churn it would hide is better seen than
 smoothed.
+
+## 2026-11-05: the 10% volatility target is a ceiling, not a promise
+
+**Decided: reword the page so it stops implying a 10%-vol book. No leverage change.**
+
+`TARGET_ANNUAL_VOL = 0.10` is the E10 research scale the loop aims at, not a promise the
+book keeps. `_scale_to_target` scales the sized book to that target and then refuses: if
+the scale would need gross above `GROSS_CAP = 1.0` it scales to gross 1.0 instead and sets
+`gross_cap_bound`. Across the 24 stored proposals the achieved figure runs 2.22%-2.86% -
+the four 2026-10-27..10-30 closes all sit at about 2.8% with gross 1.0 - so the gross cap
+overrides the target on 18 of 24 closes and the book delivers ~2.8%, not 10%. Reaching 10%
+would need gross ~3.6, which the cap forbids by construction.
+
+Nothing else reads `target_annual_vol`, so this is a reporting-and-intent question rather
+than a sizing bug. The manifest already stores both numbers plus the flag
+(`target_annual_vol`, `achieved_annual_vol`, `gross_cap_bound`); the page is reworded
+to label the target as overridden by the gross cap so the book panel stops reading as "a
+10% book". The manifest keys and the sizing are untouched.
+
+If a 10%-vol book is ever wanted, the clean route is an explicit leverage step sized off the
+achieved vol the manifest already records, with its own identity proof - not a `GROSS_CAP`
+edit.

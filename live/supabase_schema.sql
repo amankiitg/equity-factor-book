@@ -428,6 +428,7 @@ create table if not exists efb.attribution (
   realized_vol double precision,
   vol_ratio double precision,
   bias_statistic double precision,
+  bias_n_obs int,
   factor_var_share double precision,
   idio_var_share double precision,
   n_missing_specific_var int,
@@ -505,6 +506,12 @@ alter table efb.e11_corporate_actions
   add column if not exists source_rate double precision;
 alter table efb.e11_corporate_actions
   add column if not exists new_rate double precision;
+-- Cash-and-stock mergers: the cash leg the spin-off rows never carried.
+-- The writer names the column, so a provisioned database without it would fail the
+-- first morning after a merger is recorded. A null reads as $0.00 (the reader's
+-- default), so older rows are unaffected.
+alter table efb.e11_corporate_actions
+  add column if not exists cash_per_share double precision;
 -- Pre-flip: the rerun-proof ticket for each leg.
 alter table efb.orders
   add column if not exists client_order_id text;
@@ -607,6 +614,8 @@ alter table efb.attribution
   add column if not exists expected_trading_bps double precision;
 alter table efb.attribution
   add column if not exists expected_borrow_bps double precision;
+alter table efb.attribution
+  add column if not exists bias_n_obs int;
 -- Row level security, off, last. Supabase enables row level security on the
 -- tables its SQL editor is asked to create, and an RLS table with no policy
 -- refuses everything: re-applying this file left the writer role unable to write

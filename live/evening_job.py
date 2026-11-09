@@ -30,7 +30,7 @@ import pandas as pd
 
 from efb import alpha as alpha_mod
 from efb import costs as costs_mod
-from efb import eval_risk, race, registry, size
+from efb import eval_risk, race, registry, size, universe
 from efb.build import hash_file
 from live import alpaca, cadence, exclusions, sizing
 
@@ -1022,6 +1022,37 @@ def restricted_correction(
     delta = np.zeros_like(weights)
     delta[allowed] = block @ coef
     return delta
+
+
+def _quiet_guard_block(
+    weights: np.ndarray,
+    design: np.ndarray,
+    threshold: float,
+    *,
+    nav: float | None = None,
+) -> dict[str, Any]:
+    """The guard's reading on a night it looked and did not fire.
+
+    A hold day asks the guard every evening, and until 2026-11-05 the answer "not
+    past the threshold" was stored as `None`, which is indistinguishable from "never
+    asked". The message then had no guard line at all on a night the guard had run.
+    The block is the reading: the worst exposure, the threshold it was measured
+    against, no legs and no turnover.
+    """
+    before = worst_exposure(weights, design)
+    return {
+        "fired": False,
+        "exposure_before": float(before),
+        "exposure_after": float(before),
+        "threshold": float(threshold),
+        "legs": [],
+        "traded": [],
+        "turnover": 0.0,
+        "rounds": 0,
+        "dropped": 0,
+        "nav": nav,
+        "weights": weights,
+    }
 
 
 def _drift_guard_block(
@@ -2255,6 +2286,12 @@ def exclusion_reason(
     return EXCLUDED_NO_GICS if in_prices else EXCLUDED_NO_GICS_NO_PRICES
 
 
+def still_without_gics(excluded: list[str], sectors: pd.DataFrame) -> list[str]:
+    """Excluded names that still have no GICS row after the additive refresh."""
+    sectors_tickers = {str(name) for name in sectors["ticker"].astype(str)}
+    return sorted(name for name in excluded if name not in sectors_tickers)
+
+
 def excluded_history(as_of: str) -> dict[str, dict[str, object]] | None:
     """How long each excluded name has been excluded, from the stored manifests.
 
@@ -2407,6 +2444,39 @@ def previous_book_exposure(
     }
 
 
+def _newest_constituents(root: Path) -> pd.DataFrame | None:
+    """The newest archived Wikipedia constituents snapshot, or None."""
+    files = sorted((root / "raw" / "wikipedia_constituents").glob("*.parquet"))
+    if not files:
+        return None
+    return pd.read_parquet(files[-1])
+
+
+def refresh_sectors_additive(
+    root: Path, as_of: str | None = None
+) -> tuple[pd.DataFrame, list[str]]:
+    """Add GICS rows for names the table does not carry yet, from the newest
+    archived constituents snapshot.
+
+    Additive only, and a no-op rather than a stopped evening: a missing snapshot
+    returns the table as it was. When there is an addition the combined table is
+    written back to `processed/sectors.parquet` so every later reader in the run
+    sees the same rows. The `as_of` stamp on the added rows defaults to today;
+    pass a date to make it deterministic.
+    """
+    sectors = pd.read_parquet(root / "processed" / "sectors.parquet")
+    snapshot = _newest_constituents(root)
+    if snapshot is None:
+        return sectors, []
+    stamp = as_of or date.today().isoformat()
+    combined, added = universe.additive_sector_refresh(
+        sectors, snapshot, stamp, holds=universe.SECTOR_HOLDS
+    )
+    if added:
+        combined.to_parquet(root / "processed" / "sectors.parquet", index=False)
+    return combined, added
+
+
 def build_proposal(
     data_root: Path | None = None,
     as_of: pd.Timestamp | None = None,
@@ -2425,6 +2495,7 @@ def build_proposal(
     carried: Mapping[str, float] | None = None,
     unreachable: Iterable[Mapping[str, Any]] | None = None,
     guard_threshold: float | None = None,
+    cross_check_carried: Iterable[str] | None = None,
 ) -> dict[str, object]:
     """Build tomorrow's target book and write the dated proposal artifacts.
 
@@ -2472,6 +2543,17 @@ def build_proposal(
             "nav is a failed run"
         )
     root = Path(data_root) if data_root is not None else DATA_ROOT
+    # Refresh the GICS table additively before the panel is cut: a name that joined
+    # the index since the last snapshot gets its row now instead of being excluded
+    # for a label it can legitimately have. Existing rows never change, and a
+    # missing or broken snapshot is a no-op rather than a stopped evening.
+    sectors, added_sectors = refresh_sectors_additive(root)
+    if added_sectors:
+        logger.info(
+            "sector refresh added %d row(s): %s",
+            len(added_sectors),
+            ", ".join(added_sectors),
+        )
     # The close comes first, because the universe is clamped to it: a holdings
     # snapshot filed after the close must not inform the book priced on it.
     wide, _counts = eval_risk.load_clean_wide(root)
@@ -2499,6 +2581,10 @@ def build_proposal(
     wide_names = [str(column) for column in wide.columns]
     names = [ticker for ticker in spy_tickers if ticker in wide_names]
     excluded = [ticker for ticker in spy_tickers if ticker not in wide_names]
+    # A name that still lacks a GICS row after the additive refresh is a tonight
+    # fact, reported through the shared exclusion mechanism rather than carried
+    # silently as a standing "no GICS row" entry.
+    still_no_gics = still_without_gics(excluded, sectors)
     # Why each one is out, and for how long: the three causes are three different
     # things to go and fix, and a name that has been outside the book for a
     # fortnight is not the same fact as one excluded tonight (item 9). The three
@@ -2774,7 +2860,15 @@ def build_proposal(
                 nav=float(nav),
                 minimum=float(alpaca.DELTA_MIN_NOTIONAL),
             )
-            if guard_block is not None:
+            if guard_block is None:
+                # It looked and left the book alone, which is an answer the owner has
+                # to be able to read without opening anything. `None` said nothing at
+                # all, so the 2026-11-05 message carried no guard line on a night the
+                # guard had in fact run.
+                guard_block = _quiet_guard_block(
+                    weights, design, threshold, nav=float(nav)
+                )
+            else:
                 weights = cast(np.ndarray, guard_block["weights"])
         gross_cap_bound = False
         full_decomposition = _decomposition(
@@ -2936,14 +3030,13 @@ def build_proposal(
     )
 
     # One list of the names *tonight's data* could not support, from every reader that
-    # decided one, and one sentence for the message. The universe's own exclusions are
-    # not here: those are a standing rule over the artifacts, unchanged from evening to
-    # evening, reported on their own line with their ages (eight of them on 2026-10-30),
-    # and counting them would put the night over the threshold before a single name
-    # misbehaved. The individual drops keep their own thresholds; this is the line that
-    # catches what none of them sees - six names with no price and six with no risk
-    # estimate is twelve names out with each reader inside its own limit - and it is
-    # what the owner reads.
+    # decided one, and one sentence for the message. The universe's standing exclusions
+    # (absent from the processed returns panel) stay on their own line with their ages,
+    # but a name that still has no GICS row after the additive sector refresh is a
+    # tonight fact and is counted here under the "sectors" source. The individual drops
+    # keep their own thresholds; this is the line that catches what none of them sees -
+    # six names with no price and six with no risk estimate is twelve names out with
+    # each reader inside its own limit - and it is what the owner reads.
     excluded_tonight = exclusions.collect(
         (
             exclusions.Exclusion(name, "no usable close at the close", "prices")
@@ -2958,6 +3051,10 @@ def build_proposal(
                 str(row["ticker"]), "the broker will not lend it", "broker"
             )
             for row in dropped_no_short
+        ),
+        (
+            exclusions.Exclusion(name, "no GICS row", "sectors")
+            for name in still_no_gics
         ),
     )
     exclusions.guard(excluded_tonight)
@@ -3034,6 +3131,12 @@ def build_proposal(
                         for key, value in guard_block.items()
                         if key != "weights"
                     }
+                ),
+                # The names tonight's corporate-action cap left unchecked, so the
+                # next evening cross-checks them first instead of dropping them: the
+                # cap bounds vendor requests, not the question the check answers.
+                "cross_check_carried": sorted(
+                    {str(ticker) for ticker in (cross_check_carried or ())}
                 ),
                 # The held names tonight's universe or model no longer carries, which
                 # are the closes a hold day sends.

@@ -24,6 +24,8 @@ import pytest
 from efb import attribution
 from live import attribution_job, store
 
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+
 # The live store's own P&L, read on 2026-10-22 (`efb.attribution`, the refinalized
 # rows). Small enough to keep in the test, and real enough that the numbers below
 # are the numbers the page showed.
@@ -179,6 +181,93 @@ def test_a_re_priced_session_moves_every_later_window() -> None:
     )
 
 
+def _synthetic_series(
+    n: int, *, missing_forecasts: tuple[int, ...] = ()
+) -> pd.DataFrame:
+    """`n` sessions of alternating P&L and a fixed forecast, a few without one.
+
+    The P&L alternates so the realized volatility is a real number rather than
+    the zero standard deviation a constant series would produce; `forecast_vol`
+    is NaN at the zero-based `missing_forecasts`, which is how a session with no
+    stored forecast reaches the history in `risk_lines_over`.
+    """
+    days = [f"2026-01-{day:02d}" for day in range(1, n + 1)]
+    pnl = [0.001 if day % 2 else -0.001 for day in range(1, n + 1)]
+    forecast = [
+        np.nan if day - 1 in missing_forecasts else 0.02 for day in range(1, n + 1)
+    ]
+    return pd.DataFrame(
+        {"trade_date": days, "pnl_total": pnl, "forecast_vol": forecast}
+    )
+
+
+def test_the_bias_statistic_reports_how_close_below_thirty() -> None:
+    """Below 30 observations the statistic is null with the count beside it."""
+    history = attribution.risk_lines_over(_synthetic_series(28))
+    line = _line(history, "2026-01-28")
+    assert line["bias_statistic"] is None
+    assert line["bias_n_obs"] == 28
+
+
+def test_the_bias_statistic_is_a_number_at_thirty() -> None:
+    """At 30 observations the statistic is the dispersion it always computed."""
+    history = attribution.risk_lines_over(_synthetic_series(30))
+    line = _line(history, "2026-01-30")
+    assert isinstance(line["bias_statistic"], float)
+    assert np.isfinite(line["bias_statistic"])
+    assert line["bias_n_obs"] == 30
+
+
+def test_a_missing_forecast_never_fails_the_attribution() -> None:
+    """Thirty raw sessions with three missing forecasts are 27 finite, not a crash.
+
+    This is the 2026-11-06 failure: the guard used to count the raw `z`, so a
+    history that reached 30 sessions while three carried no forecast handed
+    `bias_statistics` 27 observations and it raised, taking the whole attribution
+    step down with it.
+    """
+    history = attribution.risk_lines_over(
+        _synthetic_series(30, missing_forecasts=(0, 10, 20))
+    )
+    line = _line(history, "2026-01-30")
+    assert line["bias_statistic"] is None
+    assert line["bias_n_obs"] == 27
+    # The rest of the row is still written: the volatility is a number, not a gap.
+    assert np.isfinite(line["realized_vol"])
+
+
+def test_the_bias_sentence_is_built_from_null_and_the_count() -> None:
+    """The reader-facing sentence comes from null + N, never a stored string."""
+    assert attribution_job._bias_display(None, 28) == "not enough data yet (28 of 30)"
+    assert (
+        attribution_job._bias_display(float("nan"), 27)
+        == "not enough data yet (27 of 30)"
+    )
+    assert attribution_job._bias_display(None, None) == "n/a"
+    assert attribution_job._bias_display(0.99, 30) == "0.990000"
+
+
+def test_the_additive_bias_column_keeps_the_statistics_type() -> None:
+    """The migration is additive and never re-types `bias_statistic`.
+
+    `bias_statistic` stays `double precision` because the code already running
+    reads it as a number; the migration only adds a nullable `bias_n_obs`, which a
+    writer that does not name it cannot trip over.
+    """
+    migration = (
+        ROOT / "docs" / "migrations" / "e12_attribution_bias_n_obs.sql"
+    ).read_text()
+    # Purely additive: no alter, no drop, and the new column is nullable.
+    assert "alter column" not in migration
+    assert "drop column" not in migration.lower()
+    assert "add column if not exists bias_n_obs int" in migration
+    assert "bias_n_obs int not null" not in migration
+    # The schema still types the statistic as a number, not text.
+    schema = (ROOT / "live" / "supabase_schema.sql").read_text()
+    assert "bias_statistic double precision" in schema
+    assert "bias_statistic text" not in schema
+
+
 @pytest.fixture()
 def local_store(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
@@ -189,7 +278,11 @@ def local_store(
 
 
 def _rows() -> list[dict[str, object]]:
-    """The store's rows as they were, with the three risk columns deliberately wrong."""
+    """The store's rows as they were, with the risk columns deliberately wrong.
+
+    `bias_n_obs` is absent, as it is on a store the old code wrote before the
+    additive column existed.
+    """
     out: list[dict[str, object]] = []
     for day in sorted(LIVE_PNL):
         out.append(
@@ -210,7 +303,7 @@ def _rows() -> list[dict[str, object]]:
     return out
 
 
-def test_the_restate_writes_the_three_columns_and_leaves_the_row_alone(
+def test_the_restate_writes_the_risk_line_columns_and_leaves_the_row_alone(
     local_store: pathlib.Path,
 ) -> None:
     store.upsert("attribution", _rows())
@@ -218,13 +311,16 @@ def test_the_restate_writes_the_three_columns_and_leaves_the_row_alone(
 
     # Every session with a P&L history to look back on: all but the first, which
     # established the book and has no earlier session to measure against, so its
-    # three columns are absent before and after and there is nothing to write.
+    # risk columns are absent before and after and there is nothing to write.
     assert {item["day"] for item in changed} == set(LIVE_PNL) - {"2026-09-28"}
     repair = _line(
         store.select("attribution").rename(columns={"trade_date": "trade_date"}),
         CLIFF_DAY,
     )
     assert float(repair["realized_vol"]) == pytest.approx(0.024771, abs=1e-6)
+    # The finite count the still-null statistic is based on is now stored beside
+    # it: 11 sessions through 10-15 with a forecast, 3 without.
+    assert int(repair["bias_n_obs"]) == 11
     # Nothing else about the row moved: the cost, the fill count and the timestamp
     # are the row's own, not this pass's.
     assert float(repair["pnl_cost"]) == pytest.approx(-0.0001)
@@ -291,3 +387,54 @@ def test_the_row_it_writes_is_a_row_the_store_can_take() -> None:
     # The rest of the row is the row: only the four jsonb columns and the key change.
     assert written["realized_vol"] == 0.024771
     assert written["pnl_cost"] == -0.0001
+
+
+def test_the_repair_report_prints_the_null_statistic_reading() -> None:
+    """A null statistic is a reading, and the report has to show it.
+
+    The 2026-11-06 run reached its thirtieth session with three carrying no forecast, so
+    the statistic is null with `bias_n_obs` = 25 and the sentence a reader wants is
+    "not enough data yet (25 of 30)". The statistic never *moves* on those days, so a
+    report built from the moved columns alone showed only a count going from nothing to
+    a number and left the sentence out.
+    """
+    from scripts import repair_risk_lines
+
+    null_statistic = {
+        "before": {"bias_statistic": None, "bias_n_obs": None},
+        "after": {"bias_statistic": None, "bias_n_obs": 25},
+        "moved": ["bias_n_obs"],
+        "day": "2026-11-06",
+    }
+    assert repair_risk_lines._columns_to_print(null_statistic) == [
+        "bias_n_obs",
+        "bias_statistic",
+    ]
+    before, after = repair_risk_lines._column_text(null_statistic, "bias_statistic")
+    assert before == "n/a"
+    assert after == "not enough data yet (25 of 30)"
+
+    # a statistic that did move is printed once, not twice
+    moved = {
+        "before": {"bias_statistic": None, "bias_n_obs": 29},
+        "after": {"bias_statistic": 0.41, "bias_n_obs": 30},
+        "moved": ["bias_statistic", "bias_n_obs"],
+        "day": "2026-11-07",
+    }
+    assert repair_risk_lines._columns_to_print(moved) == [
+        "bias_statistic",
+        "bias_n_obs",
+    ]
+
+    # and a day whose only change is realized volatility says nothing about the bias
+    other = {
+        "before": {
+            "realized_vol": float("nan"),
+            "bias_statistic": None,
+            "bias_n_obs": 25,
+        },
+        "after": {"realized_vol": 0.027585, "bias_statistic": None, "bias_n_obs": 25},
+        "moved": ["realized_vol"],
+        "day": "2026-11-06",
+    }
+    assert repair_risk_lines._columns_to_print(other) == ["realized_vol"]

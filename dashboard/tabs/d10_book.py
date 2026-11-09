@@ -141,7 +141,7 @@ def book_panel() -> pd.DataFrame:
                     breadth_module.FULL_BOOK_LABEL: (
                         breadth_module.full_book_breadth(proposal)
                     ),
-                    "target annual vol (%)": proposal["target_annual_vol"] * 100,
+                    "vol target (%), capped": proposal["target_annual_vol"] * 100,
                     "achieved annual vol (%)": proposal["achieved_annual_vol"] * 100,
                     "gross cap bound": proposal["gross_cap_bound"],
                     "expected establishment cost (bps)": (

@@ -5,7 +5,7 @@ they were about to overwrite, taken before the write and committed beside the no
 describes it. This is that step, made repeatable:
 
     python scripts/backup_attribution_rows.py --since 2026-09-28 --through 2026-09-28 \
-        --out docs/owner_fixes/backups/attribution_0928_before.json
+        --out ~/efb-backups/2026-11-07/repo_backups/attribution_0928_before.json
 
 The file carries every column of every selected row - not only the columns a given
 write touches - because a restore has to put the row back whole. Restore with

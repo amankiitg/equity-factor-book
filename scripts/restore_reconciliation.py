@@ -1,8 +1,8 @@
 """Restore `efb.reconciliation` from the backup taken before the 2026-10-20 back-fill.
 
 **Read-only unless `--apply` is passed.** The backup
-(`docs/owner_fixes/backups/reconciliation_before.json`) holds every row the back-fill
-overwrote, exactly as it was stored. This script puts them back.
+(`~/efb-backups/2026-11-07/repo_backups/reconciliation_before.json`) holds every row the
+back-fill overwrote, exactly as it was stored. This script puts them back.
 
     python scripts/restore_reconciliation.py            # dry run: show the change
     python scripts/restore_reconciliation.py --apply    # write the backup rows back

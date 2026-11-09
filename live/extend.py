@@ -81,7 +81,9 @@ def _live_tickers(data_root: Path) -> list[str]:
 
     The stored book is a convenience, not a requirement: if the store cannot
     answer, the universe alone is fetched, because a run must not stop over the
-    set it prices rather than the prices themselves.
+    set it prices rather than the prices themselves. A name the broker reports
+    `ASSET_INACTIVE` is dropped from the set rather than asked for: it is retired,
+    so no vendor has a close for it and the request is a failure every evening.
     """
     tickers = set(_spy_tickers(data_root))
     try:
@@ -92,7 +94,33 @@ def _live_tickers(data_root: Path) -> list[str]:
         book = None
     if book is not None and "ticker" in book.columns:
         tickers |= {str(name).upper().strip() for name in book["ticker"]}
+    tickers -= _inactive_tickers()
     return sorted(tickers)
+
+
+def _inactive_tickers() -> set[str]:
+    """The names the broker reports ASSET_INACTIVE, which no vendor can price.
+
+    A retired name - KVUE completed its merger into KMB on 2026-11-02 - answers
+    every price request with nothing, so it is never asked. The broker's report is
+    the stored order refusal (`reason_code = ASSET_INACTIVE`); a store that cannot
+    answer means no name is known inactive, and the name stays in the fetch rather
+    than being dropped on a guess.
+    """
+    from live import alpaca
+
+    try:
+        orders = store.select("orders")
+    except Exception:  # noqa: BLE001 - nothing is known inactive
+        return set()
+    if orders is None or orders.empty or "reason_code" not in orders.columns:
+        return set()
+    refused = orders.loc[
+        orders["reason_code"].astype(str) == alpaca.REASON_ASSET_INACTIVE
+    ]
+    if "ticker" not in refused.columns:
+        return set()
+    return {str(name).upper().strip() for name in refused["ticker"]}
 
 
 def retry_missing_closes(
@@ -245,6 +273,23 @@ def recorded_spinoffs() -> list[corporate_actions.Spinoff]:
     return corporate_actions.spinoffs_from_rows(rows)
 
 
+def recorded_mergers() -> list[corporate_actions.Merger]:
+    """Every cash-and-stock merger the appendix records, for the rebuild to re-apply.
+
+    A merger ends the target's series and moves one session's return; neither price
+    vendor adjusts history for it, so the completion-session total return has to be
+    re-applied from its record every evening, exactly like a spin-off. The store is
+    asked and never written to, and a store that cannot answer is a warning rather
+    than a stopped evening.
+    """
+    try:
+        rows = store.select(corporate_actions.TABLE)
+    except Exception:  # noqa: BLE001 - the run goes on without its own record
+        logger.warning("corporate actions could not be read", exc_info=True)
+        return []
+    return corporate_actions.mergers_from_rows(rows)
+
+
 def extend_returns(data_root: Path | None = None) -> int:
     """Recompute returns and flags over the extended price frame.
 
@@ -276,6 +321,17 @@ def extend_returns(data_root: Path | None = None) -> int:
             outcome.session.date(),
             outcome.adjusted_return,
             outcome.raw_return,
+        )
+    for merger_outcome in corporate_actions.apply_recorded_mergers(
+        returns_frame, prices_frame, recorded_mergers()
+    ):
+        logger.info(
+            "re-applied %s: the %s return on %s is %s where the prices alone give %s",
+            merger_outcome.merger.label,
+            merger_outcome.merger.target,
+            merger_outcome.session.date(),
+            merger_outcome.adjusted_return,
+            merger_outcome.raw_return,
         )
     identity_table = pd.read_parquet(root / "processed" / "ticker_identity.parquet")
     readded_path = root / "processed" / "ticker_identity_readded.parquet"

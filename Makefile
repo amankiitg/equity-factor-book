@@ -14,7 +14,7 @@ BLACK ?= $(if $(VENV_BIN),$(VENV_BIN)/black,black)
 END ?=
 PIN = $(if $(END),--end $(END))
 
-.PHONY: help test test-fast test-all test-live-tree test-merge-guard lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild-e4 rebuild-e5 rebuild-e6 rebuild-e7 rebuild-e8 rebuild-e9 rebuild-e10 rebuild evidence verify-evidence web-install web-test web-build clean
+.PHONY: help test test-fast test-all test-live-tree test-merge-guard symlink-guard hooks lint format publish dashboard rebuild-e1 rebuild-e2 rebuild-e3 rebuild-e4 rebuild-e5 rebuild-e6 rebuild-e7 rebuild-e8 rebuild-e9 rebuild-e10 rebuild evidence verify-evidence web-install web-test web-build clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-15s %s\n", $$1, $$2}'
@@ -41,6 +41,13 @@ test-live-tree: ## Run only the tests that need a live-shaped run root (EFB_RUN_
 # that lands this branch. It fails on the branch as pushed, by design.
 test-merge-guard: ## Run the merge guard that the merge commit must turn green
 	$(PYTEST) tests/ -q -m merge_guard
+
+symlink-guard: ## Refuse a tree where data/ or .venv is a link, or tracked as one
+	$(PYTHON) scripts/check_symlinks.py
+
+hooks: ## Install the pre-commit hooks, including the symlink guard
+	$(PYTHON) -m pre_commit install
+	@echo "pre-commit installed; the symlink guard runs on every commit"
 
 lint: ## Static checks: ruff, mypy, black
 	$(RUFF) check efb dashboard live tests
