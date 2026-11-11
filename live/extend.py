@@ -9,6 +9,7 @@ from yfinance, the same vendor E1 uses.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -247,6 +248,48 @@ def extend_prices(
     return int(tail.index.get_level_values("date").nunique())
 
 
+@dataclass(frozen=True)
+class RecordedActions:
+    """The store's corporate-action records, and whether the read answered.
+
+    `unavailable` is the reason in the words the evening's message carries. It is
+    not an error the run raises over: a store that cannot answer leaves the panel
+    without its recorded corrections, and the evening's answer to that is the
+    vendor cross-check plus the warning, not a stopped night.
+    """
+
+    spinoffs: list[corporate_actions.Spinoff] = field(default_factory=list)
+    mergers: list[corporate_actions.Merger] = field(default_factory=list)
+    unavailable: str | None = None
+
+
+def recorded_actions() -> RecordedActions:
+    """Read every corporate-action record once, for the rebuild and the evening.
+
+    One `store.select` for both readers, so the evening's note about the read and
+    the rebuild's corrections are the same fact rather than two reads that could
+    disagree. A tree with no store behind it - a test, a fresh container - reads as
+    no records. A read that *fails* is not an empty record: the rebuild cannot tell
+    a corrected session from a raw print without it, so the failure is named and
+    carried. The run goes on (see `corporate_actions.CrossCheckUnavailable` for the
+    one case that stops it) and the email says the record was unavailable.
+    """
+    try:
+        rows = store.select(corporate_actions.TABLE)
+    except Exception as exc:  # noqa: BLE001 - named, never read as an empty table
+        logger.error("corporate actions could not be read", exc_info=True)
+        return RecordedActions(
+            unavailable=(
+                f"the store's {corporate_actions.TABLE} table could not be read: "
+                f"{type(exc).__name__}: {exc}"
+            )
+        )
+    return RecordedActions(
+        spinoffs=corporate_actions.spinoffs_from_rows(rows),
+        mergers=corporate_actions.mergers_from_rows(rows),
+    )
+
+
 def recorded_spinoffs() -> list[corporate_actions.Spinoff]:
     """Every spin-off the appendix records, for the rebuild to re-apply.
 
@@ -262,15 +305,13 @@ def recorded_spinoffs() -> list[corporate_actions.Spinoff]:
     built from it.
 
     The store is asked and never written to. A tree with no store behind it - a test, a
-    fresh container - reads as no records, and a store that cannot answer is a warning
-    rather than a stopped evening: the run's own prices are not the store's problem.
+    fresh container - reads as no records. A store that *cannot answer* is not the same
+    thing, and it is not read as an empty table either: `recorded_actions` names the
+    failure and the rebuild goes on without the corrections. The evening's answer to
+    that is the vendor cross-check - every name past the move threshold it cannot
+    clear is out of tonight's book - and a warning in the email, not a stopped night.
     """
-    try:
-        rows = store.select(corporate_actions.TABLE)
-    except Exception:  # noqa: BLE001 - the run goes on without its own record
-        logger.warning("corporate actions could not be read", exc_info=True)
-        return []
-    return corporate_actions.spinoffs_from_rows(rows)
+    return recorded_actions().spinoffs
 
 
 def recorded_mergers() -> list[corporate_actions.Merger]:
@@ -279,18 +320,16 @@ def recorded_mergers() -> list[corporate_actions.Merger]:
     A merger ends the target's series and moves one session's return; neither price
     vendor adjusts history for it, so the completion-session total return has to be
     re-applied from its record every evening, exactly like a spin-off. The store is
-    asked and never written to, and a store that cannot answer is a warning rather
-    than a stopped evening.
+    asked and never written to, and a store that cannot answer is named by
+    `recorded_actions`: the evening goes on, and the names the cross-check cannot
+    clear are out of the book.
     """
-    try:
-        rows = store.select(corporate_actions.TABLE)
-    except Exception:  # noqa: BLE001 - the run goes on without its own record
-        logger.warning("corporate actions could not be read", exc_info=True)
-        return []
-    return corporate_actions.mergers_from_rows(rows)
+    return recorded_actions().mergers
 
 
-def extend_returns(data_root: Path | None = None) -> int:
+def extend_returns(
+    data_root: Path | None = None, record: RecordedActions | None = None
+) -> int:
     """Recompute returns and flags over the extended price frame.
 
     Identity drops and truncations are applied exactly as the E1 build
@@ -299,6 +338,11 @@ def extend_returns(data_root: Path | None = None) -> int:
 
     Recorded spin-offs are re-applied before the flags are built, because this
     recomputes every session from the stored prices and the correction is not in them.
+
+    `record` is the evening's own read of those records, passed in so the rebuild and
+    the message cannot disagree about it. A record that could not be read carries no
+    corrections: the panel is rebuilt from the prices alone, which is exactly the
+    state the email's warning is about, and the evening still prices a book.
     """
     from efb import identity
 
@@ -308,11 +352,21 @@ def extend_returns(data_root: Path | None = None) -> int:
     prices_frame = pd.read_parquet(root / "raw" / "prices.parquet")
     factors_frame = pd.read_parquet(root / "raw" / "factors_ff.parquet")
     returns_frame = returns.compute_returns(prices_frame, factors_frame["rf"])
+    if record is None:
+        record = recorded_actions()
+    if record.unavailable:
+        # Named here as well as in the message: a panel rebuilt without its
+        # corrections is what the reader of the log needs to know before the next
+        # surprising number.
+        logger.warning(
+            "corporate actions unavailable, no correction re-applied: %s",
+            record.unavailable,
+        )
     # A spin-off is put back from its record here, between the arithmetic and every
     # reader of it. Nothing is read back from `returns_frame`, so the value is the one
     # the append path wrote last evening and re-running changes nothing.
     for outcome in corporate_actions.apply_recorded(
-        returns_frame, prices_frame, recorded_spinoffs()
+        returns_frame, prices_frame, record.spinoffs
     ):
         logger.info(
             "re-applied %s: the %s return on %s is %s where the prices alone give %s",
@@ -323,7 +377,7 @@ def extend_returns(data_root: Path | None = None) -> int:
             outcome.raw_return,
         )
     for merger_outcome in corporate_actions.apply_recorded_mergers(
-        returns_frame, prices_frame, recorded_mergers()
+        returns_frame, prices_frame, record.mergers
     ):
         logger.info(
             "re-applied %s: the %s return on %s is %s where the prices alone give %s",

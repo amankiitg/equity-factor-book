@@ -564,15 +564,21 @@ def recorded_mergers() -> list[Any]:
     The broker converts a merged target into acquirer shares and cash with no order
     behind it, so the target is missing at the broker and the acquirer grows; both
     look like mismatches the loop caused. The record is what turns those into an
-    explanation instead of a mismatch. The store is asked and never written to.
+    explanation instead of a mismatch. The store is asked and never written to, and a
+    read that fails is named: without the record a converted target would be reported
+    as a position the loop lost, which is the opposite of the truth.
     """
     from live import corporate_actions
 
     try:
         rows = store.select(corporate_actions.TABLE)
-    except Exception:  # noqa: BLE001 - a comparison that cannot read is not stopped
-        logger.warning("corporate actions could not be read", exc_info=True)
-        return []
+    except Exception as exc:  # noqa: BLE001 - reported, never read as an empty record
+        logger.error("corporate actions could not be read", exc_info=True)
+        raise corporate_actions.CorporateActionsUnavailable(
+            "corporate actions unavailable: the store's "
+            f"{corporate_actions.TABLE} table could not be read "
+            f"({type(exc).__name__}: {exc})"
+        ) from exc
     return corporate_actions.mergers_from_rows(rows)
 
 
@@ -676,6 +682,8 @@ def check(
     sized from this number: passing it on from here is what keeps the sizing, the
     guards and the store's own row describing one account.
     """
+    from live import corporate_actions
+
     read = account_read(raise_on_failure=not dry_run)
     broker = read["positions"]
     broker_quantities = read["quantities"]
@@ -685,7 +693,21 @@ def check(
     renames = broker_renames(believed, broker)
     broker = _relabel(broker, renames)
     broker_quantities = _relabel(broker_quantities, renames)
-    result = compare(broker, believed, mergers=recorded_mergers())
+    try:
+        mergers = recorded_mergers()
+    except corporate_actions.CorporateActionsUnavailable as exc:
+        mergers = []
+        unavailable = str(exc)
+    else:
+        unavailable = ""
+    result = compare(broker, believed, mergers=mergers)
+    if unavailable:
+        # A failed read is not a disagreement. The record is what explains a
+        # merger's conversion, so without it the converted target reads as a name
+        # the account lost; reporting that as a mismatch would blame the loop for
+        # a book difference it did not cause.
+        result["matches"] = None
+        result["corporate_actions_unavailable"] = unavailable
     result.update(
         {
             "broker": broker,
@@ -739,6 +761,11 @@ def establishment(broker: dict[str, float] | None) -> bool:
 
 def describe(result: dict[str, Any], *, dry_run: bool = True) -> str:
     """One sentence for the email, and the same sentence for the row."""
+    if result.get("corporate_actions_unavailable"):
+        return (
+            f"{result['corporate_actions_unavailable']}, so the two books were not "
+            "compared and no mismatch is reported"
+        )
     if result["matches"] is None:
         return (
             f"the account was {result['broker_source']}, so the store's book "

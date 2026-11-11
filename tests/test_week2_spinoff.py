@@ -823,7 +823,9 @@ def test_the_rule_runs_after_the_append_and_before_the_fit():
     correct tomorrow's artifact and leave tonight's book priced on the print.
     """
     source = (ROOT / "scripts" / "run_live_daily.py").read_text()
-    appended = source.index("extend.extend_returns()")
+    # The call, not its exact argument list: the read of the corporate-action
+    # record is passed into the rebuild now, and the order is what this asserts.
+    appended = source.index("extend.extend_returns(")
     applied = source.index("corporate_actions.apply_to_artifact(")
     fitted = source.index("extend.extend_model()")
     assert appended < applied < fitted

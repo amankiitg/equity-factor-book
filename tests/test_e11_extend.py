@@ -769,17 +769,90 @@ def test_the_reader_takes_the_rows_the_rule_writes() -> None:
     )
 
 
-def test_a_store_that_cannot_answer_stops_nothing(
-    monkeypatch: pytest.MonkeyPatch,
+def test_a_store_that_cannot_answer_is_named_and_the_rebuild_goes_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The rebuild's own record is not what the evening prices: warn and carry on."""
+    """A failed read is not an empty record, and it is not a stopped evening.
+
+    The rebuild cannot tell a corrected session from a raw print without the
+    record, so it re-applies nothing: the CTVA cell comes back as the -83.81%
+    print. That cost is real, which is why it is named rather than silent. The
+    evening's answer is the vendor cross-check (see the corporate-actions tests:
+    every threshold move it cannot clear is out of the book) and the email line
+    that says the record was unavailable.
+    """
+    root = tmp_path / "data"
+    _returns_tree(root)
 
     def explode(table: str) -> None:
         raise RuntimeError("the store is unreachable")
 
     monkeypatch.setattr(extend.store, "select", explode)
 
+    record = extend.recorded_actions()
+    assert record.spinoffs == []
+    assert record.mergers == []
+    assert record.unavailable is not None
+    assert "could not be read" in record.unavailable
+    assert "RuntimeError: the store is unreachable" in record.unavailable
+
+    # The rebuild runs anyway, and its own reader agrees with the evening's record.
     assert extend.recorded_spinoffs() == []
+    assert extend.recorded_mergers() == []
+    assert extend.extend_returns(root) == 3
+    frame = _rebuilt(root)
+    assert float(frame.loc[(EX_DATE, CTVA), "r"]) == pytest.approx(RAW_PRINT)
+    assert f"{-RAW_PRINT * 100:.2f}%" == "83.81%", "the print the record corrects"
+
+
+def test_an_empty_but_successful_read_proceeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A table with no rows is an answer: a fresh tree must still rebuild.
+
+    The rule is about a store that could not answer, not about a store that has
+    nothing recorded. The two read the same in the frame and must not read the
+    same in the message.
+    """
+    root = tmp_path / "data"
+    _returns_tree(root)
+    monkeypatch.setattr(extend.store, "select", lambda table: pd.DataFrame())
+
+    assert extend.recorded_actions().unavailable is None
+    assert extend.recorded_spinoffs() == []
+    assert extend.recorded_mergers() == []
+    assert extend.extend_returns(root) == 3
+
+
+def test_the_message_says_the_corporate_actions_were_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The email carries "Corporate actions unavailable tonight (<reason>)".
+
+    A run that goes on without its own record is a run the owner has to be able to
+    recognise from the message alone: the reason, and what the run did because of
+    it. The evening's subject is an ordinary one; this is a consequence line, not
+    an error.
+    """
+    from live import notify
+
+    reason = (
+        "the store's e11_corporate_actions table could not be read: "
+        "RuntimeError: the store is unreachable"
+    )
+    message = notify.compose(
+        status="ok",
+        target_close=EX_DATE.date().isoformat(),
+        dry_run=False,
+        corporate_actions_unavailable=reason,
+    )
+    assert f"Corporate actions unavailable tonight ({reason})" in message
+    assert "excluded tonight" in message
+    # And an ordinary evening says nothing at all about it.
+    quiet = notify.compose(
+        status="ok", target_close=EX_DATE.date().isoformat(), dry_run=False
+    )
+    assert "Corporate actions unavailable" not in quiet
 
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from live import alpaca, evening_job, notify, positions, store
+from live import alpaca, corporate_actions, evening_job, notify, positions, store
 
 # The account number the fakes report. The guard compares this against
 # EFB_ALPACA_ACCOUNT_ID, which every test below sets to it; `_ACCOUNT_BROKER` is
@@ -117,6 +117,41 @@ def test_the_two_books_are_compared_name_by_name() -> None:
     assert drifted["matches"] is False
     assert drifted["max_abs_drift"] == 800.0
     assert drifted["drift"] == {"AAA": 800.0}
+
+
+def test_a_corporate_actions_read_that_failed_is_not_a_mismatch(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A merger the record explains must not be reported as a lost position.
+
+    The record is what turns a target the broker converted into an acquirer plus
+    cash into an explanation. Without it the target reads as missing at the
+    broker, so the honest sentence is that the record could not be read, not a
+    mismatch the loop did not cause.
+    """
+    monkeypatch.setattr(store, "LOCAL_DIR", tmp_path / "store")
+    store.upsert(
+        "positions",
+        [{"trade_date": "2026-09-25", "ticker": "AAA", "signed_notional": 500.0}],
+    )
+    monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([]))
+    real_select = store.select
+
+    def select(table: str) -> Any:
+        if table == corporate_actions.TABLE:
+            raise RuntimeError("the store is unreachable")
+        return real_select(table)
+
+    monkeypatch.setattr(store, "select", select)
+
+    with pytest.raises(corporate_actions.CorporateActionsUnavailable):
+        positions.recorded_mergers()
+
+    result = positions.check(dry_run=True)
+
+    assert result["matches"] is None
+    assert "corporate actions unavailable" in result["note"]
+    assert "name(s) the store holds and the account does not" not in result["note"]
 
 
 def test_a_read_account_is_the_book_the_orders_are_measured_against(

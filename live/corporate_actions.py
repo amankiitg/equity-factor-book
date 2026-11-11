@@ -97,6 +97,30 @@ CROSS_CHECK_TOLERANCE = 0.02
 SPLIT_LOOKBACK_DAYS = 10
 
 
+class CorporateActionsUnavailable(RuntimeError):
+    """The recorded corporate actions could not be read.
+
+    A run that cannot read the record cannot tell a corrected session from a raw
+    print: a split, spin-off or merger recorded there moves a return that neither
+    price vendor adjusts. The evening does not stop over it - the vendor cross-check
+    is the other guard - but the failure is named rather than read as an empty
+    table, and the position comparison says the read failed instead of calling a
+    converted holding a mismatch.
+    """
+
+
+class CrossCheckUnavailable(RuntimeError):
+    """The vendor cross-check could not run.
+
+    The one remaining fail-closed case. When the record could be read, the
+    cross-check is the extra guard on a large move; when the record could not be
+    read, it is the *only* thing that can tell a corrected session from a raw
+    print, and every name past the move threshold is out of tonight's book unless
+    it clears. A cross-check that cannot run is therefore a run that cannot price
+    the session, and it stops rather than trading on prints nothing checked.
+    """
+
+
 @dataclass(frozen=True)
 class Split:
     """One vendor split record: effective date and new shares per old share."""
@@ -1428,6 +1452,21 @@ def _default_refetch(ticker: str, session: pd.Timestamp) -> float | None:
     return float(history["Close"].iloc[0])
 
 
+def cross_check_note(ticker: str, session: pd.Timestamp, exc: BaseException) -> str:
+    """The line that stops the evening when the cross-check could not run.
+
+    Named first as the run's own failure, because a failed run's detail is cut to
+    200 characters and the type and reason are what a reader acts on; the ticker
+    and session are what they go and look at.
+    """
+    return (
+        "the vendor cross-check could not run, nothing was traded: it raised for "
+        f"{ticker} on {pd.Timestamp(session).date()} "
+        f"({type(exc).__name__}: {exc}); with the corporate-actions read failed "
+        "too, nothing can tell a corrected session from a raw print"
+    )
+
+
 def cap_note(unchecked: list[str]) -> str:
     """The line that says the cap was hit, or an empty string.
 
@@ -1581,6 +1620,7 @@ def apply_to_append(
     spinoffs: dict[pd.Timestamp, list[Spinoff]] | None = None,
     child_close: Callable[[str, pd.Timestamp], float | None] | None = None,
     carry: Sequence[str] = (),
+    record_unavailable: str | None = None,
 ) -> Outcome:
     """Apply the corporate-actions rule to the sessions this run is appending.
 
@@ -1598,6 +1638,14 @@ def apply_to_append(
     read from. Neither of the two things that can go wrong here stops the run: a
     child close that cannot be read, and a record the rule cannot use at all, each
     null that one cell, and the message names the name and the reason.
+
+    `record_unavailable` is the evening's own record read failing. The run goes on,
+    but the only thing that can clear a move is then the vendor cross-check, so
+    every name in the appended sessions past `CROSS_CHECK_MOVE` that the cross-check
+    did not answer for is dropped for its session. A cross-check that cannot run at
+    all while the record is unreadable is the one case that stops the run
+    (`CrossCheckUnavailable`): there is nothing left that can tell a corrected
+    session from a raw print.
     """
     sessions = appended_sessions(returns_frame, since)
     if not sessions:
@@ -1610,24 +1658,37 @@ def apply_to_append(
     frame = returns_frame
     for session in sessions:
         explained = {event.parent for event in (spinoffs or {}).get(session, [])}
+        # The names the vendor answered for on this session, and the names dropped
+        # for it. The first is what can clear a move when the record is unreadable;
+        # the second keeps a name from being suspended twice.
+        cleared_here: set[str] = set()
+        dropped_here: set[str] = set()
         for ticker in split_flag_tickers(prices_frame, session):
-            split, ratio, spent, dropped = _check_one(
-                ticker,
-                session,
-                prices_frame,
-                split_fetcher,
-                close_fetcher,
-                True,
-                frame,
-                explained_by_spinoff=ticker in explained,
-            )
+            try:
+                split, ratio, spent, dropped = _check_one(
+                    ticker,
+                    session,
+                    prices_frame,
+                    split_fetcher,
+                    close_fetcher,
+                    True,
+                    frame,
+                    explained_by_spinoff=ticker in explained,
+                )
+            except Exception as exc:  # noqa: BLE001 - the last guard stops the run
+                raise CrossCheckUnavailable(
+                    cross_check_note(ticker, session, exc)
+                ) from exc
             if ratio is not None:
                 ratios[ticker] = ratio
             if spent:
                 cross_checked.append(ticker)
+            if ratio is not None and dropped is None:
+                cleared_here.add(ticker)
             if split is not None:
                 splits.append(split)
             if dropped is not None:
+                dropped_here.add(ticker)
                 suspended.append(dropped)
         for spinoff in (spinoffs or {}).get(session, []):
             event = _apply_spinoff(frame, prices_frame, spinoff, child_close)
@@ -1659,22 +1720,53 @@ def apply_to_append(
         for ticker in watched[:max_cross_checks]:
             if ticker in cross_checked:
                 continue
-            split, ratio, spent, dropped = _check_one(
-                ticker,
-                session,
-                prices_frame,
-                split_fetcher,
-                close_fetcher,
-                False,
-                frame,
-                explained_by_spinoff=ticker in explained,
-            )
+            try:
+                split, ratio, spent, dropped = _check_one(
+                    ticker,
+                    session,
+                    prices_frame,
+                    split_fetcher,
+                    close_fetcher,
+                    False,
+                    frame,
+                    explained_by_spinoff=ticker in explained,
+                )
+            except Exception as exc:  # noqa: BLE001 - the last guard stops the run
+                raise CrossCheckUnavailable(
+                    cross_check_note(ticker, session, exc)
+                ) from exc
             if ratio is not None:
                 ratios[ticker] = ratio
             if spent:
                 cross_checked.append(ticker)
+            if ratio is not None and dropped is None:
+                cleared_here.add(ticker)
             if dropped is not None:
+                dropped_here.add(ticker)
                 suspended.append(dropped)
+        if record_unavailable:
+            # Nothing explains a move tonight: the record that does could not be
+            # read. So the cross-check's own answer is the only clearance, and a
+            # name past the threshold it did not clear - because the cap did not
+            # reach it, or because there was no stored pair to refetch - is out of
+            # the book for this session. The evening still runs; this is the price.
+            for name, value in row.items():
+                ticker = str(name)
+                if pd.isna(value) or abs(float(value)) <= CROSS_CHECK_MOVE:
+                    continue
+                if ticker in cleared_here or ticker in dropped_here:
+                    continue
+                suspended.append(
+                    Suspended(
+                        ticker=ticker,
+                        session=session,
+                        reason=(
+                            "corporate actions were unavailable and the vendor "
+                            "cross-check did not clear the move"
+                        ),
+                    )
+                )
+                dropped_here.add(ticker)
     last = sessions[-1]
     tail = frame.loc[last, "r"] if last in frame.index else pd.Series(dtype=float)
     # Its own name: inside the session loop `explained` is the set of parents whose
@@ -1755,6 +1847,7 @@ def apply_to_artifact(
         Callable[[list[str], pd.Timestamp], dict[str, float]] | None
     ) = None,
     carry: Sequence[str] = (),
+    record_unavailable: str | None = None,
 ) -> Outcome:
     """Apply the rule to the artifact's appended sessions and write it back.
 
@@ -1768,6 +1861,13 @@ def apply_to_artifact(
     session, which leaves the raw print in place where the 40% flag names it as an
     unexplained large move. That is the same position the loop was in before this
     rule existed, and it is visible rather than silent.
+
+    `record_unavailable` says the evening's own corporate-actions read failed. The
+    rule still runs - the vendor split records and the cross-check do not need the
+    store - and the names nothing cleared are nulled in the price artifact here,
+    which is what takes them out of tonight's book. `CrossCheckUnavailable` is the
+    one raise that leaves this function: the cross-check is the only guard left
+    when the record is unreadable, so its failure stops the evening.
     """
     from pathlib import Path
 
@@ -1811,6 +1911,7 @@ def apply_to_artifact(
         max_cross_checks=max_cross_checks,
         spinoffs=found,
         child_close=child_close_lookup(prices_frame, fetched),
+        record_unavailable=record_unavailable,
     )
     if lookup_failure is not None:
         # Carried on the outcome even though the rule went on. The run is not the
