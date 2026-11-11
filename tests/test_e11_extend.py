@@ -769,17 +769,106 @@ def test_the_reader_takes_the_rows_the_rule_writes() -> None:
     )
 
 
-def test_a_store_that_cannot_answer_stops_nothing(
-    monkeypatch: pytest.MonkeyPatch,
+def test_a_store_that_cannot_answer_stops_the_evening(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The rebuild's own record is not what the evening prices: warn and carry on."""
+    """A failed read is not an empty record: stop before returns are written.
+
+    The rebuild cannot tell a corrected session from a raw print without the
+    record, so carrying on would put the CTVA -83.81% print back into the fit and
+    size a book from it. The read raises, and the returns file is left as it was.
+    """
+    root = tmp_path / "data"
+    _returns_tree(root)
+    returns_path = root / "processed" / "returns.parquet"
+    before = returns_path.read_bytes()
 
     def explode(table: str) -> None:
         raise RuntimeError("the store is unreachable")
 
     monkeypatch.setattr(extend.store, "select", explode)
 
+    with pytest.raises(
+        ca.CorporateActionsUnavailable, match="corporate actions unavailable"
+    ):
+        extend.recorded_spinoffs()
+    with pytest.raises(
+        ca.CorporateActionsUnavailable, match="the store is unreachable"
+    ):
+        extend.recorded_mergers()
+    with pytest.raises(ca.CorporateActionsUnavailable, match="nothing was traded"):
+        extend.extend_returns(root)
+
+    assert returns_path.read_bytes() == before, "a failed read extended the returns"
+
+
+def test_an_empty_but_successful_read_proceeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A table with no rows is an answer; only a read that failed stops the evening.
+
+    The fail-closed rule is about the store not answering, not about a store that
+    has nothing recorded: a fresh tree must still rebuild its returns.
+    """
+    root = tmp_path / "data"
+    _returns_tree(root)
+    monkeypatch.setattr(extend.store, "select", lambda table: pd.DataFrame())
+
     assert extend.recorded_spinoffs() == []
+    assert extend.recorded_mergers() == []
+    assert extend.extend_returns(root) == 3
+
+
+def test_a_failed_read_fails_the_evening_with_the_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The read that failed reaches the owner as the evening's failure.
+
+    `extend_returns` runs before the gate, the sizing and any order, so the raise
+    is the whole evening's answer: the run's own error path exits 1 and the
+    message names the read that could not be made. An empty table is the other
+    test above: it is an answer and the evening proceeds.
+    """
+    from live import notify
+    from scripts import run_live_daily
+
+    root = tmp_path / "data"
+    _returns_tree(root)
+
+    def explode(table: str) -> None:
+        raise RuntimeError("the store is unreachable")
+
+    monkeypatch.setattr(extend.store, "select", explode)
+    with pytest.raises(ca.CorporateActionsUnavailable) as raised:
+        extend.extend_returns(root)
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        run_live_daily, "finish_run", lambda **kwargs: captured.update(kwargs) or 1
+    )
+    close = EX_DATE.date().isoformat()
+    code = run_live_daily.failed_run(raised.value, run_date=close, dry_run=False)
+
+    assert code == 1, "a failed corporate-actions read must exit nonzero"
+    assert captured["status"] == "error"
+    detail = str(captured["detail"])
+    assert "corporate actions unavailable" in detail
+    assert "nothing was traded" in detail
+    subject = notify.subject_text(
+        status="error",
+        target_close=close,
+        dry_run=False,
+        error_type=str(captured["error_type"]),
+    )
+    assert subject == f"EFB ERROR {close} | none proposed | CorporateActionsUnavailable"
+    message = notify.compose(
+        status="error",
+        target_close=close,
+        dry_run=False,
+        detail=detail,
+        error_type=str(captured["error_type"]),
+    )
+    assert "corporate actions unavailable" in message
 
 
 # ---------------------------------------------------------------------------
