@@ -398,6 +398,7 @@ def compose(
     no_risk: list[dict[str, Any]] | None = None,
     no_short: list[dict[str, Any]] | None = None,
     missing_var: int | None = None,
+    corporate_actions_unavailable: str | None = None,
     refused_legs: list[dict[str, Any]] | None = None,
     unconfirmed_legs: int | None = None,
     excluded: list[dict[str, Any]] | None = None,
@@ -684,6 +685,18 @@ def compose(
         # run goes on either way, and this is the line that stops the run reading as
         # a clean evening: nobody else is looking for that session.
         lines.append(spinoff_lookup_failed.strip().rstrip(".") + ".")
+    if corporate_actions_unavailable:
+        # The record that explains a split, spin-off or merger could not be read,
+        # and the evening traded anyway. The line says both halves: the reason, and
+        # what the run did about it, because "unavailable" alone reads as a warning
+        # that cost nothing. Every name past the cross-check threshold that the
+        # vendor could not clear was out of tonight's book.
+        lines.append(
+            "Corporate actions unavailable tonight "
+            f"({corporate_actions_unavailable.strip().rstrip('.')}); every name "
+            "past the cross-check move threshold that the vendor could not clear "
+            "was excluded tonight."
+        )
     moves = _move_flags(flags)
     if moves:
         lines.append(f"Large moves: {_flag_list(moves)}.")
@@ -1659,6 +1672,7 @@ def notify_run(
     sent_notional: float | None = None,
     sent_orders: int | None = None,
     missing_var: int | None = None,
+    corporate_actions_unavailable: str | None = None,
     refused_legs: list[dict[str, Any]] | None = None,
     unconfirmed_legs: int | None = None,
     excluded: list[dict[str, Any]] | None = None,
@@ -1711,6 +1725,7 @@ def notify_run(
         spinoff_missing=spinoff_missing,
         spinoff_unusable=spinoff_unusable,
         spinoff_lookup_failed=spinoff_lookup_failed,
+        corporate_actions_unavailable=corporate_actions_unavailable,
         flags=flags,
         no_price=no_price,
         no_risk=no_risk,

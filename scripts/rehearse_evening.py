@@ -86,7 +86,9 @@ class _SuppressedWrites:
             setattr(store, name, original)
 
 
-def _prepare_tree(close: str, seed_tree: Path | None) -> tuple[Path, Path]:
+def _prepare_tree(
+    close: str, seed_tree: Path | None, record: Any = None
+) -> tuple[Path, Path]:
     """A run tree extended to `close`, and the proposals directory beside it."""
     from live import extend, seed
 
@@ -109,7 +111,7 @@ def _prepare_tree(close: str, seed_tree: Path | None) -> tuple[Path, Path]:
     extend.extend_archives(data_root=tree)
     extend.extend_prices(data_root=tree, end=close)
     extend.extend_shares(data_root=tree, end=close)
-    extend.extend_returns(data_root=tree)
+    extend.extend_returns(data_root=tree, record=record)
     # The corporate-actions rule is applied by `rehearse` with the evening's own
     # window (`since=before_last`), not here over the whole history: a full replay
     # re-checks every flag ever recorded, which is a different job and it asks the
@@ -136,20 +138,27 @@ def rehearse(close: str, *, seed_tree: Path | None = None) -> dict[str, Any]:
     from live import (
         corporate_actions,
         evening_job,
+        extend,
         morning_job,
         notify,
         staleness,
         store,
     )
 
-    tree, proposals = _prepare_tree(close, seed_tree)
+    # The corporate-action record, read once: an evening whose read fails is
+    # rehearsed by pointing this at the failure, and the message below must carry
+    # the same note the production run would.
+    corporate_record = extend.recorded_actions()
+    tree, proposals = _prepare_tree(close, seed_tree, record=corporate_record)
     captured: dict[str, Any] = {}
     started = datetime.now(UTC)
     previous_env = {name: os.environ.get(name) for name in LIVE_ENV}
     os.environ.update(LIVE_ENV)
     try:
         before_last = extend_last_session(tree)
-        outcome = corporate_actions.apply_to_artifact(tree, since=before_last)
+        outcome = corporate_actions.apply_to_artifact(
+            tree, since=before_last, record_unavailable=corporate_record.unavailable
+        )
         gate = staleness.check(root=tree, target=pd.Timestamp(close))
         captured["gate"] = {
             "status": gate["status"],
@@ -220,7 +229,14 @@ def rehearse(close: str, *, seed_tree: Path | None = None) -> dict[str, Any]:
             evening_job.PROPOSAL_DIR = saved_evening_dir
             morning_job.PROPOSAL_DIR = saved_morning_dir
         order_path = notify_dry_run(
-            notify, close, manifest, morning, outcome, gate, captured
+            notify,
+            close,
+            manifest,
+            morning,
+            outcome,
+            gate,
+            captured,
+            corporate_actions_unavailable=corporate_record.unavailable,
         )
         captured["writes_suppressed"] = len(writes.calls)
         return {
@@ -301,6 +317,8 @@ def notify_dry_run(
     outcome: Any,
     gate: dict[str, Any],
     captured: dict[str, Any],
+    *,
+    corporate_actions_unavailable: str | None = None,
 ) -> dict[str, Any]:
     """The evening's own message, composed and not sent, from the run's own facts."""
     body = notify.compose(
@@ -316,6 +334,7 @@ def notify_dry_run(
         store="suppressed (rehearsal)",
         snapshot="off (rehearsal)",
         monthly_view="not built: this run published no document",
+        corporate_actions_unavailable=corporate_actions_unavailable,
         cadence=manifest.get("cadence"),
         drift_guard=manifest.get("drift_guard"),
         excluded_tonight=manifest.get("excluded_tonight") or [],

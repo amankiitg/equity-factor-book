@@ -1330,6 +1330,7 @@ def finish_run(
     spinoff_missing: list[str] | None = None,
     spinoff_unusable: list[str] | None = None,
     spinoff_lookup_failed: str | None = None,
+    corporate_actions_unavailable: str | None = None,
     flags: list[dict[str, Any]] | None = None,
     started_at: str | None = None,
     cross_checks_capped: str | None = None,
@@ -1606,6 +1607,7 @@ def finish_run(
         spinoff_missing=spinoff_missing,
         spinoff_unusable=spinoff_unusable,
         spinoff_lookup_failed=spinoff_lookup_failed,
+        corporate_actions_unavailable=corporate_actions_unavailable,
         flags=flags,
         store=store_name,
         snapshot=snapshot_detail,
@@ -1934,6 +1936,10 @@ def main() -> int:
     # absence of spin-offs: a read that failed and a read that found nothing are
     # different evenings and only one of them is unverified.
     spinoff_lookup_failed: str = ""
+    # The reason the store's corporate-action record could not be read, when it
+    # could not. The evening still runs; the message carries the reason and the
+    # names the cross-check could not clear are out of the book.
+    corporate_actions_unavailable: str = ""
     # Whether this run seeded the store. False on every path that is not the
     # explicit first run, including a run that fails before the guard decides.
     first_run = False
@@ -2033,7 +2039,19 @@ def main() -> int:
         extend.extend_archives()
         extend.extend_prices()
         extend.extend_shares()
-        extend.extend_returns()
+        # The store's corporate-action record, read once for the rebuild and for
+        # the append path below. A read that fails does not stop the evening: the
+        # vendor cross-check still runs, the names it cannot clear are out of
+        # tonight's book, and the message says the record was unavailable. What it
+        # costs is named too - the panel is rebuilt without its recorded
+        # corrections - because a warning nobody can act on is not visible.
+        corporate_record = extend.recorded_actions()
+        if corporate_record.unavailable:
+            logger.warning(
+                "corporate actions unavailable tonight: %s",
+                corporate_record.unavailable,
+            )
+        extend.extend_returns(record=corporate_record)
         # The corporate-actions rule, in the append path and before anything reads
         # the returns. The vendor back-adjusts history on a split, this pipeline
         # only appends, and a raw halving would slip under the 50% outlier flag.
@@ -2049,7 +2067,10 @@ def main() -> int:
                 ", ".join(carried_names),
             )
         outcome = corporate_actions.apply_to_artifact(
-            run_tree, since=before_last, carry=carried_names
+            run_tree,
+            since=before_last,
+            carry=carried_names,
+            record_unavailable=corporate_record.unavailable,
         )
         if outcome.splits or outcome.spinoffs:
             close = outcome.sessions[-1] if outcome.sessions else before_last
@@ -2117,6 +2138,12 @@ def main() -> int:
         spinoff_lookup_failed = str(outcome.lookup_failure or "")
         if spinoff_lookup_failed:
             logger.warning("%s", spinoff_lookup_failed)
+        corporate_actions_unavailable = str(corporate_record.unavailable or "")
+        if corporate_actions_unavailable:
+            logger.warning(
+                "the evening ran without its corporate-action record: %s",
+                corporate_actions_unavailable,
+            )
         flags = outcome.flags
         if flags:
             logger.warning("large moves in the appended session: %s", flags)
@@ -2638,6 +2665,7 @@ def main() -> int:
         spinoff_missing=spinoff_missing,
         spinoff_unusable=spinoff_unusable,
         spinoff_lookup_failed=spinoff_lookup_failed,
+        corporate_actions_unavailable=corporate_actions_unavailable,
         flags=[*flags, *attribution_flags],
         started_at=started_at,
         cross_checks_capped=capped,
