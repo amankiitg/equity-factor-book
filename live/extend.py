@@ -262,14 +262,19 @@ def recorded_spinoffs() -> list[corporate_actions.Spinoff]:
     built from it.
 
     The store is asked and never written to. A tree with no store behind it - a test, a
-    fresh container - reads as no records, and a store that cannot answer is a warning
-    rather than a stopped evening: the run's own prices are not the store's problem.
+    fresh container - reads as no records. A store that *cannot answer* is not the same
+    thing: the rebuild would then not know whether a session it is about to write is a
+    corrected total return or a raw print, so the evening stops before the write.
     """
     try:
         rows = store.select(corporate_actions.TABLE)
-    except Exception:  # noqa: BLE001 - the run goes on without its own record
-        logger.warning("corporate actions could not be read", exc_info=True)
-        return []
+    except Exception as exc:  # noqa: BLE001 - a read that failed stops the evening
+        logger.error("corporate actions could not be read", exc_info=True)
+        raise corporate_actions.CorporateActionsUnavailable(
+            "corporate actions unavailable, nothing was traded: the store's "
+            f"{corporate_actions.TABLE} table could not be read "
+            f"({type(exc).__name__}: {exc}); the returns were not rebuilt"
+        ) from exc
     return corporate_actions.spinoffs_from_rows(rows)
 
 
@@ -279,14 +284,18 @@ def recorded_mergers() -> list[corporate_actions.Merger]:
     A merger ends the target's series and moves one session's return; neither price
     vendor adjusts history for it, so the completion-session total return has to be
     re-applied from its record every evening, exactly like a spin-off. The store is
-    asked and never written to, and a store that cannot answer is a warning rather
-    than a stopped evening.
+    asked and never written to, and a store that cannot answer stops the evening for
+    the same reason a failed spin-off read does: the return cannot be vouched for.
     """
     try:
         rows = store.select(corporate_actions.TABLE)
-    except Exception:  # noqa: BLE001 - the run goes on without its own record
-        logger.warning("corporate actions could not be read", exc_info=True)
-        return []
+    except Exception as exc:  # noqa: BLE001 - a read that failed stops the evening
+        logger.error("corporate actions could not be read", exc_info=True)
+        raise corporate_actions.CorporateActionsUnavailable(
+            "corporate actions unavailable, nothing was traded: the store's "
+            f"{corporate_actions.TABLE} table could not be read "
+            f"({type(exc).__name__}: {exc}); the returns were not rebuilt"
+        ) from exc
     return corporate_actions.mergers_from_rows(rows)
 
 

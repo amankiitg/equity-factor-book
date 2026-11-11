@@ -97,6 +97,17 @@ CROSS_CHECK_TOLERANCE = 0.02
 SPLIT_LOOKBACK_DAYS = 10
 
 
+class CorporateActionsUnavailable(RuntimeError):
+    """The recorded corporate actions could not be read.
+
+    A run that cannot read the record cannot tell a corrected session from a raw
+    print: a split, spin-off or merger recorded there moves a return that neither
+    price vendor adjusts. Fail closed, so the evening stops instead of pricing a
+    book from returns it could not check, and the position comparison says the
+    read failed instead of calling a converted holding a mismatch.
+    """
+
+
 @dataclass(frozen=True)
 class Split:
     """One vendor split record: effective date and new shares per old share."""
