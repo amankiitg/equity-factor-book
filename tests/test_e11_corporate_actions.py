@@ -701,3 +701,279 @@ def test_the_append_path_drops_a_name_the_vendor_has_no_close_for():
     assert dropped.reason == "the vendor returned no adjusted close to cross-check"
     assert "returned no adjusted close" in dropped.describe()
     assert outcome.splits == []
+
+
+# --- the evening's record read failed: fail-visible, not fail-closed -------------
+#
+# The record is what explains a corporate action, and the cross-check is the other
+# guard on a large move. When the record cannot be read the evening goes on - a
+# whole book unheld for one table is not an answer - and the cross-check becomes
+# the only clearance: every name past the move threshold it cannot clear is out of
+# tonight's book. The one case that still stops the run is the cross-check itself
+# failing, because then nothing can tell a corrected session from a raw print.
+
+UNAVAILABLE = (
+    "the store's e11_corporate_actions table could not be read: "
+    "RuntimeError: the store is unreachable"
+)
+
+
+def test_a_threshold_move_the_cross_check_clears_stays_in_the_book():
+    """The vendor answers for the print, so the name is priced as it printed.
+
+    AAA falls 12% with its adjusted close untouched: the vendor restated nothing,
+    so the move is a plain return. The record is unreadable, but this one name
+    needs no record to be understood.
+    """
+    prices = prices_frame(
+        [
+            ("2026-09-03", "AAA", 100.0, 100.0, 0.0),
+            ("2026-09-04", "AAA", 88.0, 88.0, 0.0),
+        ]
+    )
+    frame = returns_frame([("2026-09-03", "AAA", 0.0), ("2026-09-04", "AAA", -0.12)])
+
+    outcome = ca.apply_to_append(
+        frame,
+        prices,
+        since=pd.Timestamp("2026-09-03"),
+        split_fetcher=fake_splits({}),
+        close_fetcher=lambda ticker, session: 100.0,
+        record_unavailable=UNAVAILABLE,
+    )
+
+    assert outcome.suspended == []
+    assert outcome.cross_checked == ["AAA"]
+    assert float(
+        outcome.returns.loc[(pd.Timestamp("2026-09-04"), "AAA"), "r"]
+    ) == pytest.approx(-0.12)
+
+
+def test_a_threshold_move_the_cross_check_cannot_clear_is_excluded():
+    """The vendor restated the print and no record can explain it: out tonight.
+
+    With the record readable this is the existing suspension; with it unreadable
+    the same print cannot be distinguished from a split nobody recorded, so the
+    name is out of the book - and the rest of the panel is still priced.
+    """
+    prices = prices_frame(
+        [
+            ("2026-09-03", "AAA", 100.0, 100.0, 0.0),
+            ("2026-09-04", "AAA", 50.0, 50.0, 0.0),
+        ]
+    )
+    frame = returns_frame(
+        [
+            ("2026-09-03", "AAA", 0.0),
+            ("2026-09-04", "AAA", -0.50),
+            ("2026-09-04", "BBB", 0.011),
+        ]
+    )
+
+    outcome = ca.apply_to_append(
+        frame,
+        prices,
+        since=pd.Timestamp("2026-09-03"),
+        split_fetcher=fake_splits({}),
+        close_fetcher=lambda ticker, session: 50.0 if ticker == "AAA" else 40.0,
+        record_unavailable=UNAVAILABLE,
+    )
+
+    assert [record.ticker for record in outcome.suspended] == ["AAA"]
+    dropped = outcome.suspended[0]
+    assert dropped.session == pd.Timestamp("2026-09-04")
+    assert dropped.ratio == pytest.approx(0.5, abs=1e-9)
+    assert float(
+        outcome.returns.loc[(pd.Timestamp("2026-09-04"), "BBB"), "r"]
+    ) == pytest.approx(0.011)
+
+
+def test_a_threshold_move_the_cap_never_reached_is_excluded():
+    """Unchecked is not cleared: the cap's names are out when the record is gone.
+
+    On an ordinary evening the cap is a delay, and the name is carried to the next
+    close. With no record to explain a move there is nothing to carry it to, so the
+    name is dropped for the session rather than priced on a print nothing checked.
+    """
+    prices = prices_frame(
+        [
+            ("2026-09-03", "AAA", 100.0, 100.0, 0.0),
+            ("2026-09-04", "AAA", 88.0, 88.0, 0.0),
+        ]
+    )
+    frame = returns_frame([("2026-09-03", "AAA", 0.0), ("2026-09-04", "AAA", -0.12)])
+
+    outcome = ca.apply_to_append(
+        frame,
+        prices,
+        since=pd.Timestamp("2026-09-03"),
+        split_fetcher=fake_splits({}),
+        close_fetcher=lambda ticker, session: 100.0,
+        max_cross_checks=0,
+        record_unavailable=UNAVAILABLE,
+    )
+
+    assert [record.ticker for record in outcome.suspended] == ["AAA"]
+    assert outcome.suspended[0].reason == (
+        "corporate actions were unavailable and the vendor cross-check did not clear "
+        "the move"
+    )
+    assert outcome.unchecked == ["AAA"]
+
+
+def test_a_move_below_the_threshold_is_not_touched():
+    """Only the threshold crossings are the unreadable record's business tonight.
+
+    A 5% day is not a corporate action in any reading of the rules, so the failed
+    read does not take the name out of the book.
+    """
+    prices = prices_frame(
+        [
+            ("2026-09-03", "AAA", 100.0, 100.0, 0.0),
+            ("2026-09-04", "AAA", 95.0, 95.0, 0.0),
+        ]
+    )
+    frame = returns_frame([("2026-09-03", "AAA", 0.0), ("2026-09-04", "AAA", -0.05)])
+
+    outcome = ca.apply_to_append(
+        frame,
+        prices,
+        since=pd.Timestamp("2026-09-03"),
+        split_fetcher=fake_splits({}),
+        close_fetcher=lambda ticker, session: 100.0,
+        record_unavailable=UNAVAILABLE,
+    )
+
+    assert outcome.suspended == []
+    assert outcome.cross_checked == []
+    assert float(
+        outcome.returns.loc[(pd.Timestamp("2026-09-04"), "AAA"), "r"]
+    ) == pytest.approx(-0.05)
+
+
+def test_the_exclusion_reaches_the_price_artifact(tmp_path):
+    """The dropped name's close is nulled, which is what takes it out of the book.
+
+    `evening_job` already refuses to size a name with no close and reports it as
+    dropped_no_price, so the exclusion needs no new path in the sizing.
+    """
+    root = tmp_path
+    (root / "raw").mkdir()
+    (root / "processed").mkdir()
+    prices = prices_frame(
+        [
+            ("2026-09-03", "AAA", 100.0, 100.0, 0.0),
+            ("2026-09-04", "AAA", 50.0, 50.0, 0.0),
+            ("2026-09-04", "BBB", 41.0, 41.0, 0.0),
+        ]
+    )
+    frame = returns_frame(
+        [
+            ("2026-09-03", "AAA", 0.0),
+            ("2026-09-04", "AAA", -0.50),
+            ("2026-09-04", "BBB", 0.02),
+        ]
+    )
+    prices.to_parquet(root / "raw" / "prices.parquet")
+    frame.to_parquet(root / "processed" / "returns.parquet")
+
+    outcome = ca.apply_to_artifact(
+        root,
+        since=pd.Timestamp("2026-09-03"),
+        split_fetcher=fake_splits({}),
+        close_fetcher=lambda ticker, session: 50.0 if ticker == "AAA" else 40.0,
+        spinoff_fetcher=lambda symbols, session: [],
+        record_unavailable=UNAVAILABLE,
+    )
+
+    assert [record.ticker for record in outcome.suspended] == ["AAA"]
+    written = pd.read_parquet(root / "raw" / "prices.parquet")
+    assert pd.isna(written.loc[(pd.Timestamp("2026-09-04"), "AAA"), "close"])
+    assert not pd.isna(written.loc[(pd.Timestamp("2026-09-04"), "BBB"), "close"])
+
+
+def test_a_cross_check_that_cannot_run_stops_the_append_path():
+    """The one remaining fail-closed case: no record read, and no cross-check.
+
+    Nothing is left that can tell a corrected session from a raw print, so the
+    run stops with the guard it lost named, rather than pricing a session on
+    prints nothing checked.
+    """
+    prices = prices_frame(
+        [
+            ("2026-09-03", "AAA", 100.0, 100.0, 0.0),
+            ("2026-09-04", "AAA", 88.0, 88.0, 0.0),
+        ]
+    )
+    frame = returns_frame([("2026-09-03", "AAA", 0.0), ("2026-09-04", "AAA", -0.12)])
+
+    def unreachable(ticker: str, session: pd.Timestamp) -> float | None:
+        raise ConnectionError("the vendor is unreachable")
+
+    with pytest.raises(ca.CrossCheckUnavailable) as raised:
+        ca.apply_to_append(
+            frame,
+            prices,
+            since=pd.Timestamp("2026-09-03"),
+            split_fetcher=fake_splits({}),
+            close_fetcher=unreachable,
+            record_unavailable=UNAVAILABLE,
+        )
+
+    message = str(raised.value)
+    assert "the vendor cross-check could not run" in message
+    assert "AAA" in message
+    assert "ConnectionError: the vendor is unreachable" in message
+
+
+def test_a_cross_check_that_cannot_run_fails_the_evening(tmp_path, monkeypatch):
+    """The stop reaches the owner as a failed run, with the cross-check named.
+
+    The append path runs before the gate and any order, so the raise is the
+    evening's whole answer: exit 1, an EFB ERROR subject, and a detail that says
+    which guard could not run. Nothing is written to the artifact it could not
+    check.
+    """
+    from scripts import run_live_daily
+
+    root = tmp_path
+    (root / "raw").mkdir()
+    (root / "processed").mkdir()
+    prices = prices_frame(
+        [
+            ("2026-09-03", "AAA", 100.0, 100.0, 0.0),
+            ("2026-09-04", "AAA", 88.0, 88.0, 0.0),
+        ]
+    )
+    frame = returns_frame([("2026-09-03", "AAA", 0.0), ("2026-09-04", "AAA", -0.12)])
+    prices.to_parquet(root / "raw" / "prices.parquet")
+    frame.to_parquet(root / "processed" / "returns.parquet")
+    prices_before = sha256(root / "raw" / "prices.parquet")
+    returns_before = sha256(root / "processed" / "returns.parquet")
+
+    def unreachable(ticker: str, session: pd.Timestamp) -> float | None:
+        raise ConnectionError("the vendor is unreachable")
+
+    with pytest.raises(ca.CrossCheckUnavailable) as raised:
+        ca.apply_to_artifact(
+            root,
+            since=pd.Timestamp("2026-09-03"),
+            split_fetcher=fake_splits({}),
+            close_fetcher=unreachable,
+            spinoff_fetcher=lambda symbols, session: [],
+            record_unavailable=UNAVAILABLE,
+        )
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        run_live_daily, "finish_run", lambda **kwargs: captured.update(kwargs) or 1
+    )
+    close = "2026-09-04"
+    code = run_live_daily.failed_run(raised.value, run_date=close, dry_run=False)
+
+    assert code == 1
+    assert captured["status"] == "error"
+    assert str(captured["error_type"]) == "CrossCheckUnavailable"
+    assert "cross-check could not run" in str(captured["detail"])
+    assert sha256(root / "raw" / "prices.parquet") == prices_before
+    assert sha256(root / "processed" / "returns.parquet") == returns_before
