@@ -942,7 +942,8 @@ def _the_live_leg_table() -> dict:
     The counts and dollars are the live ones: 224 rows on the 2026-10-23 rebalance
     ($546,256.69, of which 16 were under the minimum and never sent), 12 sent legs
     on 2026-10-26 (the four second legs, plus the eight legs that re-traded a
-    rebalance that had already filled, $3,632, the unfilled-remainder bug fixed on
+    rebalance that had already filled, $3,632.28 including CHTR, the
+    unfilled-remainder bug fixed on
     2026-10-27), the guard's 109 sent legs on 2026-10-30 ($68,859) and 140 on
     2026-11-04 ($96,938.76), two second legs on 2026-11-05, JBL's $269.37 that is
     under one share, and the 315 legs under the $250 minimum ($91,697.42) that the
@@ -983,20 +984,27 @@ def _the_live_leg_table() -> dict:
             )
         )
     _spread(legs[-16:], 2_253.26)
-    for ticker in closes:
-        legs.append(
-            _leg(
-                hold,
-                ticker,
-                "buy_to_open" if ticker in ("CCL", "GEHC") else "sell_to_open",
-            )
-        )
-    _spread(legs[-4:], 7_040.48)
-    # The eight the 2026-10-26 hold day sent again: the rebalance had already
-    # filled and the manifest's remainder read it as outstanding.
-    for ticker in ["STX", "MRVL", "CHTR", "INTC", "NVDA", "AKAM", "WDC", "HPE"]:
-        legs.append(_leg(hold, ticker, "sell_to_close"))
-    _spread(legs[-8:], 3_632.00)
+    # 2026-10-26's twelve sent legs, on the store's own rows and dollars: the
+    # four second legs of the rebalance's flips (CCL, F, GEHC, VZ) and the eight
+    # that re-traded a rebalance that had already filled ($3,632.28, CHTR in it).
+    # CHTR is the case the flip rule settles: its side did not change across the
+    # rebalance, so its open is a re-trade even though a close went out earlier.
+    for ticker, intent, dollars in [
+        ("CCL", "buy_to_open", 677.706005),
+        ("F", "sell_to_open", -1_600.356208),
+        ("GEHC", "buy_to_open", 2_328.089088),
+        ("VZ", "sell_to_open", -2_434.046379),
+        ("AKAM", "buy_to_close", 290.448717),
+        ("CHTR", "buy_to_open", 431.043870),
+        ("HPE", "sell_to_close", -413.676752),
+        ("INTC", "sell_to_close", -808.253874),
+        ("MRVL", "sell_to_close", -517.467381),
+        ("NVDA", "buy_to_close", 257.463043),
+        ("STX", "sell_to_close", -471.735590),
+        ("WDC", "sell_to_close", -442.191471),
+    ]:
+        legs.append(_leg(hold, ticker, intent))
+        legs[-1]["intended_notional"] = dollars
     # The guard's two evenings.
     for index in range(109):
         legs.append(_leg(guard_1, f"G{index:03d}", "sell_to_close"))
@@ -1006,10 +1014,11 @@ def _the_live_leg_table() -> dict:
     legs[-140].update({"ticker": "CCL", "position_intent": "sell_to_close"})
     legs[-139].update({"ticker": "NFLX", "position_intent": "buy_to_close"})
     _spread(legs[-140:], 96_938.76)
-    # Their second legs, the day after.
-    legs.append(_leg(flip_2, "CCL", "buy_to_open"))
-    legs.append(_leg(flip_2, "NFLX", "sell_to_open"))
-    _spread(legs[-2:], 2_900.00)
+    # Their second legs, the day after, on the store's own dollars.
+    legs.append(_leg(flip_2, "CCL", "sell_to_open"))
+    legs[-1]["intended_notional"] = -315.757109
+    legs.append(_leg(flip_2, "NFLX", "buy_to_open"))
+    legs[-1]["intended_notional"] = 682.697473
     # JBL: owed, under one share, never an order.
     legs.append(_leg(hold, "JBL", "buy_to_close", "COVER_UNDER_ONE_SHARE", broker=""))
     legs[-1]["intended_notional"] = 269.37
@@ -1046,19 +1055,31 @@ def _the_live_leg_table() -> dict:
     )
     target = pd.DataFrame(
         {
-            "trade_date": [anchor, anchor],
-            "ticker": ["CCL", "NFLX"],
-            "side": ["long", "long"],
-            "weight": [0.01, 0.005],
+            "trade_date": [anchor] * 6,
+            "ticker": ["CCL", "F", "GEHC", "VZ", "CHTR", "NFLX"],
+            "side": ["long", "short", "long", "short", "long", "short"],
+            "weight": [0.01, -0.002, 0.002, -0.003, 0.0075, -0.0016],
         }
     )
+    # The account at the anchor close, before the rebalance traded: the four
+    # names whose side it changed there are the flip rows (CCL, F, GEHC, VZ).
+    # CHTR was long before and long at the target, so it is not a flip.
     account = pd.DataFrame(
-        {
-            "trade_date": [flip_2, flip_2],
-            "ticker": ["CCL", "NFLX"],
-            "side": ["long", "long"],
-            "market_value": [700.0, 350.0],
-        }
+        [
+            (anchor, "CCL", "short", -600.5369),
+            (anchor, "F", "long", 633.191546),
+            (anchor, "GEHC", "short", -2_000.6),
+            (anchor, "VZ", "long", 988.565164),
+            (anchor, "CHTR", "long", 8_935.301232),
+            (anchor, "NFLX", "short", -3_156.48),
+            (flip_2, "CCL", "long", 700.0),
+            (flip_2, "F", "short", -700.0),
+            (flip_2, "GEHC", "long", 700.0),
+            (flip_2, "VZ", "short", -700.0),
+            (flip_2, "CHTR", "long", 900.0),
+            (flip_2, "NFLX", "short", -350.0),
+        ],
+        columns=["trade_date", "ticker", "side", "market_value"],
     )
     return monthly_view.block(
         proposals=proposals,
@@ -1094,6 +1115,10 @@ def test_legs_are_counted_by_the_event_that_asked_for_them() -> None:
 
     flip = rows["reversal second leg"]
     assert (flip["legs"], flip["sent_legs"]) == (6, 6)
+    # The six are CCL, F, GEHC and VZ on 2026-10-26 and CCL and NFLX on
+    # 2026-11-05; CHTR is not among them. Its 2026-10-26 open is in the
+    # re-trade row below, which is why the row's dollars carry CHTR's 431.04.
+    assert flip["usd"] == pytest.approx(8_038.65, abs=0.01)
 
     carried = rows["carried leg"]
     assert (carried["legs"], carried["sent_legs"]) == (1, 0)
@@ -1105,7 +1130,8 @@ def test_legs_are_counted_by_the_event_that_asked_for_them() -> None:
     # they are not a rebalance: they get their own row.
     retrade = rows["remainder re-trade (bug, fixed 10-27)"]
     assert (retrade["legs"], retrade["sent_legs"]) == (8, 8)
-    assert retrade["usd"] == pytest.approx(3_632.00, abs=0.01)
+    assert retrade["usd"] == pytest.approx(3_632.28, abs=0.01)
+    assert retrade["usd"] > 3_632.28 - 431.05  # CHTR is inside this total
     assert "rebalance remainder" not in rows
 
     not_sent = block["since_anchor"]["not_sent"]

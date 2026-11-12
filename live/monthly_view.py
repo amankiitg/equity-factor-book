@@ -1244,6 +1244,12 @@ def _block(
     now = _book(account, now_close)
     guard_dates = _guard_events(proposals, anchor, today)
     bridge_anchor = bridge(target, before, now, orders, fills, anchor, guard_dates)
+    # The names whose side the rebalance actually changed. On the 2026-10-26
+    # re-trade evening every leg but these re-traded the rebalance's remainder;
+    # only these can be its second legs.
+    flip_tickers = {
+        str(row.get("ticker")) for row in bridge_anchor.get("flip_rows") or []
+    }
 
     cadence = tonight_manifest.get("cadence") or anchor_manifest.get("cadence") or {}
     guard = tonight_manifest.get("drift_guard") or {}
@@ -1317,16 +1323,30 @@ def _block(
                 # guard day closes and opens in the same evening, and every leg it
                 # sent belongs to that evening's drift repair.
                 reason = "guard"
-            elif intent.endswith("_to_open") and any(
-                day < close for day in closed_on.get(ticker, set())
+            elif close in RETRADE_BUG_DAYS and not (
+                ticker in flip_tickers and intent.endswith("_to_open")
             ):
-                reason = "reversal second leg"
-            elif close in RETRADE_BUG_DAYS:
                 # The 2026-10-26 hold day re-traded eight legs of a rebalance that
                 # had already filled, because the remainder it read was built from
                 # filled_notional and saw the whole rebalance outstanding. The fix
                 # landed on 2026-10-27; the legs it produced are not a remainder.
+                # Every sent leg that evening is a re-trade except a name the
+                # rebalance actually flipped: only a flip has a second leg to send.
                 reason = RETRADE_BUG_DAYS[close]
+            elif ticker in flip_tickers and intent.endswith("_to_open"):
+                # A flip's second leg on a later close. CHTR is the case that made
+                # this explicit: it had a close on an earlier day, so the old
+                # close-then-open proxy called its 2026-10-26 open a second leg, but
+                # its side did not change across the rebalance (long before, long
+                # target), so that leg is a remainder re-trade, not a second leg.
+                reason = "reversal second leg"
+            elif intent.endswith("_to_open") and any(
+                day < close for day in closed_on.get(ticker, set())
+            ):
+                # Outside a re-trade day the evidence of a reversal is the close
+                # that went out on an earlier day; the 2026-11-05 legs that answer
+                # the guard's own 2026-11-04 closes are second legs of that evening.
+                reason = "reversal second leg"
             else:
                 # A sent leg on a hold day that is neither a guard day nor the open
                 # of a flip: a rebalance leg the account did not take on the anchor

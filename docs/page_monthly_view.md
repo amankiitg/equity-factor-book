@@ -90,17 +90,22 @@ each one row, each complete.
   for the leg**, never the order's own `position_intent` (every submitted order
   carries one) and never its `reason_code` (a refusal recorded on the legs that never
   became orders). A leg is a `guard` leg when the close it was proposed on is a close
-  the guard fired on, a `reversal second leg` when it opens a side whose close was
-  sent on an earlier day, and a `rebalance remainder` when it is a rebalance leg the
-  account did not take on the anchor day and the next close sent again. The 8 sent
+  the guard fired on. A `reversal second leg` is a leg that opens the new side of a
+  name the rebalance actually flipped (the bridge's `flip_rows`: its side before the
+  rebalance differs from its target side); a name that merely had a close on an
+  earlier day is not enough. A `rebalance remainder` is a rebalance leg the account
+  did not take on the anchor day and the next close sent again. The 8 sent
   legs on 2026-10-26 are their own row, not a remainder: that hold day re-traded a
   rebalance that had already filled because it read its remainder from
   `efb.orders.filled_notional`, which is written before the open and never updated.
-  The fix (4ffd083) landed on 2026-10-27. Each row carries `legs` and `usd` beside
-  `sent_legs` and `sent_usd`, and the legs that never went (under the $250 minimum,
-  or refused) are summed in `since_anchor.not_sent` rather than given a reason.
-  Measured on 2026-11-11: 224 rebalance rows (208 sent), 249 guard legs, 6 second
-  legs, 8 re-trade legs ($3,632), 1 carried leg, and 315 legs under the minimum.
+  The fix (4ffd083) landed on 2026-10-27. On that evening every other sent leg is
+  the re-trade row, which is what makes CHTR one of them: its side did not change
+  across the rebalance, so its buy-to-open is a re-trade, not a second leg. Each row
+  carries `legs` and `usd` beside `sent_legs` and `sent_usd`, and the legs that never
+  went (under the $250 minimum, or refused) are summed in `since_anchor.not_sent`
+  rather than given a reason. Measured on 2026-11-12: 224 rebalance rows (208 sent),
+  347 guard legs (including 98 that evening), 6 second legs, 8 re-trade legs
+  ($3,632.28, CHTR in it), 1 carried leg, and 406 legs under the minimum.
 
   The holdings `since` column reads the same evening: a resize is a leg on the
   rebalance's own close and nothing else. A sent leg on a close the guard fired on is
