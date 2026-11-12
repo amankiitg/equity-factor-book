@@ -292,3 +292,178 @@ def test_the_local_writer_casts_a_string_weight_to_the_float_schema(
     frame = store.select("positions")
     assert frame["ticker"].tolist() == ["AAA", "AAA"]
     assert frame["weight"].tolist() == pytest.approx([0.01, 0.0123])
+
+
+# --- the pinned close reaches the pricing, and the traded guard is defeated -----
+
+# A past close with no legs at the broker, and one that really traded (2026-11-04,
+# the close the 2026-11-11 check found the rehearsal refusing outright).
+PAST_CLOSE = "2026-10-29"
+TRADED_CLOSE = "2026-11-04"
+
+
+def _evening_harness(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> dict[str, dict[str, object]]:
+    """The stubs test_e11_positions drives `run_live_daily.main` with, offline."""
+    from tests.test_e11_notify import _no_work, _patch_gate
+    from tests.test_e11_positions import ACCOUNT_NUMBER, _FakeBroker
+
+    from live import alpaca, extend, morning_job, reconcile, seed
+
+    _no_work(monkeypatch)
+    # The seed's own preflight reads the repository's data tree for files this
+    # checkout does not carry; it is not what these tests are about.
+    monkeypatch.setattr(seed, "preflight_inputs", lambda root: [])
+    _patch_gate(monkeypatch, tmp_path)
+    # The evening reads which account the keys reach; the fakes below report it.
+    monkeypatch.setenv(alpaca.ACCOUNT_ID_ENV, ACCOUNT_NUMBER)
+    monkeypatch.setattr(alpaca, "read_client", lambda: _FakeBroker([]))
+    monkeypatch.setattr(
+        morning_job,
+        "run_morning",
+        lambda *a, **k: {
+            "orders": 0,
+            "intended_notional": 0.0,
+            "establishment": False,
+        },
+    )
+    monkeypatch.setattr(reconcile, "daily_record", lambda *a, **k: {"dry_run": True})
+    seen: dict[str, dict[str, object]] = {}
+
+    def _prices(*args: object, **kwargs: object) -> int:
+        seen["prices"] = kwargs
+        return 0
+
+    def _shares(*args: object, **kwargs: object) -> int:
+        seen["shares"] = kwargs
+        return 0
+
+    monkeypatch.setattr(extend, "extend_prices", _prices)
+    monkeypatch.setattr(extend, "extend_shares", _shares)
+    return seen
+
+
+def test_with_no_pin_the_evening_prices_its_own_clock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    """The production answer: no pin, so every pricing call takes its default.
+
+    This is the negative control for the pin. It asserts the call the run makes
+    when no rehearsal installed one - `end=None` and `as_of=None`, which is the
+    clock-reading path the live book has always used - rather than assuming it.
+    """
+    from live import evening_job
+
+    seen = _evening_harness(monkeypatch, tmp_path)
+
+    def _build(*args: object, **kwargs: object) -> dict[str, object]:
+        seen["proposal"] = kwargs
+        return {"as_of": "2026-11-11"}
+
+    monkeypatch.setattr(evening_job, "build_proposal", _build)
+    monkeypatch.setattr(run_live_daily, "store_proposal", lambda *a, **k: None)
+
+    assert run_live_daily.PINNED_CLOSE is None
+    run_live_daily.main()
+
+    assert seen["prices"]["end"] is None
+    assert seen["shares"]["end"] is None
+    assert seen["proposal"]["as_of"] is None
+
+
+@pytest.mark.parametrize("close", [PAST_CLOSE, TRADED_CLOSE])
+def test_the_pinned_close_is_the_one_priced_and_filed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object, close: str
+) -> None:
+    """One pinned "now": the extensions and the proposal are the requested close.
+
+    The 2026-11-11 check found the subject right and the book dated today, because
+    the clock was pinned and the three pricing calls were not. The proposal's
+    `as_of` and the `trade_date` every row is keyed on are asserted here against
+    the close that was asked for, for a past close and for one that traded.
+    """
+    from live import evening_job
+
+    seen = _evening_harness(monkeypatch, tmp_path)
+
+    def _build(*args: object, **kwargs: object) -> dict[str, object]:
+        seen["proposal"] = kwargs
+        return {"as_of": str(pd.Timestamp(kwargs["as_of"]).date())}
+
+    def _store_proposal(as_of: str, *args: object, **kwargs: object) -> None:
+        seen["trade_date"] = as_of
+        return None
+
+    monkeypatch.setattr(evening_job, "build_proposal", _build)
+    monkeypatch.setattr(run_live_daily, "store_proposal", _store_proposal)
+    monkeypatch.setattr(run_live_daily, "PINNED_CLOSE", close)
+
+    run_live_daily.main()
+
+    assert seen["prices"]["end"] == close
+    assert seen["shares"]["end"] == close
+    assert str(pd.Timestamp(seen["proposal"]["as_of"]).date()) == close
+    assert seen["trade_date"] == close, "the proposal rows must carry the requested close"
+
+
+@pytest.mark.parametrize("close", [PAST_CLOSE, TRADED_CLOSE])
+def test_the_rehearsal_pins_the_close_and_reruns_a_traded_one(close: str) -> None:
+    """A close with its legs at the broker is rehearsed, not reported traded.
+
+    `traded_close` is real for 2026-11-04: the seed is what it answers from, which
+    is asserted before the rehearsal runs as the negative control. Inside, the
+    guard is defeated exactly as `already_ran` is, and the pin names the close.
+    """
+    seen: dict[str, object] = {}
+
+    def _select(table: str) -> pd.DataFrame:
+        if table == "orders":
+            if close == TRADED_CLOSE:
+                return pd.DataFrame(
+                    {
+                        "trade_date": [close],
+                        "broker_order_id": ["oid-1"],
+                        "status": ["filled"],
+                        "reason_code": [""],
+                    }
+                )
+            return pd.DataFrame(
+                columns=["trade_date", "broker_order_id", "status", "reason_code"]
+            )
+        return _filed_close_seed()
+
+    def fake_main() -> int:
+        seen["pin"] = run_live_daily.pricing_close()
+        seen["traded"] = run_live_daily.traded_close(close)
+        return 0
+
+    with patch.object(store, "select", _select):
+        # The unpatched guard is real for the traded close (and silent for the
+        # other), so the test proves the defeat rather than a close that never ran.
+        assert (run_live_daily.traded_close(close) is not None) is (
+            close == TRADED_CLOSE
+        )
+        with patch.object(run_live_daily, "main", fake_main):
+            assert rehearse_evening.rehearse(close) == 0
+
+    assert seen["pin"] == close
+    assert seen["traded"] is None, "traded_close must be defeated inside the rehearsal"
+
+
+def test_rehearse_refuses_when_the_pricing_close_is_not_pinned() -> None:
+    """A run pinned only on the clock would price today under the close's name."""
+    ran = {"main": False}
+
+    def fake_main() -> int:
+        ran["main"] = True
+        return 0
+
+    with (
+        patch.object(store, "select", lambda table: _filed_close_seed()),
+        patch.object(run_live_daily, "pricing_close", lambda: None),
+        patch.object(run_live_daily, "main", fake_main),
+    ):
+        with pytest.raises(rehearse_evening.RehearsalWrite):
+            rehearse_evening.rehearse(PAST_CLOSE)
+    assert ran["main"] is False, "the evening must not start with the pricing unpinned"

@@ -332,12 +332,17 @@ def rehearse(close: str) -> int:
     any of them is not: the store sandbox (copied tables, local mode, production DSN gone),
     the delivery capture (the message composed, nothing sent), and the pinned clock.
 
-    `already_ran` is defeated on purpose. A close that has already been filed is exactly
-    the close a rehearsal wants to re-run - it is the night whose behaviour is being
-    changed - and the runner's idempotence guard would otherwise return "already ran"
-    before a single line of the evening executed, which proves nothing. Defeating it is
-    safe because the writes go to the sandbox: the real record cannot be disturbed by a
-    rehearsal looking at the same close twice.
+    `already_ran` and `traded_close` are defeated on purpose. A close that has already
+    been filed, or whose legs are already at the broker, is exactly the close a
+    rehearsal wants to re-run - it is the night whose behaviour is being changed - and
+    either guard would otherwise return before a single line of the evening executed,
+    which proves nothing. Defeating them is safe because the writes go to the sandbox:
+    the real record cannot be disturbed by a rehearsal looking at the same close twice.
+
+    The pinned clock is threaded one step further: `run_live_daily.PINNED_CLOSE` is
+    set to the close, so `extend_prices`, `extend_shares` and `build_proposal` price
+    the requested close instead of reading clocks of their own. Pinning only the clock
+    left the message's date right and the book itself dated today.
     """
     from live import morning_job, staleness
 
@@ -353,6 +358,14 @@ def rehearse(close: str) -> int:
         patch.dict(os.environ, LIVE_ENV),
         patch.object(morning_job, "connect", _rehearsal_connect),
         patch.object(run_live_daily, "already_ran", lambda *a, **k: False),
+        # A close whose legs are already at the broker has traded, and the runner
+        # exits before pricing. Every write here lands in the sandbox, so the
+        # defeat is safe and the close is rehearsed rather than reported.
+        patch.object(run_live_daily, "traded_close", lambda *a, **k: None),
+        # One pinned "now": the clock above dates the message and the run record,
+        # this pins the three pricing calls, which read clocks of their own. Both
+        # are checked below before the evening starts.
+        patch.object(run_live_daily, "PINNED_CLOSE", close),
         RehearsalDelivery(),
         RehearsalSandbox(close) as sandbox,
     ):
@@ -363,6 +376,11 @@ def rehearse(close: str) -> int:
             raise RehearsalWrite(
                 "the clock is not pinned, so the rehearsal would price today's close "
                 "instead of the one it was asked for; refusing"
+            )
+        if run_live_daily.pricing_close() != close:
+            raise RehearsalWrite(
+                "the pricing close is not pinned, so the book would be priced on "
+                "today's close under the requested close's name; refusing"
             )
         code = run_live_daily.main()
     print(
