@@ -8,6 +8,7 @@
 // guess.
 
 import { signedDollars, dateOnly, percent } from "./format";
+import { HowToRead } from "./Panel";
 import { sectorNameFor } from "./sectors";
 import type { SessionMovers, Snapshot } from "./types";
 
@@ -22,6 +23,9 @@ export function RiskConcentration({ snapshot }: { snapshot: Snapshot }) {
   return (
     <section data-section="risk" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-lg font-semibold">Risk concentration</h2>
+      <HowToRead>
+        how much of the book&apos;s risk sits in its largest names and groups.
+      </HowToRead>
       <p className="mt-1 text-sm text-slate-600">
         Each name's share of the book's predicted specific variance, largest first
         {cap === null ? "" : `, against the ${percent(cap, 0)} cap`}.
@@ -136,6 +140,9 @@ const label = (row: Contribution): string => row.ticker ?? row.sector ?? "?";
       <h2 className="text-lg font-semibold">
         Movers{movers?.session ? `, ${dateOnly(movers.session)}` : ""}
       </h2>
+      <HowToRead>
+        the names whose weight moved most since the prior close.
+      </HowToRead>
       <p className="mt-1 text-sm text-slate-600">
         Contribution to the session's P&L, in dollars. Shown only when the run has written its
         per-name attribution.

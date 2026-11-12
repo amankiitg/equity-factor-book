@@ -8,7 +8,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { incompleteFields, MonthlyPanels } from "./Monthly";
+import { ActualHoldingsTable } from "./ActualHoldingsTable";
+import { FlipBridge, incompleteFields, MonthlyPanels } from "./Monthly";
 import { HedgePanel } from "./HedgePanel";
 import { SectorSection } from "./SectorSection";
 import { bookFacts } from "./book";
@@ -231,5 +232,130 @@ describe("the tonight line's refusal reads as a sentence", () => {
     expect(text).toContain("$269: JBL, COVER_UNDER_ONE_SHARE");
     expect(text).not.toContain("(JBL");
     expect(text).not.toContain("(COVER_UNDER_ONE_SHARE)");
+  });
+});
+
+describe("plain language on the anchored panels", () => {
+  it("gives every anchored panel one how-to-read line", () => {
+    render(<MonthlyPanels monthly={MONTHLY} />);
+    const panels = [...document.querySelectorAll('[data-panel="monthly"]')];
+    expect(panels.length).toBeGreaterThan(0);
+    for (const panel of panels) {
+      expect(panel.querySelector("[data-how-to-read]")).not.toBeNull();
+    }
+  });
+
+  it("reads a rebalance day and a daily run as today's mode", () => {
+    const strip = MONTHLY.cadence_strip;
+    if (!strip) throw new Error("the served fixture carries no cadence strip");
+    const rebalance: MonthlyBlock = {
+      ...MONTHLY,
+      cadence_strip: { ...strip, day: "rebalance" },
+    };
+    const first = render(<MonthlyPanels monthly={rebalance} />);
+    expect(
+      first.container.querySelector("[data-cadence]")?.textContent,
+    ).toContain("rebalance");
+    first.unmount();
+    const daily: MonthlyBlock = {
+      ...MONTHLY,
+      cadence_strip: { ...strip, day: null, k: 1, sessions_since: 0 },
+    };
+    const second = render(<MonthlyPanels monthly={daily} />);
+    expect(
+      second.container.querySelector("[data-cadence]")?.textContent,
+    ).toContain("daily");
+  });
+});
+
+describe("the holdings tables against the rebalance", () => {
+  it("marks CCL as re-flipped and gives KVUE its own retired row", () => {
+    const monthly: MonthlyBlock = {
+      ...MONTHLY,
+      holdings: {
+        anchor: "2026-10-23",
+        as_of: "2026-11-05",
+        rows: [
+          {
+            ticker: "CCL",
+            since:
+              "flipped (2026-10-23 to 2026-10-26); drift guard leg (2026-11-04)",
+            since_kind: "flipped",
+            since_date: "2026-11-04",
+            weight_now: 0.0007,
+            weight_target: 0.00069,
+            gap_weight: 0.00001,
+            gap_usd: 10,
+            tonight: null,
+            retired: false,
+            owed: false,
+            note: null,
+          },
+          {
+            ticker: "KVUE",
+            since: "retired (acquired by KMB), owed, cannot be traded",
+            since_kind: "retired",
+            since_date: "2026-10-23",
+            weight_now: 0,
+            weight_target: 0.004,
+            gap_weight: -0.004,
+            gap_usd: -4000,
+            tonight: null,
+            retired: true,
+            owed: true,
+            note: "retired (acquired by KMB), owed, cannot be traded",
+          },
+        ],
+      },
+    };
+    const actual = SERVED.actual_holdings;
+    if (!actual) throw new Error("the served fixture carries no actual holdings");
+    render(
+      <ActualHoldingsTable
+        actual={actual}
+        names={SERVED.book?.names ?? []}
+        nav={bookFacts(SERVED).nav}
+        monthly={monthly}
+      />,
+    );
+    const ccl = document.querySelector('[data-ticker="CCL"]');
+    expect(ccl?.textContent).toContain("drift guard leg (2026-11-04)");
+    const kvue = document.querySelector('[data-ticker="KVUE"]');
+    expect(kvue?.getAttribute("data-retired")).toBe("true");
+    expect(kvue?.textContent).toContain(
+      "retired (acquired by KMB), owed, cannot be traded",
+    );
+    expect(kvue?.textContent).toContain("-$4,000");
+  });
+
+  it("says a re-flip happened on the day the drift guard moved it", () => {
+    const bridge = MONTHLY.bridge_anchor;
+    const ccl = bridge?.flip_rows.find((row) => row.ticker === "CCL");
+    if (!bridge || !ccl) throw new Error("the served fixture carries no CCL flip");
+    const monthly: MonthlyBlock = {
+      ...MONTHLY,
+      bridge_anchor: {
+        ...bridge,
+        flip_rows: [
+          {
+            ...ccl,
+            legs_filled: true,
+            state: "refipped",
+            state_label: "re-flipped later by the drift guard on 2026-11-04",
+            refipped_on: "2026-11-04",
+          },
+        ],
+      },
+    };
+    render(<FlipBridge monthly={monthly} />);
+    const header = document.querySelector("[data-flip-header]")?.textContent ?? "";
+    expect(header).toContain("leg 1: closed the old position (trade size)");
+    expect(header).toContain("leg 2: opened the new side (trade size)");
+    expect(header).toContain(
+      "position now (minus = short, at today's price)",
+    );
+    expect(
+      document.querySelector('[data-flip="CCL"] [data-flip-state]')?.textContent,
+    ).toContain("re-flipped later by the drift guard on 2026-11-04");
   });
 });

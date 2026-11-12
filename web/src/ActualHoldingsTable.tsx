@@ -10,10 +10,19 @@
 
 import { useMemo, useState } from "react";
 
-import { dateOnly, dateTime, dollars, percent, signedPercent } from "./format";
-import type { ActualHoldings, BookName } from "./types";
+import { dateOnly, dateTime, dollars, percent, signedDollars, signedPercent } from "./format";
+import type { ActualHoldings, BookName, MonthlyBlock, MonthlyHoldingRow } from "./types";
 
-type SortKey = "ticker" | "side" | "held" | "heldDollars" | "target" | "targetDollars" | "drift";
+type SortKey =
+  | "ticker"
+  | "side"
+  | "held"
+  | "heldDollars"
+  | "target"
+  | "targetDollars"
+  | "drift"
+  | "gapDollars"
+  | "since";
 type Direction = "asc" | "desc";
 
 interface Row {
@@ -25,17 +34,33 @@ interface Row {
   targetWeight: number | null;
   targetDollars: number | null;
   drift: number | null;
+  gapDollars: number | null;
+  since: string | null;
+  tonight: string | null;
+  retired: boolean;
 }
 
 /** The rows: the held book, plus the target names the account does not hold. */
-function rowsOf(actual: ActualHoldings, names: BookName[], nav: number | null): Row[] {
+function rowsOf(
+  actual: ActualHoldings,
+  names: BookName[],
+  nav: number | null,
+  monthlyRows: MonthlyHoldingRow[],
+): Row[] {
   const target = new Map<string, number | null>();
   for (const name of names) target.set(name.ticker, name.weight ?? null);
+  const anchored = new Map<string, MonthlyHoldingRow>();
+  for (const row of monthlyRows) anchored.set(row.ticker, row);
   const rows: Row[] = [];
   const seen = new Set<string>();
   for (const entry of actual.names) {
     seen.add(entry.ticker);
     const targetWeight = target.has(entry.ticker) ? target.get(entry.ticker) ?? null : null;
+    const anchor = anchored.get(entry.ticker);
+    const drift =
+      entry.weight === null || entry.weight === undefined
+        ? null
+        : entry.weight - (targetWeight ?? 0);
     rows.push({
       ticker: entry.ticker,
       side: entry.side ?? "",
@@ -44,15 +69,18 @@ function rowsOf(actual: ActualHoldings, names: BookName[], nav: number | null): 
       heldDollars: entry.notional ?? null,
       targetWeight,
       targetDollars: targetWeight === null || nav === null ? null : targetWeight * nav,
-      drift:
-        entry.weight === null || entry.weight === undefined
-          ? null
-          : entry.weight - (targetWeight ?? 0),
+      drift: anchor?.gap_weight ?? drift,
+      gapDollars:
+        anchor?.gap_usd ?? (drift === null || nav === null ? null : drift * nav),
+      since: anchor?.since ?? null,
+      tonight: anchor?.tonight ?? null,
+      retired: anchor?.retired ?? false,
     });
   }
   for (const name of names) {
     if (seen.has(name.ticker)) continue;
     const targetWeight = name.weight ?? null;
+    const anchor = anchored.get(name.ticker);
     rows.push({
       ticker: name.ticker,
       side: name.side ?? "",
@@ -61,7 +89,30 @@ function rowsOf(actual: ActualHoldings, names: BookName[], nav: number | null): 
       heldDollars: null,
       targetWeight,
       targetDollars: targetWeight === null || nav === null ? null : targetWeight * nav,
-      drift: targetWeight === null ? null : -targetWeight,
+      drift: anchor?.gap_weight ?? (targetWeight === null ? null : -targetWeight),
+      gapDollars:
+        anchor?.gap_usd ??
+        (targetWeight === null || nav === null ? null : -targetWeight * nav),
+      since: anchor?.since ?? null,
+      tonight: anchor?.tonight ?? null,
+      retired: anchor?.retired ?? false,
+    });
+  }
+  for (const row of monthlyRows) {
+    if (seen.has(row.ticker)) continue;
+    rows.push({
+      ticker: row.ticker,
+      side: row.weight_now < 0 ? "short" : row.weight_now > 0 ? "long" : "",
+      held: Math.abs(row.weight_now) > 0,
+      heldWeight: row.weight_now,
+      heldDollars: nav === null ? null : row.weight_now * nav,
+      targetWeight: row.weight_target,
+      targetDollars: nav === null ? null : row.weight_target * nav,
+      drift: row.gap_weight,
+      gapDollars: row.gap_usd,
+      since: row.since,
+      tonight: row.tonight,
+      retired: row.retired,
     });
   }
   return rows;
@@ -83,6 +134,10 @@ function sortValue(row: Row, key: SortKey): string | number {
       return Math.abs(row.targetDollars ?? 0);
     case "drift":
       return Math.abs(row.drift ?? 0);
+    case "gapDollars":
+      return Math.abs(row.gapDollars ?? 0);
+    case "since":
+      return row.since ?? "";
   }
 }
 
@@ -91,18 +146,23 @@ export function ActualHoldingsTable({
   names,
   nav,
   query = "",
+  monthly = null,
 }: {
   actual: ActualHoldings;
   names: BookName[];
   nav: number | null;
   query?: string;
+  monthly?: MonthlyBlock | null;
 }) {
   const [sort, setSort] = useState<{ key: SortKey; direction: Direction }>({
     key: "drift",
     direction: "desc",
   });
 
-  const rows = useMemo(() => rowsOf(actual, names, nav), [actual, names, nav]);
+  const rows = useMemo(
+    () => rowsOf(actual, names, nav, monthly?.holdings?.rows ?? []),
+    [actual, names, nav, monthly],
+  );
   const shown = useMemo(() => {
     const needle = query.trim().toUpperCase();
     const filtered = rows.filter(
@@ -155,6 +215,11 @@ export function ActualHoldingsTable({
 
   return (
     <div>
+      <p className="pb-1 text-xs text-slate-500" data-how-to-read="true">
+        how to read this: each row is the account now against the last rebalance
+        target. The gap is account minus target, so a minus sign means the account
+        holds less than the target asked for.
+      </p>
       <p className="text-sm text-slate-600" data-actual="read">
         {/* The read time as a date and a time: the evening's read and the
             morning's are hours apart, and which one this is decides whether the
@@ -204,7 +269,9 @@ export function ActualHoldingsTable({
               {header("heldDollars", "held $")}
               {header("target", "target weight")}
               {header("targetDollars", "target $")}
-              {header("drift", "drift")}
+              {header("drift", "gap %")}
+              {header("gapDollars", "gap $")}
+              {header("since", "since the rebalance")}
             </tr>
           </thead>
           <tbody>
@@ -213,6 +280,7 @@ export function ActualHoldingsTable({
                 key={row.ticker}
                 data-ticker={row.ticker}
                 data-held={row.held ? "true" : "false"}
+                data-retired={row.retired ? "true" : "false"}
                 className={`border-b border-slate-100 ${row.held ? "" : "bg-slate-50"}`}
               >
                 <td className="py-1 font-mono">{row.ticker}</td>
@@ -231,6 +299,15 @@ export function ActualHoldingsTable({
                 </td>
                 <td className="py-1 text-right font-mono tabular-nums">
                   {signedPercent(row.drift)}
+                </td>
+                <td className="py-1 text-right font-mono tabular-nums">
+                  {signedDollars(row.gapDollars)}
+                </td>
+                <td className="py-1 text-slate-600">
+                  {row.since ?? ""}
+                  {row.tonight ? (
+                    <span className="block text-xs text-slate-400">{row.tonight}</span>
+                  ) : null}
                 </td>
               </tr>
             ))}

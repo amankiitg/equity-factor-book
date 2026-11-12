@@ -23,6 +23,7 @@
 import { useState } from "react";
 
 import { Details } from "./Details";
+import { HowToRead } from "./Panel";
 import { count, dateOnly, percent } from "./format";
 import type {
   Attribution,
@@ -919,7 +920,7 @@ function CostLine({ period, snapshot }: { period: AttributionPeriod; snapshot?: 
           ? "No measured fill cost is on file for this period."
           : `Measured over ${count(period.cost.n_realized)} of ${count(period.n_days_carried)} days: ${costBps(realized)} on average.`}{" "}
         It is measured from the previous close to the fill, so it carries the overnight move with
-        it and can be positive — a fill that beat the close is a gain, not a cost.
+        it and can be positive. A fill that beat the close is a gain, not a cost.
       </p>
     </div>
   );
@@ -984,8 +985,8 @@ function FactorTable({ period }: { period: AttributionPeriod }) {
         </tbody>
       </table>
       <p className="mt-1 text-xs text-slate-500">
-        The hedge&apos;s own timing residue over the period — the P&amp;L the gap between the two
-        design vintages produced — is {bps(timing)}.
+        The hedge&apos;s own timing residue over the period: the P&amp;L the gap between the two
+        design vintages produced, is {bps(timing)}.
       </p>
     </div>
   );
@@ -1291,6 +1292,10 @@ export function AttributionSection({
       className="rounded border border-slate-200 bg-white p-3"
     >
       <h2 className="text-lg font-semibold">Attribution</h2>
+      <HowToRead>
+        what the book earned, split into the parts that added to it and the parts
+        that took away. Every figure is in basis points of NAV.
+      </HowToRead>
       <p className="mt-1 text-sm text-slate-600">
         What the book earned, split into the four terms that add to its total: the hedge&apos;s
         factor P&amp;L, the names&apos; idiosyncratic P&amp;L, the cost contribution to P&amp;L,

@@ -19,6 +19,7 @@
 // panel says so instead of drawing a share of nothing.
 
 import { Details } from "./Details";
+import { HowToRead } from "./Panel";
 import { count, dateOnly, dollars, percent } from "./format";
 import type { BookFacts } from "./book";
 import type { MonthlyBlock, Snapshot } from "./types";
@@ -149,6 +150,10 @@ export function HedgePanel({
         className="rounded border border-slate-200 bg-white p-3"
       >
         <h2 className="text-base font-semibold">The hedge&apos;s own footprint</h2>
+        <HowToRead>
+          what the hedge moved at the last rebalance, and why the book carries
+          those names.
+        </HowToRead>
         <AnchoredHedge block={anchored} />
         <p className="mt-1 text-xs text-slate-600">
           <span className="font-medium">A proxy.</span> The names carry the loop&apos;s own
@@ -163,6 +168,9 @@ export function HedgePanel({
   return (
     <section data-section="hedge" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">The hedge&apos;s own footprint</h2>
+      <HowToRead>
+        what the hedge moved tonight, and why the book carries those names.
+      </HowToRead>
       <p className="mt-1 text-sm text-slate-700" data-hedge="opening">
         The hedge re-weights the stocks we already hold so the book does not move with the market,
         sectors or style factors. On {dateOnly(snapshot.target_close) ?? "this"} close it moved{" "}
@@ -173,7 +181,7 @@ export function HedgePanel({
         <span className="font-medium">A proxy.</span> The names below carry the loop's own
         record that the hedge moved them, and the notional of the leg it built; the shares
         beside them are the traded book's predicted specific variance as the reconciliation
-        computed it. Neither says a position exists <em>because</em> of the hedge — that
+        computed it. Neither says a position exists <em>because</em> of the hedge. That
         needs each name's pre-hedge and post-hedge target, which the evening does not
         publish.
       </p>

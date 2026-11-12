@@ -515,6 +515,31 @@ export interface FlipRow {
   now_dollars: number;
   on_target_side: boolean;
   complete: boolean;
+  /** Both legs have a fill row, so "still owed" is a statement about the legs. */
+  legs_filled?: boolean;
+  /** The day a later drift guard moved this name again, or null. */
+  refipped_on?: string | null;
+  state?: "complete" | "refipped" | "owed";
+  state_label?: string;
+}
+
+/** One name's row in the holdings tables, measured from the rebalance. */
+export interface MonthlyHoldingRow {
+  ticker: string;
+  /** The plain sentence the table shows: opened, exited, resized, flipped, guard, held. */
+  since: string;
+  since_kind: string;
+  since_date: string;
+  weight_now: number;
+  weight_target: number;
+  /** w_now - w_target, the same fraction the distance panel uses. */
+  gap_weight: number;
+  gap_usd: number | null;
+  /** Tonight's reason, only when tonight traded. */
+  tonight: string | null;
+  retired: boolean;
+  owed: boolean;
+  note: string | null;
 }
 
 /** The pages measured from the anchor, built by `live/monthly_view.py`. */
@@ -533,6 +558,8 @@ export interface MonthlyBlock {
     after: Record<string, number | null>;
   } | null;
   cadence_strip?: {
+    /** The latest close's own cadence day: rebalance, hold, or absent on daily. */
+    day?: "rebalance" | "hold" | null;
     k: number | null;
     offset: number | null;
     sessions_since: number | null;
@@ -600,6 +627,12 @@ export interface MonthlyBlock {
   };
   since_anchor?: {
     trades_by_reason: Array<{ reason: string; legs: number; usd: number }>;
+  };
+  /** One row per name, with what it did since the rebalance and its gap now. */
+  holdings?: {
+    anchor: string | null;
+    as_of: string | null;
+    rows: MonthlyHoldingRow[];
   };
   /**
    * The account against the anchor rebalance's target, by sector, in dollars.

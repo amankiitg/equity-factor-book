@@ -34,6 +34,11 @@ HEDGE_REASON = "the hedge moved"
 # wanted.
 MINIMUM_DOLLARS = 250.0
 
+# A name the account can no longer trade because the company is gone. KVUE was
+# acquired by KMB, so the rebalance target still owns the gap and no order can
+# close it. It gets its own row rather than being dropped from the table.
+RETIRED = {"KVUE": "retired (acquired by KMB), owed, cannot be traded"}
+
 
 def _day(value: Any) -> str | None:
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -192,36 +197,40 @@ def _sides(frame: pd.DataFrame) -> dict[str, str]:
 
 def _leg_dollars(
     orders: pd.DataFrame, fills: pd.DataFrame, ticker: str, close: str
-) -> tuple[float | None, str | None, str | None]:
+) -> tuple[float | None, str | None, str | None, bool]:
     """One name's filled dollars on one close, that close, and the day it filled.
 
     The third value is the fill's own date, read from `efb.fills.updated_at`: the
     evening sends after the close and the fill lands at the next open, so a leg
     priced from the 2026-10-23 close filled on 2026-10-26. None when the store holds
     no fill row for it, which is not the same as a fill on the close's own date and
-    the page labels the column for which of the two it is showing.
+    the page labels the column for which of the two it is showing. The fourth value
+    is whether a FILLED row was found at all, which is what says a leg is truly
+    unfilled rather than merely unpriced.
     """
     if orders is None or orders.empty:
-        return None, None, None
+        return None, None, None, False
     sub = orders.loc[
         (orders["ticker"].astype(str) == ticker)
         & (orders["trade_date"].astype(str).str.slice(0, 10) == close)
     ]
     if sub.empty:
-        return None, None, None
+        return None, None, None, False
     if fills is None or fills.empty:
-        return None, None, None
+        return None, close, None, False
     match = fills.loc[
         (fills["ticker"].astype(str) == ticker)
         & (fills["trade_date"].astype(str).str.slice(0, 10) == close)
     ]
     total = 0.0
     filled_at: str | None = None
+    filled = False
     for row in sub.itertuples(index=False):
         intended = _number(getattr(row, "intended_notional", None)) or 0.0
         for fill in match.itertuples(index=False):
             if str(getattr(fill, "status", "")).upper() != "FILLED":
                 continue
+            filled = True
             amount = _number(getattr(fill, "filled_notional", None)) or 0.0
             total += amount if intended >= 0 else -amount
             stamp = getattr(fill, "updated_at", None)
@@ -231,7 +240,9 @@ def _leg_dollars(
     # The dollars are the evidence that it filled; the timestamp is what says when.
     # A fill row without one still means the leg is filled, and its close date is the
     # honest answer to "which day", marked as the close rather than as the fill.
-    return total, close, filled_at
+    if not filled:
+        return None, close, None, False
+    return total, close, filled_at, True
 
 
 def flip_rows(
@@ -241,6 +252,7 @@ def flip_rows(
     orders: pd.DataFrame,
     fills: pd.DataFrame,
     anchor: str,
+    guard_dates: dict[str, list[str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Every name whose side before the rebalance differs from its target side.
 
@@ -259,21 +271,40 @@ def flip_rows(
         wanted = target_side.get(ticker)
         if wanted is None or wanted == before:
             continue
-        close_leg, close_leg_day, close_leg_filled = _leg_dollars(
+        close_leg, close_leg_day, close_leg_filled, close_ok = _leg_dollars(
             orders, fills, ticker, anchor
         )
         open_leg = open_day = open_filled = None
+        open_ok = False
         later = (
             orders.loc[orders["trade_date"].astype(str).str.slice(0, 10) > anchor]
             if orders is not None and not orders.empty
             else pd.DataFrame()
         )
         for day in sorted(later["trade_date"].astype(str).str.slice(0, 10).unique()):
-            open_leg, open_day, open_filled = _leg_dollars(orders, fills, ticker, day)
+            open_leg, open_day, open_filled, open_ok = _leg_dollars(
+                orders, fills, ticker, day
+            )
             if open_leg is not None:
                 break
         lying = now_side.get(ticker)
         dollars = now_dollars.get(ticker, 0.0)
+        later_guards = [
+            day
+            for day in (guard_dates or {}).get(ticker, [])
+            if day > (open_day or close_leg_day or anchor)
+        ]
+        refipped_on = later_guards[-1] if later_guards else None
+        legs_filled = bool(close_ok and open_ok)
+        if refipped_on:
+            state = "refipped"
+            state_label = f"re-flipped later by the drift guard on {refipped_on}"
+        elif legs_filled:
+            state = "complete"
+            state_label = "complete"
+        else:
+            state = "owed"
+            state_label = "still owed"
         rows.append(
             {
                 "ticker": ticker,
@@ -287,7 +318,13 @@ def flip_rows(
                 "open_filled_at": open_filled,
                 "now_dollars": dollars,
                 "on_target_side": lying == wanted,
-                "complete": lying == wanted and abs(dollars) > MINIMUM_DOLLARS,
+                "legs_filled": legs_filled,
+                "refipped_on": refipped_on,
+                "state": state,
+                "state_label": state_label,
+                "complete": legs_filled
+                and lying == wanted
+                and abs(dollars) > MINIMUM_DOLLARS,
             }
         )
     return sorted(rows, key=lambda row: -abs(row["now_dollars"]))
@@ -300,12 +337,13 @@ def bridge(
     orders: pd.DataFrame,
     fills: pd.DataFrame,
     anchor: str,
+    guard_dates: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
     """The account before the rebalance, what the rebalance did, and the account now."""
     before_dollars = _dollars(before)
     now_dollars = _dollars(now)
     target_side = _sides(target)
-    flips = flip_rows(target, before, now, orders, fills, anchor)
+    flips = flip_rows(target, before, now, orders, fills, anchor, guard_dates)
     flipped = {row["ticker"] for row in flips}
     opened = sorted(set(now_dollars) - set(before_dollars) - flipped)
     exited = sorted(
@@ -365,6 +403,37 @@ def bridge(
         ],
         "holds": abs(total_now - rebuilt) <= 1.0,
     }
+
+
+def _guard_events(
+    proposals: pd.DataFrame, anchor: str, today: str
+) -> dict[str, list[str]]:
+    """The names a drift guard traded after the rebalance, and the days it did.
+
+    The guard's legs are recorded in the hold day's own manifest. They are what
+    makes CCL a re-flip rather than a flip that stayed complete: the rebalance
+    closed the short and opened the long, and the 2026-11-04 guard moved the long
+    again. Reading the manifests is the only way the page can tell that later leg
+    from a second rebalance.
+    """
+    events: dict[str, list[str]] = {}
+    if proposals is None or proposals.empty or "trade_date" not in proposals.columns:
+        return events
+    frame = proposals.copy()
+    frame["trade_date"] = frame["trade_date"].astype(str).str.slice(0, 10)
+    frame = frame.loc[(frame["trade_date"] > anchor) & (frame["trade_date"] <= today)]
+    for record in frame.to_dict("records"):
+        guard = _manifest_of(record.get("manifest")).get("drift_guard") or {}
+        if not isinstance(guard, dict) or not guard.get("fired"):
+            continue
+        day = str(record["trade_date"])[:10]
+        for leg in guard.get("legs") or []:
+            if not isinstance(leg, dict) or leg.get("traded") is False:
+                continue
+            ticker = str(leg.get("ticker") or "").strip()
+            if ticker:
+                events.setdefault(ticker, []).append(day)
+    return {ticker: sorted(set(days)) for ticker, days in events.items()}
 
 
 def _weights(frame: pd.DataFrame | None) -> dict[str, float]:
@@ -441,6 +510,160 @@ def drift(
             for ticker, gap in largest
         ],
     }
+
+
+def _events_of(
+    orders: pd.DataFrame, ticker: str, anchor: str, now_close: str
+) -> list[dict[str, Any]]:
+    """One name's order legs between the rebalance and the latest read."""
+    if orders is None or orders.empty or "trade_date" not in orders.columns:
+        return []
+    days = orders["trade_date"].astype(str).str.slice(0, 10)
+    rows = orders.loc[
+        (orders["ticker"].astype(str) == ticker)
+        & (days >= anchor)
+        & (days <= now_close)
+    ]
+    return [
+        {
+            "date": str(row.trade_date)[:10],
+            "code": str(getattr(row, "reason_code", "") or ""),
+            "intent": str(getattr(row, "position_intent", "") or ""),
+        }
+        for row in rows.itertuples(index=False)
+    ]
+
+
+def _tonight_note(events: list[dict[str, Any]], now_close: str) -> str | None:
+    """The small secondary note: what tonight did, and only when it did anything."""
+    tonight = [event for event in events if event["date"] == now_close]
+    if not tonight:
+        return None
+    event = tonight[-1]
+    code = event["code"]
+    intent = event["intent"]
+    if code == "BELOW_MIN_NOTIONAL":
+        detail = "a leg under the minimum"
+    elif code == "COVER_UNDER_ONE_SHARE":
+        detail = "a cover under one share"
+    elif code:
+        detail = code.replace("_", " ").lower()
+    elif intent.endswith("_to_open"):
+        detail = "opened a position"
+    elif intent.endswith("_to_close"):
+        detail = "closed a position"
+    else:
+        detail = "traded"
+    return f"traded tonight: {detail}"
+
+
+def holdings(
+    target: pd.DataFrame,
+    before: pd.DataFrame,
+    now: pd.DataFrame,
+    orders: pd.DataFrame,
+    flips: list[dict[str, Any]],
+    guard_dates: dict[str, list[str]],
+    anchor: str,
+    now_close: str,
+    nav: float | None,
+) -> dict[str, Any]:
+    """One row per name: what it did since the rebalance, and its gap now.
+
+    The gap is exactly the number the distance panel uses: w_now minus w_target,
+    as a fraction of NAV and the same fraction times NAV in dollars. The since
+    column replaces tonight's reason as the primary column. Tonight's reason is
+    kept only when tonight actually traded.
+    """
+    wanted = _weights(target)
+    have = _weights(now)
+    before_weights = _weights(before)
+    gaps = _gaps(target, now)
+    flip_by_ticker = {str(row["ticker"]): row for row in flips}
+    tickers = (
+        set(wanted)
+        | set(have)
+        | set(before_weights)
+        | set(flip_by_ticker)
+        | set(guard_dates)
+        | set(RETIRED)
+    )
+    rows: list[dict[str, Any]] = []
+    for ticker in sorted(tickers):
+        events = _events_of(orders, ticker, anchor, now_close)
+        guards = guard_dates.get(ticker, [])
+        flip = flip_by_ticker.get(ticker)
+        retired_note = RETIRED.get(ticker)
+        since_kind = "held"
+        since_date = anchor
+        if retired_note:
+            since = retired_note
+            since_kind = "retired"
+        elif flip is not None:
+            closed = flip.get("close_filled") or anchor
+            opened = flip.get("open_filled")
+            since = (
+                f"flipped ({closed} to {opened})"
+                if opened
+                else f"flipped (closed {closed}, open still owed)"
+            )
+            since_kind = "flipped"
+            since_date = opened or closed
+            later = [day for day in guards if day > since_date]
+            if later:
+                since = f"{since}; drift guard leg ({later[-1]})"
+                since_date = later[-1]
+        elif guards:
+            since = f"drift guard leg ({guards[-1]})"
+            since_kind = "guard"
+            since_date = guards[-1]
+        elif ticker in before_weights and ticker not in wanted and ticker not in have:
+            since_date = events[-1]["date"] if events else anchor
+            since = f"exited ({since_date})"
+            since_kind = "exited"
+        elif ticker not in before_weights and ticker in wanted:
+            since_date = events[0]["date"] if events else anchor
+            if since_date == anchor:
+                since = f"opened at the rebalance ({anchor})"
+            else:
+                since = f"opened ({since_date})"
+            since_kind = "opened"
+        elif ticker in before_weights and ticker in have:
+            if events:
+                since_date = events[-1]["date"]
+                since = f"resized ({since_date})"
+                since_kind = "resized"
+            else:
+                since = "held, no trade since"
+        elif ticker in have and ticker not in wanted:
+            since_date = events[-1]["date"] if events else anchor
+            since = f"held, not in the target since {since_date}"
+            since_kind = "held-other"
+        elif events:
+            since_date = events[-1]["date"]
+            since = f"resized ({since_date})"
+            since_kind = "resized"
+        else:
+            since = "held, no trade since"
+        gap = gaps.get(ticker, 0.0)
+        rows.append(
+            {
+                "ticker": ticker,
+                "since": since,
+                "since_kind": since_kind,
+                "since_date": since_date,
+                "weight_now": have.get(ticker, 0.0),
+                "weight_target": wanted.get(ticker, 0.0),
+                "gap_weight": gap,
+                "gap_usd": None if nav is None else gap * float(nav),
+                "tonight": _tonight_note(events, now_close),
+                "retired": bool(retired_note),
+                "owed": bool(retired_note),
+                "note": retired_note,
+            }
+        )
+    rows.sort(key=lambda row: (-abs(row["gap_weight"]), row["ticker"]))
+    return {"anchor": anchor, "as_of": now_close, "rows": rows}
 
 
 def _labels() -> dict[int, str]:
@@ -923,6 +1146,8 @@ def _block(
         days = sorted(set(account["trade_date"].astype(str).str.slice(0, 10)))
         now_close = days[-1] if days else today
     now = _book(account, now_close)
+    guard_dates = _guard_events(proposals, anchor, today)
+    bridge_anchor = bridge(target, before, now, orders, fills, anchor, guard_dates)
 
     cadence = tonight_manifest.get("cadence") or anchor_manifest.get("cadence") or {}
     guard = tonight_manifest.get("drift_guard") or {}
@@ -979,6 +1204,7 @@ def _block(
     out = {
         "anchor": {"close": anchor, "day": source, "account_read": now_close},
         "cadence_strip": {
+            "day": cadence.get("day"),
             "k": cadence.get("k"),
             "offset": cadence.get("offset"),
             "sessions_since": cadence.get("sessions_since"),
@@ -1010,7 +1236,7 @@ def _block(
             },
         },
         "rebalance_card": rebalance_card(anchor, anchor_manifest, orders, fills, nav),
-        "bridge_anchor": bridge(target, before, now, orders, fills, anchor),
+        "bridge_anchor": bridge_anchor,
         # Tonight's own trading cost when it has one, and the anchor rebalance's
         # when it does not: a hold day's manifest prices only borrow, and pricing a
         # hypothetical rebalance at zero would say closing the drift is free.
@@ -1057,6 +1283,18 @@ def _block(
     anchored = sectors(target, now, nav, sector_of, anchor=anchor)
     if anchored:
         out["sectors"] = anchored
+    if not target.empty or not now.empty:
+        out["holdings"] = holdings(
+            target,
+            before,
+            now,
+            orders,
+            bridge_anchor.get("flip_rows") or [],
+            guard_dates,
+            anchor,
+            now_close,
+            nav,
+        )
     # The anchor close's own hedge, for the exposures panel: on a hold day tonight's
     # book is the account and nothing is hedged, so the only before/after pair that
     # says anything is the rebalance's. Absent when the anchor manifest carries no
