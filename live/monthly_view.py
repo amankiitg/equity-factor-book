@@ -436,6 +436,28 @@ def _guard_events(
     return {ticker: sorted(set(days)) for ticker, days in events.items()}
 
 
+def _guard_days(proposals: pd.DataFrame, anchor: str, today: str) -> set[str]:
+    """The closes on which the drift guard fired, whether it could size a leg or not.
+
+    A guard evening is a day, not a name: on 2026-10-30 it sent 109 legs and on
+    2026-11-04 about 140, and every one of them is the same decision made in the
+    same evening. Reading the dates from the manifests is what lets a leg be
+    attributed to the evening that wanted it rather than to its own open or close
+    intent, which every submitted order carries.
+    """
+    days: set[str] = set()
+    if proposals is None or proposals.empty or "trade_date" not in proposals.columns:
+        return days
+    frame = proposals.copy()
+    frame["trade_date"] = frame["trade_date"].astype(str).str.slice(0, 10)
+    frame = frame.loc[(frame["trade_date"] > anchor) & (frame["trade_date"] <= today)]
+    for record in frame.to_dict("records"):
+        guard = _manifest_of(record.get("manifest")).get("drift_guard") or {}
+        if isinstance(guard, dict) and guard.get("fired"):
+            days.add(str(record["trade_date"])[:10])
+    return days
+
+
 def _weights(frame: pd.DataFrame | None) -> dict[str, float]:
     """Signed weight per ticker, from a book frame's own `weight` column."""
     if frame is None or frame.empty or "weight" not in frame.columns:
@@ -1158,26 +1180,93 @@ def _block(
         if orders is not None and not orders.empty
         else pd.DataFrame()
     )
+    guard_days = _guard_days(proposals, anchor, today)
     trades: dict[str, dict[str, Any]] = {}
+    not_sent: dict[str, Any] = {
+        "legs": 0,
+        "usd": 0.0,
+        "under_minimum": {"legs": 0, "usd": 0.0},
+        "other": {},
+    }
+    closed_on: dict[str, set[str]] = {}
     if not since.empty:
-        for row in since.itertuples(index=False):
-            code = str(getattr(row, "reason_code", "") or "")
+        frame = since.copy()
+        frame["_close"] = frame["trade_date"].astype(str).str.slice(0, 10)
+        frame = frame.sort_values(["_close", "ticker"], kind="stable")
+        has_broker = "broker_order_id" in frame.columns
+        for row in frame.itertuples(index=False):
+            code = str(getattr(row, "reason_code", "") or "").strip()
             close = str(getattr(row, "trade_date", ""))[:10]
-            intent = str(getattr(row, "position_intent", "") or "")
+            ticker = str(getattr(row, "ticker", "") or "").strip()
+            intent = str(getattr(row, "position_intent", "") or "").strip()
+            usd = abs(_number(getattr(row, "intended_notional", None)) or 0.0)
+            # A reason code is the durable record of a leg that never became an
+            # order, so it is read for what happened to the leg and never as why
+            # the leg was wanted: every refused leg carries one, and reading the
+            # code as a reason is what made 315 legs the guard never sent look
+            # like guard legs.
+            refused = bool(code)
+            sent = (
+                bool(str(getattr(row, "broker_order_id", "") or "").strip())
+                if has_broker
+                else not refused
+            )
+            if intent.endswith("_to_close"):
+                closed_on.setdefault(ticker, set()).add(close)
             if close == anchor:
+                # The anchor evening's own table: 224 legs, of which 16 were under
+                # the minimum and never sent. They are the rebalance's legs and stay
+                # in its row, flagged unsent, because a reader who subtracts them
+                # from the reason table and adds them to the not-sent line counts
+                # the same dollars twice.
                 reason = "rebalance"
-            elif code:
-                reason = {
-                    "COVER_UNDER_ONE_SHARE": "carried leg",
-                    "BELOW_MIN_NOTIONAL": "guard",
-                }.get(code, "guard")
-            elif intent.endswith("_to_open") or intent.endswith("_to_close"):
+            elif refused and code != "COVER_UNDER_ONE_SHARE":
+                not_sent["legs"] += 1
+                not_sent["usd"] += usd
+                if code == "BELOW_MIN_NOTIONAL":
+                    not_sent["under_minimum"]["legs"] += 1
+                    not_sent["under_minimum"]["usd"] += usd
+                else:
+                    other = not_sent["other"].setdefault(
+                        code or "UNCODED",
+                        {"code": code or "UNCODED", "legs": 0, "usd": 0.0},
+                    )
+                    other["legs"] += 1
+                    other["usd"] += usd
+                continue
+            elif code == "COVER_UNDER_ONE_SHARE":
+                # Owed and impossible: the leg is under one share, so there is no
+                # order to place at any price and retrying it never ends.
+                reason = "carried leg"
+            elif close in guard_days:
+                # The day the guard fired decides it, not the leg's own intent: a
+                # guard day closes and opens in the same evening, and every leg it
+                # sent belongs to that evening's drift repair.
+                reason = "guard"
+            elif intent.endswith("_to_open") and any(
+                day < close for day in closed_on.get(ticker, set())
+            ):
                 reason = "reversal second leg"
             else:
-                reason = "hold day"
-            item = trades.setdefault(reason, {"reason": reason, "legs": 0, "usd": 0.0})
+                # A sent leg on a hold day that is neither a guard day nor the open
+                # of a flip: a rebalance leg the account did not take on the anchor
+                # day, sent again on the next close.
+                reason = "rebalance remainder"
+            item = trades.setdefault(
+                reason,
+                {
+                    "reason": reason,
+                    "legs": 0,
+                    "usd": 0.0,
+                    "sent_legs": 0,
+                    "sent_usd": 0.0,
+                },
+            )
             item["legs"] += 1
-            item["usd"] += abs(_number(getattr(row, "intended_notional", None)) or 0.0)
+            item["usd"] += usd
+            if sent:
+                item["sent_legs"] += 1
+                item["sent_usd"] += usd
 
     unreachable = tonight_manifest.get("unfilled_unreachable") or []
     remainder = tonight_manifest.get("unfilled_remainder") or {}
@@ -1247,7 +1336,18 @@ def _block(
             _trading_bps(tonight_manifest) or _trading_bps(anchor_manifest),
         ),
         "since_anchor": {
-            "trades_by_reason": sorted(trades.values(), key=lambda item: -item["usd"])
+            "trades_by_reason": sorted(trades.values(), key=lambda item: -item["usd"]),
+            # What the table cannot count as a leg that went: the legs under the
+            # order minimum and the ones the broker refused. Stated apart because a
+            # reader who adds them to the reasons is adding orders that do not exist.
+            "not_sent": {
+                "legs": not_sent["legs"],
+                "usd": not_sent["usd"],
+                "under_minimum": not_sent["under_minimum"],
+                "other": sorted(
+                    not_sent["other"].values(), key=lambda item: -item["usd"]
+                ),
+            },
         },
         "tonight": {
             "forced_legs": len(remainder) + len(unreachable),

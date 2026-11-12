@@ -95,6 +95,36 @@ describe("the anchored panels", () => {
     expect(tonight).toContain("COVER_UNDER_ONE_SHARE");
   });
 
+  it("counts sent legs apart from the ones under the $250 minimum", () => {
+    // The live 2026-11-11 shape: 224 rebalance rows of which 16 never went, the
+    // guard's 249 sent legs, JBL owed at $269, and the 315 legs the guard could not
+    // size. The table must not add the last group to a reason: it is not a leg.
+    const block: MonthlyBlock = {
+      ...MONTHLY,
+      since_anchor: {
+        trades_by_reason: [
+          { reason: "rebalance", legs: 224, usd: 546_256.69, sent_legs: 208, sent_usd: 544_003.43 },
+          { reason: "guard", legs: 249, usd: 165_797.76, sent_legs: 249, sent_usd: 165_797.76 },
+          { reason: "carried leg", legs: 1, usd: 269.37, sent_legs: 0, sent_usd: 0 },
+        ],
+        not_sent: {
+          legs: 315,
+          usd: 91_697.42,
+          under_minimum: { legs: 315, usd: 91_697.42 },
+          other: [],
+        },
+      },
+    };
+    render(<MonthlyPanels monthly={block} />);
+    const table = document.querySelector("[data-trades-reason]")?.textContent ?? "";
+    expect(table).toContain("208 sent, 16 owed");
+    expect(table).toContain("0 sent, 1 owed");
+    expect(table).toContain("$269");
+    const line = document.querySelector("[data-not-sent]")?.textContent ?? "";
+    expect(line).toContain("315 legs under $250");
+    expect(line).toContain("$91,697");
+  });
+
   it("renders nothing at all when the document carries no block", () => {
     const { container } = render(<MonthlyPanels monthly={null} />);
     expect(container.querySelector("[data-monthly]")).toBeNull();

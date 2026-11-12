@@ -85,7 +85,18 @@ each one row, each complete.
   reason.
 - **New:** each of these measured against the **rebalance target** rather than the held
   book, so a hold day's drift is visible; and trades since the anchor by reason:
-  `rebalance`, `reversal second leg`, `carried leg`, `guard`, `forced exit`.
+  `rebalance`, `reversal second leg`, `carried leg`, `guard`, `rebalance remainder`.
+  The reason is the **event that asked for the leg**, never the order's own
+  `position_intent` (every submitted order carries one) and never its
+  `reason_code` (a refusal recorded on the legs that never became orders). A leg is a
+  `guard` leg when the close it was proposed on is a close the guard fired on, a
+  `reversal second leg` when it opens a side whose close was sent on an earlier day,
+  and a `rebalance remainder` when it is a rebalance leg the account did not take on
+  the anchor day and the next close sent again. Each row carries `legs` and `usd`
+  beside `sent_legs` and `sent_usd`, and the legs that never went (under the $250
+  minimum, or refused) are summed in `since_anchor.not_sent` rather than given a
+  reason. Measured on 2026-11-11: 224 rebalance rows (208 sent), 249 guard legs,
+  6 second legs, 8 remainder legs, 1 carried leg, and 315 legs under the minimum.
 - **Reads:** the anchor proposal's target rows (ticker, weight, sector through the
   existing `web/src/sector_map.json`), `efb.broker_positions` at the latest close,
   `efb.orders.reason_code` and `efb.orders.trade_date` since the anchor.

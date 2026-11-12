@@ -53,8 +53,9 @@ export function TopNames({
     <section data-section="top-names" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">The largest longs and shorts</h2>
       <HowToRead>
-        the positions that matter most by size, with the loop&apos;s reason for
-        each one.
+        the list ranks names by dollars, not by weight alone, so the top row is the
+        position that moves the book most. Example: STX is the largest at 1.55% of
+        NAV, and the hedge holds it to cancel a factor rather than to bet on it.
       </HowToRead>
       <p className="mt-1 text-sm text-slate-600">
         the largest position is {facts.largest?.ticker ?? "n/a"}
@@ -104,8 +105,9 @@ export function Reasons({ facts, snapshot }: { facts: BookFacts; snapshot: Snaps
     <section data-section="reasons" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">Trades by reason</h2>
       <HowToRead>
-        every trade tonight, grouped by why it was sent, with the dollars beside
-        each group.
+        tonight's own orders, grouped by the input that moved, so a hold day with no
+        orders shows nothing here. Example: 11-11 sent no orders because the guard
+        read 4.57% against its 5% limit and left the book alone.
       </HowToRead>
       <table className="mt-2 w-full border-collapse text-sm" aria-label="trades by reason">
         <thead>

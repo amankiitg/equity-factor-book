@@ -216,9 +216,10 @@ export function ActualHoldingsTable({
   return (
     <div>
       <p className="pb-1 text-xs text-slate-500" data-how-to-read="true">
-        how to read this: each row is the account now against the last rebalance
-        target. The gap is account minus target, so a minus sign means the account
-        holds less than the target asked for.
+        how to read this: a minus gap means the account holds less of that name
+        than the target asked for, at today&apos;s price, and the size of the gap is
+        what the next rebuild would trade. Example: on 11-11 NVDA sat $3,919 away
+        from its target, the largest single gap in the book.
       </p>
       <p className="text-sm text-slate-600" data-actual="read">
         {/* The read time as a date and a time: the evening's read and the

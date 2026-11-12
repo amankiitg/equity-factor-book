@@ -139,8 +139,9 @@ function ReconciliationPanel({
     >
       <p className="font-semibold">{reconciled.headline}</p>
       <HowToRead>
-        these checks compare the account, the target and the store. A check marked
-        explained is a difference the document itself accounts for.
+        each check adds the same dollars two ways, and a difference is raised only
+        when nothing in the document explains it. Example: on 11-11 the book bridge
+        read 195 names in both books and 195 now, so it held.
       </HowToRead>
       <ul className="mt-1 text-sm">
         {reconciled.checks.map((check) => (
@@ -266,8 +267,9 @@ export function Alerts({
             order behind {gone.length === 1 ? "it" : "them"}
           </p>
           <HowToRead>
-            a name that was held before and is gone now, with no closing fill and no
-            broker activity to explain it.
+            a name that left the account without an order or a fill to show why, so
+            the gap is real rather than a bookkeeping one. Example: KVUE left on 11-11
+            because the broker marked it inactive after the KMB acquisition.
           </HowToRead>
           <ul className="text-sm">
             {gone.map((name) => (
@@ -304,7 +306,9 @@ export function Alerts({
               : ""}
           </p>
           <HowToRead>
-            legs the broker did not fill, and legs the run could not send at all.
+            a miss is an order the broker never filled or a leg the run refused
+            before sending, and either one leaves the book away from its target.
+            Example: JBL's $269 is under one share, so no order can be placed at all.
           </HowToRead>
           <ul className="text-sm">
             {misses.slice(0, MISS_LINES).map((line) => (

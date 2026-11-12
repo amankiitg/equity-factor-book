@@ -1293,8 +1293,9 @@ export function AttributionSection({
     >
       <h2 className="text-lg font-semibold">Attribution</h2>
       <HowToRead>
-        what the book earned, split into the parts that added to it and the parts
-        that took away. Every figure is in basis points of NAV.
+        basis points of NAV, so a figure is one hundredth of a percent of the book
+        and two sessions compare even as it grows. Example: realized cost ran 7.31
+        bp a session over the live track against 8.51 bp expected.
       </HowToRead>
       <p className="mt-1 text-sm text-slate-600">
         What the book earned, split into the four terms that add to its total: the hedge&apos;s
