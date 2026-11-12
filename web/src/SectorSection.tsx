@@ -266,8 +266,9 @@ export function AnchoredSectorSection({ block }: { block: NonNullable<MonthlyBlo
         By sector: account against the {anchor ?? "rebalance"} target
       </h2>
       <HowToRead>
-        each row is one sector. The net is the account minus the rebalance target,
-        and the traded figure is how far the names inside it moved.
+        the net stays near zero because the book is built sector-neutral, so the
+        traded figure is where the drift actually sits. Example: Consumer Staples
+        traded $24,010 on 11-11 while its net read $14,277.
       </HowToRead>
       <p className="mt-1 text-xs text-slate-600">
         Signed dollars, net by sector, at the NAV the rebalance was sized on (
@@ -398,8 +399,9 @@ export function SectorSection({
     <section data-section="sector" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">By sector: account against target</h2>
       <HowToRead>
-        each row is one sector, target against account. Blue means the account
-        holds more, violet means it holds less.
+        blue is the account holding more than tonight&apos;s book and violet less;
+        on a hold day the two are the same book, so every row is zero. Example:
+        11-11 shows 0 for all eleven sectors for that reason.
       </HowToRead>
       <p className="mt-1 text-xs text-slate-600">
         Signed dollars, sorted by size: blue where the account holds more net than the target

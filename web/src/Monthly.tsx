@@ -56,7 +56,7 @@ export function CadenceStrip({ monthly }: { monthly: MonthlyBlock }) {
   return (
     <Card
       title="cadence"
-      howToRead="a hold day is an ordinary day between monthly rebalances. The guard line says how far the book was from its hedge limit."
+      howToRead="most closes change nothing: the book is rebuilt every 21 sessions and repaired only when a factor exposure drifts too far. Example: 13 of 21 sessions have passed since 10-23, so the next rebuild is 11-23."
     >
       <dl data-cadence="true" className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
         <Stat
@@ -101,7 +101,7 @@ export function RebalanceCard({ monthly }: { monthly: MonthlyBlock }) {
   return (
     <Card
       title={`the rebalance of ${dateOnly(card.close) ?? "the anchor"}`}
-      howToRead="this card is only the rebalance itself, not the days since it."
+      howToRead="one evening turns the old book into the new one, so it is the month's largest trade and almost all of its cost. Example: on 10-23 it sent 208 legs for $544,003, 56% of NAV."
     >
       <dl data-rebalance="true" className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
         <Stat
@@ -165,7 +165,7 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
   return (
     <Card
       title="the rebalance, from the account before it to the account now"
-      howToRead="a flip closes one side and opens the other, so leg 1 and leg 2 are one decision. The position now differs from leg 2 because prices moved after the trades."
+      howToRead="a name that changes side cannot do it in one order: the close lands one morning and the open the next. Example: CCL bought back $605 of short on 10-26 and bought $678 of long on 10-27."
     >
       <dl data-flips={bridge.flipped} className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
         <Stat label="before" value={dollars(bridge.before_dollars)} detail="account, anchor close" />
@@ -262,7 +262,7 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
   return (
     <Card
       title="distance from the rebalance target"
-      howToRead="the gap is the account minus the rebalance target. A negative dollar figure means that name is smaller than the target."
+      howToRead="prices move the book away from the target every day, and the gap is measured at today's price. Example: on 11-11 the book was 8.74% of NAV from target, $85,486 on one side, and closing it would trade $170,971."
     >
       <dl data-drift="true" className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
         <Stat
@@ -310,25 +310,45 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
 
 export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
   const trades = monthly.since_anchor?.trades_by_reason ?? [];
+  const notSent = monthly.since_anchor?.not_sent;
   if (!trades.length) return null;
+  const under = notSent?.under_minimum;
+  const refused = notSent?.other ?? [];
   return (
     <Card
       title="every leg since the rebalance, by why it went"
-      howToRead="every order leg since the rebalance, grouped by why it was sent."
+      howToRead="a leg is one order in one direction, and the reason says which event asked for it. The count moves when a rebalance lands, when a flip needs its second day, or when the guard fires. Example: 8 legs on 10-26 re-traded a rebalance that had already filled, so they are their own row, fixed 10-27."
     >
       <div className="overflow-x-auto">
         <table data-trades-reason="true" className="w-full min-w-[16rem] text-left text-xs">
         <tbody className="font-mono">
-          {trades.map((row) => (
-            <tr key={row.reason}>
-              <td className="font-semibold">{row.reason}</td>
-              <td className="text-right">{row.legs} legs</td>
-              <td className="text-right">{dollars(row.usd)}</td>
-            </tr>
-          ))}
+          {trades.map((row) => {
+            const sent = row.sent_legs ?? row.legs;
+            return (
+              <tr key={row.reason}>
+                <td className="font-semibold">{row.reason}</td>
+                <td className="text-right">
+                  {sent === row.legs
+                    ? `${row.legs} legs`
+                    : `${sent} sent, ${row.legs - sent} owed`}
+                </td>
+                <td className="text-right">{dollars(row.usd)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       </div>
+      {under || refused.length ? (
+        <p data-not-sent="true" className="mt-1 text-xs text-slate-500">
+          not sent: {under?.legs ?? 0} legs under $250 ({dollars(under?.usd ?? 0)})
+          {refused.length
+            ? `; ${refused
+                .map((row) => `${row.legs} refused (${row.code}, ${dollars(row.usd)})`)
+                .join("; ")}`
+            : ""}
+        </p>
+      ) : null}
     </Card>
   );
 }
@@ -414,7 +434,7 @@ export function MonthlyPanels({ monthly }: { monthly?: MonthlyBlock | null }) {
         <TradesSinceAnchor monthly={monthly} />
         <Card
           title="tonight"
-          howToRead="what is still owed after tonight. A leg that cannot be sent is a refusal, not an order in flight."
+          howToRead="a leg is owed when the close asked for it and the broker did not fill it, so the next close sends it again. Example: on 11-11 nothing was owed, so the line says nothing to send."
         >
           <TonightLine monthly={monthly} />
         </Card>

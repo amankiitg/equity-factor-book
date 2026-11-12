@@ -110,8 +110,9 @@ export function DrawerSection({
       {shown === null ? (
         <p className="px-3 py-2 text-sm text-slate-600" data-drawer-hint="true">
           <span data-how-to-read="true">
-            how to read this: open a table to see the names. The search box filters
-            whichever table is open.
+            how to read this: the tables hold every name, and the search box
+            narrows whichever one is open. Example: typing NVDA leaves only the rows
+            whose ticker matches, in the table you opened.
           </span>
         </p>
       ) : null}

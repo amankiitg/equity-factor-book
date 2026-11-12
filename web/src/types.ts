@@ -626,7 +626,29 @@ export interface MonthlyBlock {
     }>;
   };
   since_anchor?: {
-    trades_by_reason: Array<{ reason: string; legs: number; usd: number }>;
+    /**
+     * One row per reason the leg was sent, in dollars. `legs` counts every row in
+     * the bucket and `sent_legs` only the ones the broker accepted, so the table
+     * can say 224 legs of which 208 went while the dollars stay the priced size.
+     */
+    trades_by_reason: Array<{
+      reason: string;
+      legs: number;
+      usd: number;
+      sent_legs?: number;
+      sent_usd?: number;
+    }>;
+    /**
+     * The legs that never became orders: under the $250 minimum, or refused by the
+     * broker. Kept out of the reason table because a reason there would claim a leg
+     * that does not exist, and summed here so the two counts still add to the rows.
+     */
+    not_sent?: {
+      legs: number;
+      usd: number;
+      under_minimum: { legs: number; usd: number };
+      other: Array<{ code: string; legs: number; usd: number }>;
+    };
   };
   /** One row per name, with what it did since the rebalance and its gap now. */
   holdings?: {

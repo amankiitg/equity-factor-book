@@ -24,7 +24,9 @@ export function RiskConcentration({ snapshot }: { snapshot: Snapshot }) {
     <section data-section="risk" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-lg font-semibold">Risk concentration</h2>
       <HowToRead>
-        how much of the book&apos;s risk sits in its largest names and groups.
+        the bars split the book&apos;s predicted risk by name, which is not the same
+        as its dollars. Example: STX carries 8.4% of the predicted specific variance
+        while holding 1.55% of NAV.
       </HowToRead>
       <p className="mt-1 text-sm text-slate-600">
         Each name's share of the book's predicted specific variance, largest first
@@ -141,7 +143,10 @@ const label = (row: Contribution): string => row.ticker ?? row.sector ?? "?";
         Movers{movers?.session ? `, ${dateOnly(movers.session)}` : ""}
       </h2>
       <HowToRead>
-        the names whose weight moved most since the prior close.
+        the list ranks names by what they added to or took from today&apos;s dollars,
+        so a big position that barely moved does not appear. Example: the 11-11
+        document carried no per-name attribution, so the panel was hidden instead of
+        showing zeros.
       </HowToRead>
       <p className="mt-1 text-sm text-slate-600">
         Contribution to the session's P&L, in dollars. Shown only when the run has written its

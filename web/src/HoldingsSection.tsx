@@ -130,8 +130,11 @@ export function HoldingsTable({
   return (
     <div data-section="holdings" data-holdings="true">
       <p className="pb-1 text-xs text-slate-500" data-how-to-read="true">
-        how to read this: each row is a name in today&apos;s book. The last column
-        says what it did since the last rebalance.
+        how to read this: the since column names the last event that changed the
+        name, so an entry at a rebuild and a repair by the guard read differently.
+        Example: MRVL says drift guard leg (2026-10-30), so the guard moved it, not
+        the rebuild. A hold day never resizes a name: BNY says held, guard leg under
+        the minimum (2026-11-04) because the guard wanted a leg it could not size.
       </p>
       <div className="flex flex-wrap items-end gap-3 py-2">
         <label className="text-sm">

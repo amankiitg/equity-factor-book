@@ -910,6 +910,442 @@ def test_kvues_own_row_says_retired_owed_and_cannot_be_traded() -> None:
     assert rows["AAA"]["since"] == "opened at the rebalance (2026-10-23)"
 
 
+def _spread(
+    rows: list[dict], total: float, key: str = "intended_notional"
+) -> list[dict]:
+    """Give `rows` dollars that sum to `total`, the last one carrying the rest."""
+    share = round(total / len(rows), 2)
+    for row in rows:
+        row[key] = share
+    rows[-1][key] = round(total - share * (len(rows) - 1), 2)
+    return rows
+
+
+def _leg(
+    day: str, ticker: str, intent: str, code: str = "", broker: str | None = None
+) -> dict:
+    return {
+        "trade_date": day,
+        "ticker": ticker,
+        "position_intent": intent,
+        "reason_code": code,
+        "broker_order_id": (f"id-{ticker}-{day}" if broker is None else broker),
+        "intended_notional": 0.0,
+        "filled_notional": 0.0,
+        "status": "FILLED",
+    }
+
+
+def _the_live_leg_table() -> dict:
+    """Every leg the store held on 2026-11-11, in the shapes it holds them.
+
+    The counts and dollars are the live ones: 224 rows on the 2026-10-23 rebalance
+    ($546,256.69, of which 16 were under the minimum and never sent), 12 sent legs
+    on 2026-10-26 (the four second legs, plus the eight legs that re-traded a
+    rebalance that had already filled, $3,632.28 including CHTR, the
+    unfilled-remainder bug fixed on
+    2026-10-27), the guard's 109 sent legs on 2026-10-30 ($68,859) and 140 on
+    2026-11-04 ($96,938.76), two second legs on 2026-11-05, JBL's $269.37 that is
+    under one share, and the 315 legs under the $250 minimum ($91,697.42) that the
+    old table counted as guard.
+    """
+    anchor, hold, guard_1, guard_2, flip_2 = (
+        "2026-10-23",
+        "2026-10-26",
+        "2026-10-30",
+        "2026-11-04",
+        "2026-11-05",
+    )
+    closes = ["CCL", "F", "GEHC", "VZ"]
+    legs: list[dict] = []
+    # The rebalance: 208 sent and 16 under the minimum, one row per name per side.
+    for index in range(208):
+        ticker = f"N{index:03d}"
+        legs.append(
+            _leg(anchor, ticker, "buy_to_open" if index % 2 else "sell_to_close")
+        )
+    # Four of those 208 are the flip closes, so 2026-10-26's opens have a close to
+    # answer and are second legs. The other eight on 2026-10-26 are the rebalance's
+    # own remainder, sent again on the next close.
+    for index, ticker in enumerate(closes):
+        legs[index]["ticker"] = ticker
+        legs[index]["position_intent"] = (
+            "buy_to_close" if ticker in ("CCL", "GEHC") else "sell_to_close"
+        )
+    _spread(legs[-208:], 544_003.43)
+    for index in range(16):
+        legs.append(
+            _leg(
+                anchor,
+                f"M{index:03d}",
+                "sell_to_close",
+                "BELOW_MIN_NOTIONAL",
+                broker="",
+            )
+        )
+    _spread(legs[-16:], 2_253.26)
+    # 2026-10-26's twelve sent legs, on the store's own rows and dollars: the
+    # four second legs of the rebalance's flips (CCL, F, GEHC, VZ) and the eight
+    # that re-traded a rebalance that had already filled ($3,632.28, CHTR in it).
+    # CHTR is the case the flip rule settles: its side did not change across the
+    # rebalance, so its open is a re-trade even though a close went out earlier.
+    for ticker, intent, dollars in [
+        ("CCL", "buy_to_open", 677.706005),
+        ("F", "sell_to_open", -1_600.356208),
+        ("GEHC", "buy_to_open", 2_328.089088),
+        ("VZ", "sell_to_open", -2_434.046379),
+        ("AKAM", "buy_to_close", 290.448717),
+        ("CHTR", "buy_to_open", 431.043870),
+        ("HPE", "sell_to_close", -413.676752),
+        ("INTC", "sell_to_close", -808.253874),
+        ("MRVL", "sell_to_close", -517.467381),
+        ("NVDA", "buy_to_close", 257.463043),
+        ("STX", "sell_to_close", -471.735590),
+        ("WDC", "sell_to_close", -442.191471),
+    ]:
+        legs.append(_leg(hold, ticker, intent))
+        legs[-1]["intended_notional"] = dollars
+    # The guard's two evenings.
+    for index in range(109):
+        legs.append(_leg(guard_1, f"G{index:03d}", "sell_to_close"))
+    _spread(legs[-109:], 68_859.00)
+    for index in range(140):
+        legs.append(_leg(guard_2, f"H{index:03d}", "buy_to_close"))
+    legs[-140].update({"ticker": "CCL", "position_intent": "sell_to_close"})
+    legs[-139].update({"ticker": "NFLX", "position_intent": "buy_to_close"})
+    _spread(legs[-140:], 96_938.76)
+    # Their second legs, the day after, on the store's own dollars.
+    legs.append(_leg(flip_2, "CCL", "sell_to_open"))
+    legs[-1]["intended_notional"] = -315.757109
+    legs.append(_leg(flip_2, "NFLX", "buy_to_open"))
+    legs[-1]["intended_notional"] = 682.697473
+    # JBL: owed, under one share, never an order.
+    legs.append(_leg(hold, "JBL", "buy_to_close", "COVER_UNDER_ONE_SHARE", broker=""))
+    legs[-1]["intended_notional"] = 269.37
+    # The 315 the guard could not size, spread over its two evenings.
+    refused = [
+        _leg(
+            guard_1 if index % 2 else guard_2,
+            f"U{index:03d}",
+            "sell_to_close",
+            "BELOW_MIN_NOTIONAL",
+            broker="",
+        )
+        for index in range(315)
+    ]
+    _spread(refused, 91_697.42)
+    legs.extend(refused)
+
+    orders = pd.DataFrame(legs)
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [anchor, guard_1, guard_2],
+            "manifest": [
+                {"cadence": {"day": "rebalance"}},
+                {
+                    "cadence": {"day": "hold", "k": 21},
+                    "drift_guard": {"fired": True, "legs": []},
+                },
+                {
+                    "cadence": {"day": "hold", "k": 21},
+                    "drift_guard": {"fired": True, "legs": []},
+                },
+            ],
+        }
+    )
+    target = pd.DataFrame(
+        {
+            "trade_date": [anchor] * 6,
+            "ticker": ["CCL", "F", "GEHC", "VZ", "CHTR", "NFLX"],
+            "side": ["long", "short", "long", "short", "long", "short"],
+            "weight": [0.01, -0.002, 0.002, -0.003, 0.0075, -0.0016],
+        }
+    )
+    # The account at the anchor close, before the rebalance traded: the four
+    # names whose side it changed there are the flip rows (CCL, F, GEHC, VZ).
+    # CHTR was long before and long at the target, so it is not a flip.
+    account = pd.DataFrame(
+        [
+            (anchor, "CCL", "short", -600.5369),
+            (anchor, "F", "long", 633.191546),
+            (anchor, "GEHC", "short", -2_000.6),
+            (anchor, "VZ", "long", 988.565164),
+            (anchor, "CHTR", "long", 8_935.301232),
+            (anchor, "NFLX", "short", -3_156.48),
+            (flip_2, "CCL", "long", 700.0),
+            (flip_2, "F", "short", -700.0),
+            (flip_2, "GEHC", "long", 700.0),
+            (flip_2, "VZ", "short", -700.0),
+            (flip_2, "CHTR", "long", 900.0),
+            (flip_2, "NFLX", "short", -350.0),
+        ],
+        columns=["trade_date", "ticker", "side", "market_value"],
+    )
+    return monthly_view.block(
+        proposals=proposals,
+        targets=target,
+        account=account,
+        orders=orders,
+        fills=pd.DataFrame(),
+        today=flip_2,
+        tonight_manifest={"cadence": {"day": "hold", "k": 21}},
+        nav=1_000_000.0,
+    )
+
+
+def test_legs_are_counted_by_the_event_that_asked_for_them() -> None:
+    """The live table, reason by reason, on the store's own 2026-11-11 rows.
+
+    The old table read `position_intent` on every submitted order (which every order
+    carries) as "reversal second leg", and read the refusal code `BELOW_MIN_NOTIONAL`
+    as "guard", so 315 legs the guard never sent were counted as guard legs and every
+    guard leg that did go was counted as a flip.
+    """
+    block = _the_live_leg_table()
+    assert block is not None
+    rows = {row["reason"]: row for row in block["since_anchor"]["trades_by_reason"]}
+
+    rebalance = rows["rebalance"]
+    assert (rebalance["legs"], rebalance["sent_legs"]) == (224, 208)
+    assert rebalance["usd"] == pytest.approx(546_256.69, abs=0.01)
+
+    guard = rows["guard"]
+    assert (guard["legs"], guard["sent_legs"]) == (249, 249)
+    assert guard["usd"] == pytest.approx(68_859.00 + 96_938.76, abs=0.01)
+
+    flip = rows["reversal second leg"]
+    assert (flip["legs"], flip["sent_legs"]) == (6, 6)
+    # The six are CCL, F, GEHC and VZ on 2026-10-26 and CCL and NFLX on
+    # 2026-11-05; CHTR is not among them. Its 2026-10-26 open is in the
+    # re-trade row below, which is why the row's dollars carry CHTR's 431.04.
+    assert flip["usd"] == pytest.approx(8_038.65, abs=0.01)
+
+    carried = rows["carried leg"]
+    assert (carried["legs"], carried["sent_legs"]) == (1, 0)
+    assert carried["usd"] == pytest.approx(269.37, abs=0.01)
+
+    # The eight sent legs on 2026-10-26 that are neither a guard leg nor a second
+    # leg: they re-traded a rebalance that had already filled, which was the
+    # unfilled-remainder bug, fixed on 2026-10-27. They are not a remainder and
+    # they are not a rebalance: they get their own row.
+    retrade = rows["remainder re-trade (bug, fixed 10-27)"]
+    assert (retrade["legs"], retrade["sent_legs"]) == (8, 8)
+    assert retrade["usd"] == pytest.approx(3_632.28, abs=0.01)
+    assert retrade["usd"] > 3_632.28 - 431.05  # CHTR is inside this total
+    assert "rebalance remainder" not in rows
+
+    not_sent = block["since_anchor"]["not_sent"]
+    assert (not_sent["legs"], not_sent["under_minimum"]["legs"]) == (315, 315)
+    assert not_sent["usd"] == pytest.approx(91_697.42, abs=0.01)
+    assert not_sent["other"] == []
+
+    # And the whole table adds up to the rows the store holds: 803, not 804 and not
+    # a count that silently dropped the legs that never went.
+    total = sum(row["legs"] for row in rows.values()) + not_sent["legs"]
+    assert total == 803
+
+
+def test_a_hold_day_never_resizes_a_holding() -> None:
+    """The 2026-11-04 labels: BNY, MET, WMT and FLEX were guard work, not resizes.
+
+    Nothing resizes a holding on a hold day, and the page said four names did
+    because it read any row in `efb.orders` as a trade: the guard's candidates
+    under the minimum carry a reason code and no broker id, and were counted as
+    a resize. A name the guard sent but its manifest omitted is a guard leg; a
+    name it could not size is still held, and the row says which.
+    """
+    anchor, guard_day, latest = "2026-10-23", "2026-11-04", "2026-11-05"
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [anchor, guard_day],
+            "manifest": [
+                {"cadence": {"day": "rebalance"}},
+                {
+                    "cadence": {"day": "hold", "k": 21},
+                    "drift_guard": {
+                        "fired": True,
+                        "legs": [
+                            {"ticker": "NVDA", "traded": True},
+                            {"ticker": "BNY", "traded": False},
+                        ],
+                    },
+                },
+            ],
+        }
+    )
+    tickers = ["BNY", "MET", "WMT", "FLEX"]
+    weights = [-0.0118, 0.0112, -0.0094, -0.0080]
+    now_weights = [-0.0126, 0.0118, -0.0098, -0.0081]
+    target = pd.DataFrame(
+        {
+            "trade_date": [anchor] * 4,
+            "ticker": tickers,
+            "side": ["short", "long", "short", "short"],
+            "weight": weights,
+        }
+    )
+    account = pd.DataFrame(
+        {
+            "trade_date": [anchor] * 4 + [latest] * 4,
+            "ticker": tickers * 2,
+            "side": ["short", "long", "short", "short"] * 2,
+            "weight": weights + now_weights,
+            "market_value": [
+                -11_800.0,
+                11_200.0,
+                -9_400.0,
+                -8_000.0,
+                -12_600.0,
+                11_800.0,
+                -9_800.0,
+                -8_100.0,
+            ],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [guard_day] * 4,
+            "ticker": tickers,
+            "intended_notional": [180.0, 160.0, 120.0, 90.0],
+            "reason_code": ["BELOW_MIN_NOTIONAL", "", "BELOW_MIN_NOTIONAL", ""],
+            "position_intent": ["buy_to_close"] * 4,
+            "broker_order_id": ["", "id-met", "", "id-flex"],
+        }
+    )
+    block = monthly_view.block(
+        proposals=proposals,
+        targets=target,
+        account=account,
+        orders=orders,
+        fills=pd.DataFrame(),
+        today=latest,
+        tonight_manifest={"cadence": {"day": "hold", "k": 21}},
+        nav=1_000_000.0,
+    )
+    assert block is not None
+    rows = {row["ticker"]: row for row in block["holdings"]["rows"]}
+    assert rows["BNY"]["since"] == "held, guard leg under the minimum (2026-11-04)"
+    assert rows["WMT"]["since"] == "held, guard leg under the minimum (2026-11-04)"
+    assert rows["MET"]["since"] == "drift guard leg (2026-11-04)"
+    assert rows["FLEX"]["since"] == "drift guard leg (2026-11-04)"
+    for ticker in tickers:
+        assert rows[ticker]["since_kind"] != "resized"
+        assert "resized" not in rows[ticker]["since"]
+
+
+def test_an_under_minimum_leg_on_a_guard_day_is_not_a_guard_leg() -> None:
+    """The exact misclassification: the guard's unsizeable candidates are not legs."""
+    anchor, guard_day = "2026-10-23", "2026-10-30"
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [anchor, guard_day],
+            "manifest": [
+                {"cadence": {"day": "rebalance"}},
+                {
+                    "cadence": {"day": "hold", "k": 21},
+                    "drift_guard": {"fired": True, "legs": []},
+                },
+            ],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [guard_day, guard_day],
+            "ticker": ["AAA", "BBB"],
+            "intended_notional": [1_000.0, 120.0],
+            "reason_code": ["", "BELOW_MIN_NOTIONAL"],
+            "position_intent": ["sell_to_close", "sell_to_close"],
+            "broker_order_id": ["id-1", ""],
+        }
+    )
+    block = monthly_view.block(
+        proposals=proposals,
+        targets=pd.DataFrame(
+            {
+                "trade_date": [anchor],
+                "ticker": ["AAA"],
+                "side": ["long"],
+                "weight": [0.01],
+            }
+        ),
+        account=pd.DataFrame(
+            {
+                "trade_date": [guard_day],
+                "ticker": ["AAA"],
+                "side": ["long"],
+                "market_value": [1_000.0],
+            }
+        ),
+        orders=orders,
+        fills=pd.DataFrame(),
+        today=guard_day,
+        tonight_manifest={},
+        nav=1_000_000.0,
+    )
+    assert block is not None
+    rows = {row["reason"]: row for row in block["since_anchor"]["trades_by_reason"]}
+    assert rows["guard"]["legs"] == 1
+    assert block["since_anchor"]["not_sent"]["legs"] == 1
+    assert block["since_anchor"]["not_sent"]["under_minimum"]["usd"] == pytest.approx(
+        120.0
+    )
+
+
+def test_a_close_and_open_in_one_evening_is_not_a_second_leg() -> None:
+    """A guard evening flips a name inside itself; that open is not a second day."""
+    anchor, guard_day = "2026-10-23", "2026-11-04"
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [anchor, guard_day],
+            "manifest": [
+                {"cadence": {"day": "rebalance"}},
+                {
+                    "cadence": {"day": "hold", "k": 21},
+                    "drift_guard": {"fired": True, "legs": []},
+                },
+            ],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [guard_day, guard_day],
+            "ticker": ["CCL", "CCL"],
+            "intended_notional": [-600.0, 650.0],
+            "reason_code": ["", ""],
+            "position_intent": ["sell_to_close", "sell_to_open"],
+            "broker_order_id": ["id-1", "id-2"],
+        }
+    )
+    block = monthly_view.block(
+        proposals=proposals,
+        targets=pd.DataFrame(
+            {
+                "trade_date": [anchor],
+                "ticker": ["CCL"],
+                "side": ["long"],
+                "weight": [0.01],
+            }
+        ),
+        account=pd.DataFrame(
+            {
+                "trade_date": [guard_day],
+                "ticker": ["CCL"],
+                "side": ["short"],
+                "market_value": [-650.0],
+            }
+        ),
+        orders=orders,
+        fills=pd.DataFrame(),
+        today=guard_day,
+        tonight_manifest={},
+        nav=1_000_000.0,
+    )
+    assert block is not None
+    rows = {row["reason"]: row for row in block["since_anchor"]["trades_by_reason"]}
+    assert rows["guard"]["legs"] == 2
+    assert "reversal second leg" not in rows
+
+
 def test_no_em_or_en_dash_in_page_text_or_block_strings() -> None:
     """A dash that renders as punctuation is still a dash. The test forbids it."""
     root = Path(__file__).resolve().parents[1]

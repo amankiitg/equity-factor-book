@@ -160,8 +160,9 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
     <section data-section="exposures" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">The hedge</h2>
       <HowToRead>
-        each bar is one factor exposure as a share of NAV. Zero means the book has
-        no tilt to that factor.
+        a bar away from zero is a bet the book did not mean to take, and the guard
+        acts when one passes 5% of NAV. Example: on 11-11 the worst was 4.57%, so no
+        factor needed repairing.
       </HowToRead>
       {anchor ? (
         <>

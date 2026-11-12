@@ -150,9 +150,9 @@ export function Bridge({ snapshot }: { snapshot: Snapshot }) {
     >
       <h2 className="text-base font-semibold">The book bridge</h2>
       <HowToRead>
-        these are the same dollars counted three ways, before the rebalance, after
-        it, and in the account now. The last line says whether the arithmetic adds
-        up.
+        the same book is counted before the rebuild, after it, and in the account
+        now, so the three totals have to agree. Example: on 11-11 the same 195 names
+        appear in both books, and the check says it holds.
       </HowToRead>
       <p className="mt-1 font-mono text-sm tabular-nums" data-bridge-line="true">
         {line}
