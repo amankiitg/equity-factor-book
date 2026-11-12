@@ -317,7 +317,7 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
   return (
     <Card
       title="every leg since the rebalance, by why it went"
-      howToRead="a leg is one order in one direction, and the reason says which event asked for it. The count moves when a rebalance lands, when a flip needs its second day, or when the guard fires. Example: 4 legs opened the new side of a flip on 10-27 after the rebalance closed the old one on 10-26."
+      howToRead="a leg is one order in one direction, and the reason says which event asked for it. The count moves when a rebalance lands, when a flip needs its second day, or when the guard fires. Example: 8 legs on 10-26 re-traded a rebalance that had already filled, so they are their own row, fixed 10-27."
     >
       <div className="overflow-x-auto">
         <table data-trades-reason="true" className="w-full min-w-[16rem] text-left text-xs">

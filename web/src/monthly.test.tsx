@@ -125,6 +125,37 @@ describe("the anchored panels", () => {
     expect(line).toContain("$91,697");
   });
 
+  it("renders the 2026-10-26 re-trade as its own row, not a remainder", () => {
+    // The unfilled-remainder bug (fixed 10-27) re-sent 8 legs of a rebalance that
+    // had already filled. They are not a remainder and not a rebalance, and the
+    // table says so in its own row.
+    const block: MonthlyBlock = {
+      ...MONTHLY,
+      since_anchor: {
+        trades_by_reason: [
+          {
+            reason: "remainder re-trade (bug, fixed 10-27)",
+            legs: 8,
+            usd: 3_632.0,
+            sent_legs: 8,
+            sent_usd: 3_632.0,
+          },
+        ],
+        not_sent: {
+          legs: 0,
+          usd: 0,
+          under_minimum: { legs: 0, usd: 0 },
+          other: [],
+        },
+      },
+    };
+    render(<MonthlyPanels monthly={block} />);
+    const table = document.querySelector("[data-trades-reason]")?.textContent ?? "";
+    expect(table).toContain("remainder re-trade (bug, fixed 10-27)");
+    expect(table).toContain("8 legs");
+    expect(table).toContain("$3,632");
+  });
+
   it("renders nothing at all when the document carries no block", () => {
     const { container } = render(<MonthlyPanels monthly={null} />);
     expect(container.querySelector("[data-monthly]")).toBeNull();

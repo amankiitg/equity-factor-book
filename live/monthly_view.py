@@ -39,6 +39,15 @@ MINIMUM_DOLLARS = 250.0
 # close it. It gets its own row rather than being dropped from the table.
 RETIRED = {"KVUE": "retired (acquired by KMB), owed, cannot be traded"}
 
+# The 2026-10-26 hold day re-sent eight legs of the 2026-10-23 rebalance (INTC, MRVL,
+# STX, WDC, CHTR, HPE, AKAM, NVDA; $3,632) because its unfilled remainder was read
+# from `efb.orders.filled_notional`, which is written before the open and never
+# updated: the manifest saw the whole rebalance outstanding and the evening traded a
+# book that had already settled. The fix (4ffd083) landed on 2026-10-27 and reads
+# `efb.fills`. A leg from that evening is not a rebalance remainder: it re-traded a
+# leg that had already filled, which is a different fact and gets its own row.
+RETRADE_BUG_DAYS = {"2026-10-26": "remainder re-trade (bug, fixed 10-27)"}
+
 
 def _day(value: Any) -> str | None:
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -537,7 +546,14 @@ def drift(
 def _events_of(
     orders: pd.DataFrame, ticker: str, anchor: str, now_close: str
 ) -> list[dict[str, Any]]:
-    """One name's order legs between the rebalance and the latest read."""
+    """One name's order legs between the rebalance and the latest read.
+
+    A row in `efb.orders` is a leg the evening asked for, not a trade: the store
+    holds the ones under the minimum and the ones the broker refused too, with a
+    `reason_code` and no broker id. Each row says whether it became an order, by
+    the same rule the leg table uses, so a reader that is about what changed can
+    ignore the rows that never reached the broker.
+    """
     if orders is None or orders.empty or "trade_date" not in orders.columns:
         return []
     days = orders["trade_date"].astype(str).str.slice(0, 10)
@@ -546,14 +562,59 @@ def _events_of(
         & (days >= anchor)
         & (days <= now_close)
     ]
-    return [
-        {
-            "date": str(row.trade_date)[:10],
-            "code": str(getattr(row, "reason_code", "") or ""),
-            "intent": str(getattr(row, "position_intent", "") or ""),
-        }
-        for row in rows.itertuples(index=False)
-    ]
+    has_broker = "broker_order_id" in rows.columns
+    events: list[dict[str, Any]] = []
+    for row in rows.itertuples(index=False):
+        code = str(getattr(row, "reason_code", "") or "").strip()
+        broker = str(getattr(row, "broker_order_id", "") or "").strip()
+        events.append(
+            {
+                "date": str(row.trade_date)[:10],
+                "code": code,
+                "intent": str(getattr(row, "position_intent", "") or ""),
+                "sent": bool(broker) if has_broker else not code,
+            }
+        )
+    return events
+
+
+def _trade_note(day: str, anchor: str, guard_days: set[str]) -> tuple[str, str]:
+    """What a sent leg on `day` was, in the holdings column's own words.
+
+    A holding changes size on the evening that asked for the leg, and the evening
+    is read from the manifest, not from the fact that a row exists. The anchor is
+    the rebalance's own evening and a resize there is real. After it, the only
+    evenings that trade a name are a guard evening and a hold day re-trading a leg
+    the rebalance did not complete; a hold day never resizes a holding.
+    """
+    if day == anchor:
+        return (f"resized ({day})", "resized")
+    if day in guard_days:
+        return (f"drift guard leg ({day})", "guard")
+    if day in RETRADE_BUG_DAYS:
+        return (f"remainder re-trade ({day})", "re-trade")
+    return (f"rebalance remainder ({day})", "remainder")
+
+
+def _unsent_note(events: list[dict[str, Any]], guard_days: set[str]) -> tuple[str, str]:
+    """A hold-day leg the evening wanted and never sent, said as such.
+
+    The store writes a row for a leg under the minimum and for one the broker
+    refused, with no broker id, so a holdings table that read any row as a trade
+    said every name the guard could not size had been resized. It had not: the
+    position is the one the rebalance left.
+    """
+    guarded = [event["date"] for event in events if event["date"] in guard_days]
+    day = max(guarded) if guarded else events[-1]["date"]
+    codes = {event["code"] for event in events if event["code"]}
+    under = "BELOW_MIN_NOTIONAL" in codes
+    if guarded and under:
+        return (f"held, guard leg under the minimum ({day})", "held")
+    if guarded:
+        return (f"held, guard leg refused ({day})", "held")
+    if under:
+        return (f"held, leg under the minimum ({day})", "held")
+    return ("held, no trade since", "held")
 
 
 def _tonight_note(events: list[dict[str, Any]], now_close: str) -> str | None:
@@ -586,6 +647,7 @@ def holdings(
     orders: pd.DataFrame,
     flips: list[dict[str, Any]],
     guard_dates: dict[str, list[str]],
+    guard_days: set[str],
     anchor: str,
     now_close: str,
     nav: float | None,
@@ -613,6 +675,8 @@ def holdings(
     rows: list[dict[str, Any]] = []
     for ticker in sorted(tickers):
         events = _events_of(orders, ticker, anchor, now_close)
+        traded = [event for event in events if event["sent"]]
+        last_trade = traded[-1] if traded else None
         guards = guard_dates.get(ticker, [])
         flip = flip_by_ticker.get(ticker)
         retired_note = RETIRED.get(ticker)
@@ -639,6 +703,12 @@ def holdings(
             since = f"drift guard leg ({guards[-1]})"
             since_kind = "guard"
             since_date = guards[-1]
+        elif last_trade is not None and last_trade["date"] in guard_days:
+            # The evening decides it. A name the guard's own leg list omitted, or
+            # listed only as a candidate under the minimum, still traded on a guard
+            # evening, and a guard evening is not a rebalance resizing a holding.
+            since, since_kind = _trade_note(last_trade["date"], anchor, guard_days)
+            since_date = last_trade["date"]
         elif ticker in before_weights and ticker not in wanted and ticker not in have:
             since_date = events[-1]["date"] if events else anchor
             since = f"exited ({since_date})"
@@ -651,20 +721,24 @@ def holdings(
                 since = f"opened ({since_date})"
             since_kind = "opened"
         elif ticker in before_weights and ticker in have:
-            if events:
+            if last_trade is not None:
+                since_date = last_trade["date"]
+                since, since_kind = _trade_note(since_date, anchor, guard_days)
+            elif events:
                 since_date = events[-1]["date"]
-                since = f"resized ({since_date})"
-                since_kind = "resized"
+                since, since_kind = _unsent_note(events, guard_days)
             else:
                 since = "held, no trade since"
         elif ticker in have and ticker not in wanted:
             since_date = events[-1]["date"] if events else anchor
             since = f"held, not in the target since {since_date}"
             since_kind = "held-other"
+        elif last_trade is not None:
+            since_date = last_trade["date"]
+            since, since_kind = _trade_note(since_date, anchor, guard_days)
         elif events:
             since_date = events[-1]["date"]
-            since = f"resized ({since_date})"
-            since_kind = "resized"
+            since, since_kind = _unsent_note(events, guard_days)
         else:
             since = "held, no trade since"
         gap = gaps.get(ticker, 0.0)
@@ -1247,6 +1321,12 @@ def _block(
                 day < close for day in closed_on.get(ticker, set())
             ):
                 reason = "reversal second leg"
+            elif close in RETRADE_BUG_DAYS:
+                # The 2026-10-26 hold day re-traded eight legs of a rebalance that
+                # had already filled, because the remainder it read was built from
+                # filled_notional and saw the whole rebalance outstanding. The fix
+                # landed on 2026-10-27; the legs it produced are not a remainder.
+                reason = RETRADE_BUG_DAYS[close]
             else:
                 # A sent leg on a hold day that is neither a guard day nor the open
                 # of a flip: a rebalance leg the account did not take on the anchor
@@ -1391,6 +1471,7 @@ def _block(
             orders,
             bridge_anchor.get("flip_rows") or [],
             guard_dates,
+            guard_days,
             anchor,
             now_close,
             nav,

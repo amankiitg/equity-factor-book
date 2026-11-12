@@ -941,10 +941,12 @@ def _the_live_leg_table() -> dict:
 
     The counts and dollars are the live ones: 224 rows on the 2026-10-23 rebalance
     ($546,256.69, of which 16 were under the minimum and never sent), 12 sent legs
-    on 2026-10-26 (the four second legs plus eight rebalance remnants), the guard's
-    109 sent legs on 2026-10-30 ($68,859) and 140 on 2026-11-04 ($96,938.76), two
-    second legs on 2026-11-05, JBL's $269.37 that is under one share, and the 315
-    legs under the $250 minimum ($91,697.42) that the old table counted as guard.
+    on 2026-10-26 (the four second legs, plus the eight legs that re-traded a
+    rebalance that had already filled, $3,632, the unfilled-remainder bug fixed on
+    2026-10-27), the guard's 109 sent legs on 2026-10-30 ($68,859) and 140 on
+    2026-11-04 ($96,938.76), two second legs on 2026-11-05, JBL's $269.37 that is
+    under one share, and the 315 legs under the $250 minimum ($91,697.42) that the
+    old table counted as guard.
     """
     anchor, hold, guard_1, guard_2, flip_2 = (
         "2026-10-23",
@@ -989,9 +991,12 @@ def _the_live_leg_table() -> dict:
                 "buy_to_open" if ticker in ("CCL", "GEHC") else "sell_to_open",
             )
         )
+    _spread(legs[-4:], 7_040.48)
+    # The eight the 2026-10-26 hold day sent again: the rebalance had already
+    # filled and the manifest's remainder read it as outstanding.
     for ticker in ["STX", "MRVL", "CHTR", "INTC", "NVDA", "AKAM", "WDC", "HPE"]:
         legs.append(_leg(hold, ticker, "sell_to_close"))
-    _spread(legs[-12:], 10_672.48)
+    _spread(legs[-8:], 3_632.00)
     # The guard's two evenings.
     for index in range(109):
         legs.append(_leg(guard_1, f"G{index:03d}", "sell_to_close"))
@@ -1095,9 +1100,13 @@ def test_legs_are_counted_by_the_event_that_asked_for_them() -> None:
     assert carried["usd"] == pytest.approx(269.37, abs=0.01)
 
     # The eight sent legs on 2026-10-26 that are neither a guard leg nor a second
-    # leg: the rebalance's own remainder, sent again on the next close.
-    rest = rows["rebalance remainder"]
-    assert (rest["legs"], rest["sent_legs"]) == (8, 8)
+    # leg: they re-traded a rebalance that had already filled, which was the
+    # unfilled-remainder bug, fixed on 2026-10-27. They are not a remainder and
+    # they are not a rebalance: they get their own row.
+    retrade = rows["remainder re-trade (bug, fixed 10-27)"]
+    assert (retrade["legs"], retrade["sent_legs"]) == (8, 8)
+    assert retrade["usd"] == pytest.approx(3_632.00, abs=0.01)
+    assert "rebalance remainder" not in rows
 
     not_sent = block["since_anchor"]["not_sent"]
     assert (not_sent["legs"], not_sent["under_minimum"]["legs"]) == (315, 315)
@@ -1108,6 +1117,94 @@ def test_legs_are_counted_by_the_event_that_asked_for_them() -> None:
     # a count that silently dropped the legs that never went.
     total = sum(row["legs"] for row in rows.values()) + not_sent["legs"]
     assert total == 803
+
+
+def test_a_hold_day_never_resizes_a_holding() -> None:
+    """The 2026-11-04 labels: BNY, MET, WMT and FLEX were guard work, not resizes.
+
+    Nothing resizes a holding on a hold day, and the page said four names did
+    because it read any row in `efb.orders` as a trade: the guard's candidates
+    under the minimum carry a reason code and no broker id, and were counted as
+    a resize. A name the guard sent but its manifest omitted is a guard leg; a
+    name it could not size is still held, and the row says which.
+    """
+    anchor, guard_day, latest = "2026-10-23", "2026-11-04", "2026-11-05"
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [anchor, guard_day],
+            "manifest": [
+                {"cadence": {"day": "rebalance"}},
+                {
+                    "cadence": {"day": "hold", "k": 21},
+                    "drift_guard": {
+                        "fired": True,
+                        "legs": [
+                            {"ticker": "NVDA", "traded": True},
+                            {"ticker": "BNY", "traded": False},
+                        ],
+                    },
+                },
+            ],
+        }
+    )
+    tickers = ["BNY", "MET", "WMT", "FLEX"]
+    weights = [-0.0118, 0.0112, -0.0094, -0.0080]
+    now_weights = [-0.0126, 0.0118, -0.0098, -0.0081]
+    target = pd.DataFrame(
+        {
+            "trade_date": [anchor] * 4,
+            "ticker": tickers,
+            "side": ["short", "long", "short", "short"],
+            "weight": weights,
+        }
+    )
+    account = pd.DataFrame(
+        {
+            "trade_date": [anchor] * 4 + [latest] * 4,
+            "ticker": tickers * 2,
+            "side": ["short", "long", "short", "short"] * 2,
+            "weight": weights + now_weights,
+            "market_value": [
+                -11_800.0,
+                11_200.0,
+                -9_400.0,
+                -8_000.0,
+                -12_600.0,
+                11_800.0,
+                -9_800.0,
+                -8_100.0,
+            ],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [guard_day] * 4,
+            "ticker": tickers,
+            "intended_notional": [180.0, 160.0, 120.0, 90.0],
+            "reason_code": ["BELOW_MIN_NOTIONAL", "", "BELOW_MIN_NOTIONAL", ""],
+            "position_intent": ["buy_to_close"] * 4,
+            "broker_order_id": ["", "id-met", "", "id-flex"],
+        }
+    )
+    block = monthly_view.block(
+        proposals=proposals,
+        targets=target,
+        account=account,
+        orders=orders,
+        fills=pd.DataFrame(),
+        today=latest,
+        tonight_manifest={"cadence": {"day": "hold", "k": 21}},
+        nav=1_000_000.0,
+    )
+    assert block is not None
+    rows = {row["ticker"]: row for row in block["holdings"]["rows"]}
+    assert rows["BNY"]["since"] == "held, guard leg under the minimum (2026-11-04)"
+    assert rows["WMT"]["since"] == "held, guard leg under the minimum (2026-11-04)"
+    assert rows["MET"]["since"] == "drift guard leg (2026-11-04)"
+    assert rows["FLEX"]["since"] == "drift guard leg (2026-11-04)"
+    for ticker in tickers:
+        assert rows[ticker]["since_kind"] != "resized"
+        assert "resized" not in rows[ticker]["since"]
 
 
 def test_an_under_minimum_leg_on_a_guard_day_is_not_a_guard_leg() -> None:
