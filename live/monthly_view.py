@@ -48,6 +48,31 @@ RETIRED = {"KVUE": "retired (acquired by KMB), owed, cannot be traded"}
 # leg that had already filled, which is a different fact and gets its own row.
 RETRADE_BUG_DAYS = {"2026-10-26": "remainder re-trade (bug, fixed 10-27)"}
 
+# The holdings table's since column draws a small pill, and these are its words.
+# The full sentence stays on the row for a tooltip and for a screen reader; the
+# pill is the same event and day without the clause that wraps the table into the
+# dollar column beside it.
+SINCE_LABELS = {
+    "guard": "Guard",
+    "opened": "Opened",
+    "flipped": "Flipped",
+    "exited": "Exited",
+    "resized": "Resized",
+    "re-trade": "Re-trade",
+    "remainder": "Remainder",
+    "held-other": "Held",
+    "held": "Held",
+    "retired": "Retired",
+}
+
+
+def _short_since(kind: str, day: str | None) -> str:
+    """`Guard 11-04`, `Opened 10-23`, `Retired`: the pill the table draws."""
+    label = SINCE_LABELS.get(kind, kind.replace("-", " ").title())
+    if kind in {"held", "held-other", "retired"} or not day:
+        return label
+    return f"{label} {str(day)[5:10]}"
+
 
 def _day(value: Any) -> str | None:
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -682,9 +707,11 @@ def holdings(
         retired_note = RETIRED.get(ticker)
         since_kind = "held"
         since_date = anchor
+        since_label = _short_since("held", anchor)
         if retired_note:
             since = retired_note
             since_kind = "retired"
+            since_label = _short_since("retired", None)
         elif flip is not None:
             closed = flip.get("close_filled") or anchor
             opened = flip.get("open_filled")
@@ -695,24 +722,29 @@ def holdings(
             )
             since_kind = "flipped"
             since_date = opened or closed
+            since_label = _short_since("flipped", since_date)
             later = [day for day in guards if day > since_date]
             if later:
                 since = f"{since}; drift guard leg ({later[-1]})"
                 since_date = later[-1]
+                since_label = _short_since("guard", later[-1])
         elif guards:
             since = f"drift guard leg ({guards[-1]})"
             since_kind = "guard"
             since_date = guards[-1]
+            since_label = _short_since("guard", since_date)
         elif last_trade is not None and last_trade["date"] in guard_days:
             # The evening decides it. A name the guard's own leg list omitted, or
             # listed only as a candidate under the minimum, still traded on a guard
             # evening, and a guard evening is not a rebalance resizing a holding.
             since, since_kind = _trade_note(last_trade["date"], anchor, guard_days)
             since_date = last_trade["date"]
+            since_label = _short_since(since_kind, since_date)
         elif ticker in before_weights and ticker not in wanted and ticker not in have:
             since_date = events[-1]["date"] if events else anchor
             since = f"exited ({since_date})"
             since_kind = "exited"
+            since_label = _short_since("exited", since_date)
         elif ticker not in before_weights and ticker in wanted:
             since_date = events[0]["date"] if events else anchor
             if since_date == anchor:
@@ -720,25 +752,31 @@ def holdings(
             else:
                 since = f"opened ({since_date})"
             since_kind = "opened"
+            since_label = _short_since("opened", since_date)
         elif ticker in before_weights and ticker in have:
             if last_trade is not None:
                 since_date = last_trade["date"]
                 since, since_kind = _trade_note(since_date, anchor, guard_days)
+                since_label = _short_since(since_kind, since_date)
             elif events:
                 since_date = events[-1]["date"]
                 since, since_kind = _unsent_note(events, guard_days)
+                since_label = _short_since(since_kind, since_date)
             else:
                 since = "held, no trade since"
         elif ticker in have and ticker not in wanted:
             since_date = events[-1]["date"] if events else anchor
             since = f"held, not in the target since {since_date}"
             since_kind = "held-other"
+            since_label = _short_since("held-other", since_date)
         elif last_trade is not None:
             since_date = last_trade["date"]
             since, since_kind = _trade_note(since_date, anchor, guard_days)
+            since_label = _short_since(since_kind, since_date)
         elif events:
             since_date = events[-1]["date"]
             since, since_kind = _unsent_note(events, guard_days)
+            since_label = _short_since(since_kind, since_date)
         else:
             since = "held, no trade since"
         gap = gaps.get(ticker, 0.0)
@@ -748,6 +786,7 @@ def holdings(
                 "since": since,
                 "since_kind": since_kind,
                 "since_date": since_date,
+                "since_label": since_label,
                 "weight_now": have.get(ticker, 0.0),
                 "weight_target": wanted.get(ticker, 0.0),
                 "gap_weight": gap,
