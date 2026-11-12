@@ -7,6 +7,7 @@
 // has taken out, and a reader who cannot see the flatness cannot see the hedge.
 
 import { Details } from "./Details";
+import { HowToRead } from "./Panel";
 import { count, dateOnly, dollars, exposure, percent } from "./format";
 import type { MonthlyBlock, Snapshot } from "./types";
 
@@ -158,6 +159,10 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
   return (
     <section data-section="exposures" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">The hedge</h2>
+      <HowToRead>
+        each bar is one factor exposure as a share of NAV. Zero means the book has
+        no tilt to that factor.
+      </HowToRead>
       {anchor ? (
         <>
           <p className="mt-1 text-sm" data-hedge-verdict="true" data-hedge-anchor={anchorClose}>
@@ -165,7 +170,7 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
             <span className="font-mono tabular-nums">
               {exposure(anchor.after && worstOf(anchor.after))}
             </span>{" "}
-            of a unit exposure — that close hedged, so every factor&apos;s after value{" "}
+            of a unit exposure, and that close hedged, so every factor&apos;s after value{" "}
             <em>there</em> is zero to machine precision. Nothing was hedged tonight, so the
             &quot;now&quot; column is the book as it stands, not a hedge&apos;s output.
           </p>
@@ -189,14 +194,14 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
           <span className="font-mono tabular-nums">
             {exposure(snapshot.hedge?.max_abs_exposure_after_fmp)}
           </span>{" "}
-          of a unit exposure — the hedge is exact, so every factor&apos;s after value is zero to
+          of a unit exposure, and the hedge is exact, so every factor&apos;s after value is zero to
           machine precision, and the eighteen rows behind the disclosure below are the audit of
           that rather than a reading in themselves.
         </p>
       )}
       <Details
         hook="exposures"
-        summary={<>every factor, before and after the hedge — {rows.length} row(s)</>}
+        summary={<>every factor, before and after the hedge, {rows.length} row(s)</>}
       >
       <div className="overflow-x-auto">
         {/* Every column states its own width. The value columns are only as wide as

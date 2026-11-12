@@ -172,7 +172,7 @@ export function StatusStrip({
       </div>
       {read ? (
         <p data-flag="account-read" className="mt-1 text-xs text-slate-600">
-          {read.text} — {read.note}
+          {read.text}, {read.note}
         </p>
       ) : null}
       {notifyFailed ? (

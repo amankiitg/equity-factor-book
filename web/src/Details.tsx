@@ -9,7 +9,7 @@
 // in-page search when the reader knows what they are looking for.
 //
 // The summary always states what is inside and, where the number is what matters,
-// carries it: "the full 499-name book before the floor — 100.0%" tells the reader the
+// carries it: "the full 499-name book before the floor, 100.0%" tells the reader the
 // thing the collapsed row would have told them, so collapsing cannot hide a figure
 // that would have changed their morning.
 

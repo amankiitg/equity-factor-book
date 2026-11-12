@@ -7,6 +7,7 @@
 // notional the snapshot states.
 
 import { Details } from "./Details";
+import { HowToRead } from "./Panel";
 import type { BookFacts } from "./book";
 import { dollars, percent } from "./format";
 import type { BookName, MonthlyBlock, Snapshot } from "./types";
@@ -51,6 +52,10 @@ export function TopNames({
   return (
     <section data-section="top-names" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">The largest longs and shorts</h2>
+      <HowToRead>
+        the positions that matter most by size, with the loop&apos;s reason for
+        each one.
+      </HowToRead>
       <p className="mt-1 text-sm text-slate-600">
         the largest position is {facts.largest?.ticker ?? "n/a"}
         {facts.largest ? ` at ${percent(facts.largest.weight)} of NAV` : ""}; the two lists of ten
@@ -98,6 +103,10 @@ export function Reasons({ facts, snapshot }: { facts: BookFacts; snapshot: Snaps
   return (
     <section data-section="reasons" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">Trades by reason</h2>
+      <HowToRead>
+        every trade tonight, grouped by why it was sent, with the dollars beside
+        each group.
+      </HowToRead>
       <table className="mt-2 w-full border-collapse text-sm" aria-label="trades by reason">
         <thead>
           <tr className="border-b border-slate-300 text-left">
@@ -132,8 +141,8 @@ export function Reasons({ facts, snapshot }: { facts: BookFacts; snapshot: Snaps
           {exited !== null ? (
             <tr data-reason="exited" className="border-b border-slate-100">
               <td className="py-1">exited (closing legs of names that left)</td>
-              <td className="py-1 text-right font-mono tabular-nums">—</td>
-              <td className="py-1 text-right font-mono tabular-nums">—</td>
+              <td className="py-1 text-right font-mono tabular-nums">-</td>
+              <td className="py-1 text-right font-mono tabular-nums">-</td>
               <td className="py-1 text-right font-mono tabular-nums" data-traded="exited">
                 {dollars(exited)}
               </td>

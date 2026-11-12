@@ -14,6 +14,7 @@
 // with the two numbers that disagree, rather than as a fifth figure to trust.
 
 import { count, dollars, shares } from "./format";
+import { HowToRead } from "./Panel";
 import type { BridgeBlock, Snapshot } from "./types";
 
 /** How many names each gap list prints before it counts the rest. */
@@ -95,7 +96,7 @@ function Arithmetic({ block }: { block: BridgeBlock }) {
             {step ? ` ${step.unit}` : ""} {check.holds ? "✓" : "✗"}
             {!check.holds ? (
               <span className="ml-1 font-sans">
-                — the two sides differ
+                , the two sides differ
                 {block.reversals_pending.length + block.removed_without_order.length > 0
                   ? `, and the names that explain a gap are ${
                       [
@@ -148,6 +149,11 @@ export function Bridge({ snapshot }: { snapshot: Snapshot }) {
       }
     >
       <h2 className="text-base font-semibold">The book bridge</h2>
+      <HowToRead>
+        these are the same dollars counted three ways, before the rebalance, after
+        it, and in the account now. The last line says whether the arithmetic adds
+        up.
+      </HowToRead>
       <p className="mt-1 font-mono text-sm tabular-nums" data-bridge-line="true">
         {line}
       </p>

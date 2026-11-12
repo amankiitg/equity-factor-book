@@ -55,6 +55,15 @@ export function Panel({
 }
 
 
+/** One short sentence at the top of a panel, for a reader seeing it first. */
+export function HowToRead({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-xs text-slate-500" data-how-to-read="true">
+      how to read this: {children}
+    </p>
+  );
+}
+
 /**
  * The three words the page uses, defined once.
  *

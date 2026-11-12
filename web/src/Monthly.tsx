@@ -13,7 +13,15 @@
 import { dateOnly, dollars, percent, signedDollars } from "./format";
 import type { MonthlyBlock } from "./types";
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({
+  title,
+  howToRead,
+  children,
+}: {
+  title: string;
+  howToRead: string;
+  children: React.ReactNode;
+}) {
   return (
     <section
       data-panel="monthly"
@@ -21,6 +29,9 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
     >
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
         {title}
+      </p>
+      <p className="mb-1 text-xs text-slate-500" data-how-to-read="true">
+        how to read this: {howToRead}
       </p>
       {children}
     </section>
@@ -43,16 +54,24 @@ export function CadenceStrip({ monthly }: { monthly: MonthlyBlock }) {
   const guard = strip.guard;
   const fired = guard.fired ? "fired" : guard.ran ? "held" : "did not run";
   return (
-    <Card title="cadence">
+    <Card
+      title="cadence"
+      howToRead="a hold day is an ordinary day between monthly rebalances. The guard line says how far the book was from its hedge limit."
+    >
       <dl data-cadence="true" className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
         <Stat
-          label="hold day"
+          label="today"
           value={
-            strip.k === null || strip.k === undefined
-              ? "daily"
-              : strip.k === 1
+            strip.day === "rebalance"
+              ? "rebalance"
+              : strip.k === null || strip.k === undefined || strip.k === 1
                 ? "daily"
-                : `${strip.sessions_since ?? 0} of ${strip.k}`
+                : "hold day"
+          }
+          detail={
+            strip.day === "rebalance" || strip.k === null || strip.k === undefined || strip.k === 1
+              ? undefined
+              : `${strip.sessions_since ?? 0} of ${strip.k}`
           }
         />
         <Stat label="last rebalance" value={dateOnly(strip.last_rebalance) ?? "-"} />
@@ -80,7 +99,10 @@ export function RebalanceCard({ monthly }: { monthly: MonthlyBlock }) {
   const card = monthly.rebalance_card;
   if (!card || card.orders === undefined) return null;
   return (
-    <Card title={`the rebalance of ${dateOnly(card.close) ?? "the anchor"}`}>
+    <Card
+      title={`the rebalance of ${dateOnly(card.close) ?? "the anchor"}`}
+      howToRead="this card is only the rebalance itself, not the days since it."
+    >
       <dl data-rebalance="true" className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
         <Stat
           label="orders"
@@ -141,7 +163,10 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
   const legDate = (filledAt: string | null | undefined, close: string | null): string =>
     dateOnly(filledAt ?? close) ?? "-";
   return (
-    <Card title="the rebalance, from the account before it to the account now">
+    <Card
+      title="the rebalance, from the account before it to the account now"
+      howToRead="a flip closes one side and opens the other, so leg 1 and leg 2 are one decision. The position now differs from leg 2 because prices moved after the trades."
+    >
       <dl data-flips={bridge.flipped} className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
         <Stat label="before" value={dollars(bridge.before_dollars)} detail="account, anchor close" />
         <Stat
@@ -157,55 +182,75 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
         <Stat label="now" value={dollars(bridge.after_dollars)} detail="account, latest close" />
       </dl>
       {flips.length ? (
-        // Two lines per flip rather than six columns: at 390 px a six-column table
-        // scrolled sideways, and the three things a reader needs - which name, which
-        // way round, and how much - have to be readable without scrolling. The
-        // dollars and their dates sit under the name and the side, so nothing is
-        // dropped to make it fit.
-        <ul data-flip-table="true" className="mt-2 flex flex-col gap-2 text-xs">
-          {flips.map((flip) => (
-            <li
-              key={flip.ticker}
-              data-flip={flip.ticker}
-              className="border-b border-slate-100 pb-1.5"
-            >
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="font-mono text-sm font-semibold">{flip.ticker}</span>
-                <span className="flex-1 truncate text-slate-700">
-                  {flip.from_side} to {flip.to_side}
-                </span>
-                <span className="font-mono tabular-nums">{signedDollars(flip.now_dollars)}</span>
-              </div>
-              <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 font-mono text-slate-600">
-                <span>
-                  closed {dollars(flip.close_dollars)}
-                  <span className="text-slate-500">
-                    {" "}
-                    {legDate(flip.close_filled_at, flip.close_filled)}
-                  </span>
-                </span>
-                <span aria-hidden="true">→</span>
-                <span>
-                  opened {dollars(flip.open_dollars)}
-                  <span className="text-slate-500">
-                    {" "}
-                    {legDate(flip.open_filled_at, flip.open_filled)}
-                  </span>
-                </span>
-                <span
-                  data-flip-state={flip.complete ? "complete" : "owed"}
-                  className="ml-auto font-sans"
+        <>
+          <div
+            data-flip-header="true"
+            className="mt-2 hidden gap-2 border-b border-slate-200 pb-1 text-slate-500 sm:grid sm:grid-cols-3"
+          >
+            <span>leg 1: closed the old position (trade size)</span>
+            <span>leg 2: opened the new side (trade size)</span>
+            <span>position now (minus = short, at today&apos;s price)</span>
+          </div>
+          <ul data-flip-table="true" className="mt-2 flex flex-col gap-2 text-xs">
+            {flips.map((flip) => {
+              const state = flip.state ?? (flip.complete ? "complete" : "owed");
+              const label =
+                flip.state_label ?? (flip.complete ? "complete" : "still owed");
+              return (
+                <li
+                  key={flip.ticker}
+                  data-flip={flip.ticker}
+                  className="border-b border-slate-100 pb-1.5"
                 >
-                  {flip.complete ? "complete" : "still owed"}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="font-mono text-sm font-semibold">{flip.ticker}</span>
+                    <span className="flex-1 truncate text-slate-700">
+                      {flip.from_side} to {flip.to_side}
+                    </span>
+                    <span
+                      data-flip-state={state}
+                      className="font-sans text-slate-600"
+                    >
+                      {label}
+                    </span>
+                  </div>
+                  <div className="mt-1 grid gap-1 sm:grid-cols-3">
+                    <div data-flip-leg="1" className="font-mono text-slate-600">
+                      <span className="block font-sans text-slate-500 sm:hidden">
+                        leg 1: closed the old position (trade size)
+                      </span>
+                      <span className="tabular-nums">{dollars(flip.close_dollars)}</span>
+                      <span className="text-slate-500">
+                        {" "}
+                        {legDate(flip.close_filled_at, flip.close_filled)}
+                      </span>
+                    </div>
+                    <div data-flip-leg="2" className="font-mono text-slate-600">
+                      <span className="block font-sans text-slate-500 sm:hidden">
+                        leg 2: opened the new side (trade size)
+                      </span>
+                      <span className="tabular-nums">{dollars(flip.open_dollars)}</span>
+                      <span className="text-slate-500">
+                        {" "}
+                        {legDate(flip.open_filled_at, flip.open_filled)}
+                      </span>
+                    </div>
+                    <div data-flip-leg="now" className="font-mono text-slate-600">
+                      <span className="block font-sans text-slate-500 sm:hidden">
+                        position now (minus = short, at today&apos;s price)
+                      </span>
+                      <span className="tabular-nums">{signedDollars(flip.now_dollars)}</span>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       ) : null}
-      <p className="mt-1 text-xs text-slate-500">
-        a flip counts once, with both legs, and is complete when the account is on the
-        target side within the order minimum. It is never an exit plus an open.
+      <p className="mt-1 text-xs text-slate-500" data-flip-why="true">
+        why the position now differs from leg 2: prices moved after the trades, so the
+        dollar value changed. The side did not.
       </p>
     </Card>
   );
@@ -215,7 +260,10 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
   const drift = monthly.drift;
   if (!drift) return null;
   return (
-    <Card title="distance from the rebalance target">
+    <Card
+      title="distance from the rebalance target"
+      howToRead="the gap is the account minus the rebalance target. A negative dollar figure means that name is smaller than the target."
+    >
       <dl data-drift="true" className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
         <Stat
           label="drift"
@@ -264,7 +312,10 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
   const trades = monthly.since_anchor?.trades_by_reason ?? [];
   if (!trades.length) return null;
   return (
-    <Card title="every leg since the rebalance, by why it went">
+    <Card
+      title="every leg since the rebalance, by why it went"
+      howToRead="every order leg since the rebalance, grouped by why it was sent."
+    >
       <div className="overflow-x-auto">
         <table data-trades-reason="true" className="w-full min-w-[16rem] text-left text-xs">
         <tbody className="font-mono">
@@ -361,7 +412,10 @@ export function MonthlyPanels({ monthly }: { monthly?: MonthlyBlock | null }) {
       <DriftCard monthly={monthly} />
       <div data-columns="true" className="grid min-w-0 gap-3 lg:grid-cols-2">
         <TradesSinceAnchor monthly={monthly} />
-        <Card title="tonight">
+        <Card
+          title="tonight"
+          howToRead="what is still owed after tonight. A leg that cannot be sent is a refusal, not an order in flight."
+        >
           <TonightLine monthly={monthly} />
         </Card>
       </div>

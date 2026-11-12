@@ -12,9 +12,9 @@ import { useMemo, useState } from "react";
 
 import { dollars, percent } from "./format";
 import { UNMAPPED, sectorNameFor } from "./sectors";
-import type { BookName } from "./types";
+import type { BookName, MonthlyBlock } from "./types";
 
-type SortKey = "ticker" | "side" | "sector" | "weight" | "dollars" | "reason";
+type SortKey = "ticker" | "side" | "sector" | "weight" | "dollars" | "since";
 type Direction = "asc" | "desc";
 
 interface Row {
@@ -27,10 +27,12 @@ export function HoldingsTable({
   names,
   nav,
   query = "",
+  monthly = null,
 }: {
   names: BookName[];
   nav: number | null;
   query?: string;
+  monthly?: MonthlyBlock | null;
 }) {
   const [sort, setSort] = useState<{ key: SortKey; direction: Direction }>({
     key: "weight",
@@ -47,6 +49,12 @@ export function HoldingsTable({
       })),
     [names],
   );
+  const since = useMemo(() => {
+    const map = new Map<string, NonNullable<MonthlyBlock["holdings"]>["rows"][number]>();
+    for (const row of monthly?.holdings?.rows ?? []) map.set(row.ticker, row);
+    return map;
+  }, [monthly]);
+  const anchored = since.size > 0;
 
   const sectorsPresent = useMemo(
     () => [...new Set(rows.map((row) => row.sector))].sort(),
@@ -68,8 +76,8 @@ export function HoldingsTable({
           return row.name.side ?? "";
         case "sector":
           return row.sector;
-        case "reason":
-          return row.name.reason ?? "";
+        case "since":
+          return since.get(row.name.ticker ?? "")?.since ?? row.name.reason ?? "";
         case "weight":
         case "dollars":
           return row.absolute;
@@ -84,7 +92,7 @@ export function HoldingsTable({
           : String(left).localeCompare(String(right));
       return sort.direction === "asc" ? order : -order;
     });
-  }, [rows, sector, query, sort]);
+  }, [rows, sector, query, sort, since]);
 
   if (names.length === 0) return null;
 
@@ -105,7 +113,7 @@ export function HoldingsTable({
               : {
                   key,
                   direction:
-                    key === "ticker" || key === "sector" || key === "reason" || key === "side"
+                    key === "ticker" || key === "sector" || key === "since" || key === "side"
                       ? "asc"
                       : "desc",
                 },
@@ -121,6 +129,10 @@ export function HoldingsTable({
 
   return (
     <div data-section="holdings" data-holdings="true">
+      <p className="pb-1 text-xs text-slate-500" data-how-to-read="true">
+        how to read this: each row is a name in today&apos;s book. The last column
+        says what it did since the last rebalance.
+      </p>
       <div className="flex flex-wrap items-end gap-3 py-2">
         <label className="text-sm">
           <span className="block text-xs uppercase tracking-wide text-slate-500">sector</span>
@@ -152,7 +164,7 @@ export function HoldingsTable({
               {header("sector", "sector")}
               {header("weight", "weight", "right")}
               {header("dollars", "dollars", "right")}
-              {header("reason", "reason")}
+              {anchored ? header("since", "since the rebalance") : header("since", "reason")}
             </tr>
           </thead>
           <tbody>
@@ -173,7 +185,16 @@ export function HoldingsTable({
                 <td className="py-1 text-right font-mono tabular-nums">
                   {dollars(nav === null ? null : row.absolute * nav)}
                 </td>
-                <td className="py-1 text-slate-600">{row.name.reason ?? ""}</td>
+                <td className="py-1 text-slate-600">
+                  {anchored
+                    ? since.get(row.name.ticker ?? "")?.since ?? "held, no trade since"
+                    : row.name.reason ?? ""}
+                  {anchored && since.get(row.name.ticker ?? "")?.tonight ? (
+                    <span className="block text-xs text-slate-400">
+                      {since.get(row.name.ticker ?? "")?.tonight}
+                    </span>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -109,13 +109,21 @@ export function DrawerSection({
 
       {shown === null ? (
         <p className="px-3 py-2 text-sm text-slate-600" data-drawer-hint="true">
-          the two tables are closed, open one to read the names
+          <span data-how-to-read="true">
+            how to read this: open a table to see the names. The search box filters
+            whichever table is open.
+          </span>
         </p>
       ) : null}
 
       {shown === "book" ? (
         <div className="px-3 pb-3 pt-2">
-          <HoldingsTable names={snapshot.book.names} nav={facts.nav} query={query} />
+          <HoldingsTable
+            names={snapshot.book.names}
+            nav={facts.nav}
+            query={query}
+            monthly={snapshot.monthly}
+          />
         </div>
       ) : null}
 
@@ -126,6 +134,7 @@ export function DrawerSection({
             names={snapshot.book?.names ?? []}
             nav={facts.nav}
             query={query}
+            monthly={snapshot.monthly}
           />
         </div>
       ) : null}

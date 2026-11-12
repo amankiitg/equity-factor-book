@@ -363,7 +363,7 @@ export function reconciliation(snapshot: Snapshot, exceptions: Exceptions): Reco
       // The writer's own sentence is kept rather than paraphrased: the page's job is
       // to classify the names, not to restate what the run said about them.
       detail: `${expected} mismatch(es), every one of them a class the document explains${
-        positions.note ? ` — ${positions.note}` : ""
+        positions.note ? `, ${positions.note}` : ""
       }`,
     });
   } else {
@@ -371,7 +371,7 @@ export function reconciliation(snapshot: Snapshot, exceptions: Exceptions): Reco
       name: "account against the store",
       state: "unresolved",
       detail: `${unexpected} unexplained mismatch(es) and ${expected} explained${
-        positions.note ? ` — ${positions.note}` : ""
+        positions.note ? `, ${positions.note}` : ""
       }`,
     });
   }

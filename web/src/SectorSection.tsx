@@ -29,6 +29,7 @@
 
 import { compareAccount, nameKindText, type NameCompare } from "./account";
 import { Details } from "./Details";
+import { HowToRead } from "./Panel";
 import { count, dollars, percent, signedDollars } from "./format";
 import { UNMAPPED, sectorCodeFor, sectorLabel } from "./sectors";
 import type { BookFacts, SectorBucket } from "./book";
@@ -264,6 +265,10 @@ export function AnchoredSectorSection({ block }: { block: NonNullable<MonthlyBlo
       <h2 className="text-base font-semibold">
         By sector: account against the {anchor ?? "rebalance"} target
       </h2>
+      <HowToRead>
+        each row is one sector. The net is the account minus the rebalance target,
+        and the traded figure is how far the names inside it moved.
+      </HowToRead>
       <p className="mt-1 text-xs text-slate-600">
         Signed dollars, net by sector, at the NAV the rebalance was sized on (
         {dollars(block.nav)}). The net is small because the book is built sector-neutral, so
@@ -392,6 +397,10 @@ export function SectorSection({
   return (
     <section data-section="sector" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">By sector: account against target</h2>
+      <HowToRead>
+        each row is one sector, target against account. Blue means the account
+        holds more, violet means it holds less.
+      </HowToRead>
       <p className="mt-1 text-xs text-slate-600">
         Signed dollars, sorted by size: blue where the account holds more net than the target
         asks for, violet where it holds less. The two books are turned into dollars with the
@@ -399,7 +408,7 @@ export function SectorSection({
         {nav === null ? "" : ` (${dollars(nav)})`}, and the account side is the read the strip
         names
         {morning
-          ? " — this morning's, after the fills, so the difference is what the orders left behind."
+          ? ", this morning's, after the fills, so the difference is what the orders left behind."
           : ", which the evening took before the orders went out."}
       </p>
       {worst ? (
@@ -422,7 +431,7 @@ export function SectorSection({
 
       <Details
         hook="sector-gross"
-        summary={<>the target&apos;s long and short gross by sector — {count(rows.length)} sector(s)</>}
+        summary={<>the target&apos;s long and short gross by sector, {count(rows.length)} sector(s)</>}
       >
         <p className="text-xs text-slate-500">
           The book is neutral by construction, so each sector&apos;s long and short gross sit

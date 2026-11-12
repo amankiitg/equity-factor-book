@@ -23,6 +23,7 @@
 // built, and the disclosure says which legs the per-name column leaves out.
 
 import { Details } from "./Details";
+import { HowToRead } from "./Panel";
 import { EXPECTED_EXPENSE, bpOfNav } from "./labels";
 import { count, dollars, oneDecimal, percent } from "./format";
 import type { BookFacts } from "./book";
@@ -156,6 +157,10 @@ export function MetricsRow({
 
   return (
     <section data-cards="true" className="rounded border border-slate-200 bg-white p-2">
+      <HowToRead>
+        the book at a glance. Every money figure is a share of NAV, so the
+        percentages are the comparison and the dollars are the size.
+      </HowToRead>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <Card
           hook="gross"
@@ -258,7 +263,7 @@ export function MetricsRow({
         hook="construction"
         summary={
           <>
-            construction telemetry — the full book before the floor, {percent(book?.full_book_gross)}{" "}
+            construction telemetry: the full book before the floor, {percent(book?.full_book_gross)}{" "}
             of NAV
           </>
         }
@@ -332,7 +337,7 @@ export function MetricsRow({
           </code>
           ,{" "}
           {sentNotional === null
-            ? "every leg the evening built for this close, whether or not it was sent — this document predates the sent-only figure, so the card stands on the built one."
+            ? "every leg the evening built for this close, whether or not it was sent. This document predates the sent-only figure, so the card stands on the built one."
             : "the legs the broker was sent for this close; the legs built and never sent are stated beside it."}
           {perNameTotal > 0
             ? ` The book's own per-name rows total ${dollars(

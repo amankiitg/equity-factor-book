@@ -8,7 +8,9 @@ rebalance and opened on the next session, each complete at the next account read
 
 from __future__ import annotations
 
+import ast
 import json
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -780,3 +782,146 @@ def test_the_block_carries_the_anchors_own_exposures() -> None:
 def test_a_close_whose_anchor_carries_no_vectors_leaves_the_field_out() -> None:
     block = _anchored_block({})
     assert "anchor_exposures" not in block
+
+
+def _ccl_reflip_block() -> dict:
+    """The 2026-10-23 flip, the 2026-10-26 open, and the 2026-11-04 guard leg."""
+    anchor, opened, guard, latest = (
+        "2026-10-23",
+        "2026-10-26",
+        "2026-11-04",
+        "2026-11-05",
+    )
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [anchor, "2026-10-29", guard],
+            "manifest": [
+                {"cadence": {"day": "rebalance"}},
+                {"cadence": {"day": "hold", "k": 21}},
+                {
+                    "cadence": {"day": "hold", "k": 21},
+                    "drift_guard": {
+                        "fired": True,
+                        "legs": [{"ticker": "CCL", "traded": True}],
+                    },
+                },
+            ],
+        }
+    )
+    target = pd.DataFrame(
+        {
+            "trade_date": [anchor],
+            "ticker": ["CCL"],
+            "side": ["long"],
+            "weight": [0.01],
+        }
+    )
+    before = pd.DataFrame(
+        {
+            "trade_date": [anchor],
+            "ticker": ["CCL"],
+            "side": ["short"],
+            "market_value": [-600.0],
+        }
+    )
+    now = pd.DataFrame(
+        {
+            "trade_date": [latest],
+            "ticker": ["CCL"],
+            "side": ["long"],
+            "market_value": [700.0],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [anchor, opened, guard],
+            "ticker": ["CCL", "CCL", "CCL"],
+            "intended_notional": [600.0, 700.0, -650.0],
+            "reason_code": ["", "", ""],
+            "position_intent": ["buy_to_close", "buy_to_open", "sell_to_close"],
+        }
+    )
+    fills = pd.DataFrame(
+        {
+            "trade_date": [anchor, opened, guard],
+            "ticker": ["CCL", "CCL", "CCL"],
+            "filled_notional": [605.0, 699.0, 648.0],
+            "status": ["FILLED", "FILLED", "FILLED"],
+        }
+    )
+    return monthly_view.block(
+        proposals=proposals,
+        targets=target,
+        account=pd.concat([before, now]),
+        orders=orders,
+        fills=fills,
+        today=latest,
+        tonight_manifest={"cadence": {"day": "hold", "k": 21}},
+        nav=1_000_000.0,
+    )
+
+
+def test_a_later_guard_leg_is_a_reflip_and_says_so() -> None:
+    block = _ccl_reflip_block()
+    row = block["bridge_anchor"]["flip_rows"][0]
+    assert row["ticker"] == "CCL"
+    assert row["refipped_on"] == "2026-11-04"
+    assert row["state"] == "refipped"
+    assert row["state_label"] == ("re-flipped later by the drift guard on 2026-11-04")
+    held = {item["ticker"]: item for item in block["holdings"]["rows"]}["CCL"]
+    assert "flipped (2026-10-23 to 2026-10-26)" in held["since"]
+    assert "drift guard leg (2026-11-04)" in held["since"]
+
+
+def test_kvues_own_row_says_retired_owed_and_cannot_be_traded() -> None:
+    anchor, latest = "2026-10-23", "2026-11-05"
+    target = pd.DataFrame(
+        {
+            "trade_date": [anchor, anchor],
+            "ticker": ["KVUE", "AAA"],
+            "side": ["long", "long"],
+            "weight": [0.004, 0.01],
+        }
+    )
+    now = pd.DataFrame(
+        {
+            "trade_date": [latest],
+            "ticker": ["AAA"],
+            "side": ["long"],
+            "weight": [0.01],
+        }
+    )
+    block = monthly_view.block(
+        proposals=_proposals((anchor, "rebalance"), (latest, "hold")),
+        targets=target,
+        account=now,
+        orders=pd.DataFrame(),
+        fills=pd.DataFrame(),
+        today=latest,
+        tonight_manifest={"cadence": {"day": "hold", "k": 21}},
+        nav=1_000_000.0,
+    )
+    rows = {item["ticker"]: item for item in block["holdings"]["rows"]}
+    kvue = rows["KVUE"]
+    assert kvue["retired"] is True and kvue["owed"] is True
+    assert kvue["since"] == "retired (acquired by KMB), owed, cannot be traded"
+    assert kvue["gap_weight"] == pytest.approx(-0.004)
+    assert kvue["gap_usd"] == pytest.approx(-4_000.0)
+    assert rows["AAA"]["since"] == "opened at the rebalance (2026-10-23)"
+
+
+def test_no_em_or_en_dash_in_page_text_or_block_strings() -> None:
+    """A dash that renders as punctuation is still a dash. The test forbids it."""
+    root = Path(__file__).resolve().parents[1]
+    forbidden = ("\u2014", "\u2013")
+    for path in sorted((root / "web" / "src").glob("*.ts*")):
+        if ".test." in path.name:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for dash in forbidden:
+            assert dash not in text, f"{path.name} carries {dash!r}"
+    tree = ast.parse((root / "live" / "monthly_view.py").read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            for dash in forbidden:
+                assert dash not in node.value, f"monthly_view string carries {dash!r}"

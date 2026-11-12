@@ -30,6 +30,7 @@
 // other number on the page implies, which is what happened to PSKY on 2026-10-06.
 
 import { Details } from "./Details";
+import { HowToRead } from "./Panel";
 import { NEXT_STEP, exceptionText, type Exceptions, type Mismatch } from "./exceptions";
 import { dollars, percent, shares, signedDollars } from "./format";
 import { Panel } from "./Panel";
@@ -83,23 +84,23 @@ function EveningCompare({
       hook="evening-compare"
       summary={
         <>
-          last night&apos;s check, before the orders ({names.join(", ")}) — {verdict}
+        last night&apos;s check, before the orders ({names.join(", ")}). {verdict}
         </>
       }
     >
       <p className="text-xs text-slate-600">
         The evening read the account before it sent anything, so this compares it with the
-        positions the loop had written down — not with the target, and not after the fills. The
+        positions the loop had written down, not with the target, and not after the fills. The
         morning&apos;s read above replaced it{resolved > 0 ? `; ${resolved} name(s) here are ones it has already settled` : ""}.
       </p>
       <ul className="mt-1 text-sm">
         {evening.map((entry) => (
           <li key={`${entry.side}-${entry.ticker}`} data-evening-mismatch={entry.side}>
-            <span className="font-mono">{entry.ticker}</span> —{" "}
+            <span className="font-mono">{entry.ticker}</span>,{" "}
             {entry.side === "at_broker"
               ? "the loop&apos;s own record has it and the account does not"
               : "the account has it and the loop&apos;s own record does not"}
-            {entry.key === "" ? ", and nothing here explains it" : ` — ${entry.why}`}
+            {entry.key === "" ? ", and nothing here explains it" : `, ${entry.why}`}
             {entry.key === "" ? "" : `; ${NEXT_STEP[entry.label]}`}
           </li>
         ))}
@@ -137,6 +138,10 @@ function ReconciliationPanel({
       }`}
     >
       <p className="font-semibold">{reconciled.headline}</p>
+      <HowToRead>
+        these checks compare the account, the target and the store. A check marked
+        explained is a difference the document itself accounts for.
+      </HowToRead>
       <ul className="mt-1 text-sm">
         {reconciled.checks.map((check) => (
           <li key={check.name} data-check={check.state} className={checkClass(check.state)}>
@@ -159,7 +164,7 @@ function ReconciliationPanel({
                 ? ""
                 : ` (${percent(row.delta / Math.abs(row.target), 1)} of the position)`}
               : the account holds {dollars(row.held)} against the target&apos;s{" "}
-              {dollars(row.target)} — price moved since the close
+              {dollars(row.target)}: price moved since the close
             </li>
           ))}
           {drifts.length > DRIFT_LINES ? (
@@ -183,7 +188,7 @@ function ReconciliationPanel({
                 <span className="rounded bg-amber-100 px-1 text-xs font-semibold uppercase tracking-wide text-amber-900">
                   {entry.label}
                 </span>{" "}
-                — {entry.why}; {NEXT_STEP[entry.label]}.
+                , {entry.why}; {NEXT_STEP[entry.label]}.
               </li>
             ))}
             {left.length > MISMATCH_LINES ? <li>and {left.length - MISMATCH_LINES} more</li> : null}
@@ -260,11 +265,15 @@ export function Alerts({
             {gone.length} position{gone.length === 1 ? "" : "s"} left the account with no
             order behind {gone.length === 1 ? "it" : "them"}
           </p>
+          <HowToRead>
+            a name that was held before and is gone now, with no closing fill and no
+            broker activity to explain it.
+          </HowToRead>
           <ul className="text-sm">
             {gone.map((name) => (
               <li key={name.ticker}>
                 <span className="font-mono">{name.ticker}</span> {shares(name.quantity)} shares
-                ({dollars(name.notional)}) — no closing order filled
+                ({dollars(name.notional)}), no closing order filled
                 {exits?.feed === "read" ? " and no activity of the broker's" : ""}
               </li>
             ))}
@@ -294,6 +303,9 @@ export function Alerts({
               ? `, and ${notSent.length} leg${notSent.length === 1 ? "" : "s"} could not be sent`
               : ""}
           </p>
+          <HowToRead>
+            legs the broker did not fill, and legs the run could not send at all.
+          </HowToRead>
           <ul className="text-sm">
             {misses.slice(0, MISS_LINES).map((line) => (
               <li key={line}>{line}</li>
