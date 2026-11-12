@@ -87,6 +87,25 @@ TRADED_STATUS = "traded"
 # one other reader asks about it: `failed_attempt_detail` keeps a failed attempt's
 # story on the row a later start would otherwise overwrite.
 ERROR_STATUS = "error"
+# The close a rehearsal asked for, or None in production.
+#
+# The pinned clock alone is not enough: the pricing path reads clocks of its own.
+# `extend_prices` and `extend_shares` default to today, and `build_proposal`
+# defaults to the panel's last session, so an evening whose clock said 2026-10-29
+# extended the tree to the real today, priced today's close and filed a proposal
+# dated today while the message named the close that was asked for. One pin,
+# threaded into those three calls, is what makes a rehearsal price the close it
+# rehearses.
+#
+# None is the production answer and the default: every call below then falls back
+# to the clock exactly as it always did, which is a property the tests assert
+# rather than assume.
+PINNED_CLOSE: str | None = None
+
+
+def pricing_close() -> str | None:
+    """The close to price: the rehearsal's pin, or None so the run reads its clock."""
+    return PINNED_CLOSE
 
 
 def already_ran(job: str, run_date: str) -> bool:
@@ -2029,10 +2048,13 @@ def main() -> int:
         # on a fresh container finds the panel sessions behind and catches them
         # up in one go, and a catch-up run may not be one of the gate's closes.
         before_last = extend.last_price_session()
-        # Extend the data and model layers by one session.
+        # Extend the data and model layers by one session. A rehearsal hands both
+        # extensions the close it was asked for; production passes None and each
+        # one reads the clock as it always has.
+        pricing_end = pricing_close()
         extend.extend_archives()
-        extend.extend_prices()
-        extend.extend_shares()
+        extend.extend_prices(end=pricing_end)
+        extend.extend_shares(end=pricing_end)
         extend.extend_returns()
         # The corporate-actions rule, in the append path and before anything reads
         # the returns. The vendor back-adjusts history on a split, this pipeline
@@ -2326,6 +2348,11 @@ def main() -> int:
             ),
         )
         manifest = evening_job.build_proposal(
+            # The close the book is priced on. `None` in production, where the
+            # panel's last session is the answer the run has always used; the
+            # rehearsal's pin otherwise, so the proposal, its artifacts and every
+            # row keyed on it carry the requested close rather than today's.
+            as_of=pd.Timestamp(pricing_end) if pricing_end is not None else None,
             appendix=appendix_identity,
             previous=prior_weights,
             reversal_targets=reversal_targets,
