@@ -148,12 +148,11 @@ export function Bridge({ snapshot }: { snapshot: Snapshot }) {
           : "rounded border border-amber-300 bg-amber-50 p-3 text-amber-900"
       }
     >
-      <h2 className="text-base font-semibold">The book bridge</h2>
-      <HowToRead>
+      <h2 className="text-base font-semibold">The book bridge <HowToRead>
         the same book is counted before the rebuild, after it, and in the account
         now, so the three totals have to agree. Example: on 11-11 the same 195 names
         appear in both books, and the check says it holds.
-      </HowToRead>
+      </HowToRead></h2>
       <p className="mt-1 font-mono text-sm tabular-nums" data-bridge-line="true">
         {line}
       </p>

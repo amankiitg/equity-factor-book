@@ -137,12 +137,11 @@ function ReconciliationPanel({
           : "border-slate-300 bg-slate-50 text-slate-800"
       }`}
     >
-      <p className="font-semibold">{reconciled.headline}</p>
-      <HowToRead>
+      <p className="font-semibold">{reconciled.headline} <HowToRead>
         each check adds the same dollars two ways, and a difference is raised only
         when nothing in the document explains it. Example: on 11-11 the book bridge
         read 195 names in both books and 195 now, so it held.
-      </HowToRead>
+      </HowToRead></p>
       <ul className="mt-1 text-sm">
         {reconciled.checks.map((check) => (
           <li key={check.name} data-check={check.state} className={checkClass(check.state)}>
@@ -265,12 +264,11 @@ export function Alerts({
           <p className="font-semibold">
             {gone.length} position{gone.length === 1 ? "" : "s"} left the account with no
             order behind {gone.length === 1 ? "it" : "them"}
-          </p>
-          <HowToRead>
+           <HowToRead>
             a name that left the account without an order or a fill to show why, so
             the gap is real rather than a bookkeeping one. Example: KVUE left on 11-11
             because the broker marked it inactive after the KMB acquisition.
-          </HowToRead>
+          </HowToRead></p>
           <ul className="text-sm">
             {gone.map((name) => (
               <li key={name.ticker}>
@@ -304,12 +302,11 @@ export function Alerts({
             {notSent.length > 0
               ? `, and ${notSent.length} leg${notSent.length === 1 ? "" : "s"} could not be sent`
               : ""}
-          </p>
-          <HowToRead>
+           <HowToRead>
             a miss is an order the broker never filled or a leg the run refused
             before sending, and either one leaves the book away from its target.
             Example: JBL's $269 is under one share, so no order can be placed at all.
-          </HowToRead>
+          </HowToRead></p>
           <ul className="text-sm">
             {misses.slice(0, MISS_LINES).map((line) => (
               <li key={line}>{line}</li>

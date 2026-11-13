@@ -157,11 +157,14 @@ export function MetricsRow({
 
   return (
     <section data-cards="true" className="rounded border border-slate-200 bg-white p-2">
-      <HowToRead>
-        every figure is a share of NAV, so today&apos;s book compares with last
-        month&apos;s even after the equity moves. Example: gross was 97.3% of NAV on
-        11-11, with the long and short sides almost the same size.
-      </HowToRead>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        the book
+        <HowToRead>
+          every figure is a share of NAV, so today&apos;s book compares with last
+          month&apos;s even after the equity moves. Example: gross was 97.3% of NAV on
+          11-11, with the long and short sides almost the same size.
+        </HowToRead>
+      </p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <Card
           hook="gross"

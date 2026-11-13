@@ -10,6 +10,8 @@
 
 import { useMemo, useState } from "react";
 
+import { HowToRead } from "./Panel";
+
 import { dateOnly, dateTime, dollars, percent, signedDollars, signedPercent } from "./format";
 import type { ActualHoldings, BookName, MonthlyBlock, MonthlyHoldingRow } from "./types";
 
@@ -215,12 +217,12 @@ export function ActualHoldingsTable({
 
   return (
     <div>
-      <p className="pb-1 text-xs text-slate-500" data-how-to-read="true">
-        how to read this: a minus gap means the account holds less of that name
-        than the target asked for, at today&apos;s price, and the size of the gap is
-        what the next rebuild would trade. Example: on 11-11 NVDA sat $3,919 away
-        from its target, the largest single gap in the book.
-      </p>
+      <HowToRead>
+        a minus gap means the account holds less of that name than the target asked
+        for, at today&apos;s price, and the size of the gap is what the next rebuild
+        would trade. Example: on 11-11 NVDA sat $3,919 away from its target, the
+        largest single gap in the book.
+      </HowToRead>
       <p className="text-sm text-slate-600" data-actual="read">
         {/* The read time as a date and a time: the evening's read and the
             morning's are hours apart, and which one this is decides whether the

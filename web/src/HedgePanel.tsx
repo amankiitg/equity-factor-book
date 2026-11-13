@@ -149,13 +149,12 @@ export function HedgePanel({
         data-hedge-anchored="true"
         className="rounded border border-slate-200 bg-white p-3"
       >
-        <h2 className="text-base font-semibold">The hedge&apos;s own footprint</h2>
-        <HowToRead>
+        <h2 className="text-base font-semibold">The hedge&apos;s own footprint <HowToRead>
           the hedge is the part of each position that cancels a factor, so it
           re-weights names the book already holds instead of adding new ones.
           Example: on 10-23 it moved 88 of 196 names, $122,805 of legs, 22.6% of
           that rebuild&apos;s turnover.
-        </HowToRead>
+        </HowToRead></h2>
         <AnchoredHedge block={anchored} />
         <p className="mt-1 text-xs text-slate-600">
           <span className="font-medium">A proxy.</span> The names carry the loop&apos;s own
@@ -169,12 +168,11 @@ export function HedgePanel({
 
   return (
     <section data-section="hedge" className="rounded border border-slate-200 bg-white p-3">
-      <h2 className="text-base font-semibold">The hedge&apos;s own footprint</h2>
-      <HowToRead>
+      <h2 className="text-base font-semibold">The hedge&apos;s own footprint <HowToRead>
         a hold day normally moves nothing here, because the book is only rebuilt on
         the 21st session unless the guard fires. Example: on 11-11 the guard read
         4.57% and the hedge left every name where it was.
-      </HowToRead>
+      </HowToRead></h2>
       <p className="mt-1 text-sm text-slate-700" data-hedge="opening">
         The hedge re-weights the stocks we already hold so the book does not move with the market,
         sectors or style factors. On {dateOnly(snapshot.target_close) ?? "this"} close it moved{" "}

@@ -10,6 +10,7 @@
 // That is every document published before the block existed, and the page has to
 // look exactly as it did then: the nightly panels still carry those evenings.
 
+import { HowToRead } from "./Panel";
 import { dateOnly, dollars, percent, signedDollars } from "./format";
 import type { MonthlyBlock } from "./types";
 
@@ -29,9 +30,7 @@ function Card({
     >
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
         {title}
-      </p>
-      <p className="mb-1 text-xs text-slate-500" data-how-to-read="true">
-        how to read this: {howToRead}
+        <HowToRead>{howToRead}</HowToRead>
       </p>
       {children}
     </section>

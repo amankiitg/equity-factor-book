@@ -6,6 +6,8 @@
 // amber panel that announces itself as an alert is how a page teaches its reader to
 // ignore alerts.
 
+import { useState } from "react";
+
 import type { Tone } from "./status";
 
 const TONE_CLASSES: Record<Tone, string> = {
@@ -55,12 +57,38 @@ export function Panel({
 }
 
 
-/** One short sentence at the top of a panel, for a reader seeing it first. */
+/**
+ * The (i) beside a title: what the number is, why it moves, one real example.
+ *
+ * The explanation used to be a paragraph above every panel, which cost the reader
+ * a line of scroll on every panel and repeated the title in the first clause. It
+ * is a popover now: the title carries the marker, and the sentence is one tap
+ * away. The marker keeps its old data attribute so the page's own checks can
+ * still find it.
+ */
 export function HowToRead({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
   return (
-    <p className="text-xs text-slate-500" data-how-to-read="true">
-      how to read this: {children}
-    </p>
+    <span className="relative inline-block align-middle" data-how-to-read="true">
+      <button
+        type="button"
+        aria-label="how to read this"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 bg-white text-[0.65rem] font-semibold leading-none text-slate-500 hover:bg-slate-100"
+      >
+        i
+      </button>
+      {open ? (
+        <span
+          role="dialog"
+          aria-label="how to read this"
+          className="absolute left-0 top-5 z-20 w-72 rounded border border-slate-300 bg-white p-2 text-xs font-normal leading-snug text-slate-700 shadow-lg"
+        >
+          {children}
+        </span>
+      ) : null}
+    </span>
   );
 }
 

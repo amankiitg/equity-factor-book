@@ -1291,12 +1291,11 @@ export function AttributionSection({
       data-view={view}
       className="rounded border border-slate-200 bg-white p-3"
     >
-      <h2 className="text-lg font-semibold">Attribution</h2>
-      <HowToRead>
+      <h2 className="text-lg font-semibold">Attribution <HowToRead>
         basis points of NAV, so a figure is one hundredth of a percent of the book
         and two sessions compare even as it grows. Example: realized cost ran 7.31
         bp a session over the live track against 8.51 bp expected.
-      </HowToRead>
+      </HowToRead></h2>
       <p className="mt-1 text-sm text-slate-600">
         What the book earned, split into the four terms that add to its total: the hedge&apos;s
         factor P&amp;L, the names&apos; idiosyncratic P&amp;L, the cost contribution to P&amp;L,
