@@ -10,6 +10,29 @@ import { useState } from "react";
 
 import type { Tone } from "./status";
 
+/**
+ * The (i) itself, drawn rather than typed.
+ *
+ * The marker used to be the letter `i` in the button's text, which a screen reader
+ * announced as a word and a text copy pasted into whatever sat beside the title. An
+ * icon element is decoration: the button keeps the accessible name, and no letter
+ * joins the title when the line is read or copied.
+ */
+export function InfoIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="8" cy="4.7" r="0.95" fill="currentColor" />
+      <path d="M8 7.1v4.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const TONE_CLASSES: Record<Tone, string> = {
   bad: "bg-red-50 text-red-900 border-red-500",
   warn: "bg-amber-50 text-amber-900 border-amber-400",
@@ -75,9 +98,9 @@ export function HowToRead({ children }: { children: React.ReactNode }) {
         aria-label="how to read this"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 bg-white text-[0.65rem] font-semibold leading-none text-slate-500 hover:bg-slate-100"
+        className="ml-1.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
       >
-        i
+        <InfoIcon />
       </button>
       {open ? (
         <span

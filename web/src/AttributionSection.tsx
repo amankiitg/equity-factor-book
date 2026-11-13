@@ -22,9 +22,8 @@
 
 import { useState } from "react";
 
-import { Details } from "./Details";
 import { HowToRead } from "./Panel";
-import { count, dateOnly, percent } from "./format";
+import { count, dateOnly, dollars, percent, pnlClass } from "./format";
 import type {
   Attribution,
   AttributionDay,
@@ -285,6 +284,31 @@ function CumulativeChart({
         <text x={W - R} y={H - 6} textAnchor="end" fontSize="8" fill="#64748b">
           {last.label}
         </text>
+        {/* The pointer's own reading: a band per session with the date and the four
+            running totals, so the shape is not the only thing the chart says. */}
+        {points.map((point, index) => {
+          const hit = pw / Math.max(points.length, 1);
+          return (
+            <rect
+              key={`hover-${point.label}`}
+              data-hover-point={point.label}
+              x={x(index) - hit / 2}
+              y={T}
+              width={hit}
+              height={ph}
+              fill="transparent"
+              pointerEvents="all"
+            >
+              <title>
+                {`${point.label}: total ${(point.total * 1e4).toFixed(1)} bp, factor ${(
+                  point.factor * 1e4
+                ).toFixed(1)} bp, idio ${(point.idio * 1e4).toFixed(1)} bp, cost ${(
+                  point.cost * 1e4
+                ).toFixed(1)} bp`}
+              </title>
+            </rect>
+          );
+        })}
       </svg>
       <Legend entries={SERIES.map((series) => ({ ...series }))} />
     </figure>
@@ -381,6 +405,23 @@ function DailyBars({ days }: { days: AttributionDay[] }) {
                 stroke={COLORS.total}
                 strokeWidth="1.6"
               />
+              <rect
+                data-hover-day={date}
+                x={cx - slot / 2}
+                y={T}
+                width={slot}
+                height={ph}
+                fill="transparent"
+                pointerEvents="all"
+              >
+                <title>
+                  {`${date}: total ${bare(stat.day.pnl_total)} bp, factor ${bare(
+                    stat.day.pnl_factor,
+                  )} bp, idio ${bare(stat.day.pnl_idio)} bp, cost ${bare(
+                    stat.day.pnl_cost,
+                  )} bp, unexplained ${bare(stat.day.pnl_unexplained)} bp`}
+                </title>
+              </rect>
             </g>
           );
         })}
@@ -611,7 +652,6 @@ function RiskSplit({ risk, notes }: { risk: AttributionRisk; notes: AttributionN
       {risk.path.length >= 2 && before !== null && after !== null ? (
         <HedgeVol path={risk.path} notes={notes} />
       ) : null}
-      <Notes notes={notes} />
     </div>
   );
 }
@@ -667,29 +707,6 @@ function Marker({
         {number}
       </text>
     </g>
-  );
-}
-
-/** The dated notes, numbered to match the markers on the charts. */
-function Notes({ notes }: { notes: AttributionNote[] }) {
-  if (notes.length === 0) return null;
-  return (
-    <ol className="mt-2 space-y-1 text-xs text-slate-600" data-notes="true" aria-label="notes on these charts">
-      {notes.map((note, index) => (
-        <li
-          key={`${note.date ?? "undated"}-${index}`}
-          data-note={dateOnly(note.date) ?? ""}
-          className="flex gap-1"
-        >
-          <span className="mt-px inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-slate-600 text-[10px] text-white">
-            {index + 1}
-          </span>
-          <span>
-            <span className="font-medium">{dateOnly(note.date) ?? "undated"}</span> - {note.text}
-          </span>
-        </li>
-      ))}
-    </ol>
   );
 }
 
@@ -926,6 +943,87 @@ function CostLine({ period, snapshot }: { period: AttributionPeriod; snapshot?: 
   );
 }
 
+/** The close that began the monthly cadence, and the boundary between cost eras. */
+const CADENCE_SWITCH = "2026-10-23";
+
+/**
+ * The cost, split by the cadence it was paid under.
+ *
+ * The live cost card sums every session since go-live, and the book traded daily
+ * until 2026-10-23. A reader who takes that total for the price of the monthly
+ * cadence is reading a daily era's bill as the guard's. Three figures fix that: the
+ * daily era up to the switch, the monthly era from it, and the drift guard's own
+ * cost inside the second. The guard's figure is an estimate at the book's own
+ * trading rate, because the store prices the guard's legs but does not post a cost
+ * for them; it is stated as an estimate rather than given a precision it lacks.
+ */
+function CostEras({ period, snapshot }: { period: AttributionPeriod; snapshot?: Snapshot }) {
+  const nav =
+    snapshot?.book?.gross && snapshot?.book?.gross_notional
+      ? snapshot.book.gross_notional / snapshot.book.gross
+      : null;
+  const rows = period.daily ?? [];
+  const sum = (predicate: (day: AttributionDay) => boolean): number =>
+    rows.reduce((total, day) => total + (predicate(day) ? day.pnl_cost ?? 0 : 0), 0);
+  const dailyEra = sum((day) => (dateOnly(day.trade_date) ?? "") < CADENCE_SWITCH);
+  const monthlyEra = sum((day) => (dateOnly(day.trade_date) ?? "") >= CADENCE_SWITCH);
+  const guard = (snapshot?.monthly?.since_anchor?.trades_by_reason ?? []).find(
+    (row) => row.reason === "guard",
+  );
+  const split = snapshot?.book?.expected_cost_split ?? null;
+  const turnover =
+    snapshot?.reconciliation?.sent_notional ?? snapshot?.reconciliation?.intended_notional ?? null;
+  const rebalance = snapshot?.monthly?.rebalance_card ?? null;
+  // A cost rate is bp of NAV per dollar traded. The day's own trading half and the
+  // dollars it was quoted on give that rate; the guard's dollars then convert at it.
+  // A hold day prices only borrow, so a zero trading half is not a rate: the anchor
+  // rebalance's expected cost stands in then, and the figure is labelled an estimate.
+  const guardBp = !guard
+    ? null
+    : split?.trading && turnover
+      ? (guard.usd * split.trading) / turnover
+      : rebalance?.expected_cost_bps && rebalance.pct_nav && nav
+        ? (guard.usd * rebalance.expected_cost_bps) / (rebalance.pct_nav * nav)
+        : null;
+  const guardUsd = guard ? Math.abs(guard.usd) : null;
+  const figure = (value: number | null): string =>
+    value === null ? "n/a" : `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)} bp`;
+  const amount = (value: number | null): string =>
+    value === null || nav === null ? "" : dollars(value * nav);
+  return (
+    <section data-cost="eras" className="mt-2 rounded border border-slate-200 bg-white px-2 py-2">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">cost by era</h3>
+      <dl className="mt-1 grid grid-cols-3 gap-2 text-xs">
+        <div data-cost-era="daily">
+          <dt className="text-slate-500">daily trading, to 10-23</dt>
+          <dd className="font-mono text-sm font-semibold tabular-nums">{figure(dailyEra)}</dd>
+          <dd className="font-mono tabular-nums text-slate-600">{amount(dailyEra)}</dd>
+        </div>
+        <div data-cost-era="monthly">
+          <dt className="text-slate-500">monthly cadence, since 10-23</dt>
+          <dd className="font-mono text-sm font-semibold tabular-nums">{figure(monthlyEra)}</dd>
+          <dd className="font-mono tabular-nums text-slate-600">{amount(monthlyEra)}</dd>
+        </div>
+        <div data-cost-era="guard">
+          <dt className="text-slate-500">drift guard, since 10-23</dt>
+          <dd className="font-mono text-sm font-semibold tabular-nums">
+            {guardBp === null ? "n/a" : `${Math.abs(guardBp).toFixed(2)} bp`}
+          </dd>
+          <dd className="font-mono tabular-nums text-slate-600">
+            {guardBp === null || nav === null
+              ? "not priced"
+              : `${dollars((guardBp / 1e4) * nav)} est., ${dollars(guardUsd)} of legs`}
+          </dd>
+        </div>
+      </dl>
+      <p className="mt-1 text-xs text-slate-500">
+        The 10-23 close is the first monthly one, so it is counted there. The guard&apos;s figure is
+        an estimate at the book&apos;s own trading rate, not a posted cost.
+      </p>
+    </section>
+  );
+}
+
 /**
  * What each factor contributed, over the period.
  *
@@ -1122,11 +1220,6 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
         {volPct(last?.realized_vol)} against {volPct(last?.forecast_vol)} forecast
         {biasSentence(pairs)}
       </p>
-      <p className="mt-1 text-xs text-slate-500">
-        {count(pairs.length)} session(s) is not enough to judge the model: E11&apos;s risk test
-        wants thirty live days before a bias band means anything, and a page that drew a verdict
-        on seven would be inventing one.
-      </p>
     </figure>
   );
 }
@@ -1156,6 +1249,10 @@ function PeriodView({
   notes?: AttributionNote[];
 }) {
   const cumulative = period.cumulative;
+  const nav =
+    snapshot?.book?.gross && snapshot.book.gross_notional
+      ? snapshot.book.gross_notional / snapshot.book.gross
+      : null;
   const carried = period.daily;
   const newest = [...carried].reverse();
   const lastDay = newest[0] ?? null;
@@ -1183,47 +1280,35 @@ function PeriodView({
     <>
       <p className="mt-2 text-sm text-slate-600">
         {period.label}. {count(period.n_days_carried)} of {count(period.n_days)} session(s)
-        {from && to ? `, ${from} to ${to}` : ""}.{" "}
-        {live
-          ? "Every row is stored by the evening run: factor P&L is the book's exposure times the factor returns, idio P&L is its positions times the specific returns, and the four terms below are the day's total."
-          : `This is a backtest of the seed book, not the live book: nobody traded it, so its cost is exactly zero, and its fourth term, ${bps(
-              cumulative.pnl_unexplained,
-            )}, is a research-vintage mismatch - the descriptors on file differ from the fit's design - rather than a loss anyone took.`}
+        {from && to ? `, ${from} to ${to}` : ""}.
       </p>
-      {live ? null : period.note ? (
-        <p className="mt-1 text-xs text-slate-500" data-backtest-note="true">
-          {period.note}
-        </p>
-      ) : null}
 
       <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
-        <div data-card="pnl-total" className="rounded border border-slate-100 bg-slate-50 px-2 py-1">
-          <dt className="break-words text-xs uppercase tracking-wide text-slate-500">total</dt>
-          <dd className="tabular-nums">{bps(cumulative.pnl_total)}</dd>
-        </div>
-        <div data-card="pnl-factor" className="rounded border border-slate-100 bg-slate-50 px-2 py-1">
-          <dt className="break-words text-xs uppercase tracking-wide text-slate-500">factor</dt>
-          <dd className="tabular-nums">{bps(cumulative.pnl_factor)}</dd>
-        </div>
-        <div data-card="pnl-idio" className="rounded border border-slate-100 bg-slate-50 px-2 py-1">
-          <dt className="break-words text-xs uppercase tracking-wide text-slate-500">idio</dt>
-          <dd className="tabular-nums">{bps(cumulative.pnl_idio)}</dd>
-        </div>
-        <div data-card="pnl-cost" className="rounded border border-slate-100 bg-slate-50 px-2 py-1">
-          <dt className="break-words text-xs uppercase tracking-wide text-slate-500">
-            cost contribution to P&amp;L
-          </dt>
-          <dd className="tabular-nums">{bps(cumulative.pnl_cost)}</dd>
-        </div>
-        <div
-          data-card="pnl-unexplained"
-          className="rounded border border-slate-100 bg-slate-50 px-2 py-1"
-        >
-          <dt className="break-words text-xs uppercase tracking-wide text-slate-500">
-            {UNEXPLAINED_LABEL[live ? "live" : "backtest"].long}
-          </dt>
-          <dd className="tabular-nums">{bps(cumulative.pnl_unexplained)}</dd>
-        </div>
+        {[
+          { hook: "total", label: "total", value: cumulative.pnl_total },
+          { hook: "factor", label: "factor", value: cumulative.pnl_factor },
+          { hook: "idio", label: "idio", value: cumulative.pnl_idio },
+          { hook: "cost", label: "cost contribution to P&L", value: cumulative.pnl_cost },
+          {
+            hook: "unexplained",
+            label: UNEXPLAINED_LABEL[live ? "live" : "backtest"].long,
+            value: cumulative.pnl_unexplained,
+          },
+        ].map((card) => (
+          <div
+            key={card.hook}
+            data-card={`pnl-${card.hook}`}
+            className="rounded border border-slate-100 bg-slate-50 px-2 py-1"
+          >
+            <dt className="break-words text-xs uppercase tracking-wide text-slate-500">
+              {card.label}
+            </dt>
+            <dd className={`font-mono tabular-nums ${pnlClass(card.value)}`}>{bps(card.value)}</dd>
+            <dd className="font-mono text-xs tabular-nums text-slate-500">
+              {card.value === null || nav === null ? "" : dollars(card.value * nav)}
+            </dd>
+          </div>
+        ))}
       </dl>
       <p className="mt-1 text-xs text-slate-500">
         worst single day's identity residual: {bps(cumulative.max_identity_residual)}, over{" "}
@@ -1239,6 +1324,7 @@ function PeriodView({
       ) : null}
       {live ? <DailyBars days={carried} /> : null}
       <CostLine period={period} snapshot={snapshot} />
+      {live ? <CostEras period={period} snapshot={snapshot} /> : null}
       {live ? <VolatilityPanel period={period} /> : null}
       {live && period.risk ? <RiskSplit risk={period.risk} notes={notes} /> : null}
       <FactorTable period={period} />
@@ -1301,25 +1387,6 @@ export function AttributionSection({
         factor P&amp;L, the names&apos; idiosyncratic P&amp;L, the cost contribution to P&amp;L,
         and the unexplained remainder. Every figure is in bp of NAV.
       </p>
-      <Details
-        hook="attribution-method"
-        summary={<>how these four terms are computed, and what they are not</>}
-      >
-        <p className="text-xs text-slate-500">
-          Every row is stored by the evening run: factor P&amp;L is the book&apos;s exposure times
-          the factor returns, idio P&amp;L is its positions times the specific returns, and the
-          four terms sum to the day&apos;s total by construction - a row that does not add up is a
-          stored day that does not decompose, which is what the check column in the table is for.
-          The fourth term is not a fourth estimate: it is the stored artifacts disagreeing with the
-          panel&apos;s own return, and on the live book it is a few hundredths of a bp. On the
-          research panel it is the descriptors&apos; vintage and it accumulates to hundreds of bp
-          over a decade, which is why the two views label it differently.
-        </p>
-        {attribution.note ? (
-          <p className="mt-1 text-xs text-slate-500">{attribution.note}</p>
-        ) : null}
-      </Details>
-
       {/* The switch only exists when there are two objects to switch between: a
           second tab that opens nothing is worse than no tab. */}
       {backtest ? (

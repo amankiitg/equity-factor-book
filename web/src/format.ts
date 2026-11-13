@@ -191,3 +191,15 @@ export const signedPercent = (value: number | null | undefined, places = 2): str
   const text = Math.abs(value * 100).toFixed(places);
   return `${value < 0 ? "-" : "+"}${text}%`;
 };
+
+/**
+ * A P&L's sign as the light palette's own class.
+ *
+ * The sign is still printed beside the number: colour is a second cue, never the
+ * only one, and a reader who cannot tell green from red reads the same fact from
+ * the minus. A value that rounds to zero is neutral rather than a tiny gain.
+ */
+export const pnlClass = (value: number | null | undefined): string => {
+  if (value === null || value === undefined || Math.abs(value) < 1e-12) return "text-slate-700";
+  return value > 0 ? "efb-up" : "efb-down";
+};

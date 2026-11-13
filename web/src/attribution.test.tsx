@@ -46,10 +46,12 @@ describe("the attribution section", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     openAttribution();
     expect(view()).toBe("live");
-    // The live period's own label is on screen; the backtest's note is not, because
-    // the two are different objects and only one of them is the book.
+    // The live period's own label is on screen; the backtest's note is not in this
+    // section, because the two are different objects and only one of them is the
+    // book. The note now lives in the Operations Notes drawer.
     expect(screen.getByText(LIVE_PERIOD.label, { exact: false })).toBeTruthy();
-    expect(screen.queryByText(BACKTEST_PERIOD.note, { exact: false })).toBeNull();
+    const section = document.querySelector("[data-section='attribution']") as HTMLElement;
+    expect(within(section).queryByText(BACKTEST_PERIOD.note, { exact: false })).toBeNull();
   });
 
   it("prints the four terms and the total for the live period, in bp and signed", () => {
@@ -111,9 +113,13 @@ describe("the attribution section", () => {
     openAttribution();
     fireEvent.click(screen.getByRole("tab", { name: "the research panel (backtest)" }));
     expect(view()).toBe("backtest");
-    expect(screen.getByText(BACKTEST_PERIOD.note, { exact: false })).toBeTruthy();
-    expect(screen.getByText(/This is a backtest of the seed book/)).toBeTruthy();
-    expect(screen.getByText(/no leg was traded/)).toBeTruthy();
+    // The backtest's own caveat moved to the Operations Notes drawer with the rest
+    // of the method, so it is asserted where a reader now finds it.
+    fireEvent.click(screen.getByRole("tab", { name: "Operations" }));
+    const notes = document.querySelector("[data-details='notes']") as HTMLElement;
+    expect(notes.textContent ?? "").toContain(BACKTEST_PERIOD.note);
+    expect(notes.textContent ?? "").toContain("this is a backtest of the seed book");
+    expect(notes.textContent ?? "").toContain("Nobody traded it");
     // The backtest's cost is exactly zero, and its chart is the monthly run.
     expect(card("pnl-cost")).toContain("+0.0 bp");
     expect(document.querySelector("[data-chart='cumulative']")).toBeTruthy();

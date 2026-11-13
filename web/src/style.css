@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
 /*
+ * A tab that is not selected is not shown, whatever utility class its content
+ * carries. The panels are all mounted so the page's in-document search can reach
+ * them; only the selected one is in the visual and accessibility tree.
+ */
+[hidden] {
+  display: none !important;
+}
+
+/*
  * The light palette, as tokens. The two holdings tables draw their side badges,
  * their gap cells and their reason pills from these, so a tint that means
  * "long" means the same thing in both and a reader never has to learn it twice.
@@ -23,6 +32,18 @@
   --efb-short-ink: #9f1239;
   --efb-short-line: #fecdd3;
 
+  /* A gain and a loss, at the lighter end of the palette. The sign is printed
+     beside every number, so these tints are a second cue rather than the only
+     one, and a screen of them stays quiet. */
+  --efb-up-bg: #ecfdf5;
+  --efb-up-ink: #047857;
+  --efb-up-line: #a7f3d0;
+  --efb-up-fill: #34d399;
+  --efb-down-bg: #fff1f2;
+  --efb-down-ink: #be123c;
+  --efb-down-line: #fecdd3;
+  --efb-down-fill: #fb7185;
+
   --efb-gap-more-bg: #eff6ff;
   --efb-gap-more-ink: #0369a1;
   --efb-gap-less-bg: #f5f3ff;
@@ -31,6 +52,14 @@
   --efb-pill-bg: #f1f5f9;
   --efb-pill-ink: #475569;
   --efb-pill-line: #e2e8f0;
+}
+
+.efb-up {
+  color: var(--efb-up-ink);
+}
+
+.efb-down {
+  color: var(--efb-down-ink);
 }
 
 /*
