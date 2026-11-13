@@ -83,7 +83,7 @@ export function HowToRead({ children }: { children: React.ReactNode }) {
         <span
           role="dialog"
           aria-label="how to read this"
-          className="absolute left-0 top-5 z-20 w-72 rounded border border-slate-300 bg-white p-2 text-xs font-normal leading-snug text-slate-700 shadow-lg"
+          className="absolute left-0 top-5 z-20 w-72 rounded border border-slate-300 bg-white p-2 text-xs font-normal normal-case tracking-normal leading-snug text-slate-700 shadow-lg"
         >
           {children}
         </span>
