@@ -12,11 +12,12 @@
 // entry, a sign, or a written label, so the picture is not the only place a number
 // is stated.
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import type { Exceptions } from "./exceptions";
 import { dollars, percent, pnlClass, signedDollars } from "./format";
 import { InfoIcon } from "./Panel";
+import { sectorLabel } from "./sectors";
 import type { Reconciliation, RunState, Tone } from "./status";
 import { freshness, ageText } from "./status";
 import { etDateTime } from "./format";
@@ -155,144 +156,378 @@ const COLORS = {
   cost: "#e11d48",
 } as const;
 
-const SERIES = [
-  { key: "total", word: "total", color: COLORS.total, dash: "" },
-  { key: "factor", word: "factor", color: COLORS.factor, dash: "5 2" },
-  { key: "idio", word: "stock-specific", color: COLORS.idio, dash: "1 3" },
-  { key: "cost", word: "cost", color: COLORS.cost, dash: "7 2 1 2" },
-] as const;
+interface SeriesLine {
+  key: "total" | "factor" | "idio" | "cost";
+  word: string;
+  color: string;
+  width: number;
+}
+
+const SERIES: SeriesLine[] = [
+  { key: "total", word: "total", color: COLORS.total, width: 2.5 },
+  { key: "factor", word: "factor", color: COLORS.factor, width: 2 },
+  { key: "idio", word: "stock-specific", color: COLORS.idio, width: 2 },
+  { key: "cost", word: "cost", color: COLORS.cost, width: 2 },
+];
+
+const DAY_MS = 86_400_000;
+
+/** A date as UTC midnight, so the axis is the same on every machine. */
+function utcMidnight(date: string): number {
+  const [year, month, day] = date.split("-").map(Number);
+  return Date.UTC(year || 1970, (month || 1) - 1, day || 1);
+}
+
+/**
+ * The charts are drawn in the card's own pixels rather than in a scaled viewBox.
+ * A 2px line stays 2px and a 10px bar stays 10px at any window size, and the
+ * drawing always fills the card: the width is measured on mount and again
+ * whenever the card changes size.
+ */
+function useChartWidth(fallback: number): {
+  ref: React.RefObject<HTMLDivElement | null>;
+  width: number;
+} {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(fallback);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return undefined;
+    const measure = (): void => {
+      const next = Math.round(node.getBoundingClientRect().width);
+      if (next > 0) setWidth(next);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  return { ref, width };
+}
+
+/** Four or five round numbers across the range, each with a light rule. */
+function axisTicks(low: number, high: number): number[] {
+  const span = high - low;
+  const even = (): number[] => [0, 1, 2, 3, 4].map((index) => low + (span * index) / 4);
+  if (!Number.isFinite(span) || span <= 0) return even();
+  const rough = span / 4;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / magnitude;
+  const step =
+    (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10) * magnitude;
+  const ticks: number[] = [];
+  for (let value = Math.ceil(low / step) * step; value <= high + step * 1e-6; value += step) {
+    ticks.push(Math.round(value * 1e6) / 1e6);
+  }
+  return ticks.length >= 4 && ticks.length <= 5 ? ticks : even();
+}
+
+/** The sessions the axis spans, plus the next rebalance when it is still ahead. */
+function plotDates(dates: Array<string | null | undefined>, next?: string | null): string[] {
+  const sorted = [...new Set(dates.filter((date): date is string => Boolean(date)))].sort();
+  if (!sorted.length) return sorted;
+  if (next && next > sorted[sorted.length - 1]) sorted.push(next);
+  return sorted;
+}
+
+/** One date label a week, read off the calendar rather than every nth point. */
+function weeklyTicks(dates: string[]): string[] {
+  const ticks: string[] = [];
+  let previous = Number.NEGATIVE_INFINITY;
+  for (const date of dates) {
+    const value = utcMidnight(date);
+    if (previous === Number.NEGATIVE_INFINITY || value - previous >= 6 * DAY_MS) {
+      ticks.push(date);
+      previous = value;
+    }
+  }
+  return ticks;
+}
+
+interface PlotFrame {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  x: (date: string) => number;
+}
+
+function plotFrame(
+  dates: string[],
+  width: number,
+  height: number,
+  pad: { left: number; right: number; top: number; bottom: number },
+): PlotFrame {
+  const first = utcMidnight(dates[0]);
+  const last = utcMidnight(dates[dates.length - 1]);
+  const span = last - first;
+  const left = pad.left;
+  const right = Math.max(left + 24, width - pad.right);
+  return {
+    left,
+    right,
+    top: pad.top,
+    bottom: height - pad.bottom,
+    x: (date: string) =>
+      span === 0 ? (left + right) / 2 : left + ((utcMidnight(date) - first) / span) * (right - left),
+  };
+}
+
+interface RebalanceMark {
+  date: string;
+  future: boolean;
+}
+
+/** The rebalances the axis can carry: the closes behind it and the next one ahead. */
+function rebalanceMarks(snapshot: Snapshot, known: Set<string>): RebalanceMark[] {
+  const strip = snapshot.monthly?.cadence_strip;
+  const past = [
+    ...new Set([
+      ...(snapshot.monthly?.rebalance_dates ?? []),
+      ...(strip?.last_rebalance ? [strip.last_rebalance] : []),
+    ]),
+  ]
+    .filter((date) => known.has(date))
+    .sort();
+  const marks: RebalanceMark[] = past.map((date) => ({ date, future: false }));
+  const next = strip?.next_rebalance ?? null;
+  if (next && !known.has(next)) marks.push({ date: next, future: true });
+  return marks;
+}
+
+/** The hover title every chart carries: the day and all four parts, in bp. */
+function pointTitle(
+  date: string,
+  total: number,
+  factor: number,
+  idio: number,
+  cost: number,
+): string {
+  return `${date}: total ${total.toFixed(1)} bp, factor ${factor.toFixed(1)} bp, stock-specific ${idio.toFixed(1)} bp, cost ${cost.toFixed(1)} bp`;
+}
 
 function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
   const points = cumulativePoints(snapshot);
+  const { ref, width } = useChartWidth(680);
   if (points.length === 0) {
     return (
-      <p data-overview-cumulative="absent" className="text-xs text-slate-500">
-        no attributed session yet, so there is no P&L line to draw.
-      </p>
+      <div ref={ref} className="mt-1 w-full">
+        <p data-overview-cumulative="absent" className="text-xs text-slate-500">
+          no attributed session yet, so there is no P&L line to draw.
+        </p>
+      </div>
     );
   }
-  const width = 720;
-  const height = 240;
-  const pad = { left: 48, right: 14, top: 12, bottom: 26 };
-  const values = points.flatMap((point) => [
-    point.total,
-    point.factor,
-    point.idio,
-    point.cost,
-  ]);
+  const height = 300;
+  const pad = { left: 46, right: 64, top: 24, bottom: 26 };
+  const dates = plotDates(
+    points.map((point) => point.date),
+    snapshot.monthly?.cadence_strip?.next_rebalance,
+  );
+  const frame = plotFrame(dates, width, height, pad);
+  const values = points.flatMap((point) => [point.total, point.factor, point.idio, point.cost]);
   const low = Math.min(0, ...values);
   const high = Math.max(0, ...values);
   const span = high - low || 1;
-  const x = (index: number): number =>
-    pad.left +
-    (points.length === 1 ? 0 : (index / (points.length - 1)) * (width - pad.left - pad.right));
   const y = (value: number): number =>
-    pad.top + ((high - value) / span) * (height - pad.top - pad.bottom);
-  const path = (key: keyof Omit<CumulativePoint, "date">): string =>
-    points
-      .map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(1)},${y(point[key]).toFixed(1)}`)
-      .join(" ");
-  const dates = new Set(points.map((point) => point.date));
-  const markers = [
-    ...(snapshot.monthly?.rebalance_dates ?? []),
-    ...(snapshot.monthly?.cadence_strip?.last_rebalance
-      ? [snapshot.monthly.cadence_strip.last_rebalance]
-      : []),
-  ].filter((date, index, all) => dates.has(date) && all.indexOf(date) === index);
+    frame.top + ((high - value) / span) * (frame.bottom - frame.top);
+  const known = new Set(points.map((point) => point.date));
+  const marks = rebalanceMarks(snapshot, known);
+  const last = points[points.length - 1];
+  const endLabels = SERIES.map((series) => ({
+    series,
+    value: last[series.key],
+    at: y(last[series.key]),
+  })).sort((a, b) => a.at - b.at);
+  for (let index = 1; index < endLabels.length; index += 1) {
+    if (endLabels[index].at - endLabels[index - 1].at < 11) {
+      endLabels[index].at = endLabels[index - 1].at + 11;
+    }
+  }
+  const band = (index: number): { x: number; width: number } => {
+    const here = frame.x(points[index].date);
+    const before = index === 0 ? frame.left : (here + frame.x(points[index - 1].date)) / 2;
+    const after =
+      index === points.length - 1
+        ? here + Math.max(2, here - before)
+        : (here + frame.x(points[index + 1].date)) / 2;
+    return { x: before, width: Math.max(2, after - before) };
+  };
 
   return (
-    <>
-      <svg
-        role="img"
-        aria-label="cumulative P&L in basis points"
-        viewBox={`0 0 ${width} ${height}`}
-        className="mt-1 h-48 w-full"
-        data-overview-cumulative="true"
-      >
-        <line
-          x1={pad.left}
-          x2={width - pad.right}
-          y1={y(0)}
-          y2={y(0)}
-          stroke="#cbd5e1"
-          strokeWidth="1"
-        />
-        <text x={4} y={y(high) + 4} className="fill-slate-500" fontSize="10">
-          {high.toFixed(0)} bp
-        </text>
-        <text x={4} y={y(low) + 4} className="fill-slate-500" fontSize="10">
-          {low.toFixed(0)} bp
-        </text>
-        {markers.map((date) => {
-          const index = points.findIndex((point) => point.date === date);
-          return (
-            <g key={date} data-overview-rebalance={date}>
-              <line
-                x1={x(index)}
-                x2={x(index)}
-                y1={pad.top}
-                y2={height - pad.bottom}
-                stroke="#94a3b8"
-                strokeDasharray="2 3"
-              />
-              <text x={x(index) + 3} y={pad.top + 9} className="fill-slate-500" fontSize="9">
-                {dayShort(date)}
-              </text>
-            </g>
-          );
-        })}
-        {SERIES.map((series) => (
-          <path
-            key={series.key}
-            d={path(series.key)}
-            fill="none"
-            stroke={series.color}
-            strokeWidth={series.key === "total" ? "2" : "1.5"}
-            strokeDasharray={series.dash || undefined}
-            data-series={series.key}
-          />
-        ))}
-        {/*
-          The hover layer: one transparent band per session, each carrying the day
-          and every series' value as its title. The path alone gives the eye a
-          shape; this gives the pointer the number under it, which is what makes
-          the picture a reading rather than an illustration.
-        */}
-        {points.map((point, index) => {
-          const hit = (width - pad.left - pad.right) / Math.max(points.length, 1);
-          return (
-            <rect
-              key={`hit-${point.date}`}
-              data-hover-point={point.date}
-              x={x(index) - hit / 2}
-              y={pad.top}
-              width={hit}
-              height={height - pad.top - pad.bottom}
-              fill="transparent"
-              pointerEvents="all"
-            >
-              <title>
-                {`${point.date}: total ${point.total.toFixed(1)} bp, factor ${point.factor.toFixed(
-                  1,
-                )} bp, stock-specific ${point.idio.toFixed(1)} bp, cost ${point.cost.toFixed(1)} bp`}
-              </title>
-            </rect>
-          );
-        })}
-      </svg>
-      <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
+    <div ref={ref} className="mt-1 w-full">
+      <ul className="mb-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.7rem] text-slate-600">
         {SERIES.map((series) => (
           <li key={series.key} data-legend={series.key} className="flex items-center gap-1">
             <span
               aria-hidden="true"
-              className="inline-block h-0.5 w-4"
-              style={{ background: series.color }}
+              className="inline-block w-4"
+              style={{ background: series.color, height: series.width }}
             />
             {series.word}
           </li>
         ))}
       </ul>
-    </>
+      <svg
+        role="img"
+        aria-label="cumulative P&L in basis points"
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        className="block w-full"
+        data-overview-cumulative="true"
+      >
+        <rect
+          x={frame.x(last.date)}
+          y={frame.top}
+          width={Math.max(0, frame.right - frame.x(last.date))}
+          height={frame.bottom - frame.top}
+          fill="#0f172a"
+          fillOpacity="0.03"
+          data-future-band="true"
+        />
+        {axisTicks(low, high).map((tick) => (
+          <g key={`grid-${tick}`} data-gridline={tick}>
+            <line
+              x1={frame.left}
+              x2={frame.right}
+              y1={y(tick)}
+              y2={y(tick)}
+              stroke="#e2e8f0"
+              strokeWidth="1"
+            />
+            <text
+              x={frame.left - 5}
+              y={y(tick) + 3}
+              textAnchor="end"
+              fontSize="9"
+              className="fill-slate-500"
+            >
+              {tick.toFixed(0)}
+            </text>
+          </g>
+        ))}
+        <line
+          x1={frame.left}
+          x2={frame.right}
+          y1={y(0)}
+          y2={y(0)}
+          stroke="#475569"
+          strokeWidth="1.6"
+          data-zero-line="true"
+        />
+        <text
+          x={frame.left - 5}
+          y={y(0) + 3}
+          textAnchor="end"
+          fontSize="9"
+          className="fill-slate-700"
+        >
+          0
+        </text>
+        <text x={4} y={frame.top - 10} fontSize="9" className="fill-slate-500">
+          bp
+        </text>
+        {weeklyTicks(dates).map((date) => (
+          <g key={`week-${date}`} data-x-tick={date}>
+            <line
+              x1={frame.x(date)}
+              x2={frame.x(date)}
+              y1={frame.bottom}
+              y2={frame.bottom + 4}
+              stroke="#cbd5e1"
+            />
+            <text
+              x={frame.x(date)}
+              y={height - 6}
+              textAnchor="middle"
+              fontSize="9"
+              className="fill-slate-500"
+            >
+              {dayShort(date)}
+            </text>
+          </g>
+        ))}
+        {marks.map((mark) => (
+          <g
+            key={mark.date}
+            data-overview-rebalance={mark.date}
+            data-rebalance-future={mark.future ? "true" : "false"}
+          >
+            <line
+              x1={frame.x(mark.date)}
+              x2={frame.x(mark.date)}
+              y1={frame.top}
+              y2={frame.bottom}
+              stroke={mark.future ? "#cbd5e1" : "#94a3b8"}
+              strokeWidth="1"
+              strokeDasharray="3 3"
+            />
+            <text
+              x={frame.x(mark.date) + (frame.x(mark.date) > frame.right - 90 ? -3 : 3)}
+              y={frame.top - 10}
+              textAnchor={frame.x(mark.date) > frame.right - 90 ? "end" : "start"}
+              fontSize="9"
+              className="fill-slate-500"
+            >
+              {mark.future
+                ? `next rebalance ${dayShort(mark.date)}`
+                : `rebalance ${dayShort(mark.date)}`}
+            </text>
+          </g>
+        ))}
+        {SERIES.map((series) => (
+          <path
+            key={series.key}
+            d={points
+              .map(
+                (point, index) =>
+                  `${index === 0 ? "M" : "L"}${frame.x(point.date).toFixed(1)},${y(
+                    point[series.key],
+                  ).toFixed(1)}`,
+              )
+              .join(" ")}
+            fill="none"
+            stroke={series.color}
+            strokeWidth={series.width}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            data-series={series.key}
+          />
+        ))}
+        {endLabels.map((label) => (
+          <text
+            key={`label-${label.series.key}`}
+            x={frame.x(last.date) + 6}
+            y={label.at + 3}
+            fontSize="10"
+            fontWeight="600"
+            fill={label.series.color}
+            data-line-label={label.series.key}
+          >
+            {`${label.value >= 0 ? "+" : ""}${label.value.toFixed(0)}`}
+          </text>
+        ))}
+        {points.map((point, index) => {
+          const hit = band(index);
+          return (
+            <rect
+              key={`hit-${point.date}`}
+              data-hover-point={point.date}
+              x={hit.x}
+              y={frame.top}
+              width={hit.width}
+              height={frame.bottom - frame.top}
+              fill="transparent"
+              pointerEvents="all"
+            >
+              <title>{pointTitle(point.date, point.total, point.factor, point.idio, point.cost)}</title>
+            </rect>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
@@ -300,58 +535,183 @@ function DailyBars({ snapshot }: { snapshot: Snapshot }) {
   const rows = [...(snapshot.attribution?.live?.daily ?? [])].sort((a, b) =>
     String(a.trade_date ?? "").localeCompare(String(b.trade_date ?? "")),
   );
+  const { ref, width } = useChartWidth(680);
   if (rows.length === 0) {
     return (
-      <p data-overview-daily="absent" className="text-xs text-slate-500">
-        no attributed session yet, so there are no daily bars to draw.
-      </p>
+      <div ref={ref} className="mt-1 w-full">
+        <p data-overview-daily="absent" className="text-xs text-slate-500">
+          no attributed session yet, so there are no daily bars to draw.
+        </p>
+      </div>
     );
   }
-  const width = 720;
-  const height = 180;
-  const pad = { left: 48, right: 14, top: 12, bottom: 24 };
+  const height = 240;
+  const pad = { left: 46, right: 24, top: 22, bottom: 26 };
+  const dates = plotDates(
+    rows.map((row) => String(row.trade_date ?? "").slice(0, 10)),
+    snapshot.monthly?.cadence_strip?.next_rebalance,
+  );
+  const frame = plotFrame(dates, width, height, pad);
   const values = rows.map((row) => (row.pnl_total ?? 0) * 1e4);
   const low = Math.min(0, ...values);
   const high = Math.max(0, ...values);
   const span = high - low || 1;
   const y = (value: number): number =>
-    pad.top + ((high - value) / span) * (height - pad.top - pad.bottom);
-  const slot = (width - pad.left - pad.right) / Math.max(rows.length, 1);
-  const barWidth = Math.max(2, slot * 0.65);
+    frame.top + ((high - value) / span) * (frame.bottom - frame.top);
+  const days = Math.max(
+    1,
+    (utcMidnight(dates[dates.length - 1]) - utcMidnight(dates[0])) / DAY_MS,
+  );
+  const pixelsPerDay = (frame.right - frame.left) / days;
+  const gaps = dates
+    .slice(1)
+    .map((date, index) => (utcMidnight(date) - utcMidnight(dates[index])) / DAY_MS)
+    .filter((gap) => gap > 0);
+  const gapDays = gaps.length ? Math.min(...gaps) : 1;
+  const barWidth = Math.max(3, Math.min(18, pixelsPerDay * gapDays * 0.62));
+  const known = new Set(rows.map((row) => String(row.trade_date ?? "").slice(0, 10)));
+  const marks = rebalanceMarks(snapshot, known);
+
   return (
-    <svg
-      role="img"
-      aria-label="daily P&L in basis points"
-      viewBox={`0 0 ${width} ${height}`}
-      className="mt-1 h-40 w-full"
-      data-overview-daily="true"
-    >
-      <line x1={pad.left} x2={width - pad.right} y1={y(0)} y2={y(0)} stroke="#cbd5e1" />
-      <text x={4} y={y(high) + 4} className="fill-slate-500" fontSize="10">
-        {high.toFixed(0)} bp
-      </text>
-      <text x={4} y={y(low) + 4} className="fill-slate-500" fontSize="10">
-        {low.toFixed(0)} bp
-      </text>
-      {rows.map((row, index) => {
-        const value = (row.pnl_total ?? 0) * 1e4;
-        const top = Math.min(y(0), y(value));
-        const heightOfBar = Math.max(1, Math.abs(y(0) - y(value)));
-        return (
-          <rect
-            key={row.trade_date ?? index}
-            data-daily-bar={row.trade_date ?? index}
-            x={pad.left + index * slot + (slot - barWidth) / 2}
-            y={top}
-            width={barWidth}
-            height={heightOfBar}
-            fill={value >= 0 ? "var(--efb-up-fill)" : "var(--efb-down-fill)"}
+    <div ref={ref} className="mt-1 w-full">
+      <svg
+        role="img"
+        aria-label="daily P&L in basis points"
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        className="block w-full"
+        data-overview-daily="true"
+      >
+        <rect
+          x={frame.x(dates[dates.length - 1])}
+          y={frame.top}
+          width={Math.max(0, frame.right - frame.x(dates[dates.length - 1]))}
+          height={frame.bottom - frame.top}
+          fill="#0f172a"
+          fillOpacity="0.03"
+          data-future-band="true"
+        />
+        {axisTicks(low, high).map((tick) => (
+          <g key={`grid-${tick}`} data-gridline={tick}>
+            <line
+              x1={frame.left}
+              x2={frame.right}
+              y1={y(tick)}
+              y2={y(tick)}
+              stroke="#e2e8f0"
+              strokeWidth="1"
+            />
+            <text
+              x={frame.left - 5}
+              y={y(tick) + 3}
+              textAnchor="end"
+              fontSize="9"
+              className="fill-slate-500"
+            >
+              {tick.toFixed(0)}
+            </text>
+          </g>
+        ))}
+        <line
+          x1={frame.left}
+          x2={frame.right}
+          y1={y(0)}
+          y2={y(0)}
+          stroke="#475569"
+          strokeWidth="1.6"
+          data-zero-line="true"
+        />
+        <text
+          x={frame.left - 5}
+          y={y(0) + 3}
+          textAnchor="end"
+          fontSize="9"
+          className="fill-slate-700"
+        >
+          0
+        </text>
+        <text x={4} y={frame.top - 8} fontSize="9" className="fill-slate-500">
+          bp
+        </text>
+        {weeklyTicks(dates).map((date) => (
+          <g key={`week-${date}`} data-x-tick={date}>
+            <line
+              x1={frame.x(date)}
+              x2={frame.x(date)}
+              y1={frame.bottom}
+              y2={frame.bottom + 4}
+              stroke="#cbd5e1"
+            />
+            <text
+              x={frame.x(date)}
+              y={height - 6}
+              textAnchor="middle"
+              fontSize="9"
+              className="fill-slate-500"
+            >
+              {dayShort(date)}
+            </text>
+          </g>
+        ))}
+        {marks.map((mark) => (
+          <g
+            key={mark.date}
+            data-daily-rebalance={mark.date}
+            data-rebalance-future={mark.future ? "true" : "false"}
           >
-            <title>{`${dayShort(row.trade_date)}: ${bps(value / 1e4)}`}</title>
-          </rect>
-        );
-      })}
-    </svg>
+            <line
+              x1={frame.x(mark.date)}
+              x2={frame.x(mark.date)}
+              y1={frame.top}
+              y2={frame.bottom}
+              stroke={mark.future ? "#cbd5e1" : "#94a3b8"}
+              strokeWidth="1"
+              strokeDasharray="3 3"
+            />
+            {mark.future ? (
+              <text
+                x={frame.right - 2}
+                y={frame.top - 8}
+                textAnchor="end"
+                fontSize="9"
+                className="fill-slate-500"
+              >
+                {"next rebalance "}
+                {dayShort(mark.date)}
+              </text>
+            ) : null}
+          </g>
+        ))}
+        {rows.map((row, index) => {
+          const date = String(row.trade_date ?? "").slice(0, 10);
+          const value = (row.pnl_total ?? 0) * 1e4;
+          const top = Math.min(y(0), y(value));
+          const heightOfBar = Math.max(1, Math.abs(y(0) - y(value)));
+          return (
+            <rect
+              key={row.trade_date ?? index}
+              data-daily-bar={row.trade_date ?? index}
+              x={frame.x(date) - barWidth / 2}
+              y={top}
+              width={barWidth}
+              height={heightOfBar}
+              fill={value >= 0 ? "var(--efb-up-fill)" : "var(--efb-down-fill)"}
+            >
+              <title>
+                {pointTitle(
+                  date,
+                  value,
+                  (row.pnl_factor ?? 0) * 1e4,
+                  (row.pnl_idio ?? 0) * 1e4,
+                  (row.pnl_cost ?? 0) * 1e4,
+                )}
+              </title>
+            </rect>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
@@ -372,7 +732,7 @@ const factorLabel = (key: string): string => {
     size: "Size",
   };
   if (known[key]) return known[key];
-  if (key.startsWith("sector_")) return `Sector ${key.slice(7)}`;
+  if (key.startsWith("sector_")) return sectorLabel(Number(key.slice(7)));
   return key.replace(/_/g, " ");
 };
 
@@ -398,90 +758,156 @@ export function exposureRows(snapshot: Snapshot): ExposureRow[] {
 }
 
 function ExposureBars({ snapshot }: { snapshot: Snapshot }) {
-  const rows = exposureRows(snapshot);
-  if (rows.length === 0) {
+  const all = exposureRows(snapshot);
+  const { ref, width } = useChartWidth(680);
+  if (all.length === 0) {
     return (
-      <p data-overview-exposures="absent" className="text-xs text-slate-500">
-        this document carries no rebalance hedge footprint, so there is nothing to compare.
-      </p>
+      <div ref={ref} className="mt-1 w-full">
+        <p data-overview-exposures="absent" className="text-xs text-slate-500">
+          this document carries no rebalance hedge footprint, so there is nothing to compare.
+        </p>
+      </div>
     );
   }
-  const labelWidth = 108;
-  const width = 720;
-  const rowHeight = 21;
-  const height = rows.length * rowHeight + 28;
-  const center = labelWidth + (width - labelWidth - 16) / 2;
-  const half = (width - labelWidth - 16) / 2;
-  const worst = Math.max(
-    0.05,
-    ...rows.flatMap((row) => [Math.abs(row.afterHedge), Math.abs(row.now ?? 0)]),
-  );
-  const scale = worst * 1.05;
-  const at = (value: number): number => center + (value / scale) * half;
+  // The biggest exposures come first: the reader is looking for what is large,
+  // not for the risk model's own key order.
+  const rows = [...all].sort((a, b) => sizeOf(b) - sizeOf(a));
+  const worst = Math.max(...rows.map(sizeOf));
+  const labelWidth = Math.max(78, Math.min(132, Math.round(width * 0.22)));
+  const rightMargin = 54;
+  const plotLeft = labelWidth;
+  const plotRight = Math.max(plotLeft + 40, width - rightMargin);
+  const center = (plotLeft + plotRight) / 2;
+  const half = (plotRight - plotLeft) / 2;
   const threshold = 0.05;
+  const scale = Math.max(threshold, worst) * 1.12;
+  const at = (value: number): number => center + (value / scale) * half;
+  const rowHeight = 28;
+  const top = 26;
+  const height = top + rows.length * rowHeight + 8;
+  const barHeight = 10;
+
   return (
-    <svg
-      role="img"
-      aria-label="factor exposures after the rebalance hedge and now"
-      viewBox={`0 0 ${width} ${height}`}
-      className="mt-1 w-full"
-      data-overview-exposures="true"
-    >
-      <line x1={center} x2={center} y1={6} y2={height - 10} stroke="#94a3b8" />
-      {[threshold, -threshold].map((value) => (
-        <g key={value}>
-          <line
-            x1={at(value)}
-            x2={at(value)}
-            y1={6}
-            y2={height - 10}
-            stroke="#f59e0b"
-            strokeDasharray="3 3"
-            data-threshold="5"
-          />
-          <text
-            x={at(value) + (value > 0 ? 2 : -20)}
-            y={12}
-            className="fill-amber-700"
-            fontSize="9"
-          >
-            5%
-          </text>
-        </g>
-      ))}
-      {rows.map((row, index) => {
-        const top = 20 + index * rowHeight;
-        return (
-          <g key={row.factor} data-exposure-factor={row.factor}>
-            <text x={0} y={top + 10} className="fill-slate-600" fontSize="10">
-              {factorLabel(row.factor)}
-            </text>
-            <rect
-              x={Math.min(center, at(row.afterHedge))}
-              y={top + 2}
-              width={Math.abs(at(row.afterHedge) - center)}
-              height={5}
-              fill="#94a3b8"
-              data-exposure-series="after-hedge"
+    <div ref={ref} className="mt-1 w-full">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-[0.7rem] text-slate-600">
+        <p data-exposure-header="true">
+          worst exposure {percent(worst)} of the {percent(threshold, 0)} limit
+        </p>
+        <p className="flex items-center gap-3">
+          <span className="flex items-center gap-1">
+            <span aria-hidden="true" className="inline-block h-2.5 w-2.5" style={{ background: "#94a3b8" }} />
+            after the hedge
+          </span>
+          <span className="flex items-center gap-1">
+            <span aria-hidden="true" className="inline-block h-2.5 w-2.5" style={{ background: "#0284c7" }} />
+            now
+          </span>
+        </p>
+      </div>
+      <svg
+        role="img"
+        aria-label="factor exposures after the rebalance hedge and now"
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        className="block w-full"
+        data-overview-exposures="true"
+      >
+        {/* The band past the 5% guard, shaded at both edges so a bar near it reads at once. */}
+        <rect
+          x={at(threshold)}
+          y={top - 8}
+          width={Math.max(0, plotRight - at(threshold))}
+          height={height - top + 4}
+          fill="#f59e0b"
+          fillOpacity="0.08"
+          data-limit-band="right"
+        />
+        <rect
+          x={plotLeft}
+          y={top - 8}
+          width={Math.max(0, at(-threshold) - plotLeft)}
+          height={height - top + 4}
+          fill="#f59e0b"
+          fillOpacity="0.08"
+          data-limit-band="left"
+        />
+        <line
+          x1={center}
+          x2={center}
+          y1={top - 6}
+          y2={height - 6}
+          stroke="#64748b"
+          strokeWidth="1.2"
+        />
+        {[threshold, -threshold].map((value) => (
+          <g key={value}>
+            <line
+              x1={at(value)}
+              x2={at(value)}
+              y1={top - 8}
+              y2={height - 6}
+              stroke="#f59e0b"
+              strokeDasharray="3 3"
+              data-threshold="5"
             />
-            {row.now === null ? null : (
-              <rect
-                x={Math.min(center, at(row.now))}
-                y={top + 9}
-                width={Math.abs(at(row.now) - center)}
-                height={5}
-                fill="#0284c7"
-                data-exposure-series="now"
-              />
-            )}
-            <text x={width - 48} y={top + 10} className="fill-slate-500" fontSize="9">
-              {row.now === null ? "n/a" : percent(row.now)}
+            <text
+              x={at(value) + (value > 0 ? 2 : -20)}
+              y={12}
+              className="fill-amber-700"
+              fontSize="9"
+            >
+              5%
             </text>
           </g>
-        );
-      })}
-    </svg>
+        ))}
+        {rows.map((row, index) => {
+          const rowTop = top + index * rowHeight;
+          const shown = row.now ?? row.afterHedge;
+          const end = at(shown);
+          return (
+            <g key={row.factor} data-exposure-factor={row.factor}>
+              <text x={0} y={rowTop + 15} className="fill-slate-600" fontSize="10">
+                {factorLabel(row.factor)}
+              </text>
+              <rect
+                x={Math.min(center, at(row.afterHedge))}
+                y={rowTop + 1}
+                width={Math.abs(at(row.afterHedge) - center)}
+                height={barHeight}
+                fill="#94a3b8"
+                data-exposure-series="after-hedge"
+              />
+              {row.now === null ? null : (
+                <rect
+                  x={Math.min(center, at(row.now))}
+                  y={rowTop + 13}
+                  width={Math.abs(at(row.now) - center)}
+                  height={barHeight}
+                  fill="#0284c7"
+                  data-exposure-series="now"
+                />
+              )}
+              <text
+                x={end + (shown >= 0 ? 5 : -5)}
+                y={rowTop + 23}
+                textAnchor={shown >= 0 ? "start" : "end"}
+                className="fill-slate-500"
+                fontSize="9"
+              >
+                {row.now === null ? "n/a" : percent(row.now)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
+}
+
+/** The size a row is sorted and headed by: the larger of its two readings. */
+function sizeOf(row: ExposureRow): number {
+  return Math.max(Math.abs(row.afterHedge), Math.abs(row.now ?? 0));
 }
 
 /** One line per thing a person has to look at, and nothing when there is none. */
@@ -886,17 +1312,18 @@ export function Overview({
             <>
               Each line is the running total of one part of the P&L, in basis points of
               NAV, from the first live session. The total is the sum of factor,
-              stock-specific and cost; vertical marks are rebalance closes. Example: cost
-              is {bps(cumulative?.pnl_cost)} since go-live, and the last session moved it{" "}
-              {bps(latest?.pnl_cost)}.
+              stock-specific and cost. The dashed vertical marks are rebalance closes, and
+              the one on the right is the next rebuild. Each line carries its latest value
+              at its right end. Example: cost is {bps(cumulative?.pnl_cost)} since go-live,
+              and the last session moved it {bps(latest?.pnl_cost)}.
             </>
           }
         />
         <CumulativeChart snapshot={snapshot} />
       </section>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <section className="min-w-0 rounded border border-slate-200 bg-white px-3 py-2">
+      <div className="grid items-start gap-3 lg:grid-cols-2">
+        <section className="min-w-0 self-start rounded border border-slate-200 bg-white px-3 py-2">
           <Title
             title="daily P&L"
             info={
@@ -910,15 +1337,17 @@ export function Overview({
           />
           <DailyBars snapshot={snapshot} />
         </section>
-        <section className="min-w-0 rounded border border-slate-200 bg-white px-3 py-2">
+        <section className="min-w-0 self-start rounded border border-slate-200 bg-white px-3 py-2">
           <Title
             title="factor exposures"
             info={
               <>
-                Each factor’s exposure as a share of NAV: grey is where the rebalance’s
-                hedge left it, blue is where the book carries it now, and the dashed line
-                is the 5% guard. It moves when prices move the book or a rebalance changes
-                its shape. Example: the worst factor now is {percent(worstNow)}, against{" "}
+                Each factor’s exposure as a share of NAV, largest first: grey is where the
+                rebalance’s hedge left it and blue is where the book carries it now. The
+                dashed lines and the tinted edges mark the 5% guard, so a bar that reaches
+                the tint is at the limit and one near the middle is close to flat. The
+                header names the worst exposure as a share of that limit. Example: the
+                worst factor now is {percent(worstNow)}, against{" "}
                 {percent(Math.max(0, ...exposureNow.map((row) => Math.abs(row.afterHedge))))}{" "}
                 after the rebalance hedge.
               </>
