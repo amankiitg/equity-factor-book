@@ -1,1 +1,157 @@
 @import "tailwindcss";
+
+/*
+ * The light palette, as tokens. The two holdings tables draw their side badges,
+ * their gap cells and their reason pills from these, so a tint that means
+ * "long" means the same thing in both and a reader never has to learn it twice.
+ * The gap colours are the sector panel's own: soft blue where the account holds
+ * more than the target asks for, soft violet where it holds less.
+ */
+:root {
+  --efb-surface: #ffffff;
+  --efb-ink: #0f172a;
+  --efb-muted: #475569;
+  --efb-faint: #94a3b8;
+  --efb-rule: #cbd5e1;
+  --efb-rule-soft: #e2e8f0;
+
+  --efb-long-bg: #ecfdf3;
+  --efb-long-ink: #166534;
+  --efb-long-line: #bbf7d0;
+
+  --efb-short-bg: #fff1f2;
+  --efb-short-ink: #9f1239;
+  --efb-short-line: #fecdd3;
+
+  --efb-gap-more-bg: #eff6ff;
+  --efb-gap-more-ink: #0369a1;
+  --efb-gap-less-bg: #f5f3ff;
+  --efb-gap-less-ink: #6d28d9;
+
+  --efb-pill-bg: #f1f5f9;
+  --efb-pill-ink: #475569;
+  --efb-pill-line: #e2e8f0;
+}
+
+/*
+ * A table the reader scrolls: the header stays put while the rows move under
+ * it. The max-height is what makes the sticky header engage at all, because a
+ * sticky header needs its own scroll container to stick inside.
+ */
+.efb-table-scroll {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.efb-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
+}
+
+@media (min-width: 640px) {
+  .efb-table {
+    table-layout: fixed;
+  }
+}
+
+/* Padding between columns, so two numbers never run into one another. */
+.efb-table th,
+.efb-table td {
+  padding: 0.3rem 0.55rem;
+  vertical-align: top;
+}
+
+.efb-table th:first-child,
+.efb-table td:first-child {
+  padding-left: 0;
+}
+
+.efb-table th:last-child,
+.efb-table td:last-child {
+  padding-right: 0;
+}
+
+.efb-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-bottom: 1px solid var(--efb-rule);
+  background: var(--efb-surface);
+  white-space: nowrap;
+}
+
+.efb-table tbody td {
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.efb-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The since column: a fixed share wide enough for a pill and a second line,
+ * and it wraps inside that width instead of reaching into the gap dollars
+ * beside it. The row grows, the column does not.
+ */
+.efb-table .efb-since {
+  width: 11rem;
+  max-width: 11rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.efb-side {
+  display: inline-block;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  padding: 0.05rem 0.45rem;
+  font-size: 0.7rem;
+  line-height: 1.1rem;
+  text-transform: lowercase;
+}
+
+.efb-side-long {
+  background: var(--efb-long-bg);
+  border-color: var(--efb-long-line);
+  color: var(--efb-long-ink);
+}
+
+.efb-side-short {
+  background: var(--efb-short-bg);
+  border-color: var(--efb-short-line);
+  color: var(--efb-short-ink);
+}
+
+.efb-side-none {
+  background: var(--efb-pill-bg);
+  border-color: var(--efb-pill-line);
+  color: var(--efb-pill-ink);
+}
+
+.efb-gap-more {
+  background: var(--efb-gap-more-bg);
+  color: var(--efb-gap-more-ink);
+}
+
+.efb-gap-less {
+  background: var(--efb-gap-less-bg);
+  color: var(--efb-gap-less-ink);
+}
+
+.efb-pill {
+  display: inline-block;
+  max-width: 100%;
+  border: 1px solid var(--efb-pill-line);
+  border-radius: 9999px;
+  background: var(--efb-pill-bg);
+  padding: 0.05rem 0.5rem;
+  color: var(--efb-pill-ink);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1.15rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

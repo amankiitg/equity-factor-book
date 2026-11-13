@@ -871,6 +871,8 @@ def test_a_later_guard_leg_is_a_reflip_and_says_so() -> None:
     held = {item["ticker"]: item for item in block["holdings"]["rows"]}["CCL"]
     assert "flipped (2026-10-23 to 2026-10-26)" in held["since"]
     assert "drift guard leg (2026-11-04)" in held["since"]
+    # The pill names the latest event, not the flip the sentence starts with.
+    assert held["since_label"] == "Guard 11-04"
 
 
 def test_kvues_own_row_says_retired_owed_and_cannot_be_traded() -> None:
@@ -905,9 +907,11 @@ def test_kvues_own_row_says_retired_owed_and_cannot_be_traded() -> None:
     kvue = rows["KVUE"]
     assert kvue["retired"] is True and kvue["owed"] is True
     assert kvue["since"] == "retired (acquired by KMB), owed, cannot be traded"
+    assert kvue["since_label"] == "Retired"
     assert kvue["gap_weight"] == pytest.approx(-0.004)
     assert kvue["gap_usd"] == pytest.approx(-4_000.0)
     assert rows["AAA"]["since"] == "opened at the rebalance (2026-10-23)"
+    assert rows["AAA"]["since_label"] == "Opened 10-23"
 
 
 def _spread(
