@@ -19,6 +19,7 @@
 import { useState } from "react";
 
 import { ActualHoldingsTable } from "./ActualHoldingsTable";
+import { HowToRead } from "./Panel";
 import { dateOnly } from "./format";
 import { HoldingsTable } from "./HoldingsSection";
 import type { BookFacts } from "./book";
@@ -109,11 +110,11 @@ export function DrawerSection({
 
       {shown === null ? (
         <p className="px-3 py-2 text-sm text-slate-600" data-drawer-hint="true">
-          <span data-how-to-read="true">
-            how to read this: the tables hold every name, and the search box
-            narrows whichever one is open. Example: typing NVDA leaves only the rows
-            whose ticker matches, in the table you opened.
-          </span>
+          <HowToRead>
+            the tables hold every name, and the search box narrows whichever one is
+            open. Example: typing NVDA leaves only the rows whose ticker matches, in
+            the table you opened.
+          </HowToRead>
         </p>
       ) : null}
 

@@ -83,6 +83,11 @@ function openAttributionTab(): void {
   fireEvent.click(document.querySelector("[data-view='attribution']") as HTMLElement);
 }
 
+/** Positions carries the book, its tables and the trades-by-reason section. */
+function openPositions(): void {
+  fireEvent.click(document.querySelector("[data-view='book']") as HTMLElement);
+}
+
 /** The drawer is shut until a tab is asked for, which is half of what it is for. */
 function openDrawer(tab: "book" | "actual"): HTMLElement {
   fireEvent.click(document.querySelector(`[data-tab='${tab}']`) as HTMLElement);
@@ -535,6 +540,7 @@ describe("trades by reason", () => {
   it("counts the names and dollars the run recorded under each reason", () => {
     const facts = bookFacts(OK);
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openPositions();
     const table = screen.getByRole("table", { name: "trades by reason" });
     // The per-reason rows only: the body has one row per reason, and the foot
     // carries the total the column has to add up to.
@@ -556,6 +562,7 @@ describe("trades by reason", () => {
     // answer the question it exists for, which is where the turnover came from.
     const facts = bookFacts(OK);
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openPositions();
     const table = screen.getByRole("table", { name: "trades by reason" });
     const headers = within(table).getAllByRole("columnheader").map((cell) => cell.textContent);
     expect(headers).toEqual(["reason", "names", "held", "traded", "share"]);
@@ -589,6 +596,7 @@ describe("trades by reason", () => {
     const facts = bookFacts(quiet);
     expect(facts.reasons.every((bucket) => bucket.traded === 0)).toBe(true);
     render(<SnapshotView snapshot={quiet} now={NOW} />);
+    openPositions();
     const table = screen.getByRole("table", { name: "trades by reason" });
     for (const bucket of facts.reasons) {
       const cell = document.querySelector(
@@ -608,6 +616,7 @@ describe("trades by reason", () => {
     // document they summed to less than the card and the reader had to notice. The
     // exited row is the difference and the foot is the card, so the column totals.
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openPositions();
     const table = screen.getByRole("table", { name: "trades by reason" });
     // The real 2026-10-13 document, whose card stands on the legs the run built.
     document.body.innerHTML = "";
@@ -615,6 +624,7 @@ describe("trades by reason", () => {
       TODAY.reconciliation?.sent_notional ?? TODAY.reconciliation?.intended_notional ?? null;
     expect(turnover).not.toBeNull();
     render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    openPositions();
     const real = screen.getByRole("table", { name: "trades by reason" });
     const perName = bookFacts(TODAY).reasons.reduce((sum, bucket) => sum + bucket.traded, 0);
     const exited = document.querySelector("[data-traded='exited']") as HTMLElement;

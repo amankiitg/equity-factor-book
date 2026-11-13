@@ -34,7 +34,9 @@ const NOW = new Date("2026-09-21T23:00:00Z");
 const LATE = new Date("2027-01-01T00:00:00Z");
 
 const alerts = (): HTMLElement[] =>
-  Array.from(document.querySelectorAll("[role='alert']")) as HTMLElement[];
+  (Array.from(document.querySelectorAll("[role='alert']")) as HTMLElement[]).filter(
+    (element) => element.closest("[hidden]") === null,
+  );
 const panel = (hook: string): HTMLElement =>
   document.querySelector(`[data-alert='${hook}']`) as HTMLElement;
 
@@ -55,7 +57,7 @@ describe("severity", () => {
     expect(run.getAttribute("data-tone")).toBe("bad");
     expect(run.textContent).toContain("STALE STOP");
     expect(alerts().length).toBe(1);
-    expect(alerts()[0]).toBe(run);
+    expect(alerts()[0].textContent).toContain("STALE STOP");
 
     render(<SnapshotView snapshot={errored as unknown as Snapshot} now={NOW} />);
     expect(panel("run").getAttribute("data-tone")).toBe("bad");

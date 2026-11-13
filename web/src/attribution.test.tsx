@@ -287,9 +287,9 @@ describe("the attribution tab when the document has no attribution", () => {
     expect(note.textContent).toContain("carries no attribution block");
     expect(document.querySelector("[data-section='attribution']")).toBeNull();
     // The book monitor is untouched by the absence.
-    fireEvent.click(screen.getByRole("tab", { name: "Book monitor" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Positions" }));
     expect(document.querySelector("[data-section='hedge']")).toBeTruthy();
-    expect(document.querySelector("[data-attribution='absent']")).toBeNull();
+    expect(note.closest("[hidden]")).not.toBeNull();
   });
 
   it("says nothing of the sort when the block is there", () => {
