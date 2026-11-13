@@ -487,15 +487,17 @@ export function overviewExceptions(
       const words = acquired
         ? `${acquired.startsWith("acquired") ? acquired : `acquired by ${acquired}`}, held, cannot be traded`
         : note.replace(/^retired, /, "");
-      add(
-        row.ticker,
-        `${row.ticker}: ${words}, ${dollars(Math.abs(row.gap_usd ?? 0))}`,
-      );
+      const dollarsSuffix =
+        row.gap_usd === null || row.gap_usd === undefined
+          ? ""
+          : `, ${dollars(Math.abs(row.gap_usd))}`;
+      add(row.ticker, `${row.ticker}: ${words}${dollarsSuffix}`);
     } else if (row.owed) {
-      add(
-        row.ticker,
-        `${row.ticker}: owed and cannot be traded, ${dollars(Math.abs(row.gap_usd ?? 0))}`,
-      );
+      const dollarsSuffix =
+        row.gap_usd === null || row.gap_usd === undefined
+          ? ""
+          : `, ${dollars(Math.abs(row.gap_usd))}`;
+      add(row.ticker, `${row.ticker}: owed and cannot be traded${dollarsSuffix}`);
     }
   }
   for (const leg of snapshot.monthly?.tonight?.cannot_send ?? []) {
