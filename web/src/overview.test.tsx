@@ -116,7 +116,7 @@ describe("the overview tab", () => {
     const snapshot: Snapshot = { ...SERVED, monthly: withHolding };
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
     const line = document.querySelector("[data-exception='KVUE']")?.textContent ?? "";
-    expect(line).toBe("KVUE: acquired by KMB, held, cannot be traded, $13,615");
+    expect(line).toBe("KVUE: acquired by KMB, symbol inactive, held $13,615, cannot be traded");
   });
 
   it("draws the cumulative lines, the daily bars and the exposure comparison", () => {

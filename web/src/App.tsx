@@ -29,6 +29,7 @@ import { Movers, RiskConcentration } from "./FutureSections";
 import { HedgePanel } from "./HedgePanel";
 import { MetricsRow } from "./MetricsRow";
 import { MonthlyPanels } from "./Monthly";
+import { NotesDrawer } from "./Notes";
 import { Overview } from "./Overview";
 import { Glossary, Panel } from "./Panel";
 import { SectorSection } from "./SectorSection";
@@ -174,6 +175,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
               </div>
             </dl>
           </Details>
+          <NotesDrawer snapshot={snapshot} />
           <Details hook="glossary" summary="what the words mean">
             <Glossary />
           </Details>

@@ -15,7 +15,8 @@
 import { useState } from "react";
 
 import type { Exceptions } from "./exceptions";
-import { dollars, percent, signedDollars } from "./format";
+import { dollars, percent, pnlClass, signedDollars } from "./format";
+import { InfoIcon } from "./Panel";
 import type { Reconciliation, RunState, Tone } from "./status";
 import { freshness, ageText } from "./status";
 import { etDateTime } from "./format";
@@ -31,9 +32,9 @@ export function Info({ title, children }: { title: string; children: React.React
         aria-label={`about ${title}`}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 bg-white text-[0.65rem] font-semibold leading-none text-slate-500 hover:bg-slate-100"
+        className="ml-1.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
       >
-        i
+        <InfoIcon />
       </button>
       {open ? (
         <span
@@ -51,7 +52,7 @@ export function Info({ title, children }: { title: string; children: React.React
 
 function Title({ title, info }: { title: string; info: React.ReactNode }) {
   return (
-    <p className="flex items-baseline gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
       {title}
       <Info title={title}>{info}</Info>
     </p>
@@ -62,6 +63,7 @@ function Title({ title, info }: { title: string; info: React.ReactNode }) {
 function Kpi({
   title,
   value,
+  valueClass,
   detail,
   info,
   children,
@@ -69,6 +71,7 @@ function Kpi({
 }: {
   title: string;
   value?: React.ReactNode;
+  valueClass?: string;
   detail?: React.ReactNode;
   info: React.ReactNode;
   children?: React.ReactNode;
@@ -81,7 +84,7 @@ function Kpi({
     >
       <Title title={title} info={info} />
       {value === undefined ? null : (
-        <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-slate-900">
+        <p className={`mt-1 font-mono text-lg font-semibold tabular-nums ${valueClass ?? "text-slate-900"}`}>
           {value}
         </p>
       )}
@@ -249,6 +252,33 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
             data-series={series.key}
           />
         ))}
+        {/*
+          The hover layer: one transparent band per session, each carrying the day
+          and every series' value as its title. The path alone gives the eye a
+          shape; this gives the pointer the number under it, which is what makes
+          the picture a reading rather than an illustration.
+        */}
+        {points.map((point, index) => {
+          const hit = (width - pad.left - pad.right) / Math.max(points.length, 1);
+          return (
+            <rect
+              key={`hit-${point.date}`}
+              data-hover-point={point.date}
+              x={x(index) - hit / 2}
+              y={pad.top}
+              width={hit}
+              height={height - pad.top - pad.bottom}
+              fill="transparent"
+              pointerEvents="all"
+            >
+              <title>
+                {`${point.date}: total ${point.total.toFixed(1)} bp, factor ${point.factor.toFixed(
+                  1,
+                )} bp, stock-specific ${point.idio.toFixed(1)} bp, cost ${point.cost.toFixed(1)} bp`}
+              </title>
+            </rect>
+          );
+        })}
       </svg>
       <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
         {SERIES.map((series) => (
@@ -315,7 +345,7 @@ function DailyBars({ snapshot }: { snapshot: Snapshot }) {
             y={top}
             width={barWidth}
             height={heightOfBar}
-            fill={value >= 0 ? "#059669" : "#e11d48"}
+            fill={value >= 0 ? "var(--efb-up-fill)" : "var(--efb-down-fill)"}
           >
             <title>{`${dayShort(row.trade_date)}: ${bps(value / 1e4)}`}</title>
           </rect>
@@ -458,6 +488,8 @@ function ExposureBars({ snapshot }: { snapshot: Snapshot }) {
 export interface OverviewException {
   key: string;
   text: string;
+  /** The name a line is about, when it is about one, so two sources cannot double it. */
+  ticker?: string;
 }
 
 export function overviewExceptions(
@@ -467,11 +499,21 @@ export function overviewExceptions(
   exceptions: Exceptions,
 ): OverviewException[] {
   const lines: OverviewException[] = [];
-  const seen = new Set<string>();
-  const add = (key: string, text: string): void => {
-    if (seen.has(key)) return;
-    seen.add(key);
-    lines.push({ key, text });
+  const seen = new Map<string, OverviewException>();
+  const add = (key: string, text: string, ticker?: string): void => {
+    // The same name can arrive from the holdings table, tonight's unsendable legs
+    // and the account's departures. One card per fact is the rule: the first source
+    // that knows what happened to it wins, and a reader never counts KVUE twice.
+    const dedupe = ticker ?? key;
+    if (seen.has(dedupe)) return;
+    const row = { key, text, ticker };
+    seen.set(dedupe, row);
+    lines.push(row);
+  };
+  const heldDollars = (ticker: string): number | null => {
+    const name = (snapshot.actual_holdings?.names ?? []).find((entry) => entry.ticker === ticker);
+    const value = name?.notional;
+    return typeof value === "number" && Number.isFinite(value) ? Math.abs(value) : null;
   };
   if (!state.ok) add("run", `${state.headline}. ${state.detail}`);
   if (reconciled.unresolved > 0) {
@@ -484,36 +526,38 @@ export function overviewExceptions(
     if (row.retired) {
       const note = row.note ?? "retired, owed, cannot be traded";
       const acquired = /retired \(([^)]+)\)/.exec(note)?.[1];
-      const words = acquired
-        ? `${acquired.startsWith("acquired") ? acquired : `acquired by ${acquired}`}, held, cannot be traded`
-        : note.replace(/^retired, /, "");
-      const dollarsSuffix =
-        row.gap_usd === null || row.gap_usd === undefined
-          ? ""
-          : `, ${dollars(Math.abs(row.gap_usd))}`;
-      add(row.ticker, `${row.ticker}: ${words}${dollarsSuffix}`);
+      const by = acquired ? acquired.replace(/^acquired by /i, "") : null;
+      const value = heldDollars(row.ticker) ?? row.gap_usd ?? null;
+      const held = value === null ? "held" : `held ${dollars(value)}`;
+      add(
+        row.ticker,
+        `${row.ticker}: ${by ? `acquired by ${by}` : "retired"}, symbol inactive, ${held}, cannot be traded`,
+        row.ticker,
+      );
     } else if (row.owed) {
       const dollarsSuffix =
         row.gap_usd === null || row.gap_usd === undefined
           ? ""
           : `, ${dollars(Math.abs(row.gap_usd))}`;
-      add(row.ticker, `${row.ticker}: owed and cannot be traded${dollarsSuffix}`);
+      add(row.ticker, `${row.ticker}: owed and cannot be traded${dollarsSuffix}`, row.ticker);
     }
   }
   for (const leg of snapshot.monthly?.tonight?.cannot_send ?? []) {
     add(
       `cannot-send-${leg.ticker}`,
       `${leg.ticker}: ${dollars(leg.usd)} owed, cannot be sent (${leg.code})`,
+      leg.ticker,
     );
   }
   for (const name of snapshot.actual_holdings?.exits?.names ?? []) {
     add(
       `exit-${name.ticker}`,
       `${name.ticker}: left the account with no order behind it, ${dollars(name.notional)}`,
+      name.ticker,
     );
   }
   for (const entry of exceptions.unexpected) {
-    add(entry.ticker, `${entry.ticker}: ${entry.why}`);
+    add(entry.ticker, `${entry.ticker}: ${entry.why}`, entry.ticker);
   }
   return lines;
 }
@@ -543,18 +587,18 @@ function ExceptionBanner({
       className={`rounded border-l-4 px-3 py-2 ${TONE_BANNER[tone]}`}
     >
       <p className="text-sm font-semibold">
-        {lines.length === 0
-          ? "All clear"
-          : lines.length === 1
-            ? "1 thing needs a person"
-            : `${lines.length} things need a person`}
+        {lines.length === 0 ? "All clear" : "Needs attention"}
       </p>
       {lines.length === 0 ? (
         <p className="text-xs">nothing on the account or the run needs attention today.</p>
       ) : (
-        <ul className="mt-1 flex flex-col gap-0.5 text-sm">
+        <ul className="mt-1 flex flex-col gap-1 text-sm">
           {shown.map((line) => (
-            <li key={line.key} data-exception={line.key}>
+            <li
+              key={line.key}
+              data-exception={line.key}
+              className="rounded border border-slate-300/70 bg-white/70 px-2 py-1"
+            >
               {line.text}
             </li>
           ))}
@@ -713,14 +757,21 @@ export function Overview({
           hook="today"
           title="today"
           value={bps(todayValue)}
-          detail={[
-            lastDate ? `the ${lastDate} close` : "no attributed session",
-            todayValue === null || nav === null
-              ? null
-              : `${signedDollars(todayValue * nav)} in dollars`,
-          ]
-            .filter(Boolean)
-            .join(", ")}
+          valueClass={pnlClass(todayValue)}
+          detail={
+            <>
+              {lastDate ? `the ${lastDate} close` : "no attributed session"}
+              {todayValue === null || nav === null ? null : (
+                <>
+                  {", "}
+                  <span className={pnlClass(todayValue * nav)}>
+                    {signedDollars(todayValue * nav)}
+                  </span>
+                  {" in dollars"}
+                </>
+              )}
+            </>
+          }
           info={
             <>
               The last attributed session’s total, in basis points of NAV, with the same
@@ -738,6 +789,7 @@ export function Overview({
           hook="since"
           title="P&L since go-live"
           value={bps(totalSince)}
+          valueClass={pnlClass(totalSince)}
           detail={
             totalSince === null || nav === null
               ? "no cumulative figure"
@@ -753,21 +805,24 @@ export function Overview({
             </>
           }
         >
-          <dl data-since-split="true" className="mt-1 grid gap-0.5 text-xs">
+          <div className="mt-1 grid grid-cols-[auto_1fr_1fr] gap-x-2 text-[0.65rem] uppercase tracking-wide text-slate-400">
+            <span>part</span>
+            <span className="text-right">bp</span>
+            <span className="text-right">dollars</span>
+          </div>
+          <dl data-since-split="true" className="grid grid-cols-[auto_1fr_1fr] gap-x-2 gap-y-0.5 text-xs">
             {[
               { label: "factor", value: cumulative?.pnl_factor ?? null },
               { label: "stock-specific", value: cumulative?.pnl_idio ?? null },
               { label: "cost", value: cumulative?.pnl_cost ?? null },
             ].map((row) => (
-              <div key={row.label} className="flex items-baseline justify-between gap-2">
+              <div key={row.label} className="contents">
                 <dt className="text-slate-500">{row.label}</dt>
-                <dd className="font-mono tabular-nums text-slate-800">
+                <dd className={`text-right font-mono tabular-nums ${pnlClass(row.value)}`}>
                   {bps(row.value)}
-                  <span className="ml-1 text-slate-500">
-                    {row.value === null || nav === null
-                      ? ""
-                      : signedDollars(row.value * nav)}
-                  </span>
+                </dd>
+                <dd className={`text-right font-mono tabular-nums ${pnlClass(row.value)}`}>
+                  {row.value === null || nav === null ? "n/a" : signedDollars(row.value * nav)}
                 </dd>
               </div>
             ))}
