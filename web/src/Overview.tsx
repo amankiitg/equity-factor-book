@@ -678,6 +678,11 @@ export function Overview({
   const monthly = snapshot.monthly;
   const totalSince = cumulative?.pnl_total ?? null;
   const lastDate = latest?.trade_date ? dayShort(latest.trade_date) : null;
+  const written = freshness(snapshot);
+  const exposureNow = exposureRows(snapshot);
+  const worstNow = exposureNow.length
+    ? Math.max(...exposureNow.map((row) => Math.abs(row.now ?? 0)))
+    : null;
 
   return (
     <div data-overview="true" className="flex flex-col gap-3">
@@ -793,8 +798,9 @@ export function Overview({
             <>
               The book is rebuilt every 21 sessions and left alone on the days between,
               unless the drift guard fires. The pill says which day this is and when the
-              next rebuild lands. Example: a hold day still settles fills and pays cost,
-              it just does not resize the book.
+              next rebuild lands. Example: this document is on {monthly?.cadence_strip?.day === "hold" || monthly?.cadence_strip?.day === "rebalance"
+                ? `${monthly.cadence_strip.day === "hold" ? `hold day ${monthly.cadence_strip.sessions_since ?? 1} of ${monthly.cadence_strip.k ?? 21}` : "a rebalance day"}, with the next rebuild on ${dayShort(monthly.cadence_strip.next_rebalance)}`
+                : "a daily cadence, so every close can resize the book"}.
             </>
           }
         >
@@ -809,8 +815,8 @@ export function Overview({
             <>
               The state of the evening that wrote this document and when it wrote it, in
               New York time. It moves once a session; a stopped run leaves the previous
-              close’s book on the page and the pill says so. Example: a clean hold day
-              reads ok and ages a few hours overnight.
+              close’s book on the page and the pill says so. Example: this document says{" "}
+              {state.pill} and was written {written.at === null ? "at an unrecorded time" : etDateTime(written.at)}.
             </>
           }
         >
@@ -826,7 +832,8 @@ export function Overview({
               Each line is the running total of one part of the P&L, in basis points of
               NAV, from the first live session. The total is the sum of factor,
               stock-specific and cost; vertical marks are rebalance closes. Example: cost
-              steps down on a rebalance evening and is flat on a hold day.
+              is {bps(cumulative?.pnl_cost)} since go-live, and the last session moved it{" "}
+              {bps(latest?.pnl_cost)}.
             </>
           }
         />
@@ -841,8 +848,8 @@ export function Overview({
               <>
                 One bar per attributed session, in basis points of NAV. Green is a
                 positive day and rose a negative one; the bar’s height is the total, not a
-                component. Example: a rebalance day’s bar usually carries a visible
-                negative cost, while the days after it are driven by stock-specific moves.
+                component. Example: the last session, {lastDate ?? "no day"}, was{" "}
+                {bps(latest?.pnl_total)}.
               </>
             }
           />
@@ -856,8 +863,9 @@ export function Overview({
                 Each factor’s exposure as a share of NAV: grey is where the rebalance’s
                 hedge left it, blue is where the book carries it now, and the dashed line
                 is the 5% guard. It moves when prices move the book or a rebalance changes
-                its shape. Example: the hedge leaves every factor at about zero, and the
-                drift since then is what the guard watches.
+                its shape. Example: the worst factor now is {percent(worstNow)}, against{" "}
+                {percent(Math.max(0, ...exposureNow.map((row) => Math.abs(row.afterHedge))))}{" "}
+                after the rebalance hedge.
               </>
             }
           />
