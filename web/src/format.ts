@@ -38,6 +38,40 @@ export const signedDollars = (value: number | null | undefined): string => {
   return `${value >= 0 || rounded === 0 ? "+" : "-"}$${rounded.toLocaleString()}`;
 };
 
+/**
+ * The small pill a holdings table draws for a row's since column.
+ *
+ * The stored sentence is the full account ("flipped (2026-10-23 to 2026-10-26);
+ * drift guard leg (2026-11-04)") and it stays on the row for a tooltip and for a
+ * screen reader. The pill is the same fact at a glance: the event's name and the
+ * day it happened, so a column of them can be read down without wrapping the
+ * table into the dollar column beside it.
+ */
+const SINCE_WORDS: Record<string, string> = {
+  guard: "Guard",
+  opened: "Opened",
+  flipped: "Flipped",
+  exited: "Exited",
+  resized: "Resized",
+  "re-trade": "Re-trade",
+  remainder: "Remainder",
+  "held-other": "Held",
+  held: "Held",
+  retired: "Retired",
+};
+
+export const shortSince = (
+  kind: string | null | undefined,
+  day: string | null | undefined,
+  short?: string | null,
+): string => {
+  if (short) return short;
+  const word = kind ? SINCE_WORDS[kind] : undefined;
+  if (!word) return "";
+  if (word === "Held" || word === "Retired" || !day) return word;
+  return `${word} ${day.slice(5, 10)}`;
+};
+
 /** A date as the day it is, never with a midnight time stapled to it. */
 export const dateOnly = (value: string | Date | null | undefined): string | null => {
   if (value === null || value === undefined || value === "") return null;

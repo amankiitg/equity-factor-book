@@ -530,6 +530,8 @@ export interface MonthlyHoldingRow {
   since: string;
   since_kind: string;
   since_date: string;
+  /** The compact pill form, for example "Guard 11-04"; absent on older documents. */
+  since_label?: string | null;
   weight_now: number;
   weight_target: number;
   /** w_now - w_target, the same fraction the distance panel uses. */

@@ -12,7 +12,15 @@ import { useMemo, useState } from "react";
 
 import { HowToRead } from "./Panel";
 
-import { dateOnly, dateTime, dollars, percent, signedDollars, signedPercent } from "./format";
+import {
+  dateOnly,
+  dateTime,
+  dollars,
+  percent,
+  shortSince,
+  signedDollars,
+  signedPercent,
+} from "./format";
 import type { ActualHoldings, BookName, MonthlyBlock, MonthlyHoldingRow } from "./types";
 
 type SortKey =
@@ -38,8 +46,23 @@ interface Row {
   drift: number | null;
   gapDollars: number | null;
   since: string | null;
+  sinceKind: string | null;
+  sinceDate: string | null;
+  sinceLabel: string | null;
   tonight: string | null;
   retired: boolean;
+}
+
+/** More means the account holds more than the target asked for, the sector panel's blue. */
+function gapTone(gap: number | null): string {
+  if (gap === null || Math.abs(gap) < 1e-9) return "";
+  return gap > 0 ? "efb-gap-more" : "efb-gap-less";
+}
+
+function sideTone(side: string): string {
+  if (side === "long") return "efb-side-long";
+  if (side === "short") return "efb-side-short";
+  return "efb-side-none";
 }
 
 /** The rows: the held book, plus the target names the account does not hold. */
@@ -75,6 +98,9 @@ function rowsOf(
       gapDollars:
         anchor?.gap_usd ?? (drift === null || nav === null ? null : drift * nav),
       since: anchor?.since ?? null,
+      sinceKind: anchor?.since_kind ?? null,
+      sinceDate: anchor?.since_date ?? null,
+      sinceLabel: anchor?.since_label ?? null,
       tonight: anchor?.tonight ?? null,
       retired: anchor?.retired ?? false,
     });
@@ -96,6 +122,9 @@ function rowsOf(
         anchor?.gap_usd ??
         (targetWeight === null || nav === null ? null : -targetWeight * nav),
       since: anchor?.since ?? null,
+      sinceKind: anchor?.since_kind ?? null,
+      sinceDate: anchor?.since_date ?? null,
+      sinceLabel: anchor?.since_label ?? null,
       tonight: anchor?.tonight ?? null,
       retired: anchor?.retired ?? false,
     });
@@ -113,6 +142,9 @@ function rowsOf(
       drift: row.gap_weight,
       gapDollars: row.gap_usd,
       since: row.since,
+      sinceKind: row.since_kind,
+      sinceDate: row.since_date,
+      sinceLabel: row.since_label ?? null,
       tonight: row.tonight,
       retired: row.retired,
     });
@@ -160,6 +192,9 @@ export function ActualHoldingsTable({
     key: "drift",
     direction: "desc",
   });
+  // A phone shows the four columns that answer the question and keeps the rest
+  // one tap away. On a wide screen every column is shown and the toggle is hidden.
+  const [allColumns, setAllColumns] = useState(false);
 
   const rows = useMemo(
     () => rowsOf(actual, names, nav, monthly?.holdings?.rows ?? []),
@@ -190,9 +225,11 @@ export function ActualHoldingsTable({
   const session = actual.close ? ` for the ${dateOnly(actual.close)} close` : "";
   const when = dateTime(actual.as_of);
 
-  const header = (key: SortKey, label: string) => (
+  const optional = allColumns ? "" : "hidden sm:table-cell";
+  const header = (key: SortKey, label: string, extra = "", width = "") => (
     <th
-      className="py-1 text-right"
+      className={`py-1 text-right ${extra}`}
+      style={width ? { width } : undefined}
       aria-sort={
         sort.key === key ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
       }
@@ -240,14 +277,23 @@ export function ActualHoldingsTable({
       <p className="text-xs text-slate-500" data-count="shown">
         showing {shown.length} of {rows.length}
       </p>
-      <div className="overflow-x-auto">
-        <table
-          className="w-full min-w-[44rem] border-collapse text-sm"
-          aria-label="actual holdings"
+      <div className="flex items-center justify-between gap-2 pb-1 sm:hidden">
+        <p className="text-xs text-slate-500">ticker, side, gap and reason; tap for the rest</p>
+        <button
+          type="button"
+          data-columns-toggle="true"
+          aria-expanded={allColumns}
+          onClick={() => setAllColumns((open) => !open)}
+          className="shrink-0 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700"
         >
+          {allColumns ? "fewer columns" : "all columns"}
+        </button>
+      </div>
+      <div className="efb-table-scroll">
+        <table className="efb-table w-full text-sm sm:min-w-[56rem]" aria-label="actual holdings">
           <thead>
             <tr className="border-b border-slate-300">
-              <th className="py-1 text-left">
+              <th className="py-1 text-left" style={{ width: "5.5rem" }}>
                 <button
                   type="button"
                   data-sort="ticker"
@@ -267,53 +313,78 @@ export function ActualHoldingsTable({
                   {sort.key === "ticker" ? (sort.direction === "asc" ? " ↑" : " ↓") : ""}
                 </button>
               </th>
-              {header("side", "side")}
-              {header("held", "held weight")}
-              {header("heldDollars", "held $")}
-              {header("target", "target weight")}
-              {header("targetDollars", "target $")}
-              {header("drift", "gap %")}
-              {header("gapDollars", "gap $")}
-              {header("since", "since the rebalance")}
+              {header("side", "side", "", "3.5rem")}
+              {header("held", "held weight", optional, "6rem")}
+              {header("heldDollars", "held $", optional, "6.5rem")}
+              {header("target", "target weight", optional, "6.5rem")}
+              {header("targetDollars", "target $", optional, "6.5rem")}
+              {header("drift", "gap %", optional, "5.5rem")}
+              {header("gapDollars", "gap $", "", "6.5rem")}
+              {header("since", "since the rebalance", "efb-since", "11rem")}
             </tr>
           </thead>
           <tbody>
-            {shown.map((row) => (
-              <tr
-                key={row.ticker}
-                data-ticker={row.ticker}
-                data-held={row.held ? "true" : "false"}
-                data-retired={row.retired ? "true" : "false"}
-                className={`border-b border-slate-100 ${row.held ? "" : "bg-slate-50"}`}
-              >
-                <td className="py-1 font-mono">{row.ticker}</td>
-                <td className="py-1 text-right">{row.side}</td>
-                <td className="py-1 text-right font-mono tabular-nums">
-                  {row.held ? percent(row.heldWeight) : "not held"}
-                </td>
-                <td className="py-1 text-right font-mono tabular-nums">
-                  {dollars(row.heldDollars)}
-                </td>
-                <td className="py-1 text-right font-mono tabular-nums">
-                  {percent(row.targetWeight)}
-                </td>
-                <td className="py-1 text-right font-mono tabular-nums">
-                  {dollars(row.targetDollars)}
-                </td>
-                <td className="py-1 text-right font-mono tabular-nums">
-                  {signedPercent(row.drift)}
-                </td>
-                <td className="py-1 text-right font-mono tabular-nums">
-                  {signedDollars(row.gapDollars)}
-                </td>
-                <td className="py-1 text-slate-600">
-                  {row.since ?? ""}
-                  {row.tonight ? (
-                    <span className="block text-xs text-slate-400">{row.tonight}</span>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
+            {shown.map((row) => {
+              const label = shortSince(row.sinceKind, row.sinceDate, row.sinceLabel) || row.since || "";
+              const compact = label !== "" && label !== row.since;
+              const tone = gapTone(row.drift);
+              return (
+                <tr
+                  key={row.ticker}
+                  data-ticker={row.ticker}
+                  data-held={row.held ? "true" : "false"}
+                  data-retired={row.retired ? "true" : "false"}
+                  className={`border-b border-slate-100 ${row.held ? "" : "bg-slate-50"}`}
+                >
+                  <td className="py-1 font-mono font-semibold">{row.ticker}</td>
+                  <td className="py-1 text-right">
+                    {row.side ? (
+                      <span
+                        className={`efb-side ${sideTone(row.side)}`}
+                        data-side-badge={row.side}
+                      >
+                        {row.side}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className={`py-1 text-right font-mono tabular-nums ${optional}`}>
+                    {row.held ? percent(row.heldWeight) : "not held"}
+                  </td>
+                  <td className={`py-1 text-right font-mono tabular-nums ${optional}`}>
+                    {dollars(row.heldDollars)}
+                  </td>
+                  <td className={`py-1 text-right font-mono tabular-nums ${optional}`}>
+                    {percent(row.targetWeight)}
+                  </td>
+                  <td className={`py-1 text-right font-mono tabular-nums ${optional}`}>
+                    {dollars(row.targetDollars)}
+                  </td>
+                  <td className={`py-1 text-right font-mono tabular-nums ${tone} ${optional}`}>
+                    {signedPercent(row.drift)}
+                  </td>
+                  <td className={`py-1 text-right font-mono tabular-nums ${tone}`}>
+                    {signedDollars(row.gapDollars)}
+                    {/* The phone keeps one gap column; the percentage rides under the dollars. */}
+                    <span className="mt-0.5 block text-xs sm:hidden">{signedPercent(row.drift)}</span>
+                  </td>
+                  <td className="efb-since py-1 text-slate-600">
+                    {compact ? <span className="sr-only">{row.since}</span> : null}
+                    {label ? (
+                      <span
+                        className="efb-pill"
+                        aria-hidden={compact || undefined}
+                        title={row.since ?? undefined}
+                      >
+                        {label}
+                      </span>
+                    ) : null}
+                    {row.tonight ? (
+                      <span className="mt-0.5 block text-xs text-slate-400">{row.tonight}</span>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -10,7 +10,7 @@
 
 import { useMemo, useState } from "react";
 
-import { dollars, percent } from "./format";
+import { dollars, percent, shortSince } from "./format";
 import { HowToRead } from "./Panel";
 import { UNMAPPED, sectorNameFor } from "./sectors";
 import type { BookName, MonthlyBlock } from "./types";
@@ -40,6 +40,9 @@ export function HoldingsTable({
     direction: "desc",
   });
   const [sector, setSector] = useState<string>("all");
+  // Ticker, side, weight and reason answer the question on a phone; the rest is
+  // one tap away. A wide screen shows every column and hides the toggle.
+  const [allColumns, setAllColumns] = useState(false);
 
   const rows = useMemo<Row[]>(
     () =>
@@ -97,9 +100,11 @@ export function HoldingsTable({
 
   if (names.length === 0) return null;
 
-  const header = (key: SortKey, label: string, align = "left") => (
+  const optional = allColumns ? "" : "hidden sm:table-cell";
+  const header = (key: SortKey, label: string, align = "left", extra = "", width = "") => (
     <th
-      className={`py-1 ${align === "right" ? "text-right" : "text-left"}`}
+      className={`py-1 ${align === "right" ? "efb-num" : "text-left"} ${extra}`}
+      style={width ? { width } : undefined}
       aria-sort={
         sort.key === key ? (sort.direction === "asc" ? "ascending" : "descending") : "none"
       }
@@ -159,48 +164,85 @@ export function HoldingsTable({
           showing {shown.length} of {names.length}
         </p>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[32rem] border-collapse text-sm" aria-label="the book">
+      <div className="flex items-center justify-between gap-2 pb-1 sm:hidden">
+        <p className="text-xs text-slate-500">ticker, side, weight and reason; tap for the rest</p>
+        <button
+          type="button"
+          data-columns-toggle="true"
+          aria-expanded={allColumns}
+          onClick={() => setAllColumns((open) => !open)}
+          className="shrink-0 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700"
+        >
+          {allColumns ? "fewer columns" : "all columns"}
+        </button>
+      </div>
+      <div className="efb-table-scroll">
+        <table className="efb-table w-full text-sm sm:min-w-[43rem]" aria-label="the book">
           <thead>
             <tr className="border-b border-slate-300">
-              {header("ticker", "ticker")}
-              {header("side", "side")}
-              {header("sector", "sector")}
-              {header("weight", "weight", "right")}
-              {header("dollars", "dollars", "right")}
-              {anchored ? header("since", "since the rebalance") : header("since", "reason")}
+              {header("ticker", "ticker", "left", "", "5.5rem")}
+              {header("side", "side", "left", "", "3.5rem")}
+              {header("sector", "sector", "left", optional, "10rem")}
+              {header("weight", "weight", "right", "", "6rem")}
+              {header("dollars", "dollars", "right", optional, "7rem")}
+              {anchored
+                ? header("since", "since the rebalance", "left", "efb-since", "11rem")
+                : header("since", "reason", "left", "efb-since", "11rem")}
             </tr>
           </thead>
           <tbody>
-            {shown.map((row) => (
-              <tr
-                key={row.name.ticker}
-                data-ticker={row.name.ticker}
-                className="border-b border-slate-100"
-              >
-                <td className="py-1 font-mono">{row.name.ticker}</td>
-                <td className="py-1">{row.name.side}</td>
-                <td className={`py-1 ${row.sector === UNMAPPED ? "text-slate-400" : ""}`}>
-                  {row.sector}
-                </td>
-                <td className="py-1 text-right font-mono tabular-nums">
-                  {percent(row.name.weight)}
-                </td>
-                <td className="py-1 text-right font-mono tabular-nums">
-                  {dollars(nav === null ? null : row.absolute * nav)}
-                </td>
-                <td className="py-1 text-slate-600">
-                  {anchored
-                    ? since.get(row.name.ticker ?? "")?.since ?? "held, no trade since"
-                    : row.name.reason ?? ""}
-                  {anchored && since.get(row.name.ticker ?? "")?.tonight ? (
-                    <span className="block text-xs text-slate-400">
-                      {since.get(row.name.ticker ?? "")?.tonight}
-                    </span>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
+            {shown.map((row) => {
+              const entry = since.get(row.name.ticker ?? "");
+              const full = anchored ? entry?.since ?? "held, no trade since" : row.name.reason ?? "";
+              const label =
+                (anchored
+                  ? shortSince(entry?.since_kind, entry?.since_date, entry?.since_label)
+                  : "") || full;
+              const compact = label !== "" && label !== full;
+              return (
+                <tr
+                  key={row.name.ticker}
+                  data-ticker={row.name.ticker}
+                  className="border-b border-slate-100"
+                >
+                  <td className="py-1 font-mono font-semibold">{row.name.ticker}</td>
+                  <td className="py-1">
+                    {row.name.side ? (
+                      <span
+                        className={`efb-side efb-side-${row.name.side === "short" ? "short" : row.name.side === "long" ? "long" : "none"}`}
+                        data-side-badge={row.name.side}
+                      >
+                        {row.name.side}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className={`py-1 ${optional} ${row.sector === UNMAPPED ? "text-slate-400" : ""}`}>
+                    {row.sector}
+                  </td>
+                  <td className="py-1 text-right font-mono tabular-nums">
+                    {percent(row.name.weight)}
+                  </td>
+                  <td className={`py-1 text-right font-mono tabular-nums ${optional}`}>
+                    {dollars(nav === null ? null : row.absolute * nav)}
+                  </td>
+                  <td className="efb-since py-1 text-slate-600">
+                    {compact ? <span className="sr-only">{full}</span> : null}
+                    {label ? (
+                      <span
+                        className="efb-pill"
+                        aria-hidden={compact || undefined}
+                        title={full || undefined}
+                      >
+                        {label}
+                      </span>
+                    ) : null}
+                    {anchored && entry?.tonight ? (
+                      <span className="mt-0.5 block text-xs text-slate-400">{entry.tonight}</span>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
