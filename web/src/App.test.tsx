@@ -29,6 +29,11 @@ function openAttribution(): void {
   fireEvent.click(document.querySelector("[data-view='attribution']") as HTMLElement);
 }
 
+/** The tables and risk panels live on the Positions tab. */
+function openPositions(): void {
+  fireEvent.click(document.querySelector("[data-view='book']") as HTMLElement);
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -101,6 +106,7 @@ describe("health", () => {
 describe("the page", () => {
   it("shows the book, the dry-run banner and the hedge for a clean run", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openPositions();
     expect(screen.getByText(/DRY RUN: no orders are sent/)).toBeTruthy();
     expect(screen.getByText(/The book: \d+ name\(s\)/)).toBeTruthy();
     expect(screen.getByRole("table", { name: "factor exposures" })).toBeTruthy();
@@ -163,6 +169,7 @@ describe("the page", () => {
 
   it("states the exposures as one table, styles first then sectors by GICS name", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openPositions();
     const table = screen.getByRole("table", { name: "factor exposures" });
     const rows = within(table).getAllByRole("row");
     // Four separate header cells. Rendered as one, the last two read
@@ -207,6 +214,7 @@ describe("the page", () => {
     // column is held to this: a before value of -0.0001 is a real, tiny pre-hedge
     // tilt and keeps its sign, which the last check below pins.
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openPositions();
     const table = screen.getByRole("table", { name: "factor exposures" });
     const after = Array.from(
       table.querySelectorAll("[data-factor] td:nth-child(3)"),
@@ -224,6 +232,7 @@ describe("the page", () => {
 
   it("draws a before and an after bar per factor, on one scale", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openPositions();
     const table = screen.getByRole("table", { name: "factor exposures" });
     const bars = { before: table.querySelectorAll("[data-bar='before']"), after: table.querySelectorAll("[data-bar='after']") };
     expect(bars.before.length).toBe(17);
@@ -457,6 +466,7 @@ describe("the page", () => {
 
   it("lists the names by absolute weight, the largest first", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openPositions();
     fireEvent.click(document.querySelector("[data-tab='book']") as HTMLElement);
     const rows = within(screen.getByRole("table", { name: "the book" })).getAllByRole("row");
     const dataRows = rows.slice(1);
@@ -476,6 +486,7 @@ describe("the page", () => {
     // the table has to draw one row per kept name and the tab has to count the
     // same book.
     render(<SnapshotView snapshot={OK} now={NOW} />);
+    openPositions();
     const kept = OK.book.n_kept;
     expect(kept).toBeGreaterThan(0);
     expect(screen.getByText(new RegExp(`The book: ${kept} name\\(s\\)`))).toBeTruthy();
