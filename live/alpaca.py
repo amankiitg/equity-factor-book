@@ -1116,6 +1116,17 @@ def connect(dry_run: bool = DRY_RUN_DEFAULT):
     )
 
 
+def read_only_client() -> object:
+    """The paper client for a rehearsal's read-only broker checks.
+
+    Fails closed: `connect(dry_run=False)` refuses when the keys are absent, so a
+    rehearsal never runs blind. It is read-only by construction in the caller: it
+    is used only to resolve each leg's asset, and the order path stays in dry run,
+    so nothing can be submitted through it.
+    """
+    return connect(dry_run=False)
+
+
 def get_buying_power(client) -> float:
     """The account's available buying power, or a raised failure.
 

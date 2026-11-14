@@ -333,6 +333,36 @@ def _upsert_sql(table: str, columns: list[str]) -> str:
     )
 
 
+def _cast_to_schema(existing: pd.DataFrame, incoming: pd.DataFrame) -> pd.DataFrame:
+    """Cast incoming columns to the dtypes the file already holds, before appending.
+
+    The local fallback appends the run's rows to what is already on disk, and the
+    two halves of one column can disagree about a type. A `numeric` column is
+    seeded as a float while the run hands back a `Decimal` or a string (the reverse
+    after a copy), and a `date` column is seeded as a timestamp while the run hands
+    back an ISO string. `pd.concat` then tries to promote one side to the other and
+    raises ("Could not convert '7.917391' with type str"). Casting incoming to the
+    file's schema first is what the Postgres path gets for free from the column type.
+    """
+    aligned = incoming.copy()
+    for column in existing.columns:
+        if column not in aligned.columns:
+            continue
+        dtype = existing[column].dtype
+        values = aligned[column]
+        if pd.api.types.is_datetime64_any_dtype(dtype):
+            if not pd.api.types.is_datetime64_any_dtype(values.dtype):
+                aligned[column] = pd.to_datetime(values, errors="coerce")
+        elif pd.api.types.is_numeric_dtype(dtype):
+            if not pd.api.types.is_numeric_dtype(values.dtype):
+                aligned[column] = pd.to_numeric(values, errors="coerce")
+        elif pd.api.types.is_object_dtype(dtype) and not pd.api.types.is_object_dtype(
+            values.dtype
+        ):
+            aligned[column] = values.astype(object)
+    return aligned
+
+
 def upsert(table: str, rows: list[dict[str, Any]]) -> None:
     """Upsert one or more rows into a live-series table.
 
@@ -357,7 +387,7 @@ def upsert(table: str, rows: list[dict[str, Any]]) -> None:
     path = _local_path(table)
     frame = pd.read_parquet(path) if path.exists() else pd.DataFrame(rows)
     if len(rows):
-        incoming = pd.DataFrame(rows)
+        incoming = _cast_to_schema(frame, pd.DataFrame(rows))
         key = incoming.columns[0]
         existing = frame.loc[~frame[key].isin(incoming[key])] if len(frame) else frame
         frame = pd.concat([existing, incoming], ignore_index=True)
@@ -425,7 +455,7 @@ def replace_by_date(table: str, on: Any, rows: list[dict[str, Any]]) -> None:
         keep = frame[date_column].astype(str).str.slice(0, 10) != str(on)[:10]
         frame = frame.loc[keep]
     if rows:
-        incoming = pd.DataFrame(rows)
+        incoming = _cast_to_schema(frame, pd.DataFrame(rows))
         frame = pd.concat([frame, incoming], ignore_index=True)
     if not len(frame.columns):
         # Nothing has ever been written for this table and this call has nothing
