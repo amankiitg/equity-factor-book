@@ -27,7 +27,7 @@ import type { AttributionDay, MonthlyBlock, Snapshot } from "./types";
 export function Info({ title, children }: { title: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
-    <span className="relative inline-block align-middle">
+    <span className="relative inline-block align-middle" data-how-to-read="true">
       <button
         type="button"
         aria-label={`about ${title}`}
@@ -736,6 +736,24 @@ const factorLabel = (key: string): string => {
   return key.replace(/_/g, " ");
 };
 
+/**
+ * The factor name on the chart's x axis, short enough to stand on its head.
+ *
+ * The full names are right on a tooltip and too long under a 36-pixel column:
+ * "Consumer Discretionary" written sideways runs past its neighbour. The short
+ * form is the same sector, abbreviated the way a table would abbreviate it.
+ */
+const AXIS_SHORT: Record<string, string> = {
+  "Consumer Discretionary": "Cons. disc.",
+  "Consumer Staples": "Cons. stpls.",
+  "Information Technology": "Info tech",
+  "Communication Services": "Comm. svcs",
+  "Health Care": "Health care",
+  "Real Estate": "Real estate",
+};
+
+const axisLabel = (key: string): string => AXIS_SHORT[factorLabel(key)] ?? factorLabel(key);
+
 /** The rebalance's after-hedge exposures beside the book's latest ones. */
 export function exposureRows(snapshot: Snapshot): ExposureRow[] {
   const anchor = snapshot.monthly?.anchor_exposures?.after ?? null;
@@ -773,19 +791,26 @@ function ExposureBars({ snapshot }: { snapshot: Snapshot }) {
   // not for the risk model's own key order.
   const rows = [...all].sort((a, b) => sizeOf(b) - sizeOf(a));
   const worst = Math.max(...rows.map(sizeOf));
-  const labelWidth = Math.max(78, Math.min(132, Math.round(width * 0.22)));
-  const rightMargin = 54;
-  const plotLeft = labelWidth;
-  const plotRight = Math.max(plotLeft + 40, width - rightMargin);
-  const center = (plotLeft + plotRight) / 2;
-  const half = (plotRight - plotLeft) / 2;
+  // One column per factor, read left to right on the x axis, growing up for a
+  // long exposure and down for a short one. The frame is the daily chart's: the
+  // same 240 pixels of height and the same measured width, so the pair reads as
+  // one picture and a column can be compared with a day's bar.
+  const height = 240;
+  const pad = { left: 46, right: 24, top: 22, bottom: 64 };
+  const plotLeft = pad.left;
+  const plotRight = Math.max(plotLeft + 40, width - pad.right);
+  const top = pad.top;
+  const bottom = height - pad.bottom;
   const threshold = 0.05;
+  // Symmetric about zero, so the middle of the frame is flat exposure and a long
+  // and a short of the same size stand the same height on opposite sides.
   const scale = Math.max(threshold, worst) * 1.12;
-  const at = (value: number): number => center + (value / scale) * half;
-  const rowHeight = 28;
-  const top = 26;
-  const height = top + rows.length * rowHeight + 8;
-  const barHeight = 10;
+  const y = (value: number): number => top + ((scale - value) / (2 * scale)) * (bottom - top);
+  const zero = y(0);
+  const groupWidth = (plotRight - plotLeft) / rows.length;
+  const barWidth = Math.max(3, Math.min(12, groupWidth * 0.3));
+  const reach = (value: number): number => Math.max(1, Math.abs(y(value) - zero));
+  const centreOf = (index: number): number => plotLeft + (index + 0.5) * groupWidth;
 
   return (
     <div ref={ref} className="mt-1 w-full">
@@ -813,89 +838,121 @@ function ExposureBars({ snapshot }: { snapshot: Snapshot }) {
         className="block w-full"
         data-overview-exposures="true"
       >
-        {/* The band past the 5% guard, shaded at both edges so a bar near it reads at once. */}
+        {/* Past the 5% guard, tinted above and below, so a column that reaches the
+            tint is at the limit and one near the middle is close to flat. */}
         <rect
-          x={at(threshold)}
-          y={top - 8}
-          width={Math.max(0, plotRight - at(threshold))}
-          height={height - top + 4}
+          x={plotLeft}
+          y={top}
+          width={Math.max(0, plotRight - plotLeft)}
+          height={Math.max(0, y(threshold) - top)}
           fill="#f59e0b"
           fillOpacity="0.08"
           data-limit-band="right"
         />
         <rect
           x={plotLeft}
-          y={top - 8}
-          width={Math.max(0, at(-threshold) - plotLeft)}
-          height={height - top + 4}
+          y={y(-threshold)}
+          width={Math.max(0, plotRight - plotLeft)}
+          height={Math.max(0, bottom - y(-threshold))}
           fill="#f59e0b"
           fillOpacity="0.08"
           data-limit-band="left"
         />
+        {axisTicks(-scale, scale).map((tick) => (
+          <g key={`exposure-grid-${tick}`} data-gridline={tick}>
+            <line
+              x1={plotLeft}
+              x2={plotRight}
+              y1={y(tick)}
+              y2={y(tick)}
+              stroke="#e2e8f0"
+              strokeWidth="1"
+            />
+            <text
+              x={plotLeft - 5}
+              y={y(tick) + 3}
+              textAnchor="end"
+              fontSize="9"
+              className="fill-slate-500"
+            >
+              {percent(tick, 0)}
+            </text>
+          </g>
+        ))}
         <line
-          x1={center}
-          x2={center}
-          y1={top - 6}
-          y2={height - 6}
-          stroke="#64748b"
-          strokeWidth="1.2"
+          x1={plotLeft}
+          x2={plotRight}
+          y1={zero}
+          y2={zero}
+          stroke="#475569"
+          strokeWidth="1.6"
+          data-zero-line="true"
         />
+        <text x={4} y={top - 8} fontSize="9" className="fill-slate-500">
+          % of NAV
+        </text>
         {[threshold, -threshold].map((value) => (
           <g key={value}>
             <line
-              x1={at(value)}
-              x2={at(value)}
-              y1={top - 8}
-              y2={height - 6}
+              x1={plotLeft}
+              x2={plotRight}
+              y1={y(value)}
+              y2={y(value)}
               stroke="#f59e0b"
               strokeDasharray="3 3"
               data-threshold="5"
             />
             <text
-              x={at(value) + (value > 0 ? 2 : -20)}
-              y={12}
-              className="fill-amber-700"
+              x={plotRight + 3}
+              y={y(value) + 3}
               fontSize="9"
+              className="fill-amber-700"
             >
-              5%
+              {value > 0 ? "+5%" : "-5%"}
             </text>
           </g>
         ))}
         {rows.map((row, index) => {
-          const rowTop = top + index * rowHeight;
-          const shown = row.now ?? row.afterHedge;
-          const end = at(shown);
+          const centre = centreOf(index);
           return (
             <g key={row.factor} data-exposure-factor={row.factor}>
-              <text x={0} y={rowTop + 15} className="fill-slate-600" fontSize="10">
-                {factorLabel(row.factor)}
-              </text>
+              {/* Grey is where the rebalance's hedge left it; blue is where the
+                  book carries it now. Two columns per factor, side by side. */}
               <rect
-                x={Math.min(center, at(row.afterHedge))}
-                y={rowTop + 1}
-                width={Math.abs(at(row.afterHedge) - center)}
-                height={barHeight}
+                x={centre - barWidth - 1}
+                y={row.afterHedge >= 0 ? y(row.afterHedge) : zero}
+                width={barWidth}
+                height={reach(row.afterHedge)}
                 fill="#94a3b8"
                 data-exposure-series="after-hedge"
-              />
+              >
+                <title>
+                  {`${factorLabel(row.factor)}, after the hedge ${percent(row.afterHedge)}`}
+                </title>
+              </rect>
               {row.now === null ? null : (
                 <rect
-                  x={Math.min(center, at(row.now))}
-                  y={rowTop + 13}
-                  width={Math.abs(at(row.now) - center)}
-                  height={barHeight}
+                  x={centre + 1}
+                  y={row.now >= 0 ? y(row.now) : zero}
+                  width={barWidth}
+                  height={reach(row.now)}
                   fill="#0284c7"
                   data-exposure-series="now"
-                />
+                >
+                  <title>
+                    {`${factorLabel(row.factor)}, now ${percent(row.now)}`}
+                  </title>
+                </rect>
               )}
               <text
-                x={end + (shown >= 0 ? 5 : -5)}
-                y={rowTop + 23}
-                textAnchor={shown >= 0 ? "start" : "end"}
-                className="fill-slate-500"
-                fontSize="9"
+                x={centre}
+                y={bottom + 6}
+                textAnchor="end"
+                fontSize="8"
+                transform={`rotate(-90 ${centre} ${bottom + 6})`}
+                className="fill-slate-600"
               >
-                {row.now === null ? "n/a" : percent(row.now)}
+                {axisLabel(row.factor)}
               </text>
             </g>
           );
@@ -1342,12 +1399,13 @@ export function Overview({
             title="factor exposures"
             info={
               <>
-                Each factor’s exposure as a share of NAV, largest first: grey is where the
-                rebalance’s hedge left it and blue is where the book carries it now. The
-                dashed lines and the tinted edges mark the 5% guard, so a bar that reaches
-                the tint is at the limit and one near the middle is close to flat. The
-                header names the worst exposure as a share of that limit. Example: the
-                worst factor now is {percent(worstNow)}, against{" "}
+                One column per factor, largest first, growing up when the book is long the
+                factor and down when it is short it. Grey is where the rebalance’s hedge
+                left the exposure and blue is where the book carries it now. The two faint
+                dashed lines are the 5% guard, so a column that reaches one is at the limit
+                and a column near the middle is close to flat. The header names the worst
+                exposure as a share of that limit. Example: the worst factor now is{" "}
+                {percent(worstNow)}, against{" "}
                 {percent(Math.max(0, ...exposureNow.map((row) => Math.abs(row.afterHedge))))}{" "}
                 after the rebalance hedge.
               </>

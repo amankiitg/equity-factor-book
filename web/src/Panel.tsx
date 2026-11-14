@@ -60,11 +60,14 @@ export function Panel({
   title,
   detail,
   hook,
+  info,
 }: {
   tone: Tone;
   title: string;
   detail: string;
   hook?: string;
+  /** The (i) beside the title, on a panel that is a card rather than a page state. */
+  info?: React.ReactNode;
 }) {
   return (
     <section
@@ -73,7 +76,10 @@ export function Panel({
       role={tone === "bad" ? "alert" : "status"}
       className={`border-l-4 px-3 py-2 ${TONE_CLASSES[tone]}`}
     >
-      <p className="font-semibold">{title}</p>
+      <p className="font-semibold">
+        {title}
+        {info ? <HowToRead>{info}</HowToRead> : null}
+      </p>
       {detail ? <p className="text-sm">{detail}</p> : null}
     </section>
   );

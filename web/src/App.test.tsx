@@ -350,9 +350,14 @@ describe("the page", () => {
     // `data-card` per label since the page was split into components, and e12's
     // `[aria-label="the book's summary"]` named a `<dl>` that refactor removed.
     const cards = document.querySelector("[data-cards='true']") as HTMLElement;
-    for (const label of ["gross", "net", "n_eff_kept", "n_eff_full_book", "expected-expense"]) {
+    for (const label of ["gross", "net", "n_eff_kept", "expected-expense"]) {
       expect(cards.querySelector(`[data-card="${label}"]`), label).toBeTruthy();
     }
+    // The telemetry left the row: it is on the Operations tab, behind its own
+    // disclosure, and the row the reader scans in the morning no longer carries it.
+    expect(cards.querySelector("[data-card='n_eff_full_book']")).toBeNull();
+    const operations = document.querySelector("#panel-operations") as HTMLElement;
+    expect(operations.querySelector("[data-card='n_eff_full_book']")).toBeTruthy();
   });
 
   it("gives the effective breadth to one decimal, and names what each one is", () => {

@@ -235,8 +235,11 @@ describe("a missing value", () => {
     };
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
     const cards = document.querySelector("[data-cards='true']") as HTMLElement;
+    // The four telemetry stats live on the Operations tab now, so they are read
+    // from the document; the row's own cards are read from the row.
     const card = (label: string): HTMLElement =>
-      cards.querySelector(`[data-card='${label}']`) as HTMLElement;
+      (cards.querySelector(`[data-card='${label}']`) ??
+        document.querySelector(`[data-card='${label}']`)) as HTMLElement;
     for (const label of [
       "gross",
       "net",

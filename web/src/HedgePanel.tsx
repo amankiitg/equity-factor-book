@@ -38,42 +38,33 @@ export function anchoredHedge(monthly?: MonthlyBlock | null) {
   return block;
 }
 
-/** The rebalance's footprint: the same two numbers, measured on the close that hedged. */
+/** A close as the page writes it: the month and the day, never the year. */
+function shortDay(value: string | null | undefined): string {
+  if (!value) return "last";
+  return value.slice(5, 10);
+}
+
+/** The one sentence a hedge footprint is: who it moved, how much, and what share. */
+function footprint(day: string, moved: number | null, book: number | null, usd: number | null, share: number | null): string {
+  const tail = share === null ? "" : `, ${percent(share, 0)} of that day's trading`;
+  return `At the ${day} rebalance the hedge adjusted ${count(moved)} of ${count(book)} names (${dollars(usd)}${tail}).`;
+}
+
+/** The rebalance's footprint: one line, measured on the close that hedged. */
 function AnchoredHedge({ block }: { block: NonNullable<MonthlyBlock["hedge"]> }) {
   const shares = block.variance_shares ?? [];
   return (
     <>
       <p className="mt-1 text-sm text-slate-700" data-hedge="opening">
-        The hedge re-weights the stocks we already hold so the book does not move with the market,
-        sectors or style factors. On the {block.anchor} close it moved {count(block.moved_names)}{" "}
-        names, {dollars(block.moved_usd)} of trading
-        {block.share_of_turnover === null
-          ? ""
-          : ` (${percent(block.share_of_turnover, 0)} of that rebalance's turnover)`}
-        . Nothing was hedged tonight, which is what a hold day is.
+        {footprint(
+          shortDay(block.anchor),
+          block.moved_names,
+          block.book_names,
+          block.moved_usd,
+          block.share_of_turnover,
+        )}{" "}
+        Nothing was hedged tonight, which is what a hold day is.
       </p>
-      <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-        <div data-card="hedge-moved">
-          <div className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-            names the hedge moved
-          </div>
-          <div className="font-mono text-base tabular-nums">
-            {count(block.moved_names)} of {count(block.book_names)}
-          </div>
-          <div className="text-xs text-slate-600">{dollars(block.moved_usd)} of legs</div>
-        </div>
-        <div data-card="hedge-share">
-          <div className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-            largest share of specific risk
-          </div>
-          <div className="font-mono text-base tabular-nums">
-            {percent(shares[0]?.variance_share, 1)}
-          </div>
-          <div className="text-xs text-slate-600">
-            {shares[0]?.ticker ?? "n/a"} at that share, {percent(shares[0]?.weight)} of NAV
-          </div>
-        </div>
-      </div>
       {shares.length > 0 ? (
         <Details
           hook="hedge-shares"
@@ -149,73 +140,42 @@ export function HedgePanel({
         data-hedge-anchored="true"
         className="rounded border border-slate-200 bg-white p-3"
       >
-        <h2 className="text-base font-semibold">The hedge&apos;s own footprint <HowToRead>
-          the hedge is the part of each position that cancels a factor, so it
-          re-weights names the book already holds instead of adding new ones.
-          Example: on 10-23 it moved 88 of 196 names, $122,805 of legs, 22.6% of
-          that rebuild&apos;s turnover.
-        </HowToRead></h2>
+        <h2 className="text-base font-semibold">
+          The hedge&apos;s own footprint
+          <HowToRead>
+            Without a hedge the book would still move with the market, with sectors and with
+            styles, because the stocks it holds share those exposures. The hedge is the part
+            of each position that cancels them, so it re-weights names the book already holds
+            instead of adding new ones. Example: at the 10-23 rebalance it adjusted 88 of 196
+            names for $122,805.
+          </HowToRead>
+        </h2>
         <AnchoredHedge block={anchored} />
-        <p className="mt-1 text-xs text-slate-600">
-          <span className="font-medium">A proxy.</span> The names carry the loop&apos;s own
-          record that the hedge moved them, and the shares are that close&apos;s
-          reconciliation of the traded book&apos;s predicted specific variance. Neither says a
-          position exists <em>because</em> of the hedge.
-        </p>
       </section>
     );
   }
 
   return (
     <section data-section="hedge" className="rounded border border-slate-200 bg-white p-3">
-      <h2 className="text-base font-semibold">The hedge&apos;s own footprint <HowToRead>
-        a hold day normally moves nothing here, because the book is only rebuilt on
-        the 21st session unless the guard fires. Example: on 11-11 the guard read
-        4.57% and the hedge left every name where it was.
-      </HowToRead></h2>
+      <h2 className="text-base font-semibold">
+        The hedge&apos;s own footprint
+        <HowToRead>
+          Without a hedge the book would still move with the market, with sectors and with
+          styles, because the stocks it holds share those exposures. The hedge is the part
+          of each position that cancels them, so it re-weights names the book already holds
+          instead of adding new ones. Example: this close adjusted {count(moved.length)} of{" "}
+          {count(names.length)} names for {dollars(movedNotional)}.
+        </HowToRead>
+      </h2>
       <p className="mt-1 text-sm text-slate-700" data-hedge="opening">
-        The hedge re-weights the stocks we already hold so the book does not move with the market,
-        sectors or style factors. On {dateOnly(snapshot.target_close) ?? "this"} close it moved{" "}
-        {count(moved.length)} names, {dollars(movedNotional)} of trading
-        {shareOfTurnover === null ? "" : ` (${percent(shareOfTurnover, 0)} of the day's turnover)`}.
+        {footprint(
+          shortDay(dateOnly(snapshot.target_close)),
+          moved.length,
+          names.length,
+          movedNotional,
+          shareOfTurnover,
+        )}
       </p>
-      <p className="mt-1 text-xs text-slate-600">
-        <span className="font-medium">A proxy.</span> The names below carry the loop's own
-        record that the hedge moved them, and the notional of the leg it built; the shares
-        beside them are the traded book's predicted specific variance as the reconciliation
-        computed it. Neither says a position exists <em>because</em> of the hedge. That
-        needs each name's pre-hedge and post-hedge target, which the evening does not
-        publish.
-      </p>
-
-      <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-        <div data-card="hedge-moved">
-          <div className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-            names the hedge moved
-          </div>
-          <div className="font-mono text-base tabular-nums">
-            {count(moved.length)} of {count(names.length)}
-          </div>
-          <div className="text-xs text-slate-600">{dollars(movedNotional)} of legs</div>
-        </div>
-        <div data-card="hedge-share">
-          <div className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-            gross those names carry
-          </div>
-          <div className="font-mono text-base tabular-nums">
-            {percent(
-              facts.nav === null
-                ? null
-                : moved.reduce(
-                    (total, name) => total + Math.abs(name.weight ?? 0),
-                    0,
-                  ),
-            )}{" "}
-            of NAV
-          </div>
-          <div className="text-xs text-slate-600">as the book holds them now</div>
-        </div>
-      </div>
 
       {shares.length > 0 ? (
         <Details

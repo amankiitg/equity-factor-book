@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { SnapshotView } from "./App";
 import { bookFacts } from "./book";
 import { sectorDeltas } from "./SectorSection";
-import { dateOnly, dollars, percent, signedDollars, signedPercent } from "./format";
+import { count, dateOnly, dollars, percent, signedDollars, signedPercent } from "./format";
 import { sectorCodeFor, sectorLabel, UNMAPPED } from "./sectors";
 import type { AttributionPeriod, Snapshot } from "./types";
 import noBook from "../fixtures/snapshot_no_book.json";
@@ -25,6 +25,7 @@ import ok from "../fixtures/snapshot_ok.json";
 import today from "../fixtures/snapshot_2026-10-14_morning.json";
 import rejected from "../fixtures/snapshot_fills_rejected.json";
 import withActual from "../fixtures/snapshot_actual_holdings.json";
+import served from "../fixtures/snapshot_2026-10-30_evening.json";
 
 const OK = ok as unknown as Snapshot;
 const NONE = noBook as unknown as Snapshot;
@@ -126,36 +127,50 @@ describe("the metrics row", () => {
       `about ${Math.round(OK.breadth.n_eff_kept as number)} equal positions`,
     );
     expect(card("n_eff_kept").textContent).toContain(`out of ${OK.book.n_names}`);
-    // The pre-floor telemetry is behind the construction disclosure now: still
-    // addressable, and no longer on the row a reader scans in the morning.
+    // The pre-floor telemetry is on the Operations tab now, behind the same
+    // construction disclosure: addressable, and off the row a reader scans in the
+    // morning.
     const construction = document.querySelector("[data-details='construction']") as HTMLElement;
     expect(construction).toBeTruthy();
-    expect(card("n_eff_full_book").textContent).toContain(
-      (OK.breadth.n_eff_full_book as number).toFixed(1),
-    );
+    expect(document.querySelector("[data-cards='true'] [data-details='construction']")).toBeNull();
     expect(construction.textContent).toContain(
       (OK.breadth.n_eff_full_book as number).toFixed(1),
     );
+    expect(
+      (construction.querySelector("[data-card='n_eff_full_book']") as HTMLElement).textContent,
+    ).toContain((OK.breadth.n_eff_full_book as number).toFixed(1));
     expect(card("largest-position").textContent).toContain(facts.largest?.ticker as string);
     // The ten largest weights as a share of the book's absolute weight.
     expect(card("top10-share").textContent).toContain(percent(facts.top10Share));
-    expect(card("full-book-gross").textContent).toContain(
-      percent(OK.book.full_book_gross),
-    );
+    expect(
+      (document.querySelector("[data-card='full-book-gross']") as HTMLElement).textContent,
+    ).toContain(percent(OK.book.full_book_gross));
     const cost = card("expected-expense").textContent ?? "";
     expect(cost).toContain((OK.book.expected_cost_bps as number).toFixed(2));
-    // And the split: the trading half summed from its own three parts, and the
-    // borrow that no fill price can be measured against. A total alone leaves the
-    // reader unable to say which half a miss belongs to.
+    // And the split, each half named as what it is: the trades are paid once
+    // tonight and the borrow is charged over the sessions the book is held. The
+    // card's own title states that hold, so the total cannot be read as one day's.
     const split = OK.book.expected_cost_split as NonNullable<
       typeof OK.book.expected_cost_split
     >;
-    expect(cost).toContain(`trading ${(split.trading as number).toFixed(2)} bp of NAV`);
-    expect(cost).toContain(`spread ${(split.spread as number).toFixed(2)}`);
-    expect(cost).toContain(`borrow ${(split.borrow as number).toFixed(2)} bp of NAV of holding cost`);
+    expect(cost).toContain(`tonight's trades ${(split.trading as number).toFixed(2)} bp`);
+    expect(cost).toContain(`borrow ${(split.borrow as number).toFixed(2)} bp`);
+    expect(cost).toContain("21-session hold");
     // The fills card is the account's own, and this fixture has no account read.
     expect(OK.actual_holdings).toBeUndefined();
     expect(cards.querySelector("[data-card='fills']")).toBeNull();
+  });
+
+  it("summarises the night's construction in one line under the cards", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const line = document.querySelector("[data-flag='book-line']") as HTMLElement;
+    expect(line).toBeTruthy();
+    expect(line.textContent).toContain(`Tonight's book: ${OK.book.n_names} names.`);
+    const dropped = OK.breadth.n_dropped_no_risk ?? (OK.breadth.dropped_no_risk ?? []).length;
+    expect(dropped).toBeGreaterThan(0);
+    expect(line.textContent).toContain(`${dropped} left out (no risk estimate yet)`);
+    expect(line.textContent).toContain("positions too small to trade removed");
+    expect(line.textContent).toContain("the rest scaled to 100% of NAV");
   });
 
   it("states the fills the reconciler read, filled of sent and realized against expected", () => {
@@ -1068,8 +1083,11 @@ describe("a snapshot with no book", () => {
     // The row is the page's shape, so it stays; what it must not do is invent a
     // zero for a book that was never priced.
     expect(cards).toBeTruthy();
+    // The four telemetry stats are on the Operations tab now; the row's cards are
+    // read from the row.
     const card = (label: string): HTMLElement =>
-      cards.querySelector(`[data-card="${label}"]`) as HTMLElement;
+      (cards.querySelector(`[data-card="${label}"]`) ??
+        document.querySelector(`[data-card="${label}"]`)) as HTMLElement;
     for (const label of [
       "gross",
       "net",
@@ -1124,23 +1142,29 @@ describe("the hedge's footprint", () => {
     },
   });
 
-  it("states how many names the hedge moved, and the legs it built for them", () => {
+  it("is one line: how many names the hedge moved, and the legs it built for them", () => {
     expect(moved.length).toBeGreaterThan(0);
     render(<SnapshotView snapshot={withRisk(OK)} now={NOW} />);
     const panel = document.querySelector("[data-section='hedge']") as HTMLElement;
     expect(panel).toBeTruthy();
+    const line = panel.querySelector("[data-hedge='opening']") as HTMLElement;
+    expect(line).toBeTruthy();
     // Counted from the book's own reason column rather than typed, so a
     // regenerated fixture cannot leave this asserting a number nobody wrote.
-    expect(panel.textContent).toContain(`${moved.length} of ${OK.book.names.length}`);
+    expect(line.textContent).toContain(
+      `the hedge adjusted ${moved.length} of ${OK.book.names.length} names`,
+    );
     const notional = moved.reduce(
       (total, name) => total + Math.abs(name.traded_notional ?? 0),
       0,
     );
-    expect(panel.textContent).toContain(dollars(notional));
-    // The label says which claim is the proxy: the reason is the loop's own
-    // record, and what it cannot say is that the hedge created the position.
-    expect(panel.textContent).toContain("A proxy.");
-    expect(panel.textContent).toContain("pre-hedge and post-hedge target");
+    expect(line.textContent).toContain(dollars(notional));
+    // The footprint is the panel's one sentence: the claim it cannot make (that
+    // the hedge created a position) is not restated as a paragraph beside it.
+    expect(panel.textContent).not.toContain("A proxy.");
+    expect(panel.textContent).not.toContain("pre-hedge and post-hedge target");
+    // And it says why the hedge exists, behind the (i) rather than in the line.
+    expect(panel.querySelector("[data-how-to-read]")).toBeTruthy();
   });
 
   it("draws the concentration behind the hedge from the reconciliation's own shares", () => {
@@ -1174,7 +1198,120 @@ describe("the hedge's footprint", () => {
 });
 
 describe("the turnover card", () => {
-  it("reads every leg the evening built, and says so beside the per-name column", () => {
+  it("reads the night as one sentence: orders sent and the dollars they were", () => {
+    const sent = 379430.49;
+    const snapshot: Snapshot = {
+      ...OK,
+      reconciliation: { ...OK.reconciliation, sent_notional: sent, intended_notional: sent + 10 },
+    };
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const card = document.querySelector("[data-card='turnover']") as HTMLElement;
+    const orders =
+      snapshot.actual_holdings?.fills?.n_orders ?? snapshot.bridge?.orders_sent ?? null;
+    expect(card.textContent).toContain(`Tonight: ${count(orders)} orders sent, ${dollars(sent)}`);
+    // The jargon the card no longer speaks: no share of NAV, and no arithmetic
+    // about the legs that were built and never sent.
+    expect(card.textContent).not.toContain("of NAV");
+    expect(card.textContent).not.toContain("never sent");
+    expect(card.textContent).not.toContain("built");
+  });
+
+  it("names the blocked legs when there are three or fewer, and counts them past that", () => {
+    const line = "KVUE sell_to_open $13,615 never sent (SYMBOL_NOT_FOUND)";
+    const one: Snapshot = {
+      ...OK,
+      actual_holdings: {
+        as_of: "2026-11-12T15:31:15+00:00",
+        close: "2026-11-11",
+        read_by: "morning",
+        n_names: 1,
+        gross_notional: 1,
+        net_notional: 0,
+        names: [],
+        fills: {
+          trade_date: "2026-11-11",
+          n_orders: 0,
+          n_filled: 0,
+          n_unfilled: 0,
+          not_sent: 1,
+          realized_cost_bps: null,
+          realized_cost_avg_bps: null,
+          realized_cost_days: null,
+          expected_cost_bps: null,
+          unfilled: [],
+          not_sent_lines: [line],
+          unread: [],
+        },
+      },
+    } as unknown as Snapshot;
+    render(<SnapshotView snapshot={one} now={NOW} />);
+    const card = document.querySelector("[data-card='turnover']") as HTMLElement;
+    const blocked = card.querySelector("[data-blocked='true']") as HTMLElement;
+    expect(blocked).toBeTruthy();
+    expect(blocked.textContent).toContain("Blocked: KVUE $13,615 (no longer trades)");
+    document.body.innerHTML = "";
+
+    const four = {
+      ...one,
+      actual_holdings: {
+        ...(one.actual_holdings as NonNullable<Snapshot["actual_holdings"]>),
+        fills: {
+          ...(one.actual_holdings?.fills as NonNullable<
+            NonNullable<Snapshot["actual_holdings"]>["fills"]
+          >),
+          not_sent_lines: [
+            line,
+            "ABCD buy_to_open $1,000 never sent (SYMBOL_NOT_FOUND)",
+            "EFGH buy_to_open $2,000 never sent (SYMBOL_NOT_FOUND)",
+            "IJKL buy_to_open $3,000 never sent (SYMBOL_NOT_FOUND)",
+          ],
+        },
+      },
+    } as unknown as Snapshot;
+    render(<SnapshotView snapshot={four} now={NOW} />);
+    const long = document.querySelector(
+      "[data-card='turnover'] [data-blocked='true']",
+    ) as HTMLElement;
+    expect(long.textContent).toContain("Blocked: 4 names, $19,615 (no longer trade)");
+  });
+
+  it("names a retired name the book wants, when no leg was sent at all", () => {
+    // The hold-night case: nothing was sent, so there is no never-sent line, and
+    // the leg the book wanted and could not place is the retired name's own gap.
+    const base = served as unknown as Snapshot;
+    const rows = [
+      {
+        ticker: "KVUE",
+        since: "retired (acquired by KMB), owed, cannot be traded",
+        since_kind: "retired",
+        since_date: "2026-11-05",
+        weight_now: 0,
+        weight_target: 0.0066,
+        gap_weight: -0.0066,
+        gap_usd: -13615,
+        tonight: null,
+        retired: true,
+        owed: true,
+        note: "retired (acquired by KMB), owed, cannot be traded",
+      },
+    ];
+    const snapshot = {
+      ...base,
+      monthly: {
+        ...(base.monthly as NonNullable<Snapshot["monthly"]>),
+        holdings: { anchor: "2026-10-23", as_of: "2026-11-05", rows },
+      },
+    } as unknown as Snapshot;
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const blocked = document.querySelector(
+      "[data-card='turnover'] [data-blocked='true']",
+    ) as HTMLElement;
+    expect(blocked).toBeTruthy();
+    expect(blocked.textContent).toBe("Blocked: KVUE $13,615 (no longer trades)");
+  });
+
+  it("says what the run built when the document predates the sent-only figure", () => {
+    expect(OK.reconciliation?.sent_notional ?? null).toBeNull();
     const intended = 379430.49;
     const snapshot: Snapshot = {
       ...OK,
@@ -1182,27 +1319,16 @@ describe("the turnover card", () => {
     };
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
     const card = document.querySelector("[data-card='turnover']") as HTMLElement;
-    const nav = (OK.book.gross_notional as number) / (OK.book.gross as number);
-    expect(card.textContent).toContain(percent(intended / nav));
-    expect(card.textContent).toContain(dollars(intended));
-    // The distinction the correction rests on: the per-name column drops the legs
-    // of names that left the book, so the two numbers must not be conflated.
-    const note = document.querySelector("[data-flag='turnover-note']") as HTMLElement;
-    expect(note.textContent).toContain("reconciliation.intended_notional");
-    expect(note.textContent).toContain("whether or not it was sent");
-    expect(note.textContent).toContain("is not published in this document");
+    expect(card.textContent).toContain(`the run built ${dollars(intended)} of legs`);
   });
 
-  it("says n/a when the reconciliation carries no intended notional", () => {
+  it("says n/a when the reconciliation carries no notional at all", () => {
     expect(OK.reconciliation?.intended_notional ?? null).toBeNull();
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const card = document.querySelector("[data-card='turnover']") as HTMLElement;
-    expect(card.textContent).toContain("n/a");
     expect(card.textContent).toContain("no notional for this close");
     // And no fabricated zero beside it.
-    expect(document.querySelector("[data-flag='turnover-note']")?.textContent).not.toContain(
-      "totals $0",
-    );
+    expect(card.textContent).not.toContain("$0");
   });
 });
 
@@ -1259,7 +1385,8 @@ describe("the attribution tab's own panels", () => {
     openAttributionTab();
     const panel = document.querySelector("[data-panel='volatility']") as HTMLElement;
     expect(panel.textContent).toContain(`${both.length} of ${daily.length} session(s) carry both`);
-    expect(panel.querySelector("svg")).toBeTruthy();
+    // The chart, not the (i) icon beside the title: both are svgs.
+    expect(panel.querySelector("svg[role='img']")).toBeTruthy();
     // A session with no forecast is a gap, never a zero.
     expect(panel.textContent).not.toContain("0.00% realized");
   });
@@ -1274,7 +1401,7 @@ describe("the attribution tab's own panels", () => {
     const panel = document.querySelector("[data-panel='volatility']") as HTMLElement;
     expect(panel).toBeTruthy();
     expect(panel.textContent).toContain("no session of this period carries a realized volatility");
-    expect(panel.querySelector("svg")).toBeNull();
+    expect(panel.querySelector("svg[role='img']")).toBeNull();
   });
 });
 
@@ -1344,9 +1471,15 @@ describe("the four words, the labels and the arithmetic", () => {
     expect(opening).toBeTruthy();
     const moved = (TODAY.book?.names ?? []).filter((name) => name.reason === "the hedge moved");
     const notional = moved.reduce((total, name) => total + Math.abs(name.traded_notional ?? 0), 0);
-    expect(opening.textContent).toContain(`it moved ${moved.length} names`);
+    expect(opening.textContent).toContain(
+      `the hedge adjusted ${moved.length} of ${TODAY.book?.names.length} names`,
+    );
     expect(opening.textContent).toContain(dollars(notional));
-    expect(opening.textContent).toContain("re-weights the stocks we already hold");
+    // Why a hedge is needed is one tap away, behind the title's (i), not a second
+    // paragraph under the line.
+    const panel = document.querySelector("[data-section='hedge']") as HTMLElement;
+    expect(panel.querySelector("[data-how-to-read]")).toBeTruthy();
+    expect(panel.textContent).not.toContain("re-weights the stocks we already hold");
   });
 
   it("reads the largest drift as a share of the position, with the reason", () => {
@@ -1374,15 +1507,13 @@ describe("the basis the turnover card stands on, and the last of nov11's keys", 
     } as Snapshot;
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
     const card = document.querySelector("[data-card='turnover']") as HTMLElement;
-    const nav = (TODAY.book?.gross_notional as number) / (TODAY.book?.gross as number);
-    expect(card.textContent).toContain("turnover, legs sent");
-    expect(card.textContent).toContain(percent(sent / nav));
-    expect(card.textContent).toContain(`and ${dollars(built)} built`);
-    expect(card.textContent).toContain(`of which ${dollars(built - sent)} was never sent`);
-    expect(card.textContent).toContain(`${dollars(sent)} sent of NAV`);
-    const note = document.querySelector("[data-flag='turnover-note']") as HTMLElement;
-    expect(note.textContent).toContain("reconciliation.sent_notional");
-    expect(note.textContent).not.toContain("reconciliation.intended_notional");
+    const orders =
+      snapshot.actual_holdings?.fills?.n_orders ?? snapshot.bridge?.orders_sent ?? null;
+    expect(card.textContent).toContain(`Tonight: ${count(orders)} orders sent, ${dollars(sent)}`);
+    // The letter of the card holds: what the run built and never sent is not in
+    // the sentence, and the figure is not restated as a share of NAV.
+    expect(card.textContent).not.toContain(dollars(built));
+    expect(card.textContent).not.toContain("of NAV");
     // And the trades-by-reason table adds up to the same figure, not to the other one.
     const total = document.querySelector("[data-traded-total='true']") as HTMLElement;
     expect(total.textContent).toBe(dollars(sent));

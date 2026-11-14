@@ -13,9 +13,11 @@ import { SnapshotView } from "./App";
 import type { Snapshot } from "./types";
 import latest from "../fixtures/snapshot_2026-10-30_evening.json";
 import ok from "../fixtures/snapshot_ok.json";
+import withActual from "../fixtures/snapshot_actual_holdings.json";
 
 const LATEST = latest as unknown as Snapshot;
 const OK = ok as unknown as Snapshot;
+const ACTUAL = withActual as unknown as Snapshot;
 const NOW = new Date("2026-10-30T23:30:00Z");
 
 const panels = (): HTMLElement[] =>
@@ -157,3 +159,70 @@ describe("the rendered page", () => {
     expect(attribution.querySelector("[data-notes]")).toBeNull();
   });
 });
+
+// Every card title on every tab opens an (i).
+//
+// The writing standard is that a title is a word and the explanation is one tap
+// away: what the number is, why it moves, and one real example. A card that grows a
+// title without a popover reads as a name and nothing else. This enumerates the
+// cards the five tabs draw and asserts each one carries the marker, so a new panel
+// cannot be added without one.
+describe("the (i) on every card title", () => {
+  const VIEWS = ["overview", "book", "attribution", "rebalance", "operations"] as const;
+
+  /** The things the page draws as a card with a title. */
+  const CARDS = [
+    "[data-kpi]",
+    "[data-cards] [data-card]",
+    "[data-section='hedge']",
+    "[data-section='exposures']",
+    "[data-section='sector']",
+    "[data-section='top-names']",
+    "[data-section='reasons']",
+    "[data-section='risk']",
+    "[data-section='movers']",
+    "[data-section='attribution']",
+    "[data-panel='monthly']",
+    "[data-panel='by-factor']",
+    "[data-panel='volatility']",
+    "[data-cost='eras']",
+    "[data-alert='run']",
+    "[data-alert='reconciliation']",
+  ].join(",");
+
+  const missing = (panel: HTMLElement): string[] => {
+    const found: string[] = [];
+    for (const node of Array.from(panel.querySelectorAll<HTMLElement>(CARDS))) {
+      // The construction telemetry's four stats are a definition list inside one
+      // disclosure, not cards of their own.
+      if (node.matches("[data-card]") && node.closest("dl")) continue;
+      if (!node.querySelector("[data-how-to-read]")) {
+        const title = (node.querySelector("h2, h3, dt, p, div")?.textContent ?? "").trim();
+        found.push(`${node.tagName.toLowerCase()} ${title.slice(0, 40)}`);
+      }
+    }
+    return found;
+  };
+
+  const audit = (snapshot: Snapshot, label: string): void => {
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    for (const view of VIEWS) {
+      const panel = document.querySelector(`#panel-${view}`) as HTMLElement;
+      expect(panel, label).toBeTruthy();
+      // Every tab but "Since the rebalance" always draws cards; that one draws none
+      // on a document with no anchored block, which is what its own notice says.
+      if (view !== "rebalance") {
+        expect(panel.querySelectorAll(CARDS).length, `${label} ${view}`).toBeGreaterThan(0);
+      }
+      expect(missing(panel), `${label} ${view}`).toEqual([]);
+    }
+    document.body.innerHTML = "";
+  };
+
+  it("is on every card of every tab, on the served hold day and on the older documents", () => {
+    audit(LATEST, "hold day");
+    audit(OK, "no anchored block");
+    audit(ACTUAL, "morning with fills");
+  });
+});
+

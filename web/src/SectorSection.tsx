@@ -334,9 +334,19 @@ export function SectorSection({
     // which of the two views it is showing. That is a narrower view than the delta, and
     // a reader can see it is narrower rather than wondering where the account went.
     const scale = Math.max(...sectors.map((bucket) => Math.abs(bucket.netNotional)), 1);
+    const widest = [...sectors].sort(
+      (a, b) => Math.abs(b.netNotional) - Math.abs(a.netNotional),
+    )[0];
     return (
       <section data-section="sector" className="rounded border border-slate-200 bg-white p-3">
-        <h2 className="text-base font-semibold">By sector</h2>
+        <h2 className="text-base font-semibold">
+          By sector
+          <HowToRead>
+            Each row is one sector&apos;s net dollars, long minus short, at the book&apos;s own
+            NAV. The book is built sector-neutral, so the net should be small in every row.
+            Example: {widest.label} is {signedDollars(widest.netNotional)} net.
+          </HowToRead>
+        </h2>
         <p data-sector-deltas="no-account" className="mt-1 text-xs text-slate-600">
           the account has not been read for this close, so there is no account-against-target
           difference. The target&apos;s own signed net is shown instead: it is a narrower

@@ -116,7 +116,7 @@ describe("the overview charts", () => {
     expect(svg.querySelector("[data-zero-line]")).toBeTruthy();
   });
 
-  it("names sectors in words, sorted by absolute size, with bars ten pixels tall", () => {
+  it("names sectors in words, sorted by absolute size, as columns up and down", () => {
     render(<SnapshotView snapshot={SERVED} now={NOW} />);
     const svg = document.querySelector("[data-overview-exposures='true']") as SVGElement;
     const text = svg.textContent ?? "";
@@ -137,10 +137,27 @@ describe("the overview charts", () => {
     expect(order).toEqual(expected);
     const bars = Array.from(svg.querySelectorAll("[data-exposure-series]"));
     expect(bars.length).toBeGreaterThan(10);
+    // The columns are vertical: every one stands at least a pixel tall and is
+    // wide enough to see, and every column grows from the zero line rather than
+    // from the bottom of the frame.
+    const zero = Number(
+      (svg.querySelector("[data-zero-line]") as SVGElement).getAttribute("y1"),
+    );
     for (const bar of bars) {
-      expect(Number(bar.getAttribute("height"))).toBeGreaterThanOrEqual(10);
+      const height = Number(bar.getAttribute("height"));
+      const width = Number(bar.getAttribute("width"));
+      const y = Number(bar.getAttribute("y"));
+      expect(width).toBeGreaterThanOrEqual(3);
+      expect(height).toBeGreaterThanOrEqual(1);
+      // Every column is anchored on the zero line: a rising one ends at it and a
+      // falling one starts there. A pixel of tolerance covers the clamp that keeps
+      // a near-flat exposure visible.
+      expect(y - 1.5 <= zero && zero <= y + height + 1.5).toBe(true);
     }
     expect(svg.querySelectorAll("[data-limit-band]").length).toBe(2);
+    // Same frame as the daily chart beside it: one height for the pair.
+    const daily = document.querySelector("[data-overview-daily='true']") as SVGElement;
+    expect(svg.getAttribute("height")).toBe(daily.getAttribute("height"));
   });
 
   it("heads the exposure chart with the worst exposure against the 5% limit", () => {

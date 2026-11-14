@@ -249,7 +249,20 @@ export function Alerts({
 
   return (
     <div data-alerts="true" className="flex flex-col gap-2">
-      <Panel hook="run" tone={state.tone} title={state.headline} detail={state.detail} />
+      <Panel
+        hook="run"
+        tone={state.tone}
+        title={state.headline}
+        detail={state.detail}
+        info={
+          <>
+            The evening&apos;s own verdict on this close: whether it ran, what it wrote and
+            whether the notification went out. It moves once a session, and a stopped run
+            leaves the previous close&apos;s book on the page. Example: this document says{" "}
+            {state.pill}.
+          </>
+        }
+      />
 
       <ReconciliationPanel snapshot={snapshot} reconciled={reconciled} exceptions={exceptions} />
 
