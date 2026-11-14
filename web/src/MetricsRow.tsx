@@ -96,6 +96,22 @@ export interface BlockedLeg {
  * made on purpose.
  */
 export function blockedLegs(snapshot: Snapshot): BlockedLeg[] {
+  const legs = sentBlockedLegs(snapshot);
+  if (legs.length) return legs;
+  // On a hold night nothing is sent, so the document carries no never-sent line at
+  // all: the leg it wanted and could not place is the retired name's own gap, which
+  // the anchored block states name by name. Same claim, same words, no order needed.
+  return (snapshot.monthly?.holdings?.rows ?? [])
+    .filter((row) => row.retired && Math.abs(row.gap_usd ?? 0) >= 1)
+    .map((row) => ({
+      ticker: row.ticker,
+      notional: Math.abs(row.gap_usd ?? 0),
+      reason: "SYMBOL_NOT_FOUND",
+    }));
+}
+
+/** The legs the evening built and the broker refused, from its own lines. */
+function sentBlockedLegs(snapshot: Snapshot): BlockedLeg[] {
   const legs: BlockedLeg[] = [];
   for (const line of snapshot.actual_holdings?.fills?.not_sent_lines ?? []) {
     const match = /^(\S+)\s+(.*?)\s+never sent\s*\((.*)\)$/.exec(line.trim());
@@ -145,12 +161,16 @@ export function costDetail(
   split: import("./types").CostSplit | null,
 ): string | undefined {
   if (!split) return undefined;
+  // A cost that rounds to zero is not a zero: a hold night trades a few hundred
+  // dollars and prints "0.00 bp" at two places, which reads as a missing figure.
+  const amount = (value: number): string =>
+    value > 0 && value < 0.005 ? "<0.01" : value.toFixed(2);
   const parts: string[] = [];
-  if (split.trading !== null && split.trading !== undefined) {
-    parts.push(`tonight's trades ${split.trading.toFixed(2)} bp`);
-  }
   if (split.borrow !== null && split.borrow !== undefined) {
-    parts.push(`borrow ${split.borrow.toFixed(2)} bp`);
+    parts.push(`borrow ${amount(split.borrow)} bp`);
+  }
+  if (split.trading !== null && split.trading !== undefined) {
+    parts.push(`tonight's trades ${amount(split.trading)} bp`);
   }
   if (!parts.length) return undefined;
   return `${parts.join(", ")} over ${horizon === null ? "the hold" : `${horizon} sessions`}`;
@@ -508,9 +528,21 @@ export function MetricsRow({
 
       {book?.n_names ? (
         <p data-flag="book-line" className="mt-2 text-xs text-slate-600">
-          Tonight&apos;s book: {count(book.n_names)} names.{" "}
-          {droppedCount > 0 ? `${count(droppedCount)} left out (no risk estimate yet); ` : null}
-          positions too small to trade removed; the rest scaled to 100% of NAV.
+          {[
+            `Tonight's book: ${count(book.n_names)} names.`,
+            droppedCount > 0 ? `${count(droppedCount)} left out (no risk estimate yet);` : null,
+            "positions too small to trade removed;",
+            // The rule is a renormalization to gross 1.0 and the round shares land
+            // where they land, so the achieved gross is stated beside the target
+            // whenever the two differ by more than a rounding error.
+            `the rest scaled to 100% of NAV${
+              book.gross !== null && Math.abs(book.gross - 1) >= 0.005
+                ? ` (${percent(book.gross)} after the round shares)`
+                : ""
+            }.`,
+          ]
+            .filter(Boolean)
+            .join(" ")}
         </p>
       ) : null}
     </section>

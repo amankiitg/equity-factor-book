@@ -25,6 +25,7 @@ import ok from "../fixtures/snapshot_ok.json";
 import today from "../fixtures/snapshot_2026-10-14_morning.json";
 import rejected from "../fixtures/snapshot_fills_rejected.json";
 import withActual from "../fixtures/snapshot_actual_holdings.json";
+import served from "../fixtures/snapshot_2026-10-30_evening.json";
 
 const OK = ok as unknown as Snapshot;
 const NONE = noBook as unknown as Snapshot;
@@ -1272,6 +1273,41 @@ describe("the turnover card", () => {
       "[data-card='turnover'] [data-blocked='true']",
     ) as HTMLElement;
     expect(long.textContent).toContain("Blocked: 4 names, $19,615 (no longer trade)");
+  });
+
+  it("names a retired name the book wants, when no leg was sent at all", () => {
+    // The hold-night case: nothing was sent, so there is no never-sent line, and
+    // the leg the book wanted and could not place is the retired name's own gap.
+    const base = served as unknown as Snapshot;
+    const rows = [
+      {
+        ticker: "KVUE",
+        since: "retired (acquired by KMB), owed, cannot be traded",
+        since_kind: "retired",
+        since_date: "2026-11-05",
+        weight_now: 0,
+        weight_target: 0.0066,
+        gap_weight: -0.0066,
+        gap_usd: -13615,
+        tonight: null,
+        retired: true,
+        owed: true,
+        note: "retired (acquired by KMB), owed, cannot be traded",
+      },
+    ];
+    const snapshot = {
+      ...base,
+      monthly: {
+        ...(base.monthly as NonNullable<Snapshot["monthly"]>),
+        holdings: { anchor: "2026-10-23", as_of: "2026-11-05", rows },
+      },
+    } as unknown as Snapshot;
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const blocked = document.querySelector(
+      "[data-card='turnover'] [data-blocked='true']",
+    ) as HTMLElement;
+    expect(blocked).toBeTruthy();
+    expect(blocked.textContent).toBe("Blocked: KVUE $13,615 (no longer trades)");
   });
 
   it("says what the run built when the document predates the sent-only figure", () => {
