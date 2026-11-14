@@ -313,7 +313,7 @@ export function MetricsRow({
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
         the book
         <HowToRead>
-          every figure is a share of NAV, so today&apos;s book compares with last
+          every ratio here is quoted against NAV, so today&apos;s book compares with last
           month&apos;s even after the equity moves. Example: gross is{" "}
           {percent(book?.gross)} of NAV right now, {dollars(book?.gross_notional)} in all.
         </HowToRead>
