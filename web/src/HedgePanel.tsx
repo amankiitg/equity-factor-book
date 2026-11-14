@@ -46,9 +46,8 @@ function shortDay(value: string | null | undefined): string {
 
 /** The one sentence a hedge footprint is: who it moved, how much, and what share. */
 function footprint(day: string, moved: number | null, book: number | null, usd: number | null, share: number | null): string {
-  const name = moved === 1 ? "name" : "names";
   const tail = share === null ? "" : `, ${percent(share, 0)} of that day's trading`;
-  return `At the ${day} rebalance the hedge adjusted ${count(moved)} of ${count(book)} ${name} (${dollars(usd)}${tail}).`;
+  return `At the ${day} rebalance the hedge adjusted ${count(moved)} of ${count(book)} names (${dollars(usd)}${tail}).`;
 }
 
 /** The rebalance's footprint: one line, measured on the close that hedged. */
