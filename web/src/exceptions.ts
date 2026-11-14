@@ -23,6 +23,7 @@
 // "expected" on a hunch would be worse than one that shows it amber and says why.
 
 import { compareAccount, type AccountCompare } from "./account";
+import { dollars } from "./format";
 import type { Snapshot } from "./types";
 
 /** Which comparison a mismatch came out of, and on which side. */
@@ -41,6 +42,19 @@ export type MismatchSide =
  * same for every name in the class, so a reader learns them once.
  */
 export type Label = "in transit" | "stuck" | "too small" | "look at this";
+
+/**
+ * The corporate actions the page can state itself.
+ *
+ * The store's `efb.e11_corporate_actions` rows are not published in the snapshot,
+ * so an inactive name has no merger date from the document alone. KVUE is the one
+ * live case and the owner's own sentence about it, kept here as page copy the way
+ * the retired row's label is kept in `live/monthly_view.py`. A name not in this
+ * map still gets the broker's reason and the plain conclusion, just without a date.
+ */
+const RETIRED_DEALS: Record<string, { by: string; on: string }> = {
+  KVUE: { by: "KMB", on: "2026-11-02" },
+};
 
 /** What happens next, in one short sentence, per label. */
 export const NEXT_STEP: Record<Label, string> = {
@@ -174,6 +188,23 @@ export function classify(snapshot: Snapshot): Exceptions {
   const removals = new Set(
     (bridge?.removed_without_order ?? []).map((entry) => entry.ticker),
   );
+  // A name the book dropped with no order behind it, and a leg the run could not
+  // send: both are the document saying what happened to the name. The broker's
+  // reason is the useful part, and `exited_without_order` carries it on the
+  // evening read where `fills` is still null.
+  const exitedNoOrder = new Map<string, string>();
+  for (const entry of bridge?.exited_without_order ?? []) {
+    if (entry?.ticker) exitedNoOrder.set(entry.ticker, String(entry.reason ?? ""));
+  }
+  const cannotSend = new Map<string, string>();
+  for (const leg of snapshot.monthly?.tonight?.cannot_send ?? []) {
+    if (leg?.ticker) cannotSend.set(leg.ticker, String(leg.code ?? ""));
+  }
+  const heldDollars = (ticker: string): number | null => {
+    const name = (snapshot.actual_holdings?.names ?? []).find((row) => row.ticker === ticker);
+    const value = name?.notional;
+    return typeof value === "number" && Number.isFinite(value) ? Math.abs(value) : null;
+  };
 
   const classifyOne = (ticker: string, side: MismatchSide): Mismatch => {
     if (reversals.has(ticker)) {
@@ -224,6 +255,26 @@ export function classify(snapshot: Snapshot): Exceptions {
         label: "stuck",
       };
     }
+    if (exitedNoOrder.has(ticker) || cannotSend.has(ticker)) {
+      const code = exitedNoOrder.get(ticker) || cannotSend.get(ticker) || "";
+      const deal = RETIRED_DEALS[ticker];
+      const held = heldDollars(ticker);
+      const heldWords = held === null ? "the position" : dollars(held);
+      const why = deal
+        ? `acquired by ${deal.by} on ${deal.on}: the merger is recorded in the corporate actions table and the broker has not converted the shares yet, so ${heldWords} is held and cannot be traded`
+        : code === "ASSET_INACTIVE"
+          ? "the broker says the asset is inactive, so the position is held and cannot be traded"
+          : `the run could not send the order (${code || "no code given"}), so the position is held until it can be traded`;
+      return {
+        ticker,
+        side,
+        why,
+        key: exitedNoOrder.has(ticker)
+          ? "bridge.exited_without_order"
+          : "monthly.tonight.cannot_send",
+        label: "stuck",
+      };
+    }
     if (removals.has(ticker)) {
       return {
         ticker,
@@ -268,16 +319,22 @@ export function classify(snapshot: Snapshot): Exceptions {
     : [];
 
   const current = targetRead ? target : store;
-  // The classes the page could not check: the previous close's list drops off once
-  // the document carries the key at all - a null is the evening saying it could not
-  // read that document, and the floor's class drops off once the count has tickers
-  // beside it.
+  // The classes the page could not check: each drops off once the document carries
+  // the key at all, and an empty list is an answer. `under_minimum_tickers: []` says
+  // nothing was under the floor; it does not say the page could not look. The asset
+  // class is decided by any line carrying the broker's reason, whether that is a
+  // refused leg or a name the book exited with no order behind it.
+  const underMinimumKnown = Array.isArray(bridge?.under_minimum_tickers);
+  const assetKnown =
+    refused.size > 0 ||
+    [...exitedNoOrder.values()].some((code) => code !== "") ||
+    [...cannotSend.values()].some((code) => code === "ASSET_INACTIVE");
   const unchecked = [
     ...(previousReversals === null ? [PREVIOUS_REVERSALS] : []),
     ...UNCHECKED.filter(
       (entry) =>
-        !(entry.what === "a leg too small to trade" && underMinimum.size > 0) &&
-        !(entry.what.startsWith("an asset the broker says") && refused.size > 0),
+        !(entry.what === "a leg too small to trade" && underMinimumKnown) &&
+        !(entry.what.startsWith("an asset the broker says") && assetKnown),
     ),
   ];
   return {

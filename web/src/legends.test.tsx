@@ -162,32 +162,48 @@ describe("the corrections to the series", () => {
     }
   });
 
-  it("draws a marker at every date a correction names, on both dated charts", () => {
+  it("draws one marker per note, with note 1 spanning both of its days", () => {
     open(OK);
-    const dates = CORRECTIONS.flatMap((correction) =>
-      correction.dates.map((date) => ({ date, number: correction.number })),
-    );
     for (const chart of ["hedge-vol", "volatility"]) {
-      const drawn = markers(chart).map((node) => ({
-        date: node.getAttribute("data-note-marker-date") ?? "",
-        number: node.getAttribute("data-note-marker") ?? "",
-        x: Number(node.querySelector("circle")?.getAttribute("cx") ?? NaN),
-      }));
-      expect(drawn.length, `${chart} draws no correction markers`).toBe(dates.length);
-      for (const expected of dates) {
-        const marker = drawn.find((node) => node.date === expected.date);
-        expect(marker, `${chart} has no marker on ${expected.date}`).toBeTruthy();
-        expect(marker?.number).toBe(String(expected.number));
+      const drawn = markers(chart);
+      // One marker per note, not one per date: note 1 covers two sessions.
+      expect(drawn.length, chart + " draws the wrong number of markers").toBe(3);
+      const numbers = drawn.map((node) => node.getAttribute("data-note-marker") ?? "");
+      expect(numbers.sort()).toEqual(["1", "2", "3"]);
+      const first = drawn.find((node) => node.getAttribute("data-note-marker") === "1");
+      expect(first?.getAttribute("data-note-marker-dates")).toBe("2026-09-28,2026-09-29");
+      const xs = Array.from(first?.querySelectorAll("line") ?? [])
+        .map((line) => Number(line.getAttribute("x1")))
+        .filter((value) => Number.isFinite(value));
+      // The two dashed lines are at the two dates; the circle sits between them.
+      expect(new Set(xs).size).toBeGreaterThanOrEqual(2);
+      const circle = Number(first?.querySelector("circle")?.getAttribute("cx") ?? NaN);
+      expect(circle).toBeGreaterThan(Math.min(...xs));
+      expect(circle).toBeLessThan(Math.max(...xs));
+      // Notes 2 and 3 are one session apart, so their markers are staggered.
+      const second = drawn.find((node) => node.getAttribute("data-note-marker") === "2");
+      const third = drawn.find((node) => node.getAttribute("data-note-marker") === "3");
+      const y = (node?: HTMLElement): number =>
+        Number(node?.querySelector("circle")?.getAttribute("cy") ?? NaN);
+      expect(Math.abs(y(second) - y(third))).toBeGreaterThanOrEqual(14);
+      // Every marker is the 14px footnote size.
+      for (const node of drawn) {
+        expect(node.getAttribute("data-marker-diameter")).toBe("14");
+        expect(node.querySelector("circle")?.getAttribute("r")).toBe("7");
       }
-      // Left to right is the order of the dates: a marker at the wrong session
-      // would be out of that order, and the number would then sit at a date it does
-      // not belong to.
-      const asDrawn = [...drawn].sort((a, b) => a.x - b.x).map((node) => node.date);
-      expect(asDrawn).toEqual([...dates.map((node) => node.date)].sort());
+      // Left to right is the order of the notes.
+      const asDrawn = [...drawn]
+        .sort(
+          (a, b) =>
+            Number(a.querySelector("circle")?.getAttribute("cx")) -
+            Number(b.querySelector("circle")?.getAttribute("cx")),
+        )
+        .map((node) => node.getAttribute("data-note-marker"));
+      expect(asDrawn).toEqual(["1", "2", "3"]);
     }
   });
 
-  it("puts the marker for a session at that session's point on the line", () => {
+  it("puts a single date's marker at that session's point on the line", () => {
     open(OK);
     const chart = document.querySelector("figure[data-chart='volatility']") as HTMLElement;
     const pairs = (ATTRIBUTION.live?.daily ?? []).filter(
@@ -197,16 +213,15 @@ describe("the corrections to the series", () => {
       .split(" ")
       .filter((point) => point !== "")
       .map((point) => Number(point.split(",")[0]));
-    for (const correction of CORRECTIONS) {
-      for (const date of correction.dates) {
-        const index = pairs.findIndex((day) => day.trade_date === date);
-        if (index < 0) continue;
-        const marker = chart.querySelector(
-          `[data-note-marker-date='${date}'] circle`,
-        ) as HTMLElement;
-        expect(marker, `no marker on ${date}`).toBeTruthy();
-        expect(Number(marker.getAttribute("cx"))).toBeCloseTo(points[index], 3);
-      }
+    for (const correction of CORRECTIONS.filter((entry) => entry.dates.length === 1)) {
+      const date = correction.dates[0];
+      const index = pairs.findIndex((day) => day.trade_date === date);
+      if (index < 0) continue;
+      const marker = chart.querySelector(
+        "[data-note-marker-date='" + date + "'] circle",
+      ) as HTMLElement;
+      expect(marker, "no marker on " + date).toBeTruthy();
+      expect(Number(marker.getAttribute("cx"))).toBeCloseTo(points[index], 3);
     }
   });
 

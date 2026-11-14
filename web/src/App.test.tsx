@@ -351,9 +351,10 @@ describe("the page", () => {
     const gross = document.querySelector("[data-card='gross']") as HTMLElement;
     expect(gross.textContent).toContain("100.00%");
     expect(gross.textContent).toContain("$1,000,000");
-    const full = document.querySelector("[data-card='full-book-gross']") as HTMLElement;
-    expect(full).toBeTruthy();
-    expect(full.textContent).toContain(`${((OK.book.full_book_gross ?? 0) * 100).toFixed(2)}%`);
+    // The full book's own number is no longer a card of its own: the construction
+    // panel reads the last rebalance's record, and this document carries no monthly
+    // block to build it from.
+    expect(document.querySelector("[data-card='full-book-gross']")).toBeNull();
   });
 
   it("breaks the summary into labelled items rather than a pipe run", () => {
@@ -366,17 +367,17 @@ describe("the page", () => {
     for (const label of ["gross", "net", "n_eff_kept", "expected-expense"]) {
       expect(cards.querySelector(`[data-card="${label}"]`), label).toBeTruthy();
     }
-    // The telemetry left the row: it is on the Operations tab, behind its own
-    // disclosure, and the row the reader scans in the morning no longer carries it.
+    // The telemetry left the row, and the construction panel now reads the last
+    // rebalance's record. This document has no monthly block, so the panel stays
+    // out entirely rather than showing tonight's book.
     expect(cards.querySelector("[data-card='n_eff_full_book']")).toBeNull();
     const operations = document.querySelector("#panel-operations") as HTMLElement;
-    expect(operations.querySelector("[data-card='n_eff_full_book']")).toBeTruthy();
+    expect(operations.querySelector("[data-details='construction']")).toBeNull();
   });
 
   it("gives the effective breadth to one decimal, and names what each one is", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const kept = OK.breadth.n_eff_kept as number;
-    const full = OK.breadth.n_eff_full_book as number;
     const card = (label: string): HTMLElement =>
       document.querySelector(`[data-card='${label}']`) as HTMLElement;
     expect(card("n_eff_kept").textContent).toContain(kept.toFixed(1));
@@ -387,7 +388,10 @@ describe("the page", () => {
       `about ${Math.round(OK.breadth.n_eff_kept as number)} equal positions`,
     );
     expect(card("n_eff_kept").textContent).toContain(`out of ${OK.book.n_names}`);
-    expect(card("n_eff_full_book").textContent).toContain(full.toFixed(1));
+    // The full book's breadth is not a card of its own any more: the number the
+    // reader acts on is the kept book's, and the construction panel carries the
+    // rebalance's own record instead.
+    expect(document.querySelector("[data-card='n_eff_full_book']")).toBeNull();
     // The stored value to seventeen places is not on the page.
     expect(screen.queryByText(String(kept))).toBeNull();
   });

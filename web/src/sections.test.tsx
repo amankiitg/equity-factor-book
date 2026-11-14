@@ -127,24 +127,14 @@ describe("the metrics row", () => {
       `about ${Math.round(OK.breadth.n_eff_kept as number)} equal positions`,
     );
     expect(card("n_eff_kept").textContent).toContain(`out of ${OK.book.n_names}`);
-    // The pre-floor telemetry is on the Operations tab now, behind the same
-    // construction disclosure: addressable, and off the row a reader scans in the
-    // morning.
-    const construction = document.querySelector("[data-details='construction']") as HTMLElement;
-    expect(construction).toBeTruthy();
+    // The construction panel is anchored to a rebalance close, and this document
+    // has no monthly block, so it is absent: an absent record must not draw the
+    // nightly book as if it were the one that traded.
+    expect(document.querySelector("[data-details='construction']")).toBeNull();
     expect(document.querySelector("[data-cards='true'] [data-details='construction']")).toBeNull();
-    expect(construction.textContent).toContain(
-      (OK.breadth.n_eff_full_book as number).toFixed(1),
-    );
-    expect(
-      (construction.querySelector("[data-card='n_eff_full_book']") as HTMLElement).textContent,
-    ).toContain((OK.breadth.n_eff_full_book as number).toFixed(1));
     expect(card("largest-position").textContent).toContain(facts.largest?.ticker as string);
     // The ten largest weights as a share of the book's absolute weight.
     expect(card("top10-share").textContent).toContain(percent(facts.top10Share));
-    expect(
-      (document.querySelector("[data-card='full-book-gross']") as HTMLElement).textContent,
-    ).toContain(percent(OK.book.full_book_gross));
     const cost = card("expected-expense").textContent ?? "";
     expect(cost).toContain((OK.book.expected_cost_bps as number).toFixed(2));
     // And the split, each half named as what it is: the trades are paid once
@@ -1098,10 +1088,6 @@ describe("a snapshot with no book", () => {
       "largest-position",
       "expected-expense",
       "top10-share",
-      "n_eff_full_book",
-      "full-book-gross",
-      "full-book-net",
-      "full-book-vol",
     ]) {
       expect(card(label), label).toBeTruthy();
       expect(card(label).textContent, label).toContain("n/a");
@@ -1480,7 +1466,7 @@ describe("the four words, the labels and the arithmetic", () => {
     // Today's document carries no previous-close reversals list, so that class is
     // still one the page cannot check: three, and the count is the honest one.
     expect(toggle.querySelector("summary")?.textContent).toContain(
-      "3 kinds of gap this page cannot check yet",
+      "3 things this page could not check",
     );
     // The long paragraphs are gone: one sentence per item, inside the toggle.
     expect((toggle as HTMLDetailsElement).open).toBe(false);
@@ -1573,43 +1559,56 @@ describe("the basis the turnover card stands on, and the last of nov11's keys", 
     expect(total.textContent).toBe(dollars(sent));
   });
 
-  it("names the names the risk model could not measure, and nothing when there are none", () => {
-    // The last of nov11's keys. A name dropped for want of a risk figure is the one
-    // class of absence nothing else on the page implies, so it is named; a document
-    // that predates the key says nothing rather than "0 names".
-    const withDrops = {
+  it("names the names the last rebalance left out, and nothing when it left none out", () => {
+    // The last of nov11's keys, now read from the anchor's own manifest: a name
+    // dropped for want of a risk figure is the one class of absence nothing else on
+    // the page implies, so it is named for the book that traded.
+    const base = {
       ...TODAY,
-      breadth: {
-        ...(TODAY.breadth as NonNullable<Snapshot["breadth"]>),
-        n_dropped_no_risk: 3,
-        dropped_no_risk: [
-          { ticker: "ZZZZ", reason: "no specific variance" },
-          { ticker: "YYYY", reason: "no specific variance" },
-          { ticker: "XXXX", reason: "" },
-        ],
+      monthly: {
+        ...(TODAY.monthly ?? {}),
+        anchor_construction: {
+          close: "2026-10-23",
+          considered: 7,
+          left_out_no_risk: 3,
+          left_out_no_risk_names: [
+            { ticker: "ZZZZ", reason: "no specific variance" },
+            { ticker: "YYYY", reason: "no specific variance" },
+            { ticker: "XXXX", reason: "" },
+          ],
+          excluded: 0,
+          excluded_names: [],
+          removed_too_small: 4,
+          final_names: 196,
+          gross: 1,
+          net: 0,
+          vol: 0.0279,
+          floor: "20 shares",
+        },
       },
     } as Snapshot;
-    render(<SnapshotView snapshot={withDrops} now={NOW} />);
-    const line = document.querySelector("[data-flag='dropped-no-risk']") as HTMLElement;
+    render(<SnapshotView snapshot={base} now={NOW} />);
+    const line = document.querySelector("[data-construction='left-out']") as HTMLElement;
     expect(line).toBeTruthy();
-    expect(line.textContent).toContain("3 name(s) never reached the book");
-    expect(line.textContent).toContain("ZZZZ (no specific variance)");
-    expect(line.textContent).toContain("XXXX");
+    expect(line.textContent).toContain("3 were left out");
+    expect(line.textContent).toContain("ZZZZ, YYYY and XXXX");
     document.body.innerHTML = "";
-    // Absent, and empty: both draw nothing.
-    render(<SnapshotView snapshot={TODAY} now={NOW} />);
-    expect(document.querySelector("[data-flag='dropped-no-risk']")).toBeNull();
-    document.body.innerHTML = "";
-    const empty = {
-      ...TODAY,
-      breadth: {
-        ...(TODAY.breadth as NonNullable<Snapshot["breadth"]>),
-        n_dropped_no_risk: 0,
-        dropped_no_risk: [],
+    // A rebalance that left none out says nothing about them.
+    const clean = {
+      ...base,
+      monthly: {
+        ...(base.monthly ?? {}),
+        anchor_construction: {
+          ...(base.monthly?.anchor_construction as NonNullable<
+            Snapshot["monthly"]
+          >["anchor_construction"]),
+          left_out_no_risk: 0,
+          left_out_no_risk_names: [],
+        },
       },
     } as Snapshot;
-    render(<SnapshotView snapshot={empty} now={NOW} />);
-    expect(document.querySelector("[data-flag='dropped-no-risk']")).toBeNull();
+    render(<SnapshotView snapshot={clean} now={NOW} />);
+    expect(document.querySelector("[data-construction='left-out']")).toBeNull();
   });
 
   it("words the largest variance share as a share of the book's predicted risk", () => {

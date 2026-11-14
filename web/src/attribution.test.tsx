@@ -217,6 +217,27 @@ describe("the attribution section", () => {
     expect(waterfall.textContent).toContain(
       `${((risk.pre_hedge_vol - risk.hedged_vol) * 100).toFixed(1)} pts`,
     );
+
+    // One scale for all three rows: the after bar and the removed bar together
+    // cover the before bar, and the removed bar starts where the after bar ends.
+    const bar = (key: string): HTMLElement =>
+      waterfall.querySelector("[data-waterfall-bar='" + key + "']") as HTMLElement;
+    const scale = Math.max(risk.pre_hedge_vol, risk.hedged_vol);
+    const afterEnd = (risk.hedged_vol / scale) * 100;
+    expect(parseFloat(bar("before").style.width)).toBeCloseTo(100, 6);
+    expect(parseFloat(bar("after").style.width)).toBeCloseTo(afterEnd, 6);
+    expect(parseFloat(bar("removed").style.left)).toBeCloseTo(afterEnd, 6);
+    expect(parseFloat(bar("removed").style.width)).toBeCloseTo(100 - afterEnd, 6);
+    expect(
+      parseFloat(bar("after").style.width) + parseFloat(bar("removed").style.width),
+    ).toBeCloseTo(parseFloat(bar("before").style.width), 6);
+    // Each value sits at its own bar's end, not in a fixed column on the right.
+    const value = (key: string): HTMLElement =>
+      waterfall.querySelector("[data-waterfall-value='" + key + "']") as HTMLElement;
+    expect(value("before").textContent).toBe(`${(risk.pre_hedge_vol * 100).toFixed(1)}%`);
+    expect(value("after").textContent).toBe(`${(risk.hedged_vol * 100).toFixed(1)}%`);
+    expect(parseFloat(value("before").style.left)).toBeCloseTo(100, 6);
+    expect(parseFloat(value("after").style.left)).toBeCloseTo(afterEnd, 6);
     // And the variance split is one line, not a stacked chart that says the same.
     const share = document.querySelector("[data-var-share='line']");
     expect(share).toBeTruthy();
