@@ -15,8 +15,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { SnapshotView } from "./App";
-import type { Attribution, AttributionNote, Snapshot } from "./types";
-import establishment from "../fixtures/snapshot_establishment.json";
+import type { Attribution, Snapshot } from "./types";
 import ok from "../fixtures/snapshot_ok.json";
 
 const OK = ok as unknown as Snapshot;
