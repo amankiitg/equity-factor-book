@@ -24,6 +24,7 @@ import { useState } from "react";
 
 import { HowToRead } from "./Panel";
 import { count, dateOnly, dollars, percent, pnlClass } from "./format";
+import { factorWord } from "./labels";
 import type {
   Attribution,
   AttributionDay,
@@ -738,7 +739,7 @@ function RiskSplit({ risk, notes }: { risk: AttributionRisk; notes: AttributionN
       </p>
       {notes.length > 0 ? (
         <p className="mt-1 text-xs text-slate-500" data-series-notes="true">
-          corrections to these charts:
+          corrections to these panels:
           {notes.map((note, index) => (
             <Footnote key={`${note.date}-${index}`} number={index + 1} note={note} />
           ))}
@@ -1162,15 +1163,15 @@ function FactorTable({ period }: { period: AttributionPeriod }) {
         <HowToRead>
           Each factor&apos;s cumulative contribution over {count(period.n_days)} session(s), in
           basis points of NAV, largest first. These sum to the factor card above, so the two
-          can be checked against each other. Example: {entries[0].factor} contributed{" "}
-          {bps(entries[0].value)}.
+          can be checked against each other. Example: {factorWord(entries[0].factor)}{" "}
+          contributed {bps(entries[0].value)}.
         </HowToRead>
       </h3>
       <table aria-label="by factor" className="mt-1 w-full text-xs">
         <tbody>
           {entries.map((entry) => (
             <tr key={entry.factor} data-factor={entry.factor} className="border-b border-slate-100">
-              <td className="py-0.5 pr-2 font-mono">{entry.factor}</td>
+              <td className="py-0.5 pr-2">{factorWord(entry.factor)}</td>
               <td className="py-0.5 pr-2">
                 <span
                   data-factor-bar="true"

@@ -301,7 +301,7 @@ export function ConstructionTelemetry({ snapshot }: { snapshot: Snapshot }) {
       <dl className="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
         <div data-card="n_eff_full_book">
           <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-            n_eff full book
+            breadth, full book
           </dt>
           <dd className="font-mono tabular-nums">{oneDecimal(breadth?.n_eff_full_book)}</dd>
         </div>
@@ -462,7 +462,7 @@ export function MetricsRow({
         </Card>
         <Card
           hook="n_eff_kept"
-          label="n_eff_kept"
+          label="breadth"
           value={oneDecimal(breadth?.n_eff_kept)}
           detail={
             breadth === null || breadth === undefined
