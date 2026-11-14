@@ -413,10 +413,10 @@ export function MetricsRow({
         >
           <div className="font-mono text-sm leading-tight tabular-nums">
             {sentNotional !== null
-              ? `Tonight: ${count(sent)} orders sent, ${dollars(sentNotional)}`
+              ? `Tonight: ${count(sent)} ${sent === 1 ? "order" : "orders"} sent, ${dollars(sentNotional)}`
               : intended !== null
                 ? `Tonight: the run built ${dollars(intended)} of legs`
-                : `Tonight: ${count(sent)} orders sent, ${dollars(null)}`}
+                : `Tonight: ${count(sent)} ${sent === 1 ? "order" : "orders"} sent, ${dollars(null)}`}
           </div>
           {turnover === null ? (
             <div className="text-xs text-slate-600">
