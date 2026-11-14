@@ -57,6 +57,80 @@ describe("the exposures panel on a hold day", () => {
     expect(nowCell?.textContent ?? "").not.toBe("0.00%");
   });
 
+  it("scales each column against itself, and states the range it used", () => {
+    const { container } = render(<ExposuresSection snapshot={HOLD} />);
+    const range = (column: string) =>
+      container.querySelector(`[data-column='${column}']`)?.getAttribute("data-column-range");
+    // The before column's own largest value, the capped after column, tonight's book.
+    expect(range("before")).toBe("87.19%");
+    expect(range("after")).toBe("0.00%");
+    expect(range("now")).toBe("0.41%");
+    // On one shared scale the now column was a single pale wash. On its own scale it
+    // shows the moves that are in it: at least three shades, none of them the before
+    // column's strongest.
+    const now = Array.from(
+      container.querySelectorAll("[data-heat='now']"),
+    ) as HTMLElement[];
+    const shades = new Set(
+      now.map((cell) => cell.style.backgroundColor).filter((fill) => fill !== "transparent"),
+    );
+    expect(shades.size).toBeGreaterThanOrEqual(3);
+    const alpha = (cell: HTMLElement) =>
+      Number((cell.style.backgroundColor.match(/, ([0-9.]+)\)$/) ?? [])[1] ?? 0);
+    const largest = now.reduce(
+      (best, cell) => {
+        const value = Math.abs(Number((cell.textContent ?? "0").replace("%", "")));
+        return value > best.value ? { value, cell } : best;
+      },
+      { value: -1, cell: now[0] },
+    );
+    for (const cell of now) {
+      expect(alpha(largest.cell)).toBeGreaterThanOrEqual(alpha(cell) - 1e-9);
+    }
+  });
+
+  it("gives a positive cell and a negative cell different hues", () => {
+    const { container } = render(<ExposuresSection snapshot={HOLD} />);
+    const now = Array.from(
+      container.querySelectorAll("[data-heat='now']"),
+    ) as HTMLElement[];
+    const positive = now.find((cell) => cell.getAttribute("data-heat-sign") === "positive");
+    const negative = now.find((cell) => cell.getAttribute("data-heat-sign") === "negative");
+    expect(positive, "no positive cell in the now column").toBeTruthy();
+    expect(negative, "no negative cell in the now column").toBeTruthy();
+    const hue = (cell: HTMLElement | undefined) =>
+      (cell?.style.backgroundColor ?? "").replace(/,[^,]*\)$/, ")");
+    // Blue is long, rose is short: the sign survives without reading the number.
+    expect(hue(positive)).toBe("rgba(37, 99, 235)");
+    expect(hue(negative)).toBe("rgba(225, 29, 72)");
+    // And their sizes are still carried by the alpha, not by the hue.
+    expect(hue(positive)).not.toBe(hue(negative));
+    // A cell that prints 0.00% is left unpainted, not tinted a faint sign.
+    for (const cell of now) {
+      if ((cell.textContent ?? "").trim() === "0.00%") {
+        expect(cell.style.backgroundColor).toBe("transparent");
+      }
+    }
+  });
+
+  it("draws the capped after column flat and says why in the caption", () => {
+    const { container } = render(<ExposuresSection snapshot={HOLD} />);
+    const after = Array.from(
+      container.querySelectorAll("[data-heat='after']"),
+    ) as HTMLElement[];
+    expect(after.length).toBeGreaterThan(0);
+    for (const cell of after) {
+      expect(cell.style.backgroundColor).toBe("transparent");
+      expect(cell.getAttribute("data-heat-sign")).toBe("zero");
+    }
+    const caption = container.querySelector("[data-heat-caption]")?.textContent ?? "";
+    expect(caption).toContain("scaled inside its own column");
+    expect(caption).toContain("Blue is a positive exposure and rose is a negative one");
+    expect(caption).toContain("After the hedge every cell is 0.00%");
+    expect(caption).toContain("flat neutral");
+    expect(caption).not.toContain("one scale");
+  });
+
   it("shows the anchor's before column as a real exposure, not the same vector", () => {
     const { container } = render(<ExposuresSection snapshot={HOLD} />);
     const cells = (key: string) =>

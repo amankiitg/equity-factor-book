@@ -231,7 +231,7 @@ describe("the page", () => {
     expect(within(table).getByText(`${(Math.min(...negatives) * 100).toFixed(2)}%`)).toBeTruthy();
   });
 
-  it("draws every exposure as a heat cell, on one scale, in percent", () => {
+  it("draws every exposure as a heat cell, on its own column's scale, in percent", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     openPositions();
     const table = screen.getByRole("table", { name: "factor exposures" });
@@ -239,12 +239,13 @@ describe("the page", () => {
     const after = table.querySelectorAll("[data-heat='after']");
     expect(before.length).toBe(17);
     expect(after.length).toBe(17);
-    // The colour is the size: the largest exposure is the strongest wash and a
-    // near-zero one is nearly clear, while both keep their number in the cell.
-    const alpha = (cell: Element) => {
-      const match = (cell as HTMLElement).style.backgroundColor.match(/rgba?\([^)]*,\s*([0-9.]+)\)/);
-      return match ? Number(match[1]) : 1;
-    };
+    // Every column states the range it is scaled against, in its own header. The
+    // now column exists only on a hold day, and this document is not one.
+    for (const column of ["before", "after"]) {
+      const header = table.querySelector(`[data-column='${column}']`);
+      expect(header, `${column} states no range`).toBeTruthy();
+      expect(header?.getAttribute("data-column-range")).toMatch(/%$/);
+    }
     const momentum = table.querySelector("[data-factor='momentum']") as HTMLElement;
     const beforeCell = momentum.querySelector("[data-heat='before']") as HTMLElement;
     const afterCell = momentum.querySelector("[data-heat='after']") as HTMLElement;
@@ -252,8 +253,11 @@ describe("the page", () => {
       `${((OK.exposures_before_hedge.momentum ?? 0) * 100).toFixed(2)}%`,
     );
     expect(afterCell.textContent).toBe("0.00%");
-    expect(alpha(beforeCell)).toBeGreaterThan(alpha(afterCell));
-    expect(alpha(beforeCell)).toBeGreaterThan(0.3);
+    // The largest value in a column is that column's strongest shade, and this
+    // document's after column is zero in every cell, so it is drawn flat.
+    expect(beforeCell.style.backgroundColor).toMatch(/^rgba\(/);
+    expect(afterCell.style.backgroundColor).toBe("transparent");
+    expect(table.querySelectorAll("[data-heat='after'][data-heat-sign='zero']").length).toBe(17);
   });
 
   it("shows the attribution: the live period, its four terms and the total", () => {
