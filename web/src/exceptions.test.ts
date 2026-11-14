@@ -35,7 +35,9 @@ function doc(parts: {
       previous_reversals_pending:
         parts.previousReversals === undefined ? null : parts.previousReversals,
       removed_without_order: (parts.removed ?? []).map((ticker) => ({ ticker })),
-      under_minimum_tickers: parts.underMinimum ?? [],
+      ...(parts.underMinimum === undefined
+        ? {}
+        : { under_minimum_tickers: parts.underMinimum }),
     },
   } as unknown as Snapshot;
 }
@@ -201,6 +203,54 @@ describe("the classification", () => {
     expect(needs).toContain("a ticker list beside bridge.under_minimum");
     expect(needs).toContain("an asset-status or corporate-action field");
     expect(needs).toContain("the previous close's deferred-reversal list");
+  });
+
+  it("treats an empty list as an answer, and an absent key as a gap", () => {
+    // The page could not look only when the key is missing. An empty
+    // under_minimum_tickers says nothing was under the floor, which decides the
+    // class; a null previous close list still cannot be read, because null is the
+    // evening saying it could not open that document.
+    const withKeys = classify(doc({ underMinimum: [], previousReversals: [] }));
+    expect(withKeys.unchecked.map((entry) => entry.what)).not.toContain(
+      "a leg too small to trade",
+    );
+    expect(withKeys.unchecked).toHaveLength(1);
+    const withoutKey = classify(doc({}));
+    expect(withoutKey.unchecked.map((entry) => entry.what)).toContain(
+      "a leg too small to trade",
+    );
+  });
+
+  it("explains a name the book exited with no order, with the broker's reason", () => {
+    const snapshot = {
+      ...doc({ inStore: ["KVUE"], matches: false }),
+      actual_holdings: { names: [{ ticker: "KVUE", notional: 13615.45 }] },
+      bridge: {
+        reversals_pending: [],
+        previous_reversals_pending: [],
+        removed_without_order: [],
+        exited_without_order: [{ ticker: "KVUE", reason: "ASSET_INACTIVE" }],
+        under_minimum_tickers: [],
+      },
+      monthly: {
+        tonight: { cannot_send: [{ ticker: "KVUE", usd: 13615.45, code: "ASSET_INACTIVE" }] },
+      },
+    } as unknown as Snapshot;
+    const report = classify(snapshot);
+    // It moved out of "look at this" and into the explained list, named with the
+    // key that states it.
+    expect(report.unexpected).toHaveLength(0);
+    expect(report.expected).toHaveLength(1);
+    expect(report.expected[0].ticker).toBe("KVUE");
+    expect(report.expected[0].key).toBe("bridge.exited_without_order");
+    expect(report.expected[0].why).toContain("acquired by KMB on 2026-11-02");
+    expect(report.expected[0].why).toContain("$13,615");
+    expect(report.expected[0].why).toContain("cannot be traded");
+    expect(hasUnexpected(report)).toBe(false);
+    // The asset class is decidable from that same line, so the gap note is gone.
+    expect(report.unchecked.map((entry) => entry.what)).not.toContain(
+      "an asset the broker says is inactive",
+    );
   });
 });
 

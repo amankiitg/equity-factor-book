@@ -23,7 +23,7 @@
 import { Details } from "./Details";
 import { HowToRead } from "./Panel";
 import { EXPECTED_EXPENSE } from "./labels";
-import { count, dollars, oneDecimal, percent } from "./format";
+import { count, dateOnly, dollars, oneDecimal, percent } from "./format";
 import type { BookFacts } from "./book";
 import type { Snapshot } from "./types";
 
@@ -242,90 +242,73 @@ export function realizedLine(
 }
 
 /**
- * The full book before the floor, on the Operations tab.
+ * The last rebalance's construction, on the Operations tab.
  *
- * This is a diagnostic: it says what the sizing looked like before the floor was
- * applied and how much of the idea the floor costs. It is readable, and it is not
- * one of the numbers the morning reader acts on, so it sits with the run's own
- * detail rather than in the row of cards above the tables.
+ * The page used to show tonight's book here, and on a hold day that book is a
+ * what-if: the run sized a book, then held the one it had. A construction panel
+ * about a book nobody traded is a diagnostic of the wrong object, so this reads the
+ * anchor rebalance's own record instead, which is the last book that actually
+ * traded. When the document carries no anchor construction the panel is absent
+ * rather than falling back to tonight.
  */
+
+/** Names in a sentence: A; A and B; A, B and C. */
+function listed(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return names[0] + " and " + names[1];
+  return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+}
+
 export function ConstructionTelemetry({ snapshot }: { snapshot: Snapshot }) {
-  const book = snapshot.book;
-  const breadth = snapshot.breadth;
-  // The names the risk model could not measure, published under the breadth block.
-  // Absent on a document written before the evening published them, and an empty list
-  // on a night that dropped none: both mean nothing to report, so both draw nothing.
-  const droppedNoRisk = breadth?.dropped_no_risk ?? [];
+  const build = snapshot.monthly?.anchor_construction ?? null;
+  if (!build) return null;
+  // The month and day, which is how every other panel names a close: the year is
+  // the same on all of them.
+  const closeDate = dateOnly(build.close);
+  const close = closeDate ? closeDate.slice(-5) : "last";
+  const riskNames = (build.left_out_no_risk_names ?? []).map((entry) => entry.ticker);
+  const excludedNames = build.excluded_names ?? [];
+  // A net of minus one basis point is zero to a reader: print it as zero rather
+  // than as "-0.0%", which looks like a sign the book does not have.
+  const flat = (value: number | null): number | null =>
+    value === null ? null : Math.abs(value) < 0.0005 ? 0 : value;
   return (
-    <Details
-      hook="construction"
-      summary={
-        <>
-          construction telemetry: the full book before the floor, {percent(book?.full_book_gross)}{" "}
-          of NAV
-        </>
-      }
-    >
-      {droppedNoRisk.length > 0 ? (
-        <p data-flag="dropped-no-risk" className="mt-2 text-xs text-slate-600">
-          {count(breadth?.n_dropped_no_risk ?? droppedNoRisk.length)} name(s) never reached the
-          book at all: the risk model has no specific risk for them, and a position is not sized
-          on a median that is not its own.{" "}
-          <span className="font-mono">
-            {droppedNoRisk
-              .slice(0, DROPPED_LINES)
-              .map((entry) => (entry.reason ? `${entry.ticker} (${entry.reason})` : entry.ticker))
-              .join(", ")}
-            {droppedNoRisk.length > DROPPED_LINES
-              ? ` and ${droppedNoRisk.length - DROPPED_LINES} more`
-              : ""}
-          </span>
-          .
-        </p>
-      ) : null}
+    <Details hook="construction" summary={<>How the {close} rebalance book was built</>}>
       <ul className="text-xs text-slate-600" data-telemetry="true">
-        <li>
-          The sizing starts wider than it trades: before dropping positions too small to trade,
-          the ideal book was spread like about {Math.round(breadth?.n_eff_full_book ?? 0)} equal
-          names at {percent(book?.full_book_achieved_annual_vol, 1)} predicted volatility.
+        {build.considered === null ? null : (
+          <li data-construction="considered">The run looked at {count(build.considered)} names.</li>
+        )}
+        {build.left_out_no_risk === null || build.left_out_no_risk === 0 ? null : (
+          <li data-construction="left-out">
+            {count(build.left_out_no_risk)}
+            {build.left_out_no_risk === 1 ? " was" : " were"} left out because the risk model
+            had no risk estimate for them
+            {riskNames.length > 0 ? ": " + listed(riskNames) : ""}.
+          </li>
+        )}
+        {build.excluded === null || build.excluded === 0 ? null : (
+          <li data-construction="excluded">
+            {count(build.excluded)} more {build.excluded === 1 ? "was" : "were"} kept out
+            before the sizing
+            {excludedNames.length > 0 ? ": " + listed(excludedNames) : ""}.
+          </li>
+        )}
+        {build.removed_too_small === null || build.removed_too_small === 0 ? null : (
+          <li data-construction="removed">
+            {count(build.removed_too_small)} positions were below the minimum size
+            {build.floor ? " (" + build.floor + ")" : ""} and were removed.
+          </li>
+        )}
+        <li data-construction="final">
+          The book that traded held {count(build.final_names)} names, with gross{" "}
+          {percent(flat(build.gross), 1)} and net {percent(flat(build.net), 1)} of NAV.
         </li>
-        <li>
-          The floor keeps {count(book?.n_names)} names, which spread like about{" "}
-          {Math.round(breadth?.n_eff_kept ?? 0)} equal names.
-        </li>
-        <li>
-          Nothing in the morning route reads this: it says how much of the idea the floor
-          costs.
-        </li>
+        {build.vol === null ? null : (
+          <li data-construction="vol">
+            Its predicted volatility was {percent(build.vol, 1)} a year.
+          </li>
+        )}
       </ul>
-      <dl className="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-        <div data-card="n_eff_full_book">
-          <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-            breadth, full book
-          </dt>
-          <dd className="font-mono tabular-nums">{oneDecimal(breadth?.n_eff_full_book)}</dd>
-        </div>
-        <div data-card="full-book-gross">
-          <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-            full book gross
-          </dt>
-          <dd className="font-mono tabular-nums">{percent(book?.full_book_gross)}</dd>
-        </div>
-        <div data-card="full-book-net">
-          <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-            full book net
-          </dt>
-          <dd className="font-mono tabular-nums">{percent(book?.full_book_net)}</dd>
-        </div>
-        <div data-card="full-book-vol">
-          <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-            full book forecast vol
-          </dt>
-          <dd className="font-mono tabular-nums">
-            {percent(book?.full_book_achieved_annual_vol, 1)}
-          </dd>
-        </div>
-      </dl>
     </Details>
   );
 }

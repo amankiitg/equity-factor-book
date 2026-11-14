@@ -1368,6 +1368,50 @@ def test_a_close_and_open_in_one_evening_is_not_a_second_leg() -> None:
     assert "reversal second leg" not in rows
 
 
+def test_the_anchors_construction_is_the_book_that_traded() -> None:
+    """The one construction the page may show, read from the anchor's own record."""
+    manifest = {
+        "n_names": 496,
+        "n_excluded": 0,
+        "n_dropped_no_risk": 3,
+        "n_dropped": 300,
+        "n_kept": 196,
+        "dropped_no_risk": [
+            {"ticker": "FDXF", "reason": "no specific variance"},
+            {"ticker": "HONA", "reason": "no specific variance"},
+            {"ticker": "Q", "reason": "no specific variance"},
+        ],
+        "excluded_detail": [],
+        "construction_floor_shares": 20,
+        "kept_gross": 1.0,
+        "kept_net": 0.0,
+        "kept_achieved_annual_vol": 0.027929290997962,
+    }
+    built = monthly_view.anchor_construction("2026-10-23", manifest)
+    assert built is not None
+    # The universe the run looked at: the sized book plus the two drop lists.
+    assert built["considered"] == 499
+    assert built["left_out_no_risk"] == 3
+    assert [row["ticker"] for row in built["left_out_no_risk_names"]] == [
+        "FDXF",
+        "HONA",
+        "Q",
+    ]
+    assert built["removed_too_small"] == 300
+    assert built["final_names"] == 196
+    assert built["gross"] == 1.0
+    assert built["net"] == 0.0
+    assert built["vol"] == 0.027929290997962
+    assert built["floor"] == "20 shares"
+
+
+def test_a_manifest_without_a_kept_count_leaves_the_construction_out() -> None:
+    # A document that cannot answer says nothing: the page draws no panel, rather
+    # than falling back to the nightly book.
+    assert monthly_view.anchor_construction("2026-10-23", {}) is None
+    assert monthly_view.anchor_construction("2026-10-23", {"n_names": 499}) is None
+
+
 def test_no_em_or_en_dash_in_page_text_or_block_strings() -> None:
     """A dash that renders as punctuation is still a dash. The test forbids it."""
     root = Path(__file__).resolve().parents[1]

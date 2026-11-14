@@ -124,7 +124,6 @@ function ReconciliationPanel({
   // "in transit" does not need the sentence four times.
   const left = exceptions.unexpected;
   const settled = exceptions.expected;
-  const settledLabels = [...new Set(settled.map((entry) => `${entry.label}: ${NEXT_STEP[entry.label]}`))];
   const settledEvening = overnight.filter((entry) => entry.key !== "").length;
   return (
     <section
@@ -197,13 +196,22 @@ function ReconciliationPanel({
       ) : null}
 
       {settled.length > 0 ? (
-        <ul data-expected="true" className="mt-2 text-sm text-slate-600">
-          <li>
-            {settled.length} name{settled.length === 1 ? "" : "s"} already settled, nothing to do:{" "}
-            {settled.map((entry) => entry.ticker).sort().join(", ")}
-          </li>
-          {settledLabels.length > 0 ? <li className="text-xs">{settledLabels.join("; ")}</li> : null}
-        </ul>
+        <div data-expected="true" className="mt-2 text-sm text-slate-600">
+          <p>
+            {settled.length} name{settled.length === 1 ? "" : "s"} already explained, nothing to do:
+          </p>
+          <ul className="mt-1 text-xs">
+            {settled.map((entry) => (
+              <li key={`${entry.side}-${entry.ticker}`} data-explained={entry.ticker}>
+                <span className="font-mono font-semibold">{entry.ticker}</span>{" "}
+                <span className="rounded bg-emerald-100 px-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-900">
+                  {entry.label}
+                </span>
+                : {entry.why}; {NEXT_STEP[entry.label]}.
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       {exceptions.unchecked.length > 0 ? (
@@ -211,8 +219,8 @@ function ReconciliationPanel({
           hook="unchecked"
           summary={
             <>
-              {exceptions.unchecked.length} kind{exceptions.unchecked.length === 1 ? "" : "s"} of
-              gap this page cannot check yet
+              {exceptions.unchecked.length} thing{exceptions.unchecked.length === 1 ? "" : "s"}{" "}
+              this page could not check
             </>
           }
         >

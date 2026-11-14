@@ -1204,6 +1204,72 @@ def rebalance_card(
     }
 
 
+def anchor_construction(
+    anchor: str, manifest: dict[str, Any]
+) -> dict[str, Any] | None:
+    """The anchor rebalance's construction, in the terms the Operations page prints.
+
+    The page used to show the current evening's book here, and on a hold day that
+    book is a what-if: the run sized a book and then held it, so the numbers
+    described a portfolio nobody traded. The anchor's own manifest is the record of
+    the book that did trade, and it carries each step: the sized universe
+    (n_names), the names the risk model could not measure (dropped_no_risk), the
+    names kept out before sizing (excluded_detail), the floor's removals
+    (n_dropped) and the kept book's own gross, net and forecast volatility.
+
+    Returns None when the manifest carries no kept count. That is a document that
+    cannot answer, and the page leaves the panel out rather than guessing.
+    """
+    if not manifest:
+        return None
+    kept = _number(manifest.get("n_kept"))
+    if kept is None:
+        return None
+    sized = _number(manifest.get("n_names"))
+    no_risk = _number(manifest.get("n_dropped_no_risk"))
+    excluded_count = _number(manifest.get("n_excluded"))
+    dropped = _number(manifest.get("n_dropped"))
+    # The universe counted before anything was removed: the sized book plus the two
+    # drop lists. n_names is read after the no-risk drop, so the two add back to
+    # the count the run looked at.
+    considered = (
+        None
+        if sized is None
+        else int(sized) + int(no_risk or 0) + int(excluded_count or 0)
+    )
+    no_risk_names = [
+        {"ticker": str(entry.get("ticker")), "reason": str(entry.get("reason") or "")}
+        for entry in (manifest.get("dropped_no_risk") or [])
+        if isinstance(entry, dict) and entry.get("ticker")
+    ]
+    excluded_names = [
+        str(entry.get("ticker"))
+        for entry in (manifest.get("excluded_detail") or [])
+        if isinstance(entry, dict) and entry.get("ticker")
+    ]
+    shares = _number(manifest.get("construction_floor_shares"))
+    floor_dollars = _number(manifest.get("construction_floor_dollars"))
+    floor = None
+    if shares:
+        floor = str(int(shares)) + " shares"
+    elif floor_dollars:
+        floor = "$" + format(int(floor_dollars), ",")
+    return {
+        "close": anchor,
+        "considered": considered,
+        "left_out_no_risk": None if no_risk is None else int(no_risk),
+        "left_out_no_risk_names": no_risk_names[:6],
+        "excluded": None if excluded_count is None else int(excluded_count),
+        "excluded_names": excluded_names[:6],
+        "removed_too_small": None if dropped is None else int(dropped),
+        "final_names": int(kept),
+        "gross": _number(manifest.get("kept_gross")),
+        "net": _number(manifest.get("kept_net")),
+        "vol": _number(manifest.get("kept_achieved_annual_vol")),
+        "floor": floor,
+    }
+
+
 def block(
     *,
     proposals: pd.DataFrame,
@@ -1660,4 +1726,9 @@ def _block(
     )
     if footprint:
         out["hedge"] = footprint
+    # The book that traded, built from the anchor's own record. On a hold day the
+    # nightly book is a what-if, so this is the only construction the page may show.
+    built = anchor_construction(anchor, anchor_manifest)
+    if built:
+        out["anchor_construction"] = built
     return out

@@ -20,7 +20,7 @@
 // (factor, idio, cost, unexplained) that is repeated in words in each legend,
 // because colour alone is not readable to everyone.
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { HowToRead } from "./Panel";
 import { count, dateOnly, dollars, percent, pnlClass } from "./format";
@@ -627,43 +627,62 @@ function DayTable({
  */
 export function HedgeWaterfall({ before, after }: { before: number; after: number }) {
   const removed = before - after;
-  const top = Math.max(before, after, 0.0001);
-  const width = (value: number): string => `${Math.max(1, (value / top) * 100)}%`;
+  const scale = Math.max(before, after, 0.0001);
+  const at = (value: number): number =>
+    Math.min(100, Math.max(0, (Math.max(0, value) / scale) * 100));
+  const end = (value: number): { left: string } => ({ left: `${at(value)}%` });
+  const step = (key: string, word: string, value: string, bar: ReactNode, endValue: number) => (
+    <div className="flex items-center gap-2" data-waterfall-step={key}>
+      <span className="w-32 shrink-0 text-slate-600">{word}</span>
+      {/* One scale for all three rows. The label sits at the bar's own end, so the
+          reader sees after plus removed meet the end of before without arithmetic. */}
+      <span className="relative mr-12 h-3 flex-1 rounded-sm bg-slate-100" data-waterfall-track={key}>
+        {bar}
+        <span
+          data-waterfall-value={key}
+          style={end(endValue)}
+          className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap pl-1 font-mono text-[10px] tabular-nums text-slate-700"
+        >
+          {value}
+        </span>
+      </span>
+    </div>
+  );
   return (
     <div className="mt-2 flex flex-col gap-1 text-xs" data-waterfall="true">
-      <div className="flex items-center gap-2" data-waterfall-step="before">
-        <span className="w-32 shrink-0 text-slate-600">before the hedge</span>
-        <span className="relative h-3 flex-1 rounded-sm bg-slate-100">
-          <span
-            className="absolute left-0 top-0 h-full rounded-sm bg-slate-500"
-            style={{ width: width(before) }}
-          />
-        </span>
-        <span className="w-14 shrink-0 text-right font-mono tabular-nums">{volPct(before)}</span>
-      </div>
-      <div className="flex items-center gap-2" data-waterfall-step="removed">
-        <span className="w-32 shrink-0 text-slate-600">removed by the hedge</span>
-        <span className="relative h-3 flex-1 rounded-sm bg-slate-100">
-          <span
-            className="absolute left-0 top-0 h-full rounded-sm bg-rose-300"
-            style={{ width: width(Math.abs(removed)) }}
-          />
-        </span>
-        <span className="w-14 shrink-0 text-right font-mono tabular-nums">
-          {removed >= 0 ? "-" : "+"}
-          {(Math.abs(removed) * 100).toFixed(1)} pts
-        </span>
-      </div>
-      <div className="flex items-center gap-2" data-waterfall-step="after">
-        <span className="w-32 shrink-0 text-slate-600">after the hedge</span>
-        <span className="relative h-3 flex-1 rounded-sm bg-slate-100">
-          <span
-            className="absolute left-0 top-0 h-full rounded-sm bg-emerald-500"
-            style={{ width: width(after) }}
-          />
-        </span>
-        <span className="w-14 shrink-0 text-right font-mono tabular-nums">{volPct(after)}</span>
-      </div>
+      {step(
+        "before",
+        "before the hedge",
+        volPct(before),
+        <span
+          data-waterfall-bar="before"
+          className="absolute left-0 top-0 h-full rounded-sm bg-slate-500"
+          style={{ width: `${at(before)}%` }}
+        />,
+        before,
+      )}
+      {step(
+        "removed",
+        "removed by the hedge",
+        `${removed >= 0 ? "-" : "+"}${(Math.abs(removed) * 100).toFixed(1)} pts`,
+        <span
+          data-waterfall-bar="removed"
+          className="absolute top-0 h-full rounded-sm bg-rose-300"
+          style={{ left: `${at(after)}%`, width: `${at(before) - at(after)}%` }}
+        />,
+        before,
+      )}
+      {step(
+        "after",
+        "after the hedge",
+        volPct(after),
+        <span
+          data-waterfall-bar="after"
+          className="absolute left-0 top-0 h-full rounded-sm bg-emerald-500"
+          style={{ width: `${at(after)}%` }}
+        />,
+        after,
+      )}
     </div>
   );
 }
@@ -724,31 +743,84 @@ const chartDates = (dates: string[]): string[] => {
   return [...all].sort();
 };
 
-/** A numbered correction marker, at the date it is about, opened by a click. */
+/**
+ * The marker's own size, and the stagger that keeps two notes apart.
+ *
+ * A 14px circle is small enough to sit on a chart without hiding a line and large
+ * enough to be tapped. Notes 2 and 3 are one session apart (10-20 and 10-21), so
+ * their circles would overlap on the same row: note 3 is drawn one marker lower.
+ * Note 1 covers two sessions and carries ONE marker, drawn across both.
+ */
+const MARKER_RADIUS = 7;
+const MARKER_OFFSET: Record<number, number> = { 1: 0, 2: 0, 3: 16 };
+
+/**
+ * How many viewBox units make one screen pixel in a chart that scales to its box.
+ *
+ * The charts are drawn in a 320 unit viewBox and stretched to the column, so a
+ * radius written in viewBox units grows on a wide screen. A 14px footnote marker
+ * has to stay 14px, so the marker's geometry is divided by the rendered scale.
+ * jsdom has no layout and no ResizeObserver, where the scale stays 1.
+ */
+function useChartScale(): [RefObject<SVGSVGElement | null>, number] {
+  const ref = useRef<SVGSVGElement | null>(null);
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const measure = (): void => {
+      const width = node.getBoundingClientRect().width;
+      if (width > 0) setScale(Math.min(4, Math.max(0.1, 320 / width)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, scale];
+}
+
+/** A numbered correction marker, at the dates it is about, opened by a click. */
 function Marker({
-  cx,
+  xs,
+  dates,
   top,
   height,
   number,
-  date,
+  scale,
   open,
   onOpen,
 }: {
-  cx: number;
+  /** The x position of every date the note covers, in axis order. */
+  xs: number[];
+  dates: string[];
   top: number;
   height: number;
   number: number;
-  date: string;
+  /** viewBox units per screen pixel, so the marker keeps its 14px size. */
+  scale: number;
   open: boolean;
   onOpen: () => void;
 }) {
+  const left = Math.min(...xs);
+  const right = Math.max(...xs);
+  const cx = (left + right) / 2;
+  const offset = MARKER_OFFSET[number] ?? 0;
+  const radius = MARKER_RADIUS * scale;
+  // The stagger is a screen size too: 16px apart keeps the 14px circles clear.
+  const cy = top + radius + offset * scale;
+  const span = dates.length > 1 ? `${dates[0]} to ${dates[dates.length - 1]}` : dates[0];
   return (
     <g
       data-note-marker={number}
-      data-note-marker-date={date}
+      data-note-marker-date={dates[0]}
+      data-note-marker-dates={dates.join(",")}
+      data-marker-offset={offset}
+      data-marker-scale={scale}
+      data-marker-diameter={MARKER_RADIUS * 2}
       role="button"
       tabIndex={0}
-      aria-label={`correction ${number} on ${date}`}
+      aria-label={`correction ${number} on ${span}`}
       aria-expanded={open}
       onClick={onOpen}
       onKeyDown={(event) => {
@@ -759,18 +831,32 @@ function Marker({
       }}
       className="cursor-pointer"
     >
-      <title>{`correction ${number}, ${date}`}</title>
-      <line
-        x1={cx}
-        y1={top}
-        x2={cx}
-        y2={top + height}
-        stroke="#475569"
-        strokeWidth="0.8"
-        strokeDasharray="2 2"
-      />
-      <circle cx={cx} cy={top + 4} r="6" fill={open ? "#0f172a" : "#475569"} />
-      <text x={cx} y={top + 6.5} textAnchor="middle" fontSize="7" fill="#ffffff">
+      <title>{`correction ${number}, ${span}`}</title>
+      {xs.map((x) => (
+        <line
+          key={x}
+          x1={x}
+          y1={top}
+          x2={x}
+          y2={top + height}
+          stroke="#475569"
+          strokeWidth="0.8"
+          strokeDasharray="2 2"
+        />
+      ))}
+      {dates.length > 1 ? (
+        <line
+          x1={left}
+          y1={cy}
+          x2={right}
+          y2={cy}
+          stroke="#475569"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+      ) : null}
+      <circle cx={cx} cy={cy} r={radius} fill={open ? "#0f172a" : "#475569"} />
+      <text x={cx} y={cy + 3 * scale} textAnchor="middle" fontSize={8 * scale} fill="#ffffff">
         {number}
       </text>
     </g>
@@ -783,6 +869,7 @@ function ChartMarkers({
   x,
   top,
   height,
+  scale,
   open,
   setOpen,
 }: {
@@ -790,29 +877,29 @@ function ChartMarkers({
   x: (index: number) => number;
   top: number;
   height: number;
+  scale: number;
   open: number | null;
   setOpen: (number: number | null) => void;
 }) {
   return (
     <>
-      {CORRECTIONS.map((correction) =>
-        correction.dates.map((date) => {
-          const index = dates.indexOf(date);
-          if (index < 0) return null;
-          return (
-            <Marker
-              key={`${correction.number}-${date}`}
-              cx={x(index)}
-              top={top}
-              height={height}
-              number={correction.number}
-              date={date}
-              open={open === correction.number}
-              onOpen={() => setOpen(open === correction.number ? null : correction.number)}
-            />
-          );
-        }),
-      )}
+      {CORRECTIONS.map((correction) => {
+        const present = correction.dates.filter((date) => dates.includes(date));
+        if (present.length === 0) return null;
+        return (
+          <Marker
+            key={correction.number}
+            xs={present.map((date) => x(dates.indexOf(date)))}
+            dates={present}
+            top={top}
+            height={height}
+            number={correction.number}
+            scale={scale}
+            open={open === correction.number}
+            onOpen={() => setOpen(open === correction.number ? null : correction.number)}
+          />
+        );
+      })}
     </>
   );
 }
@@ -839,9 +926,12 @@ const popoverLeft = (
   x: (index: number) => number,
 ): number => {
   const correction = CORRECTIONS.find((entry) => entry.number === number);
-  const date = correction?.dates.find((entry) => dates.includes(entry));
-  const index = date === undefined ? 0 : dates.indexOf(date);
-  return (x(index) / 320) * 100;
+  const present = (correction?.dates ?? []).filter((entry) => dates.includes(entry));
+  // A note that covers a run of sessions opens over the middle of the run, not
+  // over its first date: the marker is drawn there, and the text should follow it.
+  const centres = present.map((entry) => x(dates.indexOf(entry)));
+  const centre = centres.length > 0 ? centres.reduce((a, b) => a + b, 0) / centres.length : 0;
+  return (centre / 320) * 100;
 };
 
 /** The same three corrections as words, under the panel whose charts they qualify. */
@@ -859,7 +949,7 @@ function Corrections() {
             data-note-dates={correction.dates.join(",")}
             className="flex gap-1"
           >
-            <span className="mt-px inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-slate-600 text-[10px] text-white">
+            <span className="mt-px inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-slate-600 text-[9px] text-white">
               {correction.number}
             </span>
             <span>{correction.text}</span>
@@ -923,6 +1013,7 @@ function RiskSplit({ risk }: { risk: AttributionRisk }) {
  */
 function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
   const [open, setOpen] = useState<number | null>(null);
+  const [svgRef, scale] = useChartScale();
   const W = 320;
   const H = 110;
   const L = 30;
@@ -962,6 +1053,7 @@ function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
         predicted annual volatility, % annualized, by session
       </figcaption>
       <svg
+        ref={svgRef}
         className="mt-1 h-auto"
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
@@ -991,7 +1083,7 @@ function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
         stroke={COLORS.idio}
         strokeWidth="1.4"
       />
-      <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} />
+      <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} scale={scale} />
       <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
         {dates[0] ?? ""}
       </text>
@@ -1015,7 +1107,7 @@ function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
         ]}
       />
       <p className="mt-1 text-xs text-slate-500">
-        the two opening sessions carry their marker and no line: this period&apos;s own
+        the two opening sessions carry one marker and no line: this period&apos;s own
         record starts on 10-01, and note 1 says why those two days cannot be compared with
         it.
       </p>
@@ -1025,6 +1117,7 @@ function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
 
 function RiskPath({ path }: { path: AttributionRiskPath[] }) {
   const [open, setOpen] = useState<number | null>(null);
+  const [svgRef, scale] = useChartScale();
   const W = 320;
   const H = 110;
   const L = 30;
@@ -1059,6 +1152,7 @@ function RiskPath({ path }: { path: AttributionRiskPath[] }) {
         share of predicted variance, % of the book&apos;s predicted variance, by session
       </figcaption>
       <svg
+        ref={svgRef}
         className="mt-1 h-auto"
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
@@ -1095,7 +1189,7 @@ function RiskPath({ path }: { path: AttributionRiskPath[] }) {
         stroke={COLORS.factor}
         strokeWidth="1"
       />
-      <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} />
+      <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} scale={scale} />
       <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
         {dates[0] ?? ""}
       </text>
@@ -1334,6 +1428,7 @@ function FactorTable({ period }: { period: AttributionPeriod }) {
  */
 function VolatilityPanel({ period }: { period: AttributionPeriod }) {
   const [open, setOpen] = useState<number | null>(null);
+  const [svgRef, scale] = useChartScale();
   const rows = period.daily;
   const pairs = rows.filter(
     (day) =>
@@ -1411,6 +1506,7 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
         model&apos;s.
       </p>
       <svg
+        ref={svgRef}
         className="mt-1 h-auto"
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
@@ -1446,7 +1542,7 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
           stroke={COLORS.idio}
           strokeWidth="1.4"
         />
-        <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} />
+        <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} scale={scale} />
         <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
           {dates[0] ?? ""}
         </text>

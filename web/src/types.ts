@@ -74,6 +74,8 @@ export interface BridgeBlock {
    */
   previous_reversals_pending?: string[] | null;
   removed_without_order: BridgeRemoval[];
+  /** Names the book dropped with no order behind it, and the broker reason. */
+  exited_without_order?: Array<{ ticker: string; reason?: string | null }> | null;
   unexplained: string[];
   identities: BridgeIdentity[];
   holds: boolean;
@@ -544,6 +546,27 @@ export interface MonthlyHoldingRow {
   note: string | null;
 }
 
+/** The last rebalance's book construction, as its own stored manifest records it. */
+export interface AnchorConstruction {
+  close: string;
+  /** Universe names the run looked at: sized names plus the two drop counts. */
+  considered: number | null;
+  /** Names left out because the risk model had no estimate for them. */
+  left_out_no_risk: number | null;
+  left_out_no_risk_names: Array<{ ticker: string; reason: string }>;
+  /** Names kept out before sizing for a standing reason (no row, hold list). */
+  excluded: number | null;
+  excluded_names: string[];
+  /** Positions the minimum size removed after sizing. */
+  removed_too_small: number | null;
+  final_names: number;
+  gross: number | null;
+  net: number | null;
+  vol: number | null;
+  /** The minimum size in words, for example "20 shares". */
+  floor: string | null;
+}
+
 /** The pages measured from the anchor, built by `live/monthly_view.py`. */
 export interface MonthlyBlock {
   anchor?: { close: string | null; day: "rebalance" | "cadence" | "daily"; account_read: string | null };
@@ -702,6 +725,13 @@ export interface MonthlyBlock {
     n_eff: number | null;
     max_weight: number | null;
   };
+  /**
+   * The anchor rebalance's own construction, from its stored manifest: the names it
+   * looked at, the ones left out and why, the floor's removals, and the book it kept.
+   * Absent on a document written before the field existed, and on a run whose
+   * anchor carried no manifest.
+   */
+  anchor_construction?: AnchorConstruction | null;
   tonight?: {
     forced_legs: number;
     forced_usd: number;

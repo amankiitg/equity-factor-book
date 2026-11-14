@@ -131,7 +131,7 @@ describe("severity", () => {
     expect(reconciled.textContent).toContain("mismatch: the account holds 2 name(s)");
     const expected = reconciled.querySelector("[data-expected='true']") as HTMLElement;
     expect(expected).toBeTruthy();
-    expect(expected.textContent).toContain("1 name already settled");
+    expect(expected.textContent).toContain("1 name already explained");
     expect(expected.textContent).toContain("ZZZZ");
     expect(reconciled.querySelector("[data-alert='mismatches']")).toBeNull();
     expect(panel("run").getAttribute("data-tone")).toBe("good");
@@ -235,21 +235,14 @@ describe("a missing value", () => {
     };
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
     const cards = document.querySelector("[data-cards='true']") as HTMLElement;
-    // The four telemetry stats live on the Operations tab now, so they are read
-    // from the document; the row's own cards are read from the row.
     const card = (label: string): HTMLElement =>
-      (cards.querySelector(`[data-card='${label}']`) ??
-        document.querySelector(`[data-card='${label}']`)) as HTMLElement;
+      cards.querySelector(`[data-card='${label}']`) as HTMLElement;
     for (const label of [
       "gross",
       "net",
       "n_eff_kept",
       "turnover",
       "expected-expense",
-      "n_eff_full_book",
-      "full-book-gross",
-      "full-book-net",
-      "full-book-vol",
     ]) {
       expect(card(label).textContent, label).toContain("n/a");
       // Not a zero wearing a sign, and not a rounding artefact.
@@ -472,7 +465,7 @@ describe("the two claims the strip separates", () => {
     expect(strip.getAttribute("data-tone")).toBe("good");
     expect(document.querySelector("[data-alert='mismatches']")).toBeNull();
     const line = document.querySelector("[data-expected='true']") as HTMLElement;
-    expect(line.textContent).toContain("1 name already settled");
+    expect(line.textContent).toContain("1 name already explained");
     expect(line.textContent).toContain("ZTS");
   });
 
@@ -576,7 +569,7 @@ describe("the two claims the strip separates", () => {
     expect(reconciled.textContent).toContain("WBD");
     expect(reconciled.textContent).toContain("the account holds it and the target does not");
     const expected = reconciled.querySelector("[data-expected='true']") as HTMLElement;
-    expect(expected.textContent).toContain("1 name already settled");
+    expect(expected.textContent).toContain("1 name already explained");
     expect(expected.textContent).toContain("INVH");
     // The count is the morning comparison's, not the evening's five names.
     expect((document.querySelector("[data-flag='exceptions']") as HTMLElement).textContent).toBe(
@@ -699,19 +692,59 @@ describe("the wording the report left untested", () => {
     expect(summary).toContain("2 still open: F, T");
   });
 
-  it("states the construction telemetry in three plain lines", () => {
-    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+  it("states the last rebalance's construction in plain lines, never tonight's book", () => {
+    const built: Snapshot = {
+      ...TODAY,
+      monthly: {
+        ...(TODAY.monthly ?? {}),
+        anchor: { close: "2026-10-23", day: "cadence", account_read: "2026-10-30" },
+        anchor_construction: {
+          close: "2026-10-23",
+          considered: 499,
+          left_out_no_risk: 3,
+          left_out_no_risk_names: [
+            { ticker: "FDXF", reason: "no specific variance" },
+            { ticker: "HONA", reason: "no specific variance" },
+            { ticker: "Q", reason: "no specific variance" },
+          ],
+          excluded: 0,
+          excluded_names: [],
+          removed_too_small: 300,
+          final_names: 196,
+          gross: 1,
+          net: 0,
+          vol: 0.027929290997962,
+          floor: "20 shares",
+        },
+      },
+    } as Snapshot;
+    render(<SnapshotView snapshot={built} now={NOW} />);
+    const summary = document.querySelector("[data-details='construction'] summary");
+    expect(summary?.textContent).toBe("How the 10-23 rebalance book was built");
     const telemetry = document.querySelector("[data-telemetry='true']") as HTMLElement;
     expect(telemetry).toBeTruthy();
     const lines = Array.from(telemetry.querySelectorAll("li")).map((line) => line.textContent ?? "");
-    expect(lines).toHaveLength(3);
-    const breadth = TODAY.breadth as NonNullable<Snapshot["breadth"]>;
-    expect(lines[0]).toContain(`about ${Math.round(breadth.n_eff_full_book as number)} equal names`);
-    expect(lines[1]).toContain(`keeps ${TODAY.book?.n_names} names`);
+    expect(lines).toHaveLength(5);
+    expect(lines[0]).toBe("The run looked at 499 names.");
+    expect(lines[1]).toContain(
+      "3 were left out because the risk model had no risk estimate for them: FDXF, HONA and Q.",
+    );
+    expect(lines[2]).toBe(
+      "300 positions were below the minimum size (20 shares) and were removed.",
+    );
+    expect(lines[3]).toContain(
+      "The book that traded held 196 names, with gross 100.0% and net 0.0% of NAV.",
+    );
+    expect(lines[4]).toContain("Its predicted volatility was 2.8% a year.");
     for (const line of lines) expect(line.length).toBeLessThan(200);
-    // The key names stay out of the default view.
-    expect(telemetry.textContent).not.toContain("n_eff");
+    // The nightly book's own numbers are not here: no would-be book on a hold day.
     expect(telemetry.textContent).not.toContain("full_book");
+    expect(telemetry.textContent).not.toContain("n_eff");
+  });
+
+  it("leaves the construction panel out when the document has no rebalance record", () => {
+    render(<SnapshotView snapshot={TODAY} now={NOW} />);
+    expect(document.querySelector("[data-details='construction']")).toBeNull();
   });
 });
 
