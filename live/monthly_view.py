@@ -492,6 +492,97 @@ def _guard_days(proposals: pd.DataFrame, anchor: str, today: str) -> set[str]:
     return days
 
 
+def _guard_history(
+    proposals: pd.DataFrame,
+    anchor: str,
+    today: str,
+    nav: float | None,
+    fills: pd.DataFrame | None,
+    flip_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """One row per evening the drift guard fired, from the manifests it wrote.
+
+    The card the page draws per firing needs the date, the worst exposure it found
+    and left, the legs it sent, the dollars those legs were worth and the cost of
+    the day's fills. All four are already recorded: the guard block is on the
+    hold day's own manifest, and the fills are the day's rows in `efb.fills`. No
+    field is added to the store and no number is invented; a day whose fills the
+    store does not carry gets `cost_bps: None` rather than a zero.
+
+    The flips a firing caused are the rebalance flips whose `refipped_on` is that
+    day: the guard moved a name back again, and the bridge already records it.
+    """
+    if proposals is None or proposals.empty or "trade_date" not in proposals.columns:
+        return []
+    frame = proposals.copy()
+    frame["trade_date"] = frame["trade_date"].astype(str).str.slice(0, 10)
+    frame = frame.loc[(frame["trade_date"] > anchor) & (frame["trade_date"] <= today)]
+    if frame.empty:
+        return []
+    frame = frame.sort_values(["trade_date"], kind="stable")
+    days: dict[str, dict[str, Any]] = {}
+    for record in frame.to_dict("records"):
+        manifest = _manifest_of(record.get("manifest"))
+        guard = manifest.get("drift_guard") or {}
+        if not isinstance(guard, dict) or not guard.get("fired"):
+            continue
+        day = str(record["trade_date"])[:10]
+        legs = [leg for leg in (guard.get("legs") or []) if isinstance(leg, dict)]
+        day_nav = _number(guard.get("nav")) or nav
+        turnover = _number(guard.get("turnover"))
+        usd = None if turnover is None or day_nav is None else turnover * day_nav
+        days[day] = {
+            "date": day,
+            "exposure_before": _number(guard.get("exposure_before")),
+            "exposure_after": _number(guard.get("exposure_after")),
+            "threshold": _number(guard.get("threshold")),
+            "legs_sent": sum(1 for leg in legs if leg.get("traded")),
+            "legs_under_minimum": _count(guard.get("legs_under_minimum")),
+            "usd": usd,
+            "cost_bps": None,
+            "flips": sorted(
+                {
+                    str(row.get("ticker"))
+                    for row in flip_rows
+                    if row.get("refipped_on") == day
+                }
+            ),
+        }
+    if not days:
+        return []
+    # The day's own realized cost, measured the same way the rebalance card measures
+    # its own. A hold day that filled nothing has no cost to measure and says so.
+    if fills is not None and not fills.empty and "trade_date" in fills.columns:
+        try:
+            from live import fills as fills_module
+
+            closes = fills["trade_date"].astype(str).str.slice(0, 10)
+            for day, entry in days.items():
+                day_fills = fills.loc[closes == day]
+                if day_fills.empty or "filled_notional" not in day_fills.columns:
+                    continue
+                filled = pd.to_numeric(
+                    day_fills["filled_notional"], errors="coerce"
+                ).fillna(0.0)
+                if float(filled.abs().sum()) <= 0.0:
+                    continue
+                day_nav = nav
+                if day_nav is None or not day_nav:
+                    continue
+                try:
+                    entry["cost_bps"] = fills_module.realized_cost_bps(day_fills, day_nav)
+                except Exception as exc:  # noqa: BLE001 - one field, not the block
+                    logger.warning(
+                        "the guard day's realized cost could not be measured: %s",
+                        type(exc).__name__,
+                    )
+        except Exception as exc:  # noqa: BLE001 - the cards are optional
+            logger.warning(
+                "the guard history has no cost column: %s", type(exc).__name__
+            )
+    return [days[day] for day in sorted(days)]
+
+
 def _weights(frame: pd.DataFrame | None) -> dict[str, float]:
     """Signed weight per ticker, from a book frame's own `weight` column."""
     if frame is None or frame.empty or "weight" not in frame.columns:
@@ -1476,6 +1567,17 @@ def _block(
         ),
         "since_anchor": {
             "trades_by_reason": sorted(trades.values(), key=lambda item: -item["usd"]),
+            # One row per evening the drift guard fired, from the hold day's own
+            # manifest: the page draws a card per firing, and the leg table splits
+            # the guard's row by these dates.
+            "guard_history": _guard_history(
+                proposals,
+                anchor,
+                today,
+                nav,
+                fills,
+                bridge_anchor.get("flip_rows") or [],
+            ),
             # What the table cannot count as a leg that went: the legs under the
             # order minimum and the ones the broker refused. Stated apart because a
             # reader who adds them to the reasons is adding orders that do not exist.

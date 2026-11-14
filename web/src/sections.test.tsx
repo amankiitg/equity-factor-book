@@ -1458,7 +1458,16 @@ describe("the four words, the labels and the arithmetic", () => {
     const glossary = document.querySelector("[data-glossary='true']") as HTMLElement;
     expect(glossary).toBeTruthy();
     const terms = Array.from(glossary.querySelectorAll("dt")).map((node) => node.textContent);
-    expect(terms).toEqual(["account", "target", "store"]);
+    expect(terms).toEqual([
+      "account",
+      "target",
+      "store",
+      "leg",
+      "NAV",
+      "bp",
+      "hedge",
+      "drift guard",
+    ]);
     expect(glossary.textContent).toContain("what the broker says we hold right now");
     expect(glossary.textContent).toContain("what tonight's run wants us to hold");
     expect(glossary.textContent).toContain("the loop's own record of what it last asked for");

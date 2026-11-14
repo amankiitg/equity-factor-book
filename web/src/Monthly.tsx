@@ -10,6 +10,8 @@
 // That is every document published before the block existed, and the page has to
 // look exactly as it did then: the nightly panels still carry those evenings.
 
+import { Fragment } from "react";
+
 import { HowToRead } from "./Panel";
 import { dateOnly, dollars, percent, signedDollars } from "./format";
 import type { MonthlyBlock } from "./types";
@@ -145,8 +147,37 @@ export function RebalanceCard({ monthly }: { monthly: MonthlyBlock }) {
             .join("; ")}
         />
       </dl>
+      <p className="mt-1 text-xs text-slate-600" data-cost-why="true">
+        {costWhy(card)}
+      </p>
     </Card>
   );
+}
+
+/**
+ * Why the rebalance's realized cost is not the expected cost, in one line.
+ *
+ * The two are not two estimates of the same thing. The expected figure prices the
+ * trade: spread, impact and commission. The realized figure is measured from the
+ * previous close to each fill, and the loop sends after one close and fills at the
+ * next open, so it carries the overnight move with it. A realized number can even be
+ * negative, when the gap moved in the book's favour; that is a gain on the trade and
+ * not a cost. On top of that the card counts 224 legs of which 16 were built under
+ * the $250 minimum and never sent.
+ */
+function costWhy(card: NonNullable<MonthlyBlock["rebalance_card"]>): string {
+  const realized = card.realized_cost_bps ?? null;
+  const expected = card.expected_cost_bps ?? null;
+  if (realized === null) {
+    return "the day's fills have not been priced yet, so there is no realized figure to compare.";
+  }
+  if (expected === null) {
+    return `realized ${realized.toFixed(1)} bp, measured from the previous close to each fill.`;
+  }
+  const under = realized <= expected;
+  return `${realized.toFixed(1)} bp realized against ${expected.toFixed(
+    1,
+  )} bp expected: the realized figure is measured from the previous close to each fill, so it carries the overnight move, while the estimate priced the spread and impact of the trade alone${under ? ", and this time the gap moved in the book's favour" : ""}.`;
 }
 
 export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
@@ -258,52 +289,88 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
 export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
   const drift = monthly.drift;
   if (!drift) return null;
+  const next = monthly.cadence_strip?.next_rebalance ?? null;
   return (
     <Card
       title="distance from the rebalance target"
-      howToRead="prices move the book away from the target every day, and the gap is measured at today's price. Example: on 11-11 the book was 8.74% of NAV from target, $85,486 on one side, and closing it would trade $170,971."
+      howToRead={
+        drift.largest?.length
+          ? `prices move the book away from the target every day, and so do the guard's own repairs: the target stays fixed until the next rebalance. The largest gaps now are ${drift.largest
+              .slice(0, 3)
+              .map((row) => `${row.ticker} ${signedDollars(row.usd)}`)
+              .join(", ")}.`
+          : "prices move the book away from the target every day, and so do the guard's own repairs: the target stays fixed until the next rebalance."
+      }
     >
-      <dl data-drift="true" className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
-        <Stat
-          label="drift"
-          value={percent(drift.half_turnover_pct)}
-          detail={`${dollars(drift.half_turnover_usd)} of NAV, one side`}
-        />
-        <Stat
-          label="to close it"
-          value={dollars(drift.traded_usd)}
-          detail="both sides would trade"
-        />
-        <Stat
-          label="estimated cost"
-          value={dollars(drift.estimated_cost_usd)}
-          detail="at the rebalance's trading cost"
-        />
-      </dl>
-      {drift.largest?.length ? (
-        // Three columns and no sideways scroll: the name, the two weights it is
-        // between, and the dollars that separate them. The gap leads because it is
-        // the number the card is about.
-        <ul data-drift-table="true" className="mt-2 flex flex-col gap-1 text-xs">
-          <li className="flex items-baseline justify-between gap-2 text-slate-500">
-            <span>name</span>
-            <span className="ml-auto mr-1">now → target</span>
-            <span>gap</span>
-          </li>
-          {drift.largest.map((row) => (
-            <li key={row.ticker} data-drift-row={row.ticker} className="flex items-baseline gap-2">
-              <span className="w-14 shrink-0 font-mono font-semibold">{row.ticker}</span>
-              <span className="flex-1 truncate text-right font-mono tabular-nums text-slate-600">
-                {percent(row.weight_now)} → {percent(row.weight_target)}
-              </span>
-              <span className="w-16 shrink-0 text-right font-mono tabular-nums">
-                {signedDollars(row.usd)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <p className="text-sm text-slate-700" data-drift="true">
+        The target stays fixed until the {next ?? "next"} rebalance, so the book is{" "}
+        <span className="font-mono tabular-nums">{percent(drift.half_turnover_pct)}</span> of
+        NAV away from it ({dollars(drift.half_turnover_usd)} on one side). Closing the gap
+        today would trade <span className="font-mono tabular-nums">{dollars(drift.traded_usd)}</span>{" "}
+        and cost about {dollars(drift.estimated_cost_usd)}. The gap includes every move the
+        guard made on purpose, not only price drift.
+      </p>
     </Card>
+  );
+}
+
+/**
+ * One card per evening the drift guard fired.
+ *
+ * The guard is a monthly-cadence repair: on a hold day it moves the book back to
+ * factor-neutral when an exposure passes 5% of NAV. The events are in the hold days'
+ * own manifests, so each card can state the date, what the guard found and left, the
+ * legs it sent and their dollars. The cost is the day's fills when the store carries
+ * them; a day it does not carry says so instead of printing zero.
+ */
+export function GuardCards({ monthly }: { monthly: MonthlyBlock }) {
+  const firings = monthly.since_anchor?.guard_history ?? [];
+  if (!firings.length) return null;
+  return (
+    <>
+      {firings.map((firing) => (
+        <Card
+          key={firing.date}
+          title={`drift guard, ${dateOnly(firing.date) ?? firing.date}`}
+          howToRead="on a hold day the guard repairs the book only when a factor exposure passes 5% of NAV. It moves the names the book already holds, so the dollars are the legs it had to re-size, not a new position. Example: the 11-04 firing took the worst exposure from 6.41% to 0.41% with 109 legs."
+        >
+          <dl
+            data-guard-firing={firing.date}
+            className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4"
+          >
+            <Stat
+              label="worst exposure"
+              value={`${percent(firing.exposure_before)} to ${percent(firing.exposure_after)}`}
+              detail={`against the ${percent(firing.threshold)} line`}
+            />
+            <Stat
+              label="legs sent"
+              value={String(firing.legs_sent ?? 0)}
+              detail={`${firing.legs_under_minimum ?? 0} under the $250 minimum`}
+            />
+            <Stat
+              label="dollars"
+              value={dollars(firing.usd)}
+              detail="the legs it moved"
+            />
+            <Stat
+              label="cost"
+              value={firing.cost_bps === null ? "not measured" : `${firing.cost_bps.toFixed(1)} bp`}
+              detail={
+                firing.cost_bps === null
+                  ? "the store carries no fills for this day"
+                  : "the day's fills"
+              }
+            />
+          </dl>
+          <p className="mt-1 text-xs text-slate-600">
+            {firing.flips.length
+              ? `it moved ${firing.flips.join(", ")} back to the other side`
+              : "no name changed side because of this firing"}
+          </p>
+        </Card>
+      ))}
+    </>
   );
 }
 
@@ -323,16 +390,33 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
         <tbody className="font-mono">
           {trades.map((row) => {
             const sent = row.sent_legs ?? row.legs;
+            const firings =
+              row.reason === "guard" ? monthly.since_anchor?.guard_history ?? [] : [];
             return (
-              <tr key={row.reason}>
-                <td className="font-semibold">{row.reason}</td>
-                <td className="text-right">
-                  {sent === row.legs
-                    ? `${row.legs} legs`
-                    : `${sent} sent, ${row.legs - sent} owed`}
-                </td>
-                <td className="text-right">{dollars(row.usd)}</td>
-              </tr>
+              <Fragment key={row.reason}>
+                <tr data-reason={row.reason}>
+                  <td className="font-semibold">{row.reason}</td>
+                  <td className="text-right">
+                    {sent === row.legs
+                      ? `${row.legs} legs`
+                      : `${sent} sent, ${row.legs - sent} owed`}
+                  </td>
+                  <td className="text-right">{dollars(row.usd)}</td>
+                </tr>
+                {firings.map((firing) => (
+                  <tr
+                    key={`${row.reason}-${firing.date}`}
+                    data-guard-date={firing.date}
+                    className="text-slate-500"
+                  >
+                    <td className="pl-3 font-normal">
+                      of which guard, {dateOnly(firing.date) ?? firing.date}
+                    </td>
+                    <td className="text-right">{firing.legs_sent ?? 0} legs</td>
+                    <td className="text-right">{dollars(firing.usd)}</td>
+                  </tr>
+                ))}
+              </Fragment>
             );
           })}
         </tbody>
@@ -428,6 +512,7 @@ export function MonthlyPanels({ monthly }: { monthly?: MonthlyBlock | null }) {
       <CadenceStrip monthly={monthly} />
       <RebalanceCard monthly={monthly} />
       <FlipBridge monthly={monthly} />
+      <GuardCards monthly={monthly} />
       <DriftCard monthly={monthly} />
       <div data-columns="true" className="grid min-w-0 gap-3 lg:grid-cols-2">
         <TradesSinceAnchor monthly={monthly} />

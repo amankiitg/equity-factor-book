@@ -615,6 +615,95 @@ function DayTable({
  * hedge acted on and the book that was held - so the hedge reads as the difference
  * it is rather than as a line pinned at 100%.
  */
+/**
+ * What the hedge removed, as a waterfall: the book before it, the points it took
+ * out, and the book after.
+ *
+ * The brief's three numbers, in order: the sized book at 8.6% annual volatility, the
+ * 5.9 points the hedge removed, and the 2.7% the book carries. The middle bar is the
+ * one no other panel drew: the difference is a quantity in the same units as the two
+ * ends, so drawing it beside them is the whole point. On the live 11-11 close the
+ * same three read 8.9%, 6.2 points and 2.7%.
+ */
+export function HedgeWaterfall({ before, after }: { before: number; after: number }) {
+  const removed = before - after;
+  const top = Math.max(before, after, 0.0001);
+  const width = (value: number): string => `${Math.max(1, (value / top) * 100)}%`;
+  return (
+    <div className="mt-2 flex flex-col gap-1 text-xs" data-waterfall="true">
+      <div className="flex items-center gap-2" data-waterfall-step="before">
+        <span className="w-32 shrink-0 text-slate-600">before the hedge</span>
+        <span className="relative h-3 flex-1 rounded-sm bg-slate-100">
+          <span
+            className="absolute left-0 top-0 h-full rounded-sm bg-slate-500"
+            style={{ width: width(before) }}
+          />
+        </span>
+        <span className="w-14 shrink-0 text-right font-mono tabular-nums">{volPct(before)}</span>
+      </div>
+      <div className="flex items-center gap-2" data-waterfall-step="removed">
+        <span className="w-32 shrink-0 text-slate-600">removed by the hedge</span>
+        <span className="relative h-3 flex-1 rounded-sm bg-slate-100">
+          <span
+            className="absolute left-0 top-0 h-full rounded-sm bg-rose-300"
+            style={{ width: width(Math.abs(removed)) }}
+          />
+        </span>
+        <span className="w-14 shrink-0 text-right font-mono tabular-nums">
+          {removed >= 0 ? "-" : "+"}
+          {(Math.abs(removed) * 100).toFixed(1)} pts
+        </span>
+      </div>
+      <div className="flex items-center gap-2" data-waterfall-step="after">
+        <span className="w-32 shrink-0 text-slate-600">after the hedge</span>
+        <span className="relative h-3 flex-1 rounded-sm bg-slate-100">
+          <span
+            className="absolute left-0 top-0 h-full rounded-sm bg-emerald-500"
+            style={{ width: width(after) }}
+          />
+        </span>
+        <span className="w-14 shrink-0 text-right font-mono tabular-nums">{volPct(after)}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A dated note about the series, as a numbered popover at the claim it annotates.
+ *
+ * The notes used to be reachable only as a numbered list in the Operations drawer,
+ * three tabs from the numbers they qualify, and as a browser tooltip on a chart
+ * marker. A correction to a series belongs beside the series, so the number is a
+ * button here and its text opens under it.
+ */
+function Footnote({ number, note }: { number: number; note: AttributionNote }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-block align-middle" data-footnote={number}>
+      <button
+        type="button"
+        aria-label={`note ${number}`}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-200 px-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-300"
+      >
+        {number}
+      </button>
+      {open ? (
+        <span
+          role="dialog"
+          aria-label={`note ${number}`}
+          data-footnote-text={number}
+          className="absolute left-0 top-5 z-20 w-72 rounded border border-slate-300 bg-white p-2 text-xs font-normal normal-case tracking-normal leading-snug text-slate-700 shadow-lg"
+        >
+          <span className="font-medium">{dateOnly(note.date) ?? "undated"}</span>{" "}
+          {note.text}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function RiskSplit({ risk, notes }: { risk: AttributionRisk; notes: AttributionNote[] }) {
   const before = risk.pre_hedge_vol;
   const after = risk.hedged_vol;
@@ -625,32 +714,41 @@ function RiskSplit({ risk, notes }: { risk: AttributionRisk; notes: AttributionN
   // series it does not draw.
   return (
     <div className="mt-3" data-chart="risk">
-      <p className="text-xs text-slate-500">
-        predicted variance, as of {dateOnly(risk.as_of) ?? "n/a"}, % of the book&apos;s predicted
-        variance
+      <p className="text-sm text-slate-700" data-vol="line">
+        Before the hedge, the sized book&apos;s predicted annual volatility was{" "}
+        <span className="font-mono tabular-nums">{volPct(before)}</span>. It carried{" "}
+        <span className="font-mono tabular-nums">{volPct(after)}</span>.
       </p>
-      <p className="mt-1 text-sm tabular-nums">
-        <span data-var-share="factor">{percent(risk.factor_share, 1)}</span> from factors,{" "}
-        <span data-var-share="idio">{percent(risk.idio_share, 1)}</span> idiosyncratic.
+      {before !== null && after !== null ? (
+        <HedgeWaterfall before={before} after={after} />
+      ) : null}
+      <p className="mt-1 text-sm text-slate-700" data-var-share="line">
+        <span data-var-share="factor">{percent(risk.factor_share, 1)}</span> of the risk that
+        remains comes from factors and{" "}
+        <span data-var-share="idio">{percent(risk.idio_share, 1)}</span> from the stocks
+        themselves.
+        <HowToRead>
+          the two shares add up to the whole of the book&apos;s predicted risk, after the
+          hedge. The traded book is hedged to be factor-neutral, so the factor share is
+          near zero: that is the hedge&apos;s residue, not its size. What it removed is the
+          waterfall above. Example: on {dateOnly(risk.as_of) ?? "the last close"} factors
+          were {percent(risk.factor_share, 1)} and the stocks{" "}
+          {percent(risk.idio_share, 1)}.
+        </HowToRead>
       </p>
-      {risk.path.length >= 2 ? <RiskPath path={risk.path} notes={notes} /> : null}
-      <p className="mt-1 text-xs text-slate-500">
-        The traded book is hedged to be factor-neutral, so the factor share sits near zero - under
-        6% across the live period - and almost all of the predicted risk is idiosyncratic. That is
-        the hedge's residue and not its size: what it removed is the gap between the two books
-        below.
-      </p>
-      <p className="mt-2 text-sm tabular-nums" data-vol="line">
-        predicted annual volatility {volPct(after)} after the hedge, from {volPct(before)} before it
-        {removed === null || share === null
-          ? ""
-          : ` - the hedge removed ${(removed * 100).toFixed(1)} points, ${(share * 100).toFixed(
-              0,
-            )}% of the sized book's risk`}
-        .
-      </p>
-      {risk.path.length >= 2 && before !== null && after !== null ? (
-        <HedgeVol path={risk.path} notes={notes} />
+      {notes.length > 0 ? (
+        <p className="mt-1 text-xs text-slate-500" data-series-notes="true">
+          corrections to these charts:
+          {notes.map((note, index) => (
+            <Footnote key={`${note.date}-${index}`} number={index + 1} note={note} />
+          ))}
+        </p>
+      ) : null}
+      {risk.factor_share !== null &&
+      risk.factor_share !== undefined &&
+      risk.factor_share > 0.05 &&
+      risk.path.length >= 2 ? (
+        <RiskPath path={risk.path} notes={notes} />
       ) : null}
     </div>
   );
@@ -1181,9 +1279,10 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
         </HowToRead>
       </figcaption>
       <p className="mt-1 text-xs text-slate-600">
-        Annualized, per session, from <code>attribution.live.daily</code>. {count(pairs.length)} of{" "}
-        {count(period.n_days)} session(s) carry both; the realized line is the book&apos;s own
-        P&amp;L over a rolling quarter and the forecast is the model&apos;s.
+        Annualized, per session, from the live book&apos;s own daily record.{" "}
+        {count(pairs.length)} of {count(period.n_days)} session(s) carry both; the realized
+        line is the book&apos;s own P&amp;L over a rolling quarter and the forecast is the
+        model&apos;s.
       </p>
       <svg
         className="mt-1 h-auto"
@@ -1312,7 +1411,23 @@ function PeriodView({
         {from && to ? `, ${from} to ${to}` : ""}.
       </p>
 
-      <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
+      {/* The flow, in the order a reader asks the questions: how much risk did the
+          book carry before the hedge, what did the hedge remove, did the forecast
+          hold up, and only then what the book earned. */}
+      {live && period.risk ? <RiskSplit risk={period.risk} notes={notes} /> : null}
+      {live ? <VolatilityPanel period={period} /> : null}
+
+      <h3 className="mt-4 text-sm font-semibold">
+        What the book earned
+        <HowToRead>
+          four terms that add to the total: the hedge&apos;s factor P&amp;L, the names&apos;
+          own P&amp;L, what the fills cost, and the part no term explains. Every figure is
+          in basis points of NAV, so a session&apos;s move is the same size whether the book
+          was large or small. Example: the live book is {bps(cumulative.pnl_total)} since it
+          opened.
+        </HowToRead>
+      </h3>
+      <dl className="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
         {[
           { hook: "total", label: "total", value: cumulative.pnl_total },
           { hook: "factor", label: "factor", value: cumulative.pnl_factor },
@@ -1354,8 +1469,6 @@ function PeriodView({
       {live ? <DailyBars days={carried} /> : null}
       <CostLine period={period} snapshot={snapshot} />
       {live ? <CostEras period={period} snapshot={snapshot} /> : null}
-      {live ? <VolatilityPanel period={period} /> : null}
-      {live && period.risk ? <RiskSplit risk={period.risk} notes={notes} /> : null}
       <FactorTable period={period} />
 
       <DayTable

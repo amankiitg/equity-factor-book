@@ -53,6 +53,32 @@ const TABS: Array<{ key: View; label: string }> = [
   { key: "operations", label: "Operations" },
 ];
 
+/**
+ * The one line a reader needs before trusting anything on Positions: which close the
+ * prices are from, and whether the inputs behind the book are current.
+ *
+ * It used to be a disclosure on Operations, three tabs from the numbers it dates. A
+ * stale price is the one fact that changes how every figure below it should be read,
+ * so it belongs above them.
+ */
+function FreshnessLine({ snapshot }: { snapshot: Snapshot }) {
+  const priced = dateOnly(snapshot.book_as_of) ?? dateOnly(snapshot.target_close);
+  const target = dateOnly(snapshot.target_close);
+  const behind = snapshot.run_status?.worst_sessions_behind ?? null;
+  const worst = snapshot.run_status?.worst_input ?? null;
+  const stale = Boolean(priced && target && priced !== target);
+  return (
+    <p data-freshness="positions" className="text-xs text-slate-600">
+      prices are from the{" "}
+      <span className="font-mono">{priced ?? "unknown"}</span> close
+      {stale ? ` (not tonight's ${target})` : ""}.{" "}
+      {behind === null || behind <= 0
+        ? "every input is up to date."
+        : `the oldest input${worst ? ` (${worst})` : ""} is ${behind} session(s) behind.`}
+    </p>
+  );
+}
+
 export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date }) {
   const state = runState(snapshot, now);
   const facts = bookFacts(snapshot);
@@ -140,6 +166,13 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
             measure from. Positions and Attribution still render.
           </p>
         )}
+        {/* The bridge is the rebalance's own arithmetic, so it lives on the tab about
+            the rebalance rather than among the run's diagnostics. */}
+        <div className="mt-3">
+          <Details hook="bridge" summary="bridge: the account before the rebalance and after it">
+            <Bridge snapshot={snapshot} />
+          </Details>
+        </div>
       </div>
 
       <div role="tabpanel" id="panel-operations" hidden={view !== "operations"}>
@@ -152,30 +185,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
               exceptions={exceptions}
             />
           </Details>
-          <Details hook="bridge" summary="bridge: the account before the rebalance and after it">
-            <Bridge snapshot={snapshot} />
-          </Details>
           <ConstructionTelemetry snapshot={snapshot} />
-          <Details hook="staleness" summary="staleness and freshness">
-            <dl className="grid gap-1 text-xs sm:grid-cols-2">
-              <div>
-                <dt className="text-slate-500">book close</dt>
-                <dd className="font-mono">{dateOnly(snapshot.book_as_of) ?? "n/a"}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">target close</dt>
-                <dd className="font-mono">{dateOnly(snapshot.target_close) ?? "n/a"}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">next run expected by</dt>
-                <dd className="font-mono">{snapshot.expected_next_by ?? "n/a"}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">generated at</dt>
-                <dd className="font-mono">{snapshot.generated_at ?? "n/a"}</dd>
-              </div>
-            </dl>
-          </Details>
           <NotesDrawer snapshot={snapshot} />
           <Details hook="glossary" summary="what the words mean">
             <Glossary />
@@ -185,6 +195,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
 
       <div role="tabpanel" id="panel-book" hidden={view !== "book"}>
         <div className="flex flex-col gap-3">
+          <FreshnessLine snapshot={snapshot} />
           <MetricsRow snapshot={snapshot} facts={facts} />
           <div data-columns="true" className="grid gap-3 lg:grid-cols-2">
             <div className="flex flex-col gap-3">

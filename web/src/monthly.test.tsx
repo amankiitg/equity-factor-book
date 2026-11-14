@@ -66,13 +66,16 @@ describe("the anchored panels", () => {
     expect(card).toContain("nothing owed");
   });
 
-  it("measures the drift from the target and prices closing it", () => {
+  it("measures the drift from the target and prices closing it, in one line", () => {
     render(<MonthlyPanels monthly={MONTHLY} />);
     const drift = document.querySelector("[data-drift]")?.textContent ?? "";
     expect(drift).toContain("2.30%");
     expect(drift).toContain("$44,801");
     expect(drift).toContain("$15");
-    expect(screen.getByText("KLAC")).toBeTruthy();
+    // The target is fixed between rebalances, and the gap includes the guard's
+    // deliberate repairs, which is what stops the line reading as pure price drift.
+    expect(drift).toContain("The target stays fixed until the");
+    expect(drift).toContain("The gap includes every move the guard made on purpose");
   });
 
   it("renders every leg since the anchor by why it went", () => {
@@ -276,13 +279,15 @@ describe("the flip and drift lists do not need a sideways scroll", () => {
     ).toBe("complete");
   });
 
-  it("keeps the name, the two weights and the gap on the drift row", () => {
+  it("states the gap without a name-by-name list to scroll", () => {
     render(<MonthlyPanels monthly={MONTHLY} />);
-    const intc = document.querySelector('[data-drift-row="INTC"]')?.textContent ?? "";
-    expect(intc).toContain("INTC");
-    expect(intc).toContain("1.13%");
-    expect(intc).toContain("1.44%");
-    expect(intc).toContain("$3,030");
+    // The three largest gaps and their dollars are named in the card's (i), and the
+    // card itself is one sentence: there is no sideways table left to scroll.
+    expect(document.querySelector("[data-drift-row]")).toBeNull();
+    const card = document.querySelector("[data-drift='true']") as HTMLElement;
+    expect(card).toBeTruthy();
+    const title = card.closest("[data-panel='monthly']")?.querySelector("p")?.textContent ?? "";
+    expect(title).toContain("distance from the rebalance target");
   });
 });
 

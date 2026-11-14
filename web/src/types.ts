@@ -641,6 +641,12 @@ export interface MonthlyBlock {
       sent_usd?: number;
     }>;
     /**
+     * One row per evening the drift guard fired, from the hold day's own manifest.
+     * Absent on a document written before the block carried it, and on a period in
+     * which the guard never fired.
+     */
+    guard_history?: GuardFiring[];
+    /**
      * The legs that never became orders: under the $250 minimum, or refused by the
      * broker. Kept out of the reason table because a reason there would claim a leg
      * that does not exist, and summed here so the two counts still add to the rows.
@@ -707,6 +713,24 @@ export interface MonthlyBlock {
     cannot_send?: Array<{ ticker: string; usd: number; code: string }>;
   };
   rebalance_dates?: string[];
+}
+
+/** One evening the drift guard repaired the book, as the hold day recorded it. */
+export interface GuardFiring {
+  date: string;
+  /** Worst absolute factor exposure before and after, as a fraction of NAV. */
+  exposure_before: number | null;
+  exposure_after: number | null;
+  threshold: number | null;
+  /** Legs the guard sent, and the candidates under the order minimum. */
+  legs_sent: number | null;
+  legs_under_minimum: number | null;
+  /** The legs' dollars at the NAV the guard measured against. */
+  usd: number | null;
+  /** The day's realized fill cost, or null when the store carries no fills for it. */
+  cost_bps: number | null;
+  /** Names whose side the firing moved back, from the bridge's own flips. */
+  flips: string[];
 }
 
 /** One sector's distance from the rebalance target, net and name by name. */

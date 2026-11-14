@@ -198,8 +198,24 @@ export function anchoredSectors(monthly?: MonthlyBlock | null) {
   return block;
 }
 
-/** One sector row, measured from the rebalance target. */
-function AnchoredRow({ row, scale }: { row: MonthlySectorRow; scale: number }) {
+/**
+ * One sector row, measured from the rebalance target, with gross beside net.
+ *
+ * The net is near zero by construction, so a sector holding a lot of stock on both
+ * sides reads as no bet at all. Gross is the other half of that sentence: five
+ * percent of NAV long and five short is a large, deliberate position whose net is
+ * nothing. The two columns sit together so the reader sees both at once.
+ */
+function AnchoredRow({
+  row,
+  scale,
+  gross,
+}: {
+  row: MonthlySectorRow;
+  scale: number;
+  /** The account's absolute dollars in this sector: longs plus shorts. */
+  gross: number;
+}) {
   const share = scale > 0 ? Math.min(1, Math.abs(row.delta_usd) / scale) : 0;
   const over = row.delta_usd >= 0;
   return (
@@ -209,9 +225,19 @@ function AnchoredRow({ row, scale }: { row: MonthlySectorRow; scale: number }) {
       data-traded={row.traded_usd.toFixed(2)}
       className="border-b border-slate-100"
     >
-      <div className="grid grid-cols-[6.5rem_1fr_5rem] items-center gap-x-2 py-1 sm:grid-cols-[9rem_1fr_6rem]">
+      <div className="grid grid-cols-[5.5rem_4rem_4.5rem_1fr] items-center gap-x-2 py-1 sm:grid-cols-[9rem_5rem_6rem_1fr]">
         <div className="truncate text-sm font-medium" title={row.label}>
           {row.label}
+        </div>
+        <div
+          className="text-right font-mono text-xs tabular-nums text-slate-600"
+          data-sector-gross={row.code === null ? "unmapped" : String(row.code)}
+          title="gross: longs plus shorts, at today's prices"
+        >
+          {dollars(gross)}
+        </div>
+        <div className="text-right font-mono text-xs tabular-nums" data-sector-net="true">
+          {signedDollars(row.delta_usd)}
         </div>
         <div className="relative h-3 w-full rounded-sm bg-slate-100">
           <span className="absolute left-1/2 top-0 h-full w-px bg-slate-300" />
@@ -228,7 +254,6 @@ function AnchoredRow({ row, scale }: { row: MonthlySectorRow; scale: number }) {
             }
           />
         </div>
-        <div className="text-right font-mono text-xs tabular-nums">{signedDollars(row.delta_usd)}</div>
       </div>
       <p className="pb-1 text-xs text-slate-500">
         {signedDollars(row.traded_usd)} to trade
@@ -250,12 +275,38 @@ function AnchoredRow({ row, scale }: { row: MonthlySectorRow; scale: number }) {
  * traded figure is the honest one, and its total is the drift card's: `$44,801` both
  * sides, `$22,400` one side on 2026-10-29.
  */
-export function AnchoredSectorSection({ block }: { block: NonNullable<MonthlyBlock["sectors"]> }) {
+export function AnchoredSectorSection({
+  block,
+  snapshot,
+}: {
+  block: NonNullable<MonthlyBlock["sectors"]>;
+  snapshot: Snapshot;
+}) {
   const rows = block.rows;
   const scale = Math.max(...rows.map((row) => Math.abs(row.delta_usd)), 1);
   const worst = rows[0];
   const worstDriver = worst?.drivers[0] ?? null;
   const anchor = block.anchor ?? null;
+  // Gross by sector, from the account read when there is one and from the target
+  // book's own weights otherwise. Either is dollars the panel already has; this is
+  // a sum of them, not a new field.
+  const gross = new Map<string, number>();
+  const addGross = (ticker: string, value: number | null | undefined): void => {
+    if (value === null || value === undefined) return;
+    const code = sectorCodeFor(ticker);
+    const key = code === null ? UNMAPPED : String(code);
+    gross.set(key, (gross.get(key) ?? 0) + Math.abs(value));
+  };
+  if (snapshot.actual_holdings?.names?.length) {
+    for (const name of snapshot.actual_holdings.names) addGross(name.ticker, name.notional);
+  } else {
+    for (const name of snapshot.book?.names ?? []) {
+      addGross(name.ticker, (name.weight ?? 0) * block.nav);
+    }
+  }
+  const grossOf = (code: number | null): number =>
+    gross.get(code === null ? UNMAPPED : String(code)) ?? 0;
+  const heaviest = [...rows].sort((a, b) => grossOf(b.code) - grossOf(a.code))[0] ?? null;
   return (
     <section
       data-section="sector"
@@ -265,14 +316,21 @@ export function AnchoredSectorSection({ block }: { block: NonNullable<MonthlyBlo
       <h2 className="text-base font-semibold">
         By sector: account against the {anchor ?? "rebalance"} target
        <HowToRead>
-        the net stays near zero because the book is built sector-neutral, so the
-        traded figure is where the drift actually sits. Example: Consumer Staples
-        traded $24,010 on 11-11 while its net read $14,277.
+        gross is every dollar held in the sector, long and short added up; net is the
+        long minus the short. The net stays near zero because the book is built
+        sector-neutral, so the traded figure is where the drift actually sits. Example:
+        Consumer Staples traded $24,010 on 11-11 while its net read $14,277.
       </HowToRead></h2>
       <p className="mt-1 text-xs text-slate-600">
-        Signed dollars, net by sector, at the NAV the rebalance was sized on (
-        {dollars(block.nav)}). The net is small because the book is built sector-neutral, so
-        the second line is the reading that matters:{" "}
+        Gross beside net, at the NAV the rebalance was sized on ({dollars(block.nav)}). A
+        heavy gross with a near-zero net is the book&apos;s design, not a bet either way
+        {heaviest
+          ? `: ${heaviest.label} holds ${dollars(grossOf(heaviest.code))} gross and ${signedDollars(
+              heaviest.delta_usd,
+            )} net`
+          : ""}
+        . The reading that matters is still{" "}
+
         <span data-sector-traded-total="true" className="font-medium">
           {dollars(block.both_sides_usd)}
         </span>{" "}
@@ -288,11 +346,18 @@ export function AnchoredSectorSection({ block }: { block: NonNullable<MonthlyBlo
         </p>
       ) : null}
       <div className="mt-2" data-sector-deltas="true">
+        <div className="grid grid-cols-[5.5rem_4rem_4.5rem_1fr] gap-x-2 text-[0.65rem] uppercase tracking-wide text-slate-500 sm:grid-cols-[9rem_5rem_6rem_1fr]">
+          <span>sector</span>
+          <span className="text-right">gross</span>
+          <span className="text-right">net</span>
+          <span />
+        </div>
         {rows.map((row) => (
           <AnchoredRow
             key={row.code === null ? "unmapped" : String(row.code)}
             row={row}
             scale={scale}
+            gross={grossOf(row.code)}
           />
         ))}
       </div>
@@ -323,7 +388,7 @@ export function SectorSection({
   // sectors, that is the panel, and a rebalance day or a flag-less document falls
   // through to the comparison below exactly as before.
   const anchored = anchoredSectors(monthly);
-  if (anchored) return <AnchoredSectorSection block={anchored} />;
+  if (anchored) return <AnchoredSectorSection block={anchored} snapshot={snapshot} />;
   const read = snapshot.actual_holdings ?? null;
   if (sectors.length === 0) return null;
   if (!read) {

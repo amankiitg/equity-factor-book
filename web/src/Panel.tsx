@@ -122,17 +122,29 @@ export function HowToRead({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * The three words the page uses, defined once.
+ * The words the page uses, defined once.
  *
- * "Account", "target" and "store" are three different books and the page leans on all
- * three; a reader who takes them for one word reads the morning's comparison as the
- * evening's and cannot tell which number is wrong. Three definitions, no more: a
- * glossary that grows is one nobody opens.
+ * The page explained these in several places, in slightly different sentences, which
+ * is how a reader ends up with two definitions of "target" and no way to tell which
+ * one the number beside it meant. One dropdown, one definition each. The first three
+ * are the three books the page compares; the rest are the words a first-time reader
+ * meets on every card.
  */
 const WORDS: Array<[string, string]> = [
   ["account", "what the broker says we hold right now"],
   ["target", "what tonight's run wants us to hold after the next fills"],
   ["store", "the loop's own record of what it last asked for"],
+  ["leg", "one order in one direction: buying is one, selling is another"],
+  ["NAV", "the book's own net value: what the positions are worth"],
+  ["bp", "a basis point, one hundredth of a percent of NAV"],
+  [
+    "hedge",
+    "the re-weighting of names the book already holds that cancels the market, sector and style bets it did not mean to take",
+  ],
+  [
+    "drift guard",
+    "the hold-day repair: it moves the book back to factor-neutral when a factor exposure passes 5% of NAV",
+  ],
 ];
 
 export function Glossary() {
