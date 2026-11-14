@@ -1275,9 +1275,53 @@ describe("the turnover card", () => {
     expect(long.textContent).toContain("Blocked: 4 names, $19,615 (no longer trade)");
   });
 
-  it("names a retired name the book wants, when no leg was sent at all", () => {
-    // The hold-night case: nothing was sent, so there is no never-sent line, and
-    // the leg the book wanted and could not place is the retired name's own gap.
+  it("reads the blocked dollars from the order the run refused, not the retired gap", () => {
+    // The 2026-11-13 close, as it stands: a hold night, so no fills and no
+    // never-sent line. The retired KVUE row's gap is $102 of NAV, which is the
+    // distance from its weight target and not the order the run could not place.
+    // The refused leg was $13,615, and that is the figure the line must quote.
+    const base = served as unknown as Snapshot;
+    const rows = [
+      {
+        ticker: "KVUE",
+        since: "retired (acquired by KMB), owed, cannot be traded",
+        since_kind: "retired",
+        since_date: "2026-10-23",
+        weight_now: 0.0139525741717254,
+        weight_target: 0.0140567869782116,
+        gap_weight: -0.0001042128064862001,
+        gap_usd: -101.69483332992958,
+        tonight: "traded tonight: asset inactive",
+        retired: true,
+        owed: true,
+        note: "retired (acquired by KMB), owed, cannot be traded",
+      },
+    ];
+    const snapshot = {
+      ...base,
+      monthly: {
+        ...(base.monthly as NonNullable<Snapshot["monthly"]>),
+        holdings: { anchor: "2026-10-23", as_of: "2026-11-13", rows },
+        tonight: {
+          cannot_send: [{ code: "ASSET_INACTIVE", ticker: "KVUE", usd: 13615.454307 }],
+          cannot_send_legs: 1,
+          cannot_send_usd: 13615.454307,
+        },
+      },
+    } as unknown as Snapshot;
+    render(<SnapshotView snapshot={snapshot} now={NOW} />);
+    const blocked = document.querySelector(
+      "[data-card='turnover'] [data-blocked='true']",
+    ) as HTMLElement;
+    expect(blocked).toBeTruthy();
+    expect(blocked.textContent).toBe("Blocked: KVUE $13,615 (no longer trades)");
+    expect(blocked.textContent).not.toContain("$102");
+  });
+
+  it("names a retired name with no order behind it, without inventing dollars", () => {
+    // An older document: a retired name is owed, and neither a never-sent line nor
+    // a refused leg records what the order asked for. The name is said; the gap is
+    // not dressed up as a notional.
     const base = served as unknown as Snapshot;
     const rows = [
       {
@@ -1300,6 +1344,7 @@ describe("the turnover card", () => {
       monthly: {
         ...(base.monthly as NonNullable<Snapshot["monthly"]>),
         holdings: { anchor: "2026-10-23", as_of: "2026-11-05", rows },
+        tonight: { cannot_send: [], cannot_send_legs: 0, cannot_send_usd: 0 },
       },
     } as unknown as Snapshot;
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
@@ -1307,7 +1352,7 @@ describe("the turnover card", () => {
       "[data-card='turnover'] [data-blocked='true']",
     ) as HTMLElement;
     expect(blocked).toBeTruthy();
-    expect(blocked.textContent).toBe("Blocked: KVUE $13,615 (no longer trades)");
+    expect(blocked.textContent).toBe("Blocked: KVUE (no longer trades)");
   });
 
   it("says what the run built when the document predates the sent-only figure", () => {
