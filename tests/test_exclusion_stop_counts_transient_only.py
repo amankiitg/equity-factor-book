@@ -50,7 +50,9 @@ def test_ten_standing_exclusions_plus_one_new_name_does_not_stop_the_run() -> No
     rows = exclusions.collect(_standing(), [_new("AAPL")])
     assert len(rows) == 11
     assert len([row for row in rows if row.transient]) == 1
-    exclusions.guard(rows)  # no raise: one new name is one new name
+    # Yesterday's manifest carried the ten standing names for the same reasons,
+    # so only the one new name counts.
+    exclusions.guard(rows, previous=_standing())
 
 
 def test_eleven_new_exclusions_still_stops_the_run() -> None:
@@ -66,7 +68,7 @@ def test_ten_standing_exclusions_do_not_stop_the_run_on_their_own() -> None:
     rows = exclusions.collect(_standing())
     assert len(rows) == 10
     assert not any(row.transient for row in rows)
-    exclusions.guard(rows)
+    exclusions.guard(rows, previous=_standing())
 
 
 def test_standing_names_still_appear_in_the_email_line() -> None:
@@ -126,7 +128,7 @@ def test_the_classification_survives_the_manifest_round_trip() -> None:
     assert [(row.ticker, row.transient) for row in again] == [
         (row.ticker, row.transient) for row in rows
     ]
-    exclusions.guard(again)
+    exclusions.guard(again, previous=_standing())
     # And the stored list still carries every name, standing and new.
     assert len(again) == 11
 
@@ -136,7 +138,7 @@ def test_the_stop_names_only_the_new_names() -> None:
     new = [_new(f"N{index:02d}") for index in range(11)]
     rows = exclusions.collect(_standing(), new)
     with pytest.raises(exclusions.TooManyExclusions) as raised:
-        exclusions.guard(rows)
+        exclusions.guard(rows, previous=_standing())
     message = str(raised.value)
     assert "11 names are newly excluded tonight" in message
     assert "N00" in message

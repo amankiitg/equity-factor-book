@@ -2292,6 +2292,58 @@ def still_without_gics(excluded: list[str], sectors: pd.DataFrame) -> list[str]:
     return sorted(name for name in excluded if name not in sectors_tickers)
 
 
+def previous_exclusions(as_of: str) -> list[dict[str, object]] | None:
+    """The names the previous evening's manifest excluded, with their reasons.
+
+    The stop counts a standing name only when last night already carried it for the
+    same reason (see `exclusions.novel`), so it needs one fact from outside the
+    panel: yesterday's own list. The stored manifests are that list, and the newest
+    one strictly before `as_of` is yesterday - a hold day writes one too, so a
+    weekend or a skipped evening does not make every standing name novel.
+
+    `None` when the store cannot be read: the caller then counts every name, because
+    an unreadable yesterday is not evidence that tonight is new. An empty list is a
+    store that was read and held no earlier list, and then every name out is novel.
+    """
+    from live import store
+
+    try:
+        frame = store.select("proposals")
+    except Exception as exc:  # noqa: BLE001 - the stop still has to make a decision
+        logger.warning(
+            "could not read the previous evening's exclusions: %s", type(exc).__name__
+        )
+        return None
+    if frame.empty or "manifest" not in frame.columns:
+        return []
+    day = pd.Timestamp(as_of).normalize()
+    newest: pd.Timestamp | None = None
+    rows: list[dict[str, object]] = []
+    for item in frame.itertuples(index=False):
+        manifest = item.manifest
+        if isinstance(manifest, str):
+            try:
+                manifest = json.loads(manifest)
+            except ValueError:
+                continue
+        if not isinstance(manifest, dict):
+            continue
+        stamp = str(manifest.get("as_of") or getattr(item, "trade_date", "") or "")[:10]
+        try:
+            close = pd.Timestamp(stamp).normalize()
+        except (TypeError, ValueError):
+            continue
+        if close >= day or (newest is not None and close <= newest):
+            continue
+        newest = close
+        rows = [
+            dict(row)
+            for row in manifest.get("excluded_tonight") or []
+            if isinstance(row, Mapping)
+        ]
+    return rows
+
+
 def excluded_history(as_of: str) -> dict[str, dict[str, object]] | None:
     """How long each excluded name has been excluded, from the stored manifests.
 
@@ -3032,15 +3084,18 @@ def build_proposal(
     # One list of the names *tonight's data* could not support, from every reader that
     # decided one, and one sentence for the message. The universe's standing exclusions
     # (absent from the processed returns panel) stay on their own line with their ages.
-    # Every name here is on the line and in the manifest, and the stop counts only the
-    # rows marked transient: a price, a corporate action or a broker flag that changed
-    # with this close. A name the risk model has not fitted, a name with no GICS row
-    # after the additive refresh (the BE/ILMN/P hold-list among them) and an asset
-    # already recorded as retired are standing facts, so ten of those plus one new name
-    # is one new name, not eleven. The individual drops keep their own thresholds; this
-    # is the line that catches what none of them sees - six names with no price and six
-    # suspended by the corporate-actions rule is twelve new names with each reader
-    # inside its own limit - and it is what the owner reads.
+    # Every name here is on the line and in the manifest, and the stop counts only
+    # tonight's news: a row marked transient (a price, a corporate action or a broker
+    # flag that changed with this close), or a standing row the previous evening's
+    # manifest did not already carry for the same reason. A name the risk model has
+    # not fitted, a name with no GICS row after the additive refresh (the BE/ILMN/P
+    # hold-list among them) and an asset already recorded as retired are standing
+    # facts, so ten of those carried over plus one new name is one new name, not
+    # eleven; fifty names newly losing a GICS row is still fifty. The individual drops
+    # keep their own thresholds; this is the line that catches what none of them sees -
+    # six names with no price and six suspended by the corporate-actions rule is
+    # twelve new names with each reader inside its own limit - and it is what the
+    # owner reads.
     excluded_tonight = exclusions.collect(
         (
             exclusions.Exclusion(
@@ -3068,7 +3123,9 @@ def build_proposal(
             for name in still_no_gics
         ),
     )
-    exclusions.guard(excluded_tonight)
+    exclusions.guard(
+        excluded_tonight, previous=previous_exclusions(str(as_of_ts.date()))
+    )
 
     input_as_of = _input_as_of(root, as_of_ts)
     input_as_of["universe"] = universe_as_of

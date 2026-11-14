@@ -28,9 +28,13 @@ row (the `BE`/`ILMN`/`P` hold-list among them), an asset already recorded as
 retired - is a fact about the book that was true last night and will be true
 tomorrow, and ten of those is the universe being the universe, not the fetch having
 broken. Standing names stay on the line and in the manifest exactly as before; they
-are only kept out of the arithmetic that decides whether the evening can run. A row
-that does not say which it is, is counted, because the safe direction for a stop is
-to stop.
+are only kept out of the arithmetic that decides whether the evening can run, and
+only when the previous evening's manifest already carried that name for that same
+reason. A standing name that was *not* there last night is a new fact about the
+universe - fifty names losing a GICS row in one night is the fetch having broken -
+so it counts, and so does the same name out for a different reason. A row that does
+not say which it is, or a previous evening that could not be read, is counted,
+because the safe direction for a stop is to stop.
 """
 
 from __future__ import annotations
@@ -132,17 +136,71 @@ def collect(*groups: Iterable[Exclusion | Mapping[str, object]]) -> list[Exclusi
     return [seen[ticker] for ticker in sorted(seen)]
 
 
-def guard(rows: Iterable[Exclusion], limit: int = MAX_EXCLUSIONS) -> None:
-    """Refuse the night when tonight's *new* exclusions are longer than that.
+def exclusion_key(row: Exclusion) -> tuple[str, str]:
+    """The name and the reason, in the form two evenings are compared in.
 
-    Only `transient` rows count. A standing reason - no risk estimate yet, no GICS
-    row, an asset already recorded as retired - is listed and kept, but the evening
-    is not stopped for it: those names were out last night too, and counting them
-    is how a single new exclusion became the eleventh name and stopped the
-    2026-11-23 rebalance.
+    The ticker is upper-cased and the reason is stripped of surrounding and repeated
+    whitespace, because the same fact is written by the same reader on both nights
+    and only the punctuation of the sentence should be allowed to differ.
+    """
+    return (
+        row.ticker.strip().upper(),
+        " ".join(str(row.reason).split()).casefold(),
+    )
+
+
+def previous_keys(
+    rows: Iterable[Exclusion | Mapping[str, object]] | None,
+) -> set[tuple[str, str]]:
+    """The (name, reason) pairs of an earlier evening's list.
+
+    `as_rows` writes the same shape, so a stored manifest is read back through the
+    same reader the live list uses. An absent list is an empty set: that evening
+    named nothing, so every name out tonight is novel.
+    """
+    keys: set[tuple[str, str]] = set()
+    for item in rows or ():
+        row = _as_exclusion(item)
+        if row is not None:
+            keys.add(exclusion_key(row))
+    return keys
+
+
+def novel(
+    rows: Iterable[Exclusion],
+    previous: Iterable[Exclusion | Mapping[str, object]] | None,
+) -> list[Exclusion]:
+    """The rows tonight's stop counts.
+
+    A `transient` row is always counted: tonight's price or broker fact is the
+    thing the stop exists for. A standing row is counted only when the previous
+    evening's list did not carry the same name for the same reason. `previous`
+    of `None` means yesterday could not be read, and then every row counts: an
+    unreadable record is not evidence that tonight is new.
     """
     rows = list(rows)
-    counted = [row for row in rows if row.transient]
+    if previous is None:
+        return rows
+    seen = previous_keys(previous)
+    return [row for row in rows if row.transient or exclusion_key(row) not in seen]
+
+
+def guard(
+    rows: Iterable[Exclusion],
+    limit: int = MAX_EXCLUSIONS,
+    previous: Iterable[Exclusion | Mapping[str, object]] | None = None,
+) -> None:
+    """Refuse the night when tonight's *new* exclusions are longer than that.
+
+    Only `transient` rows and standing rows absent from the previous evening's
+    manifest count (see `novel`). A standing reason carried over from last night -
+    no risk estimate yet, no GICS row, an asset already recorded as retired - is
+    listed and kept, but the evening is not stopped for it: those names were out
+    last night too, and counting them is how a single new exclusion became the
+    eleventh name and stopped the 2026-11-23 rebalance.
+    """
+    rows = list(rows)
+    counted = novel(rows, previous)
     if len(counted) <= limit:
         return
     shown = ", ".join(row.ticker for row in counted[:10])
