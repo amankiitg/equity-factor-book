@@ -59,21 +59,23 @@ def test_ten_names_out_is_a_night_and_eleven_is_a_broken_input() -> None:
         exclusions.guard(eleven)
 
 
-def test_five_price_drops_and_five_risk_drops_are_one_night_too_many() -> None:
+def test_six_price_drops_and_six_broker_drops_are_one_night_too_many() -> None:
     """The case neither reader sees: each inside its own limit, the night over the line.
 
-    `priced_names_or_stop` and `risk_names_or_stop` each allow ten. A night with six
-    names missing a price and six missing a variance is twelve names out of a book of
-    a few hundred, and the shared guard is what says the input is the suspect.
+    `priced_names_or_stop` and the broker's lending read each allow ten. A night with
+    six names missing a price and six the broker will not lend is twelve names out of
+    a book of a few hundred, and the shared guard is what says the input is the
+    suspect. Both are tonight's facts, so both count; the twelve risk rows the old
+    version of this test used are standing and no longer count.
     """
     prices = [
         exclusions.Exclusion(f"P{i}", "no usable close", "prices") for i in range(6)
     ]
-    risk = [
-        exclusions.Exclusion(f"R{i}", "no risk estimate", "risk model")
+    broker = [
+        exclusions.Exclusion(f"B{i}", "the broker will not lend it", "broker")
         for i in range(6)
     ]
-    merged = exclusions.collect(prices, risk)
+    merged = exclusions.collect(prices, broker)
     assert len(merged) == 12
     with pytest.raises(exclusions.TooManyExclusions):
         exclusions.guard(merged)

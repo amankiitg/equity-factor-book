@@ -3031,29 +3031,40 @@ def build_proposal(
 
     # One list of the names *tonight's data* could not support, from every reader that
     # decided one, and one sentence for the message. The universe's standing exclusions
-    # (absent from the processed returns panel) stay on their own line with their ages,
-    # but a name that still has no GICS row after the additive sector refresh is a
-    # tonight fact and is counted here under the "sectors" source. The individual drops
-    # keep their own thresholds; this is the line that catches what none of them sees -
-    # six names with no price and six with no risk estimate is twelve names out with
-    # each reader inside its own limit - and it is what the owner reads.
+    # (absent from the processed returns panel) stay on their own line with their ages.
+    # Every name here is on the line and in the manifest, and the stop counts only the
+    # rows marked transient: a price, a corporate action or a broker flag that changed
+    # with this close. A name the risk model has not fitted, a name with no GICS row
+    # after the additive refresh (the BE/ILMN/P hold-list among them) and an asset
+    # already recorded as retired are standing facts, so ten of those plus one new name
+    # is one new name, not eleven. The individual drops keep their own thresholds; this
+    # is the line that catches what none of them sees - six names with no price and six
+    # suspended by the corporate-actions rule is twelve new names with each reader
+    # inside its own limit - and it is what the owner reads.
     excluded_tonight = exclusions.collect(
         (
-            exclusions.Exclusion(name, "no usable close at the close", "prices")
+            exclusions.Exclusion(
+                name, "no usable close at the close", "prices", transient=True
+            )
             for name in dropped_no_price
         ),
         (
-            exclusions.Exclusion(str(row["ticker"]), "no risk estimate", "risk model")
+            exclusions.Exclusion(
+                str(row["ticker"]), "no risk estimate", "risk model", transient=False
+            )
             for row in dropped_no_risk
         ),
         (
             exclusions.Exclusion(
-                str(row["ticker"]), "the broker will not lend it", "broker"
+                str(row["ticker"]),
+                "the broker will not lend it",
+                "broker",
+                transient=True,
             )
             for row in dropped_no_short
         ),
         (
-            exclusions.Exclusion(name, "no GICS row", "sectors")
+            exclusions.Exclusion(name, "no GICS row", "sectors", transient=False)
             for name in still_no_gics
         ),
     )

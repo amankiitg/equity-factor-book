@@ -20,6 +20,17 @@ model did not ask for. Ten of roughly five hundred is the line the no-price and
 no-risk drops already drew (`MAX_PRICE_DROPS`, `MAX_RISK_DROPS`), and it is kept
 here for the same reason: a handful is a halt, a delisting or a vendor gap, and ten
 at once is the fetch having broken.
+
+The stop counts only the names out for a *new* reason tonight: a price, a return, a
+share count, a corporate action, or a broker status that changed with this close.
+A standing reason - a name the risk model has not fitted yet, a name with no GICS
+row (the `BE`/`ILMN`/`P` hold-list among them), an asset already recorded as
+retired - is a fact about the book that was true last night and will be true
+tomorrow, and ten of those is the universe being the universe, not the fetch having
+broken. Standing names stay on the line and in the manifest exactly as before; they
+are only kept out of the arithmetic that decides whether the evening can run. A row
+that does not say which it is, is counted, because the safe direction for a stop is
+to stop.
 """
 
 from __future__ import annotations
@@ -29,6 +40,19 @@ from dataclasses import dataclass
 
 # The same line the two existing drops drew, now the line for all of them.
 MAX_EXCLUSIONS = 10
+
+# Reasons that are a fact about tonight's data rather than about the universe, said
+# here so the classification has one home. The readers still set the flag on each
+# row (they know which fact they saw); these are the strings a reader that cannot
+# classify can be checked against, and what the module's tests pin.
+STANDING_REASONS: tuple[str, ...] = (
+    "no risk estimate",
+    "no GICS row",
+)
+# A retired asset is recorded once, in `UNREACHABLE_REFUSALS`, and is not a new fact
+# on the evenings that follow. If a broker reason ever reaches this list, these
+# markers are what keep it out of the count.
+RETIRED_MARKERS: tuple[str, ...] = ("asset inactive", "retired", "merger completion")
 
 
 @dataclass(frozen=True)
@@ -43,6 +67,9 @@ class Exclusion:
     ticker: str
     reason: str
     source: str
+    # Counted toward the stop only when the reason is a fact of tonight's data.
+    # Default is to count: a reader that cannot say is treated as a new fault.
+    transient: bool = True
 
 
 class TooManyExclusions(ValueError):
@@ -59,7 +86,32 @@ def _as_exclusion(item: Exclusion | Mapping[str, object]) -> Exclusion | None:
         ticker=ticker,
         reason=str(item.get("reason") or "excluded"),
         source=str(item.get("source") or ""),
+        transient=_as_flag(item.get("transient")),
     )
+
+
+def _as_flag(value: object) -> bool:
+    """A row's `transient` cell, with an absent or unreadable value counting."""
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().casefold() not in {"false", "0", "no", "standing"}
+
+
+def reason_is_transient(reason: str, source: str = "") -> bool:
+    """Whether a reason describes tonight's data (counted) or a standing fact.
+
+    The readers decide this themselves and set `transient` on the row; this is for
+    the one reader whose reason text can be either (the broker), and it is the rule
+    `STANDING_REASONS` and `RETIRED_MARKERS` describe.
+    """
+    text = reason.casefold()
+    if any(marker in text for marker in RETIRED_MARKERS):
+        return False
+    if source and source.casefold() in {"risk model", "sectors"}:
+        return False
+    return not any(standing in text for standing in STANDING_REASONS)
 
 
 def collect(*groups: Iterable[Exclusion | Mapping[str, object]]) -> list[Exclusion]:
@@ -81,23 +133,47 @@ def collect(*groups: Iterable[Exclusion | Mapping[str, object]]) -> list[Exclusi
 
 
 def guard(rows: Iterable[Exclusion], limit: int = MAX_EXCLUSIONS) -> None:
-    """Refuse the night when the list is longer than a night of data can explain."""
+    """Refuse the night when tonight's *new* exclusions are longer than that.
+
+    Only `transient` rows count. A standing reason - no risk estimate yet, no GICS
+    row, an asset already recorded as retired - is listed and kept, but the evening
+    is not stopped for it: those names were out last night too, and counting them
+    is how a single new exclusion became the eleventh name and stopped the
+    2026-11-23 rebalance.
+    """
     rows = list(rows)
-    if len(rows) <= limit:
+    counted = [row for row in rows if row.transient]
+    if len(counted) <= limit:
         return
-    shown = ", ".join(row.ticker for row in rows[:10])
-    rest = "" if len(rows) <= 10 else f" and {len(rows) - 10} more"
+    shown = ", ".join(row.ticker for row in counted[:10])
+    rest = "" if len(counted) <= 10 else f" and {len(counted) - 10} more"
+    standing = len(rows) - len(counted)
+    aside = (
+        f" ({standing} more name{'' if standing == 1 else 's'} out for standing "
+        f"reasons are listed but not counted)"
+        if standing
+        else ""
+    )
     raise TooManyExclusions(
-        f"{len(rows)} names are excluded tonight, more than the {limit} a single "
-        f"evening's data can explain before the input is the suspect rather than "
-        f"the names: {shown}{rest}"
+        f"{len(counted)} names are newly excluded tonight, more than the {limit} a "
+        f"single evening's data can explain before the input is the suspect rather "
+        f"than the names: {shown}{rest}{aside}"
     )
 
 
-def as_rows(rows: Iterable[Exclusion]) -> list[dict[str, str]]:
-    """The manifest's own record: one row per name, with its reason and reader."""
+def as_rows(rows: Iterable[Exclusion]) -> list[dict[str, object]]:
+    """The manifest's own record: one row per name, with its reason and reader.
+
+    `transient` travels too, so a stored list can be read back and judged the way
+    the live list was judged. The sentence the owner reads ignores it.
+    """
     return [
-        {"ticker": row.ticker, "reason": row.reason, "source": row.source}
+        {
+            "ticker": row.ticker,
+            "reason": row.reason,
+            "source": row.source,
+            "transient": row.transient,
+        }
         for row in rows
     ]
 

@@ -18,6 +18,16 @@ The stop is one number: `exclusions.MAX_EXCLUSIONS = 10`, the line the no-price 
 no-risk drops already drew. More names out than that is an input that failed for the
 panel, not a market with holes in it.
 
+It counts only names out for a **new** reason tonight: a price, a return, a share count,
+a corporate action, or a broker status that changed with this close. A standing reason
+is listed on the same line and in the same manifest row, and is not counted: a name the
+risk model has not fitted yet, a name with no GICS row (including the `BE`/`ILMN`/`P`
+hold-list parked until 2026-11-24), and an asset already recorded as retired. On
+2026-11-13 the line carried ten such names, four sectors and six risk, so the following
+evening's first new exclusion would have made eleven and stopped the run, including the
+2026-11-23 rebalance. `tests/test_exclusion_stop_counts_transient_only.py` pins both
+directions: ten standing plus one new does not stop, eleven new does.
+
 ## Name-level checks: exclude for the night
 
 | check | file:line | behaviour today |
@@ -39,7 +49,7 @@ panel, not a market with holes in it.
 
 | check | file:line | why it stays |
 | --- | --- | --- |
-| more than 10 names out, any mix of the reasons above | `live/exclusions.py:86` `guard` | the input, not the names |
+| more than 10 names out for new reasons tonight, any mix of tonight's reasons above | `live/exclusions.py:135` `guard` | the input, not the names; standing reasons are listed, not counted |
 | fewer than `MIN_NAMES` (50) left in the sizing universe | `live/evening_job.py:2561`, `:2715` | a book of thirty names is another book |
 | a duplicated universe row | `live/evening_job.py:2490` | warned and kept once; never seen |
 | any input stale for live names | `live/staleness.py:521` `check` | the close being priced is not the close the input describes |
