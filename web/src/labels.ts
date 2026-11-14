@@ -35,8 +35,9 @@ export const dollarsOfNav = (value: number | null | undefined): string =>
  * A factor's name as a reader knows it.
  *
  * The stored keys are the design's own: `resid_vol`, `sector_45`. A column of
- * those reads as machine output, so the page says Residual vol and 45 Information
- * Technology wherever it shows a factor. An unknown key keeps its own name rather
+ * those reads as machine output, so the page says Residual vol and Information
+ * Technology wherever it shows a factor. The sector's GICS number is part of the key,
+ * not part of its name, so it is dropped. An unknown key keeps its own name rather
  * than disappearing.
  */
 const FACTOR_WORDS: Record<string, string> = {
@@ -47,17 +48,17 @@ const FACTOR_WORDS: Record<string, string> = {
   resid_vol: "Residual vol",
   reversal: "Reversal",
   size: "Size",
-  sector_10: "10 Energy",
-  sector_15: "15 Materials",
-  sector_20: "20 Industrials",
-  sector_25: "25 Consumer Discretionary",
-  sector_30: "30 Consumer Staples",
-  sector_35: "35 Health Care",
-  sector_40: "40 Financials",
-  sector_45: "45 Information Technology",
-  sector_50: "50 Communication Services",
-  sector_55: "55 Utilities",
-  sector_60: "60 Real Estate",
+  sector_10: "Energy",
+  sector_15: "Materials",
+  sector_20: "Industrials",
+  sector_25: "Consumer Discretionary",
+  sector_30: "Consumer Staples",
+  sector_35: "Health Care",
+  sector_40: "Financials",
+  sector_45: "Information Technology",
+  sector_50: "Communication Services",
+  sector_55: "Utilities",
+  sector_60: "Real Estate",
 };
 
 export const factorWord = (key: string): string => FACTOR_WORDS[key] ?? key;

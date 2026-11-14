@@ -46,12 +46,12 @@ describe("the attribution section", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     openAttribution();
     expect(view()).toBe("live");
-    // The live period's own label is on screen; the backtest's note is not in this
-    // section, because the two are different objects and only one of them is the
-    // book. The note now lives in the Operations Notes drawer.
+    // The live period's own label is on screen; the research panel's caveat is behind
+    // the panel's own (i), because the two are different objects and only one of them
+    // is the book.
     expect(screen.getByText(LIVE_PERIOD.label, { exact: false })).toBeTruthy();
     const section = document.querySelector("[data-section='attribution']") as HTMLElement;
-    expect(within(section).queryByText(BACKTEST_PERIOD.note, { exact: false })).toBeNull();
+    expect(within(section).queryByText(/this is a backtest of the seed book/)).toBeNull();
   });
 
   it("prints the four terms and the total for the live period, in bp and signed", () => {
@@ -113,13 +113,16 @@ describe("the attribution section", () => {
     openAttribution();
     fireEvent.click(screen.getByRole("tab", { name: "the research panel (backtest)" }));
     expect(view()).toBe("backtest");
-    // The backtest's own caveat moved to the Operations Notes drawer with the rest
-    // of the method, so it is asserted where a reader now finds it.
-    fireEvent.click(screen.getByRole("tab", { name: "Operations" }));
-    const notes = document.querySelector("[data-details='notes']") as HTMLElement;
-    expect(notes.textContent ?? "").toContain(BACKTEST_PERIOD.note);
-    expect(notes.textContent ?? "").toContain("this is a backtest of the seed book");
-    expect(notes.textContent ?? "").toContain("Nobody traded it");
+    // The caveat is an (i) on the panel itself: the paragraph belonged to this panel,
+    // so it is one tap from the numbers it qualifies rather than in Operations.
+    const heading = document.querySelector("[data-panel='backtest']") as HTMLElement;
+    expect(heading).toBeTruthy();
+    const marker = heading.querySelector("[data-how-to-read] button") as HTMLElement;
+    fireEvent.click(marker);
+    const popover = heading.querySelector("[role='dialog']") as HTMLElement;
+    expect(popover.textContent ?? "").toContain("this is a backtest of the seed book");
+    expect(popover.textContent ?? "").toContain("Nobody traded it");
+    expect(popover.textContent ?? "").toContain("cost is exactly zero");
     // The backtest's cost is exactly zero, and its chart is the monthly run.
     expect(card("pnl-cost")).toContain("+0.0 bp");
     expect(document.querySelector("[data-chart='cumulative']")).toBeTruthy();
@@ -220,7 +223,7 @@ describe("the attribution section", () => {
     expect(document.querySelector("figure[data-chart='risk-path']")).toBeNull();
   });
 
-  it("says n/a for the hedge forecast, and draws no such chart, when it is absent", () => {
+  it("says n/a for the hedge forecast when it is absent", () => {
     const live = LIVE_PERIOD.risk;
     if (!live) throw new Error("the fixture carries no risk block");
     const snapshot = {
@@ -236,9 +239,11 @@ describe("the attribution section", () => {
     render(<SnapshotView snapshot={snapshot} now={NOW} />);
     openAttribution();
     expect(document.querySelector("[data-vol='line']")?.textContent).toContain("n/a");
-    expect(document.querySelector("[data-chart='hedge-vol']")).toBeNull();
     // The split itself survives: only the hedge's own effect is missing.
     expect(document.querySelector("[data-chart='risk']")).toBeTruthy();
+    // The by-session chart reads the stored path, so it is still drawn; the two
+    // absent figures are stated on the line above it.
+    expect(document.querySelector("[data-chart='hedge-vol']")).toBeTruthy();
   });
 
   it("labels the backtest's fourth term as a research-vintage mismatch, and the live one as it was", () => {

@@ -147,16 +147,101 @@ describe("the rendered page", () => {
     );
   });
 
-  it("keeps the method, the corrections and the caveats in the Operations Notes drawer", () => {
+  it("leaves Operations to the run's own facts, with the method where it is read", () => {
     render(<SnapshotView snapshot={OK} now={new Date("2026-10-08T23:00:00Z")} />);
     fireEvent.click(screen.getByRole("tab", { name: "Operations" }));
-    const drawer = document.querySelector("[data-details='notes']") as HTMLElement;
-    expect(drawer).toBeTruthy();
-    expect(drawer.textContent).toContain("how the four terms are computed");
-    expect(drawer.querySelector("[data-notes]")).toBeTruthy();
-    expect(drawer.textContent).toContain("sample size");
+    const operations = document.querySelector("#panel-operations") as HTMLElement;
+    // The notes drawer is gone, and with it the methodology that was three tabs from
+    // the numbers it explained.
+    expect(operations.querySelector("[data-details='notes']")).toBeNull();
+    expect(operations.textContent ?? "").not.toContain("how the four terms are computed");
+    expect(operations.textContent ?? "").not.toContain("sample size");
+    expect(operations.textContent ?? "").not.toContain("corrections to the series");
+    // The method is now the (i) on the heading whose cards it explains, the
+    // corrections are under the volatility panel, and the sample size sits beside
+    // the bias it qualifies.
+    fireEvent.click(screen.getByRole("tab", { name: "Attribution" }));
     const attribution = document.querySelector("[data-section='attribution']") as HTMLElement;
-    expect(attribution.querySelector("[data-notes]")).toBeNull();
+    expect(attribution.querySelector("[data-notes]")).toBeTruthy();
+    const sample = attribution.querySelector("[data-vol='sample']") as HTMLElement;
+    expect(sample).toBeTruthy();
+    expect(sample.textContent ?? "").toContain("Not enough live days yet to judge the model");
+    expect(sample.querySelector("[data-how-to-read]")).toBeTruthy();
+    const earned = Array.from(attribution.querySelectorAll("h3")).find((node) =>
+      (node.textContent ?? "").startsWith("What the book earned"),
+    ) as HTMLElement;
+    fireEvent.click(earned.querySelector("[data-how-to-read] button") as HTMLElement);
+    expect(attribution.textContent ?? "").toContain(
+      "factor P&L is the book's exposure times the factor returns",
+    );
+    expect(attribution.textContent ?? "").toContain("the check column in the table is for");
+  });
+
+  it("reads the attribution tab in the order the questions are asked", () => {
+    render(<SnapshotView snapshot={LATEST} now={NOW} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Attribution" }));
+    const section = document.querySelector("[data-section='attribution']") as HTMLElement;
+    const earned = Array.from(section.querySelectorAll("h3")).find((node) =>
+      (node.textContent ?? "").startsWith("What the book earned"),
+    ) as HTMLElement;
+    expect(earned, "the earnings heading is missing").toBeTruthy();
+    const cards = section.querySelector("[data-card='pnl-total']") as HTMLElement;
+    const cumulative = section.querySelector("[data-chart='cumulative']") as HTMLElement;
+    const daily = section.querySelector("[data-chart='daily']") as HTMLElement;
+    const risk = section.querySelector("[data-group='volatility']") as HTMLElement;
+    const byFactor = section.querySelector("[data-panel='by-factor']") as HTMLElement;
+    for (const node of [cards, cumulative, daily, risk, byFactor]) {
+      expect(node, "a section of the attribution tab is missing").toBeTruthy();
+    }
+    // What the book earned, then how much risk produced it, then which factors.
+    const order = [earned, cards, cumulative, daily, risk, byFactor];
+    for (let index = 1; index < order.length; index += 1) {
+      const before = order[index - 1].compareDocumentPosition(order[index]);
+      expect(
+        before & Node.DOCUMENT_POSITION_FOLLOWING,
+        `${order[index - 1].dataset.chart ?? order[index - 1].id ?? index} is not before the next section`,
+      ).toBeTruthy();
+    }
+    // The volatility panel carries the waterfall, the by-session line and the chart.
+    expect(risk.querySelector("[data-waterfall='true']")).toBeTruthy();
+    expect(risk.querySelector("[data-chart='hedge-vol']")).toBeTruthy();
+    expect(risk.querySelector("[data-chart='volatility']")).toBeTruthy();
+    expect(risk.querySelector("[data-corrections='true']")).toBeTruthy();
+  });
+
+  it("opens the glossary as one disclosure, with no header over a header", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Operations" }));
+    const glossary = document.querySelector("[data-glossary='true']") as HTMLElement;
+    expect(glossary.tagName.toLowerCase()).toBe("details");
+    // It was a details wrapped in a details with the same words, which reads as a
+    // collapsed row that opens onto another collapsed row.
+    expect(glossary.parentElement?.closest("details")).toBeNull();
+    const summaries = Array.from(
+      document.querySelectorAll("#panel-operations summary"),
+    ).filter((node) => (node.textContent ?? "").trim().toLowerCase() === "what the words mean");
+    expect(summaries.length).toBe(1);
+  });
+
+  it("keeps Operations to the run's own record", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Operations" }));
+    const operations = document.querySelector("#panel-operations") as HTMLElement;
+    // The six things the tab holds, and nothing that is a method note.
+    expect(operations.querySelector("[data-alert='reconciliation']")).toBeTruthy();
+    expect(operations.querySelector("[data-details='run-detail']")).toBeTruthy();
+    expect(operations.querySelector("[data-glossary='true']")).toBeTruthy();
+    const text = operations.textContent ?? "";
+    expect(text).toContain("reconcil");
+    expect(text.length).toBeGreaterThan(0);
+    for (const gone of [
+      "corrections to the series",
+      "sample size",
+      "the research panel:",
+      "how the four terms are computed",
+    ]) {
+      expect(text, `Operations still carries a method note: ${gone}`).not.toContain(gone);
+    }
   });
 });
 

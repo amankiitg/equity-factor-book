@@ -29,7 +29,6 @@ import { Movers, RiskConcentration } from "./FutureSections";
 import { HedgePanel } from "./HedgePanel";
 import { ConstructionTelemetry, MetricsRow } from "./MetricsRow";
 import { MonthlyPanels } from "./Monthly";
-import { NotesDrawer } from "./Notes";
 import { Overview } from "./Overview";
 import { Glossary, Panel } from "./Panel";
 import { SectorSection } from "./SectorSection";
@@ -186,10 +185,10 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
             />
           </Details>
           <ConstructionTelemetry snapshot={snapshot} />
-          <NotesDrawer snapshot={snapshot} />
-          <Details hook="glossary" summary="what the words mean">
-            <Glossary />
-          </Details>
+          {/* The glossary is its own disclosure. It used to be wrapped in a second
+              one with the same title, which is a header over a header and a click
+              that opens nothing. */}
+          <Glossary />
         </div>
       </div>
 
