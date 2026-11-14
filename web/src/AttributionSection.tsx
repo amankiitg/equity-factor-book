@@ -28,7 +28,6 @@ import { factorWord } from "./labels";
 import type {
   Attribution,
   AttributionDay,
-  AttributionNote,
   AttributionPeriod,
   AttributionRisk,
   AttributionRiskPath,
@@ -670,42 +669,208 @@ export function HedgeWaterfall({ before, after }: { before: number; after: numbe
 }
 
 /**
- * A dated note about the series, as a numbered popover at the claim it annotates.
+ * The corrections to these series, in the words the reader is owed.
  *
- * The notes used to be reachable only as a numbered list in the Operations drawer,
- * three tabs from the numbers they qualify, and as a browser tooltip on a chart
- * marker. A correction to a series belongs beside the series, so the number is a
- * button here and its text opens under it.
+ * Three moments changed what the charts below mean: the two opening sessions were
+ * built before the hedge was complete, the 10-20 fix moved every earlier point, and
+ * the 10-21 refill re-priced eight days of cost. A reader comparing a session with
+ * the one before it needs each of those at the date it happened, so the numbers are
+ * drawn on the charts and the same three statements are listed under the panel. The
+ * list order is the marker number, which is what keeps the two together.
+ *
+ * The words live here rather than in the payload because they are page copy: the
+ * evening's stored notes are the record other readers use, and these are the
+ * sentences the owner asked this panel to carry.
  */
-function Footnote({ number, note }: { number: number; note: AttributionNote }) {
-  const [open, setOpen] = useState(false);
+type Correction = { number: number; dates: string[]; text: string };
+
+const CORRECTIONS: Correction[] = [
+  {
+    number: 1,
+    dates: ["2026-09-28", "2026-09-29"],
+    text:
+      "The first two days (09-28 and 09-29) the book was still being built and not " +
+      "fully hedged, so their predicted volatility can't be compared with later days.",
+  },
+  {
+    number: 2,
+    dates: ["2026-10-20"],
+    text:
+      "On 10-20 a formula error in the before-hedge volatility was fixed and every " +
+      "earlier day recomputed. The line before 10-20 is lower than it was first drawn.",
+  },
+  {
+    number: 3,
+    dates: ["2026-10-21"],
+    text:
+      "On 10-21, trading costs for 10-09 to 10-20 were recomputed from the actual " +
+      "fills (they had been estimated before the fills arrived). Those days' cost, " +
+      "P&L and realized volatility changed slightly.",
+  },
+];
+
+/**
+ * The dates a chart draws: its own sessions, plus the days a correction names.
+ *
+ * A correction about a day before the first plotted session still has to be findable
+ * at its date, so the axis carries that date as an empty slot and the marker sits on
+ * it. Nothing is invented: a slot with no value draws no point.
+ */
+const chartDates = (dates: string[]): string[] => {
+  const all = new Set(dates.filter((date) => date !== ""));
+  for (const correction of CORRECTIONS) {
+    for (const date of correction.dates) all.add(date);
+  }
+  return [...all].sort();
+};
+
+/** A numbered correction marker, at the date it is about, opened by a click. */
+function Marker({
+  cx,
+  top,
+  height,
+  number,
+  date,
+  open,
+  onOpen,
+}: {
+  cx: number;
+  top: number;
+  height: number;
+  number: number;
+  date: string;
+  open: boolean;
+  onOpen: () => void;
+}) {
   return (
-    <span className="relative inline-block align-middle" data-footnote={number}>
-      <button
-        type="button"
-        aria-label={`note ${number}`}
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-200 px-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-300"
-      >
+    <g
+      data-note-marker={number}
+      data-note-marker-date={date}
+      role="button"
+      tabIndex={0}
+      aria-label={`correction ${number} on ${date}`}
+      aria-expanded={open}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      className="cursor-pointer"
+    >
+      <title>{`correction ${number}, ${date}`}</title>
+      <line
+        x1={cx}
+        y1={top}
+        x2={cx}
+        y2={top + height}
+        stroke="#475569"
+        strokeWidth="0.8"
+        strokeDasharray="2 2"
+      />
+      <circle cx={cx} cy={top + 4} r="6" fill={open ? "#0f172a" : "#475569"} />
+      <text x={cx} y={top + 6.5} textAnchor="middle" fontSize="7" fill="#ffffff">
         {number}
-      </button>
-      {open ? (
-        <span
-          role="dialog"
-          aria-label={`note ${number}`}
-          data-footnote-text={number}
-          className="absolute left-0 top-5 z-20 w-72 rounded border border-slate-300 bg-white p-2 text-xs font-normal normal-case tracking-normal leading-snug text-slate-700 shadow-lg"
-        >
-          <span className="font-medium">{dateOnly(note.date) ?? "undated"}</span>{" "}
-          {note.text}
-        </span>
-      ) : null}
-    </span>
+      </text>
+    </g>
   );
 }
 
-function RiskSplit({ risk, notes }: { risk: AttributionRisk; notes: AttributionNote[] }) {
+/** Every correction marker whose date falls on a chart's axis. */
+function ChartMarkers({
+  dates,
+  x,
+  top,
+  height,
+  open,
+  setOpen,
+}: {
+  dates: string[];
+  x: (index: number) => number;
+  top: number;
+  height: number;
+  open: number | null;
+  setOpen: (number: number | null) => void;
+}) {
+  return (
+    <>
+      {CORRECTIONS.map((correction) =>
+        correction.dates.map((date) => {
+          const index = dates.indexOf(date);
+          if (index < 0) return null;
+          return (
+            <Marker
+              key={`${correction.number}-${date}`}
+              cx={x(index)}
+              top={top}
+              height={height}
+              number={correction.number}
+              date={date}
+              open={open === correction.number}
+              onOpen={() => setOpen(open === correction.number ? null : correction.number)}
+            />
+          );
+        }),
+      )}
+    </>
+  );
+}
+
+/** A correction's text, opened at the marker that carries its number. */
+function CorrectionPopover({ correction, left }: { correction: Correction; left: number }) {
+  return (
+    <div
+      role="dialog"
+      aria-label={`correction ${correction.number}`}
+      data-correction-text={correction.number}
+      style={{ left: `${Math.min(90, Math.max(10, left))}%`, top: "2rem" }}
+      className="absolute z-20 w-64 -translate-x-1/2 rounded border border-slate-300 bg-white p-2 text-xs leading-snug text-slate-700 shadow-lg"
+    >
+      {correction.text}
+    </div>
+  );
+}
+
+/** Where a correction's popover should sit on a 320 wide chart. */
+const popoverLeft = (
+  dates: string[],
+  number: number | null,
+  x: (index: number) => number,
+): number => {
+  const correction = CORRECTIONS.find((entry) => entry.number === number);
+  const date = correction?.dates.find((entry) => dates.includes(entry));
+  const index = date === undefined ? 0 : dates.indexOf(date);
+  return (x(index) / 320) * 100;
+};
+
+/** The same three corrections as words, under the panel whose charts they qualify. */
+function Corrections() {
+  return (
+    <div data-corrections="true" className="mt-2 text-xs text-slate-600">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Corrections
+      </h3>
+      <ol data-notes="true" aria-label="corrections to these charts" className="mt-1 space-y-1">
+        {CORRECTIONS.map((correction) => (
+          <li
+            key={correction.number}
+            data-note={correction.dates[0]}
+            data-note-dates={correction.dates.join(",")}
+            className="flex gap-1"
+          >
+            <span className="mt-px inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-slate-600 text-[10px] text-white">
+              {correction.number}
+            </span>
+            <span>{correction.text}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function RiskSplit({ risk }: { risk: AttributionRisk }) {
   const before = risk.pre_hedge_vol;
   const after = risk.hedged_vol;
   const removed = before === null || after === null ? null : before - after;
@@ -737,75 +902,14 @@ function RiskSplit({ risk, notes }: { risk: AttributionRisk; notes: AttributionN
           {percent(risk.idio_share, 1)}.
         </HowToRead>
       </p>
-      {notes.length > 0 ? (
-        <p className="mt-1 text-xs text-slate-500" data-series-notes="true">
-          corrections to these panels:
-          {notes.map((note, index) => (
-            <Footnote key={`${note.date}-${index}`} number={index + 1} note={note} />
-          ))}
-        </p>
-      ) : null}
+      {risk.path.length >= 2 ? <HedgeVol path={risk.path} /> : null}
       {risk.factor_share !== null &&
       risk.factor_share !== undefined &&
       risk.factor_share > 0.05 &&
       risk.path.length >= 2 ? (
-        <RiskPath path={risk.path} notes={notes} />
+        <RiskPath path={risk.path} />
       ) : null}
     </div>
-  );
-}
-
-/**
- * The dates a note falls on, numbered as the list below the charts numbers them.
- *
- * A note whose date is not in the path is still in the list: it is a statement about
- * the series, and a chart that dropped it because the window had scrolled past it
- * would lose the record of a correction exactly when the correction is old.
- */
-function noteMarkers(
-  path: AttributionRiskPath[],
-  notes: AttributionNote[],
-): Array<{ index: number; number: number; note: AttributionNote }> {
-  const dates = path.map((point) => dateOnly(point.trade_date) ?? "");
-  const markers: Array<{ index: number; number: number; note: AttributionNote }> = [];
-  notes.forEach((note, position) => {
-    const index = dates.indexOf(dateOnly(note.date) ?? "");
-    if (index >= 0) markers.push({ index, number: position + 1, note });
-  });
-  return markers;
-}
-
-/** A numbered marker on a chart, carrying its note's text as the accessible title. */
-function Marker({
-  cx,
-  top,
-  height,
-  number,
-  note,
-}: {
-  cx: number;
-  top: number;
-  height: number;
-  number: number;
-  note: AttributionNote;
-}) {
-  return (
-    <g data-note-marker={number}>
-      <title>{`${dateOnly(note.date) ?? "undated"}: ${note.text}`}</title>
-      <line
-        x1={cx}
-        y1={top}
-        x2={cx}
-        y2={top + height}
-        stroke="#475569"
-        strokeWidth="0.8"
-        strokeDasharray="2 2"
-      />
-      <circle cx={cx} cy={top + 4} r="6" fill="#475569" />
-      <text x={cx} y={top + 6.5} textAnchor="middle" fontSize="7" fill="#ffffff">
-        {number}
-      </text>
-    </g>
   );
 }
 
@@ -817,7 +921,8 @@ function Marker({
  * risk the hedge removed. Both are read off one covariance and one design, which is
  * what makes the band a measurement rather than a comparison of two vintages.
  */
-function HedgeVol({ path, notes }: { path: AttributionRiskPath[]; notes: AttributionNote[] }) {
+function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
+  const [open, setOpen] = useState<number | null>(null);
   const W = 320;
   const H = 110;
   const L = 30;
@@ -826,21 +931,33 @@ function HedgeVol({ path, notes }: { path: AttributionRiskPath[]; notes: Attribu
   const B = 18;
   const pw = W - L - R;
   const ph = H - T - B;
-  const before = path.map((point) => point.pre_hedge_vol ?? 0);
-  const after = path.map((point) => point.hedged_vol ?? 0);
-  const top = Math.max(...before, 0.005) * 1.08;
+  const byDate = new Map(path.map((point) => [dateOnly(point.trade_date) ?? "", point]));
+  const dates = chartDates(path.map((point) => dateOnly(point.trade_date) ?? ""));
+  const before = dates.map((date) => byDate.get(date)?.pre_hedge_vol ?? null);
+  const after = dates.map((date) => byDate.get(date)?.hedged_vol ?? null);
+  const measured = before.filter((value): value is number => value !== null);
+  const top = Math.max(...measured, 0.005) * 1.08;
   const x = (index: number): number =>
-    path.length <= 1 ? L + pw / 2 : L + (index / (path.length - 1)) * pw;
+    dates.length <= 1 ? L + pw / 2 : L + (index / (dates.length - 1)) * pw;
   const y = (value: number): number => T + (1 - Math.min(value / top, 1)) * ph;
-  const line = (values: number[]): string =>
-    values.map((value, index) => `${x(index)},${y(value)}`).join(" ");
+  const line = (values: Array<number | null>): string =>
+    values
+      .map((value, index) => (value === null ? null : `${x(index)},${y(value)}`))
+      .filter((point): point is string => point !== null)
+      .join(" ");
+  // The band is shaded only where both lines have a value: a session with no forecast
+  // has no removed risk to shade, and shading it to zero would draw one.
+  const paired = dates
+    .map((_, index) => index)
+    .filter((index) => before[index] !== null && after[index] !== null);
   const band = [
-    ...before.map((value, index) => `${x(index)},${y(value)}`),
-    ...after.map((value, index) => `${x(index)},${y(value)}`).reverse(),
+    ...paired.map((index) => `${x(index)},${y(before[index] as number)}`),
+    ...[...paired].reverse().map((index) => `${x(index)},${y(after[index] as number)}`),
   ].join(" ");
+  const correction = CORRECTIONS.find((entry) => entry.number === open) ?? null;
 
   return (
-    <figure className="mt-2" data-chart="hedge-vol">
+    <figure className="relative mt-2" data-chart="hedge-vol">
       <figcaption className="text-xs text-slate-500">
         predicted annual volatility, % annualized, by session
       </figcaption>
@@ -874,23 +991,17 @@ function HedgeVol({ path, notes }: { path: AttributionRiskPath[]; notes: Attribu
         stroke={COLORS.idio}
         strokeWidth="1.4"
       />
-      {noteMarkers(path, notes).map((marker) => (
-        <Marker
-          key={marker.number}
-          cx={x(marker.index)}
-          top={T}
-          height={ph}
-          number={marker.number}
-          note={marker.note}
-        />
-      ))}
+      <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} />
       <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
-        {dateOnly(path[0]?.trade_date) ?? ""}
+        {dates[0] ?? ""}
       </text>
       <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#64748b">
-        {dateOnly(path[path.length - 1]?.trade_date) ?? ""}
+        {dates[dates.length - 1] ?? ""}
       </text>
       </svg>
+      {correction ? (
+        <CorrectionPopover correction={correction} left={popoverLeft(dates, open, x)} />
+      ) : null}
       <Legend
         entries={[
           {
@@ -903,11 +1014,17 @@ function HedgeVol({ path, notes }: { path: AttributionRiskPath[]; notes: Attribu
           { key: "removed", word: "removed by the hedge", color: "#94a3b8", dash: "", shape: "patch" },
         ]}
       />
+      <p className="mt-1 text-xs text-slate-500">
+        the two opening sessions carry their marker and no line: this period&apos;s own
+        record starts on 10-01, and note 1 says why those two days cannot be compared with
+        it.
+      </p>
     </figure>
   );
 }
 
-function RiskPath({ path, notes }: { path: AttributionRiskPath[]; notes: AttributionNote[] }) {
+function RiskPath({ path }: { path: AttributionRiskPath[] }) {
+  const [open, setOpen] = useState<number | null>(null);
   const W = 320;
   const H = 110;
   const L = 30;
@@ -916,14 +1033,18 @@ function RiskPath({ path, notes }: { path: AttributionRiskPath[]; notes: Attribu
   const B = 18;
   const pw = W - L - R;
   const ph = H - T - B;
+  const byDate = new Map(path.map((point) => [dateOnly(point.trade_date) ?? "", point]));
+  const dates = chartDates(path.map((point) => dateOnly(point.trade_date) ?? ""));
   const x = (index: number): number =>
-    path.length <= 1 ? L + pw / 2 : L + (index / (path.length - 1)) * pw;
+    dates.length <= 1 ? L + pw / 2 : L + (index / (dates.length - 1)) * pw;
   const y = (value: number): number => T + (1 - value) * ph;
-  const bands = path.map((point) => {
-    const factor = Math.max(0, Math.min(1, point.factor_share ?? 0));
-    const idio = Math.max(0, Math.min(1, point.idio_share ?? 0));
+  const bands = dates.map((date) => {
+    const point = byDate.get(date);
+    const factor = Math.max(0, Math.min(1, point?.factor_share ?? 0));
+    const idio = Math.max(0, Math.min(1, point?.idio_share ?? 0));
     return { factor, top: Math.min(1, factor + idio) };
   });
+  const correction = CORRECTIONS.find((entry) => entry.number === open) ?? null;
   const line = (values: number[]): string =>
     values.map((value, index) => `${x(index)},${y(value)}`).join(" ");
   const polygon = (upper: number[], lower: number[]): string =>
@@ -974,23 +1095,17 @@ function RiskPath({ path, notes }: { path: AttributionRiskPath[]; notes: Attribu
         stroke={COLORS.factor}
         strokeWidth="1"
       />
-      {noteMarkers(path, notes).map((marker) => (
-        <Marker
-          key={marker.number}
-          cx={x(marker.index)}
-          top={T}
-          height={ph}
-          number={marker.number}
-          note={marker.note}
-        />
-      ))}
+      <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} />
       <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
-        {dateOnly(path[0]?.trade_date) ?? ""}
+        {dates[0] ?? ""}
       </text>
       <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#64748b">
-        {dateOnly(path[path.length - 1]?.trade_date) ?? ""}
+        {dates[dates.length - 1] ?? ""}
       </text>
       </svg>
+      {correction ? (
+        <CorrectionPopover correction={correction} left={popoverLeft(dates, open, x)} />
+      ) : null}
       <Legend
         entries={[
           { key: "factor", word: "from factors", color: COLORS.factor, dash: "", shape: "patch" },
@@ -1218,6 +1333,7 @@ function FactorTable({ period }: { period: AttributionPeriod }) {
  * unmeasured session is not a quiet one.
  */
 function VolatilityPanel({ period }: { period: AttributionPeriod }) {
+  const [open, setOpen] = useState<number | null>(null);
   const rows = period.daily;
   const pairs = rows.filter(
     (day) =>
@@ -1260,15 +1376,24 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
   const ph = H - T - B;
   const values = pairs.flatMap((day) => [day.realized_vol as number, day.forecast_vol as number]);
   const top = Math.max(...values, 0.01) * 1.1;
+  const byDate = new Map(pairs.map((day) => [dateOnly(day.trade_date) ?? "", day]));
+  const dates = chartDates(pairs.map((day) => dateOnly(day.trade_date) ?? ""));
   const x = (index: number): number =>
-    pairs.length <= 1 ? L + pw / 2 : L + (index / (pairs.length - 1)) * pw;
+    dates.length <= 1 ? L + pw / 2 : L + (index / (dates.length - 1)) * pw;
   const y = (value: number): number => T + (1 - Math.min(value / top, 1)) * ph;
   const line = (pick: (day: AttributionDay) => number): string =>
-    pairs.map((day, index) => `${x(index)},${y(pick(day))}`).join(" ");
+    dates
+      .map((date, index) => {
+        const day = byDate.get(date);
+        return day ? `${x(index)},${y(pick(day))}` : null;
+      })
+      .filter((point): point is string => point !== null)
+      .join(" ");
   const last = pairs[pairs.length - 1];
+  const correction = CORRECTIONS.find((entry) => entry.number === open) ?? null;
 
   return (
-    <figure data-chart="volatility" data-panel="volatility" className="mt-3">
+    <figure data-chart="volatility" data-panel="volatility" className="relative mt-3">
       <figcaption className="text-sm font-semibold">
         Realized against forecast volatility
         <HowToRead>
@@ -1321,13 +1446,17 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
           stroke={COLORS.idio}
           strokeWidth="1.4"
         />
+        <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} />
         <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
-          {dateOnly(pairs[0]?.trade_date) ?? ""}
+          {dates[0] ?? ""}
         </text>
         <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#64748b">
-          {dateOnly(last?.trade_date) ?? ""}
+          {dates[dates.length - 1] ?? ""}
         </text>
       </svg>
+      {correction ? (
+        <CorrectionPopover correction={correction} left={popoverLeft(dates, open, x)} />
+      ) : null}
       <Legend
         entries={[
           {
@@ -1344,11 +1473,22 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
           },
         ]}
       />
-      <p className="mt-1 text-sm tabular-nums" data-vol="last">
-        the last session with both, {dateOnly(last?.trade_date) ?? "n/a"}: realized{" "}
-        {volPct(last?.realized_vol)} against {volPct(last?.forecast_vol)} forecast
-        {biasSentence(pairs)}
-      </p>
+      <div className="mt-1 flex flex-wrap items-baseline gap-x-3">
+        <p className="text-sm tabular-nums" data-vol="last">
+          the last session with both, {dateOnly(last?.trade_date) ?? "n/a"}: realized{" "}
+          {volPct(last?.realized_vol)} against {volPct(last?.forecast_vol)} forecast
+          {biasSentence(pairs)}
+        </p>
+        <p className="text-xs text-slate-600" data-vol="sample">
+          Not enough live days yet to judge the model ({count(pairs.length)} of 30)
+          <HowToRead>
+            thirty live days is the sample the risk test needs before a bias means
+            anything: below it the line above is a direction, not a verdict. Example:
+            this period has {count(pairs.length)} session(s) with both a forecast and a
+            realized number, so the comparison has {count(pairs.length)} points in it.
+          </HowToRead>
+        </p>
+      </div>
     </figure>
   );
 }
@@ -1363,19 +1503,48 @@ function biasSentence(pairs: AttributionDay[]): string {
   return "; the two have tracked each other on average";
 }
 
+/**
+ * The volatility breakdown: what the book carried, what the hedge took out, and how
+ * the model's forecast compared with what the book did.
+ *
+ * It sits between what the book earned and which factors earned it, which is the
+ * order the questions are asked in: what came in, how much risk produced it, and only
+ * then which of the modelled factors was behind the factor half. The corrections list
+ * closes the panel because a reader who has just compared two sessions needs the days
+ * that made two of them not comparable.
+ */
+function VolatilityGroup({ period }: { period: AttributionPeriod }) {
+  const risk = period.risk ?? null;
+  return (
+    <section data-group="volatility" className="mt-4">
+      <h3 className="text-sm font-semibold">
+        Risk and volatility
+        <HowToRead>
+          the book&apos;s predicted risk before the hedge, the points the hedge took out,
+          and the model&apos;s forecast against what the book actually did. Every figure
+          is annualized, so one session compares with the next.
+          {risk
+            ? ` Example: the last session was sized for ${volPct(risk.pre_hedge_vol)} and held ${volPct(risk.hedged_vol)}.`
+            : ""}
+        </HowToRead>
+      </h3>
+      {risk ? <RiskSplit risk={risk} /> : null}
+      <VolatilityPanel period={period} />
+      <Corrections />
+    </section>
+  );
+}
+
 function PeriodView({
   period,
   chart,
   snapshot,
   live = false,
-  notes = [],
 }: {
   period: AttributionPeriod;
   chart: "daily" | "monthly";
   snapshot?: Snapshot;
   live?: boolean;
-  /** Dated notes about the series, drawn as markers on the risk pictures. */
-  notes?: AttributionNote[];
 }) {
   const cumulative = period.cumulative;
   const nav =
@@ -1412,12 +1581,8 @@ function PeriodView({
         {from && to ? `, ${from} to ${to}` : ""}.
       </p>
 
-      {/* The flow, in the order a reader asks the questions: how much risk did the
-          book carry before the hedge, what did the hedge remove, did the forecast
-          hold up, and only then what the book earned. */}
-      {live && period.risk ? <RiskSplit risk={period.risk} notes={notes} /> : null}
-      {live ? <VolatilityPanel period={period} /> : null}
-
+      {/* The flow, in the order a reader asks the questions: what the book earned,
+          how much risk produced it, and only then which factors were behind it. */}
       <h3 className="mt-4 text-sm font-semibold">
         What the book earned
         <HowToRead>
@@ -1425,7 +1590,13 @@ function PeriodView({
           own P&amp;L, what the fills cost, and the part no term explains. Every figure is
           in basis points of NAV, so a session&apos;s move is the same size whether the book
           was large or small. Example: the live book is {bps(cumulative.pnl_total)} since it
-          opened.
+          opened. The evening run stores every row: factor P&amp;L is the book&apos;s
+          exposure times the factor returns, idio P&amp;L is its positions times the
+          specific returns, and the four terms add to the day&apos;s total by construction.
+          A row that does not add up is a stored day that does not decompose, which is what
+          the check column in the table is for. The fourth term is not a fourth estimate:
+          it is the stored artifacts disagreeing with the panel&apos;s own return, and on
+          the live book it is a few hundredths of a bp.
         </HowToRead>
       </h3>
       <dl className="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
@@ -1470,7 +1641,6 @@ function PeriodView({
       {live ? <DailyBars days={carried} /> : null}
       <CostLine period={period} snapshot={snapshot} />
       {live ? <CostEras period={period} snapshot={snapshot} /> : null}
-      <FactorTable period={period} />
 
       <DayTable
         days={carried}
@@ -1486,6 +1656,9 @@ function PeriodView({
           {bps(lastDay.pnl_beta)} (beta {beta3(lastDay.book_beta)}).
         </p>
       ) : null}
+
+      {live ? <VolatilityGroup period={period} /> : null}
+      <FactorTable period={period} />
     </>
   );
 }
@@ -1558,13 +1731,26 @@ export function AttributionSection({
       ) : null}
 
       {view === "backtest" && backtest ? (
-        <PeriodView period={backtest} chart="monthly" />
+        <>
+          {/* The paragraph that used to sit in the Operations notes now explains this
+              panel where the panel is: it is about the object the reader is looking at,
+              not about the book. */}
+          <h3 className="mt-3 text-sm font-semibold" data-panel="backtest">
+            the research panel (backtest)
+            <HowToRead>
+              this is a backtest of the seed book, not the live book. Nobody traded it, so
+              its cost is exactly zero, and its fourth term is a research-vintage mismatch
+              rather than a loss anyone took.
+            </HowToRead>
+          </h3>
+          <PeriodView period={backtest} chart="monthly" />
+        </>
       ) : emptyLive ? (
         <p className="mt-2 text-sm text-slate-600" data-empty="live">
           {live?.note || attribution.note || "no live day is attributed yet"}
         </p>
       ) : live ? (
-        <PeriodView period={live} chart="daily" snapshot={snapshot} live notes={attribution.notes ?? []} />
+        <PeriodView period={live} chart="daily" snapshot={snapshot} live />
       ) : null}
     </section>
   );
