@@ -6,25 +6,23 @@
 // are monospaced and tabular so a column of them lines up and a digit that moves is
 // visible rather than merely different.
 //
-// Two things moved out of this row in the redesign. The pre-floor construction
-// telemetry - the effective breadth before the floor and the index-sized book's gross -
-// answers a question nobody has in the morning ("what did the sizing look like before
-// it was finished"), so it sits behind one disclosure at the end of the row. And the
-// denominator is now stated on every ratio: the book's gross is 100% of NAV by
-// construction, so "gross 100.00%" alone reads as a fact about the book when it is a
-// fact about the sizing target, and weights, turnover and costs are all quoted against
-// NAV for the same reason.
+// Every card title carries its own (i). The label on a card is a word, not a
+// sentence: "turnover" says nothing to a reader who has not met it, and the
+// explanation used to be a paragraph over the whole row that no reader takes in
+// twice. One tap opens the meaning, why the number moves, and one real example.
 //
-// Turnover is the one card that is a correction rather than a move. The per-name column
-// the page used to total counts only the legs of names the book still holds, so on
-// 2026-10-09 it summed to $267,018 while the evening sent $379,430 - the difference
-// being the 34 legs that closed names leaving the book, which the join drops. The card
-// now reads the reconciliation's own `intended_notional`, which is every leg the run
-// built, and the disclosure says which legs the per-name column leaves out.
+// Two cards changed with the reader they are written for. Turnover reads as the
+// night's own sentence, "Tonight: 109 orders sent, $68,859", and names the legs the
+// broker refused with the reason it gave; the "$X sent of NAV, and $Y built, of which
+// $Z was never sent" arithmetic is in the construction disclosure on the Operations
+// tab, which is where a reader checking the loop goes. And the expected cost states
+// the period it covers: the trade half is paid once on tonight's legs and the borrow
+// half is charged over the sessions the book is held, so the two are added into a
+// total over that hold and the card says which hold it is.
 
 import { Details } from "./Details";
 import { HowToRead } from "./Panel";
-import { EXPECTED_EXPENSE, bpOfNav } from "./labels";
+import { EXPECTED_EXPENSE } from "./labels";
 import { count, dollars, oneDecimal, percent } from "./format";
 import type { BookFacts } from "./book";
 import type { Snapshot } from "./types";
@@ -32,23 +30,39 @@ import type { Snapshot } from "./types";
 /** How many dropped-for-no-risk names the coverage line lists before counting the rest. */
 const DROPPED_LINES = 6;
 
+/** How many blocked legs the turnover card names before it just counts them. */
+const BLOCKED_NAMES = 3;
+
 function Card({
   hook,
   label,
   value,
   detail,
+  info,
+  children,
 }: {
   /** A stable name for the tests and for anything reading the page mechanically. */
   hook: string;
   label: string;
-  value: string;
-  detail?: string;
+  value?: React.ReactNode;
+  detail?: React.ReactNode;
+  /** The (i) beside the title: what the number is, why it moves, one example. */
+  info: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return (
     <div data-card={hook} className="rounded border border-slate-200 bg-white px-2 py-1">
-      <div className="text-[0.65rem] uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="font-mono text-base leading-tight tabular-nums">{value}</div>
-      {detail ? <div className="text-xs text-slate-600">{detail}</div> : null}
+      <div className="text-[0.65rem] uppercase tracking-wide text-slate-500">
+        {label}
+        <HowToRead>{info}</HowToRead>
+      </div>
+      {value === undefined ? null : (
+        <div className="font-mono text-base leading-tight tabular-nums">{value}</div>
+      )}
+      {detail === undefined ? null : (
+        <div className="text-xs text-slate-600">{detail}</div>
+      )}
+      {children}
     </div>
   );
 }
@@ -64,27 +78,82 @@ export function bps(value: number | null | undefined): string {
   return value === null || value === undefined ? "n/a" : `${value.toFixed(2)} bp of NAV`;
 }
 
-/** The expected cost, split into the trading half and the holding cost. */
+/** One leg the evening could not send, read off the line the run wrote. */
+export interface BlockedLeg {
+  ticker: string;
+  notional: number | null;
+  reason: string;
+}
+
+/**
+ * The legs the broker refused, with their dollars and the reason it gave.
+ *
+ * `not_sent_lines` are the legs the evening built and could not send at all, and the
+ * writer fixes their shape at the source: ticker, intent, dollars, "never sent", and
+ * the reason in brackets. A line that does not parse is skipped rather than guessed
+ * at. Only the legs no broker could trade under any spelling reach this list, which is
+ * why the card can say they no longer trade rather than reporting a decision the run
+ * made on purpose.
+ */
+export function blockedLegs(snapshot: Snapshot): BlockedLeg[] {
+  const legs: BlockedLeg[] = [];
+  for (const line of snapshot.actual_holdings?.fills?.not_sent_lines ?? []) {
+    const match = /^(\S+)\s+(.*?)\s+never sent\s*\((.*)\)$/.exec(line.trim());
+    if (!match) continue;
+    const amount = /\$([\d,]+(?:\.\d+)?)/.exec(match[2]);
+    legs.push({
+      ticker: match[1],
+      notional: amount ? Number(amount[1].replace(/,/g, "")) : null,
+      reason: match[3],
+    });
+  }
+  return legs;
+}
+
+/** The reason a broker refused a leg, in words a reader who is not a broker knows. */
+function blockedReason(code: string): string {
+  const clean = code.trim();
+  if (clean.toUpperCase() === "SYMBOL_NOT_FOUND") return "no longer trades";
+  return clean.toLowerCase().replace(/_/g, " ");
+}
+
+/**
+ * The blocked legs as one clause: named while there are three or fewer, counted
+ * once there are more, because four tickers and three dollar figures in a small card
+ * is a list nobody finishes.
+ */
+export function blockedText(legs: BlockedLeg[]): string {
+  if (legs.length > BLOCKED_NAMES) {
+    const total = legs.reduce((sum, leg) => sum + Math.abs(leg.notional ?? 0), 0);
+    return `${count(legs.length)} names, ${dollars(total)} (no longer trade)`;
+  }
+  return legs
+    .map((leg) => `${leg.ticker} ${dollars(leg.notional)} (${blockedReason(leg.reason)})`)
+    .join("; ");
+}
+
+/**
+ * The expected cost, split into the trading half and the holding half.
+ *
+ * The two halves are different things and are named that way: the trades are paid
+ * once, tonight, on the legs the book actually sends; the borrow is charged on the
+ * short leg for as long as the book is held. The total the card leads with is their
+ * sum over that hold, which is why the card's own title states the hold.
+ */
 export function costDetail(
-  label: string | null | undefined,
+  horizon: number | null,
   split: import("./types").CostSplit | null,
 ): string | undefined {
+  if (!split) return undefined;
   const parts: string[] = [];
-  if (split && split.trading !== null && split.trading !== undefined) {
-    const names = (["spread", "impact", "commission"] as const)
-      .filter((name) => split[name] !== null && split[name] !== undefined)
-      .map((name) => `${name} ${(split[name] as number).toFixed(2)}`);
-    parts.push(
-      `trading ${split.trading.toFixed(2)} bp of NAV${
-        names.length ? ` (${names.join(" + ")})` : ""
-      }`,
-    );
-    if (split.borrow !== null && split.borrow !== undefined) {
-      parts.push(`borrow ${split.borrow.toFixed(2)} bp of NAV of holding cost`);
-    }
+  if (split.trading !== null && split.trading !== undefined) {
+    parts.push(`tonight's trades ${split.trading.toFixed(2)} bp`);
   }
-  if (label) parts.push(label);
-  return parts.length ? parts.join(" · ") : undefined;
+  if (split.borrow !== null && split.borrow !== undefined) {
+    parts.push(`borrow ${split.borrow.toFixed(2)} bp`);
+  }
+  if (!parts.length) return undefined;
+  return `${parts.join(", ")} over ${horizon === null ? "the hold" : `${horizon} sessions`}`;
 }
 
 /**
@@ -93,10 +162,10 @@ export function costDetail(
  * The day's realized cost is measured from the previous close to the fill, which is the
  * trade the loop actually made: the leg is sent after one close and fills at the next
  * open, so the overnight gap is inside it. That is a one-session horizon, and the
- * expectation it belongs beside is the day's own trading cost - not the period average
- * of a five-day fill history, and not the total that carries borrow, which is a holding
- * cost over a twenty-one session horizon and no fill price pays it. The panel states
- * both horizons so the two numbers cannot be read as like-for-like when they are not.
+ * expectation it belongs beside is the day's own trading cost, not the period total
+ * that carries borrow, which is a holding cost over twenty-one sessions and no fill
+ * price pays it. The card states both horizons so the two numbers cannot be read as
+ * like-for-like when they are not.
  */
 export function realizedLine(
   fills: NonNullable<Snapshot["actual_holdings"]>["fills"],
@@ -121,6 +190,95 @@ export function realizedLine(
   return `${day}. Separately, the fill history averages ${avg.toFixed(2)} bp of NAV across ${days} session(s)`;
 }
 
+/**
+ * The full book before the floor, on the Operations tab.
+ *
+ * This is a diagnostic: it says what the sizing looked like before the floor was
+ * applied and how much of the idea the floor costs. It is readable, and it is not
+ * one of the numbers the morning reader acts on, so it sits with the run's own
+ * detail rather than in the row of cards above the tables.
+ */
+export function ConstructionTelemetry({ snapshot }: { snapshot: Snapshot }) {
+  const book = snapshot.book;
+  const breadth = snapshot.breadth;
+  // The names the risk model could not measure, published under the breadth block.
+  // Absent on a document written before the evening published them, and an empty list
+  // on a night that dropped none: both mean nothing to report, so both draw nothing.
+  const droppedNoRisk = breadth?.dropped_no_risk ?? [];
+  return (
+    <Details
+      hook="construction"
+      summary={
+        <>
+          construction telemetry: the full book before the floor, {percent(book?.full_book_gross)}{" "}
+          of NAV
+        </>
+      }
+    >
+      {droppedNoRisk.length > 0 ? (
+        <p data-flag="dropped-no-risk" className="mt-2 text-xs text-slate-600">
+          {count(breadth?.n_dropped_no_risk ?? droppedNoRisk.length)} name(s) never reached the
+          book at all: the risk model has no specific risk for them, and a position is not sized
+          on a median that is not its own.{" "}
+          <span className="font-mono">
+            {droppedNoRisk
+              .slice(0, DROPPED_LINES)
+              .map((entry) => (entry.reason ? `${entry.ticker} (${entry.reason})` : entry.ticker))
+              .join(", ")}
+            {droppedNoRisk.length > DROPPED_LINES
+              ? ` and ${droppedNoRisk.length - DROPPED_LINES} more`
+              : ""}
+          </span>
+          .
+        </p>
+      ) : null}
+      <ul className="text-xs text-slate-600" data-telemetry="true">
+        <li>
+          The sizing starts wider than it trades: before dropping positions too small to trade,
+          the ideal book was spread like about {Math.round(breadth?.n_eff_full_book ?? 0)} equal
+          names at {percent(book?.full_book_achieved_annual_vol, 1)} predicted volatility.
+        </li>
+        <li>
+          The floor keeps {count(book?.n_names)} names, which spread like about{" "}
+          {Math.round(breadth?.n_eff_kept ?? 0)} equal names.
+        </li>
+        <li>
+          Nothing in the morning route reads this: it says how much of the idea the floor
+          costs.
+        </li>
+      </ul>
+      <dl className="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+        <div data-card="n_eff_full_book">
+          <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
+            n_eff full book
+          </dt>
+          <dd className="font-mono tabular-nums">{oneDecimal(breadth?.n_eff_full_book)}</dd>
+        </div>
+        <div data-card="full-book-gross">
+          <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
+            full book gross
+          </dt>
+          <dd className="font-mono tabular-nums">{percent(book?.full_book_gross)}</dd>
+        </div>
+        <div data-card="full-book-net">
+          <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
+            full book net
+          </dt>
+          <dd className="font-mono tabular-nums">{percent(book?.full_book_net)}</dd>
+        </div>
+        <div data-card="full-book-vol">
+          <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
+            full book forecast vol
+          </dt>
+          <dd className="font-mono tabular-nums">
+            {percent(book?.full_book_achieved_annual_vol, 1)}
+          </dd>
+        </div>
+      </dl>
+    </Details>
+  );
+}
+
 export function MetricsRow({
   snapshot,
   facts,
@@ -132,28 +290,23 @@ export function MetricsRow({
   const breadth = snapshot.breadth;
   const fills = snapshot.actual_holdings?.fills ?? null;
   const split = book?.expected_cost_split ?? null;
-  const sent = fills?.n_orders ?? null;
+  const sent = fills?.n_orders ?? snapshot.bridge?.orders_sent ?? null;
   const nav = facts.nav;
   const intended = snapshot.reconciliation?.intended_notional ?? null;
   const sentNotional = snapshot.reconciliation?.sent_notional ?? null;
-  const unsentNotional = snapshot.reconciliation?.unsent_notional ?? null;
   // The card stands on the legs the broker was sent, which is what turnover means; the
-  // legs the run built are stated beside it when the document carries both, and the
-  // built figure alone when it predates the split.
+  // legs the run built are stated in the construction disclosure when the document
+  // carries both, and the built figure alone when it predates the split.
   const turnover = sentNotional ?? intended;
-  // The names the risk model could not measure, published under the breadth block.
-  // Absent on a document written before the evening published them, and an empty list
-  // on a night that dropped none: both mean nothing to report, so both draw nothing.
+  const blocked = blockedLegs(snapshot);
+  // The horizon the cost is quoted over: the sessions the book is held between
+  // rebalances. `EFB_CADENCE` is absent on a daily loop, which is one session and is
+  // the same 21 the E6/E9 convention used before the flag existed.
+  const horizon = snapshot.run_status?.cadence?.k ?? 21;
+  const held = horizon === 1 ? "1 session" : `${horizon} sessions`;
+  // The names the risk model could not measure, for the book line below the cards.
   const droppedNoRisk = breadth?.dropped_no_risk ?? [];
-
-  // The day's legs, against NAV. The reconciliation states the notional of every leg
-  // the run built, which is the figure that measured the day's trading; the per-name
-  // column the book carries totals less than it, because a name that left the book has
-  // no row to attach its closing leg to.
-  const perNameTotal = (book?.names ?? []).reduce(
-    (total, name) => total + Math.abs(name.traded_notional ?? 0),
-    0,
-  );
+  const droppedCount = breadth?.n_dropped_no_risk ?? droppedNoRisk.length;
 
   return (
     <section data-cards="true" className="rounded border border-slate-200 bg-white p-2">
@@ -161,8 +314,8 @@ export function MetricsRow({
         the book
         <HowToRead>
           every figure is a share of NAV, so today&apos;s book compares with last
-          month&apos;s even after the equity moves. Example: gross was 97.3% of NAV on
-          11-11, with the long and short sides almost the same size.
+          month&apos;s even after the equity moves. Example: gross is{" "}
+          {percent(book?.gross)} of NAV right now, {dollars(book?.gross_notional)} in all.
         </HowToRead>
       </p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -175,45 +328,103 @@ export function MetricsRow({
               ? "of NAV"
               : `${dollars(book.gross_notional)} of NAV`
           }
+          info={
+            <>
+              The long and short sides added together, as a share of NAV, with the dollars
+              beside it. It is held near 100% by construction, so it moves when the book is
+              resized rather than when the market moves. Example: today&apos;s gross is{" "}
+              {percent(book?.gross)} of NAV, {dollars(book?.gross_notional)}.
+            </>
+          }
         />
-        <Card hook="net" label="net" value={percent(book?.net)} detail="of NAV" />
+        <Card
+          hook="net"
+          label="net"
+          value={percent(book?.net)}
+          detail="of NAV"
+          info={
+            <>
+              Long dollars less short dollars, as a share of NAV. Near zero means the book
+              is not betting on the market&apos;s direction, only on one stock against
+              another. Example: net is {percent(book?.net)} of NAV, {dollars(facts.netNotional)}
+              {" "}in dollars.
+            </>
+          }
+        />
         <Card
           hook="long-names"
           label="long names"
           value={count(facts.hasBook ? facts.nLong : null)}
           detail={facts.hasBook ? `${dollars(facts.longNotional)} of NAV` : undefined}
+          info={
+            <>
+              How many stocks the book holds long, and the dollars behind them, as a share
+              of NAV. It moves when the rebalance changes the book and when the guard
+              repairs it. Example: {count(facts.hasBook ? facts.nLong : null)} longs carry{" "}
+              {dollars(facts.longNotional)}.
+            </>
+          }
         />
         <Card
           hook="short-names"
           label="short names"
           value={count(facts.hasBook ? facts.nShort : null)}
           detail={facts.hasBook ? `${dollars(facts.shortNotional)} of NAV` : undefined}
+          info={
+            <>
+              How many stocks the book is short, and the dollars behind them, as a share of
+              NAV. The two sides are deliberately close to the same size. Example:{" "}
+              {count(facts.hasBook ? facts.nShort : null)} shorts carry{" "}
+              {dollars(facts.shortNotional)}.
+            </>
+          }
         />
         <Card
           hook="turnover"
-          label={sentNotional === null ? "turnover, order-leg notional" : "turnover, legs sent"}
-          value={percent(nav === null || turnover === null ? null : turnover / nav)}
-          detail={
-            turnover === null
-              ? "the reconciliation carries no notional for this close"
-              : sentNotional === null || intended === null || unsentNotional === null
-                ? `${dollars(turnover)} of every leg built, of NAV`
-                : `${dollars(sentNotional)} sent of NAV, and ${dollars(intended)} built, of which ${dollars(unsentNotional)} was never sent`
+          label="turnover"
+          info={
+            <>
+              Every leg sent to the broker, in dollars, for the close this page was written
+              for. A rebalance night trades the whole book; a hold night trades only what the
+              drift guard repairs, so the number moves by an order of magnitude between the
+              two. Example: {count(sent)} orders sent, {dollars(turnover)} of trading.
+            </>
           }
-        />
+        >
+          <div className="font-mono text-sm leading-tight tabular-nums">
+            {sentNotional !== null
+              ? `Tonight: ${count(sent)} orders sent, ${dollars(sentNotional)}`
+              : intended !== null
+                ? `Tonight: the run built ${dollars(intended)} of legs`
+                : `Tonight: ${count(sent)} orders sent, ${dollars(null)}`}
+          </div>
+          {turnover === null ? (
+            <div className="text-xs text-slate-600">
+              the reconciliation carries no notional for this close
+            </div>
+          ) : null}
+          {blocked.length > 0 ? (
+            <div data-blocked="true" className="text-xs text-slate-600">
+              Blocked: {blockedText(blocked)}
+            </div>
+          ) : null}
+        </Card>
         <Card
           hook="n_eff_kept"
           label="n_eff_kept"
           value={oneDecimal(breadth?.n_eff_kept)}
           detail={
-            // What the number means, not its name: an effective breadth of 130 is
-            // the book behaving like 130 equally sized positions, which is the only
-            // way to read it without knowing the statistics.
             breadth === null || breadth === undefined
-              ? "the book&apos;s effective breadth"
+              ? "the book's effective breadth"
               : `spread like about ${Math.round(breadth.n_eff_kept ?? 0)} equal positions (out of ${count(
                   book?.n_names,
                 )})`
+          }
+          info={
+            <>
+              Risk is spread as if the book held {Math.round(breadth?.n_eff_kept ?? 0)} equal
+              positions. Example: two positions at 50/50 count as 2, at 90/10 about 1.2.
+            </>
           }
         />
         <Card
@@ -225,18 +436,42 @@ export function MetricsRow({
               ? `${percent(facts.largest.weight)} of NAV (${dollars(facts.largestNotional)})`
               : undefined
           }
+          info={
+            <>
+              The biggest single weight in the book. A cap keeps any one name from carrying
+              too much of the book&apos;s risk, so this is a position size, not a bet size.
+              Example: {facts.largest?.ticker ?? "no name"} is{" "}
+              {percent(facts.largest?.weight)} of NAV.
+            </>
+          }
         />
         <Card
           hook="expected-expense"
-          label={EXPECTED_EXPENSE}
+          label={horizon ? `expected cost, ${horizon}-session hold` : EXPECTED_EXPENSE}
           value={bps(book?.expected_cost_bps)}
-          detail={costDetail(snapshot.run_status?.cost_label, split)}
+          detail={costDetail(horizon, split)}
+          info={
+            <>
+              What the book is expected to cost, in basis points of NAV, over the {held} it
+              is held: the spread, impact and commission on the legs it sends are paid once,
+              and the borrow is charged on the short leg for the whole hold. The two are
+              added into the one total. Example: {costDetail(horizon, split) ?? "no split is published for this close"}.
+            </>
+          }
         />
         <Card
           hook="top10-share"
           label="top 10 share of gross"
           value={percent(facts.top10Share)}
           detail={facts.hasBook ? "the ten largest weights" : undefined}
+          info={
+            <>
+              The ten largest weights as a share of the book&apos;s gross. It says how much
+              of the book sits in its biggest ideas; the effective breadth beside it says how
+              evenly the rest is spread. Example: the top ten carry{" "}
+              {percent(facts.top10Share)} of gross.
+            </>
+          }
         />
         {snapshot.actual_holdings ? (
           <Card
@@ -259,99 +494,25 @@ export function MetricsRow({
                     realizedLine(fills, split, book?.expected_cost_bps ?? null),
                   ].join(" · ")
             }
+            info={
+              <>
+                What the broker did with the legs it was sent, read back the next morning.
+                A leg that did not fill leaves the book away from its target until the next
+                send. Example: {count(fills?.n_filled)} of {count(sent)} filled,{" "}
+                {count(fills?.n_unfilled)} did not.
+              </>
+            }
           />
         ) : null}
       </div>
 
-      <Details
-        hook="construction"
-        summary={
-          <>
-            construction telemetry: the full book before the floor, {percent(book?.full_book_gross)}{" "}
-            of NAV
-          </>
-        }
-      >
-        {droppedNoRisk.length > 0 ? (
-          <p data-flag="dropped-no-risk" className="mt-2 text-xs text-slate-600">
-            {count(breadth?.n_dropped_no_risk ?? droppedNoRisk.length)} name(s) never reached the
-            book at all: the risk model has no specific risk for them, and a position is not sized
-            on a median that is not its own.{" "}
-            <span className="font-mono">
-              {droppedNoRisk
-                .slice(0, DROPPED_LINES)
-                .map((entry) => (entry.reason ? `${entry.ticker} (${entry.reason})` : entry.ticker))
-                .join(", ")}
-              {droppedNoRisk.length > DROPPED_LINES
-                ? ` and ${droppedNoRisk.length - DROPPED_LINES} more`
-                : ""}
-            </span>
-            .
-          </p>
-        ) : null}
-        <ul className="text-xs text-slate-600" data-telemetry="true">
-          <li>
-            The sizing starts wider than it trades: before dropping positions too small to trade,
-            the ideal book was spread like about {Math.round(breadth?.n_eff_full_book ?? 0)} equal
-            names at {percent(book?.full_book_achieved_annual_vol, 1)} predicted volatility.
-          </li>
-          <li>
-            The floor keeps {count(book?.n_names)} names, which spread like about{" "}
-            {Math.round(breadth?.n_eff_kept ?? 0)} equal names.
-          </li>
-          <li>
-            Nothing in the morning route reads this: it says how much of the idea the floor
-            costs.
-          </li>
-        </ul>
-        <dl className="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-          <div data-card="n_eff_full_book">
-            <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-              n_eff full book
-            </dt>
-            <dd className="font-mono tabular-nums">{oneDecimal(breadth?.n_eff_full_book)}</dd>
-          </div>
-          <div data-card="full-book-gross">
-            <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-              full book gross
-            </dt>
-            <dd className="font-mono tabular-nums">{percent(book?.full_book_gross)}</dd>
-          </div>
-          <div data-card="full-book-net">
-            <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-              full book net
-            </dt>
-            <dd className="font-mono tabular-nums">{percent(book?.full_book_net)}</dd>
-          </div>
-          <div data-card="full-book-vol">
-            <dt className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-              full book forecast vol
-            </dt>
-            <dd className="font-mono tabular-nums">
-              {percent(book?.full_book_achieved_annual_vol, 1)}
-            </dd>
-          </div>
-        </dl>
-        <div data-flag="turnover-note" className="mt-2 text-xs text-slate-500">
-          Turnover on the card is{" "}
-          <code>
-            {sentNotional === null
-              ? "reconciliation.intended_notional"
-              : "reconciliation.sent_notional"}
-          </code>
-          ,{" "}
-          {sentNotional === null
-            ? "every leg the evening built for this close, whether or not it was sent. This document predates the sent-only figure, so the card stands on the built one."
-            : "the legs the broker was sent for this close; the legs built and never sent are stated beside it."}
-          {perNameTotal > 0
-            ? ` The book's own per-name rows total ${dollars(
-                perNameTotal,
-              )} here, and the difference is not an error in either: a name that left the book has no row for its closing leg, so the trades-by-reason table carries that row itself.`
-            : ""}{" "}
-          The sent-only notional is in the evening&apos;s email and is not published in this
-          document.
-        </div>
-      </Details>
+      {book?.n_names ? (
+        <p data-flag="book-line" className="mt-2 text-xs text-slate-600">
+          Tonight&apos;s book: {count(book.n_names)} names.{" "}
+          {droppedCount > 0 ? `${count(droppedCount)} left out (no risk estimate yet); ` : null}
+          positions too small to trade removed; the rest scaled to 100% of NAV.
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -27,7 +27,7 @@ import { DrawerSection } from "./DrawerSection";
 import { ExposuresSection } from "./ExposuresSection";
 import { Movers, RiskConcentration } from "./FutureSections";
 import { HedgePanel } from "./HedgePanel";
-import { MetricsRow } from "./MetricsRow";
+import { ConstructionTelemetry, MetricsRow } from "./MetricsRow";
 import { MonthlyPanels } from "./Monthly";
 import { NotesDrawer } from "./Notes";
 import { Overview } from "./Overview";
@@ -155,6 +155,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
           <Details hook="bridge" summary="bridge: the account before the rebalance and after it">
             <Bridge snapshot={snapshot} />
           </Details>
+          <ConstructionTelemetry snapshot={snapshot} />
           <Details hook="staleness" summary="staleness and freshness">
             <dl className="grid gap-1 text-xs sm:grid-cols-2">
               <div>

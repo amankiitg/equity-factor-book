@@ -992,7 +992,15 @@ function CostEras({ period, snapshot }: { period: AttributionPeriod; snapshot?: 
     value === null || nav === null ? "" : dollars(value * nav);
   return (
     <section data-cost="eras" className="mt-2 rounded border border-slate-200 bg-white px-2 py-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">cost by era</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        cost by era
+        <HowToRead>
+          The book traded every day until 10-23 and every 21 sessions after it, so the cost
+          column is two different regimes and one average would hide the change. The guard
+          row is the share of the monthly era that the drift repairs spent. Example: the
+          daily era took {figure(dailyEra)} and the monthly one {figure(monthlyEra)}.
+        </HowToRead>
+      </h3>
       <dl className="mt-1 grid grid-cols-3 gap-2 text-xs">
         <div data-cost-era="daily">
           <dt className="text-slate-500">daily trading, to 10-23</dt>
@@ -1051,11 +1059,15 @@ function FactorTable({ period }: { period: AttributionPeriod }) {
 
   return (
     <div data-panel="by-factor" className="mt-3">
-      <h3 className="text-sm font-semibold">By factor</h3>
-      <p className="mt-1 text-xs text-slate-600">
-        Cumulative contribution of each modelled factor over {count(period.n_days)} session(s), in
-        bp of NAV, largest first. These sum to the factor card above.
-      </p>
+      <h3 className="text-sm font-semibold">
+        By factor
+        <HowToRead>
+          Each factor&apos;s cumulative contribution over {count(period.n_days)} session(s), in
+          basis points of NAV, largest first. These sum to the factor card above, so the two
+          can be checked against each other. Example: {entries[0].factor} contributed{" "}
+          {bps(entries[0].value)}.
+        </HowToRead>
+      </h3>
       <table aria-label="by factor" className="mt-1 w-full text-xs">
         <tbody>
           {entries.map((entry) => (
@@ -1121,7 +1133,15 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
   if (withRealized.length === 0) {
     return (
       <div data-panel="volatility" className="mt-3">
-        <h3 className="text-sm font-semibold">Realized against forecast volatility</h3>
+        <h3 className="text-sm font-semibold">
+          Realized against forecast volatility
+          <HowToRead>
+            The model&apos;s forecast against what the book actually did, session by session,
+            both annualized. A realized line below the forecast means the model was cautious,
+            above it means the book took more risk than it was sized for. Example: this
+            period has no realized session yet, so nothing is drawn rather than drawn as zero.
+          </HowToRead>
+        </h3>
         <p className="mt-1 text-xs text-slate-600" data-vol="absent">
           no session of this period carries a realized volatility yet: the measure needs a
           quarter of the book&apos;s own daily P&amp;L, so it is absent on a book that has not
@@ -1150,7 +1170,16 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
 
   return (
     <figure data-chart="volatility" data-panel="volatility" className="mt-3">
-      <figcaption className="text-sm font-semibold">Realized against forecast volatility</figcaption>
+      <figcaption className="text-sm font-semibold">
+        Realized against forecast volatility
+        <HowToRead>
+          The model&apos;s forecast against what the book actually did, session by session,
+          both annualized. A realized line below the forecast means the model was cautious,
+          above it means the book took more risk than it was sized for. Example: the last
+          session realized {percent(last.realized_vol)} against a forecast of{" "}
+          {percent(last.forecast_vol)}.
+        </HowToRead>
+      </figcaption>
       <p className="mt-1 text-xs text-slate-600">
         Annualized, per session, from <code>attribution.live.daily</code>. {count(pairs.length)} of{" "}
         {count(period.n_days)} session(s) carry both; the realized line is the book&apos;s own
