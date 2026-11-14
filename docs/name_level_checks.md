@@ -18,6 +18,19 @@ The stop is one number: `exclusions.MAX_EXCLUSIONS = 10`, the line the no-price 
 no-risk drops already drew. More names out than that is an input that failed for the
 panel, not a market with holes in it.
 
+It counts only names out for a **new** reason tonight: a price, a return, a share count,
+a corporate action, or a broker status that changed with this close. A standing reason
+is still listed on the same line and in the same manifest row, and does not count only
+when the previous evening's manifest already carried that same name for that same
+reason: a name the risk model has not fitted yet, a name with no GICS row (including
+the `BE`/`ILMN`/`P` hold-list parked until 2026-11-24), and an asset already recorded
+as retired. A standing name that was not there last night is a new fact, so fifty
+names losing a GICS row in one night still stops the run. On 2026-11-13 the line
+carried ten standing names, four sectors and six risk; the previous evening carried
+the same ten, so they count zero and one new exclusion on top of them does not stop
+the 2026-11-23 rebalance. `tests/test_exclusion_stop_novelty.py` pins the three
+cases: the ten count zero, fifty new no-GICS names stop, ten plus one does not.
+
 ## Name-level checks: exclude for the night
 
 | check | file:line | behaviour today |
@@ -39,7 +52,7 @@ panel, not a market with holes in it.
 
 | check | file:line | why it stays |
 | --- | --- | --- |
-| more than 10 names out, any mix of the reasons above | `live/exclusions.py:86` `guard` | the input, not the names |
+| more than 10 names newly out tonight: a new reason, or a standing name yesterday's manifest did not carry | `live/exclusions.py:188` `guard` | the input, not the names; carried-over standing names are listed, not counted |
 | fewer than `MIN_NAMES` (50) left in the sizing universe | `live/evening_job.py:2561`, `:2715` | a book of thirty names is another book |
 | a duplicated universe row | `live/evening_job.py:2490` | warned and kept once; never seen |
 | any input stale for live names | `live/staleness.py:521` `check` | the close being priced is not the close the input describes |

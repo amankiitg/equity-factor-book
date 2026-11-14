@@ -27,6 +27,11 @@ main agent. This is the checklist the owner signs before the 2026-11-23 rebalanc
       owed, never resent; KMB priced on its own name.
 - [ ] No name-level stop: every drop is on the "Excluded tonight" or refused
       line, never a stopped run.
+- [ ] The exclusion stop counts new reasons only: the ten standing names
+      (no GICS row, no risk estimate yet) were on the previous evening's manifest
+      too, so they are listed and not counted, and one new exclusion cannot stop
+      the rebalance. A standing name not carried by yesterday's manifest does
+      count. Pinned by `tests/test_exclusion_stop_novelty.py`.
 - [ ] Expected cost and turnover inside the book's normal band.
 - [ ] Post-hedge exposures inside the 5% drift guard.
 
