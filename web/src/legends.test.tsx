@@ -83,13 +83,18 @@ describe("chart legends", () => {
     }
   });
 
-  it("draws the hedge as a waterfall of three steps, not as a second chart", () => {
-    // The variance split is one line now, so the risk pictures that carried it are
-    // gone. What the hedge removed is drawn where the reader meets it: one bar for
-    // the sized book, one for the points the hedge took out, one for what is left.
+  it("draws the hedge as a waterfall of three steps, and as the two lines it stands between", () => {
+    // What the hedge removed is one bar for the sized book, one for the points it
+    // took out, one for what is left. The same two forecasts are also drawn by
+    // session, because the 10-20 correction is about a line and a reader who is
+    // told a line moved has to be able to see it.
     open(OK);
     expect(document.querySelector("figure[data-chart='risk-path']")).toBeNull();
-    expect(document.querySelector("figure[data-chart='hedge-vol']")).toBeNull();
+    const series = document.querySelector("figure[data-chart='hedge-vol']");
+    expect(series, "the by-session forecast chart is not drawn").toBeTruthy();
+    for (const key of ["pre-hedge", "hedged", "removed"]) {
+      expect(series?.querySelector(`[data-series='${key}']`)).toBeTruthy();
+    }
     const waterfall = document.querySelector("[data-waterfall='true']") as HTMLElement;
     expect(waterfall).toBeTruthy();
     const steps = ["before", "removed", "after"].map(
@@ -108,76 +113,134 @@ describe("chart legends", () => {
   });
 });
 
-describe("dated notes", () => {
-  const notes = (ATTRIBUTION.notes ?? []) as AttributionNote[];
+describe("the corrections to the series", () => {
+  // The three statements the panel has to carry, in the words it has to carry them
+  // in, with the days each one is about. A marker whose date is not on a chart would
+  // be a number with nothing under it, so the days are checked against the chart.
+  const CORRECTIONS = [
+    {
+      number: 1,
+      dates: ["2026-09-28", "2026-09-29"],
+      text:
+        "The first two days (09-28 and 09-29) the book was still being built and not " +
+        "fully hedged, so their predicted volatility can't be compared with later days.",
+    },
+    {
+      number: 2,
+      dates: ["2026-10-20"],
+      text:
+        "On 10-20 a formula error in the before-hedge volatility was fixed and every " +
+        "earlier day recomputed. The line before 10-20 is lower than it was first drawn.",
+    },
+    {
+      number: 3,
+      dates: ["2026-10-21"],
+      text:
+        "On 10-21, trading costs for 10-09 to 10-20 were recomputed from the actual " +
+        "fills (they had been estimated before the fills arrived). Those days' cost, " +
+        "P&L and realized volatility changed slightly.",
+    },
+  ];
 
-  it("carries the correction that moved the series, with its date", () => {
-    expect(notes.length).toBeGreaterThan(0);
-    const correction = notes.find((note) => note.date === "2026-10-20");
-    expect(correction, "the 10-20 correction has no note").toBeTruthy();
-    expect((correction?.text ?? "").toLowerCase()).toContain("pre-hedge");
-  });
+  const markers = (chart: string): HTMLElement[] =>
+    Array.from(document.querySelectorAll(`figure[data-chart='${chart}'] [data-note-marker]`));
 
-  it("lists every note with its date and its text", () => {
+  it("lists the three corrections under the volatility panel, word for word", () => {
     open(OK);
-    const list = document.querySelector("[data-notes]") as HTMLElement;
+    const group = document.querySelector("[data-group='volatility']") as HTMLElement;
+    expect(group, "the volatility panel is not on the page").toBeTruthy();
+    const list = group.querySelector("[data-notes]") as HTMLElement;
     expect(list).toBeTruthy();
     const items = Array.from(list.querySelectorAll("li[data-note]"));
-    expect(items.length).toBe(notes.length);
-    for (const note of notes) {
-      const item = items.find((node) => node.getAttribute("data-note") === note.date);
-      expect(item, `no note listed for ${note.date}`).toBeTruthy();
-      expect(item?.textContent ?? "").toContain(note.text);
-      expect(item?.textContent ?? "").toContain(note.date ?? "");
+    expect(items.length).toBe(3);
+    for (const correction of CORRECTIONS) {
+      const item = items.find(
+        (node) => node.getAttribute("data-note") === correction.dates[0],
+      );
+      expect(item, `no correction listed for ${correction.dates[0]}`).toBeTruthy();
+      expect(item?.textContent).toBe(`${correction.number}${correction.text}`);
+      expect(item?.getAttribute("data-note-dates")).toBe(correction.dates.join(","));
     }
   });
 
-  it("numbers the notes where they appear, and each number opens its text", () => {
-    // The numbers sit beside the risk statement now, and each one is a popover: a
-    // correction to the series is one tap from the series, not three tabs away.
+  it("draws a marker at every date a correction names, on both dated charts", () => {
     open(OK);
-    const buttons = Array.from(document.querySelectorAll("[data-footnote] button"));
-    expect(buttons.length).toBeGreaterThan(0);
-    expect(buttons.map((node) => node.textContent)).toEqual(
-      (ATTRIBUTION.notes ?? []).map((_, index) => String(index + 1)),
+    const dates = CORRECTIONS.flatMap((correction) =>
+      correction.dates.map((date) => ({ date, number: correction.number })),
     );
-    for (const index of [1, 2]) {
-      const note = (ATTRIBUTION.notes ?? [])[index];
-      if (!note) throw new Error("the fixture lost a correction note");
-      const button = document.querySelector(
-        `[data-footnote='${index + 1}'] button`,
-      ) as HTMLElement;
-      fireEvent.click(button);
-      const popover = document.querySelector(
-        `[data-footnote-text='${index + 1}']`,
-      ) as HTMLElement;
-      expect(popover).toBeTruthy();
-      expect(popover.textContent).toContain(note.text);
-      expect(popover.textContent).toContain(note.date ?? "");
+    for (const chart of ["hedge-vol", "volatility"]) {
+      const drawn = markers(chart).map((node) => ({
+        date: node.getAttribute("data-note-marker-date") ?? "",
+        number: node.getAttribute("data-note-marker") ?? "",
+        x: Number(node.querySelector("circle")?.getAttribute("cx") ?? NaN),
+      }));
+      expect(drawn.length, `${chart} draws no correction markers`).toBe(dates.length);
+      for (const expected of dates) {
+        const marker = drawn.find((node) => node.date === expected.date);
+        expect(marker, `${chart} has no marker on ${expected.date}`).toBeTruthy();
+        expect(marker?.number).toBe(String(expected.number));
+      }
+      // Left to right is the order of the dates: a marker at the wrong session
+      // would be out of that order, and the number would then sit at a date it does
+      // not belong to.
+      const asDrawn = [...drawn].sort((a, b) => a.x - b.x).map((node) => node.date);
+      expect(asDrawn).toEqual([...dates.map((node) => node.date)].sort());
     }
   });
 
-  it("draws no notes when the document carries none", () => {
+  it("puts the marker for a session at that session's point on the line", () => {
+    open(OK);
+    const chart = document.querySelector("figure[data-chart='volatility']") as HTMLElement;
+    const pairs = (ATTRIBUTION.live?.daily ?? []).filter(
+      (day) => day.realized_vol !== null && day.forecast_vol !== null,
+    );
+    const points = (chart.querySelector("[data-series='forecast']")?.getAttribute("points") ?? "")
+      .split(" ")
+      .filter((point) => point !== "")
+      .map((point) => Number(point.split(",")[0]));
+    for (const correction of CORRECTIONS) {
+      for (const date of correction.dates) {
+        const index = pairs.findIndex((day) => day.trade_date === date);
+        if (index < 0) continue;
+        const marker = chart.querySelector(
+          `[data-note-marker-date='${date}'] circle`,
+        ) as HTMLElement;
+        expect(marker, `no marker on ${date}`).toBeTruthy();
+        expect(Number(marker.getAttribute("cx"))).toBeCloseTo(points[index], 3);
+      }
+    }
+  });
+
+  it("opens a correction's text from the marker and closes it again", () => {
+    open(OK);
+    const chart = document.querySelector("figure[data-chart='hedge-vol']") as HTMLElement;
+    for (const correction of CORRECTIONS) {
+      const marker = chart.querySelector(
+        `[data-note-marker-date='${correction.dates[0]}']`,
+      ) as HTMLElement;
+      fireEvent.click(marker);
+      const popover = chart.querySelector(
+        `[data-correction-text='${correction.number}']`,
+      ) as HTMLElement;
+      expect(popover, `marker ${correction.number} opens nothing`).toBeTruthy();
+      expect(popover.textContent).toBe(correction.text);
+      fireEvent.click(marker);
+      expect(chart.querySelector("[data-correction-text]")).toBeNull();
+    }
+  });
+
+  it("keeps the corrections on a document whose payload carries no notes", () => {
+    // They are page copy about the series, not a row the evening wrote: a document
+    // without the notes field still has to tell the reader what moved.
     const stripped = {
       ...OK,
       attribution: { ...ATTRIBUTION, notes: [] },
     } as unknown as Snapshot;
     open(stripped);
-    expect(document.querySelector("[data-notes]")).toBeNull();
-    expect(document.querySelector("[data-note-marker]")).toBeNull();
-  });
-
-  it("keeps the notes on an establishment document, whose live period is one day", () => {
-    const empty = establishment as unknown as Snapshot;
-    const itsNotes = ((empty.attribution as Attribution).notes ?? []) as AttributionNote[];
-    open(empty);
-    const list = document.querySelector("[data-notes]");
-    // The notes are about the series rather than about the book, so an evening that
-    // could barely price one does not lose the record of what changed.
-    expect(list === null).toBe(itsNotes.length === 0);
-    if (list) {
-      expect(list.querySelectorAll("li[data-note]").length).toBe(itsNotes.length);
-    }
+    const list = document.querySelector("[data-notes]") as HTMLElement;
+    expect(list).toBeTruthy();
+    expect(list.querySelectorAll("li[data-note]").length).toBe(3);
+    expect(document.querySelectorAll("[data-note-marker]").length).toBeGreaterThan(0);
   });
 });
 
