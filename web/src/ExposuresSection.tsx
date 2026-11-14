@@ -27,23 +27,26 @@ const STYLE_ROWS: Array<[string, string]> = [
   ["size", "Size"],
 ];
 
+// The rows keep the design's order and lose the design's numbers: "45" is the
+// GICS code, not part of the sector's name, and a reader scanning a column of
+// exposures should not have to parse a code to find Health Care.
 const SECTOR_ROWS: Array<[string, string]> = [
-  ["sector_10", "10 Energy"],
-  ["sector_15", "15 Materials"],
-  ["sector_20", "20 Industrials"],
-  ["sector_25", "25 Consumer Discretionary"],
-  ["sector_30", "30 Consumer Staples"],
-  ["sector_35", "35 Health Care"],
-  ["sector_40", "40 Financials"],
-  ["sector_45", "45 Information Technology"],
-  ["sector_50", "50 Communication Services"],
-  ["sector_55", "55 Utilities"],
+  ["sector_10", "Energy"],
+  ["sector_15", "Materials"],
+  ["sector_20", "Industrials"],
+  ["sector_25", "Consumer Discretionary"],
+  ["sector_30", "Consumer Staples"],
+  ["sector_35", "Health Care"],
+  ["sector_40", "Financials"],
+  ["sector_45", "Information Technology"],
+  ["sector_50", "Communication Services"],
+  ["sector_55", "Utilities"],
 ];
 
 // The sector dummy the design leaves out, so its exposure is carried by the
 // intercept rather than by a column of its own. Named in the table itself: a reader
 // who knows the GICS codes asks where 60 went.
-const REFERENCE_SECTOR = "60 Real Estate";
+const REFERENCE_SECTOR = "Real Estate";
 
 /**
  * The anchor close's own before/after pair, when tonight is a hold day.
@@ -90,27 +93,121 @@ function exposureRows(before: Record<string, number | null>): Array<[string, str
 }
 
 /**
- * The light tint one exposure cell carries: none at zero, the faintest wash at a
- * sliver, the strongest at the largest number on the page. The palette is light on
- * purpose: the value is printed in the cell, and a dark block behind dark text is a
- * cell nobody can read.
+ * The two hues, one per sign, and the neutral they fade to at zero.
+ *
+ * One hue cannot carry a sign: a page of slate washes says "some size" and nothing
+ * about direction, which is the half of a factor exposure a reader acts on. Blue is a
+ * long tilt, rose is a short one, and a cell at zero is left unpainted so it stays
+ * near white. The palette is light on purpose: the value is printed in the cell, and a
+ * dark block behind dark text is a cell nobody can read.
  */
-const HEAT: Record<string, [number, number, number]> = {
-  before: [100, 116, 139],
-  after: [5, 150, 105],
-  now: [217, 119, 6],
+const POSITIVE: [number, number, number] = [37, 99, 235];
+const NEGATIVE: [number, number, number] = [225, 29, 72];
+
+/** Below this a column reads as zero at the page's own precision. */
+const FLAT_UNDER = 0.00005;
+
+/** The drift guard's own line: a now cell at or beyond it gets the amber ring. */
+const GUARD_BAND = 0.05;
+
+/** The two inks. Which one a cell takes is decided by its own background. */
+const DARK_INK = "#0f172a";
+const LIGHT_INK = "#f8fafc";
+
+/** One sRGB channel, linearised for a WCAG contrast ratio. */
+const linear = (value: number): number => {
+  const channel = value / 255;
+  return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
 };
+
+/** A colour's relative luminance, from its three channels. */
+const luminance = ([r, g, b]: [number, number, number]): number =>
+  0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+
+/** The contrast ratio between two luminances, always at or above 1. */
+const ratio = (a: number, b: number): number => {
+  const [high, low] = a > b ? [a, b] : [b, a];
+  return (high + 0.05) / (low + 0.05);
+};
+
+const hexRgb = (hex: string): [number, number, number] => [
+  parseInt(hex.slice(1, 3), 16),
+  parseInt(hex.slice(3, 5), 16),
+  parseInt(hex.slice(5, 7), 16),
+];
+
+/**
+ * A fill as it lands on the page: the tint composited over the card's white.
+ *
+ * A cell's background is a translucent wash over white, so the colour the eye sees is
+ * the blend, and that blend is what the text has to be readable on.
+ */
+const landed = (fill: string): [number, number, number] => {
+  const match = fill.match(/rgba?\(([^)]+)\)/);
+  if (!match) return [255, 255, 255];
+  const parts = match[1].split(",").map((part) => Number(part.trim()));
+  const [r, g, b] = parts;
+  const alpha = parts.length > 3 ? parts[3] : 1;
+  return [
+    r * alpha + 255 * (1 - alpha),
+    g * alpha + 255 * (1 - alpha),
+    b * alpha + 255 * (1 - alpha),
+  ];
+};
+
+/** A colour given either way: a hex literal or an rgba string. */
+const inkRgb = (ink: string): [number, number, number] =>
+  ink.startsWith("#") ? hexRgb(ink) : landed(ink);
+
+/** The contrast ratio between a cell's background and an ink, as WCAG measures it. */
+export const heatContrast = (fill: string, ink: string): number =>
+  ratio(luminance(landed(fill)), luminance(inkRgb(ink)));
+
+/**
+ * The ink a cell's value takes: dark on a light fill, light on a dark one.
+ *
+ * One text colour cannot serve both ends of a scale. Today's palette is light enough
+ * that every cell takes the dark ink and clears 4.5:1 by a wide margin, but the
+ * choice is made per cell from the colour the cell actually has, so a darker palette
+ * (or a dark fill in a future column) switches that cell's number to the light ink
+ * instead of printing dark text on a dark block.
+ */
+export const heatInk = (fill: string): string =>
+  heatContrast(fill, DARK_INK) >= heatContrast(fill, LIGHT_INK) ? DARK_INK : LIGHT_INK;
 
 /** A cell's value, as the share of the book it is. The table is read in percent. */
 const heatText = (value: number | null | undefined): string => percent(value, 2);
 
-export function heatFill(tone: string, value: number, scale: number): string {
-  const share = scale > 0 ? Math.min(1, Math.abs(value) / scale) : 0;
-  const [r, g, b] = HEAT[tone] ?? HEAT.before;
-  // The top of the scale stays light: the value is printed in the cell, so the
-  // shade has to leave dark text readable at the largest number as well.
-  const alpha = share === 0 ? 0 : 0.06 + share * 0.3;
-  return alpha === 0 ? "transparent" : `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
+/**
+ * The sign a cell's colour is built from, exposed so a test can read it.
+ *
+ * A value that prints as 0.00% is signed zero, not a tiny long: a cell the reader sees
+ * as zero and a cell coloured as a bet would be the page contradicting itself.
+ */
+export const heatSign = (value: number): "positive" | "negative" | "zero" =>
+  Math.abs(value) < FLAT_UNDER ? "zero" : value > 0 ? "positive" : "negative";
+
+/**
+ * The tint one cell carries, on its own column's scale.
+ *
+ * The scale is per column because the columns are not the same size: before the 10-23
+ * hedge one factor reached 87% of NAV, while now the whole column moves inside 2%, and
+ * one shared scale turned the second column into a single pale wash. The largest value
+ * in a column is that column's strongest shade; a column that is all zero gets none at
+ * all, so the capped column reads as flat rather than as weak data.
+ */
+export function heatFill(value: number, scale: number): string {
+  // A value that prints as 0.00%, or a column whose every value does, gets no tint:
+  // a cell the reader sees as zero and the page colours as a bet is the page
+  // contradicting itself.
+  if (scale < FLAT_UNDER || Math.abs(value) < FLAT_UNDER) return "transparent";
+  const share = Math.min(1, Math.abs(value) / scale);
+  if (share === 0) return "transparent";
+  const [r, g, b] = value >= 0 ? POSITIVE : NEGATIVE;
+  // The top of the scale stays light: the value is printed in the cell, so the shade
+  // has to leave dark text readable at the largest number as well.
+  const alpha = 0.07 + share * 0.26;
+  return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
 }
 
 /**
@@ -180,14 +277,14 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
   const hedgeBlock = anchoredHedge(snapshot.monthly);
   const guardFired = Boolean(anchor && guard?.fired);
   const rows = exposureRows({ ...tonightBefore, ...before });
-  const scale = Math.max(
-    ...[
-      ...Object.values(before),
-      ...Object.values(after),
-      ...(anchor ? Object.values(tonightBefore) : []),
-    ].map((value) => Math.abs(value ?? 0)),
-    0.0001,
-  );
+  // Each column is normalised against its own largest value. A shared scale let the
+  // 87% momentum row of the before column decide the shade of the now column, which
+  // is a wash of one pale colour; a column normalised against itself shows the moves
+  // that are actually in it.
+  const beforeScale = worstOf(before);
+  const afterScale = worstOf(after);
+  const nowScale = worstOf(tonightBefore);
+  const afterFlat = afterScale < FLAT_UNDER;
   // Present only when the evening recorded one: the key is absent on a document
   // built without a reconciled row, and a missing figure is not a zero figure.
   const adjustment = (snapshot.reconciliation?.unexplained_adjustment as number | null) ?? null;
@@ -266,7 +363,12 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
           <thead>
             <tr className="border-b border-slate-300 align-top text-left">
               <th className="w-[34%] py-1 pr-1">factor</th>
-              <th className="w-[22%] py-1 pl-1 text-right leading-tight" data-column="before">
+              <th
+                className="w-[22%] py-1 pl-1 text-right leading-tight"
+                data-column="before"
+                data-column-range={percent(beforeScale, 2)}
+                title={`this column's own scale runs to ${percent(beforeScale, 2)}`}
+              >
                 before the hedge
                 {anchor ? (
                   <span className="block text-[0.65rem] font-normal text-slate-500">
@@ -275,7 +377,12 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
                   </span>
                 ) : null}
               </th>
-              <th className="w-[22%] py-1 pl-1 text-right leading-tight" data-column="after">
+              <th
+                className="w-[22%] py-1 pl-1 text-right leading-tight"
+                data-column="after"
+                data-column-range={percent(afterScale, 2)}
+                title={`this column's own scale runs to ${percent(afterScale, 2)}`}
+              >
                 after the hedge
                 {anchor ? (
                   <span className="block text-[0.65rem] font-normal text-slate-500">
@@ -285,7 +392,12 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
                 ) : null}
               </th>
               {anchor ? (
-                <th className="w-[22%] py-1 pl-1 text-right leading-tight" data-column="now">
+                <th
+                  className="w-[22%] py-1 pl-1 text-right leading-tight"
+                  data-column="now"
+                  data-column-range={percent(nowScale, 2)}
+                  title={`this column's own scale runs to ${percent(nowScale, 2)}`}
+                >
                   now
                   <span className="block text-[0.65rem] font-normal text-slate-500">
                     {" "}
@@ -299,6 +411,12 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
             {rows.map(([key, label], index) => {
               const startOfSectors =
                 index === 0 ? false : rows[index - 1][0].startsWith("sector_") === false;
+              const beforeFill = heatFill(before[key] ?? 0, beforeScale);
+              const afterFill = heatFill(after[key] ?? 0, afterScale);
+              const nowFill = heatFill(tonightBefore[key] ?? 0, nowScale);
+              // The guard is a line, not a colour: a cell that crosses it keeps its
+              // own shade and gains a ring, so the size and the warning read together.
+              const guarded = Math.abs(tonightBefore[key] ?? 0) >= GUARD_BAND;
               return (
                 <tr
                   key={key}
@@ -311,14 +429,16 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
                   <td
                     className="py-1 text-right font-mono tabular-nums"
                     data-heat="before"
-                    style={{ backgroundColor: heatFill("before", before[key] ?? 0, scale) }}
+                    data-heat-sign={heatSign(before[key] ?? 0)}
+                    style={{ backgroundColor: beforeFill, color: heatInk(beforeFill) }}
                   >
                     {heatText(before[key])}
                   </td>
                   <td
                     className="py-1 text-right font-mono tabular-nums"
                     data-heat="after"
-                    style={{ backgroundColor: heatFill("after", after[key] ?? 0, scale) }}
+                    data-heat-sign={heatSign(after[key] ?? 0)}
+                    style={{ backgroundColor: afterFill, color: heatInk(afterFill) }}
                   >
                     {heatText(after[key])}
                   </td>
@@ -327,8 +447,12 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
                       className="py-1 text-right font-mono tabular-nums"
                       data-now={key}
                       data-heat="now"
+                      data-heat-sign={heatSign(tonightBefore[key] ?? 0)}
+                      data-guard={guarded ? "true" : undefined}
                       style={{
-                        backgroundColor: heatFill("now", tonightBefore[key] ?? 0, scale),
+                        backgroundColor: nowFill,
+                        color: heatInk(nowFill),
+                        boxShadow: guarded ? "inset 0 0 0 2px #b45309" : undefined,
                       }}
                     >
                       {heatText(tonightBefore[key])}
@@ -340,9 +464,29 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
           </tbody>
         </table>
       </div>
-      <p className="mt-1 text-xs text-slate-500">
-        The shade is one scale, the largest exposure on the page: the darkest cell is the
-        biggest bet, and a pale cell is a small number rather than a missing one.{" "}
+      <p className="mt-1 text-xs text-slate-500" data-heat-caption="true">
+        The shade is scaled inside its own column, so each column compares with itself
+        and not with the others: the largest value it reaches is{" "}
+        <span className="font-mono tabular-nums">{percent(beforeScale, 2)}</span> before the
+        hedge and{" "}
+        <span className="font-mono tabular-nums">{percent(afterScale, 2)}</span> after it
+        {anchor ? (
+          <>
+            , and{" "}
+            <span className="font-mono tabular-nums">{percent(nowScale, 2)}</span> now
+          </>
+        ) : null}
+        . Blue is a positive exposure and rose is a negative one, and zero is left
+        unpainted.{" "}
+        {anchor ? (
+          <>
+            A now cell at or beyond the 5% drift guard line carries an amber ring, not a
+            fill, so its own shade still reads.{" "}
+          </>
+        ) : null}
+        {afterFlat
+          ? "After the hedge every cell is 0.00%: the cap took the factors out, so that column is a flat neutral rather than a set of weak shades. "
+          : ""}
         {REFERENCE_SECTOR} is the reference sector and has no column of its own, so the ten
         sectors above are measured against it.
       </p>
