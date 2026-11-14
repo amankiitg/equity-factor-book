@@ -51,6 +51,10 @@ interface Row {
   sinceLabel: string | null;
   tonight: string | null;
   retired: boolean;
+  /** The target book's own reason for the name, when it is in the target. */
+  reason: string | null;
+  /** The account read carried the name twice and the rows were merged into one. */
+  flipped: boolean;
 }
 
 /** More means the account holds more than the target asked for, the sector panel's blue. */
@@ -73,12 +77,46 @@ function rowsOf(
   monthlyRows: MonthlyHoldingRow[],
 ): Row[] {
   const target = new Map<string, number | null>();
-  for (const name of names) target.set(name.ticker, name.weight ?? null);
+  const reasons = new Map<string, string | null>();
+  for (const name of names) {
+    target.set(name.ticker, name.weight ?? null);
+    reasons.set(name.ticker, name.reason ?? null);
+  }
   const anchored = new Map<string, MonthlyHoldingRow>();
   for (const row of monthlyRows) anchored.set(row.ticker, row);
+  // The broker can report one name as two rows: a closed short that has not left
+  // the account yet and the new long that replaced it. The table is one row per
+  // name, so the two are merged here and the merge is what the reason pill says.
+  interface ReadRow {
+    ticker: string;
+    side: string;
+    notional: number | null;
+    weight: number | null;
+    flipped: boolean;
+  }
+  const held = new Map<string, ReadRow>();
+  for (const entry of actual.names) {
+    const prior = held.get(entry.ticker);
+    if (!prior) {
+      held.set(entry.ticker, {
+        ticker: entry.ticker,
+        side: entry.side ?? "",
+        notional: entry.notional ?? null,
+        weight: entry.weight ?? null,
+        flipped: false,
+      });
+      continue;
+    }
+    const flipped =
+      prior.side !== "" && entry.side !== null && prior.side !== entry.side;
+    prior.notional = (prior.notional ?? 0) + (entry.notional ?? 0);
+    prior.weight = (prior.weight ?? 0) + (entry.weight ?? 0);
+    prior.side = (prior.notional ?? 0) >= 0 ? "long" : "short";
+    prior.flipped = prior.flipped || flipped;
+  }
   const rows: Row[] = [];
   const seen = new Set<string>();
-  for (const entry of actual.names) {
+  for (const entry of held.values()) {
     seen.add(entry.ticker);
     const targetWeight = target.has(entry.ticker) ? target.get(entry.ticker) ?? null : null;
     const anchor = anchored.get(entry.ticker);
@@ -97,18 +135,32 @@ function rowsOf(
       drift: anchor?.gap_weight ?? drift,
       gapDollars:
         anchor?.gap_usd ?? (drift === null || nav === null ? null : drift * nav),
-      since: anchor?.since ?? null,
-      sinceKind: anchor?.since_kind ?? null,
+      since:
+        anchor?.since ??
+        (entry.flipped ? "one row: a closed short and the new long" : null),
+      sinceKind: anchor?.since_kind ?? (entry.flipped ? "flipped" : null),
       sinceDate: anchor?.since_date ?? null,
-      sinceLabel: anchor?.since_label ?? null,
+      sinceLabel: anchor?.since_label ?? (entry.flipped ? "Flipped" : null),
       tonight: anchor?.tonight ?? null,
       retired: anchor?.retired ?? false,
+      reason: reasons.get(entry.ticker) ?? null,
+      flipped: entry.flipped,
     });
   }
   for (const name of names) {
     if (seen.has(name.ticker)) continue;
+    // One row per name: the target books both name this one, and the monthly row
+    // comes from the anchor, so the name is marked here and its row is not drawn
+    // twice. MKC is the live case: short in the 10-23 target, long in tonight's.
+    seen.add(name.ticker);
     const targetWeight = name.weight ?? null;
     const anchor = anchored.get(name.ticker);
+    // The anchor's target was the other side, so the name has flipped since it.
+    const flippedTarget =
+      anchor !== undefined &&
+      anchor.weight_target !== 0 &&
+      (name.weight ?? 0) !== 0 &&
+      Math.sign(anchor.weight_target) !== Math.sign(name.weight ?? 0);
     rows.push({
       ticker: name.ticker,
       side: name.side ?? "",
@@ -117,16 +169,27 @@ function rowsOf(
       heldDollars: null,
       targetWeight,
       targetDollars: targetWeight === null || nav === null ? null : targetWeight * nav,
-      drift: anchor?.gap_weight ?? (targetWeight === null ? null : -targetWeight),
-      gapDollars:
-        anchor?.gap_usd ??
-        (targetWeight === null || nav === null ? null : -targetWeight * nav),
-      since: anchor?.since ?? null,
-      sinceKind: anchor?.since_kind ?? null,
+      drift: flippedTarget
+        ? targetWeight === null
+          ? null
+          : -targetWeight
+        : anchor?.gap_weight ?? (targetWeight === null ? null : -targetWeight),
+      gapDollars: flippedTarget
+        ? targetWeight === null || nav === null
+          ? null
+          : -targetWeight * nav
+        : anchor?.gap_usd ??
+          (targetWeight === null || nav === null ? null : -targetWeight * nav),
+      since: flippedTarget
+        ? `flipped since the rebalance: the target was ${(anchor?.weight_target ?? 0) < 0 ? "short" : "long"}`
+        : anchor?.since ?? null,
+      sinceKind: flippedTarget ? "flipped" : anchor?.since_kind ?? null,
       sinceDate: anchor?.since_date ?? null,
-      sinceLabel: anchor?.since_label ?? null,
+      sinceLabel: flippedTarget ? "Flipped" : anchor?.since_label ?? null,
       tonight: anchor?.tonight ?? null,
       retired: anchor?.retired ?? false,
+      reason: name.reason ?? null,
+      flipped: flippedTarget,
     });
   }
   for (const row of monthlyRows) {
@@ -147,6 +210,8 @@ function rowsOf(
       sinceLabel: row.since_label ?? null,
       tonight: row.tonight,
       retired: row.retired,
+      reason: row.note ?? reasons.get(row.ticker) ?? null,
+      flipped: false,
     });
   }
   return rows;
@@ -269,11 +334,34 @@ export function ActualHoldingsTable({
           : `read at ${when}${actual.read_by ? `, at the ${actual.read_by} run` : ""}`}
         {session}.
       </p>
-      <p className="text-sm text-slate-600" data-actual="unheld">
-        {notHeld === 0 && notInTarget === 0
-          ? `every one of the target book's ${names.length} name(s) is held`
-          : `${notHeld} of the target book's ${names.length} name(s) are not held, and ${notInTarget} held name(s) are not in the target book`}
-      </p>
+      <div className="text-sm text-slate-600" data-actual="unheld">
+        {notHeld === 0 && notInTarget === 0 ? (
+          `every one of the target book's ${names.length} name(s) is held`
+        ) : notHeld === 0 ? (
+          `every one of the target book's ${names.length} name(s) is held, and ${notInTarget} held name(s) are not in the target book`
+        ) : (
+          <details data-unheld-list="true">
+            <summary className="cursor-pointer underline decoration-dotted underline-offset-2">
+              {notHeld} of the target book&apos;s {names.length} name(s) are not held
+            </summary>
+            <ul className="mt-1 flex flex-col gap-0.5 text-xs">
+              {rows
+                .filter((row) => !row.held)
+                .map((row) => (
+                  <li key={row.ticker} data-unheld={row.ticker}>
+                    <span className="font-mono font-semibold">{row.ticker}</span>{" "}
+                    {row.reason ?? row.since ?? row.tonight ?? "no reason recorded"}
+                  </li>
+                ))}
+            </ul>
+            {notInTarget > 0 ? (
+              <p className="mt-1 text-xs text-slate-500">
+                {notInTarget} held name(s) are not in the target book either.
+              </p>
+            ) : null}
+          </details>
+        )}
+      </div>
       <p className="text-xs text-slate-500" data-count="shown">
         showing {shown.length} of {rows.length}
       </p>

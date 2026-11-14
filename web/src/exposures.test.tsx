@@ -33,20 +33,26 @@ describe("the exposures panel on a hold day", () => {
   it("shows before and after the anchor's hedge, then tonight", () => {
     const { container } = render(<ExposuresSection snapshot={HOLD} />);
     const headers = headerTexts(container);
-    expect(headers).toContain("before the hedge (2026-10-23)");
-    expect(headers).toContain("after the hedge (2026-10-23)");
-    expect(headers.join(" ")).toContain("now (2026-10-30)");
+    expect(headers).toContain("before the hedge 2026-10-23");
+    expect(headers).toContain("after the hedge 2026-10-23");
+    expect(headers.join(" ")).toContain("now 2026-10-30");
   });
 
-  it("keeps the machine-precision claim on the anchor's after column only", () => {
+  it("states the anchor's before and after in percent, with no precision claim", () => {
     const { container } = render(<ExposuresSection snapshot={HOLD} />);
     const verdict = container.querySelector("[data-hedge-verdict]");
     const text = verdict?.textContent ?? "";
-    expect(text).toContain("after the 2026-10-23 hedge");
-    expect(text).toContain("zero to machine precision");
+    expect(text).toContain("cut the book's worst factor exposure from");
+    expect(text).toContain("87.19%");
+    expect(text).toContain("0.00%");
     expect(text).toContain("Nothing was hedged tonight");
-    // The anchor's after column really is flat, and tonight's own book is not.
-    expect(text).not.toContain("worst residual factor exposure after the hedge: 0.41%");
+    expect(text).not.toContain("machine precision");
+    // Every cell carries its value in percent, and a cell's shade is the heat scale.
+    const table = container.querySelector("[data-heat-table='true']");
+    expect(table).toBeTruthy();
+    const momentum = container.querySelector('[data-factor="momentum"] [data-heat="before"]') as HTMLElement;
+    expect(momentum.textContent).toBe("87.19%");
+    expect(momentum.style.backgroundColor).not.toBe("");
     const nowCell = container.querySelector('[data-now="reversal"]');
     expect(nowCell?.textContent ?? "").not.toBe("0.00%");
   });
@@ -80,12 +86,12 @@ describe("the exposures panel on a hold day", () => {
     expect(anchoredExposures(undefined)).toBeNull();
     const { container } = render(<ExposuresSection snapshot={daily} />);
     const headers = headerTexts(container);
-    expect(headers).toContain("before");
-    expect(headers).toContain("after");
+    expect(headers).toContain("before the hedge");
+    expect(headers).toContain("after the hedge");
     expect(headers.join(" ")).not.toContain("now (");
     expect(container.querySelector("[data-hedge-guard]")).toBeNull();
     expect(container.querySelector("[data-hedge-verdict]")?.textContent ?? "").toContain(
-      "the hedge is exact",
+      "the hedge removed the bet",
     );
   });
 

@@ -94,10 +94,8 @@ function AnchoredHedge({ block }: { block: NonNullable<MonthlyBlock["hedge"]> })
             </tbody>
           </table>
           <p className="mt-1 text-xs text-slate-500">
-            From <code>reconciliation.traded_risk</code> for the {block.anchor} close
-            {block.n_eff === null ? "" : `; effective breadth ${count(Math.round(block.n_eff))}`}
-            {block.max_weight === null ? "" : `, largest weight ${percent(block.max_weight)}`}
-            .
+            Measured on the {block.anchor} close. A name can be a small position and a
+            large risk at once, which is why this list sits beside the weights.
           </p>
         </Details>
       ) : null}
@@ -211,17 +209,8 @@ export function HedgePanel({
             </tbody>
           </table>
           <p className="mt-1 text-xs text-slate-500">
-            From <code>reconciliation.traded_risk</code>, the traded book&apos;s own risk
-            figures
-            {risk?.n_eff === null || risk?.n_eff === undefined
-              ? ""
-              : `; effective breadth ${count(Math.round(risk.n_eff))}`}
-            {risk?.max_weight === undefined
-              ? ""
-              : `, largest weight ${percent(risk.max_weight)}`}
-            . A name at the top of this table can be a small weight and a large risk at
-            once, which is the reason to read it beside the weights rather than instead of
-            them.
+            Measured on the traded book for this close. A name can be a small position and
+            a large risk at once, which is why this list sits beside the weights.
           </p>
         </Details>
       ) : (

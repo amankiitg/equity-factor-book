@@ -19,14 +19,21 @@ export function Details({
   hook,
   summary,
   children,
+  open = false,
 }: {
   /** A stable name for the tests and for anything reading the page mechanically. */
   hook: string;
   summary: ReactNode;
   children: ReactNode;
+  /** Open on load for a block that is the panel's own picture rather than detail. */
+  open?: boolean;
 }) {
   return (
-    <details data-details={hook} className="mt-2 rounded border border-slate-200 bg-slate-50">
+    <details
+      data-details={hook}
+      open={open}
+      className="mt-2 rounded border border-slate-200 bg-slate-50"
+    >
       <summary className="cursor-pointer px-2 py-1 text-xs font-medium text-slate-700">
         {summary}
       </summary>

@@ -1,14 +1,16 @@
-// The factor exposures, before and after the hedge, as two bars on one scale.
+// The factor exposures, before and after the hedge, as a heat table.
 //
-// This is the page's one picture of the hedge doing its job, so its rules are the
-// load-bearing part: the scale is the largest exposure on the page, which makes the
-// rows comparable with each other rather than each filling its own cell, and the
-// after column is expected to be flat. A bar that is not there is a factor the hedge
-// has taken out, and a reader who cannot see the flatness cannot see the hedge.
+// This is the page's one picture of the hedge doing its job. It used to be bars on
+// one scale, and one row broke the picture: momentum is about 87% of NAV before the
+// 10-23 rebalance, so every other bar was a sliver against it and the after column
+// read as empty space rather than as a measurement. A heat table keeps the three
+// numbers in their cells and lets the colour carry the size: the darkest cell is the
+// largest exposure, and a pale cell is a small one rather than a missing one.
 
 import { Details } from "./Details";
+import { anchoredHedge } from "./HedgePanel";
 import { HowToRead } from "./Panel";
-import { count, dateOnly, dollars, exposure, percent } from "./format";
+import { count, dateOnly, dollars, percent } from "./format";
 import type { MonthlyBlock, Snapshot } from "./types";
 
 // The factor vocabulary, styles first then sectors, in the order the reader wants
@@ -87,46 +89,79 @@ function exposureRows(before: Record<string, number | null>): Array<[string, str
   return [...STYLE_ROWS, ...SECTOR_ROWS, ...rest];
 }
 
-function ExposureBar({ value, scale, tone }: { value: number; scale: number; tone: string }) {
-  const share = Math.max(0, Math.min(1, Math.abs(value) / (scale || 1)));
-  const style: Record<string, string> =
-    value >= 0
-      ? { left: "50%", width: `${share * 50}%` }
-      : { right: "50%", width: `${share * 50}%` };
-  return (
-    <div className="relative h-[6px] w-full rounded-sm bg-slate-100">
-      <span className="absolute left-1/2 top-0 h-full w-px bg-slate-300" />
-      <span
-        data-bar={tone}
-        data-sign={value >= 0 ? "positive" : "negative"}
-        title={`${tone} ${exposure(value)}`}
-        className={`absolute top-0 h-full rounded-sm ${
-          tone === "before" ? "bg-slate-500" : tone === "now" ? "bg-amber-600" : "bg-emerald-600"
-        }`}
-        style={style}
-      />
-    </div>
-  );
+/**
+ * The light tint one exposure cell carries: none at zero, the faintest wash at a
+ * sliver, the strongest at the largest number on the page. The palette is light on
+ * purpose: the value is printed in the cell, and a dark block behind dark text is a
+ * cell nobody can read.
+ */
+const HEAT: Record<string, [number, number, number]> = {
+  before: [100, 116, 139],
+  after: [5, 150, 105],
+  now: [217, 119, 6],
+};
+
+/** A cell's value, as the share of the book it is. The table is read in percent. */
+const heatText = (value: number | null | undefined): string => percent(value, 2);
+
+export function heatFill(tone: string, value: number, scale: number): string {
+  const share = scale > 0 ? Math.min(1, Math.abs(value) / scale) : 0;
+  const [r, g, b] = HEAT[tone] ?? HEAT.before;
+  // The top of the scale stays light: the value is printed in the cell, so the
+  // shade has to leave dark text readable at the largest number as well.
+  const alpha = share === 0 ? 0 : 0.06 + share * 0.3;
+  return alpha === 0 ? "transparent" : `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
 }
 
-function ExposureBars({
-  before,
-  after,
-  scale,
-  now,
-}: {
-  before: number;
-  after: number;
-  scale: number;
-  now?: number | null;
-}) {
-  return (
-    <div className="flex w-full flex-col gap-[2px]" data-factor-bars="true">
-      <ExposureBar value={before} scale={scale} tone="before" />
-      <ExposureBar value={after} scale={scale} tone="after" />
-      {now === undefined ? null : <ExposureBar value={now ?? 0} scale={scale} tone="now" />}
-    </div>
+/**
+ * Tonight's wanted orders, in one plain line.
+ *
+ * Two numbers were on the page and neither said what happened to the money: the
+ * dollars the evening wanted to trade, and the dollars it sent. The line names the
+ * ones that could not go and why, because "blocked" on its own sends a reader
+ * looking for a failure the page then does not explain. KVUE is the live example:
+ * KMB bought the company, so the symbol is inactive and no order can close it.
+ */
+export function wantedOrders(snapshot: Snapshot): { text: string } {
+  const sent = snapshot.reconciliation?.sent_notional ?? null;
+  const intended = snapshot.reconciliation?.intended_notional ?? null;
+  const blocked = snapshot.monthly?.tonight?.cannot_send ?? [];
+  // The names tonight's run traded, from the holding rows it marked. The document
+  // stores the sent dollars as a total, not per leg, so a name is printed only when
+  // exactly one name was traded: that is the one case where the total is its dollars.
+  const tradedTonight = (snapshot.monthly?.holdings?.rows ?? []).filter(
+    (row) => !row.retired && (row.tonight ?? "").startsWith("traded tonight"),
   );
+  if ((sent === null || sent === 0) && blocked.length === 0) {
+    if (intended === null || intended === 0) {
+      return { text: "nothing wanted tonight." };
+    }
+    return { text: `${dollars(intended)}, none of it sent.` };
+  }
+  const parts: string[] = [];
+  if (blocked.length > 0) {
+    parts.push(
+      blocked
+        .map(
+          (leg) =>
+            `${leg.ticker} ${dollars(leg.usd)} blocked${
+              leg.code === "ASSET_INACTIVE" ? " because the company was acquired" : ""
+            }`,
+        )
+        .join(", "),
+    );
+  }
+  if (sent !== null && sent > 0) {
+    parts.push(
+      tradedTonight.length === 1
+        ? `${tradedTonight[0].ticker} ${dollars(sent)} sent`
+        : `${dollars(sent)} sent`,
+    );
+  }
+  if (parts.length === 0) {
+    return { text: "nothing wanted tonight." };
+  }
+  return { text: `${parts.join(", ")}.` };
 }
 
 export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
@@ -142,6 +177,7 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
   const after = anchor ? anchor.after : tonightAfter;
   const anchorClose = anchor ? (anchor.anchor ?? "") : "";
   const guard = snapshot.monthly?.cadence_strip?.guard;
+  const hedgeBlock = anchoredHedge(snapshot.monthly);
   const guardFired = Boolean(anchor && guard?.fired);
   const rows = exposureRows({ ...tonightBefore, ...before });
   const scale = Math.max(
@@ -159,20 +195,23 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
   return (
     <section data-section="exposures" className="rounded border border-slate-200 bg-white p-3">
       <h2 className="text-base font-semibold">The hedge <HowToRead>
-        a bar away from zero is a bet the book did not mean to take, and the guard
-        acts when one passes 5% of NAV. Example: on 11-11 the worst was 4.57%, so no
-        factor needed repairing.
+        a factor exposure away from zero is a bet the book did not mean to take, and the
+        drift guard acts when one passes 5% of NAV. Example: before the 10-23 rebalance
+        the book leaned 87.2% of NAV on momentum, and the hedge took that to zero.
       </HowToRead></h2>
       {anchor ? (
         <>
           <p className="mt-1 text-sm" data-hedge-verdict="true" data-hedge-anchor={anchorClose}>
-            worst residual factor exposure after the {anchorClose} hedge:{" "}
+            the {anchorClose} rebalance cut the book&apos;s worst factor exposure from{" "}
             <span className="font-mono tabular-nums">
-              {exposure(anchor.after && worstOf(anchor.after))}
+              {heatText(worstOf(before))}
             </span>{" "}
-            of a unit exposure, and that close hedged, so every factor&apos;s after value{" "}
-            <em>there</em> is zero to machine precision. Nothing was hedged tonight, so the
-            &quot;now&quot; column is the book as it stands, not a hedge&apos;s output.
+            to{" "}
+            <span className="font-mono tabular-nums">
+              {heatText(worstOf(anchor.after))}
+            </span>
+            . Nothing was hedged tonight, so the &quot;now&quot; column is the book as it
+            stands, not a hedge&apos;s output.
           </p>
           {guardFired ? (
             <p className="mt-1 text-sm text-amber-800" data-hedge-guard="true">
@@ -190,18 +229,26 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
         </>
       ) : (
         <p className="mt-1 text-sm" data-hedge-verdict="true">
-          worst residual factor exposure after the hedge:{" "}
+          after the hedge the book&apos;s worst factor exposure is{" "}
           <span className="font-mono tabular-nums">
-            {exposure(snapshot.hedge?.max_abs_exposure_after_fmp)}
+            {heatText(worstOf(after))}
           </span>{" "}
-          of a unit exposure, and the hedge is exact, so every factor&apos;s after value is zero to
-          machine precision, and the eighteen rows behind the disclosure below are the audit of
-          that rather than a reading in themselves.
+          and the book as it stands is{" "}
+          <span className="font-mono tabular-nums">
+            {heatText(snapshot.hedge?.max_abs_exposure_after_fmp)}
+          </span>
+          . Every factor row below is close to zero because the hedge removed the bet, and
+          the rows are the receipt.
         </p>
       )}
       <Details
         hook="exposures"
-        summary={<>every factor, before and after the hedge, {rows.length} row(s)</>}
+        open
+        summary={
+          <>
+            every factor as a heat table: before, after and now, {rows.length} row(s)
+          </>
+        }
       >
       <div className="overflow-x-auto">
         {/* Every column states its own width. The value columns are only as wide as
@@ -214,24 +261,38 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
         <table
           className="mt-2 w-full table-fixed border-collapse text-xs"
           aria-label="factor exposures"
+          data-heat-table="true"
         >
           <thead>
-            <tr className="border-b border-slate-300 text-left">
-              <th className={anchor ? "w-[28%] py-1 pr-1" : "w-[36%] py-1 pr-1"}>factor</th>
-              <th className="w-[15%] py-1 text-right" data-column="before">
-                {anchor ? `before the hedge (${anchorClose})` : "before"}
+            <tr className="border-b border-slate-300 align-top text-left">
+              <th className="w-[34%] py-1 pr-1">factor</th>
+              <th className="w-[22%] py-1 pl-1 text-right leading-tight" data-column="before">
+                before the hedge
+                {anchor ? (
+                  <span className="block text-[0.65rem] font-normal text-slate-500">
+                    {" "}
+                    {anchorClose}
+                  </span>
+                ) : null}
               </th>
-              <th className="w-[15%] py-1 text-right" data-column="after">
-                {anchor ? `after the hedge (${anchorClose})` : "after"}
+              <th className="w-[22%] py-1 pl-1 text-right leading-tight" data-column="after">
+                after the hedge
+                {anchor ? (
+                  <span className="block text-[0.65rem] font-normal text-slate-500">
+                    {" "}
+                    {anchorClose}
+                  </span>
+                ) : null}
               </th>
               {anchor ? (
-                <th className="w-[15%] py-1 text-right" data-column="now">
-                  now ({dateOnly(snapshot.target_close) ?? "tonight"})
+                <th className="w-[22%] py-1 pl-1 text-right leading-tight" data-column="now">
+                  now
+                  <span className="block text-[0.65rem] font-normal text-slate-500">
+                    {" "}
+                    {dateOnly(snapshot.target_close) ?? "tonight"}
+                  </span>
                 </th>
               ) : null}
-              <th className={anchor ? "w-[27%] py-1 pl-1" : "w-[34%] py-1 pl-1"}>
-                {anchor ? "before / after / now" : "before / after"}
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -247,28 +308,32 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
                   } ${startOfSectors ? "border-t-2 border-t-slate-300" : ""}`}
                 >
                   <td className="break-words py-1 pr-1">{label}</td>
-                  <td className="py-1 text-right font-mono tabular-nums">
-                    {exposure(before[key])}
+                  <td
+                    className="py-1 text-right font-mono tabular-nums"
+                    data-heat="before"
+                    style={{ backgroundColor: heatFill("before", before[key] ?? 0, scale) }}
+                  >
+                    {heatText(before[key])}
                   </td>
-                  <td className="py-1 text-right font-mono tabular-nums">
-                    {exposure(after[key])}
+                  <td
+                    className="py-1 text-right font-mono tabular-nums"
+                    data-heat="after"
+                    style={{ backgroundColor: heatFill("after", after[key] ?? 0, scale) }}
+                  >
+                    {heatText(after[key])}
                   </td>
                   {anchor ? (
                     <td
                       className="py-1 text-right font-mono tabular-nums"
                       data-now={key}
+                      data-heat="now"
+                      style={{
+                        backgroundColor: heatFill("now", tonightBefore[key] ?? 0, scale),
+                      }}
                     >
-                      {exposure(tonightBefore[key])}
+                      {heatText(tonightBefore[key])}
                     </td>
                   ) : null}
-                  <td className="py-1 pl-1">
-                    <ExposureBars
-                      before={before[key] ?? 0}
-                      after={after[key] ?? 0}
-                      scale={scale}
-                      now={anchor ? (tonightBefore[key] ?? 0) : undefined}
-                    />
-                  </td>
                 </tr>
               );
             })}
@@ -276,37 +341,47 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
         </table>
       </div>
       <p className="mt-1 text-xs text-slate-500">
-        The bars are on one scale, the largest exposure on the page: a bar that is not there is a
-        factor the hedge has taken out. {REFERENCE_SECTOR} is the reference sector and has no
-        column of its own, so the ten sectors above are measured against it.
+        The shade is one scale, the largest exposure on the page: the darkest cell is the
+        biggest bet, and a pale cell is a small number rather than a missing one.{" "}
+        {REFERENCE_SECTOR} is the reference sector and has no column of its own, so the ten
+        sectors above are measured against it.
       </p>
       </Details>
-      <dl className="mt-2 flex flex-wrap gap-x-6 text-sm text-slate-600">
-        <div className="flex gap-2">
-          <dt className="font-medium">the hedge</dt>
+      <dl className="mt-2 grid gap-1 text-sm text-slate-700" data-hedge-lines="true">
+        <div className="flex flex-wrap gap-x-2" data-hedge-line="after">
+          <dt className="font-medium">after the rebalance hedge:</dt>
           <dd>
-            <span className="text-slate-500">idio share after FMP</span>{" "}
+            worst factor exposure{" "}
+            <span className="font-mono tabular-nums">{heatText(after && worstOf(after))}</span>
+            {anchor ? `, on the ${anchorClose} close` : ""}.
+            {hedgeBlock
+              ? ` The hedge moved ${count(hedgeBlock.moved_names)} of ${count(
+                  hedgeBlock.book_names,
+                )} names.`
+              : ""}
+          </dd>
+        </div>
+        <div className="flex flex-wrap gap-x-2" data-hedge-line="now">
+          <dt className="font-medium">now:</dt>
+          <dd>
+            worst factor exposure{" "}
             <span className="font-mono tabular-nums">
-              {exposure(snapshot.hedge?.idio_share_after_fmp)}
+              {heatText(snapshot.hedge?.max_abs_exposure_after_fmp)}
             </span>
+            {guard?.threshold === null || guard?.threshold === undefined
+              ? ""
+              : `, against the ${percent(guard.threshold)} guard line`}
+            .{" "}
+            <span className="font-mono tabular-nums">
+              {percent(snapshot.hedge?.idio_share_after_fmp, 1)}
+            </span>{" "}
+            of the book&apos;s predicted risk sits in the stocks themselves, not the factors.
           </dd>
         </div>
-        <div className="flex gap-2">
-          <dt className="font-medium">worst residual exposure</dt>
-          <dd className="font-mono tabular-nums">
-            {exposure(snapshot.hedge?.max_abs_exposure_after_fmp)}
-          </dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="font-medium">post-hedge idio share</dt>
-          <dd className="font-mono tabular-nums">
-            {exposure(snapshot.hedge?.post_hedge_idio_share)}
-          </dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="font-medium">reconciliation intended</dt>
-          <dd className="font-mono tabular-nums">
-            {dollars(snapshot.reconciliation?.intended_notional as number | null)}
+        <div className="flex flex-wrap gap-x-2" data-hedge-line="orders">
+          <dt className="font-medium">Tonight&apos;s wanted orders:</dt>
+          <dd data-wanted-orders="true">
+            {wantedOrders(snapshot).text}
           </dd>
         </div>
         {adjustment ? (
@@ -315,21 +390,12 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
           // nothing behind it. It is labelled rather than netted out of the P&L,
           // because a number quietly adjusted is one nobody can check, and the
           // figure is the account's paper keeping rather than a result of the book.
-          <div className="flex gap-2" data-figure="unexplained-adjustment">
-            <dt className="font-medium">unexplained adjustment</dt>
-            <dd className="font-mono tabular-nums">
-              {dollars(adjustment)}{" "}
-              <span className="text-slate-500">
-                (left the account with no order behind it)
-              </span>
-            </dd>
+          <div className="flex flex-wrap gap-x-2" data-figure="unexplained-adjustment">
+            <dt className="font-medium">money that moved with no order behind it:</dt>
+            <dd className="font-mono tabular-nums">{dollars(adjustment)}</dd>
           </div>
         ) : null}
       </dl>
-      <p className="mt-1 text-xs text-slate-500">
-        The construction is {snapshot.construction || "n/a"}, and the book is the traded set after
-        the floor, renormalized to gross {percent(snapshot.book?.gross)}.
-      </p>
     </section>
   );
 }

@@ -206,16 +206,18 @@ describe("the attribution section", () => {
     expect(risk.pre_hedge_vol).toBeGreaterThan(risk.hedged_vol);
     expect(vol).toContain(`${(risk.pre_hedge_vol * 100).toFixed(1)}%`);
     expect(vol).toContain(`${(risk.hedged_vol * 100).toFixed(1)}%`);
-    expect(vol).toContain("the hedge removed");
-    // Two series, and they are not the same line: the upper one is the book the
-    // hedge acted on.
-    const chart = document.querySelector("[data-chart='hedge-vol']");
-    expect(chart).toBeTruthy();
-    const before = chart?.querySelector("[data-series='pre-hedge']")?.getAttribute("points");
-    const after = chart?.querySelector("[data-series='hedged']")?.getAttribute("points");
-    expect(before).toBeTruthy();
-    expect(after).toBeTruthy();
-    expect(before).not.toEqual(after);
+    // The middle of the flow is the quantity between the two ends: the points the
+    // hedge removed, drawn as the same units rather than implied by two lines.
+    const waterfall = document.querySelector("[data-waterfall='true']") as HTMLElement;
+    expect(waterfall).toBeTruthy();
+    expect(waterfall.textContent).toContain("removed by the hedge");
+    expect(waterfall.textContent).toContain(
+      `${((risk.pre_hedge_vol - risk.hedged_vol) * 100).toFixed(1)} pts`,
+    );
+    // And the variance split is one line, not a stacked chart that says the same.
+    const share = document.querySelector("[data-var-share='line']");
+    expect(share).toBeTruthy();
+    expect(document.querySelector("figure[data-chart='risk-path']")).toBeNull();
   });
 
   it("says n/a for the hedge forecast, and draws no such chart, when it is absent", () => {

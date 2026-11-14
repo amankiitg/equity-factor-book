@@ -110,7 +110,7 @@ describe("the page", () => {
     expect(screen.getByText(/DRY RUN: no orders are sent/)).toBeTruthy();
     expect(screen.getByText(/The book: \d+ name\(s\)/)).toBeTruthy();
     expect(screen.getByRole("table", { name: "factor exposures" })).toBeTruthy();
-    expect(screen.getByText(/idio share after FMP/)).toBeTruthy();
+    expect(screen.getByText(/of the book's predicted risk sits in the stocks themselves/)).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -178,7 +178,7 @@ describe("the page", () => {
     const headers = Array.from(rows[0].querySelectorAll("th")).map(
       (cell) => cell.textContent,
     );
-    expect(headers).toEqual(["factor", "before", "after", "before / after"]);
+    expect(headers).toEqual(["factor", "before the hedge", "after the hedge"]);
     expect(headers.join(" ")).not.toContain("afterbefore");
     const labels = rows.slice(1).map((row) => row.querySelector("td")?.textContent ?? "");
     expect(labels.slice(0, 7)).toEqual([
@@ -205,14 +205,15 @@ describe("the page", () => {
       "55 Utilities",
     ]);
     expect(labels.join(" ")).not.toContain("60 ");
-    expect(screen.getAllByText(/60 Real Estate is the reference sector/).length).toBeGreaterThan(0);
+    const exposures = document.querySelector("[data-section='exposures']")?.textContent ?? "";
+    expect(exposures).toContain("60 Real Estate is the reference sector");
   });
 
-  it("shows a hedged-to-zero exposure as 0.0000, never as -0.0000", () => {
-    // The after column holds values like -2.6e-18, whose four-place form is
-    // "-0.0000": rounding, not a short position in a factor. Only the after
-    // column is held to this: a before value of -0.0001 is a real, tiny pre-hedge
-    // tilt and keeps its sign, which the last check below pins.
+  it("shows a hedged-to-zero exposure as 0.0%, never as -0.0%", () => {
+    // The after column holds values like -2.6e-18, whose rounded form is "-0.0%":
+    // rounding, not a short position in a factor. Only the after column is held to
+    // this: a before value of -0.0001 is a real, tiny pre-hedge tilt and keeps its
+    // sign, which the last check below pins.
     render(<SnapshotView snapshot={OK} now={NOW} />);
     openPositions();
     const table = screen.getByRole("table", { name: "factor exposures" });
@@ -220,34 +221,39 @@ describe("the page", () => {
       table.querySelectorAll("[data-factor] td:nth-child(3)"),
     ).map((cell) => cell.textContent ?? "");
     expect(after.length).toBeGreaterThanOrEqual(17);
-    expect(after.filter((text) => text !== "0.0000")).toEqual([]);
+    expect(after.filter((text) => text !== "0.00%")).toEqual([]);
     // A genuinely negative exposure keeps its sign, so the rule is not a clamp:
     // the book's most negative factor renders with its minus sign.
     const negatives = Object.values(OK.exposures_before_hedge).filter(
       (value) => (value ?? 0) < 0,
     ) as number[];
     expect(negatives.length).toBeGreaterThan(0);
-    expect(within(table).getByText(Math.min(...negatives).toFixed(4))).toBeTruthy();
+    expect(within(table).getByText(`${(Math.min(...negatives) * 100).toFixed(2)}%`)).toBeTruthy();
   });
 
-  it("draws a before and an after bar per factor, on one scale", () => {
+  it("draws every exposure as a heat cell, on one scale, in percent", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     openPositions();
     const table = screen.getByRole("table", { name: "factor exposures" });
-    const bars = { before: table.querySelectorAll("[data-bar='before']"), after: table.querySelectorAll("[data-bar='after']") };
-    expect(bars.before.length).toBe(17);
-    expect(bars.after.length).toBe(17);
+    const before = table.querySelectorAll("[data-heat='before']");
+    const after = table.querySelectorAll("[data-heat='after']");
+    expect(before.length).toBe(17);
+    expect(after.length).toBe(17);
+    // The colour is the size: the largest exposure is the strongest wash and a
+    // near-zero one is nearly clear, while both keep their number in the cell.
+    const alpha = (cell: Element) => {
+      const match = (cell as HTMLElement).style.backgroundColor.match(/rgba?\([^)]*,\s*([0-9.]+)\)/);
+      return match ? Number(match[1]) : 1;
+    };
     const momentum = table.querySelector("[data-factor='momentum']") as HTMLElement;
-    const width = (element: Element) => parseFloat((element as HTMLElement).style.width);
-    const beforeBar = momentum.querySelector("[data-bar='before']") as HTMLElement;
-    const afterBar = momentum.querySelector("[data-bar='after']") as HTMLElement;
-    // 0.155 against a 0.155 scale: the full half-track, and nothing at all after
-    // the hedge, which is the whole point of showing them.
-    expect(width(beforeBar)).toBeCloseTo(50, 5);
-    expect(width(afterBar)).toBeLessThan(0.001);
-    expect(beforeBar.getAttribute("data-sign")).toBe("positive");
-    const energy = table.querySelector("[data-factor='sector_10'] [data-bar='before']");
-    expect(energy?.getAttribute("data-sign")).toBe("negative");
+    const beforeCell = momentum.querySelector("[data-heat='before']") as HTMLElement;
+    const afterCell = momentum.querySelector("[data-heat='after']") as HTMLElement;
+    expect(beforeCell.textContent).toBe(
+      `${((OK.exposures_before_hedge.momentum ?? 0) * 100).toFixed(2)}%`,
+    );
+    expect(afterCell.textContent).toBe("0.00%");
+    expect(alpha(beforeCell)).toBeGreaterThan(alpha(afterCell));
+    expect(alpha(beforeCell)).toBeGreaterThan(0.3);
   });
 
   it("shows the attribution: the live period, its four terms and the total", () => {
@@ -421,7 +427,7 @@ describe("the page", () => {
     const figure = document.querySelector(
       "[data-figure='unexplained-adjustment']",
     ) as HTMLElement;
-    expect(figure.textContent).toContain("unexplained adjustment");
+    expect(figure.textContent).toContain("money that moved with no order behind it");
     expect(figure.textContent).toContain("-$3,212");
   });
 

@@ -875,6 +875,24 @@ def test_a_later_guard_leg_is_a_reflip_and_says_so() -> None:
     assert held["since_label"] == "Guard 11-04"
 
 
+def test_the_guard_history_is_one_row_per_firing_from_the_manifest() -> None:
+    """The card per firing reads the hold day's own manifest, and invents nothing.
+
+    The manifest in this fixture records the legs and the firing but no turnover and
+    no exposures, so the row says those are unknown rather than printing zero. The
+    flip the firing caused comes from the bridge's own refipped_on date.
+    """
+    block = _ccl_reflip_block()
+    rows = block["since_anchor"]["guard_history"]
+    assert [row["date"] for row in rows] == ["2026-11-04"]
+    row = rows[0]
+    assert row["legs_sent"] == 1
+    assert row["flips"] == ["CCL"]
+    assert row["usd"] is None
+    assert row["exposure_before"] is None
+    assert "cost_bps" in row
+
+
 def test_kvues_own_row_says_retired_owed_and_cannot_be_traded() -> None:
     anchor, latest = "2026-10-23", "2026-11-05"
     target = pd.DataFrame(

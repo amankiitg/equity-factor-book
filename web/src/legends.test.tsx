@@ -49,7 +49,7 @@ const named = (chart: HTMLElement): string[] =>
 describe("chart legends", () => {
   it("draws charts at all, so the checks below are not vacuous", () => {
     open(OK);
-    expect(charts().length).toBeGreaterThanOrEqual(4);
+    expect(charts().length).toBeGreaterThanOrEqual(3);
   });
 
   it("gives every chart a legend naming every series it draws", () => {
@@ -83,19 +83,28 @@ describe("chart legends", () => {
     }
   });
 
-  it("marks an area series as an area and a line as a line", () => {
+  it("draws the hedge as a waterfall of three steps, not as a second chart", () => {
+    // The variance split is one line now, so the risk pictures that carried it are
+    // gone. What the hedge removed is drawn where the reader meets it: one bar for
+    // the sized book, one for the points the hedge took out, one for what is left.
     open(OK);
-    const riskPath = document.querySelector("figure[data-chart='risk-path']") as HTMLElement;
-    const ids = Array.from(riskPath.querySelectorAll("li[data-series]")).map(
-      (node) => node.getAttribute("data-series"),
+    expect(document.querySelector("figure[data-chart='risk-path']")).toBeNull();
+    expect(document.querySelector("figure[data-chart='hedge-vol']")).toBeNull();
+    const waterfall = document.querySelector("[data-waterfall='true']") as HTMLElement;
+    expect(waterfall).toBeTruthy();
+    const steps = ["before", "removed", "after"].map(
+      (key) => waterfall.querySelector(`[data-waterfall-step='${key}']`)?.textContent ?? "",
     );
-    expect(ids).toContain("factor");
-    expect(ids).toContain("idio");
-    // The swatch is a filled rect for a band and a line for a line.
-    expect(riskPath.querySelector("li[data-series='factor'] rect")).toBeTruthy();
-    const hedge = document.querySelector("figure[data-chart='hedge-vol']") as HTMLElement;
-    expect(hedge.querySelector("li[data-series='pre-hedge'] line")).toBeTruthy();
-    expect(hedge.querySelector("li[data-series='removed'] rect")).toBeTruthy();
+    for (const step of steps) expect(step).toMatch(/[0-9]/);
+    expect(steps[1]).toContain("pts");
+    // The middle bar is the difference, in the same units as the two ends.
+    const risk = ATTRIBUTION.live?.risk;
+    if (!risk || risk.pre_hedge_vol === null || risk.hedged_vol === null) {
+      throw new Error("the fixture carries no hedge forecast");
+    }
+    expect(steps[1]).toContain(
+      `${((risk.pre_hedge_vol - risk.hedged_vol) * 100).toFixed(1)} pts`,
+    );
   });
 });
 
@@ -123,35 +132,29 @@ describe("dated notes", () => {
     }
   });
 
-  it("numbers the markers on the charts to match the list", () => {
-    // A marker is drawn only at a date the chart actually spans, and the fixture's
-    // live window closes before any of the notes, so this document carries one note
-    // dated the first session it draws. The mechanism is what is under test here; the
-    // codes' own notes are asserted above.
-    const first = LIVE_RISK_PATH[0]?.trade_date ?? "";
-    const dotted = {
-      ...OK,
-      attribution: {
-        ...ATTRIBUTION,
-        notes: [{ date: first, text: "a note on the first drawn session" }],
-      },
-    } as unknown as Snapshot;
-    open(dotted);
-    const markers = Array.from(document.querySelectorAll("[data-note-marker]")).map((node) =>
-      Number(node.getAttribute("data-note-marker")),
+  it("numbers the notes where they appear, and each number opens its text", () => {
+    // The numbers sit beside the risk statement now, and each one is a popover: a
+    // correction to the series is one tap from the series, not three tabs away.
+    open(OK);
+    const buttons = Array.from(document.querySelectorAll("[data-footnote] button"));
+    expect(buttons.length).toBeGreaterThan(0);
+    expect(buttons.map((node) => node.textContent)).toEqual(
+      (ATTRIBUTION.notes ?? []).map((_, index) => String(index + 1)),
     );
-    // A note whose date is not in the drawn window has no marker; every marker that
-    // is drawn has to point at a numbered line in the list.
-    expect(markers.length).toBeGreaterThan(0);
-    const items = document.querySelectorAll("[data-notes] li[data-note]").length;
-    for (const number of markers) {
-      expect(number).toBeGreaterThanOrEqual(1);
-      expect(number).toBeLessThanOrEqual(items);
+    for (const index of [1, 2]) {
+      const note = (ATTRIBUTION.notes ?? [])[index];
+      if (!note) throw new Error("the fixture lost a correction note");
+      const button = document.querySelector(
+        `[data-footnote='${index + 1}'] button`,
+      ) as HTMLElement;
+      fireEvent.click(button);
+      const popover = document.querySelector(
+        `[data-footnote-text='${index + 1}']`,
+      ) as HTMLElement;
+      expect(popover).toBeTruthy();
+      expect(popover.textContent).toContain(note.text);
+      expect(popover.textContent).toContain(note.date ?? "");
     }
-    // The marker carries the note's text as its title, so the text travels with the
-    // point and not only with the list.
-    const titleNode = document.querySelector(`[data-note-marker='${markers[0]}'] title`);
-    expect((titleNode?.textContent ?? "").length).toBeGreaterThan(10);
   });
 
   it("draws no notes when the document carries none", () => {
