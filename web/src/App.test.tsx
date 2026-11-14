@@ -190,23 +190,26 @@ describe("the page", () => {
       "Reversal",
       "Size",
     ]);
-    // Every sector the design carries, named, and only the ten GICS sectors:
-    // 60 is the dummy the design leaves out, so it is named in the note instead.
+    // Every sector the design carries, named, in the design's order, and without the
+    // GICS number: the code is how the design keys the row, not part of its name.
     expect(labels.slice(7)).toEqual([
-      "10 Energy",
-      "15 Materials",
-      "20 Industrials",
-      "25 Consumer Discretionary",
-      "30 Consumer Staples",
-      "35 Health Care",
-      "40 Financials",
-      "45 Information Technology",
-      "50 Communication Services",
-      "55 Utilities",
+      "Energy",
+      "Materials",
+      "Industrials",
+      "Consumer Discretionary",
+      "Consumer Staples",
+      "Health Care",
+      "Financials",
+      "Information Technology",
+      "Communication Services",
+      "Utilities",
     ]);
-    expect(labels.join(" ")).not.toContain("60 ");
+    expect(labels.join(" ")).not.toMatch(/^\d+ /m);
+    for (const label of labels.slice(7)) {
+      expect(label).not.toMatch(/^\d/);
+    }
     const exposures = document.querySelector("[data-section='exposures']")?.textContent ?? "";
-    expect(exposures).toContain("60 Real Estate is the reference sector");
+    expect(exposures).toContain("Real Estate is the reference sector");
   });
 
   it("shows a hedged-to-zero exposure as 0.0%, never as -0.0%", () => {

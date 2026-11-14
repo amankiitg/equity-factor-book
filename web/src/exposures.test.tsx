@@ -10,7 +10,12 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { anchoredExposures, ExposuresSection } from "./ExposuresSection";
+import {
+  anchoredExposures,
+  ExposuresSection,
+  heatContrast,
+  heatInk,
+} from "./ExposuresSection";
 import served from "../fixtures/snapshot_2026-10-30_evening.json";
 import type { MonthlyBlock, Snapshot } from "./types";
 
@@ -129,6 +134,55 @@ describe("the exposures panel on a hold day", () => {
     expect(caption).toContain("After the hedge every cell is 0.00%");
     expect(caption).toContain("flat neutral");
     expect(caption).not.toContain("one scale");
+  });
+
+  it("rings a now cell at or beyond the 5% guard line, and only that cell", () => {
+    const snapshot = {
+      ...HOLD,
+      exposures_before_hedge: {
+        ...HOLD.exposures_before_hedge,
+        momentum: 0.073,
+        size: -0.05,
+        beta: 0.049,
+      },
+    } as unknown as Snapshot;
+    const { container } = render(<ExposuresSection snapshot={snapshot} />);
+    const cell = (key: string) => container.querySelector(`[data-now='${key}']`) as HTMLElement;
+    const ringed = (key: string) =>
+      cell(key).getAttribute("data-guard") === "true" && /inset/.test(cell(key).style.boxShadow);
+    // Over the line, exactly on it, and just inside it.
+    expect(ringed("momentum"), "a cell over the guard line has no ring").toBe(true);
+    expect(ringed("size"), "a cell on the guard line has no ring").toBe(true);
+    expect(ringed("beta"), "a cell inside the guard line is ringed").toBe(false);
+    // The ring is an outline: the cell keeps its own shade underneath.
+    expect(cell("momentum").style.backgroundColor).toMatch(/^rgba\(/);
+    const caption = container.querySelector("[data-heat-caption]")?.textContent ?? "";
+    expect(caption).toContain("at or beyond the 5% drift guard line carries an amber ring");
+    expect(caption).toContain("not a fill");
+  });
+
+  it("keeps every value at 4.5:1 against the cell it sits on", () => {
+    const { container } = render(<ExposuresSection snapshot={HOLD} />);
+    const cells = Array.from(
+      container.querySelectorAll("[data-heat]"),
+    ) as HTMLElement[];
+    expect(cells.length).toBeGreaterThan(30);
+    let darkest = { ratio: Infinity, cell: cells[0] };
+    for (const cell of cells) {
+      const value = heatContrast(cell.style.backgroundColor, cell.style.color);
+      expect(
+        value,
+        `a cell's value is ${value.toFixed(2)}:1: ${cell.textContent}`,
+      ).toBeGreaterThanOrEqual(4.5);
+      if (value < darkest.ratio) darkest = { ratio: value, cell };
+    }
+    // The tightest cell on this document, named so a palette change cannot quietly
+    // take it under the line.
+    expect(darkest.ratio).toBeGreaterThanOrEqual(4.5);
+    // And the rule is not one colour: a dark fill takes the light ink.
+    expect(heatInk("rgba(15, 23, 42, 1)")).toBe("#f8fafc");
+    expect(heatInk("transparent")).toBe("#0f172a");
+    expect(heatContrast("rgba(15, 23, 42, 1)", "#f8fafc")).toBeGreaterThan(4.5);
   });
 
   it("shows the anchor's before column as a real exposure, not the same vector", () => {
