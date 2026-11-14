@@ -86,26 +86,37 @@ export interface BlockedLeg {
 }
 
 /**
- * The legs the broker refused, with their dollars and the reason it gave.
+ * The legs the evening could not send, with the dollars the order asked for and the
+ * reason it gave.
+ *
+ * The dollars are read from the order the run refused, never from a price: a share
+ * count times a stale mark is a number that no order ever carried. Three sources, in
+ * the order of how directly each names that order.
  *
  * `not_sent_lines` are the legs the evening built and could not send at all, and the
  * writer fixes their shape at the source: ticker, intent, dollars, "never sent", and
  * the reason in brackets. A line that does not parse is skipped rather than guessed
- * at. Only the legs no broker could trade under any spelling reach this list, which is
- * why the card can say they no longer trade rather than reporting a decision the run
- * made on purpose.
+ * at. A hold night carries no fills at all, so it falls through to
+ * `monthly.tonight.cannot_send`, which the run fills from the order it refused:
+ * ticker, dollars and code from the same record that was sent to the broker.
+ *
+ * The anchored block's retired rows are the last resort, and they carry no dollars.
+ * A retired row's gap is the distance from its weight target measured in NAV, not the
+ * notional of the order behind it: on the 2026-11-13 close that gap was $102 while
+ * the refused KVUE leg was $13,615, and printing the gap beside "Blocked" quotes a
+ * number the order never had. The name is still worth saying; a dollar figure
+ * derived from the gap is not.
  */
 export function blockedLegs(snapshot: Snapshot): BlockedLeg[] {
   const legs = sentBlockedLegs(snapshot);
   if (legs.length) return legs;
-  // On a hold night nothing is sent, so the document carries no never-sent line at
-  // all: the leg it wanted and could not place is the retired name's own gap, which
-  // the anchored block states name by name. Same claim, same words, no order needed.
+  const refused = refusedLegs(snapshot);
+  if (refused.length) return refused;
   return (snapshot.monthly?.holdings?.rows ?? [])
     .filter((row) => row.retired && Math.abs(row.gap_usd ?? 0) >= 1)
     .map((row) => ({
       ticker: row.ticker,
-      notional: Math.abs(row.gap_usd ?? 0),
+      notional: null,
       reason: "SYMBOL_NOT_FOUND",
     }));
 }
@@ -126,10 +137,23 @@ function sentBlockedLegs(snapshot: Snapshot): BlockedLeg[] {
   return legs;
 }
 
+/** The refused legs as the run recorded them against the order it could not place. */
+function refusedLegs(snapshot: Snapshot): BlockedLeg[] {
+  const legs: BlockedLeg[] = [];
+  for (const leg of snapshot.monthly?.tonight?.cannot_send ?? []) {
+    if (!Number.isFinite(leg.usd)) continue;
+    legs.push({ ticker: leg.ticker, notional: leg.usd, reason: leg.code });
+  }
+  return legs;
+}
+
 /** The reason a broker refused a leg, in words a reader who is not a broker knows. */
 function blockedReason(code: string): string {
-  const clean = code.trim();
-  if (clean.toUpperCase() === "SYMBOL_NOT_FOUND") return "no longer trades";
+  const clean = code.trim().toUpperCase();
+  // Both codes say the same thing to a reader: the feed carries no live symbol for
+  // the name, so no order for it can be sent. The second is the broker's own word
+  // for a company that has been acquired or delisted.
+  if (clean === "SYMBOL_NOT_FOUND" || clean === "ASSET_INACTIVE") return "no longer trades";
   return clean.toLowerCase().replace(/_/g, " ");
 }
 
@@ -140,11 +164,18 @@ function blockedReason(code: string): string {
  */
 export function blockedText(legs: BlockedLeg[]): string {
   if (legs.length > BLOCKED_NAMES) {
-    const total = legs.reduce((sum, leg) => sum + Math.abs(leg.notional ?? 0), 0);
-    return `${count(legs.length)} names, ${dollars(total)} (no longer trade)`;
+    const priced = legs.filter((leg) => leg.notional !== null);
+    const total = priced.reduce((sum, leg) => sum + Math.abs(leg.notional ?? 0), 0);
+    const amount = priced.length ? `, ${dollars(total)}` : "";
+    return `${count(legs.length)} names${amount} (no longer trade)`;
   }
   return legs
-    .map((leg) => `${leg.ticker} ${dollars(leg.notional)} (${blockedReason(leg.reason)})`)
+    .map((leg) => {
+      // A leg with no recorded order behind it says the name and nothing else: a
+      // missing figure is honest, an invented one is not.
+      const figure = leg.notional === null ? "" : ` ${dollars(leg.notional)}`;
+      return `${leg.ticker}${figure} (${blockedReason(leg.reason)})`;
+    })
     .join("; ");
 }
 
