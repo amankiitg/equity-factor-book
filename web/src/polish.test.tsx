@@ -329,7 +329,7 @@ describe("the (i) on the cards that were missing one", () => {
           { ticker: "Q", reason: "no specific variance" },
         ],
         excluded: 7,
-        excluded_names: ["AAA"],
+        excluded_names: ["BE", "DD", "ILMN", "P", "SKYD", "TWLO", "VYLR"],
         removed_too_small: 300,
         final_names: 196,
         gross: 1,
@@ -361,5 +361,15 @@ describe("the (i) on the cards that were missing one", () => {
     const line = document.querySelector("[data-construction='left-out']") as HTMLElement;
     expect(line.textContent).toContain("At the 10-23 rebalance, 3 were left out");
     for (const ticker of ["FDXF", "HONA", "Q"]) expect(line.textContent).toContain(ticker);
+  });
+
+  it("lists all seven names behind the seven it counts", () => {
+    render(<SnapshotView snapshot={CONSTRUCTED} now={NOW} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Operations" }));
+    const line = document.querySelector("[data-construction='excluded']") as HTMLElement;
+    expect(line.textContent).toContain("7 more were kept out before the sizing");
+    for (const ticker of ["BE", "DD", "ILMN", "P", "SKYD", "TWLO", "VYLR"]) {
+      expect(line.textContent, ticker).toContain(ticker);
+    }
   });
 });

@@ -954,8 +954,11 @@ def _live_flip_facts_block() -> dict:
                    "NFLX": "long", "MKC": "short"}
     before_side = {"CCL": "short", "F": "long", "GEHC": "short", "VZ": "long",
                    "NFLX": "long", "MKC": "short"}
+    # MKC is deliberately absent from the account read. The 11-12 guard's reopening
+    # buy_to_open was submitted after the read, so the read shows no side for MKC at
+    # all. The flip still happened, and the page has to say so from the legs.
     now_side = {"CCL": "short", "F": "short", "GEHC": "long", "VZ": "short",
-                "NFLX": "short", "MKC": "long"}
+                "NFLX": "short"}
     target = pd.DataFrame(
         {
             "trade_date": [anchor] * len(names),
@@ -973,13 +976,14 @@ def _live_flip_facts_block() -> dict:
                              for name in names],
         }
     )
+    now_names = [name for name in names if name in now_side]
     now = pd.DataFrame(
         {
-            "trade_date": [latest] * len(names),
-            "ticker": names,
-            "side": [now_side[name] for name in names],
+            "trade_date": [latest] * len(now_names),
+            "ticker": now_names,
+            "side": [now_side[name] for name in now_names],
             "market_value": [(-650.0 if now_side[name] == "short" else 650.0)
-                             for name in names],
+                             for name in now_names],
         }
     )
     orders = pd.DataFrame(
@@ -1073,6 +1077,80 @@ def test_the_flips_list_carries_the_guard_flips_the_rebalance_did_not_make() -> 
     assert guard_flips["MKC"]["to_side"] == "long"
     # CCL is a re-flip and travels in its own row, not a second time here.
     assert "CCL" not in guard_flips
+
+
+def test_a_submitted_opening_leg_counts_when_the_account_read_lags() -> None:
+    """MKC's shape: the close filled, the reopen went out after the account read.
+
+    order_flips used to require a current side, so a name the read had not caught up
+    with was skipped. The legs are the evidence: the buy_to_close leaves the short
+    target side, and the buy_to_open submitted that night opens the long. A close
+    with no sent open is an exit, not a flip, and an unsent open proves nothing.
+    """
+    anchor, guard, latest = "2026-10-23", "2026-11-12", "2026-11-13"
+    target = pd.DataFrame(
+        {
+            "trade_date": [anchor, anchor],
+            "ticker": ["MKC", "AAA"],
+            "side": ["short", "long"],
+            "weight": [0.01, 0.01],
+        }
+    )
+    before = pd.DataFrame(
+        {
+            "trade_date": [anchor, anchor],
+            "ticker": ["MKC", "AAA"],
+            "side": ["short", "long"],
+            "market_value": [-500.0, 500.0],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [guard, guard, guard],
+            "ticker": ["MKC", "MKC", "AAA"],
+            "position_intent": ["buy_to_close", "buy_to_open", "sell_to_close"],
+            "intended_notional": [93.32, 449.85, 500.0],
+            "broker_order_id": ["id-1", "id-2", ""],
+        }
+    )
+    now = pd.DataFrame(columns=["trade_date", "ticker", "side", "market_value"])
+    events = monthly_view.order_flips(orders, before, target, now, anchor, latest)
+    assert events == [
+        {
+            "ticker": "MKC",
+            "date": guard,
+            "from_side": "short",
+            "to_side": "long",
+            "usd": pytest.approx(543.17),
+        }
+    ]
+
+
+def test_an_unsent_opening_leg_is_not_a_flip() -> None:
+    """A refused open carries a close but no broker id, so nothing proves the side."""
+    anchor, guard, latest = "2026-10-23", "2026-11-12", "2026-11-13"
+    target = pd.DataFrame(
+        {"trade_date": [anchor], "ticker": ["MKC"], "side": ["short"], "weight": [0.01]}
+    )
+    before = pd.DataFrame(
+        {
+            "trade_date": [anchor],
+            "ticker": ["MKC"],
+            "side": ["short"],
+            "market_value": [-500.0],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [guard, guard],
+            "ticker": ["MKC", "MKC"],
+            "position_intent": ["buy_to_close", "buy_to_open"],
+            "intended_notional": [93.32, 449.85],
+            "broker_order_id": ["id-1", ""],
+        }
+    )
+    now = pd.DataFrame(columns=["trade_date", "ticker", "side", "market_value"])
+    assert monthly_view.order_flips(orders, before, target, now, anchor, latest) == []
 
 
 def test_the_holdings_rows_name_a_guard_flip_as_a_flip() -> None:
@@ -1605,6 +1683,28 @@ def test_a_manifest_without_a_kept_count_leaves_the_construction_out() -> None:
     # than falling back to the nightly book.
     assert monthly_view.anchor_construction("2026-10-23", {}) is None
     assert monthly_view.anchor_construction("2026-10-23", {"n_names": 499}) is None
+
+
+def test_the_excluded_line_lists_every_name_it_counts() -> None:
+    """Seven names were kept out before the sizing, and all seven are listed.
+
+    The block used to slice the list at six, so the line said "7 more" and named
+    six: VYLR was counted but never shown. A count line that hides a name it
+    counted is a lie about the record, and the reader cannot see which name it is.
+    """
+    excluded = ["BE", "DD", "ILMN", "P", "SKYD", "TWLO", "VYLR"]
+    manifest = {
+        "n_names": 203,
+        "n_excluded": len(excluded),
+        "n_dropped_no_risk": 0,
+        "n_dropped": 0,
+        "n_kept": 196,
+        "excluded_detail": [{"ticker": ticker} for ticker in excluded],
+    }
+    built = monthly_view.anchor_construction("2026-10-23", manifest)
+    assert built is not None
+    assert built["excluded"] == 7
+    assert built["excluded_names"] == excluded
 
 
 def test_no_em_or_en_dash_in_page_text_or_block_strings() -> None:

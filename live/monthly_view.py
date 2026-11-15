@@ -292,11 +292,16 @@ def _intent_parts(intent: Any) -> tuple[str, str] | None:
 
 def _day_sign_legs(
     orders: pd.DataFrame, ticker: str, anchor: str, today: str
-) -> dict[str, list[tuple[str, str, float | None]]]:
-    """One name's order legs between the anchor and today, grouped by close date."""
-    out: dict[str, list[tuple[str, str, float | None]]] = {}
+) -> dict[str, list[tuple[str, str, float | None, bool]]]:
+    """One name's order legs between the anchor and today, grouped by close date.
+
+    The last value says whether the leg was sent: a row with no broker order id is
+    a leg the run refused, and a refused leg is not evidence that anything traded.
+    """
+    out: dict[str, list[tuple[str, str, float | None, bool]]] = {}
     if orders is None or orders.empty or "trade_date" not in orders.columns:
         return out
+    has_broker = "broker_order_id" in orders.columns
     for row in orders.itertuples(index=False):
         if str(getattr(row, "ticker", "") or "") != ticker:
             continue
@@ -306,8 +311,13 @@ def _day_sign_legs(
         parts = _intent_parts(getattr(row, "position_intent", ""))
         if parts is None:
             continue
+        sent = (
+            bool(str(getattr(row, "broker_order_id", "") or "").strip())
+            if has_broker
+            else True
+        )
         out.setdefault(day, []).append(
-            (parts[0], parts[1], _number(getattr(row, "intended_notional", None)))
+            (parts[0], parts[1], _number(getattr(row, "intended_notional", None)), sent)
         )
     return out
 
@@ -333,24 +343,51 @@ def order_flips(
     A guard flip is the same fact for a name the rebalance did not flip: NFLX on
     2026-11-04 and MKC on 2026-11-12 were on their target side after the rebalance and
     are on the other side now.
+
+    The account read can lag the evening. MKC's reopening leg was submitted after the
+    read, so the account shows no side for it at all. The legs are still the evidence:
+    a close that leaves the target side and an opening leg submitted that night mean
+    the side changed, and the opening leg says to which side. A name with a close and
+    no opening leg has exited, which is not a flip.
     """
     before_side = _sides(before)
     target_side = _sides(target)
     now_side = _sides(now)
+    # A read with no side column says nothing about any name. Only a read that
+    # carries sides can say that one name is missing from it.
+    reads_sides = now is not None and "side" in now.columns
     events: list[dict[str, Any]] = []
     for ticker in sorted(set(before_side) | set(target_side) | set(now_side)):
         wanted = target_side.get(ticker)
-        lying = now_side.get(ticker)
-        if wanted not in {"long", "short"} or lying not in {"long", "short"}:
+        if wanted not in {"long", "short"}:
             continue
-        if wanted == lying:
+        lying = now_side.get(ticker)
+        if lying in {"long", "short"} and wanted == lying:
             continue
         away = "sell" if wanted == "long" else "buy"
         days = _day_sign_legs(orders, ticker, anchor, today)
         flipped_on = None
+        to_side = None
         for day in sorted(days):
-            if any(leg[1] == "close" and leg[0] == away for leg in days[day]):
+            legs = days[day]
+            if not any(leg[1] == "close" and leg[0] == away for leg in legs):
+                continue
+            if lying in {"long", "short"}:
                 flipped_on = day
+                to_side = lying
+                continue
+            if not reads_sides:
+                continue
+            # The account read carries no side for this name. The evening's own
+            # opening leg is the side the account will show once the read catches up.
+            opens = [leg for leg in legs if leg[1] == "open" and leg[3]]
+            if not opens:
+                continue
+            opened = "long" if opens[-1][0] == "buy" else "short"
+            if opened == wanted:
+                continue
+            flipped_on = day
+            to_side = opened
         if flipped_on is None:
             continue
         usd = sum(abs(leg[2] or 0.0) for leg in days[flipped_on] if leg[0] == away)
@@ -359,7 +396,7 @@ def order_flips(
                 "ticker": ticker,
                 "date": flipped_on,
                 "from_side": wanted,
-                "to_side": lying,
+                "to_side": to_side,
                 "usd": usd,
             }
         )
@@ -1370,7 +1407,7 @@ def anchor_construction(
         "left_out_no_risk": None if no_risk is None else int(no_risk),
         "left_out_no_risk_names": no_risk_names[:6],
         "excluded": None if excluded_count is None else int(excluded_count),
-        "excluded_names": excluded_names[:6],
+        "excluded_names": excluded_names,
         "removed_too_small": None if dropped is None else int(dropped),
         "final_names": int(kept),
         "gross": _number(manifest.get("kept_gross")),
