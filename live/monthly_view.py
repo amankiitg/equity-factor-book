@@ -279,6 +279,93 @@ def _leg_dollars(
     return total, close, filled_at, True
 
 
+def _intent_parts(intent: Any) -> tuple[str, str] | None:
+    """One leg's intent read as (direction, action): sell_to_close -> sell, close."""
+    text = str(intent or "").strip().lower()
+    if "_to_" not in text:
+        return None
+    direction, action = text.rsplit("_to_", 1)
+    if direction not in {"buy", "sell"} or action not in {"open", "close"}:
+        return None
+    return direction, action
+
+
+def _day_sign_legs(
+    orders: pd.DataFrame, ticker: str, anchor: str, today: str
+) -> dict[str, list[tuple[str, str, float | None]]]:
+    """One name's order legs between the anchor and today, grouped by close date."""
+    out: dict[str, list[tuple[str, str, float | None]]] = {}
+    if orders is None or orders.empty or "trade_date" not in orders.columns:
+        return out
+    for row in orders.itertuples(index=False):
+        if str(getattr(row, "ticker", "") or "") != ticker:
+            continue
+        day = str(getattr(row, "trade_date", ""))[:10]
+        if day <= anchor or day > today:
+            continue
+        parts = _intent_parts(getattr(row, "position_intent", ""))
+        if parts is None:
+            continue
+        out.setdefault(day, []).append(
+            (parts[0], parts[1], _number(getattr(row, "intended_notional", None)))
+        )
+    return out
+
+
+def order_flips(
+    orders: pd.DataFrame,
+    before: pd.DataFrame,
+    target: pd.DataFrame,
+    now: pd.DataFrame,
+    anchor: str,
+    today: str,
+) -> list[dict[str, Any]]:
+    """Every name whose side the orders changed after the rebalance, from the orders.
+
+    A name's side after the rebalance is the target side. If the account is on the
+    other side now, something traded it back, and the evening that did it is the last
+    close whose legs closed the target side. The legs are the evidence: the row for a
+    name and a date, not the fact that a guard fired that day, which is true of every
+    name the guard resized and says nothing about a side change. That is why VZ, GEHC
+    and F are not re-flips: the 2026-11-04 guard traded them, and they are still on
+    the side the rebalance put them on.
+
+    A guard flip is the same fact for a name the rebalance did not flip: NFLX on
+    2026-11-04 and MKC on 2026-11-12 were on their target side after the rebalance and
+    are on the other side now.
+    """
+    before_side = _sides(before)
+    target_side = _sides(target)
+    now_side = _sides(now)
+    events: list[dict[str, Any]] = []
+    for ticker in sorted(set(before_side) | set(target_side) | set(now_side)):
+        wanted = target_side.get(ticker)
+        lying = now_side.get(ticker)
+        if wanted not in {"long", "short"} or lying not in {"long", "short"}:
+            continue
+        if wanted == lying:
+            continue
+        away = "sell" if wanted == "long" else "buy"
+        days = _day_sign_legs(orders, ticker, anchor, today)
+        flipped_on = None
+        for day in sorted(days):
+            if any(leg[1] == "close" and leg[0] == away for leg in days[day]):
+                flipped_on = day
+        if flipped_on is None:
+            continue
+        usd = sum(abs(leg[2] or 0.0) for leg in days[flipped_on] if leg[0] == away)
+        events.append(
+            {
+                "ticker": ticker,
+                "date": flipped_on,
+                "from_side": wanted,
+                "to_side": lying,
+                "usd": usd,
+            }
+        )
+    return events
+
+
 def flip_rows(
     target: pd.DataFrame,
     before: pd.DataFrame,
@@ -286,7 +373,7 @@ def flip_rows(
     orders: pd.DataFrame,
     fills: pd.DataFrame,
     anchor: str,
-    guard_dates: dict[str, list[str]] | None = None,
+    flip_events: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Every name whose side before the rebalance differs from its target side.
 
@@ -323,12 +410,17 @@ def flip_rows(
                 break
         lying = now_side.get(ticker)
         dollars = now_dollars.get(ticker, 0.0)
-        later_guards = [
-            day
-            for day in (guard_dates or {}).get(ticker, [])
-            if day > (open_day or close_leg_day or anchor)
+        # The evening the orders moved this name off the target side, if any. It is
+        # read from the name's own legs, not from the guard's firing dates: the guard
+        # trades every name it resizes, and only a leg that closes the target side is
+        # a side change.
+        later_flips = [
+            str(event.get("date"))
+            for event in (flip_events or [])
+            if str(event.get("ticker")) == ticker
+            and str(event.get("date")) > (open_day or close_leg_day or anchor)
         ]
-        refipped_on = later_guards[-1] if later_guards else None
+        refipped_on = later_flips[-1] if later_flips else None
         legs_filled = bool(close_ok and open_ok)
         if refipped_on:
             state = "refipped"
@@ -371,13 +463,13 @@ def bridge(
     orders: pd.DataFrame,
     fills: pd.DataFrame,
     anchor: str,
-    guard_dates: dict[str, list[str]] | None = None,
+    flip_events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """The account before the rebalance, what the rebalance did, and the account now."""
     before_dollars = _dollars(before)
     now_dollars = _dollars(now)
     target_side = _sides(target)
-    flips = flip_rows(target, before, now, orders, fills, anchor, guard_dates)
+    flips = flip_rows(target, before, now, orders, fills, anchor, flip_events)
     flipped = {row["ticker"] for row in flips}
     opened = sorted(set(now_dollars) - set(before_dollars) - flipped)
     exited = sorted(
@@ -498,7 +590,7 @@ def _guard_history(
     today: str,
     nav: float | None,
     fills: pd.DataFrame | None,
-    flip_rows: list[dict[str, Any]],
+    flip_events: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """One row per evening the drift guard fired, from the manifests it wrote.
 
@@ -509,8 +601,10 @@ def _guard_history(
     field is added to the store and no number is invented; a day whose fills the
     store does not carry gets `cost_bps: None` rather than a zero.
 
-    The flips a firing caused are the rebalance flips whose `refipped_on` is that
-    day: the guard moved a name back again, and the bridge already records it.
+    The flips a firing caused are the side changes the name's own orders record on
+    that day, whether or not the name was flipped at the rebalance: the guard moved
+    CCL and NFLX back on 2026-11-04, and MKC on 2026-11-12, and each is a leg on the
+    day rather than a guard date paired with a flip from the bridge.
     """
     if proposals is None or proposals.empty or "trade_date" not in proposals.columns:
         return []
@@ -542,9 +636,9 @@ def _guard_history(
             "cost_bps": None,
             "flips": sorted(
                 {
-                    str(row.get("ticker"))
-                    for row in flip_rows
-                    if row.get("refipped_on") == day
+                    str(event.get("ticker"))
+                    for event in flip_events
+                    if str(event.get("date")) == day
                 }
             ),
         }
@@ -762,6 +856,7 @@ def holdings(
     now: pd.DataFrame,
     orders: pd.DataFrame,
     flips: list[dict[str, Any]],
+    flip_events: list[dict[str, Any]],
     guard_dates: dict[str, list[str]],
     guard_days: set[str],
     anchor: str,
@@ -780,6 +875,7 @@ def holdings(
     before_weights = _weights(before)
     gaps = _gaps(target, now)
     flip_by_ticker = {str(row["ticker"]): row for row in flips}
+    event_by_ticker = {str(event["ticker"]): event for event in flip_events}
     tickers = (
         set(wanted)
         | set(have)
@@ -814,11 +910,25 @@ def holdings(
             since_kind = "flipped"
             since_date = opened or closed
             since_label = _short_since("flipped", since_date)
-            later = [day for day in guards if day > since_date]
-            if later:
-                since = f"{since}; drift guard leg ({later[-1]})"
-                since_date = later[-1]
-                since_label = _short_since("guard", later[-1])
+            event = event_by_ticker.get(ticker)
+            if event is not None and str(event["date"]) > since_date:
+                since = f"{since}; flipped again by the drift guard ({event['date']})"
+                since_date = str(event["date"])
+                since_label = _short_since("flipped", since_date)
+            else:
+                later = [day for day in guards if day > since_date]
+                if later:
+                    since = f"{since}; drift guard leg ({later[-1]})"
+                    since_date = later[-1]
+                    since_label = _short_since("guard", later[-1])
+        elif ticker in event_by_ticker:
+            # A name the rebalance did not flip and the guard did: NFLX on 11-04,
+            # MKC on 11-12. The pill says flipped, because that is what happened.
+            event = event_by_ticker[ticker]
+            since = f"flipped by the drift guard ({event['date']})"
+            since_kind = "flipped"
+            since_date = str(event["date"])
+            since_label = _short_since("flipped", since_date)
         elif guards:
             since = f"drift guard leg ({guards[-1]})"
             since_kind = "guard"
@@ -1439,7 +1549,10 @@ def _block(
         now_close = days[-1] if days else today
     now = _book(account, now_close)
     guard_dates = _guard_events(proposals, anchor, today)
-    bridge_anchor = bridge(target, before, now, orders, fills, anchor, guard_dates)
+    # Every side change the name's own legs record after the rebalance, which is the
+    # only evidence of a re-flip the page accepts.
+    flip_events = order_flips(orders, before, target, now, anchor, today)
+    bridge_anchor = bridge(target, before, now, orders, fills, anchor, flip_events)
     # The names whose side the rebalance actually changed. On the 2026-10-26
     # re-trade evening every leg but these re-traded the rebalance's remainder;
     # only these can be its second legs.
@@ -1633,6 +1746,12 @@ def _block(
         ),
         "since_anchor": {
             "trades_by_reason": sorted(trades.values(), key=lambda item: -item["usd"]),
+            # The guard's own side changes, which are flips the rebalance did not make:
+            # NFLX on 11-04 and MKC on 11-12. A name flipped at the rebalance carries
+            # its guard flip in its own row, so it is not repeated here.
+            "guard_flips": [
+                event for event in flip_events if event["ticker"] not in flip_tickers
+            ],
             # One row per evening the drift guard fired, from the hold day's own
             # manifest: the page draws a card per firing, and the leg table splits
             # the guard's row by these dates.
@@ -1642,7 +1761,7 @@ def _block(
                 today,
                 nav,
                 fills,
-                bridge_anchor.get("flip_rows") or [],
+                flip_events,
             ),
             # What the table cannot count as a leg that went: the legs under the
             # order minimum and the ones the broker refused. Stated apart because a
@@ -1697,6 +1816,7 @@ def _block(
             now,
             orders,
             bridge_anchor.get("flip_rows") or [],
+            flip_events,
             guard_dates,
             guard_days,
             anchor,

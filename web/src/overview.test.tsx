@@ -70,6 +70,16 @@ describe("the overview tab", () => {
     expect(card("run").textContent).toContain(runState(OK, NOW_OK).pill);
   });
 
+
+  it("names the date of the last close instead of saying today", () => {
+    render(<SnapshotView snapshot={OK} now={NOW_OK} />);
+    const card = document.querySelector("[data-kpi='today']") as HTMLElement;
+    const latest = lastDay(OK) as NonNullable<ReturnType<typeof lastDay>>;
+    const short = String(latest.trade_date).slice(5, 10);
+    // The card is about one session, and "today" is not the day it is about.
+    expect(card.textContent).toContain(`Last close (${short})`);
+    expect(card.textContent).not.toContain("TODAY");
+  });
   it("reads the cadence, the drift guard and the next rebalance from the block", () => {
     render(<SnapshotView snapshot={SERVED} now={NOW} />);
     const pill = document.querySelector("[data-cadence-pill='hold']")?.textContent ?? "";

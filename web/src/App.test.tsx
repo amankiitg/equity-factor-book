@@ -419,7 +419,11 @@ describe("the page", () => {
   it("keeps a day-old snapshot in hours, which is the useful unit", () => {
     const later = new Date("2026-09-22T22:41:30Z");
     render(<SnapshotView snapshot={OK} now={later} />);
-    expect(document.body.textContent ?? "").toContain("24 hours ago");
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("24 hours ago");
+    // The zone and the age are two words apart, with a space between them.
+    expect(text).not.toContain("ET(");
+    expect(text).toContain("ET (");
   });
 
   it("shows a position that left the account with no order behind it", () => {

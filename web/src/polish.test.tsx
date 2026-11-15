@@ -273,6 +273,7 @@ describe("the (i) on every card title", () => {
     "[data-cost='eras']",
     "[data-alert='run']",
     "[data-alert='reconciliation']",
+    "[data-exception-banner]",
   ].join(",");
 
   const missing = (panel: HTMLElement): string[] => {
@@ -311,3 +312,54 @@ describe("the (i) on every card title", () => {
   });
 });
 
+
+describe("the (i) on the cards that were missing one", () => {
+  /** The last rebalance's construction, which no committed fixture carries yet. */
+  const CONSTRUCTED: Snapshot = {
+    ...LATEST,
+    monthly: {
+      ...(LATEST.monthly as NonNullable<Snapshot["monthly"]>),
+      anchor_construction: {
+        close: "2026-10-23",
+        considered: 499,
+        left_out_no_risk: 3,
+        left_out_no_risk_names: [
+          { ticker: "FDXF", reason: "no specific variance" },
+          { ticker: "HONA", reason: "no specific variance" },
+          { ticker: "Q", reason: "no specific variance" },
+        ],
+        excluded: 7,
+        excluded_names: ["AAA"],
+        removed_too_small: 300,
+        final_names: 196,
+        gross: 1,
+        net: 0,
+        vol: 0.0279,
+        floor: "20 shares",
+      },
+    },
+  };
+
+  it("puts one on the construction disclosure and the glossary", () => {
+    render(<SnapshotView snapshot={CONSTRUCTED} now={NOW} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Operations" }));
+    const construction = document.querySelector(
+      "[data-details='construction'] summary",
+    ) as HTMLElement;
+    expect(construction, "the construction disclosure is missing").toBeTruthy();
+    expect(construction.querySelector("[data-how-to-read]")).toBeTruthy();
+    const glossary = document.querySelector(
+      "[data-glossary='true'] summary",
+    ) as HTMLElement;
+    expect(glossary).toBeTruthy();
+    expect(glossary.querySelector("[data-how-to-read]")).toBeTruthy();
+  });
+
+  it("dates the 10-23 left-out line and keeps every name on it", () => {
+    render(<SnapshotView snapshot={CONSTRUCTED} now={NOW} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Operations" }));
+    const line = document.querySelector("[data-construction='left-out']") as HTMLElement;
+    expect(line.textContent).toContain("At the 10-23 rebalance, 3 were left out");
+    for (const ticker of ["FDXF", "HONA", "Q"]) expect(line.textContent).toContain(ticker);
+  });
+});

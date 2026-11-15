@@ -63,6 +63,28 @@ const FACTOR_WORDS: Record<string, string> = {
 
 export const factorWord = (key: string): string => FACTOR_WORDS[key] ?? key;
 
+/**
+ * A leg's stored reason code as the words a reader knows.
+ *
+ * The codes are the loop's own record and they belong in the store, not on the page:
+ * a reader who meets ALPACA_API_ERROR in a sentence has to be told what it means by
+ * the word beside it. Every code the page can meet is here, and an unknown one is
+ * said as a refusal rather than printed, because a raw code is never the answer.
+ */
+const LEG_REASON_WORDS: Record<string, string> = {
+  ASSET_INACTIVE: "no longer trades",
+  SYMBOL_NOT_FOUND: "no longer trades",
+  ALPACA_API_ERROR: "the broker rejected the order",
+  BELOW_MIN_NOTIONAL: "under the $250 minimum",
+  COVER_UNDER_ONE_SHARE: "under one share",
+};
+
+export const legReasonWord = (code: string | null | undefined): string => {
+  const clean = (code ?? "").trim().toUpperCase();
+  if (clean === "") return "";
+  return LEG_REASON_WORDS[clean] ?? "the broker refused it";
+};
+
 /** The label on the evening's forecast, as distinct from what the day cost. */
 export const EXPECTED_EXPENSE = "expected expense";
 

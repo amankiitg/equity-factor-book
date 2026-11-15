@@ -37,9 +37,6 @@ import { Panel } from "./Panel";
 import type { Reconciliation, RunState } from "./status";
 import type { ExitsBlock, Snapshot } from "./types";
 
-/** How many miss lines the strip lists before it counts the rest. */
-const MISS_LINES = 6;
-
 /** How many drifts, and how many one-sided names, before the counts take over. */
 const DRIFT_LINES = 3;
 const MISMATCH_LINES = 8;
@@ -109,7 +106,7 @@ function EveningCompare({
   );
 }
 
-function ReconciliationPanel({
+export function ReconciliationPanel({
   snapshot,
   reconciled,
   exceptions,
@@ -244,11 +241,14 @@ export function Alerts({
   state,
   reconciled,
   exceptions,
+  reconcile = true,
 }: {
   snapshot: Snapshot;
   state: RunState;
   reconciled: Reconciliation;
   exceptions: Exceptions;
+  /** False when the reconciliation is drawn above, open, rather than in here. */
+  reconcile?: boolean;
 }) {
   const misses = snapshot.actual_holdings?.fills?.unfilled ?? [];
   const notSent = snapshot.actual_holdings?.fills?.not_sent_lines ?? [];
@@ -272,7 +272,13 @@ export function Alerts({
         }
       />
 
-      <ReconciliationPanel snapshot={snapshot} reconciled={reconciled} exceptions={exceptions} />
+      {reconcile ? (
+        <ReconciliationPanel
+          snapshot={snapshot}
+          reconciled={reconciled}
+          exceptions={exceptions}
+        />
+      ) : null}
 
       {gone.length > 0 ? (
         <section
@@ -329,12 +335,11 @@ export function Alerts({
             Example: JBL's $269 is under one share, so no order can be placed at all.
           </HowToRead></p>
           <ul className="text-sm">
-            {misses.slice(0, MISS_LINES).map((line) => (
+            {/* Every unnamed miss, not the first six and a count: the seventh was
+                VYLR, and a reader checking a name had no way to see it. */}
+            {misses.map((line) => (
               <li key={line}>{line}</li>
             ))}
-            {misses.length > MISS_LINES ? (
-              <li>and {misses.length - MISS_LINES} more</li>
-            ) : null}
             {notSent.map((line) => (
               <li key={line} data-not-sent="true">
                 {line}

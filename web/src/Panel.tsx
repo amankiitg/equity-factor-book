@@ -103,7 +103,14 @@ export function HowToRead({ children }: { children: React.ReactNode }) {
         type="button"
         aria-label="how to read this"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={(event) => {
+          // The marker also sits inside a <details> summary on the construction and
+          // the glossary, where a click would open the popover and close the block
+          // in one gesture.
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen((value) => !value);
+        }}
         className="ml-1.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
       >
         <InfoIcon />
@@ -152,6 +159,10 @@ export function Glossary() {
     <details data-glossary="true" className="rounded border border-slate-200 bg-white">
       <summary className="cursor-pointer px-2 py-1 text-xs font-medium text-slate-700">
         What the words mean
+        <HowToRead>
+          the words this page uses, defined once each. Example: a leg is one order in
+          one direction, so buying a name and later selling it is two legs.
+        </HowToRead>
       </summary>
       <dl className="grid gap-1 px-2 pb-2 text-xs sm:grid-cols-3">
         {WORDS.map(([word, meaning]) => (

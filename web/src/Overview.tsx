@@ -21,6 +21,7 @@ import { sectorLabel } from "./sectors";
 import type { Reconciliation, RunState, Tone } from "./status";
 import { freshness, ageText } from "./status";
 import { etDateTime } from "./format";
+import { legReasonWord } from "./labels";
 import type { AttributionDay, MonthlyBlock, Snapshot } from "./types";
 
 /** A short explanation behind the (i) beside a title. */
@@ -51,9 +52,22 @@ export function Info({ title, children }: { title: string; children: React.React
   );
 }
 
-function Title({ title, info }: { title: string; info: React.ReactNode }) {
+function Title({
+  title,
+  info,
+  plain = false,
+}: {
+  title: string;
+  info: React.ReactNode;
+  /** Say the title in the case it is written in: a date reads as a date. */
+  plain?: boolean;
+}) {
   return (
-    <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <p
+      className={`flex items-center gap-1.5 text-xs font-semibold ${
+        plain ? "text-slate-600" : "uppercase tracking-wide text-slate-500"
+      }`}
+    >
       {title}
       <Info title={title}>{info}</Info>
     </p>
@@ -69,6 +83,7 @@ function Kpi({
   info,
   children,
   hook,
+  plainTitle = false,
 }: {
   title: string;
   value?: React.ReactNode;
@@ -77,13 +92,14 @@ function Kpi({
   info: React.ReactNode;
   children?: React.ReactNode;
   hook: string;
+  plainTitle?: boolean;
 }) {
   return (
     <section
       data-kpi={hook}
       className="min-w-0 rounded border border-slate-200 bg-white px-3 py-2"
     >
-      <Title title={title} info={info} />
+      <Title title={title} info={info} plain={plainTitle} />
       {value === undefined ? null : (
         <p className={`mt-1 font-mono text-lg font-semibold tabular-nums ${valueClass ?? "text-slate-900"}`}>
           {value}
@@ -1028,7 +1044,9 @@ export function overviewExceptions(
   for (const leg of snapshot.monthly?.tonight?.cannot_send ?? []) {
     add(
       `cannot-send-${leg.ticker}`,
-      `${leg.ticker}: ${dollars(leg.usd)} owed, cannot be sent (${leg.code})`,
+      `${leg.ticker}: ${dollars(leg.usd)} owed, cannot be sent (${
+        legReasonWord(leg.code) || "no reason recorded"
+      })`,
       leg.ticker,
     );
   }
@@ -1071,6 +1089,11 @@ function ExceptionBanner({
     >
       <p className="text-sm font-semibold">
         {lines.length === 0 ? "All clear" : "Needs attention"}
+        <Info title="needs attention">
+          the short list of things on the account or the run that a person should look
+          at, and nothing else. An empty list says All clear. Example: KVUE is here
+          because the book still holds it and it can no longer be traded.
+        </Info>
       </p>
       {lines.length === 0 ? (
         <p className="text-xs">nothing on the account or the run needs attention today.</p>
@@ -1176,7 +1199,7 @@ function LastRun({ snapshot, state, now }: { snapshot: Snapshot; state: RunState
       <p className="text-xs text-slate-500">
         {written.at === null
           ? "no write recorded"
-          : `${etDateTime(written.at) ?? "unknown"}(${ageText(written.at, now)})`}
+          : `${etDateTime(written.at) ?? "unknown"} (${ageText(written.at, now)})`}
       </p>
     </div>
   );
@@ -1238,7 +1261,8 @@ export function Overview({
         />
         <Kpi
           hook="today"
-          title="today"
+          title={lastDate ? `Last close (${lastDate})` : "Last close"}
+          plainTitle
           value={bps(todayValue)}
           valueClass={pnlClass(todayValue)}
           detail={

@@ -217,6 +217,27 @@ function rowsOf(
   return rows;
 }
 
+/**
+ * What the table's header counts: the names the account holds, and the names it held
+ * at the rebalance and has since exited.
+ *
+ * The header used to print the account read's own row count, which is not the row
+ * count of the table under it: the table is the held book plus the names the target
+ * wants and the account does not hold, and a header that counts one of those is a
+ * claim the rows beside it contradict.
+ */
+export function actualCounts(
+  actual: ActualHoldings,
+  names: BookName[],
+  monthlyRows: MonthlyHoldingRow[],
+): { held: number; exited: number } {
+  const rows = rowsOf(actual, names, null, monthlyRows);
+  return {
+    held: rows.filter((row) => row.held).length,
+    exited: rows.filter((row) => !row.held && row.sinceKind === "exited").length,
+  };
+}
+
 function sortValue(row: Row, key: SortKey): string | number {
   switch (key) {
     case "ticker":

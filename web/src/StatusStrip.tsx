@@ -77,6 +77,33 @@ function readLabel(snapshot: Snapshot): { text: string; note: string } | null {
   return { text: `account read ${at}`, note: "no run recorded against this read" };
 }
 
+/**
+ * The reconciliation as one sentence.
+ *
+ * A clean book is not a book with no differences: the two known ones on the live
+ * book are explained, and saying "clean" a few words from "2 expected mismatches"
+ * made the reader work out whether the page had contradicted itself. The count
+ * belongs in the same clause as the verdict.
+ */
+export function reconciliationLine(
+  reconciled: Reconciliation,
+  exceptions: Exceptions,
+): string {
+  if (reconciled.unresolved > 0) {
+    return `Reconciliation: ${reconciled.unresolved} unresolved`;
+  }
+  if (!exceptions.read) {
+    return `Reconciliation not checked: ${exceptionText(exceptions)}`;
+  }
+  if (reconciled.tone === "info") return "Reconciliation not run";
+  const known = exceptions.expected.length;
+  if (known === 0) return "Reconciliation clean";
+  const tail = known === 1 ? "explained" : known === 2 ? "both explained" : "all explained";
+  return `Reconciliation clean (${known} known difference${
+    known === 1 ? "" : "s"
+  }, ${tail})`;
+}
+
 export function StatusStrip({
   snapshot,
   now,
@@ -123,20 +150,17 @@ export function StatusStrip({
         >
           proposal run: {state.pill}
         </span>
+        {/* One plain line, in the case it is written in. The two-part badge that
+            said RECONCILIATION: CLEAN and then, a few words away, 2 expected
+            mismatches, read as a contradiction; the known differences belong in the
+            same sentence as the verdict. */}
         <span
           data-pill="reconciliation"
           data-tone={reconciled.tone}
           data-reconciliation={reconciled.pass ? "pass" : "fail"}
-          className={`rounded px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${pillClass(
-            reconciled.tone,
-          )}`}
+          className="font-medium"
         >
-          reconciliation:{" "}
-          {reconciled.unresolved > 0
-            ? `${reconciled.unresolved} unresolved`
-            : reconciled.tone === "info"
-              ? "not run"
-              : "clean"}
+          {reconciliationLine(reconciled, exceptions)}
         </span>
         <span data-flag="mode" className="font-medium">
           {snapshot.dry_run
@@ -146,9 +170,11 @@ export function StatusStrip({
         <span data-flag="close" className="text-slate-600">
           close {close ?? "unknown"}
         </span>
-        <span data-flag="exceptions" className="text-slate-600">
-          {exceptionText(exceptions)}
-        </span>
+        {exceptions.unexpected.length > 0 ? (
+          <span data-flag="exceptions" className="text-slate-600">
+            {exceptionText(exceptions)}
+          </span>
+        ) : null}
         <span data-flag="snapshot" className="text-slate-600">
           {written.at === null ? (
             "no write recorded on this document"
