@@ -18,7 +18,7 @@
 
 import { useState } from "react";
 
-import { ActualHoldingsTable } from "./ActualHoldingsTable";
+import { ActualHoldingsTable, actualCounts } from "./ActualHoldingsTable";
 import { HowToRead } from "./Panel";
 import { dateOnly } from "./format";
 import { HoldingsTable } from "./HoldingsSection";
@@ -47,6 +47,18 @@ export function DrawerSection({
   const bookClose = dateOnly(snapshot.book_as_of);
   const targetClose = dateOnly(snapshot.target_close);
   const dated = Boolean(bookClose && bookClose !== targetClose);
+  // The tab is the table's header, so it counts what the table draws: the names the
+  // account holds, and the names it has exited since the rebalance.
+  const counts = actual
+    ? actualCounts(
+        actual,
+        snapshot.book?.names ?? [],
+        snapshot.monthly?.holdings?.rows ?? [],
+      )
+    : { held: 0, exited: 0 };
+  const anchor = dateOnly(
+    snapshot.monthly?.holdings?.anchor ?? snapshot.monthly?.anchor?.close ?? null,
+  );
   const tabs: Array<{ key: Tab; label: string; present: boolean }> = [
     {
       key: "book",
@@ -55,7 +67,10 @@ export function DrawerSection({
     },
     {
       key: "actual",
-      label: `Actual holdings: ${actual?.n_names ?? 0} name(s)`,
+      label:
+        counts.exited > 0 && anchor
+          ? `Actual holdings: ${counts.held} held, plus ${counts.exited} exited since ${anchor.slice(5)}`
+          : `Actual holdings: ${counts.held} held`,
       present: actual !== null,
     },
   ];

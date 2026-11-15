@@ -152,7 +152,7 @@ function DeltaRow({ row, scale }: { row: SectorDelta; scale: number }) {
       className="border-b border-slate-100"
     >
       <div className="grid grid-cols-[7rem_1fr_6rem] items-center gap-x-2 py-1">
-        <div className="truncate text-sm font-medium" title={row.label}>
+        <div className="break-words text-sm font-medium leading-tight" title={row.label}>
           {row.label}
         </div>
         <div className="relative h-3 w-full rounded-sm bg-slate-100">
@@ -226,7 +226,7 @@ function AnchoredRow({
       className="border-b border-slate-100"
     >
       <div className="grid grid-cols-[5.5rem_4rem_4.5rem_1fr] items-center gap-x-2 py-1 sm:grid-cols-[9rem_5rem_6rem_1fr]">
-        <div className="truncate text-sm font-medium" title={row.label}>
+        <div className="break-words text-sm font-medium leading-tight" title={row.label}>
           {row.label}
         </div>
         <div
@@ -426,7 +426,7 @@ export function SectorSection({
                 data-sector={bucket.code === null ? "unmapped" : String(bucket.code)}
                 className="grid grid-cols-[7rem_1fr_6rem] items-center gap-x-2 border-b border-slate-100 py-1"
               >
-                <div className="truncate text-sm font-medium" title={bucket.label}>
+                <div className="break-words text-sm font-medium leading-tight" title={bucket.label}>
                   {bucket.label}
                 </div>
                 <div className="relative h-3 w-full rounded-sm bg-slate-100">

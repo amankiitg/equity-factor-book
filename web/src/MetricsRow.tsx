@@ -20,15 +20,14 @@
 // half is charged over the sessions the book is held, so the two are added into a
 // total over that hold and the card says which hold it is.
 
+import { useState } from "react";
+
 import { Details } from "./Details";
 import { HowToRead } from "./Panel";
-import { EXPECTED_EXPENSE } from "./labels";
+import { EXPECTED_EXPENSE, legReasonWord } from "./labels";
 import { count, dateOnly, dollars, oneDecimal, percent } from "./format";
 import type { BookFacts } from "./book";
 import type { Snapshot } from "./types";
-
-/** How many dropped-for-no-risk names the coverage line lists before counting the rest. */
-const DROPPED_LINES = 6;
 
 /** How many blocked legs the turnover card names before it just counts them. */
 const BLOCKED_NAMES = 3;
@@ -149,12 +148,10 @@ function refusedLegs(snapshot: Snapshot): BlockedLeg[] {
 
 /** The reason a broker refused a leg, in words a reader who is not a broker knows. */
 function blockedReason(code: string): string {
-  const clean = code.trim().toUpperCase();
-  // Both codes say the same thing to a reader: the feed carries no live symbol for
-  // the name, so no order for it can be sent. The second is the broker's own word
-  // for a company that has been acquired or delisted.
-  if (clean === "SYMBOL_NOT_FOUND" || clean === "ASSET_INACTIVE") return "no longer trades";
-  return clean.toLowerCase().replace(/_/g, " ");
+  // Both SYMBOL_NOT_FOUND and ASSET_INACTIVE say the same thing to a reader: the feed
+  // carries no live symbol for the name, so no order for it can be sent. Every other
+  // code is said in words too; a raw code is never the answer on this page.
+  return legReasonWord(code) || "no reason recorded";
 }
 
 /**
@@ -273,23 +270,36 @@ export function ConstructionTelemetry({ snapshot }: { snapshot: Snapshot }) {
   const flat = (value: number | null): number | null =>
     value === null ? null : Math.abs(value) < 0.0005 ? 0 : value;
   return (
-    <Details hook="construction" summary={<>How the {close} rebalance book was built</>}>
+    <Details
+      hook="construction"
+      summary={
+        <>
+          How the {close} rebalance book was built
+          <HowToRead>
+            the book the rebalance actually traded, rebuilt from its own record: the
+            names it looked at, the ones it left out and why, the ones too small to
+            trade, and the book that remained. Example: it looked at{" "}
+            {count(build.considered)} names and traded {count(build.final_names)}.
+          </HowToRead>
+        </>
+      }
+    >
       <ul className="text-xs text-slate-600" data-telemetry="true">
         {build.considered === null ? null : (
           <li data-construction="considered">The run looked at {count(build.considered)} names.</li>
         )}
         {build.left_out_no_risk === null || build.left_out_no_risk === 0 ? null : (
           <li data-construction="left-out">
-            {count(build.left_out_no_risk)}
-            {build.left_out_no_risk === 1 ? " was" : " were"} left out because the risk model
-            had no risk estimate for them
+            At the {close} rebalance, {count(build.left_out_no_risk)}
+            {build.left_out_no_risk === 1 ? " was" : " were"} left out because the risk
+            model had no risk estimate for them
             {riskNames.length > 0 ? ": " + listed(riskNames) : ""}.
           </li>
         )}
         {build.excluded === null || build.excluded === 0 ? null : (
           <li data-construction="excluded">
-            {count(build.excluded)} more {build.excluded === 1 ? "was" : "were"} kept out
-            before the sizing
+            At the {close} rebalance, {count(build.excluded)} more{" "}
+            {build.excluded === 1 ? "was" : "were"} kept out before the sizing
             {excludedNames.length > 0 ? ": " + listed(excludedNames) : ""}.
           </li>
         )}
@@ -341,6 +351,10 @@ export function MetricsRow({
   // The names the risk model could not measure, for the book line below the cards.
   const droppedNoRisk = breadth?.dropped_no_risk ?? [];
   const droppedCount = breadth?.n_dropped_no_risk ?? droppedNoRisk.length;
+  // The names the risk model could not measure are a real list with a reason each,
+  // so the line that counts them opens it rather than naming a number and stopping.
+  const [leftOutOpen, setLeftOutOpen] = useState(false);
+  const bookClose = dateOnly(snapshot.book_as_of) ?? dateOnly(snapshot.target_close);
 
   return (
     <section data-cards="true" className="rounded border border-slate-200 bg-white p-2">
@@ -541,23 +555,48 @@ export function MetricsRow({
       </div>
 
       {book?.n_names ? (
-        <p data-flag="book-line" className="mt-2 text-xs text-slate-600">
-          {[
-            `Tonight's book: ${count(book.n_names)} names.`,
-            droppedCount > 0 ? `${count(droppedCount)} left out (no risk estimate yet);` : null,
-            "positions too small to trade removed;",
-            // The rule is a renormalization to gross 1.0 and the round shares land
-            // where they land, so the achieved gross is stated beside the target
-            // whenever the two differ by more than a rounding error.
-            `the rest scaled to 100% of NAV${
+        <>
+          <p data-flag="book-line" className="mt-2 text-xs text-slate-600">
+            {bookClose ? `The ${bookClose.slice(5)} book: ` : "Tonight's book: "}
+            {`${count(book.n_names)} names. `}
+            {droppedCount > 0 ? (
+              <>
+                <button
+                  type="button"
+                  data-left-out-toggle="true"
+                  aria-expanded={leftOutOpen}
+                  onClick={() => setLeftOutOpen((open) => !open)}
+                  className="underline decoration-dotted underline-offset-2 hover:text-slate-900"
+                >
+                  {count(droppedCount)} left out (no risk estimate yet)
+                </button>
+                {"; "}
+              </>
+            ) : null}
+            {`positions too small to trade removed; the rest scaled to 100% of NAV${
               book.gross !== null && Math.abs(book.gross - 1) >= 0.005
                 ? ` (${percent(book.gross)} after the round shares)`
                 : ""
-            }.`,
-          ]
-            .filter(Boolean)
-            .join(" ")}
-        </p>
+            }.`}
+          </p>
+          {leftOutOpen && droppedCount > 0 ? (
+            <ul
+              data-left-out-list="true"
+              className="mt-1 flex flex-col gap-0.5 text-xs text-slate-600"
+            >
+              {droppedNoRisk.length ? (
+                droppedNoRisk.map((entry) => (
+                  <li key={entry.ticker} data-left-out={entry.ticker}>
+                    <span className="font-mono font-semibold">{entry.ticker}</span>:{" "}
+                    {entry.reason || "no risk estimate yet"}
+                  </li>
+                ))
+              ) : (
+                <li>the run counted these names but did not record which they are</li>
+              )}
+            </ul>
+          ) : null}
+        </>
       ) : null}
     </section>
   );

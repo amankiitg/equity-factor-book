@@ -95,7 +95,9 @@ describe("the anchored panels", () => {
     expect(tonight).toContain("cannot be sent");
     expect(tonight).toContain("$269");
     expect(tonight).toContain("JBL");
-    expect(tonight).toContain("COVER_UNDER_ONE_SHARE");
+    // The code is the store's word for it; the page says what happened.
+    expect(tonight).toContain("under one share");
+    expect(tonight).not.toContain("COVER_UNDER_ONE_SHARE");
   });
 
   it("counts sent legs apart from the ones under the $250 minimum", () => {
@@ -295,9 +297,9 @@ describe("the tonight line's refusal reads as a sentence", () => {
   it("puts the ticker and its reason after a colon, not in nested brackets", () => {
     render(<MonthlyPanels monthly={MONTHLY} />);
     const text = document.querySelector("[data-tonight]")?.textContent ?? "";
-    expect(text).toContain("$269: JBL, COVER_UNDER_ONE_SHARE");
+    expect(text).toContain("$269: JBL, under one share");
     expect(text).not.toContain("(JBL");
-    expect(text).not.toContain("(COVER_UNDER_ONE_SHARE)");
+    expect(text).not.toContain("COVER_UNDER_ONE_SHARE");
   });
 });
 
@@ -423,5 +425,167 @@ describe("the holdings tables against the rebalance", () => {
     expect(
       document.querySelector('[data-flip="CCL"] [data-flip-state]')?.textContent,
     ).toContain("re-flipped later by the drift guard on 2026-11-04");
+  });
+});
+
+/**
+ * The live 2026-11-13 facts, as the block carries them.
+ *
+ * The 10-23 rebalance flipped CCL, F, GEHC and VZ. The drift guard then flipped
+ * CCL and NFLX on 11-04 and MKC on 11-12. VZ, GEHC and F were traded by the guard on
+ * those evenings and did not change side, so no row of theirs may say re-flipped.
+ */
+function liveFactsBlock(): MonthlyBlock {
+  const bridge = MONTHLY.bridge_anchor;
+  if (!bridge) throw new Error("the served fixture carries no bridge");
+  const flips = [
+    { ticker: "CCL", from: "short", to: "long", close: 605, open: 678, now: -650,
+      refipped: "2026-11-04" },
+    { ticker: "F", from: "long", to: "short", close: 633, open: 1600, now: -650,
+      refipped: null },
+    { ticker: "GEHC", from: "short", to: "long", close: 2000, open: 2328, now: 650,
+      refipped: null },
+    { ticker: "VZ", from: "long", to: "short", close: 988, open: 2434, now: -650,
+      refipped: null },
+  ];
+  return {
+    ...MONTHLY,
+    bridge_anchor: {
+      ...bridge,
+      flipped: flips.length,
+      complete_flips: 3,
+      flip_rows: flips.map((flip) => ({
+        ticker: flip.ticker,
+        from_side: flip.from,
+        to_side: flip.to,
+        close_dollars: flip.close,
+        close_filled: "2026-10-23",
+        open_dollars: flip.open,
+        open_filled: "2026-10-26",
+        now_dollars: flip.now,
+        on_target_side: flip.refipped === null,
+        complete: flip.refipped === null,
+        legs_filled: true,
+        refipped_on: flip.refipped,
+        state: flip.refipped ? "refipped" : "complete",
+        state_label: flip.refipped
+          ? `re-flipped later by the drift guard on ${flip.refipped}`
+          : "complete",
+      })),
+    },
+    since_anchor: {
+      ...(MONTHLY.since_anchor as NonNullable<MonthlyBlock["since_anchor"]>),
+      guard_history: [
+        {
+          date: "2026-10-30",
+          exposure_before: 0.0641,
+          exposure_after: 0.0041,
+          threshold: 0.05,
+          legs_sent: 109,
+          legs_under_minimum: 12,
+          usd: 68_000,
+          cost_bps: 2.1,
+          flips: [],
+        },
+        {
+          date: "2026-11-04",
+          exposure_before: 0.0641,
+          exposure_after: 0.0041,
+          threshold: 0.05,
+          legs_sent: 140,
+          legs_under_minimum: 9,
+          usd: 91_000,
+          cost_bps: 2.4,
+          flips: ["CCL", "NFLX"],
+        },
+        {
+          date: "2026-11-12",
+          exposure_before: 0.0532,
+          exposure_after: 0.0021,
+          threshold: 0.05,
+          legs_sent: 88,
+          legs_under_minimum: 4,
+          usd: 44_000,
+          cost_bps: 1.2,
+          flips: ["MKC"],
+        },
+      ],
+      guard_flips: [
+        { ticker: "NFLX", date: "2026-11-04", from_side: "long", to_side: "short", usd: 910 },
+        { ticker: "MKC", date: "2026-11-12", from_side: "short", to_side: "long", usd: 430 },
+      ],
+    },
+  };
+}
+
+describe("the flips panel on the live facts", () => {
+  it("marks only CCL as re-flipped and leaves VZ, GEHC and F alone", () => {
+    render(<MonthlyPanels monthly={liveFactsBlock()} />);
+    const text = (ticker: string): string =>
+      document.querySelector(`[data-flip="${ticker}"]`)?.textContent ?? "";
+    expect(text("CCL")).toContain("re-flipped later by the drift guard on 2026-11-04");
+    for (const ticker of ["VZ", "GEHC", "F"]) {
+      expect(text(ticker)).not.toContain("re-flipped");
+      expect(text(ticker)).toContain("complete");
+    }
+  });
+
+  it("shows the guard flips the rebalance did not make in the same list", () => {
+    render(<MonthlyPanels monthly={liveFactsBlock()} />);
+    const nflx = document.querySelector("[data-guard-flip='NFLX']")?.textContent ?? "";
+    expect(nflx).toContain("long to short");
+    expect(nflx).toContain("2026-11-04");
+    expect(nflx).toContain("$910");
+    const mkc = document.querySelector("[data-guard-flip='MKC']")?.textContent ?? "";
+    expect(mkc).toContain("short to long");
+    expect(mkc).toContain("2026-11-12");
+  });
+
+  it("names the flips each guard firing caused on its own card", () => {
+    render(<MonthlyPanels monthly={liveFactsBlock()} />);
+    const card = (day: string): string =>
+      document.querySelector(`[data-guard-firing='${day}']`)?.closest("section")
+        ?.textContent ?? "";
+    expect(card("2026-11-04")).toContain("it moved CCL, NFLX back to the other side");
+    expect(card("2026-11-12")).toContain("it moved MKC back to the other side");
+  });
+});
+
+describe("no stored code reaches the reader", () => {
+  it("says what happened instead of printing the leg reason code", () => {
+    const base = liveFactsBlock();
+    const monthly: MonthlyBlock = {
+      ...base,
+      since_anchor: {
+        ...(base.since_anchor as NonNullable<MonthlyBlock["since_anchor"]>),
+        not_sent: {
+          legs: 2,
+          usd: 14_000,
+          under_minimum: { legs: 0, usd: 0 },
+          other: [
+            { code: "ASSET_INACTIVE", legs: 1, usd: 13_615 },
+            { code: "ALPACA_API_ERROR", legs: 1, usd: 450 },
+          ],
+        },
+      },
+      tonight: {
+        ...(MONTHLY.tonight as NonNullable<MonthlyBlock["tonight"]>),
+        cannot_send: [{ ticker: "KVUE", usd: 13_615, code: "ASSET_INACTIVE" }],
+        cannot_send_legs: 1,
+        cannot_send_usd: 13_615,
+      },
+    };
+    render(<MonthlyPanels monthly={monthly} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("no longer trades");
+    expect(text).toContain("the broker rejected the order");
+    for (const code of [
+      "ASSET_INACTIVE",
+      "ALPACA_API_ERROR",
+      "COVER_UNDER_ONE_SHARE",
+      "BELOW_MIN_NOTIONAL",
+    ]) {
+      expect(text, `${code} is visible on the page`).not.toContain(code);
+    }
   });
 });

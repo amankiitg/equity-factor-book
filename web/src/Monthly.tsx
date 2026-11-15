@@ -14,6 +14,7 @@ import { Fragment } from "react";
 
 import { HowToRead } from "./Panel";
 import { dateOnly, dollars, percent, signedDollars } from "./format";
+import { legReasonWord } from "./labels";
 import type { MonthlyBlock } from "./types";
 
 function Card({
@@ -184,6 +185,10 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
   const bridge = monthly.bridge_anchor;
   if (!bridge) return null;
   const flips = bridge.flip_rows ?? [];
+  // The guard's own side changes, for the names the rebalance did not flip. They
+  // belong in this list: a reader asking "what has changed side since 10-23" wants
+  // all of them, not only the ones the rebuild made.
+  const guardFlips = monthly.since_anchor?.guard_flips ?? [];
   // The date a leg carries is the fill's own when the store has one, and the close
   // it was priced from when it does not. The column says which, because a reader who
   // takes a close date for a fill date reads two days of a flip as one.
@@ -232,14 +237,14 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
                   data-flip={flip.ticker}
                   className="border-b border-slate-100 pb-1.5"
                 >
-                  <div className="flex items-baseline justify-between gap-2">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <span className="font-mono text-sm font-semibold">{flip.ticker}</span>
-                    <span className="flex-1 truncate text-slate-700">
+                    <span className="min-w-0 flex-1 break-words text-slate-700">
                       {flip.from_side} to {flip.to_side}
                     </span>
                     <span
                       data-flip-state={state}
-                      className="font-sans text-slate-600"
+                      className="w-full font-sans text-slate-600 sm:ml-auto sm:w-auto"
                     >
                       {label}
                     </span>
@@ -277,6 +282,33 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
             })}
           </ul>
         </>
+      ) : null}
+      {guardFlips.length ? (
+        <div data-guard-flips="true" className="mt-2">
+          <p className="text-xs font-medium text-slate-600">
+            the drift guard flipped these names back after the rebalance
+          </p>
+          <ul className="mt-1 flex flex-col gap-1 text-xs">
+            {guardFlips.map((flip) => (
+              <li
+                key={flip.ticker}
+                data-guard-flip={flip.ticker}
+                className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-slate-100 pb-1"
+              >
+                <span className="font-mono text-sm font-semibold">{flip.ticker}</span>
+                <span className="min-w-0 break-words text-slate-700">
+                  {flip.from_side} to {flip.to_side}
+                </span>
+                <span className="font-mono tabular-nums text-slate-600">
+                  {dollars(flip.usd)}
+                </span>
+                <span className="text-slate-600">
+                  moved by the drift guard on {dateOnly(flip.date) ?? flip.date}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
       <p className="mt-1 text-xs text-slate-500" data-flip-why="true">
         why the position now differs from leg 2: prices moved after the trades, so the
@@ -427,7 +459,10 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
           not sent: {under?.legs ?? 0} legs under $250 ({dollars(under?.usd ?? 0)})
           {refused.length
             ? `; ${refused
-                .map((row) => `${row.legs} refused (${row.code}, ${dollars(row.usd)})`)
+                .map(
+                  (row) =>
+                    `${row.legs} refused (${legReasonWord(row.code)}, ${dollars(row.usd)})`,
+                )
                 .join("; ")}`
             : ""}
         </p>
@@ -442,7 +477,10 @@ export function TonightLine({ monthly }: { monthly: MonthlyBlock }) {
   const owed = tonight.owed_legs ?? 0;
   const cannotSend = tonight.cannot_send_legs ?? 0;
   const unsendable = (tonight.cannot_send ?? [])
-    .map((leg) => (leg.code ? `${leg.ticker}, ${leg.code}` : leg.ticker))
+    .map((leg) => {
+      const reason = legReasonWord(leg.code);
+      return reason ? `${leg.ticker}, ${reason}` : leg.ticker;
+    })
     .join("; ");
   // A leg that will be sent on the next close and a leg that can never be sent are
   // both "forced", and one line said "1 forced leg, $269" for either. The refusal is

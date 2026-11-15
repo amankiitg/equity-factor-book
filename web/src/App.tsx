@@ -17,7 +17,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Alerts } from "./Alerts";
+import { Alerts, ReconciliationPanel } from "./Alerts";
 import { AttributionSection } from "./AttributionSection";
 import { Bridge } from "./Bridge";
 import { Reasons, TopNames } from "./BookSections";
@@ -176,12 +176,25 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
 
       <div role="tabpanel" id="panel-operations" hidden={view !== "operations"}>
         <div className="flex flex-col gap-2">
-          <Details hook="run-detail" summary="run detail, reconciliation and exceptions">
+          {/* The reconciliation is open on load: it is the tab's first question, and a
+              reader who has to open a disclosure to find the answer reads the tab as
+              having none. The run's own verdict, the exits and the missed fills stay
+              one tap away. */}
+          <ReconciliationPanel
+            snapshot={snapshot}
+            reconciled={reconciled}
+            exceptions={exceptions}
+          />
+          <Details
+            hook="run-detail"
+            summary="run detail: the run's verdict, the exits and the missed fills"
+          >
             <Alerts
               snapshot={snapshot}
               state={state}
               reconciled={reconciled}
               exceptions={exceptions}
+              reconcile={false}
             />
           </Details>
           <ConstructionTelemetry snapshot={snapshot} />

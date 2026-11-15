@@ -11,6 +11,7 @@ import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { SnapshotView, runState, runTone } from "./App";
+import { reconciliationLine } from "./StatusStrip";
 import type { BridgeBlock, Snapshot } from "./types";
 import brokenFixture from "../fixtures/snapshot_bridge_broken.json";
 import closed from "../fixtures/snapshot_market_closed.json";
@@ -839,5 +840,53 @@ describe("a hold day on the rebalance calendar", () => {
     expect(runState(plain, new Date("2026-10-14T23:00:00Z"))).toEqual(
       runState(TODAY, new Date("2026-10-14T23:00:00Z")),
     );
+  });
+});
+
+describe("the reconciliation reads as one sentence", () => {
+  const clean = {
+    unresolved: 0,
+    pass: true,
+    tone: "good" as const,
+    headline: "",
+    detail: "",
+    checks: [],
+  };
+  const known = (count: number) => ({
+    read: true,
+    source: "target" as const,
+    expected: Array.from({ length: count }, (_, index) => ({ ticker: `T${index}` })),
+    unexpected: [],
+    unchecked: [],
+  });
+
+  it("puts the known differences in the same line as the verdict", () => {
+    // The pair RECONCILIATION: CLEAN and 2 expected mismatches, a few words apart,
+    // read as the page contradicting itself.
+    expect(reconciliationLine(clean, known(2) as never)).toBe(
+      "Reconciliation clean (2 known differences, both explained)",
+    );
+    expect(reconciliationLine(clean, known(1) as never)).toBe(
+      "Reconciliation clean (1 known difference, explained)",
+    );
+    expect(reconciliationLine(clean, known(0) as never)).toBe("Reconciliation clean");
+  });
+
+  it("still says what needs a person, in the same voice", () => {
+    expect(
+      reconciliationLine({ ...clean, unresolved: 2, pass: false, tone: "warn" }, known(0) as never),
+    ).toBe("Reconciliation: 2 unresolved");
+    expect(
+      reconciliationLine({ ...clean, tone: "info" }, known(0) as never),
+    ).toBe("Reconciliation not run");
+  });
+
+  it("does not print the count twice on the strip", () => {
+    render(<SnapshotView snapshot={OK} now={new Date("2026-09-21T23:00:00Z")} />);
+    const strip = document.querySelector("[data-strip='status']") as HTMLElement;
+    const pill = document.querySelector("[data-pill='reconciliation']") as HTMLElement;
+    expect(pill.className).not.toContain("uppercase");
+    expect(pill.textContent?.startsWith("Reconciliation")).toBe(true);
+    expect(strip.querySelector("[data-flag='exceptions']")).toBeNull();
   });
 });

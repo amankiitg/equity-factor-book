@@ -670,6 +670,13 @@ export interface MonthlyBlock {
      */
     guard_history?: GuardFiring[];
     /**
+     * The side changes the guard made after the rebalance, for names the rebalance
+     * itself did not flip: NFLX on 2026-11-04 and MKC on 2026-11-12 on the live book.
+     * A name the rebalance flipped and the guard flipped back carries its own row in
+     * `bridge_anchor.flip_rows` instead, so the two lists never repeat a name.
+     */
+    guard_flips?: GuardFlip[];
+    /**
      * The legs that never became orders: under the $250 minimum, or refused by the
      * broker. Kept out of the reason table because a reason there would claim a leg
      * that does not exist, and summed here so the two counts still add to the rows.
@@ -759,8 +766,17 @@ export interface GuardFiring {
   usd: number | null;
   /** The day's realized fill cost, or null when the store carries no fills for it. */
   cost_bps: number | null;
-  /** Names whose side the firing moved back, from the bridge's own flips. */
+  /** Names whose side the firing moved back, read from each name's own legs. */
   flips: string[];
+}
+
+/** One name the guard moved to the other side, with the evening it did. */
+export interface GuardFlip {
+  ticker: string;
+  date: string;
+  from_side: string;
+  to_side: string;
+  usd: number;
 }
 
 /** One sector's distance from the rebalance target, net and name by name. */

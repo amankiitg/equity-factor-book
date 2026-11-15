@@ -1362,8 +1362,22 @@ function FactorTable({ period }: { period: AttributionPeriod }) {
     .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
   const timing = period.daily.reduce((total, day) => total + (day.pnl_timing ?? 0), 0);
   if (entries.length === 0) return null;
-  const total = entries.reduce((sum, entry) => sum + entry.value, 0);
-  const widest = Math.max(...entries.map((entry) => Math.abs(entry.value)), 1e-12);
+  const added = entries.reduce((sum, entry) => sum + entry.value, 0);
+  // The per-factor rows are the stored terms and they do not always add to the factor
+  // card above, because the card is the stored total. The gap is a few hundredths of
+  // a basis point, and printing a total the rows do not reach was the thing a reader
+  // could not check. The gap gets its own row and the total is the card's own number.
+  const stated = period.cumulative?.pnl_factor ?? null;
+  const remainder = stated === null ? null : stated - added;
+  // The rows print to a tenth of a basis point, so a remainder under half of that
+  // would print as 0.0 and add a row that says nothing.
+  const showRemainder = remainder !== null && Math.abs(remainder) >= 5e-6;
+  const total = stated ?? added;
+  const widest = Math.max(
+    ...entries.map((entry) => Math.abs(entry.value)),
+    ...(showRemainder ? [Math.abs(remainder as number)] : []),
+    1e-12,
+  );
 
   return (
     <div data-panel="by-factor" className="mt-3">
@@ -1371,8 +1385,9 @@ function FactorTable({ period }: { period: AttributionPeriod }) {
         By factor
         <HowToRead>
           Each factor&apos;s cumulative contribution over {count(period.n_days)} session(s), in
-          basis points of NAV, largest first. These sum to the factor card above, so the two
-          can be checked against each other. Example: {factorWord(entries[0].factor)}{" "}
+          basis points of NAV, largest first, and they sum to the factor card above. The
+          small remainder that the stored per-factor terms do not explain has its own row
+          rather than being folded into the total. Example: {factorWord(entries[0].factor)}{" "}
           contributed {bps(entries[0].value)}.
         </HowToRead>
       </h3>
@@ -1395,6 +1410,26 @@ function FactorTable({ period }: { period: AttributionPeriod }) {
               <td className="py-0.5 text-right tabular-nums">{bps(entry.value)}</td>
             </tr>
           ))}
+          {showRemainder ? (
+            <tr data-factor="remainder" className="border-b border-slate-100 text-slate-600">
+              <td className="py-0.5 pr-2">not attributed to a factor</td>
+              <td className="py-0.5 pr-2">
+                <span
+                  data-factor-bar="true"
+                  className={`inline-block h-2 rounded-sm ${
+                    (remainder as number) >= 0 ? "bg-emerald-600" : "bg-rose-500"
+                  }`}
+                  style={{
+                    width: `${Math.max(
+                      2,
+                      (Math.abs(remainder as number) / widest) * 90,
+                    )}px`,
+                  }}
+                />
+              </td>
+              <td className="py-0.5 text-right tabular-nums">{bps(remainder)}</td>
+            </tr>
+          ) : null}
           <tr data-factor="total" className="text-slate-700">
             <td className="py-1 pr-2 font-semibold">total</td>
             <td className="py-1 pr-2" />

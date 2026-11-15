@@ -824,21 +824,28 @@ def _ccl_reflip_block() -> dict:
             "market_value": [-600.0],
         }
     )
+    # The guard closed the long and opened a short on 11-04, so the account is short
+    # by the latest read. A re-flip the account does not show is not a re-flip.
     now = pd.DataFrame(
         {
             "trade_date": [latest],
             "ticker": ["CCL"],
-            "side": ["long"],
-            "market_value": [700.0],
+            "side": ["short"],
+            "market_value": [-680.0],
         }
     )
     orders = pd.DataFrame(
         {
-            "trade_date": [anchor, opened, guard],
-            "ticker": ["CCL", "CCL", "CCL"],
-            "intended_notional": [600.0, 700.0, -650.0],
-            "reason_code": ["", "", ""],
-            "position_intent": ["buy_to_close", "buy_to_open", "sell_to_close"],
+            "trade_date": [anchor, opened, guard, guard],
+            "ticker": ["CCL", "CCL", "CCL", "CCL"],
+            "intended_notional": [600.0, 700.0, -650.0, -680.0],
+            "reason_code": ["", "", "", ""],
+            "position_intent": [
+                "buy_to_close",
+                "buy_to_open",
+                "sell_to_close",
+                "sell_to_open",
+            ],
         }
     )
     fills = pd.DataFrame(
@@ -870,9 +877,9 @@ def test_a_later_guard_leg_is_a_reflip_and_says_so() -> None:
     assert row["state_label"] == ("re-flipped later by the drift guard on 2026-11-04")
     held = {item["ticker"]: item for item in block["holdings"]["rows"]}["CCL"]
     assert "flipped (2026-10-23 to 2026-10-26)" in held["since"]
-    assert "drift guard leg (2026-11-04)" in held["since"]
+    assert "flipped again by the drift guard (2026-11-04)" in held["since"]
     # The pill names the latest event, not the flip the sentence starts with.
-    assert held["since_label"] == "Guard 11-04"
+    assert held["since_label"] == "Flipped 11-04"
 
 
 def test_the_guard_history_is_one_row_per_firing_from_the_manifest() -> None:
@@ -891,6 +898,194 @@ def test_the_guard_history_is_one_row_per_firing_from_the_manifest() -> None:
     assert row["usd"] is None
     assert row["exposure_before"] is None
     assert "cost_bps" in row
+
+
+
+def _live_flip_facts_block() -> dict:
+    """The 2026-11-13 close, with the flips the live QA sweep found.
+
+    Four names flipped at the 2026-10-23 rebalance (CCL, F, GEHC, VZ). The drift guard
+    then flipped CCL and NFLX on 2026-11-04 and MKC on 2026-11-12. The guard also
+    traded VZ and F on those evenings to resize them, which is why its manifest lists
+    them as legs: a guard leg is not a flip, and only the name's own orders say which
+    is which.
+    """
+    anchor, opened, first_guard, second_guard, latest = (
+        "2026-10-23",
+        "2026-10-26",
+        "2026-11-04",
+        "2026-11-12",
+        "2026-11-13",
+    )
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [anchor, "2026-10-29", first_guard, second_guard],
+            "manifest": [
+                {"cadence": {"day": "rebalance"}},
+                {"cadence": {"day": "hold", "k": 21}},
+                {
+                    "cadence": {"day": "hold", "k": 21},
+                    "drift_guard": {
+                        "fired": True,
+                        # VZ is here because the guard resized it, not because it
+                        # changed side: the manifest cannot tell the two apart.
+                        "legs": [
+                            {"ticker": "CCL", "traded": True},
+                            {"ticker": "NFLX", "traded": True},
+                            {"ticker": "VZ", "traded": True},
+                        ],
+                    },
+                },
+                {
+                    "cadence": {"day": "hold", "k": 21},
+                    "drift_guard": {
+                        "fired": True,
+                        "legs": [
+                            {"ticker": "MKC", "traded": True},
+                            {"ticker": "F", "traded": True},
+                        ],
+                    },
+                },
+            ],
+        }
+    )
+    names = ["CCL", "F", "GEHC", "VZ", "NFLX", "MKC"]
+    target_side = {"CCL": "long", "F": "short", "GEHC": "long", "VZ": "short",
+                   "NFLX": "long", "MKC": "short"}
+    before_side = {"CCL": "short", "F": "long", "GEHC": "short", "VZ": "long",
+                   "NFLX": "long", "MKC": "short"}
+    now_side = {"CCL": "short", "F": "short", "GEHC": "long", "VZ": "short",
+                "NFLX": "short", "MKC": "long"}
+    target = pd.DataFrame(
+        {
+            "trade_date": [anchor] * len(names),
+            "ticker": names,
+            "side": [target_side[name] for name in names],
+            "weight": [0.01] * len(names),
+        }
+    )
+    before = pd.DataFrame(
+        {
+            "trade_date": [anchor] * len(names),
+            "ticker": names,
+            "side": [before_side[name] for name in names],
+            "market_value": [(-600.0 if before_side[name] == "short" else 600.0)
+                             for name in names],
+        }
+    )
+    now = pd.DataFrame(
+        {
+            "trade_date": [latest] * len(names),
+            "ticker": names,
+            "side": [now_side[name] for name in names],
+            "market_value": [(-650.0 if now_side[name] == "short" else 650.0)
+                             for name in names],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [
+                anchor, anchor, anchor, anchor,
+                opened, opened, opened, opened,
+                first_guard, first_guard, first_guard, first_guard, first_guard,
+                second_guard, second_guard, second_guard,
+            ],
+            "ticker": [
+                "CCL", "F", "GEHC", "VZ",
+                "CCL", "F", "GEHC", "VZ",
+                "CCL", "CCL", "NFLX", "NFLX", "VZ",
+                "MKC", "MKC", "F",
+            ],
+            "intended_notional": [
+                600.0, -633.0, 2000.0, -988.0,
+                677.0, -1600.0, 2328.0, -2434.0,
+                -650.0, -660.0, 900.0, -910.0, -300.0,
+                420.0, 430.0, -200.0,
+            ],
+            "reason_code": [""] * 16,
+            "position_intent": [
+                "buy_to_close", "sell_to_close", "buy_to_close", "sell_to_close",
+                "buy_to_open", "sell_to_open", "buy_to_open", "sell_to_open",
+                "sell_to_close", "sell_to_open", "sell_to_close", "sell_to_open",
+                "sell_to_open",
+                "buy_to_close", "buy_to_open", "sell_to_open",
+            ],
+        }
+    )
+    fills = pd.DataFrame(
+        {
+            "trade_date": list(orders["trade_date"]),
+            "ticker": list(orders["ticker"]),
+            "filled_notional": [abs(value) for value in orders["intended_notional"]],
+            "status": ["FILLED"] * len(orders),
+        }
+    )
+    return monthly_view.block(
+        proposals=proposals,
+        targets=target,
+        account=pd.concat([before, now]),
+        orders=orders,
+        fills=fills,
+        today=latest,
+        tonight_manifest={"cadence": {"day": "hold", "k": 21}},
+        nav=1_000_000.0,
+    )
+
+
+def test_the_rebalance_flipped_four_names_and_only_ccl_flipped_again() -> None:
+    """The live facts: CCL, F, GEHC and VZ flipped once; CCL flipped back on 11-04.
+
+    VZ, GEHC and F must not read as re-flipped. The guard traded all three, and a
+    guard leg is not a side change.
+    """
+    block = _live_flip_facts_block()
+    rows = {row["ticker"]: row for row in block["bridge_anchor"]["flip_rows"]}
+    assert sorted(rows) == ["CCL", "F", "GEHC", "VZ"]
+    assert rows["CCL"]["refipped_on"] == "2026-11-04"
+    assert rows["CCL"]["state"] == "refipped"
+    for ticker in ("VZ", "GEHC", "F"):
+        assert rows[ticker]["refipped_on"] is None, ticker
+        assert rows[ticker]["state"] != "refipped", ticker
+        assert "re-flipped" not in rows[ticker]["state_label"], ticker
+
+
+def test_the_guard_cards_name_the_flips_each_firing_caused() -> None:
+    """11-04 flipped CCL and NFLX; 11-12 flipped MKC. The manifest legs are not it."""
+    block = _live_flip_facts_block()
+    firings = {row["date"]: row for row in block["since_anchor"]["guard_history"]}
+    assert firings["2026-11-04"]["flips"] == ["CCL", "NFLX"]
+    assert firings["2026-11-12"]["flips"] == ["MKC"]
+    # VZ and F were guard legs on those evenings and did not change side.
+    assert "VZ" not in firings["2026-11-04"]["flips"]
+    assert "F" not in firings["2026-11-12"]["flips"]
+
+
+def test_the_flips_list_carries_the_guard_flips_the_rebalance_did_not_make() -> None:
+    """NFLX and MKC are guard flips and belong in the list beside the four."""
+    block = _live_flip_facts_block()
+    guard_flips = {row["ticker"]: row for row in block["since_anchor"]["guard_flips"]}
+    assert sorted(guard_flips) == ["MKC", "NFLX"]
+    assert guard_flips["NFLX"]["date"] == "2026-11-04"
+    assert guard_flips["MKC"]["date"] == "2026-11-12"
+    assert guard_flips["NFLX"]["from_side"] == "long"
+    assert guard_flips["NFLX"]["to_side"] == "short"
+    assert guard_flips["MKC"]["from_side"] == "short"
+    assert guard_flips["MKC"]["to_side"] == "long"
+    # CCL is a re-flip and travels in its own row, not a second time here.
+    assert "CCL" not in guard_flips
+
+
+def test_the_holdings_rows_name_a_guard_flip_as_a_flip() -> None:
+    block = _live_flip_facts_block()
+    held = {row["ticker"]: row for row in block["holdings"]["rows"]}
+    assert held["NFLX"]["since"] == "flipped by the drift guard (2026-11-04)"
+    assert held["MKC"]["since"] == "flipped by the drift guard (2026-11-12)"
+    # The names the guard only resized keep the resize note: VZ's own rebalance flip
+    # is stated once, and neither name is said to have flipped again.
+    assert "drift guard leg (2026-11-04)" in held["VZ"]["since"]
+    assert "flipped again" not in held["VZ"]["since"]
+    assert "drift guard leg (2026-11-12)" in held["F"]["since"]
+    assert "flipped again" not in held["F"]["since"]
 
 
 def test_kvues_own_row_says_retired_owed_and_cannot_be_traded() -> None:

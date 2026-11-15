@@ -155,7 +155,11 @@ describe("the metrics row", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     const line = document.querySelector("[data-flag='book-line']") as HTMLElement;
     expect(line).toBeTruthy();
-    expect(line.textContent).toContain(`Tonight's book: ${OK.book.n_names} names.`);
+    // The line says which close it describes, because the page draws a book for a
+    // date and "tonight" is not a date on a hold day.
+    expect(line.textContent).toContain(
+      `The ${dateOnly(OK.book_as_of)?.slice(5)} book: ${OK.book.n_names} names.`,
+    );
     const dropped = OK.breadth.n_dropped_no_risk ?? (OK.breadth.dropped_no_risk ?? []).length;
     expect(dropped).toBeGreaterThan(0);
     expect(line.textContent).toContain(`${dropped} left out (no risk estimate yet)`);
@@ -163,6 +167,31 @@ describe("the metrics row", () => {
     expect(line.textContent).toContain("the rest scaled to 100% of NAV");
   });
 
+  it("opens the names the risk model left out, each with its reason", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    const toggle = document.querySelector(
+      "[data-left-out-toggle='true']",
+    ) as HTMLButtonElement;
+    expect(toggle).toBeTruthy();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    // The line said how many and stopped: no link, no button, and no way to see
+    // whether the names were the ones the reader was looking for.
+    expect(document.querySelector("[data-left-out-list='true']")).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const list = document.querySelector("[data-left-out-list='true']") as HTMLElement;
+    expect(list).toBeTruthy();
+    const named = (OK.breadth.dropped_no_risk ?? []).map((entry) => entry.ticker);
+    expect(
+      Array.from(list.querySelectorAll("[data-left-out]")).map((row) =>
+        row.getAttribute("data-left-out"),
+      ),
+    ).toEqual(named);
+    for (const entry of OK.breadth.dropped_no_risk ?? []) {
+      expect(list.textContent).toContain(entry.ticker);
+      expect(list.textContent).toContain(entry.reason);
+    }
+  });
   it("states the fills the reconciler read, filled of sent and realized against expected", () => {
     const block = ACTUAL.actual_holdings;
     expect(block?.fills).toBeTruthy();
@@ -864,10 +893,14 @@ describe("actual holdings", () => {
     if (!block) return;
     render(<SnapshotView snapshot={ACTUAL} now={NOW} />);
 
-    // The tab names the table and counts it, so the count is readable without
-    // opening 235 rows.
-    expect(screen.getByText(`Actual holdings: ${block.n_names} name(s)`)).toBeTruthy();
+    // The tab is the table's header, so its count is the table's own: the names the
+    // account holds, then the names it exited since the rebalance. The read's own
+    // row count is neither of those.
+    const tab = screen.getByText(/^Actual holdings: /);
     const table = openDrawer("actual");
+    const heldRows = table.querySelectorAll("tbody tr[data-held='true']").length;
+    expect(tab.textContent).toContain(`${heldRows} held`);
+    expect(tab.textContent).not.toContain("name(s)");
     // The read time, as a time: the evening's read and the morning's are hours
     // apart and the difference is the whole meaning of the label.
     expect(table.querySelector("[data-actual='read']")?.textContent).toContain(
@@ -1371,7 +1404,15 @@ describe("the attribution tab's own panels", () => {
     ...OK,
     attribution: { ...(OK.attribution as NonNullable<Snapshot["attribution"]>), live },
   });
-  const withFactors = withLive({ ...LIVE, by_factor: BY_FACTOR });
+  // The stored factor total is a little above the sum of the per-factor rows, which
+  // is the live shape: the small remainder gets its own row rather than being lost.
+  const FACTOR_SUM = Object.values(BY_FACTOR).reduce((sum, value) => sum + value, 0);
+  const FACTOR_STATED = FACTOR_SUM + 0.00012;
+  const withFactors = withLive({
+    ...LIVE,
+    by_factor: BY_FACTOR,
+    cumulative: { ...LIVE.cumulative, pnl_factor: FACTOR_STATED },
+  });
 
   it("adds the factors up to the factor card, largest contribution first", () => {
     render(<SnapshotView snapshot={withFactors} now={NOW} />);
@@ -1381,20 +1422,30 @@ describe("the attribution tab's own panels", () => {
     const order = Array.from(panel.querySelectorAll("[data-factor]")).map((row) =>
       row.getAttribute("data-factor"),
     );
+    const added = FACTOR_SUM;
+    const stated = FACTOR_STATED;
+    const remainder = stated - added;
+    const showsRemainder = Math.abs(remainder) >= 0.005 / 1e4;
     expect(order).toEqual([
       ...Object.entries(BY_FACTOR)
         .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
         .map(([name]) => name),
+      ...(showsRemainder ? ["remainder"] : []),
       "total",
     ]);
     for (const [factor, value] of Object.entries(BY_FACTOR)) {
       const row = panel.querySelector(`[data-factor='${factor}']`) as HTMLElement;
       expect(row.textContent).toContain((value * 1e4).toFixed(1));
     }
-    const total = Object.values(BY_FACTOR).reduce((sum, value) => sum + value, 0);
+    // The total is the factor card's own number, and the small remainder the stored
+    // per-factor terms do not explain is its own row, so the rows add to it.
     expect(
       (panel.querySelector("[data-factor='total']") as HTMLElement).textContent,
-    ).toContain((total * 1e4).toFixed(1));
+    ).toContain((stated * 1e4).toFixed(1));
+    expect(showsRemainder).toBe(true);
+    expect(
+      (panel.querySelector("[data-factor='remainder']") as HTMLElement).textContent,
+    ).toContain((remainder * 1e4).toFixed(1));
   });
 
   it("is absent when the document carries no by-factor split", () => {
