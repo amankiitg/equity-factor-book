@@ -61,7 +61,7 @@ export function TopNames({
         {facts.largest ? ` at ${percent(facts.largest.weight)} of NAV` : ""}; the two lists of ten
         are below.
         {monthly?.anchor?.day === "cadence"
-          ? " These are what the account holds now, not the rebalance's book: the drift card measures the distance between the two."
+          ? " These are what the account holds now, not the rebalance's book: the Distance card on Since the rebalance measures the distance between the two."
           : ""}
       </p>
       <Details hook="top-names" summary={<>the ten largest on each side</>}>

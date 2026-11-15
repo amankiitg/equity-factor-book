@@ -284,7 +284,6 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
   const beforeScale = worstOf(before);
   const afterScale = worstOf(after);
   const nowScale = worstOf(tonightBefore);
-  const afterFlat = afterScale < FLAT_UNDER;
   // Present only when the evening recorded one: the key is absent on a document
   // built without a reconciled row, and a missing figure is not a zero figure.
   const adjustment = (snapshot.reconciliation?.unexplained_adjustment as number | null) ?? null;
@@ -465,30 +464,10 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
         </table>
       </div>
       <p className="mt-1 text-xs text-slate-500" data-heat-caption="true">
-        The shade is scaled inside its own column, so each column compares with itself
-        and not with the others: the largest value it reaches is{" "}
-        <span className="font-mono tabular-nums">{percent(beforeScale, 2)}</span> before the
-        hedge and{" "}
-        <span className="font-mono tabular-nums">{percent(afterScale, 2)}</span> after it
-        {anchor ? (
-          <>
-            , and{" "}
-            <span className="font-mono tabular-nums">{percent(nowScale, 2)}</span> now
-          </>
-        ) : null}
-        . Blue is a positive exposure and rose is a negative one, and zero is left
-        unpainted.{" "}
-        {anchor ? (
-          <>
-            A now cell at or beyond the 5% drift guard line carries an amber ring, not a
-            fill, so its own shade still reads.{" "}
-          </>
-        ) : null}
-        {afterFlat
-          ? "After the hedge every cell is 0.00%: the cap took the factors out, so that column is a flat neutral rather than a set of weak shades. "
-          : ""}
-        {REFERENCE_SECTOR} is the reference sector and has no column of its own, so the ten
-        sectors above are measured against it.
+        The shade compares a cell only with the other cells in its own column: blue is a
+        positive exposure, rose a negative one, zero is left unpainted, and a now cell at
+        the 5% guard carries an amber ring. {REFERENCE_SECTOR} is the reference sector and
+        has no column of its own, so the ten sectors above are measured against it.
       </p>
       </Details>
       <dl className="mt-2 grid gap-1 text-sm text-slate-700" data-hedge-lines="true">

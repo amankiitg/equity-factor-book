@@ -197,24 +197,38 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
   );
   const legDate = (filledAt: string | null | undefined, close: string | null): string =>
     dateOnly(filledAt ?? close) ?? "-";
+  const nav = monthly.sectors?.nav ?? null;
+  const nowClose = dateOnly(monthly.holdings?.as_of ?? null);
+  const apart =
+    nav === null ? null : Math.abs(nav - (bridge.after_dollars ?? 0));
   return (
     <Card
-      title="the rebalance, from the account before it to the account now"
-      howToRead="a name that changes side cannot do it in one order: the close lands one morning and the open the next. Example: CCL bought back $605 of short on 10-26 and bought $678 of long on 10-27."
+      title="the book, from the 10-23 close to the account now"
+      howToRead={`the before and now figures are gross position value: every position's dollars added up, longs and shorts both counted positive. That is not NAV, which nets the shorts against the cash and adds it, so the two differ and both are right. Example: today the gross positions are ${dollars(
+        bridge.after_dollars,
+      )} and NAV is ${dollars(nav)}, ${dollars(apart)} apart.`}
     >
       <dl data-flips={bridge.flipped} className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
-        <Stat label="before" value={dollars(bridge.before_dollars)} detail="account, anchor close" />
+        <Stat
+          label="before, gross positions"
+          value={dollars(bridge.before_dollars)}
+          detail="10-23 close, longs and shorts added up; not NAV either"
+        />
         <Stat
           label="opened / exited"
           value={`${bridge.opened} / ${bridge.exited}`}
-          detail={`${bridge.resized} resized`}
+          detail={`${bridge.resized} resized since 10-23`}
         />
         <Stat
           label="flips"
           value={`${bridge.flipped}`}
           detail={`${bridge.complete_flips} complete`}
         />
-        <Stat label="now" value={dollars(bridge.after_dollars)} detail="account, latest close" />
+        <Stat
+          label="now, gross positions"
+          value={dollars(bridge.after_dollars)}
+          detail={`${nowClose ?? "latest"} close, longs and shorts added up; NAV nets the shorts and adds cash`}
+        />
       </dl>
       {flips.length ? (
         <>
@@ -322,6 +336,30 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
   const drift = monthly.drift;
   if (!drift) return null;
   const next = monthly.cadence_strip?.next_rebalance ?? null;
+  // The rate the rebalance was priced at, in bp of each dollar traded. A hold
+  // day's manifest carries only borrow, and reading its residue as a rate is what
+  // printed "about $0" for a trade of this size.
+  const card = monthly.rebalance_card;
+  const rate =
+    card?.expected_cost_usd && card?.notional
+      ? (card.expected_cost_usd / card.notional) * 1e4
+      : card?.expected_cost_bps && card?.pct_nav
+        ? card.expected_cost_bps / card.pct_nav
+        : null;
+  const nav = monthly.sectors?.nav ?? null;
+  const costUsd =
+    rate !== null && drift.traded_usd !== null && drift.traded_usd !== undefined
+      ? (drift.traded_usd * rate) / 1e4
+      : drift.estimated_cost_usd;
+  const costBps =
+    drift.estimated_cost_bps ??
+    (costUsd !== null && costUsd !== undefined && nav
+      ? (costUsd / nav) * 1e4
+      : null);
+  const costText =
+    costBps === null || costBps === undefined
+      ? "at the 10-23 rebalance\u2019s own trading rate, which the block does not carry"
+      : `${costBps.toFixed(1)} bp of NAV (${dollars(costUsd)}) at the 10-23 rebalance\u2019s own trading rate`;
   return (
     <Card
       title="distance from the rebalance target"
@@ -339,8 +377,8 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
         <span className="font-mono tabular-nums">{percent(drift.half_turnover_pct)}</span> of
         NAV away from it ({dollars(drift.half_turnover_usd)} on one side). Closing the gap
         today would trade <span className="font-mono tabular-nums">{dollars(drift.traded_usd)}</span>{" "}
-        and cost about {dollars(drift.estimated_cost_usd)}. The gap includes every move the
-        guard made on purpose, not only price drift.
+        and cost {costText}. The gap includes every move the guard made on purpose,
+        not only price drift.
       </p>
     </Card>
   );
@@ -358,6 +396,19 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
 export function GuardCards({ monthly }: { monthly: MonthlyBlock }) {
   const firings = monthly.since_anchor?.guard_history ?? [];
   if (!firings.length) return null;
+  // The estimate the cost-by-era row also quotes, at the rebalance's own rate. The
+  // measured figure is the day's fills, and it includes the overnight move; the two
+  // are stated side by side so neither is read as the other.
+  const card = monthly.rebalance_card;
+  const rate =
+    card?.expected_cost_usd && card?.notional
+      ? (card.expected_cost_usd / card.notional) * 1e4
+      : card?.expected_cost_bps && card?.pct_nav
+        ? card.expected_cost_bps / card.pct_nav
+        : null;
+  const nav = monthly.sectors?.nav ?? null;
+  const estimate = (usd: number | null | undefined): number | null =>
+    rate === null || !usd || !nav ? null : -((usd * rate) / 1e4 / nav) * 1e4;
   return (
     <>
       {firings.map((firing) => (
@@ -378,20 +429,30 @@ export function GuardCards({ monthly }: { monthly: MonthlyBlock }) {
             <Stat
               label="legs sent"
               value={String(firing.legs_sent ?? 0)}
-              detail={`${firing.legs_under_minimum ?? 0} under the $250 minimum`}
+              detail={`${firing.legs_not_sent ?? firing.legs_under_minimum ?? 0} not sent, under the $250 floor`}
             />
             <Stat
-              label="dollars"
+              label="dollars sent"
               value={dollars(firing.usd)}
-              detail="the legs it moved"
+              detail={
+                firing.not_sent_usd === null || firing.not_sent_usd === undefined
+                  ? "the legs it moved"
+                  : `${dollars(firing.not_sent_usd)} of legs not sent`
+              }
             />
             <Stat
-              label="cost"
-              value={firing.cost_bps === null ? "not measured" : `${firing.cost_bps.toFixed(1)} bp`}
+              label="cost, measured from fills"
+              value={
+                firing.cost_bps === null
+                  ? "not measured"
+                  : `${(-firing.cost_bps).toFixed(1)} bp`
+              }
               detail={
                 firing.cost_bps === null
                   ? "the store carries no fills for this day"
-                  : "the day's fills"
+                  : estimate(firing.usd) === null
+                    ? "the day's fills; no estimate to compare"
+                    : `estimated ${estimate(firing.usd)?.toFixed(1)} bp at the rebalance's rate`
               }
             />
           </dl>
@@ -417,7 +478,13 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
   const notSent = monthly.since_anchor?.not_sent;
   if (!trades.length) return null;
   const under = notSent?.under_minimum;
-  const refused = notSent?.other ?? [];
+  // Three shapes, newest first: the refusals counted by name, the tonight line's
+  // own list, and the older aggregate by reason code. Each names the position
+  // rather than counting the nights it was refused.
+  const refusedNames = notSent?.refused_names ?? [];
+  const cannot = monthly.tonight?.cannot_send ?? [];
+  const refusedCodes = notSent?.other ?? [];
+  const refusedCount = refusedNames.length + cannot.length + refusedCodes.length;
   return (
     <Card
       title="every leg since the rebalance, by why it went"
@@ -435,9 +502,13 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
                 <tr data-reason={row.reason}>
                   <td className="font-semibold">{row.reason}</td>
                   <td className="text-right">
-                    {sent === row.legs
-                      ? `${row.legs} legs`
-                      : `${sent} sent, ${row.legs - sent} owed`}
+                    {row.reason === "rebalance" && sent < row.legs
+                      ? `${sent} sent, ${row.legs - sent} not sent (under $250)`
+                      : row.reason === "carried leg"
+                        ? `${row.legs} leg, impossible (under one share)`
+                        : sent === row.legs
+                          ? `${row.legs} legs`
+                          : `${sent} sent, ${row.legs - sent} not sent`}
                   </td>
                   <td className="text-right">{dollars(row.usd)}</td>
                 </tr>
@@ -460,18 +531,64 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
         </tbody>
       </table>
       </div>
-      {under || refused.length ? (
-        <p data-not-sent="true" className="mt-1 text-xs text-slate-500">
-          not sent: {under?.legs ?? 0} legs under $250 ({dollars(under?.usd ?? 0)})
-          {refused.length
-            ? `; ${refused
-                .map(
-                  (row) =>
-                    `${row.legs} refused (${legReasonWord(row.code)}, ${dollars(row.usd)})`,
-                )
-                .join("; ")}`
-            : ""}
-        </p>
+      {under || refusedCount ? (
+        <div data-not-sent="true" className="mt-1 text-xs text-slate-500">
+          <p>
+            not sent: {notSent?.legs ?? 0} legs. {under?.legs ?? 0} under $250 (
+            {dollars(under?.usd ?? 0)})
+            {refusedCount ? ", and " : ""}
+            {refusedNames.length
+              ? refusedNames.map((row, index) => (
+                  <span key={row.ticker} data-refused-name={row.ticker}>
+                    {index > 0 ? "; " : ""}
+                    {row.ticker} {dollars(row.usd)} ({legReasonWord(row.status)}, refused on{" "}
+                    {row.legs} nights from {dateOnly(row.first_close)} to{" "}
+                    {dateOnly(row.last_close)})
+                  </span>
+                ))
+              : (
+                  <>
+                    {cannot.map((leg, index) => (
+                      <span key={leg.ticker} data-refused-name={leg.ticker}>
+                        {index > 0 ? "; " : ""}
+                        {leg.ticker} {dollars(leg.usd)} ({legReasonWord(leg.code)}; one name,
+                        refused on every night, and the leg total above counts it once per
+                        night)
+                      </span>
+                    ))}
+                    {/* The codes are the older shape and are only drawn when the
+                        document names no position: once the name is known, counting
+                        the same holding per code is the double count this line fixes. */}
+                    {cannot.length === 0
+                      ? refusedCodes.map((row, index) => (
+                          <span key={row.code} data-refused-code={row.code}>
+                            {index > 0 ? "; " : ""}
+                            {row.legs} {row.legs === 1 ? "leg" : "legs"} ({legReasonWord(row.code)},{" "}
+                            {dollars(row.usd)})
+                          </span>
+                        ))
+                      : null}
+                  </>
+                )}
+            .
+          </p>
+          {under?.by_day && under.by_day.length > 0 ? (
+            <p data-not-sent-parts="true">
+              the {under.legs} under $250 were asked for on these closes:{" "}
+              {under.by_day
+                .map((day) => `${day.legs} on ${dateOnly(day.close) ?? day.close}`)
+                .join(", ")}
+              .
+            </p>
+          ) : null}
+          {notSent?.usd_by_name !== undefined ? (
+            <p data-not-sent-by-name="true">
+              by name the positions that never traded are worth {dollars(notSent.usd_by_name)}:
+              the same holding was refused on several nights, and the leg total above
+              counts it once per night.
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </Card>
   );

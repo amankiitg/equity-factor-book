@@ -69,6 +69,8 @@ export interface Mismatch {
   side: MismatchSide;
   /** The class it was put in, in words the panel prints. */
   why: string;
+  /** The same reason in one clause, for a line that names several. */
+  brief?: string;
   /** The snapshot key that decided it. Empty when nothing did. */
   key: string;
   /** The plain label, and what happens next. */
@@ -221,6 +223,7 @@ export function classify(snapshot: Snapshot): Exceptions {
         ticker,
         side,
         why: "deferred reversal of the previous close: closed then, reopening now",
+        brief: "its reopening order fills on Monday, 11-16",
         key: "bridge.previous_reversals_pending",
         label: "in transit",
       };
@@ -269,6 +272,11 @@ export function classify(snapshot: Snapshot): Exceptions {
         ticker,
         side,
         why,
+        brief: deal
+          ? `acquired by ${deal.by}; the broker has not converted the shares yet`
+          : code === "ASSET_INACTIVE"
+            ? "the symbol no longer trades"
+            : "the order could not be sent",
         key: exitedNoOrder.has(ticker)
           ? "bridge.exited_without_order"
           : "monthly.tonight.cannot_send",

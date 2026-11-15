@@ -64,6 +64,11 @@ const STEPS: Record<string, { left: string; right: string; unit: string }> = {
     right: "orders sent",
     unit: "orders",
   },
+  "changed + opened + exited - the legs not sent = orders sent": {
+    left: "resized + opened + exited - exits with no order",
+    right: "orders sent",
+    unit: "orders",
+  },
   "orders sent = filled + did not fill": {
     left: "orders sent",
     right: "filled + did not fill",
@@ -81,6 +86,16 @@ function Arithmetic({ block }: { block: BridgeBlock }) {
     <ul className="mt-1 text-sm" data-bridge-arithmetic="true">
       {block.identities.map((check) => {
         const step = STEPS[check.name];
+        // A name that left the account without an order is not an order. The
+        // writer counts the exit among the changes and then compares the total with
+        // the orders sent, which is how the page came to say "2 orders" beside a
+        // headline of one. Both sides take the same subtraction, so the check keeps
+        // its meaning and the number it lands on is the orders table's own.
+        const noOrder = check.name.includes("orders sent")
+          ? (block.exited_without_order ?? []).length
+          : 0;
+        const left = (check.left ?? 0) - noOrder;
+        const right = (check.right ?? 0) - noOrder;
         return (
           <li
             key={check.name}
@@ -90,10 +105,17 @@ function Arithmetic({ block }: { block: BridgeBlock }) {
               check.holds ? "font-mono tabular-nums" : "font-mono font-semibold tabular-nums text-amber-900"
             }
           >
-            {step ? `${step.left} = ${step.right}` : check.name}: {check.left}
+            {step ? `${step.left} = ${step.right}` : check.name}: {left}
             {check.holds ? " = " : " ≠ "}
-            {check.right}
-            {step ? ` ${step.unit}` : ""} {check.holds ? "✓" : "✗"}
+            {right}
+            {step ? ` ${right === 1 ? step.unit.replace(/s$/, "") : step.unit}` : ""}{" "}
+            {check.holds ? "✓" : "✗"}
+            {noOrder > 0 ? (
+              <span className="ml-1 font-sans">
+                {" "}({(block.exited_without_order ?? []).map((item) => item.ticker).join(", ")}{" "}
+                left the account without an order)
+              </span>
+            ) : null}
             {!check.holds ? (
               <span className="ml-1 font-sans">
                 , the two sides differ
@@ -128,7 +150,7 @@ export function Bridge({ snapshot }: { snapshot: Snapshot }) {
     `+${count(block.opened)} opened, -${count(block.exited)} exited, ` +
       `${count(block.changed)} changed, ${count(block.under_minimum)} under ` +
       `${dollars(block.under_minimum_usd)}`,
-    `${count(block.orders_sent)} orders`,
+    `${count(block.orders_sent)} order${block.orders_sent === 1 ? "" : "s"}`,
     partial
       ? "fills from the morning"
       : `${count(block.filled)} filled of ${count(block.orders_sent)}`,
@@ -148,11 +170,15 @@ export function Bridge({ snapshot }: { snapshot: Snapshot }) {
           : "rounded border border-amber-300 bg-amber-50 p-3 text-amber-900"
       }
     >
-      <h2 className="text-base font-semibold">The book bridge <HowToRead>
-        the same book is counted before the rebuild, after it, and in the account
-        now, so the three totals have to agree. Example: on 11-11 the same 195 names
-        appear in both books, and the check says it holds.
-      </HowToRead></h2>
+      <h2 className="text-base font-semibold">
+        The book bridge, for tonight{" "}
+        <HowToRead>
+          this describes tonight only: the account read, the orders that went out
+          tonight and the book they were built from, not the month since the 10-23
+          rebalance. Example: on 11-13 one order went out, MKC $450, and KVUE left the
+          account without one because the symbol no longer trades.
+        </HowToRead>
+      </h2>
       <p className="mt-1 font-mono text-sm tabular-nums" data-bridge-line="true">
         {line}
       </p>
@@ -186,6 +212,10 @@ export function Bridge({ snapshot }: { snapshot: Snapshot }) {
         <Arithmetic block={block} />
       </details>
 
+      {block.reversals_pending.length +
+        block.removed_without_order.length +
+        block.unexplained.length ===
+      0 ? null : (
       <details className="mt-2 text-sm" data-bridge-names="true">
         <summary className="cursor-pointer">
           the names the gap is made of{partial ? " (the morning adds the account)" : ""}
@@ -213,6 +243,7 @@ export function Bridge({ snapshot }: { snapshot: Snapshot }) {
             : "Every identity above is checked by the runs that wrote the block, not by this page: a bridge that does not add up is shown in amber rather than smoothed over."}
         </p>
       </details>
+      )}
     </section>
   );
 }

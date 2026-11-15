@@ -84,7 +84,7 @@ const COLORS = {
 const SERIES = [
   { key: "total", word: "total", color: COLORS.total, dash: "" },
   { key: "factor", word: "factor", color: COLORS.factor, dash: "5 2" },
-  { key: "idio", word: "idio", color: COLORS.idio, dash: "1 3" },
+  { key: "idio", word: "stock-specific", color: COLORS.idio, dash: "1 3" },
   { key: "cost", word: "cost", color: COLORS.cost, dash: "7 2 1 2" },
 ] as const;
 
@@ -123,7 +123,7 @@ type LegendEntry = {
  */
 const UNEXPLAINED_LABEL = {
   live: {
-    long: "unexplained (the stored artifacts do not reproduce the panel's own return)",
+    long: "unexplained remainder (rounding and data gaps)",
     short: "unexplained",
   },
   backtest: {
@@ -226,7 +226,7 @@ function CumulativeChart({
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
         role="img"
-        aria-label="cumulative P&L: total, factor, idio and cost"
+        aria-label="cumulative P&L: total, factor, stock-specific and cost"
       >
         {ticks.map((tick, index) => (
           <g key={index}>
@@ -302,7 +302,7 @@ function CumulativeChart({
               <title>
                 {`${point.label}: total ${(point.total * 1e4).toFixed(1)} bp, factor ${(
                   point.factor * 1e4
-                ).toFixed(1)} bp, idio ${(point.idio * 1e4).toFixed(1)} bp, cost ${(
+                ).toFixed(1)} bp, stock-specific ${(point.idio * 1e4).toFixed(1)} bp, cost ${(
                   point.cost * 1e4
                 ).toFixed(1)} bp`}
               </title>
@@ -417,7 +417,7 @@ function DailyBars({ days }: { days: AttributionDay[] }) {
                 <title>
                   {`${date}: total ${bare(stat.day.pnl_total)} bp, factor ${bare(
                     stat.day.pnl_factor,
-                  )} bp, idio ${bare(stat.day.pnl_idio)} bp, cost ${bare(
+                  )} bp, stock-specific ${bare(stat.day.pnl_idio)} bp, cost ${bare(
                     stat.day.pnl_cost,
                   )} bp, unexplained ${bare(stat.day.pnl_unexplained)} bp`}
                 </title>
@@ -559,7 +559,7 @@ function DayTable({
             <th className="py-1 pr-2">close</th>
             <th className="py-1 pr-2">total, bp of NAV</th>
             <th className="py-1 pr-2">factor</th>
-            <th className="py-1 pr-2">idio</th>
+            <th className="py-1 pr-2">stock-specific</th>
             <th className="py-1 pr-2">cost</th>
             <th className="py-1 pr-2">{UNEXPLAINED_LABEL[live ? "live" : "backtest"].short}</th>
             <th className="py-1">check</th>
@@ -725,6 +725,13 @@ const CORRECTIONS: Correction[] = [
       "On 10-21, trading costs for 10-09 to 10-20 were recomputed from the actual " +
       "fills (they had been estimated before the fills arrived). Those days' cost, " +
       "P&L and realized volatility changed slightly.",
+  },
+  {
+    number: 4,
+    dates: ["2026-10-27"],
+    text:
+      "Hold days since 10-27 show about 1.4 bp of cost each; borrow is over-charged " +
+      "on those days. The fix and restatement come after the 11-23 rebalance.",
   },
 ];
 
@@ -1243,7 +1250,11 @@ function CostLine({ period, snapshot }: { period: AttributionPeriod; snapshot?: 
       <p className="mt-1">
         {realized === null
           ? "No measured fill cost is on file for this period."
-          : `Measured over ${count(period.cost.n_realized)} of ${count(period.n_days_carried)} days: ${costBps(realized)} on average.`}{" "}
+          : `Average cost per day with fills: ${costBps(
+              realized,
+            )}, measured over ${count(period.cost.n_realized)} of ${count(
+              period.n_days_carried,
+            )} days.`}{" "}
         It is measured from the previous close to the fill, so it carries the overnight move with
         it and can be positive. A fill that beat the close is a gain, not a cost.
       </p>
@@ -1294,6 +1305,17 @@ function CostEras({ period, snapshot }: { period: AttributionPeriod; snapshot?: 
         ? (guard.usd * rebalance.expected_cost_bps) / (rebalance.pct_nav * nav)
         : null;
   const guardUsd = guard ? Math.abs(guard.usd) : null;
+  // The same legs, measured from the fills: four guard days' cost added up is what
+  // the guard actually cost, while `guardBp` is what the trading rate predicts. The
+  // page used to print the estimate alone, positive, a few lines under cards whose
+  // measured costs add to 6.3 bp.
+  const guardMeasured = (snapshot?.monthly?.since_anchor?.guard_history ?? []).reduce(
+    (total, firing) => total + (firing.cost_bps ?? 0),
+    0,
+  );
+  const guardMeasuredKnown = (snapshot?.monthly?.since_anchor?.guard_history ?? []).some(
+    (firing) => firing.cost_bps !== null,
+  );
   const figure = (value: number | null): string =>
     value === null ? "n/a" : `${value >= 0 ? "+" : ""}${(value * 1e4).toFixed(1)} bp`;
   const amount = (value: number | null): string =>
@@ -1323,18 +1345,22 @@ function CostEras({ period, snapshot }: { period: AttributionPeriod; snapshot?: 
         <div data-cost-era="guard">
           <dt className="text-slate-500">drift guard, since 10-23</dt>
           <dd className="font-mono text-sm font-semibold tabular-nums">
-            {guardBp === null ? "n/a" : `${Math.abs(guardBp).toFixed(2)} bp`}
+            {guardBp === null ? "n/a" : `${guardBp <= 0 ? "" : "-"}${Math.abs(guardBp).toFixed(2)} bp`}{" "}
+            estimated
           </dd>
           <dd className="font-mono tabular-nums text-slate-600">
+            {guardMeasuredKnown ? `-${guardMeasured.toFixed(1)} bp measured from fills` : "not measured"}
             {guardBp === null || nav === null
-              ? "not priced"
-              : `${dollars((guardBp / 1e4) * nav)} est., ${dollars(guardUsd)} of legs`}
+              ? ""
+              : `; ${dollars((Math.abs(guardBp) / 1e4) * nav)} est., ${dollars(guardUsd)} of legs`}
           </dd>
         </div>
       </dl>
       <p className="mt-1 text-xs text-slate-500">
-        The 10-23 close is the first monthly one, so it is counted there. The guard&apos;s figure is
-        an estimate at the book&apos;s own trading rate, not a posted cost.
+        The 10-23 close is the first monthly one, so it is counted there. The guard&apos;s row
+        sits inside the monthly era, not beside it: the measured figure is part of the monthly
+        total, and the estimate describes the same legs at the book&apos;s trading rate. They are
+        two readings of one cost and are not added together.
       </p>
     </section>
   );
@@ -1438,8 +1464,9 @@ function FactorTable({ period }: { period: AttributionPeriod }) {
         </tbody>
       </table>
       <p className="mt-1 text-xs text-slate-500">
-        The hedge&apos;s own timing residue over the period: the P&amp;L the gap between the two
-        design vintages produced, is {bps(timing)}.
+        The hedge trades against the design the book was built with, and the risk model was
+        revised during this period. The gap between the two designs accounts for {bps(timing)} in
+        the period&apos;s P&amp;L.
       </p>
     </div>
   );
@@ -1722,19 +1749,19 @@ function PeriodView({
           in basis points of NAV, so a session&apos;s move is the same size whether the book
           was large or small. Example: the live book is {bps(cumulative.pnl_total)} since it
           opened. The evening run stores every row: factor P&amp;L is the book&apos;s
-          exposure times the factor returns, idio P&amp;L is its positions times the
+          exposure times the factor returns, stock-specific P&amp;L is its positions times the
           specific returns, and the four terms add to the day&apos;s total by construction.
           A row that does not add up is a stored day that does not decompose, which is what
           the check column in the table is for. The fourth term is not a fourth estimate:
-          it is the stored artifacts disagreeing with the panel&apos;s own return, and on
-          the live book it is a few hundredths of a bp.
+          it is rounding and gaps in the stored data, and on the live book it is a few
+          hundredths of a bp.
         </HowToRead>
       </h3>
       <dl className="mt-1 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
         {[
           { hook: "total", label: "total", value: cumulative.pnl_total },
           { hook: "factor", label: "factor", value: cumulative.pnl_factor },
-          { hook: "idio", label: "idio", value: cumulative.pnl_idio },
+          { hook: "idio", label: "stock-specific", value: cumulative.pnl_idio },
           { hook: "cost", label: "cost contribution to P&L", value: cumulative.pnl_cost },
           {
             hook: "unexplained",

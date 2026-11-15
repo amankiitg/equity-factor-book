@@ -55,7 +55,7 @@ export function DrawerSection({
         snapshot.book?.names ?? [],
         snapshot.monthly?.holdings?.rows ?? [],
       )
-    : { held: 0, exited: 0 };
+    : { held: 0, exited: 0, opening: 0, openingTickers: [], total: 0 };
   const anchor = dateOnly(
     snapshot.monthly?.holdings?.anchor ?? snapshot.monthly?.anchor?.close ?? null,
   );
@@ -67,10 +67,22 @@ export function DrawerSection({
     },
     {
       key: "actual",
-      label:
-        counts.exited > 0 && anchor
-          ? `Actual holdings: ${counts.held} held, plus ${counts.exited} exited since ${anchor.slice(5)}`
-          : `Actual holdings: ${counts.held} held`,
+      label: (() => {
+        const parts = [`${counts.held} held`];
+        if (counts.exited > 0 && anchor) {
+          parts.push(`${counts.exited} exited since ${anchor.slice(5)}`);
+        }
+        if (counts.opening > 0) {
+          parts.push(
+            `${counts.opening} opening tonight${
+              counts.openingTickers.length > 0 ? ` (${counts.openingTickers.join(", ")})` : ""
+            }`,
+          );
+        }
+        // The row count is the sum of the three kinds, stated so the header and
+        // the table cannot disagree about how many rows are under it.
+        return `Actual holdings: ${parts.join(", ")}: ${counts.total} rows`;
+      })(),
       present: actual !== null,
     },
   ];

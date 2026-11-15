@@ -128,7 +128,7 @@ export function health(snapshot: Snapshot, now: Date): Health {
     // successful proposal and a reconciled book are separate claims, and on
     // 2026-10-12 the first is true while the second is not.
     headline: `proposal run: ok for the ${dateOnly(snapshot.target_close) ?? "latest"} close`,
-    detail: "the run priced a book; what the account holds is the reconciliation below",
+    detail: "the run priced a book; what the account holds is the reconciliation above",
   };
 }
 
@@ -335,7 +335,7 @@ export function reconciliation(snapshot: Snapshot, exceptions: Exceptions): Reco
       checks.push({
         name: "account against the target",
         state: "explained",
-        detail: `${missing.join(", ")}; every one of them a class the document explains`,
+        detail: `${missing.join(", ")}; each one is a known case, explained below`,
       });
     } else {
       checks.push({
@@ -362,15 +362,18 @@ export function reconciliation(snapshot: Snapshot, exceptions: Exceptions): Reco
       state: "explained",
       // The writer's own sentence is kept rather than paraphrased: the page's job is
       // to classify the names, not to restate what the run said about them.
-      detail: `${expected} mismatch(es), every one of them a class the document explains${
-        positions.note ? `, ${positions.note}` : ""
-      }`,
+      // The names, not just the count: "2 differences, both explained" makes the
+      // reader open another panel to find out which two. The reasons are the
+      // exceptions' own plain sentences.
+      detail: `${expected} ${expected === 1 ? "difference" : "differences"}, each known: ${exceptions.expected
+        .map((entry) => `${entry.ticker} (${entry.brief ?? entry.why})`)
+        .join(" and ")}${positions.note ? `. ${positions.note}` : ""}`,
     });
   } else {
     checks.push({
       name: "account against the store",
       state: "unresolved",
-      detail: `${unexpected} unexplained mismatch(es) and ${expected} explained${
+      detail: `${unexpected} unexplained ${unexpected === 1 ? "difference" : "differences"} and ${expected} explained${
         positions.note ? `, ${positions.note}` : ""
       }`,
     });
@@ -401,7 +404,7 @@ export function reconciliation(snapshot: Snapshot, exceptions: Exceptions): Reco
         state: broken.length === 0 ? "clean" : "unresolved",
         detail:
           broken.length === 0
-            ? `${identities.length} identit${identities.length === 1 ? "y" : "ies"} hold`
+            ? `all ${identities.length} steps of the bridge check out`
             : broken
                 .map(
                   (identity) =>

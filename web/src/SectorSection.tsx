@@ -307,6 +307,14 @@ export function AnchoredSectorSection({
   const grossOf = (code: number | null): number =>
     gross.get(code === null ? UNMAPPED : String(code)) ?? 0;
   const heaviest = [...rows].sort((a, b) => grossOf(b.code) - grossOf(a.code))[0] ?? null;
+  // The target's own name count and the account's are two different numbers, and
+  // "196 of 196" beside 195 held read as a contradiction rather than as the two
+  // books it compares.
+  const heldNow = new Set(
+    (snapshot.actual_holdings?.names ?? [])
+      .filter((name) => Math.abs(name.notional ?? 0) > 0)
+      .map((name) => name.ticker),
+  ).size;
   return (
     <section
       data-section="sector"
@@ -334,8 +342,8 @@ export function AnchoredSectorSection({
         <span data-sector-traded-total="true" className="font-medium">
           {dollars(block.both_sides_usd)}
         </span>{" "}
-        to trade both sides, {dollars(block.one_side_usd)} one side - the drift card&apos;s
-        figure, name by name.
+        to trade both sides, {dollars(block.one_side_usd)} one side - the Distance card&apos;s
+        figure on Since the rebalance, name by name.
       </p>
       {worst ? (
         <p data-sector-largest="true" className="mt-1 text-sm">
@@ -362,10 +370,11 @@ export function AnchoredSectorSection({
         ))}
       </div>
       <p className="mt-1 text-xs text-slate-500">
-        {count(block.n_mapped)} of {count(block.n_names)} name(s) placed in a sector
+        all {count(block.n_mapped)} names in the {anchor ?? "rebalance"} target are placed in a
+        sector; the account holds {count(heldNow)} names now
         {block.unmapped_usd === 0
           ? "."
-          : `; ${signedDollars(block.unmapped_usd)} is in names the map does not carry.`}
+          : `, and ${signedDollars(block.unmapped_usd)} sits in names the map does not carry.`}
       </p>
     </section>
   );

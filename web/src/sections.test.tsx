@@ -994,7 +994,7 @@ describe("actual holdings", () => {
     expect(sharedCells[4]).toBe(percent(target?.weight ?? null));
     expect(sharedCells[5]).toBe(dollars((target?.weight as number) * (facts.nav as number)));
     expect(sharedCells[6]).toBe(
-      signedPercent((shared.weight ?? 0) - (target?.weight as number)),
+      signedPercent((target?.weight as number) - (shared.weight ?? 0)),
     );
 
     // A name the account holds and the target does not: the target columns are
@@ -1005,7 +1005,7 @@ describe("actual holdings", () => {
     const heldCells = cellsFor(onlyHeld.ticker);
     expect(heldCells[4]).toBe("n/a");
     expect(heldCells[5]).toBe("n/a");
-    expect(heldCells[6]).toBe(signedPercent(onlyHeld.weight));
+    expect(heldCells[6]).toBe(signedPercent(-(onlyHeld.weight ?? 0)));
   });
 
   it("sorts on every column, by absolute size for the money and the weights", () => {
