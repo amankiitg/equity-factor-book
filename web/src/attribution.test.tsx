@@ -108,6 +108,22 @@ describe("the attribution section", () => {
     expect(document.querySelector("[data-chart='daily']")).toBeNull();
   });
 
+  it("names the daily bar's stock P&L stock-specific, not idio", () => {
+    render(<SnapshotView snapshot={OK} now={NOW} />);
+    openAttribution();
+    const chart = document.querySelector("[data-chart='daily']");
+    if (!chart) throw new Error("the daily chart is not drawn");
+    const legend = Array.from(chart.querySelectorAll("li[data-series]")).map((item) =>
+      (item.textContent ?? "").trim(),
+    );
+    expect(legend).toContain("stock-specific");
+    expect(legend).not.toContain("idio");
+    // The four terms and the total, in the order the bars stack and the line sits.
+    expect(legend).toEqual(["factor", "stock-specific", "cost", "unexplained", "total"]);
+    // Nothing visible in the figure calls the term idio, including the caption.
+    expect((chart.textContent ?? "").toLowerCase()).not.toContain("idio");
+  });
+
   it("reveals the backtest behind the switch, with its own note and a zero cost", () => {
     render(<SnapshotView snapshot={OK} now={NOW} />);
     openAttribution();
