@@ -900,7 +900,6 @@ def test_the_guard_history_is_one_row_per_firing_from_the_manifest() -> None:
     assert "cost_bps" in row
 
 
-
 # The guard's NAV on the evenings in this fixture. The 2026-11-12 leg is worth
 # $542.96 at it: 0.0005567 of NAV, the weight it moved from -0.0000957 to 0.0004610.
 _GUARD_NAV = 975_319.0
