@@ -776,7 +776,11 @@ export interface GuardFlip {
   date: string;
   from_side: string;
   to_side: string;
-  usd: number;
+  /**
+   * The guard leg's dollars at the evening's NAV. Null when the manifest has no
+   * delta to price, which renders as n/a rather than as a zero trade.
+   */
+  usd: number | null;
 }
 
 /** One sector's distance from the rebalance target, net and name by name. */
