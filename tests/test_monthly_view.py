@@ -1102,24 +1102,41 @@ def test_the_guard_cards_name_the_flips_each_firing_caused() -> None:
     firings = {row["date"]: row for row in block["since_anchor"]["guard_history"]}
     assert firings["2026-11-04"]["flips"] == ["CCL", "NFLX"]
     assert firings["2026-11-12"]["flips"] == ["MKC"]
+    # CCL is on the 11-04 card as a guard flip, and the card says it is reversing
+    # the rebalance's own flip rather than being a plain one like NFLX.
+    assert firings["2026-11-04"]["reversals"] == {"CCL": "2026-10-23"}
+    assert firings["2026-11-12"]["reversals"] == {}
     # VZ and F were guard legs on those evenings and did not change side.
     assert "VZ" not in firings["2026-11-04"]["flips"]
     assert "F" not in firings["2026-11-12"]["flips"]
 
 
-def test_the_flips_list_carries_the_guard_flips_the_rebalance_did_not_make() -> None:
-    """NFLX and MKC are guard flips and belong in the list beside the four."""
+def test_the_flips_list_carries_every_guard_sign_change() -> None:
+    """The guard list is the whole sign-change set: CCL, NFLX and MKC.
+
+    CCL is both a rebalance flip and a guard flip. The rebalance took it from short
+    to long on 2026-10-23 and the guard took it back on 2026-11-04. Dropping it from
+    this list would hide half of what the guard did; the 11-04 card labels it as a
+    reversal instead, so the two rows are read together.
+    """
     block = _live_flip_facts_block()
     guard_flips = {row["ticker"]: row for row in block["since_anchor"]["guard_flips"]}
-    assert sorted(guard_flips) == ["MKC", "NFLX"]
+    assert sorted(guard_flips) == ["CCL", "MKC", "NFLX"]
+    assert guard_flips["CCL"]["date"] == "2026-11-04"
+    assert guard_flips["CCL"]["from_side"] == "long"
+    assert guard_flips["CCL"]["to_side"] == "short"
+    assert guard_flips["CCL"]["usd"] == pytest.approx(0.02 * _GUARD_NAV)
     assert guard_flips["NFLX"]["date"] == "2026-11-04"
+    assert guard_flips["NFLX"]["usd"] == pytest.approx(0.008 * _GUARD_NAV)
     assert guard_flips["MKC"]["date"] == "2026-11-12"
+    assert guard_flips["MKC"]["usd"] == pytest.approx(542.96, abs=0.01)
     assert guard_flips["NFLX"]["from_side"] == "long"
     assert guard_flips["NFLX"]["to_side"] == "short"
     assert guard_flips["MKC"]["from_side"] == "short"
     assert guard_flips["MKC"]["to_side"] == "long"
-    # CCL is a re-flip and travels in its own row, not a second time here.
-    assert "CCL" not in guard_flips
+    # A resize is not a sign change and is never in this list.
+    for ticker in ("VZ", "GEHC", "F"):
+        assert ticker not in guard_flips, ticker
 
 
 def test_the_guard_manifest_finds_the_cross_day_flip_the_order_pair_cannot() -> None:
@@ -1243,9 +1260,9 @@ def test_two_sources_of_the_same_flip_produce_one_row() -> None:
     ]
     ccl = merged[0]
     assert ccl["usd"] == 650.0
-    # The guard list drops the name the rebalance flipped and keeps the rest.
-    guard_rows = monthly_view._guard_flip_rows(merged, {"CCL"})
-    assert [row["ticker"] for row in guard_rows] == ["NFLX"]
+    # The guard list keeps every sign change, CCL included.
+    guard_rows = monthly_view._guard_flip_rows(merged)
+    assert [row["ticker"] for row in guard_rows] == ["CCL", "NFLX"]
 
 
 def test_mkc_has_a_flips_list_row_and_a_holdings_row() -> None:

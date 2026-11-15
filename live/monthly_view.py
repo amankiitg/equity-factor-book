@@ -504,21 +504,23 @@ def merge_flip_events(
     ]
 
 
-def _guard_flip_rows(
-    flip_events: list[dict[str, Any]], flip_tickers: set[str]
-) -> list[dict[str, Any]]:
-    """The guard flips a separate list can carry: one row per name, in date order.
+def _guard_flip_rows(flip_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every guard flip the manifests record, one row per name, in date order.
 
-    A name the rebalance itself flipped is not here. CCL is the live case: the
-    2026-10-23 rebalance took it from short to long and the 2026-11-04 guard took it
-    back, so its guard flip belongs in its own flip row as a re-flip, not a second
-    time in this list. VZ, GEHC and F were resized by the guard and never changed
-    side, so they do not appear at all.
+    This is the whole set of sign changes, not a list with the rebalance's own flips
+    taken out. CCL is both: the 2026-10-23 rebalance took it from short to long and
+    the 2026-11-04 guard took it back. Both facts are true, and the reader asking
+    "what did the guard flip" wants CCL in the answer. The card for 11-04 says that
+    CCL reverses the rebalance flip, so the two rows are not read as two unrelated
+    events. VZ, GEHC and F were resized and never changed side, so they are absent.
+
+    One row per name, latest evening wins, so a name flipped twice on two evenings
+    still gets one row rather than two with the same React key.
     """
     by_ticker: dict[str, dict[str, Any]] = {}
     for event in flip_events:
         ticker = str(event.get("ticker") or "")
-        if not ticker or ticker in flip_tickers:
+        if not ticker:
             continue
         current = by_ticker.get(ticker)
         if current is None or str(event.get("date")) >= str(current.get("date")):
@@ -753,6 +755,7 @@ def _guard_history(
     nav: float | None,
     fills: pd.DataFrame | None,
     flip_events: list[dict[str, Any]],
+    flip_tickers: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """One row per evening the drift guard fired, from the manifests it wrote.
 
@@ -763,10 +766,10 @@ def _guard_history(
     field is added to the store and no number is invented; a day whose fills the
     store does not carry gets `cost_bps: None` rather than a zero.
 
-    The flips a firing caused are the side changes the name's own orders record on
-    that day, whether or not the name was flipped at the rebalance: the guard moved
-    CCL and NFLX back on 2026-11-04, and MKC on 2026-11-12, and each is a leg on the
-    day rather than a guard date paired with a flip from the bridge.
+    The flips a firing caused are the merged side changes for that day: the guard
+    moved CCL and NFLX back on 2026-11-04, and MKC on 2026-11-12. CCL is also in
+    `reversals` because the 2026-10-23 rebalance had already flipped it, which lets
+    the card say so instead of presenting it as a plain guard flip.
     """
     if proposals is None or proposals.empty or "trade_date" not in proposals.columns:
         return []
@@ -787,6 +790,13 @@ def _guard_history(
         day_nav = _number(guard.get("nav")) or nav
         turnover = _number(guard.get("turnover"))
         usd = None if turnover is None or day_nav is None else turnover * day_nav
+        day_flips = sorted(
+            {
+                str(event.get("ticker"))
+                for event in flip_events
+                if str(event.get("date")) == day
+            }
+        )
         days[day] = {
             "date": day,
             "exposure_before": _number(guard.get("exposure_before")),
@@ -796,13 +806,16 @@ def _guard_history(
             "legs_under_minimum": _count(guard.get("legs_under_minimum")),
             "usd": usd,
             "cost_bps": None,
-            "flips": sorted(
-                {
-                    str(event.get("ticker"))
-                    for event in flip_events
-                    if str(event.get("date")) == day
-                }
-            ),
+            "flips": day_flips,
+            # The names the card must read as reversing a rebalance flip rather than
+            # as a plain guard flip: CCL on 2026-11-04 was taken back to short after
+            # the 2026-10-23 rebalance took it to long. The value is the rebalance
+            # date the flip reverses.
+            "reversals": {
+                ticker: anchor
+                for ticker in day_flips
+                if flip_tickers and ticker in flip_tickers
+            },
         }
     if not days:
         return []
@@ -1912,12 +1925,11 @@ def _block(
         ),
         "since_anchor": {
             "trades_by_reason": sorted(trades.values(), key=lambda item: -item["usd"]),
-            # The guard's own side changes, which are flips the rebalance did not make:
-            # NFLX on 11-04 and MKC on 11-12. A name flipped at the rebalance carries
-            # its guard flip in its own row, so it is not repeated here. One row per
-            # name, and the latest evening wins, so a name that flipped twice still
-            # gets one list row rather than two with the same React key.
-            "guard_flips": _guard_flip_rows(flip_events, flip_tickers),
+            # The guard's own side changes, the whole sign-change set: CCL and NFLX
+            # on 11-04 and MKC on 11-12. CCL is also a rebalance flip, and the 11-04
+            # card labels it as reversing that flip rather than dropping it here.
+            # One row per name, latest evening wins, so no duplicate React key.
+            "guard_flips": _guard_flip_rows(flip_events),
             # One row per evening the drift guard fired, from the hold day's own
             # manifest: the page draws a card per firing, and the leg table splits
             # the guard's row by these dates.
@@ -1928,6 +1940,7 @@ def _block(
                 nav,
                 fills,
                 flip_events,
+                flip_tickers,
             ),
             # What the table cannot count as a leg that went: the legs under the
             # order minimum and the ones the broker refused. Stated apart because a

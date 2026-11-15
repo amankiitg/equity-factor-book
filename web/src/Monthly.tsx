@@ -399,6 +399,12 @@ export function GuardCards({ monthly }: { monthly: MonthlyBlock }) {
             {firing.flips.length
               ? `it moved ${firing.flips.join(", ")} back to the other side`
               : "no name changed side because of this firing"}
+            {Object.entries(firing.reversals ?? {}).map(([ticker, rebalance]) => (
+              <span key={ticker} data-guard-reversal={ticker}>
+                {"; "}
+                {ticker} reverses the {rebalance} flip
+              </span>
+            ))}
           </p>
         </Card>
       ))}
