@@ -139,19 +139,26 @@ describe("the corrections to the series", () => {
         "fills (they had been estimated before the fills arrived). Those days' cost, " +
         "P&L and realized volatility changed slightly.",
     },
+    {
+      number: 4,
+      dates: ["2026-10-27"],
+      text:
+        "Hold days since 10-27 show about 1.4 bp of cost each; borrow is over-charged " +
+        "on those days. The fix and restatement come after the 11-23 rebalance.",
+    },
   ];
 
   const markers = (chart: string): HTMLElement[] =>
     Array.from(document.querySelectorAll(`figure[data-chart='${chart}'] [data-note-marker]`));
 
-  it("lists the three corrections under the volatility panel, word for word", () => {
+  it("lists the four corrections under the volatility panel, word for word", () => {
     open(OK);
     const group = document.querySelector("[data-group='volatility']") as HTMLElement;
     expect(group, "the volatility panel is not on the page").toBeTruthy();
     const list = group.querySelector("[data-notes]") as HTMLElement;
     expect(list).toBeTruthy();
     const items = Array.from(list.querySelectorAll("li[data-note]"));
-    expect(items.length).toBe(3);
+    expect(items.length).toBe(4);
     for (const correction of CORRECTIONS) {
       const item = items.find(
         (node) => node.getAttribute("data-note") === correction.dates[0],
@@ -167,9 +174,9 @@ describe("the corrections to the series", () => {
     for (const chart of ["hedge-vol", "volatility"]) {
       const drawn = markers(chart);
       // One marker per note, not one per date: note 1 covers two sessions.
-      expect(drawn.length, chart + " draws the wrong number of markers").toBe(3);
+      expect(drawn.length, chart + " draws the wrong number of markers").toBe(4);
       const numbers = drawn.map((node) => node.getAttribute("data-note-marker") ?? "");
-      expect(numbers.sort()).toEqual(["1", "2", "3"]);
+      expect(numbers.sort()).toEqual(["1", "2", "3", "4"]);
       const first = drawn.find((node) => node.getAttribute("data-note-marker") === "1");
       expect(first?.getAttribute("data-note-marker-dates")).toBe("2026-09-28,2026-09-29");
       const xs = Array.from(first?.querySelectorAll("line") ?? [])
@@ -199,7 +206,7 @@ describe("the corrections to the series", () => {
             Number(b.querySelector("circle")?.getAttribute("cx")),
         )
         .map((node) => node.getAttribute("data-note-marker"));
-      expect(asDrawn).toEqual(["1", "2", "3"]);
+      expect(asDrawn).toEqual(["1", "2", "3", "4"]);
     }
   });
 
@@ -253,7 +260,7 @@ describe("the corrections to the series", () => {
     open(stripped);
     const list = document.querySelector("[data-notes]") as HTMLElement;
     expect(list).toBeTruthy();
-    expect(list.querySelectorAll("li[data-note]").length).toBe(3);
+    expect(list.querySelectorAll("li[data-note]").length).toBe(4);
     expect(document.querySelectorAll("[data-note-marker]").length).toBeGreaterThan(0);
   });
 });

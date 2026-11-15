@@ -168,7 +168,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
         {/* The bridge is the rebalance's own arithmetic, so it lives on the tab about
             the rebalance rather than among the run's diagnostics. */}
         <div className="mt-3">
-          <Details hook="bridge" summary="bridge: the account before the rebalance and after it">
+          <Details hook="bridge" summary="bridge: tonight's orders, from the book they were built from to the account">
             <Bridge snapshot={snapshot} />
           </Details>
         </div>
@@ -187,7 +187,7 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
           />
           <Details
             hook="run-detail"
-            summary="run detail: the run's verdict, the exits and the missed fills"
+            summary="run detail: the run's verdict and how the book was built"
           >
             <Alerts
               snapshot={snapshot}

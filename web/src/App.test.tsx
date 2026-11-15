@@ -291,7 +291,7 @@ describe("the page", () => {
       "close",
       "total, bp of NAV",
       "factor",
-      "idio",
+      "stock-specific",
       "cost",
       "unexplained",
       "check",

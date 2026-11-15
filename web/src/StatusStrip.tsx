@@ -69,9 +69,11 @@ function readLabel(snapshot: Snapshot): { text: string; note: string } | null {
     };
   }
   if (read.read_by === "evening") {
+    // Said once. The line used to name the read time, say "before the orders", and
+    // then say again that it was taken before the orders went out.
     return {
-      text: `account read ${at} (evening, before the orders)`,
-      note: "taken before the orders went out, so it cannot certify the fills",
+      text: `account read ${at} (evening, before the orders went out, so it cannot confirm fills)`,
+      note: "",
     };
   }
   return { text: `account read ${at}`, note: "no run recorded against this read" };
@@ -198,7 +200,8 @@ export function StatusStrip({
       </div>
       {read ? (
         <p data-flag="account-read" className="mt-1 text-xs text-slate-600">
-          {read.text}, {read.note}
+          {read.text}
+          {read.note ? `, ${read.note}` : ""}
         </p>
       ) : null}
       {notifyFailed ? (

@@ -78,7 +78,7 @@ describe("the overview charts", () => {
     const svg = chart();
     const gridlines = Array.from(svg.querySelectorAll("[data-gridline]"));
     expect(gridlines.length).toBeGreaterThanOrEqual(4);
-    expect(gridlines.length).toBeLessThanOrEqual(5);
+    expect(gridlines.length).toBeLessThanOrEqual(6);
     for (const line of gridlines) {
       expect((line.textContent ?? "").trim().length).toBeGreaterThan(0);
     }

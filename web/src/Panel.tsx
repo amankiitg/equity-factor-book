@@ -142,7 +142,7 @@ const WORDS: Array<[string, string]> = [
   ["target", "what tonight's run wants us to hold after the next fills"],
   ["store", "the loop's own record of what it last asked for"],
   ["leg", "one order in one direction: buying is one, selling is another"],
-  ["NAV", "the book's own net value: what the positions are worth"],
+  ["NAV", "cash plus the value of all positions, longs minus shorts"],
   ["bp", "a basis point, one hundredth of a percent of NAV"],
   [
     "hedge",

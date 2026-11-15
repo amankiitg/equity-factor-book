@@ -118,12 +118,22 @@ function rowsOf(
   const seen = new Set<string>();
   for (const entry of held.values()) {
     seen.add(entry.ticker);
-    const targetWeight = target.has(entry.ticker) ? target.get(entry.ticker) ?? null : null;
+    // The target is the 10-23 one the table is named for. Tonight's book equals the
+    // account on a hold day, so using it here drew a zero gap on 194 of 224 rows and
+    // a "target" column that was the book itself.
     const anchor = anchored.get(entry.ticker);
+    const targetWeight = anchor
+      ? anchor.weight_target
+      : target.has(entry.ticker)
+        ? target.get(entry.ticker) ?? null
+        : null;
+    // Computed here rather than taken from the row: the table states what the next
+    // rebuild would trade, and a block written before that definition flipped its
+    // sign would otherwise draw every gap backwards.
     const drift =
       entry.weight === null || entry.weight === undefined
-        ? null
-        : entry.weight - (targetWeight ?? 0);
+        ? anchor?.gap_weight ?? null
+        : (targetWeight ?? 0) - entry.weight;
     rows.push({
       ticker: entry.ticker,
       side: entry.side ?? "",
@@ -132,9 +142,8 @@ function rowsOf(
       heldDollars: entry.notional ?? null,
       targetWeight,
       targetDollars: targetWeight === null || nav === null ? null : targetWeight * nav,
-      drift: anchor?.gap_weight ?? drift,
-      gapDollars:
-        anchor?.gap_usd ?? (drift === null || nav === null ? null : drift * nav),
+      drift,
+      gapDollars: drift === null || nav === null ? anchor?.gap_usd ?? null : drift * nav,
       since:
         anchor?.since ??
         (entry.flipped ? "one row: a closed short and the new long" : null),
@@ -153,8 +162,8 @@ function rowsOf(
     // comes from the anchor, so the name is marked here and its row is not drawn
     // twice. MKC is the live case: short in the 10-23 target, long in tonight's.
     seen.add(name.ticker);
-    const targetWeight = name.weight ?? null;
     const anchor = anchored.get(name.ticker);
+    const targetWeight = anchor ? anchor.weight_target : name.weight ?? null;
     // The anchor's target was the other side, so the name has flipped since it.
     const flippedTarget =
       anchor !== undefined &&
@@ -169,17 +178,10 @@ function rowsOf(
       heldDollars: null,
       targetWeight,
       targetDollars: targetWeight === null || nav === null ? null : targetWeight * nav,
-      drift: flippedTarget
-        ? targetWeight === null
-          ? null
-          : -targetWeight
-        : anchor?.gap_weight ?? (targetWeight === null ? null : -targetWeight),
-      gapDollars: flippedTarget
-        ? targetWeight === null || nav === null
-          ? null
-          : -targetWeight * nav
-        : anchor?.gap_usd ??
-          (targetWeight === null || nav === null ? null : -targetWeight * nav),
+      // Nothing is held here, so the gap is the whole target: a positive target
+      // weight means buy it, a negative one means sell it short.
+      drift: targetWeight,
+      gapDollars: targetWeight === null || nav === null ? null : targetWeight * nav,
       since: flippedTarget
         ? `flipped since the rebalance: the target was ${(anchor?.weight_target ?? 0) < 0 ? "short" : "long"}`
         : anchor?.since ?? null,
@@ -230,11 +232,26 @@ export function actualCounts(
   actual: ActualHoldings,
   names: BookName[],
   monthlyRows: MonthlyHoldingRow[],
-): { held: number; exited: number } {
+): {
+  held: number;
+  exited: number;
+  opening: number;
+  openingTickers: string[];
+  total: number;
+} {
   const rows = rowsOf(actual, names, null, monthlyRows);
+  // The third kind of row the table draws: a name the account does not hold yet
+  // because tonight opened it. It is neither held nor exited, and a header that
+  // named only two of the three counts described 223 of the 224 rows under it.
+  const opening = rows.filter(
+    (row) => !row.held && (row.tonight ?? "").startsWith("traded tonight: opened"),
+  );
   return {
     held: rows.filter((row) => row.held).length,
     exited: rows.filter((row) => !row.held && row.sinceKind === "exited").length,
+    opening: opening.length,
+    openingTickers: opening.map((row) => row.ticker),
+    total: rows.length,
   };
 }
 
@@ -308,8 +325,28 @@ export function ActualHoldingsTable({
   // has not been closed. One number for both would be neither.
   const notHeld = rows.filter((row) => !row.held).length;
   const notInTarget = rows.filter((row) => row.held && row.targetWeight === null).length;
+  // One taxonomy, and it is "the latest event": the bridge counts every name that
+  // opened or was resized since 10-23, while a pill can only name one of them.
+  const latest = rows.reduce<Record<string, number>>((counts, row) => {
+    const kind = row.sinceKind ?? "none";
+    counts[kind] = (counts[kind] ?? 0) + 1;
+    return counts;
+  }, {});
+  const latestLine = [
+    latest.opened ? `${latest.opened} opened` : null,
+    latest.resized ? `${latest.resized} resized` : null,
+    latest.guard ? `${latest.guard} moved by the guard` : null,
+    latest.flipped ? `${latest.flipped} flipped` : null,
+    latest.exited ? `${latest.exited} exited` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
   const session = actual.close ? ` for the ${dateOnly(actual.close)} close` : "";
   const when = dateTime(actual.as_of);
+  // The target column's own date: without it "target" reads as tonight's book,
+  // which on a hold day is the account itself.
+  const anchorDate = dateOnly(monthly?.holdings?.anchor ?? monthly?.anchor?.close ?? null);
+  const targetHead = anchorDate ? `${anchorDate.slice(5)} target` : "target";
 
   const optional = allColumns ? "" : "hidden sm:table-cell";
   const header = (key: SortKey, label: string, extra = "", width = "") => (
@@ -341,10 +378,10 @@ export function ActualHoldingsTable({
   return (
     <div>
       <HowToRead>
-        a minus gap means the account holds less of that name than the target asked
-        for, at today&apos;s price, and the size of the gap is what the next rebuild
-        would trade. Example: on 11-11 NVDA sat $3,919 away from its target, the
-        largest single gap in the book.
+        the gap is the target minus what the account holds, at today&apos;s price: a
+        positive gap is a name the target wants more of, so the next rebuild would buy
+        it, and a negative one would be sold. Example: on 11-13 the largest gap was
+        MRVL, which the target wanted $5,018 more of.
       </HowToRead>
       <p className="text-sm text-slate-600" data-actual="read">
         {/* The read time as a date and a time: the evening's read and the
@@ -386,6 +423,13 @@ export function ActualHoldingsTable({
       <p className="text-xs text-slate-500" data-count="shown">
         showing {shown.length} of {rows.length}
       </p>
+      {latestLine ? (
+        <p className="text-xs text-slate-500" data-latest-reason="true">
+          the since column names the latest event only: {latestLine}. The bridge counts
+          every name that opened or was resized since the rebalance, so its totals are
+          larger than these, and both are right.
+        </p>
+      ) : null}
       <div className="flex items-center justify-between gap-2 pb-1 sm:hidden">
         <p className="text-xs text-slate-500">ticker, side, gap and reason; tap for the rest</p>
         <button
@@ -425,11 +469,11 @@ export function ActualHoldingsTable({
               {header("side", "side", "", "3.5rem")}
               {header("held", "held weight", optional, "6rem")}
               {header("heldDollars", "held $", optional, "6.5rem")}
-              {header("target", "target weight", optional, "6.5rem")}
-              {header("targetDollars", "target $", optional, "6.5rem")}
+              {header("target", `${targetHead} weight`, optional, "7.5rem")}
+              {header("targetDollars", `${targetHead} $`, optional, "7rem")}
               {header("drift", "gap %", optional, "5.5rem")}
               {header("gapDollars", "gap $", "", "6.5rem")}
-              {header("since", "since the rebalance", "efb-since", "11rem")}
+              {header("since", "latest reason", "efb-since", "11rem")}
             </tr>
           </thead>
           <tbody>
@@ -463,18 +507,20 @@ export function ActualHoldingsTable({
                     {dollars(row.heldDollars)}
                   </td>
                   <td className={`py-1 text-right font-mono tabular-nums ${optional}`}>
-                    {percent(row.targetWeight)}
+                    {row.retired ? "retired" : percent(row.targetWeight)}
                   </td>
                   <td className={`py-1 text-right font-mono tabular-nums ${optional}`}>
-                    {dollars(row.targetDollars)}
+                    {row.retired ? "-" : dollars(row.targetDollars)}
                   </td>
                   <td className={`py-1 text-right font-mono tabular-nums ${tone} ${optional}`}>
-                    {signedPercent(row.drift)}
+                    {row.retired ? "n/a" : signedPercent(row.drift)}
                   </td>
                   <td className={`py-1 text-right font-mono tabular-nums ${tone}`}>
-                    {signedDollars(row.gapDollars)}
+                    {row.retired ? "n/a, cannot trade" : signedDollars(row.gapDollars)}
                     {/* The phone keeps one gap column; the percentage rides under the dollars. */}
-                    <span className="mt-0.5 block text-xs sm:hidden">{signedPercent(row.drift)}</span>
+                    <span className="mt-0.5 block text-xs sm:hidden">
+                      {row.retired ? "" : signedPercent(row.drift)}
+                    </span>
                   </td>
                   <td className="efb-since py-1 text-slate-600">
                     {compact ? <span className="sr-only">{row.since}</span> : null}

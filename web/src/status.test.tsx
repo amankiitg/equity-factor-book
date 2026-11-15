@@ -496,7 +496,7 @@ describe("the two claims the strip separates", () => {
     render(<SnapshotView snapshot={evening} now={NOW} />);
     const stated = document.querySelector("[data-flag='account-read']") as HTMLElement;
     expect(stated.textContent).toContain("evening, before the orders");
-    expect(stated.textContent).toContain("cannot certify the fills");
+    expect(stated.textContent).toContain("cannot confirm fills");
   });
 
   it("calls the account paper, and never live", () => {
@@ -549,7 +549,7 @@ describe("the two claims the strip separates", () => {
     const run = panel("run");
     expect(run.textContent).toContain("proposal run: ok for the 2026-10-09 close");
     expect(run.textContent).not.toContain("clean");
-    expect(run.textContent).toContain("what the account holds is the reconciliation below");
+    expect(run.textContent).toContain("what the account holds is the reconciliation above");
     // And the reconciliation panel below it is the one that says so.
     const reconciled = panel("reconciliation");
     expect(reconciled.textContent).toContain("reconciliation: unresolved");

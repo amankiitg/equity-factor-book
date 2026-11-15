@@ -239,6 +239,39 @@ function axisTicks(low: number, high: number): number[] {
   return ticks.length >= 4 && ticks.length <= 5 ? ticks : even();
 }
 
+/**
+ * Round ticks for a signed series, anchored at zero.
+ *
+ * A line that runs from +16 to -238 was labelled -238, -174, -111, -47 and 16:
+ * five arithmetic divisions of the range, each one a number nobody reads. This
+ * picks a whole step instead (50 bp here) and counts out from zero, so the labels
+ * are 0, -50, -100, -150, -200, -250. The domain is widened to the end tick, not
+ * the other way round, so the line is never clipped.
+ */
+function zeroAxis(low: number, high: number): { low: number; high: number; ticks: number[] } {
+  const span = Math.max(Math.abs(low), Math.abs(high));
+  const eligible = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
+  const step =
+    eligible.find(
+      (candidate) =>
+        Math.floor(Math.abs(low) / candidate) +
+          Math.floor(Math.abs(high) / candidate) +
+          1 <=
+        6,
+    ) ?? Math.ceil(span / 5);
+  const ticks: number[] = [];
+  for (let value = 0; value >= Math.floor(low / step) * step; value -= step) {
+    ticks.push(value);
+  }
+  for (let value = step; value <= high; value += step) {
+    ticks.push(value);
+  }
+  ticks.sort((a, b) => a - b);
+  const first = ticks[0] ?? Math.min(0, low);
+  const last = ticks[ticks.length - 1] ?? Math.max(0, high);
+  return { low: Math.min(low, first), high: Math.max(high, last), ticks };
+}
+
 /** The sessions the axis spans, plus the next rebalance when it is still ahead. */
 function plotDates(dates: Array<string | null | undefined>, next?: string | null): string[] {
   const sorted = [...new Set(dates.filter((date): date is string => Boolean(date)))].sort();
@@ -343,8 +376,9 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
   );
   const frame = plotFrame(dates, width, height, pad);
   const values = points.flatMap((point) => [point.total, point.factor, point.idio, point.cost]);
-  const low = Math.min(0, ...values);
-  const high = Math.max(0, ...values);
+  const axis = zeroAxis(Math.min(0, ...values), Math.max(0, ...values));
+  const low = axis.low;
+  const high = axis.high;
   const span = high - low || 1;
   const y = (value: number): number =>
     frame.top + ((high - value) / span) * (frame.bottom - frame.top);
@@ -403,7 +437,7 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
           fillOpacity="0.03"
           data-future-band="true"
         />
-        {axisTicks(low, high).map((tick) => (
+        {axis.ticks.map((tick) => (
           <g key={`grid-${tick}`} data-gridline={tick}>
             <line
               x1={frame.left}
@@ -1244,7 +1278,7 @@ export function Overview({
 
       <ExceptionBanner state={state} lines={lines} />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Kpi
           hook="nav"
           title="NAV"

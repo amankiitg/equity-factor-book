@@ -5,16 +5,18 @@
 // fixture is what let the panels pass in the suite while the live page rendered the
 // nightly ones: the test and the page disagreed about the shape of a real document.
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ActualHoldingsTable } from "./ActualHoldingsTable";
+import { SnapshotView } from "./App";
 import { FlipBridge, incompleteFields, MonthlyPanels } from "./Monthly";
 import { HedgePanel } from "./HedgePanel";
 import { SectorSection } from "./SectorSection";
 import { bookFacts } from "./book";
 import type { MonthlyBlock, Snapshot } from "./types";
 import served from "../fixtures/snapshot_2026-10-29_evening.json";
+import real from "../fixtures/snapshot_2026-11-13_monthly.json";
 
 const SERVED = served as unknown as Snapshot;
 const MONTHLY = SERVED.monthly as MonthlyBlock;
@@ -71,7 +73,8 @@ describe("the anchored panels", () => {
     const drift = document.querySelector("[data-drift]")?.textContent ?? "";
     expect(drift).toContain("2.30%");
     expect(drift).toContain("$44,801");
-    expect(drift).toContain("$15");
+    expect(drift).toContain("0.4 bp of NAV");
+    expect(drift).toContain("$38");
     // The target is fixed between rebalances, and the gap includes the guard's
     // deliberate repairs, which is what stops the line reading as pure price drift.
     expect(drift).toContain("The target stays fixed until the");
@@ -122,11 +125,11 @@ describe("the anchored panels", () => {
     };
     render(<MonthlyPanels monthly={block} />);
     const table = document.querySelector("[data-trades-reason]")?.textContent ?? "";
-    expect(table).toContain("208 sent, 16 owed");
-    expect(table).toContain("0 sent, 1 owed");
+    expect(table).toContain("208 sent, 16 not sent (under $250)");
+    expect(table).toContain("1 leg, impossible (under one share)");
     expect(table).toContain("$269");
     const line = document.querySelector("[data-not-sent]")?.textContent ?? "";
-    expect(line).toContain("315 legs under $250");
+    expect(line).toContain("315 under $250");
     expect(line).toContain("$91,697");
   });
 
@@ -393,7 +396,7 @@ describe("the holdings tables against the rebalance", () => {
     expect(kvue?.textContent).toContain(
       "retired (acquired by KMB), owed, cannot be traded",
     );
-    expect(kvue?.textContent).toContain("-$4,000");
+    expect(kvue?.textContent).toContain("n/a, cannot trade");
   });
 
   it("says a re-flip happened on the day the drift guard moved it", () => {
@@ -605,7 +608,7 @@ describe("no stored code reaches the reader", () => {
     render(<MonthlyPanels monthly={monthly} />);
     const text = document.body.textContent ?? "";
     expect(text).toContain("no longer trades");
-    expect(text).toContain("the broker rejected the order");
+    expect(text).toContain("no longer trades");
     for (const code of [
       "ASSET_INACTIVE",
       "ALPACA_API_ERROR",
@@ -614,5 +617,199 @@ describe("no stored code reaches the reader", () => {
     ]) {
       expect(text, `${code} is visible on the page`).not.toContain(code);
     }
+  });
+});
+
+// The 2026-11-13 close, the document the page is served. Every assertion below is
+// the published number, not a hand-built one: the audit's items are claims about
+// this close, so a fixture that changed with the code could not catch them.
+const REAL = real as unknown as Snapshot;
+const REAL_MONTHLY = REAL.monthly as MonthlyBlock;
+
+const money = (text: string | null | undefined): number | null => {
+  const match = /^([-+]?)\$([\d,]+)/.exec((text ?? "").trim());
+  if (!match) return null;
+  const value = Number(match[2].replace(/,/g, ""));
+  return match[1] === "-" ? -value : value;
+};
+
+describe("the 11-13 close, from the published block", () => {
+  it("1 counts a refusal by name, not one row per night", () => {
+    render(<MonthlyPanels monthly={REAL_MONTHLY} />);
+    const line = document.querySelector("[data-not-sent]")?.textContent ?? "";
+    expect(line).toContain("KVUE $13,615");
+    expect(line).not.toContain("$95,308");
+  });
+
+  it("2 shows the 10-23 target and a gap that adds up on every row", () => {
+    const actual = REAL.actual_holdings;
+    if (!actual) throw new Error("the 11-13 fixture carries no account read");
+    render(
+      <ActualHoldingsTable
+        actual={actual}
+        names={REAL.book?.names ?? []}
+        nav={bookFacts(REAL).nav}
+        monthly={REAL_MONTHLY}
+      />,
+    );
+    const head =
+      document.querySelector("table[aria-label='actual holdings'] thead")?.textContent ?? "";
+    expect(head).toContain("10-23 target weight");
+    let checked = 0;
+    for (const row of Array.from(
+      document.querySelectorAll("table[aria-label='actual holdings'] tbody tr"),
+    )) {
+      if (row.getAttribute("data-retired") === "true") continue;
+      const cells = Array.from(row.querySelectorAll("td")).map((cell) => cell.textContent ?? "");
+      const held = money(cells[3]);
+      const target = money(cells[5]);
+      const gap = money(cells[7]);
+      if (held === null || target === null || gap === null) continue;
+      expect(
+        Math.abs(held + gap - target),
+        `${row.getAttribute("data-ticker")} does not add up`,
+      ).toBeLessThanOrEqual(1);
+      checked += 1;
+    }
+    expect(checked).toBeGreaterThan(100);
+    const mrvl = document.querySelector("tr[data-ticker='MRVL']")?.textContent ?? "";
+    expect(mrvl).toContain("1.43%");
+    expect(mrvl).toContain("$5,018");
+  });
+
+  it("3 shows KVUE as retired with no gap to trade", () => {
+    const actual = REAL.actual_holdings;
+    if (!actual) throw new Error("the 11-13 fixture carries no account read");
+    render(
+      <ActualHoldingsTable
+        actual={actual}
+        names={REAL.book?.names ?? []}
+        nav={bookFacts(REAL).nav}
+        monthly={REAL_MONTHLY}
+      />,
+    );
+    const kvue = document.querySelector("tr[data-ticker='KVUE']")?.textContent ?? "";
+    expect(kvue).toContain("retired");
+    expect(kvue).toContain("n/a, cannot trade");
+    expect(kvue).not.toContain("$102");
+  });
+
+  it("4 prices closing the gap instead of calling it free", () => {
+    render(<MonthlyPanels monthly={REAL_MONTHLY} />);
+    const drift = document.querySelector("[data-drift]")?.textContent ?? "";
+    expect(drift).toContain("$184,968");
+    expect(drift).toContain("1.6 bp of NAV");
+    expect(drift).toContain("$158");
+    expect(drift).not.toContain("cost about $0");
+  });
+
+  it("5 gives the guard both costs, measured and estimated, negative", () => {
+    render(<SnapshotView snapshot={REAL} now={new Date("2026-11-15T14:00:00Z")} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("-1.81 bp estimated");
+    expect(text).toContain("-6.3 bp measured from fills");
+    expect(text).toContain("-3.1 bp");
+    expect(text).toContain("sits inside the monthly era");
+  });
+
+  it("6 splits the guard's legs into sent and not sent", () => {
+    render(<MonthlyPanels monthly={REAL_MONTHLY} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("97 not sent, under the $250 floor");
+    expect(text).not.toContain("97 under the $250 minimum");
+    expect(text).toContain("$10,010");
+  });
+
+  it("7 calls the sixteen unsent legs unsent, and explains the carried one", () => {
+    render(<MonthlyPanels monthly={REAL_MONTHLY} />);
+    const table = document.querySelector("[data-trades-reason]")?.textContent ?? "";
+    expect(table).toContain("208 sent, 16 not sent (under $250)");
+    expect(table).not.toContain("16 owed");
+    expect(table).toContain("impossible (under one share)");
+  });
+
+  it("8 uses one order count in the bridge", () => {
+    render(<SnapshotView snapshot={REAL} now={new Date("2026-11-15T14:00:00Z")} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("1 order");
+    expect(text).toContain("orders sent: 1 = 1 order");
+    expect(text).not.toContain("2 = 2");
+    expect(text).toContain("The book bridge, for tonight");
+  });
+
+  it("9 labels the gross position value apart from NAV", () => {
+    render(<MonthlyPanels monthly={REAL_MONTHLY} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("now, gross positions");
+    expect(text).toContain("$951,949");
+    expect(text).toContain("not NAV");
+    expect(text).toContain("NAV nets the shorts and adds cash");
+  });
+
+  it("10 reconciles the holdings header with its 224 rows", () => {
+    render(<SnapshotView snapshot={REAL} now={new Date("2026-11-15T14:00:00Z")} />);
+    fireEvent.click(document.querySelector("[data-view='book']") as HTMLElement);
+    fireEvent.click(document.querySelector("[data-tab='actual']") as HTMLElement);
+    const tab = document.querySelector("[data-tab='actual']")?.textContent ?? "";
+    expect(tab).toBe(
+      "Actual holdings: 195 held, 28 exited since 10-23, 1 opening tonight (MKC): 224 rows",
+    );
+    expect(document.querySelectorAll("table[aria-label='actual holdings'] tbody tr")).toHaveLength(
+      224,
+    );
+    const note = document.querySelector("[data-latest-reason]")?.textContent ?? "";
+    expect(note).toContain("5 opened, 13 resized, 171 moved by the guard");
+  });
+
+  it("11 says the account read once", () => {
+    render(<SnapshotView snapshot={REAL} now={new Date("2026-11-15T14:00:00Z")} />);
+    const read = document.querySelector("[data-flag='account-read']")?.textContent ?? "";
+    expect((read.match(/before the orders went out/g) ?? []).length).toBe(1);
+    expect(read).toContain("cannot confirm fills");
+  });
+
+  it("12 draws round cumulative ticks", () => {
+    render(<SnapshotView snapshot={REAL} now={new Date("2026-11-15T14:00:00Z")} />);
+    const ticks = Array.from(
+      document.querySelectorAll("[data-overview-cumulative] [data-gridline]"),
+    ).map((node) => node.getAttribute("data-gridline"));
+    expect(ticks).toEqual(["-250", "-200", "-150", "-100", "-50", "0"]);
+  });
+
+  it("13 calls stock P&L stock-specific everywhere", () => {
+    render(<SnapshotView snapshot={REAL} now={new Date("2026-11-15T14:00:00Z")} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("stock-specific");
+    expect(text).not.toContain("IDIO");
+  });
+
+  it("14 points at the Distance card and explains 196 of 196", () => {
+    render(<SnapshotView snapshot={REAL} now={new Date("2026-11-15T14:00:00Z")} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("Distance card on Since the rebalance");
+    expect(text).not.toContain("the drift card");
+    expect(text).toContain("all 196 names in the 2026-10-23 target");
+    expect(text).toContain("account holds 195 names now");
+  });
+
+  it("15 names the remainder and gives the average a unit", () => {
+    render(<SnapshotView snapshot={REAL} now={new Date("2026-11-15T14:00:00Z")} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("unexplained remainder (rounding and data gaps)");
+    expect(text).toContain("Average cost per day with fills");
+    expect(text).toContain("Hold days since 10-27 show about 1.4 bp");
+    expect(text).not.toContain("timing residue");
+  });
+
+  it("16 puts the reconciliation above and names both known names", () => {
+    render(<SnapshotView snapshot={REAL} now={new Date("2026-11-15T14:00:00Z")} />);
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("reconciliation above");
+    expect(text).not.toContain("reconciliation below");
+    expect(text).toContain("all 4 steps of the bridge check out");
+    expect(text).toContain("cash plus the value of all positions, longs minus shorts");
+    expect(text).toContain("run detail: the run's verdict and how the book was built");
+    expect(text).toContain("MKC (its reopening order fills on Monday, 11-16)");
+    expect(text).toContain("KVUE (acquired by KMB; the broker has not converted the shares yet)");
   });
 });

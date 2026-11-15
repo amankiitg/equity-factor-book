@@ -129,10 +129,10 @@ describe("the exposures panel on a hold day", () => {
       expect(cell.getAttribute("data-heat-sign")).toBe("zero");
     }
     const caption = container.querySelector("[data-heat-caption]")?.textContent ?? "";
-    expect(caption).toContain("scaled inside its own column");
-    expect(caption).toContain("Blue is a positive exposure and rose is a negative one");
-    expect(caption).toContain("After the hedge every cell is 0.00%");
-    expect(caption).toContain("flat neutral");
+    expect(caption).toContain("compares a cell only with the other cells in its own column");
+    expect(caption).toContain("blue is a positive exposure, rose a negative one");
+    expect(caption).toContain("at the 5% guard carries an amber ring");
+    expect(caption).toContain("The shade compares a cell only with the other cells");
     expect(caption).not.toContain("one scale");
   });
 
@@ -157,8 +157,8 @@ describe("the exposures panel on a hold day", () => {
     // The ring is an outline: the cell keeps its own shade underneath.
     expect(cell("momentum").style.backgroundColor).toMatch(/^rgba\(/);
     const caption = container.querySelector("[data-heat-caption]")?.textContent ?? "";
-    expect(caption).toContain("at or beyond the 5% drift guard line carries an amber ring");
-    expect(caption).toContain("not a fill");
+    expect(caption).toContain("at the 5% guard carries an amber ring");
+    expect(caption).toContain("rose a negative one");
   });
 
   it("keeps every value at 4.5:1 against the cell it sits on", () => {

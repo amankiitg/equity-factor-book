@@ -643,6 +643,8 @@ export interface MonthlyBlock {
     half_turnover_usd: number | null;
     traded_usd: number | null;
     estimated_cost_usd: number | null;
+    /** The same cost in bp of NAV. Absent on older documents. */
+    estimated_cost_bps?: number | null;
     largest: Array<{
       ticker: string;
       weight_now: number;
@@ -684,8 +686,27 @@ export interface MonthlyBlock {
     not_sent?: {
       legs: number;
       usd: number;
-      under_minimum: { legs: number; usd: number };
+      under_minimum: {
+        legs: number;
+        usd: number;
+        /** The same legs by the close that asked for them; absent on older blocks. */
+        by_day?: Array<{ close: string; legs: number; usd: number }>;
+      };
       other: Array<{ code: string; legs: number; usd: number }>;
+      /**
+       * The refused legs counted by name: one entry per position, with the latest
+       * night's dollars and the nights it was refused. Absent on older documents.
+       */
+      refused_names?: Array<{
+        ticker: string;
+        legs: number;
+        usd: number;
+        status: string;
+        first_close: string;
+        last_close: string;
+      }>;
+      /** The under-minimum and refused dollars counted once per position. */
+      usd_by_name?: number;
     };
   };
   /** One row per name, with what it did since the rebalance and its gap now. */
@@ -762,6 +783,13 @@ export interface GuardFiring {
   /** Legs the guard sent, and the candidates under the order minimum. */
   legs_sent: number | null;
   legs_under_minimum: number | null;
+  /**
+   * The other side of the split: legs the guard wanted and did not send, and what
+   * they were worth. Absent on documents written before the block carried them.
+   */
+  legs_not_sent?: number | null;
+  legs_wanted?: number | null;
+  not_sent_usd?: number | null;
   /** The legs' dollars at the NAV the guard measured against. */
   usd: number | null;
   /** The day's realized fill cost, or null when the store carries no fills for it. */
