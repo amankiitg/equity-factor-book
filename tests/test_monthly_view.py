@@ -1414,8 +1414,14 @@ def test_kvues_own_row_says_retired_owed_and_cannot_be_traded() -> None:
     assert kvue["retired"] is True and kvue["owed"] is True
     assert kvue["since"] == "retired (acquired by KMB), owed, cannot be traded"
     assert kvue["since_label"] == "Retired"
-    assert kvue["gap_weight"] == pytest.approx(-0.004)
-    assert kvue["gap_usd"] == pytest.approx(-4_000.0)
+    # The table's gap is what the next rebuild would trade: the target minus the
+    # account, so a positive cell is a name to buy. KVUE is held at 1% and the target
+    # asks for 1.4%, so the gap is +0.4% and +$4,000.
+    assert kvue["gap_weight"] == pytest.approx(0.004)
+    assert kvue["gap_usd"] == pytest.approx(4_000.0)
+    assert kvue["weight_now"] + kvue["gap_weight"] == pytest.approx(
+        kvue["weight_target"], abs=1e-12
+    )
     assert rows["AAA"]["since"] == "opened at the rebalance (2026-10-23)"
     assert rows["AAA"]["since_label"] == "Opened 10-23"
 
@@ -1937,3 +1943,151 @@ def test_no_em_or_en_dash_in_page_text_or_block_strings() -> None:
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             for dash in forbidden:
                 assert dash not in node.value, f"monthly_view string carries {dash!r}"
+
+
+# The 2026-11-13 shapes the audit found, small enough to read. The numbers are the
+# live ones: KVUE held $13,615.45 against a 1.4% target, refused on four nights, and
+# one name the target wants more of.
+def _eleven_thirteen_block() -> dict:
+    anchor, latest = "2026-10-23", "2026-11-13"
+    nav = 975_838.0
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [anchor, latest],
+            "manifest": [
+                {
+                    "cadence": {"day": "rebalance"},
+                    "cost_breakdown_bps": {"trading": 8.54},
+                },
+                {"cadence": {"day": "hold", "k": 21}},
+            ],
+        }
+    )
+    target = pd.DataFrame(
+        {
+            "trade_date": [anchor, anchor],
+            "ticker": ["KVUE", "AAA"],
+            "side": ["long", "long"],
+            "weight": [0.014, 0.010],
+        }
+    )
+    now = pd.DataFrame(
+        {
+            "trade_date": [latest, latest],
+            "ticker": ["KVUE", "AAA"],
+            "side": ["long", "long"],
+            "market_value": [13615.45, 9760.0],
+            "weight": [0.0139525741717254, 0.008],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [
+                "2026-11-03",
+                "2026-11-05",
+                "2026-11-07",
+                "2026-11-12",
+                "2026-11-13",
+            ],
+            "ticker": ["KVUE", "KVUE", "AAA", "KVUE", "KVUE"],
+            "reason_code": [
+                "ALPACA_API_ERROR",
+                "ASSET_INACTIVE",
+                "BELOW_MIN_NOTIONAL",
+                "ASSET_INACTIVE",
+                "ASSET_INACTIVE",
+            ],
+            "position_intent": ["sell_to_close"] * 5,
+            "intended_notional": [13615.45, 13615.45, 120.0, 13615.45, 13615.45],
+            "broker_order_id": [""] * 5,
+        }
+    )
+    return monthly_view.block(
+        proposals=proposals,
+        targets=target,
+        account=now,
+        orders=orders,
+        fills=pd.DataFrame(),
+        today=latest,
+        tonight_manifest={"cadence": {"day": "hold", "k": 21}},
+        nav=nav,
+    )
+
+
+def test_a_refusal_is_counted_by_name_not_by_night() -> None:
+    """KVUE refused on four nights is one name holding $13,615, not four times it."""
+    block = _eleven_thirteen_block()
+    assert block is not None
+    not_sent = block["since_anchor"]["not_sent"]
+    assert not_sent["legs"] == 5
+    # The stored leg total adds the position once per night; by name it is one holding.
+    assert not_sent["usd"] == pytest.approx(4 * 13_615.45 + 120.0, abs=0.01)
+    assert not_sent["usd_by_name"] == pytest.approx(13_615.45 + 120.0, abs=0.01)
+    # The under-minimum total has parts that add to it.
+    under = not_sent["under_minimum"]
+    assert under["legs"] == 1
+    assert sum(day["legs"] for day in under["by_day"]) == under["legs"]
+    assert sum(day["usd"] for day in under["by_day"]) == pytest.approx(under["usd"])
+    names = not_sent["refused_names"]
+    assert len(names) == 1
+    assert names[0]["ticker"] == "KVUE"
+    assert names[0]["legs"] == 4
+    assert names[0]["usd"] == pytest.approx(13_615.45, abs=0.01)
+    assert names[0]["status"] == "ASSET_INACTIVE"
+    assert names[0]["first_close"] == "2026-11-03"
+    assert names[0]["last_close"] == "2026-11-13"
+
+
+def test_the_distance_card_is_priced_at_the_rebalance_rate() -> None:
+    """A $184,968 trade at a hold day's rounding residue used to print $0."""
+    block = _eleven_thirteen_block()
+    assert block is not None
+    drift = block["drift"]
+    traded = drift["traded_usd"]
+    assert traded > 1_000.0
+    # 8.54 bp of each dollar traded, not the hold day's near-zero rate.
+    assert drift["estimated_cost_bps"] == pytest.approx((traded / 975_838.0) * 8.54)
+    assert drift["estimated_cost_usd"] == pytest.approx(traded * 8.54 / 1e4)
+    assert drift["estimated_cost_usd"] > 1.0
+
+
+def test_every_holding_row_adds_up_to_its_target() -> None:
+    block = _eleven_thirteen_block()
+    assert block is not None
+    for row in block["holdings"]["rows"]:
+        assert row["weight_now"] + row["gap_weight"] == pytest.approx(
+            row["weight_target"], abs=1e-12
+        ), row["ticker"]
+
+
+def test_the_guard_row_splits_the_legs_it_sends_from_the_ones_it_does_not() -> None:
+    """98 sent and 97 under the minimum are two sides of one split, not two counts."""
+    anchor, today, nav = "2026-10-23", "2026-11-13", 975_838.0
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [anchor, today],
+            "manifest": [
+                {"cadence": {"day": "rebalance"}},
+                {
+                    "cadence": {"day": "hold", "k": 21},
+                    "drift_guard": {
+                        "fired": True,
+                        "nav": nav,
+                        "legs_under_minimum": 1,
+                        "legs": [
+                            {"ticker": "AAA", "traded": True, "delta_notional_pct": 0.01},
+                            {"ticker": "BBB", "traded": True, "delta_notional_pct": -0.012},
+                            {"ticker": "CCC", "traded": False, "delta_notional_pct": 0.0001},
+                        ],
+                    },
+                },
+            ],
+        }
+    )
+    rows = monthly_view._guard_history(proposals, anchor, today, nav, None, [])
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["legs_sent"] == 2
+    assert row["legs_not_sent"] == 1
+    assert row["legs_wanted"] == 3
+    assert row["not_sent_usd"] == pytest.approx(0.0001 * nav, abs=0.01)

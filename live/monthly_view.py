@@ -803,6 +803,21 @@ def _guard_history(
             "exposure_after": _number(guard.get("exposure_after")),
             "threshold": _number(guard.get("threshold")),
             "legs_sent": sum(1 for leg in legs if leg.get("traded")),
+            # The legs the guard wanted and did not send, and what they were worth.
+            # "sent" and "under the minimum" are two sides of one split, never two
+            # counts of the same legs: 98 sent and 97 under the minimum on 11-12 was
+            # one number written where the other belonged.
+            "legs_not_sent": sum(1 for leg in legs if not leg.get("traded")),
+            "legs_wanted": len(legs),
+            "not_sent_usd": (
+                None
+                if day_nav is None
+                else sum(
+                    abs(_number(leg.get("delta_notional_pct")) or 0.0) * day_nav
+                    for leg in legs
+                    if not leg.get("traded")
+                )
+            ),
             "legs_under_minimum": _count(guard.get("legs_under_minimum")),
             "usd": usd,
             "cost_bps": None,
@@ -870,9 +885,11 @@ def _weights(frame: pd.DataFrame | None) -> dict[str, float]:
 def _gaps(target: pd.DataFrame, now: pd.DataFrame) -> dict[str, float]:
     """`w_now - w_target` per ticker, over the union of the two books.
 
-    One function because three panels read it - the drift card, the sector deltas and
-    the drift list - and a page whose sector bars summed to a different number from
-    the drift above them would be worse than either alone.
+    One function because the sector deltas and the drift list read it, and a page
+    whose sector bars summed to a different number from the drift above them would
+    be worse than either alone. The holdings table states the opposite sign on
+    purpose: its gap is what the next rebuild would trade, `w_target - w_now`, so a
+    positive cell is a name to buy.
     """
     wanted = _weights(target)
     have = _weights(now)
@@ -894,10 +911,13 @@ def drift(
 ) -> dict[str, Any]:
     """The distance from the rebalance target, and what closing it would cost.
 
-    `half_turnover` is `sum|w_now - w_target| / 2`, the standard one-sided turnover:
+    `half_turnover` is `sum|w_target - w_now| / 2`, the standard one-sided turnover:
     a dollar sold and a dollar bought are one dollar of drift, not two. The cost is the
-    dollars that would trade, both sides, at the proposal's trading cost per dollar,
-    which is spread plus impact plus commission and excludes borrow.
+    dollars that would trade, both sides, at the rebalance's own trading cost per
+    dollar, which is spread plus impact plus commission and excludes borrow. It is
+    reported in bp of NAV as well as dollars: a trade of this size is never free, and
+    a card that printed $0 for it was reading a hold day's near-zero rate instead of
+    the rate the rebalance was priced at.
     """
     if target is None or target.empty or "weight" not in target.columns:
         return {}
@@ -916,12 +936,16 @@ def drift(
             if nav is None or trading_bps is None
             else traded * nav * float(trading_bps) / 1e4
         ),
+        "estimated_cost_bps": (
+            None if trading_bps is None else traded * float(trading_bps)
+        ),
         "largest": [
             {
                 "ticker": ticker,
                 "weight_now": have.get(ticker, 0.0),
                 "weight_target": wanted.get(ticker, 0.0),
-                "usd": None if nav is None else gap * nav,
+                # The sign the holdings table uses: what the next rebuild trades.
+                "usd": None if nav is None else -gap * nav,
             }
             for ticker, gap in largest
         ],
@@ -1040,15 +1064,15 @@ def holdings(
 ) -> dict[str, Any]:
     """One row per name: what it did since the rebalance, and its gap now.
 
-    The gap is exactly the number the distance panel uses: w_now minus w_target,
-    as a fraction of NAV and the same fraction times NAV in dollars. The since
-    column replaces tonight's reason as the primary column. Tonight's reason is
-    kept only when tonight actually traded.
+    The gap is `w_target - w_now`, as a fraction of NAV and the same fraction times
+    NAV in dollars: a positive cell is a name the target wants more of, so the next
+    rebuild would buy it, and a negative one would be sold. The since column replaces
+    tonight's reason as the primary column. Tonight's reason is kept only when
+    tonight actually traded.
     """
     wanted = _weights(target)
     have = _weights(now)
     before_weights = _weights(before)
-    gaps = _gaps(target, now)
     flip_by_ticker = {str(row["ticker"]): row for row in flips}
     event_by_ticker = {str(event["ticker"]): event for event in flip_events}
     tickers = (
@@ -1155,7 +1179,7 @@ def holdings(
             since_label = _short_since(since_kind, since_date)
         else:
             since = "held, no trade since"
-        gap = gaps.get(ticker, 0.0)
+        gap = wanted.get(ticker, 0.0) - have.get(ticker, 0.0)
         rows.append(
             {
                 "ticker": ticker,
@@ -1753,8 +1777,14 @@ def _block(
     not_sent: dict[str, Any] = {
         "legs": 0,
         "usd": 0.0,
-        "under_minimum": {"legs": 0, "usd": 0.0},
+        # Split by the close that asked for the leg, so the page can print parts
+        # that add to the total instead of a figure with nothing under it.
+        "under_minimum": {"legs": 0, "usd": 0.0, "by_day": {}},
         "other": {},
+        # One entry per name, because a refusal is a fact about a position and
+        # not about a night: KVUE was refused on eight evenings and is one name
+        # holding $13,615, not eight refusals holding $95,308.
+        "refused_names": {},
     }
     closed_on: dict[str, set[str]] = {}
     if not since.empty:
@@ -1794,6 +1824,11 @@ def _block(
                 if code == "BELOW_MIN_NOTIONAL":
                     not_sent["under_minimum"]["legs"] += 1
                     not_sent["under_minimum"]["usd"] += usd
+                    day_row = not_sent["under_minimum"]["by_day"].setdefault(
+                        close, {"close": close, "legs": 0, "usd": 0.0}
+                    )
+                    day_row["legs"] += 1
+                    day_row["usd"] += usd
                 else:
                     other = not_sent["other"].setdefault(
                         code or "UNCODED",
@@ -1801,6 +1836,30 @@ def _block(
                     )
                     other["legs"] += 1
                     other["usd"] += usd
+                    # Only a refused leg that is not the $250 floor: the floor
+                    # legs are already their own total, and counting them here
+                    # would put the same dollars in both lines.
+                    refused_name = not_sent["refused_names"].setdefault(
+                        ticker or (code or "UNCODED"),
+                        {
+                            "ticker": ticker or "",
+                            "legs": 0,
+                            "usd": 0.0,
+                            "status": code or "UNCODED",
+                            "first_close": close,
+                            "last_close": close,
+                        },
+                    )
+                    refused_name["legs"] += 1
+                    # The latest night's own notional: the same position is worth
+                    # the same dollars every evening, and summing the nights is
+                    # how the line came to claim $95,308 for a $13,615 holding.
+                    refused_name["usd"] = usd
+                    refused_name["status"] = code or "UNCODED"
+                    if close < refused_name["first_close"]:
+                        refused_name["first_close"] = close
+                    if close > refused_name["last_close"]:
+                        refused_name["last_close"] = close
                 continue
             elif code == "COVER_UNDER_ONE_SHARE":
                 # Owed and impossible: the leg is under one share, so there is no
@@ -1914,14 +1973,15 @@ def _block(
         },
         "rebalance_card": rebalance_card(anchor, anchor_manifest, orders, fills, nav),
         "bridge_anchor": bridge_anchor,
-        # Tonight's own trading cost when it has one, and the anchor rebalance's
-        # when it does not: a hold day's manifest prices only borrow, and pricing a
-        # hypothetical rebalance at zero would say closing the drift is free.
+        # The anchor rebalance's own trading cost, because that is the trade the
+        # distance card prices: a hold day's manifest prices only borrow (its trading
+        # rate is a rounding residue), and pricing a hypothetical rebalance at that
+        # rate printed "$0" for a $184,968 trade.
         "drift": drift(
             target,
             now,
             nav,
-            _trading_bps(tonight_manifest) or _trading_bps(anchor_manifest),
+            _trading_bps(anchor_manifest) or _trading_bps(tonight_manifest),
         ),
         "since_anchor": {
             "trades_by_reason": sorted(trades.values(), key=lambda item: -item["usd"]),
@@ -1947,10 +2007,25 @@ def _block(
             # reader who adds them to the reasons is adding orders that do not exist.
             "not_sent": {
                 "legs": not_sent["legs"],
+                # The stored total adds the same refused position once per night.
+                # `usd_by_name` is the same legs counted by position: the two are
+                # different questions and the page states which one it is showing.
                 "usd": not_sent["usd"],
-                "under_minimum": not_sent["under_minimum"],
+                "usd_by_name": not_sent["under_minimum"]["usd"]
+                + sum(item["usd"] for item in not_sent["refused_names"].values()),
+                "under_minimum": {
+                    **not_sent["under_minimum"],
+                    "by_day": sorted(
+                        not_sent["under_minimum"]["by_day"].values(),
+                        key=lambda item: item["close"],
+                    ),
+                },
                 "other": sorted(
                     not_sent["other"].values(), key=lambda item: -item["usd"]
+                ),
+                "refused_names": sorted(
+                    not_sent["refused_names"].values(),
+                    key=lambda item: (-item["usd"], item["ticker"]),
                 ),
             },
         },
