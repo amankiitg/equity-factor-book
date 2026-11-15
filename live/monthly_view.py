@@ -403,6 +403,133 @@ def order_flips(
     return events
 
 
+def guard_manifest_flips(
+    proposals: pd.DataFrame, anchor: str, today: str, nav: float | None
+) -> list[dict[str, Any]]:
+    """The side changes the guard's own legs record, from the manifest weights.
+
+    A guard leg that resizes a holding keeps its sign: 2026-11-04 sold some of VZ
+    without moving the book from short to long, and that is not a flip. A leg whose
+    weight crosses zero **is** a side change, and the manifest already records both
+    weights and whether the leg traded, on the evening it happened.
+
+    This is the primary source because the order pair cannot see every flip. The
+    live MKC legs are cross-day: buy_to_close on 2026-11-12 ($93.32) and buy_to_open
+    on 2026-11-13 ($449.85). A read that demands both legs on one date sees neither
+    evening as a flip, and the 2026-11-13 account read omits MKC entirely, so there
+    is no current side to fall back on either. The manifest has no such gap: one
+    leg, weight -0.0000957 short to +0.0004610 long, traded true.
+
+    Only a leg that traded counts. A refused leg, or one under the order minimum,
+    proves nothing about the book.
+    """
+    events: list[dict[str, Any]] = []
+    if proposals is None or proposals.empty or "trade_date" not in proposals.columns:
+        return events
+    frame = proposals.copy()
+    frame["trade_date"] = frame["trade_date"].astype(str).str.slice(0, 10)
+    frame = frame.loc[(frame["trade_date"] > anchor) & (frame["trade_date"] <= today)]
+    if frame.empty:
+        return events
+    for record in frame.sort_values("trade_date", kind="stable").to_dict("records"):
+        guard = _manifest_of(record.get("manifest")).get("drift_guard") or {}
+        if not isinstance(guard, dict) or not guard.get("fired"):
+            continue
+        day = str(record["trade_date"])[:10]
+        day_nav = _number(guard.get("nav")) or nav
+        for leg in guard.get("legs") or []:
+            if not isinstance(leg, dict) or not leg.get("traded"):
+                continue
+            ticker = str(leg.get("ticker") or "").strip()
+            if not ticker:
+                continue
+            weight_before = _number(leg.get("weight_before"))
+            weight_after = _number(leg.get("weight_after"))
+            if weight_before is None or weight_after is None:
+                continue
+            if weight_before == 0.0 or weight_after == 0.0:
+                continue
+            if (weight_before > 0.0) == (weight_after > 0.0):
+                continue
+            delta = _number(leg.get("delta_notional_pct"))
+            events.append(
+                {
+                    "ticker": ticker,
+                    "date": day,
+                    "from_side": "long" if weight_before > 0.0 else "short",
+                    "to_side": "long" if weight_after > 0.0 else "short",
+                    # The guard's own move, in dollars: its recorded share of NAV at
+                    # the evening's NAV. None rather than a zero when it cannot be
+                    # priced, because a zero is a claim about the trade.
+                    "usd": (
+                        abs(delta) * day_nav
+                        if delta is not None and day_nav
+                        else None
+                    ),
+                }
+            )
+    return events
+
+
+def merge_flip_events(
+    manifest_events: list[dict[str, Any]], order_events: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """One row per name and day, the manifest first and the orders as the check.
+
+    Two sources, one row. The manifest is the primary: it is the guard's own record
+    of a traded leg whose weight changed sign, and it sees MKC's cross-day legs.
+    The order-pair read stays as a secondary source so nothing the page already
+    found regresses: a guard evening whose manifest leg list omitted a name, or a
+    leg whose weights were not stored, is still found from the orders.
+
+    A name and day both sources saw is kept once. The manifest supplies the row,
+    because its sides are the recorded truth; the order path fills its dollars when
+    the manifest has no delta to price, and is otherwise dropped, not added. A name
+    that covers the same (ticker, date) twice cannot appear twice in the flips list,
+    the guard cards or the holdings rows.
+    """
+    merged: dict[tuple[str, str], dict[str, Any]] = {}
+    for event in manifest_events:
+        merged[(str(event["ticker"]), str(event["date"]))] = dict(event)
+    for event in order_events:
+        key = (str(event["ticker"]), str(event["date"]))
+        if key not in merged:
+            merged[key] = dict(event)
+            continue
+        kept = merged[key]
+        if kept.get("usd") is None and event.get("usd") is not None:
+            kept["usd"] = event["usd"]
+    return [
+        merged[key] for key in sorted(merged, key=lambda item: (item[1], item[0]))
+    ]
+
+
+def _guard_flip_rows(flip_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every guard flip the manifests record, one row per name, in date order.
+
+    This is the whole set of sign changes, not a list with the rebalance's own flips
+    taken out. CCL is both: the 2026-10-23 rebalance took it from short to long and
+    the 2026-11-04 guard took it back. Both facts are true, and the reader asking
+    "what did the guard flip" wants CCL in the answer. The card for 11-04 says that
+    CCL reverses the rebalance flip, so the two rows are not read as two unrelated
+    events. VZ, GEHC and F were resized and never changed side, so they are absent.
+
+    One row per name, latest evening wins, so a name flipped twice on two evenings
+    still gets one row rather than two with the same React key.
+    """
+    by_ticker: dict[str, dict[str, Any]] = {}
+    for event in flip_events:
+        ticker = str(event.get("ticker") or "")
+        if not ticker:
+            continue
+        current = by_ticker.get(ticker)
+        if current is None or str(event.get("date")) >= str(current.get("date")):
+            by_ticker[ticker] = event
+    return sorted(
+        by_ticker.values(), key=lambda event: (str(event.get("date")), event["ticker"])
+    )
+
+
 def flip_rows(
     target: pd.DataFrame,
     before: pd.DataFrame,
@@ -628,6 +755,7 @@ def _guard_history(
     nav: float | None,
     fills: pd.DataFrame | None,
     flip_events: list[dict[str, Any]],
+    flip_tickers: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """One row per evening the drift guard fired, from the manifests it wrote.
 
@@ -638,10 +766,10 @@ def _guard_history(
     field is added to the store and no number is invented; a day whose fills the
     store does not carry gets `cost_bps: None` rather than a zero.
 
-    The flips a firing caused are the side changes the name's own orders record on
-    that day, whether or not the name was flipped at the rebalance: the guard moved
-    CCL and NFLX back on 2026-11-04, and MKC on 2026-11-12, and each is a leg on the
-    day rather than a guard date paired with a flip from the bridge.
+    The flips a firing caused are the merged side changes for that day: the guard
+    moved CCL and NFLX back on 2026-11-04, and MKC on 2026-11-12. CCL is also in
+    `reversals` because the 2026-10-23 rebalance had already flipped it, which lets
+    the card say so instead of presenting it as a plain guard flip.
     """
     if proposals is None or proposals.empty or "trade_date" not in proposals.columns:
         return []
@@ -662,6 +790,13 @@ def _guard_history(
         day_nav = _number(guard.get("nav")) or nav
         turnover = _number(guard.get("turnover"))
         usd = None if turnover is None or day_nav is None else turnover * day_nav
+        day_flips = sorted(
+            {
+                str(event.get("ticker"))
+                for event in flip_events
+                if str(event.get("date")) == day
+            }
+        )
         days[day] = {
             "date": day,
             "exposure_before": _number(guard.get("exposure_before")),
@@ -671,13 +806,16 @@ def _guard_history(
             "legs_under_minimum": _count(guard.get("legs_under_minimum")),
             "usd": usd,
             "cost_bps": None,
-            "flips": sorted(
-                {
-                    str(event.get("ticker"))
-                    for event in flip_events
-                    if str(event.get("date")) == day
-                }
-            ),
+            "flips": day_flips,
+            # The names the card must read as reversing a rebalance flip rather than
+            # as a plain guard flip: CCL on 2026-11-04 was taken back to short after
+            # the 2026-10-23 rebalance took it to long. The value is the rebalance
+            # date the flip reverses.
+            "reversals": {
+                ticker: anchor
+                for ticker in day_flips
+                if flip_tickers and ticker in flip_tickers
+            },
         }
     if not days:
         return []
@@ -1586,9 +1724,13 @@ def _block(
         now_close = days[-1] if days else today
     now = _book(account, now_close)
     guard_dates = _guard_events(proposals, anchor, today)
-    # Every side change the name's own legs record after the rebalance, which is the
-    # only evidence of a re-flip the page accepts.
-    flip_events = order_flips(orders, before, target, now, anchor, today)
+    # Every side change after the rebalance, from two sources that are merged once:
+    # the guard's own manifest weights, which see a cross-day flip like MKC's, and
+    # the order pairs behind them, which keep every flip the page already found.
+    flip_events = merge_flip_events(
+        guard_manifest_flips(proposals, anchor, today, nav),
+        order_flips(orders, before, target, now, anchor, today),
+    )
     bridge_anchor = bridge(target, before, now, orders, fills, anchor, flip_events)
     # The names whose side the rebalance actually changed. On the 2026-10-26
     # re-trade evening every leg but these re-traded the rebalance's remainder;
@@ -1783,12 +1925,11 @@ def _block(
         ),
         "since_anchor": {
             "trades_by_reason": sorted(trades.values(), key=lambda item: -item["usd"]),
-            # The guard's own side changes, which are flips the rebalance did not make:
-            # NFLX on 11-04 and MKC on 11-12. A name flipped at the rebalance carries
-            # its guard flip in its own row, so it is not repeated here.
-            "guard_flips": [
-                event for event in flip_events if event["ticker"] not in flip_tickers
-            ],
+            # The guard's own side changes, the whole sign-change set: CCL and NFLX
+            # on 11-04 and MKC on 11-12. CCL is also a rebalance flip, and the 11-04
+            # card labels it as reversing that flip rather than dropping it here.
+            # One row per name, latest evening wins, so no duplicate React key.
+            "guard_flips": _guard_flip_rows(flip_events),
             # One row per evening the drift guard fired, from the hold day's own
             # manifest: the page draws a card per firing, and the leg table splits
             # the guard's row by these dates.
@@ -1799,6 +1940,7 @@ def _block(
                 nav,
                 fills,
                 flip_events,
+                flip_tickers,
             ),
             # What the table cannot count as a leg that went: the legs under the
             # order minimum and the ones the broker refused. Stated apart because a

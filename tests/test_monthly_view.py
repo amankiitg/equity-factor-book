@@ -900,15 +900,24 @@ def test_the_guard_history_is_one_row_per_firing_from_the_manifest() -> None:
     assert "cost_bps" in row
 
 
+# The guard's NAV on the evenings in this fixture. The 2026-11-12 leg is worth
+# $542.96 at it: 0.0005567 of NAV, the weight it moved from -0.0000957 to 0.0004610.
+_GUARD_NAV = 975_319.0
+
 
 def _live_flip_facts_block() -> dict:
     """The 2026-11-13 close, with the flips the live QA sweep found.
 
     Four names flipped at the 2026-10-23 rebalance (CCL, F, GEHC, VZ). The drift guard
     then flipped CCL and NFLX on 2026-11-04 and MKC on 2026-11-12. The guard also
-    traded VZ and F on those evenings to resize them, which is why its manifest lists
-    them as legs: a guard leg is not a flip, and only the name's own orders say which
-    is which.
+    traded VZ and F on those evenings to resize them, and their weights keep their
+    sign, which is how the page tells a resize from a side change.
+
+    MKC's legs are the live shape and are deliberately cross-day: buy_to_close on
+    2026-11-12 and buy_to_open on 2026-11-13. An order pair that demands both legs on
+    one date cannot see it, and the 2026-11-13 account read omits MKC, so the guard
+    manifest's weight sign is the only evidence the page has. That is the source this
+    fixture pins.
     """
     anchor, opened, first_guard, second_guard, latest = (
         "2026-10-23",
@@ -927,12 +936,32 @@ def _live_flip_facts_block() -> dict:
                     "cadence": {"day": "hold", "k": 21},
                     "drift_guard": {
                         "fired": True,
-                        # VZ is here because the guard resized it, not because it
-                        # changed side: the manifest cannot tell the two apart.
+                        "nav": _GUARD_NAV,
+                        # A leg's ticker alone cannot say whether it changed side:
+                        # VZ is here because the guard resized it, and its weight
+                        # keeps the sign it had. CCL's and NFLX's weights cross zero.
                         "legs": [
-                            {"ticker": "CCL", "traded": True},
-                            {"ticker": "NFLX", "traded": True},
-                            {"ticker": "VZ", "traded": True},
+                            {
+                                "ticker": "CCL",
+                                "traded": True,
+                                "weight_before": 0.01,
+                                "weight_after": -0.01,
+                                "delta_notional_pct": -0.02,
+                            },
+                            {
+                                "ticker": "NFLX",
+                                "traded": True,
+                                "weight_before": 0.004,
+                                "weight_after": -0.004,
+                                "delta_notional_pct": -0.008,
+                            },
+                            {
+                                "ticker": "VZ",
+                                "traded": True,
+                                "weight_before": -0.012,
+                                "weight_after": -0.009,
+                                "delta_notional_pct": 0.003,
+                            },
                         ],
                     },
                 },
@@ -940,9 +969,23 @@ def _live_flip_facts_block() -> dict:
                     "cadence": {"day": "hold", "k": 21},
                     "drift_guard": {
                         "fired": True,
+                        "nav": _GUARD_NAV,
                         "legs": [
-                            {"ticker": "MKC", "traded": True},
-                            {"ticker": "F", "traded": True},
+                            # The live 2026-11-12 leg: short to long, $542.96.
+                            {
+                                "ticker": "MKC",
+                                "traded": True,
+                                "weight_before": -0.0000957,
+                                "weight_after": 0.0004610,
+                                "delta_notional_pct": 0.0005567,
+                            },
+                            {
+                                "ticker": "F",
+                                "traded": True,
+                                "weight_before": -0.02,
+                                "weight_after": -0.015,
+                                "delta_notional_pct": 0.005,
+                            },
                         ],
                     },
                 },
@@ -992,7 +1035,7 @@ def _live_flip_facts_block() -> dict:
                 anchor, anchor, anchor, anchor,
                 opened, opened, opened, opened,
                 first_guard, first_guard, first_guard, first_guard, first_guard,
-                second_guard, second_guard, second_guard,
+                second_guard, latest, second_guard,
             ],
             "ticker": [
                 "CCL", "F", "GEHC", "VZ",
@@ -1059,24 +1102,196 @@ def test_the_guard_cards_name_the_flips_each_firing_caused() -> None:
     firings = {row["date"]: row for row in block["since_anchor"]["guard_history"]}
     assert firings["2026-11-04"]["flips"] == ["CCL", "NFLX"]
     assert firings["2026-11-12"]["flips"] == ["MKC"]
+    # CCL is on the 11-04 card as a guard flip, and the card says it is reversing
+    # the rebalance's own flip rather than being a plain one like NFLX.
+    assert firings["2026-11-04"]["reversals"] == {"CCL": "2026-10-23"}
+    assert firings["2026-11-12"]["reversals"] == {}
     # VZ and F were guard legs on those evenings and did not change side.
     assert "VZ" not in firings["2026-11-04"]["flips"]
     assert "F" not in firings["2026-11-12"]["flips"]
 
 
-def test_the_flips_list_carries_the_guard_flips_the_rebalance_did_not_make() -> None:
-    """NFLX and MKC are guard flips and belong in the list beside the four."""
+def test_the_flips_list_carries_every_guard_sign_change() -> None:
+    """The guard list is the whole sign-change set: CCL, NFLX and MKC.
+
+    CCL is both a rebalance flip and a guard flip. The rebalance took it from short
+    to long on 2026-10-23 and the guard took it back on 2026-11-04. Dropping it from
+    this list would hide half of what the guard did; the 11-04 card labels it as a
+    reversal instead, so the two rows are read together.
+    """
     block = _live_flip_facts_block()
     guard_flips = {row["ticker"]: row for row in block["since_anchor"]["guard_flips"]}
-    assert sorted(guard_flips) == ["MKC", "NFLX"]
+    assert sorted(guard_flips) == ["CCL", "MKC", "NFLX"]
+    assert guard_flips["CCL"]["date"] == "2026-11-04"
+    assert guard_flips["CCL"]["from_side"] == "long"
+    assert guard_flips["CCL"]["to_side"] == "short"
+    assert guard_flips["CCL"]["usd"] == pytest.approx(0.02 * _GUARD_NAV)
     assert guard_flips["NFLX"]["date"] == "2026-11-04"
+    assert guard_flips["NFLX"]["usd"] == pytest.approx(0.008 * _GUARD_NAV)
     assert guard_flips["MKC"]["date"] == "2026-11-12"
+    assert guard_flips["MKC"]["usd"] == pytest.approx(542.96, abs=0.01)
     assert guard_flips["NFLX"]["from_side"] == "long"
     assert guard_flips["NFLX"]["to_side"] == "short"
     assert guard_flips["MKC"]["from_side"] == "short"
     assert guard_flips["MKC"]["to_side"] == "long"
-    # CCL is a re-flip and travels in its own row, not a second time here.
-    assert "CCL" not in guard_flips
+    # A resize is not a sign change and is never in this list.
+    for ticker in ("VZ", "GEHC", "F"):
+        assert ticker not in guard_flips, ticker
+
+
+def test_the_guard_manifest_finds_the_cross_day_flip_the_order_pair_cannot() -> None:
+    """MKC's live shape: close on 11-12, open on 11-13, and no side in the read.
+
+    The order-pair path needs both legs on one trade_date, so it sees neither
+    evening. The guard manifest records one leg, traded, whose weight crossed zero,
+    which is the same fact without the same-day assumption.
+    """
+    anchor, close_day, open_day = "2026-10-23", "2026-11-12", "2026-11-13"
+    proposals = pd.DataFrame(
+        {
+            "trade_date": [anchor, close_day],
+            "manifest": [
+                {"cadence": {"day": "rebalance"}},
+                {
+                    "cadence": {"day": "hold", "k": 21},
+                    "drift_guard": {
+                        "fired": True,
+                        "nav": _GUARD_NAV,
+                        "legs": [
+                            {
+                                "ticker": "MKC",
+                                "traded": True,
+                                "weight_before": -0.0000957,
+                                "weight_after": 0.0004610,
+                                "delta_notional_pct": 0.0005567,
+                            },
+                            # A resize that kept its sign, beside the flip.
+                            {
+                                "ticker": "VZ",
+                                "traded": True,
+                                "weight_before": -0.012,
+                                "weight_after": -0.009,
+                                "delta_notional_pct": 0.003,
+                            },
+                        ],
+                    },
+                },
+            ],
+        }
+    )
+    target = pd.DataFrame(
+        {
+            "trade_date": [anchor],
+            "ticker": ["MKC"],
+            "side": ["short"],
+            "weight": [0.01],
+        }
+    )
+    before = pd.DataFrame(
+        {
+            "trade_date": [anchor],
+            "ticker": ["MKC"],
+            "side": ["short"],
+            "market_value": [-500.0],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "trade_date": [close_day, open_day],
+            "ticker": ["MKC", "MKC"],
+            "position_intent": ["buy_to_close", "buy_to_open"],
+            "intended_notional": [93.32, 449.85],
+            "broker_order_id": ["id-1", "id-2"],
+        }
+    )
+    now = pd.DataFrame(columns=["trade_date", "ticker", "side", "market_value"])
+    alone = monthly_view.order_flips(orders, before, target, now, anchor, open_day)
+    assert "MKC" not in {event["ticker"] for event in alone}, (
+        "the order pair cannot see a flip whose two legs fall on different days"
+    )
+    manifest = monthly_view.guard_manifest_flips(
+        proposals, anchor, open_day, 1_000_000.0
+    )
+    assert [event["ticker"] for event in manifest] == ["MKC"]
+    assert manifest[0]["date"] == close_day
+    assert manifest[0]["from_side"] == "short"
+    assert manifest[0]["to_side"] == "long"
+    assert manifest[0]["usd"] == pytest.approx(542.96, abs=0.01)
+    merged = monthly_view.merge_flip_events(manifest, alone)
+    assert [event["ticker"] for event in merged] == ["MKC"]
+    assert merged[0]["date"] == close_day
+
+
+def test_two_sources_of_the_same_flip_produce_one_row() -> None:
+    """CCL is seen by both sources on 2026-11-04, and the list must carry it once.
+
+    The manifest supplies the sides; where it has no dollar figure the order path
+    fills it in. A duplicate (ticker, date) is dropped, not merged into a second row.
+    """
+    manifest = [
+        {
+            "ticker": "CCL",
+            "date": "2026-11-04",
+            "from_side": "long",
+            "to_side": "short",
+            "usd": None,
+        }
+    ]
+    orders = [
+        {
+            "ticker": "CCL",
+            "date": "2026-11-04",
+            "from_side": "long",
+            "to_side": "short",
+            "usd": 650.0,
+        },
+        {
+            "ticker": "NFLX",
+            "date": "2026-11-04",
+            "from_side": "long",
+            "to_side": "short",
+            "usd": 900.0,
+        },
+    ]
+    merged = monthly_view.merge_flip_events(manifest, orders)
+    assert [(event["ticker"], event["date"]) for event in merged] == [
+        ("CCL", "2026-11-04"),
+        ("NFLX", "2026-11-04"),
+    ]
+    ccl = merged[0]
+    assert ccl["usd"] == 650.0
+    # The guard list keeps every sign change, CCL included.
+    guard_rows = monthly_view._guard_flip_rows(merged)
+    assert [row["ticker"] for row in guard_rows] == ["CCL", "NFLX"]
+
+
+def test_mkc_has_a_flips_list_row_and_a_holdings_row() -> None:
+    """The MKC the republish needs: in the flips list and in the holdings table."""
+    block = _live_flip_facts_block()
+    guard_flips = {row["ticker"]: row for row in block["since_anchor"]["guard_flips"]}
+    assert "MKC" in guard_flips
+    assert guard_flips["MKC"]["date"] == "2026-11-12"
+    assert guard_flips["MKC"]["from_side"] == "short"
+    assert guard_flips["MKC"]["to_side"] == "long"
+    assert guard_flips["MKC"]["usd"] == pytest.approx(542.96, abs=0.01)
+    held = {
+        row["ticker"]: row for row in block["holdings"]["rows"]
+    }
+    assert "MKC" in held
+    assert held["MKC"]["since_kind"] == "flipped"
+    assert "flipped by the drift guard (2026-11-12)" in held["MKC"]["since"]
+    assert held["MKC"]["since_label"] == "Flipped 11-12"
+
+
+def test_the_manifest_does_not_call_a_resize_a_flip() -> None:
+    """VZ and F are guard legs on those evenings, and their weights keep their sign."""
+    block = _live_flip_facts_block()
+    flips = {event["ticker"] for event in block["since_anchor"]["guard_flips"]}
+    for ticker in ("VZ", "GEHC", "F"):
+        assert ticker not in flips, ticker
+    firings = {row["date"]: row for row in block["since_anchor"]["guard_history"]}
+    assert "VZ" not in firings["2026-11-04"]["flips"]
+    assert "F" not in firings["2026-11-12"]["flips"]
 
 
 def test_a_submitted_opening_leg_counts_when_the_account_read_lags() -> None:

@@ -670,10 +670,10 @@ export interface MonthlyBlock {
      */
     guard_history?: GuardFiring[];
     /**
-     * The side changes the guard made after the rebalance, for names the rebalance
-     * itself did not flip: NFLX on 2026-11-04 and MKC on 2026-11-12 on the live book.
-     * A name the rebalance flipped and the guard flipped back carries its own row in
-     * `bridge_anchor.flip_rows` instead, so the two lists never repeat a name.
+     * Every side change the guard made after the rebalance, from the manifest weight
+     * sign: CCL and NFLX on 2026-11-04 and MKC on 2026-11-12 on the live book. CCL is
+     * also a rebalance flip, and its guard firing's card labels it as reversing that
+     * flip rather than hiding it from this list.
      */
     guard_flips?: GuardFlip[];
     /**
@@ -766,8 +766,14 @@ export interface GuardFiring {
   usd: number | null;
   /** The day's realized fill cost, or null when the store carries no fills for it. */
   cost_bps: number | null;
-  /** Names whose side the firing moved back, read from each name's own legs. */
+  /** Names whose side the firing moved back, from the manifest weight sign. */
   flips: string[];
+  /**
+   * Names on this firing that reverse a flip the rebalance itself made, mapped to
+   * the rebalance date. CCL on 2026-11-04 is the live case: the 2026-10-23
+   * rebalance took it to long and this firing took it back to short.
+   */
+  reversals?: Record<string, string>;
 }
 
 /** One name the guard moved to the other side, with the evening it did. */
@@ -776,7 +782,11 @@ export interface GuardFlip {
   date: string;
   from_side: string;
   to_side: string;
-  usd: number;
+  /**
+   * The guard leg's dollars at the evening's NAV. Null when the manifest has no
+   * delta to price, which renders as n/a rather than as a zero trade.
+   */
+  usd: number | null;
 }
 
 /** One sector's distance from the rebalance target, net and name by name. */

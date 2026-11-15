@@ -497,6 +497,8 @@ function liveFactsBlock(): MonthlyBlock {
           usd: 91_000,
           cost_bps: 2.4,
           flips: ["CCL", "NFLX"],
+          // CCL is a guard flip and the reverse of the rebalance's own 10-23 flip.
+          reversals: { CCL: "2026-10-23" },
         },
         {
           date: "2026-11-12",
@@ -508,9 +510,11 @@ function liveFactsBlock(): MonthlyBlock {
           usd: 44_000,
           cost_bps: 1.2,
           flips: ["MKC"],
+          reversals: {},
         },
       ],
       guard_flips: [
+        { ticker: "CCL", date: "2026-11-04", from_side: "long", to_side: "short", usd: 19_506 },
         { ticker: "NFLX", date: "2026-11-04", from_side: "long", to_side: "short", usd: 910 },
         { ticker: "MKC", date: "2026-11-12", from_side: "short", to_side: "long", usd: 430 },
       ],
@@ -548,6 +552,29 @@ describe("the flips panel on the live facts", () => {
         ?.textContent ?? "";
     expect(card("2026-11-04")).toContain("it moved CCL, NFLX back to the other side");
     expect(card("2026-11-12")).toContain("it moved MKC back to the other side");
+  });
+
+  it("labels CCL as reversing the 10-23 flip, and NFLX as a plain guard flip", () => {
+    render(<MonthlyPanels monthly={liveFactsBlock()} />);
+    const card = (day: string): string =>
+      document.querySelector(`[data-guard-firing='${day}']`)?.closest("section")
+        ?.textContent ?? "";
+    expect(card("2026-11-04")).toContain("CCL reverses the 2026-10-23 flip");
+    expect(card("2026-11-04")).not.toContain("NFLX reverses");
+    const reversal = document.querySelector('[data-guard-reversal="CCL"]');
+    expect(reversal?.textContent).toContain("CCL reverses the 2026-10-23 flip");
+    expect(document.querySelector('[data-guard-reversal="NFLX"]')).toBeNull();
+    expect(document.querySelector('[data-guard-reversal="MKC"]')).toBeNull();
+  });
+
+  it("carries CCL, NFLX and MKC in the guard flips list with their dates", () => {
+    render(<MonthlyPanels monthly={liveFactsBlock()} />);
+    const row = (ticker: string): string =>
+      document.querySelector(`[data-guard-flip='${ticker}']`)?.textContent ?? "";
+    expect(row("CCL")).toContain("2026-11-04");
+    expect(row("CCL")).toContain("long to short");
+    expect(row("NFLX")).toContain("2026-11-04");
+    expect(row("MKC")).toContain("2026-11-12");
   });
 });
 
