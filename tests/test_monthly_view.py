@@ -2075,9 +2075,21 @@ def test_the_guard_row_splits_the_legs_it_sends_from_the_ones_it_does_not() -> N
                         "nav": nav,
                         "legs_under_minimum": 1,
                         "legs": [
-                            {"ticker": "AAA", "traded": True, "delta_notional_pct": 0.01},
-                            {"ticker": "BBB", "traded": True, "delta_notional_pct": -0.012},
-                            {"ticker": "CCC", "traded": False, "delta_notional_pct": 0.0001},
+                            {
+                                "ticker": "AAA",
+                                "traded": True,
+                                "delta_notional_pct": 0.01,
+                            },
+                            {
+                                "ticker": "BBB",
+                                "traded": True,
+                                "delta_notional_pct": -0.012,
+                            },
+                            {
+                                "ticker": "CCC",
+                                "traded": False,
+                                "delta_notional_pct": 0.0001,
+                            },
                         ],
                     },
                 },

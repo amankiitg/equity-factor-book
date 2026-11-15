@@ -854,8 +854,11 @@ def _guard_history(
                 if day_nav is None or not day_nav:
                     continue
                 try:
-                    entry["cost_bps"] = fills_module.realized_cost_bps(day_fills, day_nav)
-                except Exception as exc:  # noqa: BLE001 - one field, not the block
+                    entry["cost_bps"] = fills_module.realized_cost_bps(
+                        day_fills, day_nav
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    # one field, not the block
                     logger.warning(
                         "the guard day's realized cost could not be measured: %s",
                         type(exc).__name__,
