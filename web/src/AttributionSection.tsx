@@ -17,7 +17,7 @@
 //
 // Both charts are drawn by hand in SVG. No chart library is in the page's
 // dependencies and two small plots do not justify one; the colours carry a meaning
-// (factor, idio, cost, unexplained) that is repeated in words in each legend,
+// (factor, stock-specific, cost, unexplained) that is repeated in words in each legend,
 // because colour alone is not readable to everyone.
 
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -89,10 +89,10 @@ const SERIES = [
 ] as const;
 
 const COMPONENTS = [
-  { key: "factor", field: "pnl_factor", color: COLORS.factor },
-  { key: "idio", field: "pnl_idio", color: COLORS.idio },
-  { key: "cost", field: "pnl_cost", color: COLORS.cost },
-  { key: "unexplained", field: "pnl_unexplained", color: COLORS.unexplained },
+  { key: "factor", word: "factor", field: "pnl_factor", color: COLORS.factor },
+  { key: "idio", word: "stock-specific", field: "pnl_idio", color: COLORS.idio },
+  { key: "cost", word: "cost", field: "pnl_cost", color: COLORS.cost },
+  { key: "unexplained", word: "unexplained", field: "pnl_unexplained", color: COLORS.unexplained },
 ] as const;
 
 /**
@@ -436,7 +436,7 @@ function DailyBars({ days }: { days: AttributionDay[] }) {
         entries={[
           ...COMPONENTS.map((component) => ({
             key: component.key,
-            word: component.key,
+            word: component.word,
             color: component.color,
             dash: "",
           })),
@@ -1164,7 +1164,7 @@ function RiskPath({ path }: { path: AttributionRiskPath[] }) {
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
         role="img"
-        aria-label="share of predicted variance, factors and idiosyncratic"
+        aria-label="share of predicted variance, factors and stock-specific"
       >
       {[0, 0.5, 1].map((tick, index) => (
         <g key={index}>
@@ -1210,7 +1210,7 @@ function RiskPath({ path }: { path: AttributionRiskPath[] }) {
       <Legend
         entries={[
           { key: "factor", word: "from factors", color: COLORS.factor, dash: "", shape: "patch" },
-          { key: "idio", word: "idiosyncratic", color: COLORS.idio, dash: "", shape: "patch" },
+          { key: "idio", word: "stock-specific", color: COLORS.idio, dash: "", shape: "patch" },
         ]}
       />
     </figure>
@@ -1858,7 +1858,7 @@ export function AttributionSection({
       </HowToRead></h2>
       <p className="mt-1 text-sm text-slate-600">
         What the book earned, split into the four terms that add to its total: the hedge&apos;s
-        factor P&amp;L, the names&apos; idiosyncratic P&amp;L, the cost contribution to P&amp;L,
+        factor P&amp;L, the names&apos; stock-specific P&amp;L, the cost contribution to P&amp;L,
         and the unexplained remainder. Every figure is in bp of NAV.
       </p>
       {/* The switch only exists when there are two objects to switch between: a
