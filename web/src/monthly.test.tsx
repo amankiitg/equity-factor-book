@@ -694,13 +694,35 @@ describe("the 11-13 close, from the published block", () => {
     expect(kvue).not.toContain("$102");
   });
 
-  it("4 prices closing the gap instead of calling it free", () => {
-    render(<MonthlyPanels monthly={REAL_MONTHLY} />);
+  it("4 prices closing the gap at the document's own rate, bp and dollars in step", () => {
+    const base = REAL_MONTHLY.drift;
+    const nav = REAL_MONTHLY.sectors?.nav;
+    if (!base || nav === null || nav === undefined) {
+      throw new Error("the 11-13 fixture carries no priced drift");
+    }
+    // The live publish carries the cost as bp of NAV: 0.62618 on this close. The
+    // card has to price the trade from that rate and NAV, so the bp it prints and
+    // the dollars beside it are the same number twice rather than two rates.
+    const priced: MonthlyBlock = {
+      ...REAL_MONTHLY,
+      drift: { ...base, estimated_cost_bps: 0.62618 },
+    };
+    render(<MonthlyPanels monthly={priced} />);
     const drift = document.querySelector("[data-drift]")?.textContent ?? "";
     expect(drift).toContain("$184,968");
-    expect(drift).toContain("1.6 bp of NAV");
-    expect(drift).toContain("$158");
-    expect(drift).not.toContain("cost about $0");
+    expect(drift).toContain("0.6 bp of NAV");
+    expect(drift).toContain("$61");
+    expect(drift).not.toContain("$158");
+    expect(drift).not.toContain("($0)");
+    const shown = /([0-9.]+) bp of NAV \(\$([\d,]+)\)/.exec(drift);
+    if (!shown) throw new Error(`the card printed no priced cost: ${drift}`);
+    expect(Number(shown[1])).toBe(0.6);
+    const usdShown = Number(shown[2].replace(/,/g, ""));
+    // The card rounds the rate it prints to one place, so the agreement is
+    // checked against the document's rate before that rounding: the dollars
+    // are that rate times NAV, not a second rate applied to the trade.
+    const atNav = (0.62618 / 1e4) * nav;
+    expect(Math.abs(usdShown - atNav)).toBeLessThan(1);
   });
 
   it("5 gives the guard both costs, measured and estimated, negative", () => {

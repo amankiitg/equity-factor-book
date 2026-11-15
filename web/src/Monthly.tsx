@@ -340,26 +340,46 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
   // day's manifest carries only borrow, and reading its residue as a rate is what
   // printed "about $0" for a trade of this size.
   const card = monthly.rebalance_card;
+  const navBps =
+    monthly.sectors?.nav !== null && monthly.sectors?.nav !== undefined && monthly.sectors.nav > 0
+      ? monthly.sectors.nav
+      : null;
+  const traded = drift.traded_usd;
   const rate =
-    card?.expected_cost_usd && card?.notional
+    card?.expected_cost_usd && card.expected_cost_usd > 0 && card?.notional && card.notional > 0
       ? (card.expected_cost_usd / card.notional) * 1e4
-      : card?.expected_cost_bps && card?.pct_nav
+      : card?.expected_cost_bps && card.expected_cost_bps > 0 && card?.pct_nav && card.pct_nav > 0
         ? card.expected_cost_bps / card.pct_nav
         : null;
-  const nav = monthly.sectors?.nav ?? null;
+  // One rate, and the document's own when it carries it. `estimated_cost_bps`
+  // is bp of NAV, so the dollars are that rate times NAV: the two figures are
+  // the same number and cannot disagree, which is what a card that read the bp
+  // from the document and the dollars from the rebalance's rate did. Only a
+  // document without that field falls back to the rebalance's rate, and then
+  // the bp are derived from those dollars rather than read from a second place.
+  const docBps =
+    drift.estimated_cost_bps !== null &&
+    drift.estimated_cost_bps !== undefined &&
+    drift.estimated_cost_bps > 0 &&
+    navBps !== null
+      ? drift.estimated_cost_bps
+      : null;
   const costUsd =
-    rate !== null && drift.traded_usd !== null && drift.traded_usd !== undefined
-      ? (drift.traded_usd * rate) / 1e4
-      : drift.estimated_cost_usd;
+    docBps !== null && navBps !== null
+      ? (docBps / 1e4) * navBps
+      : rate !== null && traded !== null && traded !== undefined
+        ? (traded * rate) / 1e4
+        : drift.estimated_cost_usd ?? null;
   const costBps =
-    drift.estimated_cost_bps ??
-    (costUsd !== null && costUsd !== undefined && nav
-      ? (costUsd / nav) * 1e4
-      : null);
-  const costText =
-    costBps === null || costBps === undefined
-      ? "at the 10-23 rebalance\u2019s own trading rate, which the block does not carry"
-      : `${costBps.toFixed(1)} bp of NAV (${dollars(costUsd)}) at the 10-23 rebalance\u2019s own trading rate`;
+    docBps ??
+    (costUsd !== null && navBps !== null ? (costUsd / navBps) * 1e4 : null);
+  // A nonzero trade is never free: a figure that rounds to $0 is treated as one
+  // the block did not carry, rather than printed as a cost of nothing.
+  const costKnown =
+    costBps !== null && costUsd !== null && !((traded ?? 0) > 0 && Math.round(costUsd) === 0);
+  const costText = costKnown
+    ? `${costBps!.toFixed(1)} bp of NAV (${dollars(costUsd)}) at the 10-23 rebalance\u2019s own trading rate`
+    : "at the 10-23 rebalance\u2019s own trading rate, which the block does not carry";
   return (
     <Card
       title="distance from the rebalance target"
