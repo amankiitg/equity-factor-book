@@ -113,6 +113,20 @@ def _count(value: Any) -> int:
         return 0
 
 
+def _cycle_day(offset: Any, k: Any) -> int | None:
+    """The session's place in the cadence cycle: 0 is a rebalance day.
+
+    The offset counts sessions from the fixed origin (2026-10-23), not from the
+    latest rebalance, so it runs past k. The page wants the position in the cycle
+    the anchor opened, which is the offset modulo k.
+    """
+    off = _number(offset)
+    length = _number(k)
+    if off is None or length is None or length < 1:
+        return None
+    return int(off) % int(length)
+
+
 def guard_threshold_from_env() -> float | None:
     """`EFB_DRIFT_GUARD` as a fraction, read exactly as `live.evening_job` reads it.
 
@@ -1946,6 +1960,11 @@ def _block(
             "day": cadence.get("day"),
             "k": cadence.get("k"),
             "offset": cadence.get("offset"),
+            # Where this session sits in the cycle, counted from the anchor: 0 is a
+            # rebalance day, 1..k-1 are hold days. The raw offset counts from the
+            # fixed 10-23 origin and keeps counting past k, so a page that printed
+            # it said "hold day 22 of 21".
+            "day_in_cycle": _cycle_day(cadence.get("offset"), cadence.get("k")),
             "sessions_since": cadence.get("sessions_since"),
             "last_rebalance": anchor,
             "next_rebalance": cadence.get("next_rebalance"),

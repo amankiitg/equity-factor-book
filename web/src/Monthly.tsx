@@ -17,6 +17,9 @@ import { dateOnly, dollars, percent, signedDollars } from "./format";
 import { legReasonWord } from "./labels";
 import type { MonthlyBlock } from "./types";
 
+/** A date as the page writes dates in a sentence: month and day, no year. */
+const dayShort = (value: string | null | undefined): string => (value ? value.slice(5, 10) : "-");
+
 function Card({
   title,
   howToRead,
@@ -59,7 +62,7 @@ export function CadenceStrip({ monthly }: { monthly: MonthlyBlock }) {
   return (
     <Card
       title="cadence"
-      howToRead="most closes change nothing: the book is rebuilt every 21 sessions and repaired only when a factor exposure drifts too far. Example: 13 of 21 sessions have passed since 10-23, so the next rebuild is 11-23."
+      howToRead={`most closes change nothing: the book is rebuilt every ${strip.k ?? 21} sessions and repaired only when a factor exposure drifts too far. Example: ${strip.sessions_since ?? 0} of ${strip.k ?? 21} sessions have passed since ${dayShort(strip.last_rebalance)}, so the next rebuild is ${dayShort(strip.next_rebalance)}.`}
     >
       <dl data-cadence="true" className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
         <Stat
@@ -74,7 +77,9 @@ export function CadenceStrip({ monthly }: { monthly: MonthlyBlock }) {
           detail={
             strip.day === "rebalance" || strip.k === null || strip.k === undefined || strip.k === 1
               ? undefined
-              : `${strip.sessions_since ?? 0} of ${strip.k}`
+              : `day ${
+                  (strip.day_in_cycle ?? ((strip.offset ?? 0) % (strip.k || 21))) || 1
+                } of ${strip.k}`
           }
         />
         <Stat label="last rebalance" value={dateOnly(strip.last_rebalance) ?? "-"} />
@@ -104,7 +109,7 @@ export function RebalanceCard({ monthly }: { monthly: MonthlyBlock }) {
   return (
     <Card
       title={`the rebalance of ${dateOnly(card.close) ?? "the anchor"}`}
-      howToRead="one evening turns the old book into the new one, so it is the month's largest trade and almost all of its cost. Example: on 10-23 it sent 208 legs for $544,003, 56% of NAV."
+      howToRead={`one evening turns the old book into the new one, so it is the month's largest trade and almost all of its cost. Example: on ${dayShort(card.close)} it sent ${card.sent_legs ?? card.filled_legs ?? 0} legs for ${dollars(card.notional)}, ${percent(card.pct_nav)} of NAV.`}
     >
       <dl data-rebalance="true" className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
         <Stat
@@ -204,7 +209,7 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
     nav === null ? null : Math.abs(nav - (bridge.after_dollars ?? 0));
   return (
     <Card
-      title="the book, from the 10-23 close to the account now"
+      title={`the book, from the ${dayShort(monthly.cadence_strip?.last_rebalance)} close to the account now`}
       howToRead={`the before and now figures are gross position value: every position's dollars added up, longs and shorts both counted positive. That is not NAV, which nets the shorts against the cash and adds it, so the two differ and both are right. Example: today the gross positions are ${dollars(
         bridge.after_dollars,
       )} and NAV is ${dollars(nav)}, ${dollars(apart)} apart.`}
@@ -213,12 +218,12 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
         <Stat
           label="before, gross positions"
           value={dollars(bridge.before_dollars)}
-          detail="10-23 close, longs and shorts added up; not NAV either"
+          detail={`${dayShort(monthly.cadence_strip?.last_rebalance)} close, longs and shorts added up; not NAV either`}
         />
         <Stat
           label="opened / exited"
           value={`${bridge.opened} / ${bridge.exited}`}
-          detail={`${bridge.resized} resized since 10-23`}
+          detail={`${bridge.resized} resized since ${dayShort(monthly.cadence_strip?.last_rebalance)}`}
         />
         <Stat
           label="flips"
@@ -301,7 +306,7 @@ export function FlipBridge({ monthly }: { monthly: MonthlyBlock }) {
       {guardFlips.length ? (
         <div data-guard-flips="true" className="mt-2">
           <p className="text-xs font-medium text-slate-600">
-            the drift guard flipped these names back after the rebalance
+            the drift guard flipped these names after the rebalance
           </p>
           <ul className="mt-1 flex flex-col gap-1 text-xs">
             {guardFlips.map((flip) => (
@@ -378,9 +383,12 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
   // the block did not carry, rather than printed as a cost of nothing.
   const costKnown =
     costBps !== null && costUsd !== null && !((traded ?? 0) > 0 && Math.round(costUsd) === 0);
+  // The rate is the anchor rebalance's own, so the sentence names that close rather
+  // than a date typed in when the panel was written.
+  const anchorDay = dayShort(monthly.cadence_strip?.last_rebalance);
   const costText = costKnown
-    ? `${costBps!.toFixed(1)} bp of NAV (${dollars(costUsd)}) at the 10-23 rebalance\u2019s own trading rate`
-    : "at the 10-23 rebalance\u2019s own trading rate, which the block does not carry";
+    ? `${costBps!.toFixed(1)} bp of NAV (${dollars(costUsd)}) at the ${anchorDay} rebalance\u2019s own trading rate`
+    : `at the ${anchorDay} rebalance\u2019s own trading rate, which the block does not carry`;
   return (
     <Card
       title="distance from the rebalance target"
@@ -645,15 +653,18 @@ export function TonightLine({ monthly }: { monthly: MonthlyBlock }) {
   // leg in flight and it is not retried forever.
   const parts: string[] = [];
   if (owed > 0) {
+    // Plain words, and no dollars when there are none: "4 legs owed, $0" is a
+    // sentence about a rounding error, not about a position.
+    const usd = tonight.owed_usd ?? 0;
     parts.push(
-      `${owed} leg${owed === 1 ? "" : "s"} owed, ${dollars(tonight.owed_usd ?? 0)}, to be sent on the next close`,
+      `${owed} leg${owed === 1 ? "" : "s"} to send on the next close${usd >= 1 ? ` (${dollars(usd)})` : ""}`,
     );
   }
   if (cannotSend > 0) {
     parts.push(
-      `${cannotSend} owed, cannot be sent, ${dollars(tonight.cannot_send_usd ?? 0)}${
-        unsendable ? `: ${unsendable}` : ""
-      }`,
+      `${cannotSend} leg${cannotSend === 1 ? "" : "s"} that cannot be sent, ${dollars(
+        tonight.cannot_send_usd ?? 0,
+      )}${unsendable ? `: ${unsendable}` : ""}`,
     );
   }
   return (

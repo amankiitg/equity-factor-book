@@ -229,14 +229,25 @@ function axisTicks(low: number, high: number): number[] {
   if (!Number.isFinite(span) || span <= 0) return even();
   const rough = span / 4;
   const magnitude = Math.pow(10, Math.floor(Math.log10(rough)));
-  const norm = rough / magnitude;
-  const step =
-    (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10) * magnitude;
-  const ticks: number[] = [];
-  for (let value = Math.ceil(low / step) * step; value <= high + step * 1e-6; value += step) {
-    ticks.push(Math.round(value * 1e6) / 1e6);
+  // Whole steps only, and a tick set the chart can print: three to six labels,
+  // counted from the step's own multiples so the end labels are round too. The
+  // old guard asked for four or five and fell through to arithmetic divisions of
+  // the range, which is how -41, -20, 21 and 42 reached the axis.
+  const nice = [1, 2, 2.5, 5, 10];
+  for (let scale = magnitude / 10; scale <= magnitude * 10; scale *= 10) {
+    for (const step of nice.map((value) => value * scale)) {
+      const first = Math.floor(low / step) * step;
+      const last = Math.ceil(high / step) * step;
+      const count = Math.round((last - first) / step) + 1;
+      if (count < 3 || count > 6) continue;
+      const ticks: number[] = [];
+      for (let value = first; value <= last + step * 1e-6; value += step) {
+        ticks.push(Math.round(value * 1e6) / 1e6);
+      }
+      return ticks;
+    }
   }
-  return ticks.length >= 4 && ticks.length <= 5 ? ticks : even();
+  return even();
 }
 
 /**
@@ -1248,7 +1259,10 @@ function CadencePill({ monthly }: { monthly?: MonthlyBlock | null }) {
       </p>
     );
   }
-  const day = strip.sessions_since ?? 1;
+  // The place in the cycle, not the raw offset: the offset counts from the fixed
+  // 10-23 origin and runs past k, so it printed "hold day 23 of 21".
+  const cycle = strip.day_in_cycle ?? ((strip.offset ?? 0) % (strip.k || 21));
+  const day = cycle === 0 ? 1 : cycle;
   return (
     <p
       data-cadence-pill="hold"
@@ -1379,7 +1393,6 @@ export function Overview({
         <Kpi
           hook="today"
           title={lastDate ? `Last close (${lastDate})` : "Last close"}
-          plainTitle
           value={bps(todayValue)}
           valueClass={pnlClass(todayValue)}
           detail={

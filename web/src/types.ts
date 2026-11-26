@@ -588,6 +588,8 @@ export interface MonthlyBlock {
     k: number | null;
     offset: number | null;
     sessions_since: number | null;
+    /** The session's place in the current cycle: 0 is a rebalance day, 1..k-1 hold. */
+    day_in_cycle?: number | null;
     last_rebalance: string | null;
     next_rebalance: string | null;
     guard: {
