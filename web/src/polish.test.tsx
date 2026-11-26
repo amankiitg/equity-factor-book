@@ -75,7 +75,7 @@ describe("the rendered page", () => {
       expect(values[1].textContent ?? "").toMatch(/^[-+]?\$/);
     }
     // The sign is also a colour, from the light tokens.
-    const total = document.querySelector("[data-kpi='since'] p.font-mono") as HTMLElement;
+    const total = document.querySelector("[data-kpi='since'] p.efb-stat") as HTMLElement;
     const value = LATEST.attribution?.live?.cumulative?.pnl_total ?? 0;
     expect(total.className).toContain(value >= 0 ? "efb-up" : "efb-down");
   });
