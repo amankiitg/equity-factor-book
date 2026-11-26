@@ -87,7 +87,8 @@ describe("the overview tab", () => {
     expect(pill).toContain("next rebalance 11-23");
     const guard = document.querySelector("[data-drift-guard='true']")?.textContent ?? "";
     // The 10-30 manifest: 6.41% before the guard, 5% threshold, so the bar is full.
-    expect(guard).toContain("6.41% of 5%");
+    // A firing night states both ends now: what the guard found and what it left.
+    expect(guard).toContain("fired: 6.41% -> 0.41%");
     const bar = document.querySelector("[role='progressbar']") as HTMLElement;
     expect(bar.getAttribute("aria-valuenow")).toBe("100");
   });

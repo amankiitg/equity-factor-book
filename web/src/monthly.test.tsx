@@ -831,7 +831,10 @@ describe("the 11-13 close, from the published block", () => {
     expect(text).toContain("all 4 steps of the bridge check out");
     expect(text).toContain("cash plus the value of all positions, longs minus shorts");
     expect(text).toContain("run detail: the run's verdict and how the book was built");
-    expect(text).toContain("MKC (its reopening order fills on Monday, 11-16)");
+    // Derived from the document's close and the holiday calendar, not typed in.
+    expect(text).toContain(
+      "MKC (its reopening order went out on 11-13 and fills on the next session)",
+    );
     expect(text).toContain("KVUE (acquired by KMB; the broker has not converted the shares yet)");
   });
 });

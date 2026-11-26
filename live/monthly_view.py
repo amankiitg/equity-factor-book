@@ -34,6 +34,59 @@ HEDGE_REASON = "the hedge moved"
 # wanted.
 MINIMUM_DOLLARS = 250.0
 
+# Every NYSE full closure for 2026 and 2027, so the page can say which session a
+# reopening order fills on. A weekday plus one is wrong the first time a holiday
+# falls on a weekday (2026-11-26 is Thanksgiving, so a 11-25 order fills 11-27).
+# Display only: the evening's own session counting is cadence.py and is not touched.
+HOLIDAY_YEARS = (2026, 2027)
+HOLIDAYS = frozenset(
+    {
+        "2026-01-01",  # New Year
+        "2026-01-19",  # Martin Luther King
+        "2026-02-16",  # Presidents
+        "2026-04-03",  # Good Friday
+        "2026-05-25",  # Memorial
+        "2026-06-19",  # Juneteenth
+        "2026-07-03",  # Independence, observed
+        "2026-09-07",  # Labor
+        "2026-11-26",  # Thanksgiving
+        "2026-12-25",  # Christmas
+        "2027-01-01",  # New Year
+        "2027-01-18",  # Martin Luther King
+        "2027-02-15",  # Presidents
+        "2027-03-26",  # Good Friday
+        "2027-05-31",  # Memorial
+        "2027-06-18",  # Juneteenth, observed
+        "2027-07-05",  # Independence, observed
+        "2027-09-06",  # Labor
+        "2027-11-25",  # Thanksgiving
+        "2027-12-24",  # Christmas, observed
+    }
+)
+
+
+def next_session(day: str | None) -> str | None:
+    """The next exchange session after a close, from the holiday list above.
+
+    A session is any weekday that is not a full closure. Ten days is longer than
+    the longest run of closed days in the calendar (a holiday that lands on a
+    Friday and a weekend is three), so a miss returns None rather than a guess.
+    """
+    text = _day(day)
+    if text is None:
+        return None
+    try:
+        start = pd.Timestamp(text)
+    except (TypeError, ValueError):
+        return None
+    for step in range(1, 11):
+        candidate = start + pd.Timedelta(days=step)
+        stamp = str(candidate.date())
+        if candidate.weekday() >= 5 or stamp in HOLIDAYS:
+            continue
+        return stamp
+    return None
+
 # A name the account can no longer trade because the company is gone. KVUE was
 # acquired by KMB, so the rebalance target still owns the gap and no order can
 # close it. It gets its own row rather than being dropped from the table.
@@ -600,9 +653,20 @@ def flip_rows(
         ]
         refipped_on = later_flips[-1] if later_flips else None
         legs_filled = bool(close_ok and open_ok)
+        # The session the reopened side lands on, from the holiday list: the page
+        # says "fills 2026-11-27" rather than "still owed" for a leg the evening
+        # did send.
+        open_fills = next_session(open_filled) if open_filled else None
         if refipped_on:
             state = "refipped"
             state_label = f"re-flipped later by the drift guard on {refipped_on}"
+        elif open_filled and not open_ok:
+            state = "reopening"
+            state_label = (
+                f"reopening sent {open_filled}, fills {open_fills}"
+                if open_fills
+                else f"reopening sent {open_filled}"
+            )
         elif legs_filled:
             state = "complete"
             state_label = "complete"
@@ -620,6 +684,7 @@ def flip_rows(
                 "open_dollars": None if open_leg is None else abs(open_leg),
                 "open_filled": open_day,
                 "open_filled_at": open_filled,
+                "open_fills": open_fills,
                 "now_dollars": dollars,
                 "on_target_side": lying == wanted,
                 "legs_filled": legs_filled,
@@ -740,6 +805,36 @@ def _guard_events(
     return {ticker: sorted(set(days)) for ticker, days in events.items()}
 
 
+def _monthly_switch(proposals: pd.DataFrame) -> str | None:
+    """The first close the monthly cadence rebalanced on, if the store carries one.
+
+    It is the boundary between the daily era and the monthly one, so it is also
+    where the guard's own bill starts. Read from the manifests, not typed in.
+    """
+    if proposals is None or proposals.empty or "trade_date" not in proposals.columns:
+        return None
+    days: set[str] = set()
+    for record in proposals.to_dict("records"):
+        cadence = _manifest_of(record.get("manifest")).get("cadence") or {}
+        if str(cadence.get("day")) == REBALANCE:
+            days.add(str(record.get("trade_date"))[:10])
+    return min(days) if days else None
+
+
+def _guard_era(history: list[dict[str, Any]]) -> dict[str, Any]:
+    """The guard's whole bill since the monthly switch: every firing, legs only."""
+    sent = [row for row in history if (row.get("legs_sent") or 0) > 0]
+    return {
+        "firings": len(history),
+        "dates": [row.get("date") for row in history],
+        "legs": sum(int(row.get("legs_sent") or 0) for row in history),
+        "usd": sum(float(row.get("usd") or 0.0) for row in history),
+        "cost_bps": sum(float(row.get("cost_bps") or 0.0) for row in history)
+        if all(row.get("cost_bps") is not None for row in sent)
+        else None,
+    }
+
+
 def _guard_days(proposals: pd.DataFrame, anchor: str, today: str) -> set[str]:
     """The closes on which the drift guard fired, whether it could size a leg or not.
 
@@ -770,6 +865,7 @@ def _guard_history(
     fills: pd.DataFrame | None,
     flip_events: list[dict[str, Any]],
     flip_tickers: set[str] | None = None,
+    since: str | None = None,
 ) -> list[dict[str, Any]]:
     """One row per evening the drift guard fired, from the manifests it wrote.
 
@@ -789,7 +885,11 @@ def _guard_history(
         return []
     frame = proposals.copy()
     frame["trade_date"] = frame["trade_date"].astype(str).str.slice(0, 10)
-    frame = frame.loc[(frame["trade_date"] > anchor) & (frame["trade_date"] <= today)]
+    # The era starts at the switch to the monthly cadence, not at the latest
+    # anchor: the cost-by-era row is the guard's whole bill since the switch, and
+    # reading only from the anchor left three of its four firings out.
+    start = since or anchor
+    frame = frame.loc[(frame["trade_date"] > start) & (frame["trade_date"] <= today)]
     if frame.empty:
         return []
     frame = frame.sort_values(["trade_date"], kind="stable")
@@ -1118,8 +1218,13 @@ def holdings(
         elif flip is not None:
             closed = flip.get("close_filled") or anchor
             opened = flip.get("open_filled")
+            fills = flip.get("open_fills")
+            # A reopened side that the evening did send is not "still owed": the
+            # order exists and the page can name the session it lands on.
             since = (
-                f"flipped ({closed} to {opened})"
+                f"reopening sent {opened}, fills {fills}"
+                if opened and fills
+                else f"flipped ({closed} to {opened})"
                 if opened
                 else f"flipped (closed {closed}, open still owed)"
             )
@@ -1882,10 +1987,17 @@ def _block(
                 # Owed and impossible: the leg is under one share, so there is no
                 # order to place at any price and retrying it never ends.
                 reason = "carried leg"
-            elif close in guard_days:
+            elif close in guard_days and not (
+                ticker in flip_tickers and intent.endswith("_to_open")
+            ) and not (
+                intent.endswith("_to_open")
+                and any(day < close for day in closed_on.get(ticker, set()))
+            ):
                 # The day the guard fired decides it, not the leg's own intent: a
                 # guard day closes and opens in the same evening, and every leg it
-                # sent belongs to that evening's drift repair.
+                # sent belongs to that evening's drift repair. A second leg that
+                # reopens a flip is not a guard leg even when it lands on a guard
+                # day: the guard resized the book, it did not change a side.
                 reason = "guard"
             elif close in RETRADE_BUG_DAYS and not (
                 ticker in flip_tickers and intent.endswith("_to_open")
@@ -1932,6 +2044,32 @@ def _block(
                 item["sent_legs"] += 1
                 item["sent_usd"] += usd
 
+    # The refused count is about a position, not about the rebalance: KVUE has been
+    # refused since 2026-11-04, so a window that starts at the anchor says one night
+    # for a name that has failed every evening for a month. The window is the same
+    # monthly switch the guard's era uses.
+    switch = _monthly_switch(proposals)
+    if switch and not since.empty:
+        early = orders.loc[
+            (orders["trade_date"].astype(str).str.slice(0, 10) > switch)
+            & (orders["trade_date"].astype(str).str.slice(0, 10) < anchor)
+        ]
+        for row in early.itertuples(index=False):
+            code = str(getattr(row, "reason_code", "") or "").strip()
+            ticker = str(getattr(row, "ticker", "") or "").strip()
+            usd = abs(_number(getattr(row, "intended_notional", None)) or 0.0)
+            if not code or code in {"BELOW_MIN_NOTIONAL", "COVER_UNDER_ONE_SHARE"}:
+                continue
+            close = str(getattr(row, "trade_date", ""))[:10]
+            entry = not_sent["refused_names"].get(ticker or code)
+            if entry is None:
+                continue
+            entry["legs"] += 1
+            if close < entry["first_close"]:
+                entry["first_close"] = close
+            if close > entry["last_close"]:
+                entry["last_close"] = close
+
     unreachable = tonight_manifest.get("unfilled_unreachable") or []
     remainder = tonight_manifest.get("unfilled_remainder") or {}
     forced_usd = sum(abs(_number(v) or 0.0) for v in remainder.values()) + sum(
@@ -1954,6 +2092,16 @@ def _block(
         if isinstance(item, dict)
     ]
     cannot_send_usd = sum(float(item["usd"]) for item in cannot_send)
+    guard_history_rows = _guard_history(
+        proposals,
+        anchor,
+        today,
+        nav,
+        fills,
+        flip_events,
+        flip_tickers,
+        since=_monthly_switch(proposals),
+    )
     out = {
         "anchor": {"close": anchor, "day": source, "account_read": now_close},
         "cadence_strip": {
@@ -1993,6 +2141,10 @@ def _block(
                 "legs_under_minimum": _count(guard.get("legs_under_minimum")),
             },
         },
+        # The session the document's own close is followed by, from the holiday
+        # list: the evening's orders fill then, and the reconciliation sentence says
+        # so without a date typed in.
+        "next_session": next_session(today),
         "rebalance_card": rebalance_card(anchor, anchor_manifest, orders, fills, nav),
         "bridge_anchor": bridge_anchor,
         # The anchor rebalance's own trading cost, because that is the trade the
@@ -2015,15 +2167,10 @@ def _block(
             # One row per evening the drift guard fired, from the hold day's own
             # manifest: the page draws a card per firing, and the leg table splits
             # the guard's row by these dates.
-            "guard_history": _guard_history(
-                proposals,
-                anchor,
-                today,
-                nav,
-                fills,
-                flip_events,
-                flip_tickers,
-            ),
+            "guard_history": guard_history_rows,
+            # The guard's whole bill since the switch, in one place, so the
+            # cost-by-era row and the cards cannot disagree about it.
+            "guard_era": _guard_era(guard_history_rows),
             # What the table cannot count as a leg that went: the legs under the
             # order minimum and the ones the broker refused. Stated apart because a
             # reader who adds them to the reasons is adding orders that do not exist.

@@ -516,15 +516,6 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
           strokeWidth="1.6"
           data-zero-line="true"
         />
-        <text
-          x={frame.left - 5}
-          y={y(0) + 3}
-          textAnchor="end"
-          fontSize="9"
-          className="fill-slate-700"
-        >
-          0
-        </text>
         <text x={4} y={frame.top - 10} fontSize="9" className="fill-slate-500">
           bp
         </text>
@@ -724,15 +715,6 @@ function DailyBars({ snapshot }: { snapshot: Snapshot }) {
           strokeWidth="1.6"
           data-zero-line="true"
         />
-        <text
-          x={frame.left - 5}
-          y={y(0) + 3}
-          textAnchor="end"
-          fontSize="9"
-          className="fill-slate-700"
-        >
-          0
-        </text>
         <text x={4} y={frame.top - 8} fontSize="9" className="fill-slate-500">
           bp
         </text>
@@ -1289,8 +1271,13 @@ function DriftGuard({ monthly }: { monthly?: MonthlyBlock | null }) {
   const lit = worst > 0 ? Math.max(1, Math.round(ratio * DRIFT_SEGMENTS)) : 0;
   return (
     <div data-drift-guard="true" className="mt-1">
+      {/* A firing night states both ends, not just the reading it left: "fired:
+          8.16% -> 0.24%" is what the guard did, and a single percentage beside a
+          bar does not say whether it acted. */}
       <p className="font-mono text-sm font-semibold tabular-nums text-slate-900">
-        {percent(worst)} of {percent(limit, 0)}
+        {guard?.fired && guard?.exposure_after !== null && guard?.exposure_after !== undefined
+          ? `fired: ${percent(worst)} -> ${percent(guard.exposure_after)}`
+          : `${percent(worst)} of ${percent(limit, 0)}`}
       </p>
       {/* Ten segments rather than a continuous fill: a tenth of the limit each, so
           the count says how much of the guard's 5% the book is using without a reader

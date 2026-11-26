@@ -50,7 +50,9 @@ describe("the exposures panel on a hold day", () => {
     expect(text).toContain("cut the book's worst factor exposure from");
     expect(text).toContain("87.19%");
     expect(text).toContain("0.00%");
-    expect(text).toContain("Nothing was hedged tonight");
+    // A guard night says the guard re-hedged, not that nothing was hedged: the
+    // fixture is the 11-24 close, when the guard sent 113 legs.
+    expect(text).toContain("The drift guard re-hedged tonight");
     expect(text).not.toContain("machine precision");
     // Every cell carries its value in percent, and a cell's shade is the heat scale.
     const table = container.querySelector("[data-heat-table='true']");

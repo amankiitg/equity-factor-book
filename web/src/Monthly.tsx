@@ -539,7 +539,19 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
                   <td className="py-0.5 pr-2 font-medium">{row.reason}</td>
                   <td className="py-0.5 pr-2 text-right font-mono tabular-nums">
                     {row.reason === "rebalance" && sent < row.legs
-                      ? `${sent} sent, ${row.legs - sent} not sent (under $250)`
+                      ? (() => {
+                          // One definition: a leg sized with a nonzero change that
+                          // was not sent because it was under the $250 floor. A
+                          // refusal is a different line, so it is named as one
+                          // instead of folded into the floor count.
+                          const under =
+                            monthly.rebalance_card?.under_minimum_legs ??
+                            row.legs - sent;
+                          const refused = row.legs - sent - under;
+                          return `${sent} sent, ${under} not sent (under $250)${
+                            refused > 0 ? `, ${refused} refused` : ""
+                          }`;
+                        })()
                       : row.reason === "carried leg"
                         ? `${row.legs} leg, impossible (under one share)`
                         : sent === row.legs
@@ -564,6 +576,27 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
                     </td>
                     <td className="py-0.5 text-right font-mono tabular-nums">
                       {dollars(firing.usd)}
+                    </td>
+                  </tr>
+                ))}
+                {/* The same pair the guard card prints, from the same fields: the
+                    card and the table say one number, not two. */}
+                {firings.map((firing) => (
+                  <tr
+                    key={`${row.reason}-${firing.date}-under`}
+                    data-guard-under={firing.date}
+                    className="text-slate-500"
+                  >
+                    <td className="pb-0.5 pl-6 text-xs font-normal">
+                      under $250, not sent
+                    </td>
+                    <td className="pb-0.5 text-right font-mono tabular-nums text-xs">
+                      {firing.legs_not_sent ?? firing.legs_under_minimum ?? 0} legs
+                    </td>
+                    <td className="pb-0.5 text-right font-mono tabular-nums text-xs">
+                      {firing.not_sent_usd === null || firing.not_sent_usd === undefined
+                        ? "-"
+                        : dollars(firing.not_sent_usd)}
                     </td>
                   </tr>
                 ))}
