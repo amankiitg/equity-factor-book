@@ -1299,14 +1299,17 @@ function CostEras({ period, snapshot }: { period: AttributionPeriod; snapshot?: 
   // dollars it was quoted on give that rate; the guard's dollars then convert at it.
   // A hold day prices only borrow, so a zero trading half is not a rate: the anchor
   // rebalance's expected cost stands in then, and the figure is labelled an estimate.
-  const guardBp = !guard
+  // The guard's whole bill since the switch, from the block's own era summary, so
+  // this row and the guard cards cannot disagree about which firings it covers.
+  const guardEra = snapshot?.monthly?.guard_era ?? null;
+  const guardUsd = guardEra ? Math.abs(guardEra.usd) : guard ? Math.abs(guard.usd) : null;
+  const guardBp = guardUsd === null
     ? null
     : split?.trading && turnover
-      ? (guard.usd * split.trading) / turnover
+      ? (guardUsd * split.trading) / turnover
       : rebalance?.expected_cost_bps && rebalance.pct_nav && nav
-        ? (guard.usd * rebalance.expected_cost_bps) / (rebalance.pct_nav * nav)
+        ? (guardUsd * rebalance.expected_cost_bps) / (rebalance.pct_nav * nav)
         : null;
-  const guardUsd = guard ? Math.abs(guard.usd) : null;
   // The same legs, measured from the fills: four guard days' cost added up is what
   // the guard actually cost, while `guardBp` is what the trading rate predicts. The
   // page used to print the estimate alone, positive, a few lines under cards whose

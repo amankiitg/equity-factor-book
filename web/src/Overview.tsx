@@ -229,14 +229,25 @@ function axisTicks(low: number, high: number): number[] {
   if (!Number.isFinite(span) || span <= 0) return even();
   const rough = span / 4;
   const magnitude = Math.pow(10, Math.floor(Math.log10(rough)));
-  const norm = rough / magnitude;
-  const step =
-    (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10) * magnitude;
-  const ticks: number[] = [];
-  for (let value = Math.ceil(low / step) * step; value <= high + step * 1e-6; value += step) {
-    ticks.push(Math.round(value * 1e6) / 1e6);
+  // Whole steps only, and a tick set the chart can print: three to six labels,
+  // counted from the step's own multiples so the end labels are round too. The
+  // old guard asked for four or five and fell through to arithmetic divisions of
+  // the range, which is how -41, -20, 21 and 42 reached the axis.
+  const nice = [1, 2, 2.5, 5, 10];
+  for (let scale = magnitude / 10; scale <= magnitude * 10; scale *= 10) {
+    for (const step of nice.map((value) => value * scale)) {
+      const first = Math.floor(low / step) * step;
+      const last = Math.ceil(high / step) * step;
+      const count = Math.round((last - first) / step) + 1;
+      if (count < 3 || count > 6) continue;
+      const ticks: number[] = [];
+      for (let value = first; value <= last + step * 1e-6; value += step) {
+        ticks.push(Math.round(value * 1e6) / 1e6);
+      }
+      return ticks;
+    }
   }
-  return ticks.length >= 4 && ticks.length <= 5 ? ticks : even();
+  return even();
 }
 
 /**
@@ -505,15 +516,6 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
           strokeWidth="1.6"
           data-zero-line="true"
         />
-        <text
-          x={frame.left - 5}
-          y={y(0) + 3}
-          textAnchor="end"
-          fontSize="9"
-          className="fill-slate-700"
-        >
-          0
-        </text>
         <text x={4} y={frame.top - 10} fontSize="9" className="fill-slate-500">
           bp
         </text>
@@ -713,15 +715,6 @@ function DailyBars({ snapshot }: { snapshot: Snapshot }) {
           strokeWidth="1.6"
           data-zero-line="true"
         />
-        <text
-          x={frame.left - 5}
-          y={y(0) + 3}
-          textAnchor="end"
-          fontSize="9"
-          className="fill-slate-700"
-        >
-          0
-        </text>
         <text x={4} y={frame.top - 8} fontSize="9" className="fill-slate-500">
           bp
         </text>
@@ -1248,7 +1241,10 @@ function CadencePill({ monthly }: { monthly?: MonthlyBlock | null }) {
       </p>
     );
   }
-  const day = strip.sessions_since ?? 1;
+  // The place in the cycle, not the raw offset: the offset counts from the fixed
+  // 10-23 origin and runs past k, so it printed "hold day 23 of 21".
+  const cycle = strip.day_in_cycle ?? ((strip.offset ?? 0) % (strip.k || 21));
+  const day = cycle === 0 ? 1 : cycle;
   return (
     <p
       data-cadence-pill="hold"
@@ -1275,8 +1271,13 @@ function DriftGuard({ monthly }: { monthly?: MonthlyBlock | null }) {
   const lit = worst > 0 ? Math.max(1, Math.round(ratio * DRIFT_SEGMENTS)) : 0;
   return (
     <div data-drift-guard="true" className="mt-1">
+      {/* A firing night states both ends, not just the reading it left: "fired:
+          8.16% -> 0.24%" is what the guard did, and a single percentage beside a
+          bar does not say whether it acted. */}
       <p className="font-mono text-sm font-semibold tabular-nums text-slate-900">
-        {percent(worst)} of {percent(limit, 0)}
+        {guard?.fired && guard?.exposure_after !== null && guard?.exposure_after !== undefined
+          ? `fired: ${percent(worst)} -> ${percent(guard.exposure_after)}`
+          : `${percent(worst)} of ${percent(limit, 0)}`}
       </p>
       {/* Ten segments rather than a continuous fill: a tenth of the limit each, so
           the count says how much of the guard's 5% the book is using without a reader
@@ -1379,7 +1380,6 @@ export function Overview({
         <Kpi
           hook="today"
           title={lastDate ? `Last close (${lastDate})` : "Last close"}
-          plainTitle
           value={bps(todayValue)}
           valueClass={pnlClass(todayValue)}
           detail={

@@ -23,7 +23,7 @@
 // "expected" on a hunch would be worse than one that shows it amber and says why.
 
 import { compareAccount, type AccountCompare } from "./account";
-import { dollars } from "./format";
+import { dateOnly, dollars } from "./format";
 import type { Snapshot } from "./types";
 
 /** Which comparison a mismatch came out of, and on which side. */
@@ -202,6 +202,27 @@ export function classify(snapshot: Snapshot): Exceptions {
   for (const leg of snapshot.monthly?.tonight?.cannot_send ?? []) {
     if (leg?.ticker) cannotSend.set(leg.ticker, String(leg.code ?? ""));
   }
+  // The reopening sentence is derived from the document: the evening that sent the
+  // order and, from the holiday calendar, the session it fills on. The sentence it
+  // replaces named 11-16 because that was the Monday it happened to be.
+  const reopenBrief = (ticker: string): string | undefined => {
+    const flip = (snapshot.monthly?.bridge_anchor?.flip_rows ?? []).find(
+      (row) => row.ticker === ticker,
+    );
+    // The leg's own dates when the flip row carries them; otherwise the document's
+    // close and the session the holiday calendar says follows it, which is the same
+    // fact for a deferred reversal whose row is not a flip.
+    const sent =
+      dateOnly(flip?.open_filled ?? null)?.slice(5) ??
+      dateOnly(snapshot.target_close ?? null)?.slice(5);
+    if (!sent) return undefined;
+    const fills =
+      dateOnly(flip?.open_fills ?? null)?.slice(5) ??
+      dateOnly(snapshot.monthly?.next_session ?? null)?.slice(5);
+    return fills
+      ? `its reopening order went out on ${sent} and fills ${fills}`
+      : `its reopening order went out on ${sent} and fills on the next session`;
+  };
   const heldDollars = (ticker: string): number | null => {
     const name = (snapshot.actual_holdings?.names ?? []).find((row) => row.ticker === ticker);
     const value = name?.notional;
@@ -223,7 +244,7 @@ export function classify(snapshot: Snapshot): Exceptions {
         ticker,
         side,
         why: "deferred reversal of the previous close: closed then, reopening now",
-        brief: "its reopening order fills on Monday, 11-16",
+        brief: reopenBrief(ticker),
         key: "bridge.previous_reversals_pending",
         label: "in transit",
       };

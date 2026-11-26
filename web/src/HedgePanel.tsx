@@ -51,8 +51,18 @@ function footprint(day: string, moved: number | null, book: number | null, usd: 
 }
 
 /** The rebalance's footprint: one line, measured on the close that hedged. */
-function AnchoredHedge({ block }: { block: NonNullable<MonthlyBlock["hedge"]> }) {
+function AnchoredHedge({
+  block,
+  monthly,
+}: {
+  block: NonNullable<MonthlyBlock["hedge"]>;
+  monthly?: MonthlyBlock | null;
+}) {
   const shares = block.variance_shares ?? [];
+  const guard = monthly?.cadence_strip?.guard;
+  const guardUsd =
+    monthly?.since_anchor?.guard_history?.find((row) => row.date === monthly?.holdings?.as_of)
+      ?.usd ?? null;
   return (
     <>
       <p className="mt-1 text-sm text-slate-700" data-hedge="opening">
@@ -63,7 +73,16 @@ function AnchoredHedge({ block }: { block: NonNullable<MonthlyBlock["hedge"]> })
           block.moved_usd,
           block.share_of_turnover,
         )}{" "}
-        Nothing was hedged tonight, which is what a hold day is.
+        {guard?.fired ? (
+          <>
+            Tonight the drift guard re-hedged it again: worst exposure{" "}
+            <span className="font-mono tabular-nums">{percent(guard.worst_abs_exposure)}</span> to{" "}
+            <span className="font-mono tabular-nums">{percent(guard.exposure_after)}</span>,{" "}
+            {count(guard.legs ?? null)} legs, {dollars(guardUsd)}.
+          </>
+        ) : (
+          "Nothing was hedged tonight, which is what a hold day is."
+        )}
       </p>
       {shares.length > 0 ? (
         <Details
@@ -151,7 +170,7 @@ export function HedgePanel({
             names for $122,805.
           </HowToRead>
         </h2>
-        <AnchoredHedge block={anchored} />
+        <AnchoredHedge block={anchored} monthly={monthly} />
       </section>
     );
   }

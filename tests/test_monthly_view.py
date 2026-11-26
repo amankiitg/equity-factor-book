@@ -2103,3 +2103,28 @@ def test_the_guard_row_splits_the_legs_it_sends_from_the_ones_it_does_not() -> N
     assert row["legs_not_sent"] == 1
     assert row["legs_wanted"] == 3
     assert row["not_sent_usd"] == pytest.approx(0.0001 * nav, abs=0.01)
+
+
+def test_the_fills_date_skips_the_thanksgiving_holiday():
+    """A reopening sent on 11-25 fills on 11-27, not on the holiday in between."""
+    assert monthly_view.next_session("2026-11-24") == "2026-11-25"
+    assert monthly_view.next_session("2026-11-25") == "2026-11-27"
+    # Friday to Monday: the weekend is not a session either.
+    assert monthly_view.next_session("2026-11-27") == "2026-11-30"
+    # A date that is not a session at all still gives the next one that is.
+    assert monthly_view.next_session("2026-11-26") == "2026-11-27"
+    assert monthly_view.next_session(None) is None
+
+
+def test_the_holiday_list_is_refreshed_before_it_runs_out():
+    """The list covers 2026 and 2027 only; this fails once a year is missing.
+
+    The page prints a fills date from it, so a year it does not know would silently
+    fall back to a weekday guess. The guard is the calendar year, not a date inside
+    it, because a list that ends in December is still wrong in January.
+    """
+    from datetime import date
+
+    assert date.today().year <= max(monthly_view.HOLIDAY_YEARS), (
+        "HOLIDAY_YEARS is stale: add the next year's NYSE full closures to HOLIDAYS"
+    )

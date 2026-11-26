@@ -310,8 +310,10 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
             <span className="font-mono tabular-nums">
               {heatText(worstOf(anchor.after))}
             </span>
-            . Nothing was hedged tonight, so the &quot;now&quot; column is the book as it
-            stands, not a hedge&apos;s output.
+            .{" "}
+            {guardFired
+              ? "The drift guard re-hedged tonight, so the now column is its output."
+              : "Nothing was hedged tonight, so the now column is the book as it stands, not a hedge's output."}
           </p>
           {guardFired ? (
             <p className="mt-1 text-sm text-amber-800" data-hedge-guard="true">

@@ -514,6 +514,8 @@ export interface FlipRow {
   open_dollars: number | null;
   open_filled: string | null;
   open_filled_at?: string | null;
+  /** The session the reopened side fills on, from the holiday calendar. */
+  open_fills?: string | null;
   now_dollars: number;
   on_target_side: boolean;
   complete: boolean;
@@ -521,7 +523,7 @@ export interface FlipRow {
   legs_filled?: boolean;
   /** The day a later drift guard moved this name again, or null. */
   refipped_on?: string | null;
-  state?: "complete" | "refipped" | "owed";
+  state?: "complete" | "refipped" | "owed" | "reopening";
   state_label?: string;
 }
 
@@ -569,6 +571,16 @@ export interface AnchorConstruction {
 
 /** The pages measured from the anchor, built by `live/monthly_view.py`. */
 export interface MonthlyBlock {
+  /** The session after the document's own close, from the holiday calendar. */
+  next_session?: string | null;
+  /** The guard's whole bill since the monthly switch, in one summary. */
+  guard_era?: {
+    firings: number;
+    dates: Array<string | null>;
+    legs: number;
+    usd: number;
+    cost_bps: number | null;
+  };
   anchor?: { close: string | null; day: "rebalance" | "cadence" | "daily"; account_read: string | null };
   /**
    * The anchor close's own factor exposures, before and after its hedge.
@@ -588,6 +600,8 @@ export interface MonthlyBlock {
     k: number | null;
     offset: number | null;
     sessions_since: number | null;
+    /** The session's place in the current cycle: 0 is a rebalance day, 1..k-1 hold. */
+    day_in_cycle?: number | null;
     last_rebalance: string | null;
     next_rebalance: string | null;
     guard: {

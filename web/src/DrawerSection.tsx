@@ -56,6 +56,18 @@ export function DrawerSection({
         snapshot.monthly?.holdings?.rows ?? [],
       )
     : { held: 0, exited: 0, opening: 0, openingTickers: [], total: 0 };
+  // Every flip the document says is still reopening, whether or not its row's
+  // tonight text calls it an opening: the header counts the reopenings, and a name
+  // whose closing leg landed tonight is one of them even when its second leg is
+  // already sent.
+  // Only a leg the evening actually sent is an opening tonight: a flip whose
+  // second leg is still owed has closed and not opened, and counting it would
+  // describe a position the account does not have.
+  const reopening = (snapshot.monthly?.bridge_anchor?.flip_rows ?? [])
+    .filter((row) => row.state === "reopening")
+    .map((row) => row.ticker);
+  const openingTickers = [...new Set([...counts.openingTickers, ...reopening])].sort();
+  const openingCount = Math.max(counts.opening, openingTickers.length);
   const anchor = dateOnly(
     snapshot.monthly?.holdings?.anchor ?? snapshot.monthly?.anchor?.close ?? null,
   );
@@ -72,10 +84,10 @@ export function DrawerSection({
         if (counts.exited > 0 && anchor) {
           parts.push(`${counts.exited} exited since ${anchor.slice(5)}`);
         }
-        if (counts.opening > 0) {
+        if (openingCount > 0) {
           parts.push(
-            `${counts.opening} opening tonight${
-              counts.openingTickers.length > 0 ? ` (${counts.openingTickers.join(", ")})` : ""
+            `${openingCount} opening tonight${
+              openingTickers.length > 0 ? ` (${openingTickers.join(", ")})` : ""
             }`,
           );
         }
