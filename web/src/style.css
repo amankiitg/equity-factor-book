@@ -503,22 +503,57 @@ details > summary {
   border-right: 1px solid var(--efb-line);
 }
 
+/*
+ * On a phone the five tabs are a grid rather than a row that scrolls sideways:
+ * three on the first line, two on the second, in six columns where the first
+ * three span two each and the last two span three. Every tab is reachable with
+ * one tap and no gesture, which is the one thing the scrolling strip got wrong.
+ * The number sits above the word so a two line label stays centred.
+ */
 @media (max-width: 767px) {
   .efb-tabs {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     width: 100%;
     border-top: 1px solid var(--efb-line);
-    overflow-x: auto;
-    flex-wrap: nowrap;
+    overflow: visible;
   }
 
   .efb-tab {
-    min-height: 2.75rem;
-    padding: 0 0.8rem;
-    white-space: nowrap;
+    grid-column: span 2;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+    gap: 0.1rem;
+    min-height: 3.1rem;
+    padding: 0.3rem 0.35rem;
+    border-left: 0;
+    border-right: 1px solid var(--efb-line);
+    border-bottom: 1px solid var(--efb-line);
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
   }
 
-  .efb-tab:first-child {
-    border-left: 0;
+  .efb-tab:nth-child(3),
+  .efb-tab:nth-child(5) {
+    border-right: 0;
+  }
+
+  .efb-tab:nth-child(n + 4) {
+    grid-column: span 3;
+    border-bottom: 0;
+  }
+
+  .efb-tab::before {
+    display: block;
+    margin-right: 0;
+    text-align: center;
+  }
+
+  /* The masthead is one clean line on a phone: the subtitle is a desktop nicety. */
+  .efb-brand small {
+    display: none;
   }
 }
 

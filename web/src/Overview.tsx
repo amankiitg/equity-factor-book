@@ -1098,6 +1098,13 @@ export function overviewExceptions(
   }
   for (const row of snapshot.monthly?.holdings?.rows ?? []) {
     if (row.retired) {
+      // A retired name the account no longer carries is history, not a thing to
+      // look at: on 11-25 KVUE converted to KMB, so the account holds none of it
+      // and there is nothing stuck and nothing to do. The line is dropped only
+      // when there is an account read that says so; without one, the document
+      // cannot know and the old line stands.
+      const accountNames = snapshot.actual_holdings?.names ?? null;
+      if (accountNames && heldDollars(row.ticker) === null) continue;
       const note = row.note ?? "retired, owed, cannot be traded";
       const acquired = /retired \(([^)]+)\)/.exec(note)?.[1];
       const by = acquired ? acquired.replace(/^acquired by /i, "") : null;
@@ -1117,6 +1124,13 @@ export function overviewExceptions(
     }
   }
   for (const leg of snapshot.monthly?.tonight?.cannot_send ?? []) {
+    // The same rule as the retired row above: a leg for a symbol the broker has
+    // no live market for, on a name the account no longer carries, is the tail of
+    // a position that has already gone. Nothing can be sent for it and nothing is
+    // owed, so it is not a thing to look at.
+    const accountNames = snapshot.actual_holdings?.names ?? null;
+    const untradeable = /INACTIVE|SYMBOL_NOT_FOUND|NOT_FOUND/i.test(String(leg.code ?? ""));
+    if (accountNames && untradeable && heldDollars(leg.ticker) === null) continue;
     add(
       `cannot-send-${leg.ticker}`,
       `${leg.ticker}: ${dollars(leg.usd)} owed, cannot be sent (${
@@ -1125,7 +1139,17 @@ export function overviewExceptions(
       leg.ticker,
     );
   }
+  // A name the document already explains as acquired is not an unexplained exit:
+  // the retired row carries the buyer, the shares came back as the acquirer's, and
+  // there was never an order to fill. Listing it as "left with no order behind it"
+  // asks a reader to chase a conversion the page already describes.
+  const acquired = new Set(
+    (snapshot.monthly?.holdings?.rows ?? [])
+      .filter((row) => row.retired && /acquired by/i.test(row.note ?? ""))
+      .map((row) => row.ticker),
+  );
   for (const name of snapshot.actual_holdings?.exits?.names ?? []) {
+    if (acquired.has(name.ticker)) continue;
     add(
       `exit-${name.ticker}`,
       `${name.ticker}: left the account with no order behind it, ${dollars(name.notional)}`,

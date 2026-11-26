@@ -129,6 +129,48 @@ describe("the overview tab", () => {
     expect(line).toBe("KVUE: acquired by KMB, symbol inactive, held $13,615, cannot be traded");
   });
 
+  it("drops the KVUE lines once the account no longer holds it", () => {
+    const monthly = SERVED.monthly as MonthlyBlock;
+    // The 11-25 document: the row is still retired, the leg is still unsendable,
+    // and the account has converted the shares to KMB, so it holds none of KVUE.
+    const retired = {
+      ticker: "KVUE",
+      since: "retired (acquired by KMB), owed, cannot be traded",
+      since_kind: "retired",
+      since_date: "2026-11-25",
+      weight_now: 0,
+      weight_target: 0,
+      gap_weight: 0,
+      gap_usd: 0,
+      tonight: null,
+      retired: true,
+      owed: true,
+      note: "retired (acquired by KMB), owed, cannot be traded",
+    };
+    const block = {
+      ...monthly,
+      holdings: { anchor: "2026-10-23", as_of: "2026-11-25", rows: [retired] },
+      tonight: {
+        ...(monthly.tonight ?? {}),
+        cannot_send: [{ code: "ASSET_INACTIVE", ticker: "KVUE", usd: 13615.45 }],
+      },
+    } as MonthlyBlock;
+    const actual = SERVED.actual_holdings as NonNullable<Snapshot["actual_holdings"]>;
+    const snapshot: Snapshot = {
+      ...SERVED,
+      monthly: block,
+      actual_holdings: {
+        ...actual,
+        names: (actual.names ?? []).filter((name) => name.ticker !== "KVUE"),
+      },
+    };
+    const state = runState(snapshot, NOW);
+    const exceptions = classify(snapshot);
+    const reconciled = reconciliation(snapshot, exceptions);
+    const lines = overviewExceptions(snapshot, state, reconciled, exceptions);
+    expect(lines.map((line) => line.text).join(" ")).not.toContain("KVUE");
+  });
+
   it("draws the cumulative lines, the daily bars and the exposure comparison", () => {
     render(<SnapshotView snapshot={SERVED} now={NOW} />);
     const chart = document.querySelector("[data-overview-cumulative='true']");
