@@ -180,9 +180,9 @@ describe("the exposures panel on a hold day", () => {
     // take it under the line.
     expect(darkest.ratio).toBeGreaterThanOrEqual(4.5);
     // And the rule is not one colour: a dark fill takes the light ink.
-    expect(heatInk("rgba(15, 23, 42, 1)")).toBe("#f8fafc");
-    expect(heatInk("transparent")).toBe("#0f172a");
-    expect(heatContrast("rgba(15, 23, 42, 1)", "#f8fafc")).toBeGreaterThan(4.5);
+    expect(heatInk("rgba(15, 23, 42, 1)")).toBe("#efebe2");
+    expect(heatInk("transparent")).toBe("#191713");
+    expect(heatContrast("rgba(15, 23, 42, 1)", "#efebe2")).toBeGreaterThan(4.5);
   });
 
   it("shows the anchor's before column as a real exposure, not the same vector", () => {

@@ -84,14 +84,40 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
   const exceptions = classify(snapshot);
   const reconciled = reconciliation(snapshot, exceptions);
   const [view, setView] = useState<View>("overview");
-  const tabClass = (active: boolean): string =>
-    `rounded px-3 py-1 text-sm font-semibold ${
-      active ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-800 hover:bg-slate-200"
-    }`;
 
   return (
-    <main className="mx-auto flex max-w-[88rem] flex-col gap-3 p-3 sm:p-4">
-      <h1 className="text-xl font-bold">EFB paper book</h1>
+    <main className="efb-page flex flex-col gap-4 pb-10">
+      <header className="efb-topbar">
+        <div className="efb-brand">
+          <span className="efb-mark" aria-hidden="true">
+            EFB
+          </span>
+          <div>
+            <h1>EFB paper book</h1>
+            <small>market-neutral equity &middot; monthly rebuild &middot; paper account</small>
+          </div>
+        </div>
+        <div className="efb-tabs" role="tablist" aria-label="view">
+          {TABS.map((tab, index) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              data-view={tab.key}
+              // The tab's own number, drawn by the stylesheet beside the label: a
+              // reader who is told "the fourth tab" can find it, and the button's
+              // accessible name stays the word it says.
+              data-index={String(index + 1).padStart(2, "0")}
+              aria-selected={view === tab.key}
+              aria-controls={`panel-${tab.key}`}
+              onClick={() => setView(tab.key)}
+              className="efb-tab"
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </header>
       <StatusStrip
         snapshot={snapshot}
         now={now}
@@ -100,22 +126,6 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
         reconciled={reconciled}
         exceptions={exceptions}
       />
-      <div className="flex flex-wrap gap-1" role="tablist" aria-label="view">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            role="tab"
-            data-view={tab.key}
-            aria-selected={view === tab.key}
-            aria-controls={`panel-${tab.key}`}
-            onClick={() => setView(tab.key)}
-            className={tabClass(view === tab.key)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
 
       <div role="tabpanel" id="panel-overview" hidden={view !== "overview"}>
         <Overview

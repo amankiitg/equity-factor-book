@@ -111,8 +111,8 @@ const FLAT_UNDER = 0.00005;
 const GUARD_BAND = 0.05;
 
 /** The two inks. Which one a cell takes is decided by its own background. */
-const DARK_INK = "#0f172a";
-const LIGHT_INK = "#f8fafc";
+const DARK_INK = "#191713";
+const LIGHT_INK = "#efebe2";
 
 /** One sRGB channel, linearised for a WCAG contrast ratio. */
 const linear = (value: number): number => {
