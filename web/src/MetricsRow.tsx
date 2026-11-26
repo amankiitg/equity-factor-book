@@ -56,7 +56,7 @@ function Card({
         <HowToRead>{info}</HowToRead>
       </div>
       {value === undefined ? null : (
-        <div className="font-mono text-base leading-tight tabular-nums">{value}</div>
+        <div className="efb-stat-sm mt-1">{value}</div>
       )}
       {detail === undefined ? null : (
         <div className="text-xs text-slate-600">{detail}</div>

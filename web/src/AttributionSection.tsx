@@ -74,7 +74,7 @@ const beta3 = (value: number | null | undefined): string =>
 const closingBps = (value: number | null | undefined): string => bps(value ?? 0);
 
 const COLORS = {
-  total: "#0f172a",
+  total: "#191713",
   factor: "#0284c7",
   idio: "#059669",
   cost: "#e11d48",
@@ -230,8 +230,8 @@ function CumulativeChart({
       >
         {ticks.map((tick, index) => (
           <g key={index}>
-            <line x1={L} y1={y(tick)} x2={W - R} y2={y(tick)} stroke="#e2e8f0" strokeWidth="1" />
-            <text x={L - 4} y={y(tick) + 3} textAnchor="end" fontSize="8" fill="#64748b">
+            <line x1={L} y1={y(tick)} x2={W - R} y2={y(tick)} stroke="#d6d1c5" strokeWidth="1" />
+            <text x={L - 4} y={y(tick) + 3} textAnchor="end" fontSize="8" fill="#6e6a61">
               {(tick * 1e4).toFixed(0)}
             </text>
           </g>
@@ -241,7 +241,7 @@ function CumulativeChart({
           y1={y(0)}
           x2={W - R}
           y2={y(0)}
-          stroke="#94a3b8"
+          stroke="#8f897c"
           strokeWidth="1"
           strokeDasharray="2 2"
         />
@@ -271,17 +271,17 @@ function CumulativeChart({
                 y1={T}
                 x2={x(index)}
                 y2={T + ph}
-                stroke="#94a3b8"
+                stroke="#8f897c"
                 strokeWidth="1"
                 strokeDasharray="3 2"
               />
             </g>
           );
         })}
-        <text x={L} y={H - 6} textAnchor="start" fontSize="8" fill="#64748b">
+        <text x={L} y={H - 6} textAnchor="start" fontSize="8" fill="#6e6a61">
           {first.label}
         </text>
-        <text x={W - R} y={H - 6} textAnchor="end" fontSize="8" fill="#64748b">
+        <text x={W - R} y={H - 6} textAnchor="end" fontSize="8" fill="#6e6a61">
           {last.label}
         </text>
         {/* The pointer's own reading: a band per session with the date and the four
@@ -364,7 +364,7 @@ function DailyBars({ days }: { days: AttributionDay[] }) {
         role="img"
         aria-label="daily P&L, the four terms stacked against the day's total"
       >
-        <line x1={L} y1={y(0)} x2={W - R} y2={y(0)} stroke="#94a3b8" strokeWidth="1" />
+        <line x1={L} y1={y(0)} x2={W - R} y2={y(0)} stroke="#8f897c" strokeWidth="1" />
         {stats.map((stat, index) => {
           const cx = L + (index + 0.5) * slot;
           const date = dateOnly(stat.day.trade_date) ?? "";
@@ -425,10 +425,10 @@ function DailyBars({ days }: { days: AttributionDay[] }) {
             </g>
           );
         })}
-        <text x={L} y={H - 6} textAnchor="start" fontSize="8" fill="#64748b">
+        <text x={L} y={H - 6} textAnchor="start" fontSize="8" fill="#6e6a61">
           {dateOnly(first?.trade_date) ?? ""}
         </text>
-        <text x={W - R} y={H - 6} textAnchor="end" fontSize="8" fill="#64748b">
+        <text x={W - R} y={H - 6} textAnchor="end" fontSize="8" fill="#6e6a61">
           {dateOnly(last?.trade_date) ?? ""}
         </text>
       </svg>
@@ -846,7 +846,7 @@ function Marker({
           y1={top}
           x2={x}
           y2={top + height}
-          stroke="#475569"
+          stroke="#57534a"
           strokeWidth="0.8"
           strokeDasharray="2 2"
         />
@@ -857,12 +857,12 @@ function Marker({
           y1={cy}
           x2={right}
           y2={cy}
-          stroke="#475569"
+          stroke="#57534a"
           strokeWidth="1.2"
           strokeLinecap="round"
         />
       ) : null}
-      <circle cx={cx} cy={cy} r={radius} fill={open ? "#0f172a" : "#475569"} />
+      <circle cx={cx} cy={cy} r={radius} fill={open ? "#191713" : "#57534a"} />
       <text x={cx} y={cy + 3 * scale} textAnchor="middle" fontSize={8 * scale} fill="#ffffff">
         {number}
       </text>
@@ -1069,13 +1069,13 @@ function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
       >
       {[0, 0.5, 1].map((tick, index) => (
         <g key={index}>
-          <line x1={L} y1={y(tick * top)} x2={W - R} y2={y(tick * top)} stroke="#e2e8f0" strokeWidth="1" />
-          <text x={L - 4} y={y(tick * top) + 3} textAnchor="end" fontSize="8" fill="#64748b">
+          <line x1={L} y1={y(tick * top)} x2={W - R} y2={y(tick * top)} stroke="#d6d1c5" strokeWidth="1" />
+          <text x={L - 4} y={y(tick * top) + 3} textAnchor="end" fontSize="8" fill="#6e6a61">
             {`${(tick * top * 100).toFixed(1)}%`}
           </text>
         </g>
       ))}
-      <polygon data-series="removed" points={band} fill="#94a3b8" fillOpacity="0.25" />
+      <polygon data-series="removed" points={band} fill="#8f897c" fillOpacity="0.25" />
       <polyline
         data-series="pre-hedge"
         points={line(before)}
@@ -1091,10 +1091,10 @@ function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
         strokeWidth="1.4"
       />
       <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} scale={scale} />
-      <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
+      <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#6e6a61">
         {dates[0] ?? ""}
       </text>
-      <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#64748b">
+      <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#6e6a61">
         {dates[dates.length - 1] ?? ""}
       </text>
       </svg>
@@ -1110,7 +1110,7 @@ function HedgeVol({ path }: { path: AttributionRiskPath[] }) {
             dash: "",
           },
           { key: "hedged", word: "book held, after the hedge", color: COLORS.idio, dash: "" },
-          { key: "removed", word: "removed by the hedge", color: "#94a3b8", dash: "", shape: "patch" },
+          { key: "removed", word: "removed by the hedge", color: "#8f897c", dash: "", shape: "patch" },
         ]}
       />
       <p className="mt-1 text-xs text-slate-500">
@@ -1168,8 +1168,8 @@ function RiskPath({ path }: { path: AttributionRiskPath[] }) {
       >
       {[0, 0.5, 1].map((tick, index) => (
         <g key={index}>
-          <line x1={L} y1={y(tick)} x2={W - R} y2={y(tick)} stroke="#e2e8f0" strokeWidth="1" />
-          <text x={L - 4} y={y(tick) + 3} textAnchor="end" fontSize="8" fill="#64748b">
+          <line x1={L} y1={y(tick)} x2={W - R} y2={y(tick)} stroke="#d6d1c5" strokeWidth="1" />
+          <text x={L - 4} y={y(tick) + 3} textAnchor="end" fontSize="8" fill="#6e6a61">
             {`${(tick * 100).toFixed(0)}%`}
           </text>
         </g>
@@ -1197,10 +1197,10 @@ function RiskPath({ path }: { path: AttributionRiskPath[] }) {
         strokeWidth="1"
       />
       <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} scale={scale} />
-      <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
+      <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#6e6a61">
         {dates[0] ?? ""}
       </text>
-      <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#64748b">
+      <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#6e6a61">
         {dates[dates.length - 1] ?? ""}
       </text>
       </svg>
@@ -1582,10 +1582,10 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
               y1={y(tick * top)}
               x2={W - R}
               y2={y(tick * top)}
-              stroke="#e2e8f0"
+              stroke="#d6d1c5"
               strokeWidth="1"
             />
-            <text x={L - 4} y={y(tick * top) + 3} textAnchor="end" fontSize="8" fill="#64748b">
+            <text x={L - 4} y={y(tick * top) + 3} textAnchor="end" fontSize="8" fill="#6e6a61">
               {`${(tick * top * 100).toFixed(1)}%`}
             </text>
           </g>
@@ -1605,10 +1605,10 @@ function VolatilityPanel({ period }: { period: AttributionPeriod }) {
           strokeWidth="1.4"
         />
         <ChartMarkers dates={dates} x={x} top={T} height={ph} open={open} setOpen={setOpen} scale={scale} />
-        <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#64748b">
+        <text x={L} y={H - 5} textAnchor="start" fontSize="8" fill="#6e6a61">
           {dates[0] ?? ""}
         </text>
-        <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#64748b">
+        <text x={W - R} y={H - 5} textAnchor="end" fontSize="8" fill="#6e6a61">
           {dates[dates.length - 1] ?? ""}
         </text>
       </svg>
@@ -1686,8 +1686,18 @@ function VolatilityGroup({ period }: { period: AttributionPeriod }) {
             : ""}
         </HowToRead>
       </h3>
-      {risk ? <RiskSplit risk={risk} /> : null}
-      <VolatilityPanel period={period} />
+      {/* Two columns on a wide screen, for the same reason as the P&L charts above:
+          a 320-unit chart stretched across the whole page is taller than the window. */}
+      <div className="grid items-start gap-x-6 xl:grid-cols-2">
+        {risk ? (
+          <div className="min-w-0">
+            <RiskSplit risk={risk} />
+          </div>
+        ) : null}
+        <div className="min-w-0">
+          <VolatilityPanel period={period} />
+        </div>
+      </div>
       <Corrections />
     </section>
   );
@@ -1790,13 +1800,24 @@ function PeriodView({
         stored.
       </p>
 
-      {points.length >= 1 ? (
-        <CumulativeChart
-          points={points}
-          rebalances={snapshot?.monthly?.rebalance_dates ?? []}
-        />
-      ) : null}
-      {live ? <DailyBars days={carried} /> : null}
+      {/* Side by side on a wide screen: each chart is drawn in a 320-unit box that
+          stretches to its column, so one chart across the full page grows taller
+          than the window and its labels grow with it. */}
+      <div data-attribution-charts="true" className="grid items-start gap-x-6 xl:grid-cols-2">
+        {points.length >= 1 ? (
+          <div className="min-w-0">
+            <CumulativeChart
+              points={points}
+              rebalances={snapshot?.monthly?.rebalance_dates ?? []}
+            />
+          </div>
+        ) : null}
+        {live ? (
+          <div className="min-w-0">
+            <DailyBars days={carried} />
+          </div>
+        ) : null}
+      </div>
       <CostLine period={period} snapshot={snapshot} />
       {live ? <CostEras period={period} snapshot={snapshot} /> : null}
 

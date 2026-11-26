@@ -1,6 +1,31 @@
 @import "tailwindcss";
 
 /*
+ * The look: warm paper, near-black ink, one acid accent, square corners and
+ * 1px ink rules, with Atkinson Hyperlegible for words and the system monospace
+ * for labels and figures. The slate scale every component already uses is
+ * re-pointed at warm greys here, so a class like text-slate-500 keeps its job
+ * (the muted line under a number) and simply reads warm.
+ */
+@theme {
+  --font-sans: "Atkinson Hyperlegible", "Arial Narrow", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-white: #f3f0e8;
+  --color-slate-50: #efebe2;
+  --color-slate-100: #e9e5dc;
+  --color-slate-200: #d6d1c5;
+  --color-slate-300: #bdb7a9;
+  --color-slate-400: #8f897c;
+  --color-slate-500: #6e6a61;
+  --color-slate-600: #57534a;
+  --color-slate-700: #3e3b34;
+  --color-slate-800: #2a2722;
+  --color-slate-900: #191713;
+  --color-slate-950: #0f0e0b;
+}
+
+/*
  * A tab that is not selected is not shown, whatever utility class its content
  * carries. The panels are all mounted so the page's in-document search can reach
  * them; only the selected one is in the visual and accessibility tree.
@@ -17,12 +42,12 @@
  * more than the target asks for, soft violet where it holds less.
  */
 :root {
-  --efb-surface: #ffffff;
-  --efb-ink: #0f172a;
-  --efb-muted: #475569;
-  --efb-faint: #94a3b8;
-  --efb-rule: #cbd5e1;
-  --efb-rule-soft: #e2e8f0;
+  --efb-surface: #f3f0e8;
+  --efb-ink: #191713;
+  --efb-muted: #6e6a61;
+  --efb-faint: #8f897c;
+  --efb-rule: #191713;
+  --efb-rule-soft: #d6d1c5;
 
   --efb-long-bg: #ecfdf3;
   --efb-long-ink: #166534;
@@ -49,9 +74,16 @@
   --efb-gap-less-bg: #f5f3ff;
   --efb-gap-less-ink: #6d28d9;
 
-  --efb-pill-bg: #f1f5f9;
-  --efb-pill-ink: #475569;
-  --efb-pill-line: #e2e8f0;
+  --efb-pill-bg: #e9e5dc;
+  --efb-pill-ink: #3e3b34;
+  --efb-pill-line: #bdb7a9;
+
+  --efb-paper: #f3f0e8;
+  --efb-paper-2: #e9e5dc;
+  --efb-line: rgba(25, 23, 19, 0.22);
+  --efb-acid: #e6ff4f;
+  --efb-orange: #ff5a36;
+  --efb-lilac: #b8a2ff;
 }
 
 .efb-up {
@@ -111,7 +143,7 @@
 }
 
 .efb-table tbody td {
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--efb-rule-soft);
 }
 
 .efb-num {
@@ -177,10 +209,260 @@
   background: var(--efb-pill-bg);
   padding: 0.05rem 0.5rem;
   color: var(--efb-pill-ink);
-  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-mono);
   font-size: 0.7rem;
   font-weight: 500;
   line-height: 1.15rem;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+
+/* ------------------------------------------------------------------------
+ * Page chrome. These rules sit outside Tailwind's layers on purpose, so they
+ * win over a utility without !important: a card is a card wherever it is drawn.
+ * ---------------------------------------------------------------------- */
+
+html {
+  background: var(--efb-paper);
+}
+
+body {
+  margin: 0;
+  background: var(--efb-paper);
+  color: var(--efb-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--efb-acid);
+  color: var(--efb-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--efb-ink);
+  outline-offset: 2px;
+}
+
+/* Square corners everywhere except the pills, which stay round on purpose. */
+.rounded,
+.rounded-sm,
+.rounded-md,
+.rounded-lg,
+.rounded-xl {
+  border-radius: 0;
+}
+
+/* A bordered surface is a card: paper, with a 1px ink rule. A card that carries
+   a coloured left edge (a status or an exception) keeps that edge. */
+.border.bg-white,
+.border.bg-slate-50 {
+  border-color: var(--efb-ink);
+  background-color: var(--efb-paper);
+}
+
+.border.border-l-4.bg-white {
+  border-top-color: var(--efb-ink);
+  border-right-color: var(--efb-ink);
+  border-bottom-color: var(--efb-ink);
+}
+
+/* Labels: the small uppercase captions read as a typewriter line. */
+.uppercase.tracking-wide {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.07em;
+}
+
+/* Disclosures: a mono line with a rule under it, like a section marker. */
+details > summary {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+}
+
+/* The headline number on a card: large, bold and tightly set. */
+.efb-stat {
+  font-family: var(--font-sans);
+  font-size: clamp(1.75rem, 1.2rem + 1.4vw, 2.6rem);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+
+.efb-stat-sm {
+  font-family: var(--font-sans);
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one-sentence description of the book, set as a lede. */
+.efb-lede {
+  max-width: 62ch;
+  font-size: clamp(1.15rem, 0.95rem + 0.8vw, 1.6rem);
+  line-height: 1.28;
+  letter-spacing: -0.02em;
+  color: var(--efb-ink);
+}
+
+/* A chart card gets a window bar: three dots on the left and a label on the
+   right, drawn in CSS so the chart inside does not move. */
+.efb-window {
+  position: relative;
+  padding-top: 2.4rem !important;
+}
+
+.efb-window::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1.7rem;
+  border-bottom: 1px solid var(--efb-ink);
+  background:
+    radial-gradient(circle at 0.85rem 50%, var(--efb-orange) 0 0.22rem, transparent 0.24rem),
+    radial-gradient(circle at 1.6rem 50%, transparent 0 0.17rem, var(--efb-ink) 0.18rem 0.24rem, transparent 0.26rem),
+    radial-gradient(circle at 2.35rem 50%, transparent 0 0.17rem, var(--efb-ink) 0.18rem 0.24rem, transparent 0.26rem),
+    var(--efb-paper-2);
+}
+
+.efb-window::after {
+  content: attr(data-window);
+  position: absolute;
+  top: 0;
+  right: 0.75rem;
+  height: 1.7rem;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--efb-ink);
+}
+
+/* The page: every block is capped at 110rem and centred, except the top bar,
+   which runs the full width of the window like a ruled masthead. */
+.efb-page {
+  --efb-pad: clamp(0.75rem, 3vw, 3rem);
+  --efb-max: 110rem;
+}
+
+.efb-page > * {
+  width: min(var(--efb-max), calc(100% - 2 * var(--efb-pad)));
+  margin-inline: auto;
+}
+
+.efb-page > .efb-topbar {
+  width: 100%;
+  padding-inline: max(var(--efb-pad), calc((100% - var(--efb-max)) / 2));
+}
+
+/* The top bar: brand on the left, the five tabs as ruled cells on the right. */
+.efb-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0;
+  border-bottom: 1px solid var(--efb-ink);
+  background: rgba(243, 240, 232, 0.92);
+  backdrop-filter: blur(6px);
+}
+
+.efb-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+}
+
+.efb-mark {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  background: var(--efb-ink);
+  color: var(--efb-acid);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.efb-brand h1 {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.efb-brand small {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--efb-muted);
+}
+
+.efb-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.efb-tab {
+  display: flex;
+  align-items: center;
+  border-left: 1px solid var(--efb-line);
+  padding: 0 1.1rem;
+  min-height: 3.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--efb-ink);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.efb-tab:hover {
+  background: var(--efb-paper-2);
+}
+
+.efb-tab[aria-selected="true"] {
+  background: var(--efb-acid);
+  border-left-color: var(--efb-ink);
+}
+
+.efb-tab:last-child {
+  border-right: 1px solid var(--efb-line);
+}
+
+@media (max-width: 767px) {
+  .efb-tabs {
+    width: 100%;
+    border-top: 1px solid var(--efb-line);
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .efb-tab {
+    min-height: 2.75rem;
+    padding: 0 0.8rem;
+    white-space: nowrap;
+  }
+
+  .efb-tab:first-child {
+    border-left: 0;
+  }
 }

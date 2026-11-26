@@ -101,7 +101,7 @@ function Kpi({
     >
       <Title title={title} info={info} plain={plainTitle} />
       {value === undefined ? null : (
-        <p className={`mt-1 font-mono text-lg font-semibold tabular-nums ${valueClass ?? "text-slate-900"}`}>
+        <p className={`efb-stat mt-2 ${valueClass ?? "text-slate-900"}`}>
           {value}
         </p>
       )}
@@ -166,7 +166,7 @@ export function cumulativePoints(snapshot: Snapshot): CumulativePoint[] {
 }
 
 const COLORS = {
-  total: "#0f172a",
+  total: "#191713",
   factor: "#0284c7",
   idio: "#059669",
   cost: "#e11d48",
@@ -433,7 +433,7 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
           y={frame.top}
           width={Math.max(0, frame.right - frame.x(last.date))}
           height={frame.bottom - frame.top}
-          fill="#0f172a"
+          fill="#191713"
           fillOpacity="0.03"
           data-future-band="true"
         />
@@ -444,7 +444,7 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
               x2={frame.right}
               y1={y(tick)}
               y2={y(tick)}
-              stroke="#e2e8f0"
+              stroke="#d6d1c5"
               strokeWidth="1"
             />
             <text
@@ -463,7 +463,7 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
           x2={frame.right}
           y1={y(0)}
           y2={y(0)}
-          stroke="#475569"
+          stroke="#57534a"
           strokeWidth="1.6"
           data-zero-line="true"
         />
@@ -486,7 +486,7 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
               x2={frame.x(date)}
               y1={frame.bottom}
               y2={frame.bottom + 4}
-              stroke="#cbd5e1"
+              stroke="#bdb7a9"
             />
             <text
               x={frame.x(date)}
@@ -510,7 +510,7 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
               x2={frame.x(mark.date)}
               y1={frame.top}
               y2={frame.bottom}
-              stroke={mark.future ? "#cbd5e1" : "#94a3b8"}
+              stroke={mark.future ? "#bdb7a9" : "#8f897c"}
               strokeWidth="1"
               strokeDasharray="3 3"
             />
@@ -638,7 +638,7 @@ function DailyBars({ snapshot }: { snapshot: Snapshot }) {
           y={frame.top}
           width={Math.max(0, frame.right - frame.x(dates[dates.length - 1]))}
           height={frame.bottom - frame.top}
-          fill="#0f172a"
+          fill="#191713"
           fillOpacity="0.03"
           data-future-band="true"
         />
@@ -649,7 +649,7 @@ function DailyBars({ snapshot }: { snapshot: Snapshot }) {
               x2={frame.right}
               y1={y(tick)}
               y2={y(tick)}
-              stroke="#e2e8f0"
+              stroke="#d6d1c5"
               strokeWidth="1"
             />
             <text
@@ -668,7 +668,7 @@ function DailyBars({ snapshot }: { snapshot: Snapshot }) {
           x2={frame.right}
           y1={y(0)}
           y2={y(0)}
-          stroke="#475569"
+          stroke="#57534a"
           strokeWidth="1.6"
           data-zero-line="true"
         />
@@ -691,7 +691,7 @@ function DailyBars({ snapshot }: { snapshot: Snapshot }) {
               x2={frame.x(date)}
               y1={frame.bottom}
               y2={frame.bottom + 4}
-              stroke="#cbd5e1"
+              stroke="#bdb7a9"
             />
             <text
               x={frame.x(date)}
@@ -715,7 +715,7 @@ function DailyBars({ snapshot }: { snapshot: Snapshot }) {
               x2={frame.x(mark.date)}
               y1={frame.top}
               y2={frame.bottom}
-              stroke={mark.future ? "#cbd5e1" : "#94a3b8"}
+              stroke={mark.future ? "#bdb7a9" : "#8f897c"}
               strokeWidth="1"
               strokeDasharray="3 3"
             />
@@ -870,7 +870,7 @@ function ExposureBars({ snapshot }: { snapshot: Snapshot }) {
         </p>
         <p className="flex items-center gap-3">
           <span className="flex items-center gap-1">
-            <span aria-hidden="true" className="inline-block h-2.5 w-2.5" style={{ background: "#94a3b8" }} />
+            <span aria-hidden="true" className="inline-block h-2.5 w-2.5" style={{ background: "#8f897c" }} />
             after the hedge
           </span>
           <span className="flex items-center gap-1">
@@ -915,7 +915,7 @@ function ExposureBars({ snapshot }: { snapshot: Snapshot }) {
               x2={plotRight}
               y1={y(tick)}
               y2={y(tick)}
-              stroke="#e2e8f0"
+              stroke="#d6d1c5"
               strokeWidth="1"
             />
             <text
@@ -934,7 +934,7 @@ function ExposureBars({ snapshot }: { snapshot: Snapshot }) {
           x2={plotRight}
           y1={zero}
           y2={zero}
-          stroke="#475569"
+          stroke="#57534a"
           strokeWidth="1.6"
           data-zero-line="true"
         />
@@ -973,7 +973,7 @@ function ExposureBars({ snapshot }: { snapshot: Snapshot }) {
                 y={row.afterHedge >= 0 ? y(row.afterHedge) : zero}
                 width={barWidth}
                 height={reach(row.afterHedge)}
-                fill="#94a3b8"
+                fill="#8f897c"
                 data-exposure-series="after-hedge"
               >
                 <title>
@@ -1270,7 +1270,7 @@ export function Overview({
 
   return (
     <div data-overview="true" className="flex flex-col gap-3">
-      <p data-strategy="true" className="max-w-4xl text-sm text-slate-700">
+      <p data-strategy="true" className="efb-lede">
         This is a market-neutral equity book: long and short US stocks, rebuilt every
         21 sessions, with the market and sector factors hedged out so the P&amp;L comes
         from stock selection rather than from a market bet.
@@ -1420,7 +1420,10 @@ export function Overview({
         </Kpi>
       </div>
 
-      <section className="rounded border border-slate-200 bg-white px-3 py-2">
+      <section
+        data-window="EFB / P&L since go-live"
+        className="efb-window rounded border border-slate-200 bg-white px-3 py-2"
+      >
         <Title
           title="cumulative P&L"
           info={
@@ -1437,8 +1440,11 @@ export function Overview({
         <CumulativeChart snapshot={snapshot} />
       </section>
 
-      <div className="grid items-start gap-3 lg:grid-cols-2">
-        <section className="min-w-0 self-start rounded border border-slate-200 bg-white px-3 py-2">
+      <div className="grid gap-3 lg:grid-cols-2">
+        <section
+          data-window="EFB / daily P&L"
+          className="efb-window min-w-0 rounded border border-slate-200 bg-white px-3 py-2"
+        >
           <Title
             title="daily P&L"
             info={
@@ -1452,7 +1458,10 @@ export function Overview({
           />
           <DailyBars snapshot={snapshot} />
         </section>
-        <section className="min-w-0 self-start rounded border border-slate-200 bg-white px-3 py-2">
+        <section
+          data-window="EFB / factor exposures"
+          className="efb-window min-w-0 rounded border border-slate-200 bg-white px-3 py-2"
+        >
           <Title
             title="factor exposures"
             info={
