@@ -50,7 +50,11 @@ export function TopNames({
     </div>
   );
   return (
-    <section data-section="top-names" className="rounded border border-slate-200 bg-white p-3">
+    <section
+      data-section="top-names"
+      data-window="EFB / the largest longs and shorts"
+      className="efb-window rounded border border-slate-200 bg-white p-3"
+    >
       <h2 className="text-base font-semibold">The largest longs and shorts <HowToRead>
         the list ranks names by dollars, not by weight alone, so the top row is the
         position that moves the book most. Example: STX is the largest at 1.55% of
@@ -101,7 +105,11 @@ export function Reasons({ facts, snapshot }: { facts: BookFacts; snapshot: Snaps
   const sent = reconciliation?.sent_notional ?? null;
 
   return (
-    <section data-section="reasons" className="rounded border border-slate-200 bg-white p-3">
+    <section
+      data-section="reasons"
+      data-window="EFB / trades by reason"
+      className="efb-window rounded border border-slate-200 bg-white p-3"
+    >
       <h2 className="text-base font-semibold">Trades by reason <HowToRead>
         tonight's own orders, grouped by the input that moved, so a hold day with no
         orders shows nothing here. Example: 11-11 sent no orders because the guard

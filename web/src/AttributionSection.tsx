@@ -503,10 +503,10 @@ function DayRow({
   return (
     <tr data-day={date ?? ""} className="border-b border-slate-100">
       <td className="py-1 font-mono whitespace-nowrap">{date ?? "n/a"}</td>
-      <td className="py-1 tabular-nums">{bare(day.pnl_total)}</td>
-      <td className="py-1 tabular-nums">{bare(day.pnl_factor)}</td>
-      <td className="py-1 tabular-nums">{bare(day.pnl_idio)}</td>
-      <td className="py-1 tabular-nums">
+      <td className="efb-num py-1">{bare(day.pnl_total)}</td>
+      <td className="efb-num py-1">{bare(day.pnl_factor)}</td>
+      <td className="efb-num py-1">{bare(day.pnl_idio)}</td>
+      <td className="efb-num py-1">
         {bare(day.pnl_cost)}
         {basis === null ? null : (
           <span
@@ -517,7 +517,7 @@ function DayRow({
           </span>
         )}
       </td>
-      <td className="py-1 tabular-nums">{closingBps(day.pnl_unexplained)}</td>
+      <td className="efb-num py-1">{closingBps(day.pnl_unexplained)}</td>
       <td className="py-1" data-check={ok ? "ok" : "off"}>
         {ok ? "✓ ok" : `✗ ${bps(sum - total)}`}
       </td>
@@ -557,11 +557,13 @@ function DayTable({
         <thead>
           <tr className="border-b border-slate-300 text-left">
             <th className="py-1 pr-2">close</th>
-            <th className="py-1 pr-2">total, bp of NAV</th>
-            <th className="py-1 pr-2">factor</th>
-            <th className="py-1 pr-2">stock-specific</th>
-            <th className="py-1 pr-2">cost</th>
-            <th className="py-1 pr-2">{UNEXPLAINED_LABEL[live ? "live" : "backtest"].short}</th>
+            <th className="efb-num py-1 pr-2">total, bp of NAV</th>
+            <th className="efb-num py-1 pr-2">factor</th>
+            <th className="efb-num py-1 pr-2">stock-specific</th>
+            <th className="efb-num py-1 pr-2">cost</th>
+            <th className="efb-num py-1 pr-2">
+              {UNEXPLAINED_LABEL[live ? "live" : "backtest"].short}
+            </th>
             <th className="py-1">check</th>
           </tr>
         </thead>
@@ -581,7 +583,7 @@ function DayTable({
           type="button"
           data-toggle="days"
           onClick={() => setShowAll((current) => !current)}
-          className="mt-1 rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-200"
+          className="efb-button mt-1"
         >
           {showAll ? "show the last 10 days" : `show all ${newest.length} days`}
         </button>
@@ -1861,16 +1863,16 @@ export function AttributionSection({
   const live = attribution.live;
   const backtest = attribution.backtest;
   const emptyLive = !live || live.n_days === 0;
-  const tabClass = (active: boolean): string =>
-    `rounded px-2 py-1 text-sm font-semibold ${
-      active ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-800 hover:bg-slate-200"
-    }`;
+  // The view switch is a tab, not a pill: the same ruled cell as the five at the
+  // top of the page, one size down.
+  const tabClass = (): string => "efb-subtab";
 
   return (
     <section
       data-section="attribution"
       data-view={view}
-      className="rounded border border-slate-200 bg-white p-3"
+      data-window="EFB / attribution"
+      className="efb-window rounded border border-slate-200 bg-white p-3"
     >
       <h2 className="text-lg font-semibold">Attribution <HowToRead>
         basis points of NAV, so a figure is one hundredth of a percent of the book
@@ -1892,7 +1894,7 @@ export function AttributionSection({
             data-tab="live"
             aria-selected={view === "live"}
             onClick={() => setView("live")}
-            className={tabClass(view === "live")}
+            className={tabClass()}
           >
             the live book
           </button>
@@ -1902,7 +1904,7 @@ export function AttributionSection({
             data-tab="backtest"
             aria-selected={view === "backtest"}
             onClick={() => setView("backtest")}
-            className={tabClass(view === "backtest")}
+            className={tabClass()}
           >
             the research panel (backtest)
           </button>

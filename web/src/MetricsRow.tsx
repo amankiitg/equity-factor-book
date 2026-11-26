@@ -357,7 +357,11 @@ export function MetricsRow({
   const bookClose = dateOnly(snapshot.book_as_of) ?? dateOnly(snapshot.target_close);
 
   return (
-    <section data-cards="true" className="rounded border border-slate-200 bg-white p-2">
+    <section
+      data-cards="true"
+      data-window="EFB / the book"
+      className="efb-window rounded border border-slate-200 bg-white p-2"
+    >
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
         the book
         <HowToRead>
@@ -439,7 +443,7 @@ export function MetricsRow({
             </>
           }
         >
-          <div className="font-mono text-sm leading-tight tabular-nums">
+          <div className="text-sm leading-tight">
             {sentNotional !== null
               ? `Tonight: ${count(sent)} ${sent === 1 ? "order" : "orders"} sent, ${dollars(sentNotional)}`
               : intended !== null

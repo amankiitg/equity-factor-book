@@ -79,16 +79,18 @@ function AnchoredHedge({ block }: { block: NonNullable<MonthlyBlock["hedge"]> })
             <thead>
               <tr className="text-left text-slate-500">
                 <th className="py-1 pr-2">name</th>
-                <th className="py-1 pr-2">share of the book&apos;s predicted specific risk</th>
-                <th className="py-1">weight</th>
+                <th className="efb-num py-1 pr-2">
+                  share of the book&apos;s predicted specific risk
+                </th>
+                <th className="efb-num py-1">weight</th>
               </tr>
             </thead>
             <tbody>
               {shares.map((entry) => (
                 <tr key={entry.ticker} data-variance-share={entry.ticker}>
                   <td className="py-1 pr-2 font-mono">{entry.ticker}</td>
-                  <td className="py-1 pr-2 tabular-nums">{percent(entry.variance_share, 2)}</td>
-                  <td className="py-1 tabular-nums">{percent(entry.weight)}</td>
+                  <td className="efb-num py-1 pr-2">{percent(entry.variance_share, 2)}</td>
+                  <td className="efb-num py-1">{percent(entry.weight)}</td>
                 </tr>
               ))}
             </tbody>
@@ -136,7 +138,8 @@ export function HedgePanel({
       <section
         data-section="hedge"
         data-hedge-anchored="true"
-        className="rounded border border-slate-200 bg-white p-3"
+        data-window="EFB / the hedge's own footprint"
+        className="efb-window rounded border border-slate-200 bg-white p-3"
       >
         <h2 className="text-base font-semibold">
           The hedge&apos;s own footprint
@@ -154,7 +157,11 @@ export function HedgePanel({
   }
 
   return (
-    <section data-section="hedge" className="rounded border border-slate-200 bg-white p-3">
+    <section
+      data-section="hedge"
+      data-window="EFB / the hedge's own footprint"
+      className="efb-window rounded border border-slate-200 bg-white p-3"
+    >
       <h2 className="text-base font-semibold">
         The hedge&apos;s own footprint
         <HowToRead>
@@ -189,8 +196,10 @@ export function HedgePanel({
             <thead>
               <tr className="text-left text-slate-500">
                 <th className="py-1 pr-2">name</th>
-                <th className="py-1 pr-2">share of the book&apos;s predicted specific risk</th>
-                <th className="py-1">weight</th>
+                <th className="efb-num py-1 pr-2">
+                  share of the book&apos;s predicted specific risk
+                </th>
+                <th className="efb-num py-1">weight</th>
               </tr>
             </thead>
             <tbody>
@@ -199,10 +208,10 @@ export function HedgePanel({
                 return (
                   <tr key={entry.ticker} data-variance-share={entry.ticker}>
                     <td className="py-1 pr-2 font-mono">{entry.ticker}</td>
-                    <td className="py-1 pr-2 tabular-nums">
+                    <td className="efb-num py-1 pr-2">
                       {percent(entry.variance_share, 2)}
                     </td>
-                    <td className="py-1 tabular-nums">{percent(row?.weight)}</td>
+                    <td className="efb-num py-1">{percent(row?.weight)}</td>
                   </tr>
                 );
               })}

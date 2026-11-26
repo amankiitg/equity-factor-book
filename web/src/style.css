@@ -155,9 +155,10 @@ main table thead th {
   background: var(--efb-ink);
   color: var(--efb-paper);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }
 
 main table thead th span,
@@ -374,6 +375,15 @@ details > summary {
     radial-gradient(circle at 1.6rem 50%, transparent 0 0.17rem, var(--efb-ink) 0.18rem 0.24rem, transparent 0.26rem),
     radial-gradient(circle at 2.35rem 50%, transparent 0 0.17rem, var(--efb-ink) 0.18rem 0.24rem, transparent 0.26rem),
     var(--efb-paper-2);
+}
+
+/* A row label inside a panel is an eyebrow too: mono, caps, one size down. */
+.efb-row-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .efb-window::after {
@@ -622,4 +632,179 @@ details > summary {
 .efb-seg-over {
   background: var(--efb-orange);
   border-color: var(--efb-orange);
+}
+
+
+/* ------------------------------------------------------------------------
+ * One type system for every tab.
+ *
+ * PR L set the palette and the marks, but only the Overview wore all of them:
+ * on the other four tabs a section title was still a large sans line, a card
+ * figure was a bold mono line, and the attribution's own view switch was a
+ * slate pill. These are the rules the whole page reads on now.
+ * ---------------------------------------------------------------------- */
+
+/* Body text is 14px sans. Captions and notes are 12px and muted, which is what
+   text-xs already is; the rule names the intent so a new note has a place. */
+body {
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.efb-caption {
+  font-size: 0.75rem;
+  color: var(--efb-muted);
+}
+
+/* A card or section title is an eyebrow, the size and weight of a KPI label:
+   mono, caps, muted. It is a label over a panel, not a headline competing with
+   the number under it. */
+main h2,
+main h3 {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--efb-muted);
+}
+
+/* A sub-tab is a tab: the same ruled cell as the five at the top, one size
+   down, and the same acid fill on the one being read. No slate pills left. */
+.efb-subtab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.1rem;
+  border: 1px solid var(--efb-line);
+  border-left: 0;
+  background: transparent;
+  padding: 0 0.8rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--efb-ink);
+  cursor: pointer;
+}
+
+.efb-subtab:first-child {
+  border-left: 1px solid var(--efb-line);
+}
+
+.efb-subtab:hover {
+  background: var(--efb-paper-2);
+}
+
+.efb-subtab[aria-selected="true"] {
+  background: var(--efb-acid);
+  border-color: var(--efb-ink);
+}
+
+/* Any button that is a control rather than a tab is a ruled cell too, so the page
+   has one button shape and no rounded grey pills left over. */
+.efb-button {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--efb-ink);
+  background: transparent;
+  padding: 0.2rem 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--efb-ink);
+  cursor: pointer;
+}
+
+.efb-button:hover {
+  background: var(--efb-acid);
+}
+
+/* The flip rows are a table: their three column labels are the same ink band as
+   every other header on the page, so the eye finds the columns the same way on
+   every tab. */
+[data-flip-header="true"] {
+  margin-top: 0.5rem;
+  border: 0;
+  background: var(--efb-ink);
+  color: var(--efb-paper);
+  padding: 0.25rem 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* A number in a table is mono and tabular, and sits on the right, whether or
+   not the cell remembered the classes. A cell that says a word keeps the sans
+   face and its own alignment. */
+main table td.efb-num,
+main table th.efb-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* A cell that asked for tabular figures is a number, so it gets the mono face
+   even where the markup forgot to name it. */
+main table td.tabular-nums,
+main table th.tabular-nums {
+  font-family: var(--font-mono);
+}
+
+/* A column header built out of divs is still a column header: the same ink band
+   as a real thead, so a grid of rows reads like a table. */
+.efb-grid-header {
+  background: var(--efb-ink);
+  color: var(--efb-paper);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.35rem;
+}
+
+/* The legs table: three columns that share the width, the reason taking the
+   most, so a long refusal sentence wraps instead of pushing the dollars column
+   out of the card. */
+.efb-legs {
+  table-layout: fixed;
+}
+
+.efb-legs th:nth-child(1),
+.efb-legs td:nth-child(1) {
+  width: 56%;
+  padding-right: 0.5rem;
+}
+
+.efb-legs th:nth-child(2),
+.efb-legs td:nth-child(2) {
+  width: 24%;
+  padding-right: 0.5rem;
+}
+
+.efb-legs th:nth-child(3),
+.efb-legs td:nth-child(3) {
+  width: 20%;
+}
+
+/* A flip header made of grid cells must be allowed to wrap inside its column:
+   the three labels are long, and a label that cannot shrink pushes the row wider
+   than the card and clips the last word. */
+[data-flip-header="true"] > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+
+/* On a phone the window label is wider than the card it sits on, so the bar keeps
+   the dots and the rule and drops the words: a clipped label is worse than none.
+   It is last in the file so it wins over the label rule above. */
+@media (max-width: 639px) {
+  .efb-window::after {
+    display: none;
+  }
 }

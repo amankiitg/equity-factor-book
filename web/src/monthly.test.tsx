@@ -291,7 +291,7 @@ describe("the flip and drift lists do not need a sideways scroll", () => {
     expect(document.querySelector("[data-drift-row]")).toBeNull();
     const card = document.querySelector("[data-drift='true']") as HTMLElement;
     expect(card).toBeTruthy();
-    const title = card.closest("[data-panel='monthly']")?.querySelector("p")?.textContent ?? "";
+    const title = card.closest("[data-panel='monthly']")?.querySelector("h3")?.textContent ?? "";
     expect(title).toContain("distance from the rebalance target");
   });
 });

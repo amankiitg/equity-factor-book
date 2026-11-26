@@ -319,7 +319,8 @@ export function AnchoredSectorSection({
     <section
       data-section="sector"
       data-sector-anchored="true"
-      className="min-w-0 rounded border border-slate-200 bg-white p-3"
+      data-window="EFB / by sector"
+      className="efb-window min-w-0 rounded border border-slate-200 bg-white p-3"
     >
       <h2 className="text-base font-semibold">
         By sector: account against the {anchor ?? "rebalance"} target
@@ -354,7 +355,7 @@ export function AnchoredSectorSection({
         </p>
       ) : null}
       <div className="mt-2" data-sector-deltas="true">
-        <div className="grid grid-cols-[5.5rem_4rem_4.5rem_1fr] gap-x-2 text-[0.65rem] uppercase tracking-wide text-slate-500 sm:grid-cols-[9rem_5rem_6rem_1fr]">
+        <div className="efb-grid-header grid grid-cols-[5.5rem_4rem_4.5rem_1fr] gap-x-2 sm:grid-cols-[9rem_5rem_6rem_1fr]">
           <span>sector</span>
           <span className="text-right">gross</span>
           <span className="text-right">net</span>
@@ -412,7 +413,11 @@ export function SectorSection({
       (a, b) => Math.abs(b.netNotional) - Math.abs(a.netNotional),
     )[0];
     return (
-      <section data-section="sector" className="rounded border border-slate-200 bg-white p-3">
+      <section
+        data-section="sector"
+        data-window="EFB / by sector"
+        className="efb-window rounded border border-slate-200 bg-white p-3"
+      >
         <h2 className="text-base font-semibold">
           By sector
           <HowToRead>
@@ -479,7 +484,11 @@ export function SectorSection({
   const worstDriver = worst?.drivers[0] ?? null;
 
   return (
-    <section data-section="sector" className="rounded border border-slate-200 bg-white p-3">
+    <section
+      data-section="sector"
+      data-window="EFB / by sector"
+      className="efb-window rounded border border-slate-200 bg-white p-3"
+    >
       <h2 className="text-base font-semibold">By sector: account against target <HowToRead>
         blue is the account holding more than tonight&apos;s book and violet less;
         on a hold day the two are the same book, so every row is zero. Example:

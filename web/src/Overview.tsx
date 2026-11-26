@@ -1334,7 +1334,10 @@ export function Overview({
       {/* The figures are one joined grid, not separate cards: at three columns it is
           two rows of three, ruled between every pair, and at one column it is a
           ledger read downwards. */}
-      <div className="efb-kpi-grid grid sm:grid-cols-2 lg:grid-cols-3">
+      <div
+        data-window="EFB / overview"
+        className="efb-kpi-grid efb-window grid sm:grid-cols-2 lg:grid-cols-3"
+      >
         <Kpi
           hook="nav"
           title="NAV"

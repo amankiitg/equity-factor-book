@@ -21,7 +21,11 @@ export function RiskConcentration({ snapshot }: { snapshot: Snapshot }) {
   const scale = largest * 1.05;
 
   return (
-    <section data-section="risk" className="rounded border border-slate-200 bg-white p-3">
+    <section
+      data-section="risk"
+      data-window="EFB / risk concentration"
+      className="efb-window rounded border border-slate-200 bg-white p-3"
+    >
       <h2 className="text-lg font-semibold">Risk concentration <HowToRead>
         the bars split the book&apos;s predicted risk by name, which is not the same
         as its dollars. Example: STX carries 8.4% of the predicted specific variance
@@ -137,7 +141,11 @@ const split = (rows: Contribution[]): { up: Contribution[]; down: Contribution[]
 const label = (row: Contribution): string => row.ticker ?? row.sector ?? "?";
 
   return (
-    <section data-section="movers" className="rounded border border-slate-200 bg-white p-3">
+    <section
+      data-section="movers"
+      data-window="EFB / movers"
+      className="efb-window rounded border border-slate-200 bg-white p-3"
+    >
       <h2 className="text-lg font-semibold">
         Movers{movers?.session ? `, ${dateOnly(movers.session)}` : ""}
        <HowToRead>
