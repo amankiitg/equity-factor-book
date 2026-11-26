@@ -349,7 +349,7 @@ details > summary {
 
 /* The one-sentence description of the book, set as a lede. */
 .efb-lede {
-  max-width: 62ch;
+  max-width: none;
   font-size: clamp(1.15rem, 0.95rem + 0.8vw, 1.6rem);
   line-height: 1.28;
   letter-spacing: -0.02em;
