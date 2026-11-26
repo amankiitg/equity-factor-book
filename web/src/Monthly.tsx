@@ -29,12 +29,13 @@ function Card({
   return (
     <section
       data-panel="monthly"
-      className="min-w-0 rounded border border-slate-200 bg-white px-3 py-2"
+      data-window="EFB / since the rebalance"
+      className="efb-window min-w-0 rounded border border-slate-200 bg-white px-3 py-2"
     >
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <h3>
         {title}
         <HowToRead>{howToRead}</HowToRead>
-      </p>
+      </h3>
       {children}
     </section>
   );
@@ -44,7 +45,7 @@ function Stat({ label, value, detail }: { label: string; value: string; detail?:
   return (
     <div>
       <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="font-mono text-sm font-semibold text-slate-900">{value}</dd>
+      <dd className="efb-stat-sm text-slate-900">{value}</dd>
       {detail ? <dd className="text-xs text-slate-500">{detail}</dd> : null}
     </div>
   );
@@ -511,8 +512,15 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
       howToRead="a leg is one order in one direction, and the reason says which event asked for it. The count moves when a rebalance lands, when a flip needs its second day, or when the guard fires. Example: 8 legs on 10-26 re-traded a rebalance that had already filled, so they are their own row, fixed 10-27."
     >
       <div className="overflow-x-auto">
-        <table data-trades-reason="true" className="w-full min-w-[16rem] text-left text-xs">
-        <tbody className="font-mono">
+        <table data-trades-reason="true" className="efb-legs w-full text-left text-xs">
+          <thead>
+            <tr>
+              <th className="pb-1 pr-2">reason</th>
+              <th className="efb-num pb-1 pr-2">legs</th>
+              <th className="efb-num pb-1">dollars</th>
+            </tr>
+          </thead>
+          <tbody>
           {trades.map((row) => {
             const sent = row.sent_legs ?? row.legs;
             const firings =
@@ -520,8 +528,8 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
             return (
               <Fragment key={row.reason}>
                 <tr data-reason={row.reason}>
-                  <td className="font-semibold">{row.reason}</td>
-                  <td className="text-right">
+                  <td className="py-0.5 pr-2 font-medium">{row.reason}</td>
+                  <td className="py-0.5 pr-2 text-right font-mono tabular-nums">
                     {row.reason === "rebalance" && sent < row.legs
                       ? `${sent} sent, ${row.legs - sent} not sent (under $250)`
                       : row.reason === "carried leg"
@@ -530,7 +538,9 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
                           ? `${row.legs} legs`
                           : `${sent} sent, ${row.legs - sent} not sent`}
                   </td>
-                  <td className="text-right">{dollars(row.usd)}</td>
+                  <td className="py-0.5 text-right font-mono tabular-nums">
+                    {dollars(row.usd)}
+                  </td>
                 </tr>
                 {firings.map((firing) => (
                   <tr
@@ -538,11 +548,15 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
                     data-guard-date={firing.date}
                     className="text-slate-500"
                   >
-                    <td className="pl-3 font-normal">
+                    <td className="py-0.5 pl-3 font-normal">
                       of which guard, {dateOnly(firing.date) ?? firing.date}
                     </td>
-                    <td className="text-right">{firing.legs_sent ?? 0} legs</td>
-                    <td className="text-right">{dollars(firing.usd)}</td>
+                    <td className="py-0.5 text-right font-mono tabular-nums">
+                      {firing.legs_sent ?? 0} legs
+                    </td>
+                    <td className="py-0.5 text-right font-mono tabular-nums">
+                      {dollars(firing.usd)}
+                    </td>
                   </tr>
                 ))}
               </Fragment>

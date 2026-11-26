@@ -289,7 +289,11 @@ export function ExposuresSection({ snapshot }: { snapshot: Snapshot }) {
   const adjustment = (snapshot.reconciliation?.unexplained_adjustment as number | null) ?? null;
 
   return (
-    <section data-section="exposures" className="rounded border border-slate-200 bg-white p-3">
+    <section
+      data-section="exposures"
+      data-window="EFB / the hedge"
+      className="efb-window rounded border border-slate-200 bg-white p-3"
+    >
       <h2 className="text-base font-semibold">The hedge <HowToRead>
         a factor exposure away from zero is a bet the book did not mean to take, and the
         drift guard acts when one passes 5% of NAV. Example: before the 10-23 rebalance

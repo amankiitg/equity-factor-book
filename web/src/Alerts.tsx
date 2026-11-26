@@ -126,8 +126,9 @@ export function ReconciliationPanel({
     <section
       data-alert="reconciliation"
       data-tone={reconciled.tone}
+      data-window="EFB / reconciliation"
       role="status"
-      className={`border-l-4 px-3 py-2 ${
+      className={`efb-window border-l-4 px-3 py-2 ${
         reconciled.unresolved > 0
           ? "border-amber-400 bg-amber-50 text-amber-900"
           : "border-slate-300 bg-slate-50 text-slate-800"
@@ -141,7 +142,7 @@ export function ReconciliationPanel({
       <ul className="mt-1 text-sm">
         {reconciled.checks.map((check) => (
           <li key={check.name} data-check={check.state} className={checkClass(check.state)}>
-            <span className="font-medium">{check.name}</span>
+            <span className="efb-row-label">{check.name}</span>
             {check.state === "not_run" ? " (not run)" : ""}
             {check.state === "unresolved" ? " (unresolved)" : ""}
             {check.state === "explained" ? " (explained)" : ""}: {check.detail}

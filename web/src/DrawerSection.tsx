@@ -106,11 +106,7 @@ export function DrawerSection({
                 aria-selected={shown === entry.key}
                 aria-expanded={shown === entry.key}
                 onClick={() => setTab((current) => (current === entry.key ? null : entry.key))}
-                className={`rounded px-2 py-1 text-sm font-semibold ${
-                  shown === entry.key
-                    ? "bg-slate-800 text-white"
-                    : "bg-slate-100 text-slate-800 hover:bg-slate-200"
-                }`}
+                className="efb-subtab"
               >
                 {entry.label}
               </button>
