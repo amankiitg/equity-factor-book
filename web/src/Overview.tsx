@@ -280,6 +280,39 @@ function plotDates(dates: Array<string | null | undefined>, next?: string | null
   return sorted;
 }
 
+/**
+ * How wide a plot has to be before a label sits beside its neighbour rather than on
+ * top of it. On the phone a weekly date and a rebalance word are both wider than the
+ * gap between them, so the axis keeps every second tick and a mark keeps only its
+ * dashed line: the line is the fact, the word is the convenience.
+ */
+const NARROW_PLOT = 520;
+
+/**
+ * The items a plot has room for, at least `minGap` pixels apart, always keeping the
+ * last one: the newest week still gets its date and the next rebalance still gets its
+ * word. A neighbour too close to that last one gives way to it rather than crowding
+ * it.
+ */
+function thinned<T>(items: T[], at: (item: T) => number, minGap: number): T[] {
+  if (items.length === 0) return items;
+  const kept: T[] = [];
+  for (const item of items.slice(0, -1)) {
+    const previous = kept.length ? at(kept[kept.length - 1]) : Number.NEGATIVE_INFINITY;
+    if (at(item) - previous >= minGap) kept.push(item);
+  }
+  kept.push(items[items.length - 1]);
+  while (kept.length > 1 && at(kept[kept.length - 1]) - at(kept[kept.length - 2]) < minGap) {
+    kept.splice(kept.length - 2, 1);
+  }
+  return kept;
+}
+
+/** The gap a plot of this width can carry: none when it is wide, a label's worth when it is not. */
+function labelGap(frame: PlotFrame, minGap: number): number {
+  return frame.right - frame.left >= NARROW_PLOT ? 0 : minGap;
+}
+
 /** One date label a week, read off the calendar rather than every nth point. */
 function weeklyTicks(dates: string[]): string[] {
   const ticks: string[] = [];
@@ -384,6 +417,11 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
     frame.top + ((high - value) / span) * (frame.bottom - frame.top);
   const known = new Set(points.map((point) => point.date));
   const marks = rebalanceMarks(snapshot, known);
+  // What the axis can carry at this width, rather than what the calendar offers.
+  const ticks = thinned(weeklyTicks(dates), (date) => frame.x(date), labelGap(frame, 64));
+  const labelled = new Set(
+    thinned(marks, (mark) => frame.x(mark.date), labelGap(frame, 112)).map((mark) => mark.date),
+  );
   const last = points[points.length - 1];
   const endLabels = SERIES.map((series) => ({
     series,
@@ -479,7 +517,7 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
         <text x={4} y={frame.top - 10} fontSize="9" className="fill-slate-500">
           bp
         </text>
-        {weeklyTicks(dates).map((date) => (
+        {ticks.map((date) => (
           <g key={`week-${date}`} data-x-tick={date}>
             <line
               x1={frame.x(date)}
@@ -514,17 +552,19 @@ function CumulativeChart({ snapshot }: { snapshot: Snapshot }) {
               strokeWidth="1"
               strokeDasharray="3 3"
             />
-            <text
-              x={frame.x(mark.date) + (frame.x(mark.date) > frame.right - 90 ? -3 : 3)}
-              y={frame.top - 10}
-              textAnchor={frame.x(mark.date) > frame.right - 90 ? "end" : "start"}
-              fontSize="9"
-              className="fill-slate-500"
-            >
-              {mark.future
-                ? `next rebalance ${dayShort(mark.date)}`
-                : `rebalance ${dayShort(mark.date)}`}
-            </text>
+            {labelled.has(mark.date) ? (
+              <text
+                x={frame.x(mark.date) + (frame.x(mark.date) > frame.right - 90 ? -3 : 3)}
+                y={frame.top - 10}
+                textAnchor={frame.x(mark.date) > frame.right - 90 ? "end" : "start"}
+                fontSize="9"
+                className="fill-slate-500"
+              >
+                {mark.future
+                  ? `next rebalance ${dayShort(mark.date)}`
+                  : `rebalance ${dayShort(mark.date)}`}
+              </text>
+            ) : null}
           </g>
         ))}
         {SERIES.map((series) => (
@@ -621,6 +661,7 @@ function DailyBars({ snapshot }: { snapshot: Snapshot }) {
   const barWidth = Math.max(3, Math.min(18, pixelsPerDay * gapDays * 0.62));
   const known = new Set(rows.map((row) => String(row.trade_date ?? "").slice(0, 10)));
   const marks = rebalanceMarks(snapshot, known);
+  const ticks = thinned(weeklyTicks(dates), (date) => frame.x(date), labelGap(frame, 44));
 
   return (
     <div ref={ref} className="mt-1 w-full">
@@ -684,7 +725,7 @@ function DailyBars({ snapshot }: { snapshot: Snapshot }) {
         <text x={4} y={frame.top - 8} fontSize="9" className="fill-slate-500">
           bp
         </text>
-        {weeklyTicks(dates).map((date) => (
+        {ticks.map((date) => (
           <g key={`week-${date}`} data-x-tick={date}>
             <line
               x1={frame.x(date)}
@@ -1194,6 +1235,9 @@ function CadencePill({ monthly }: { monthly?: MonthlyBlock | null }) {
   );
 }
 
+/** The drift bar is counted in ten: one segment per tenth of the guard's limit. */
+const DRIFT_SEGMENTS = 10;
+
 function DriftGuard({ monthly }: { monthly?: MonthlyBlock | null }) {
   const guard = monthly?.cadence_strip?.guard;
   const worst = guard?.worst_abs_exposure ?? null;
@@ -1204,22 +1248,31 @@ function DriftGuard({ monthly }: { monthly?: MonthlyBlock | null }) {
   }
   const ratio = limit > 0 ? Math.min(1, Math.max(0, worst / limit)) : 0;
   const over = limit > 0 && worst > limit;
+  const lit = worst > 0 ? Math.max(1, Math.round(ratio * DRIFT_SEGMENTS)) : 0;
   return (
     <div data-drift-guard="true" className="mt-1">
       <p className="font-mono text-sm font-semibold tabular-nums text-slate-900">
         {percent(worst)} of {percent(limit, 0)}
       </p>
+      {/* Ten segments rather than a continuous fill: a tenth of the limit each, so
+          the count says how much of the guard's 5% the book is using without a reader
+          estimating a length, and a bar that reaches the last segment is the day the
+          guard acts. A reading above zero always lights one, because a book away from
+          its target is not a book at zero. */}
       <div
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(ratio * 100)}
-        className="mt-1 h-2 w-full overflow-hidden rounded-full bg-slate-200"
+        data-segments={DRIFT_SEGMENTS}
+        className="efb-drift-bar mt-1"
       >
-        <div
-          className={`h-full rounded-full ${over ? "bg-amber-500" : "bg-emerald-600"}`}
-          style={{ width: `${(ratio * 100).toFixed(1)}%` }}
-        />
+        {Array.from({ length: DRIFT_SEGMENTS }, (_, index) => (
+          <span
+            key={index}
+            className={`efb-seg${index < lit ? (over ? " efb-seg-over" : " efb-seg-on") : ""}`}
+          />
+        ))}
       </div>
     </div>
   );
@@ -1278,7 +1331,10 @@ export function Overview({
 
       <ExceptionBanner state={state} lines={lines} />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* The figures are one joined grid, not separate cards: at three columns it is
+          two rows of three, ruled between every pair, and at one column it is a
+          ledger read downwards. */}
+      <div className="efb-kpi-grid grid sm:grid-cols-2 lg:grid-cols-3">
         <Kpi
           hook="nav"
           title="NAV"

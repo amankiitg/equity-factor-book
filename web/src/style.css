@@ -138,8 +138,53 @@
   top: 0;
   z-index: 2;
   border-bottom: 1px solid var(--efb-rule);
-  background: var(--efb-surface);
+  background: var(--efb-ink);
+  color: var(--efb-paper);
   white-space: nowrap;
+}
+
+/*
+ * A table header is inked: the band is the page's darkest ink and the labels are
+ * paper, so a column of numbers is read under its own name rather than beside it.
+ * The rule covers every table on the page, the two holdings tables and the small
+ * ones inside the panels alike, so a header means the same thing wherever it
+ * appears. The sticky rule above keeps its own fill because a sticky cell has to
+ * be opaque, and both point at the same ink.
+ */
+main table thead th {
+  background: var(--efb-ink);
+  color: var(--efb-paper);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+main table thead th span,
+main table thead th a,
+main table thead th strong {
+  color: inherit;
+}
+
+/*
+ * Alternating rows: the second, fourth and sixth row of a table body sit on the
+ * darker paper, so the eye follows one row across a wide table without a rule for
+ * every line. The tint goes on the row, not on the cell, because the cells that
+ * carry a meaning (a gap, a heat, a side badge) paint their own background over
+ * it and keep it.
+ */
+main table tbody tr:nth-child(even) {
+  background: var(--efb-paper-2);
+}
+
+/*
+ * The heat table's last column sets its figures flush against the table's own edge,
+ * so its header word ends on the very boundary of its cell and reads as clipped. A
+ * quarter of a rem gives that word the room to close.
+ */
+[data-heat-table] th:last-child,
+[data-heat-table] td:last-child {
+  padding-right: 0.25rem;
 }
 
 .efb-table tbody td {
@@ -465,4 +510,116 @@ details > summary {
   .efb-tab:first-child {
     border-left: 0;
   }
+}
+
+
+/* ------------------------------------------------------------------------
+ * The look's four marks: numbered tabs, a joined figure grid, one orange
+ * attention box and a drift bar counted in ten.
+ * ---------------------------------------------------------------------- */
+
+/* A tab carries its own number, set from the attribute the page already knows, so
+   the row of tabs reads as a contents list and a reader can say "the third tab".
+   The number is drawn by the rule rather than written into the label, so the
+   button's own name stays the word. */
+.efb-tab::before {
+  content: attr(data-index);
+  margin-right: 0.6rem;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: var(--efb-muted);
+}
+
+.efb-tab[aria-selected="true"]::before {
+  color: var(--efb-ink);
+}
+
+/* The figures are one joined grid, ruled like a ledger: no gaps, one hairline
+   between neighbours, and the outer edge on the grid itself. A cell that is last
+   in its row or column still gets its own right and bottom rule, so the count of
+   cells never leaves an open edge at any width. */
+.efb-kpi-grid {
+  gap: 0;
+  border-top: 1px solid var(--efb-ink);
+  border-left: 1px solid var(--efb-ink);
+}
+
+.efb-kpi-grid > [data-kpi] {
+  border: 0;
+  border-right: 1px solid var(--efb-ink);
+  border-bottom: 1px solid var(--efb-ink);
+  border-radius: 0;
+  background: var(--efb-paper);
+}
+
+/*
+ * The one place the page shouts. While something is on the list the box is
+ * orange paper under an ink rule, with a heavy orange edge on the left and the
+ * heading in mono, so a reader who is skimming stops here. A clear box is not a
+ * green card competing with it: it is one quiet ruled line saying so.
+ */
+[data-exception-banner="attention"] {
+  border: 1px solid var(--efb-ink);
+  border-left: 0.55rem solid var(--efb-orange);
+  border-radius: 0;
+  background: #ffe4d9;
+  color: var(--efb-ink);
+}
+
+[data-exception-banner="attention"] > p:first-child {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-exception-banner="attention"] li {
+  border: 1px solid var(--efb-line);
+  border-radius: 0;
+  background: var(--efb-paper);
+  padding: 0.15rem 0.45rem;
+}
+
+[data-exception-banner="clear"] {
+  border: 1px solid var(--efb-line);
+  border-left: 0.55rem solid var(--efb-ink);
+  border-radius: 0;
+  background: transparent;
+  color: var(--efb-muted);
+}
+
+[data-exception-banner="clear"] > p:first-child {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--efb-ink);
+}
+
+/* The drift guard, counted in ten: a segment per tenth of the limit, filled in
+   ink while the book is inside it and in orange once it is past. A segment count
+   is read at a glance where a continuous bar is estimated, and the tenth that
+   crosses is the one the guard acts on. */
+.efb-drift-bar {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  height: 0.7rem;
+}
+
+.efb-seg {
+  background: var(--efb-paper-2);
+  border: 1px solid var(--efb-line);
+}
+
+.efb-seg-on {
+  background: var(--efb-ink);
+  border-color: var(--efb-ink);
+}
+
+.efb-seg-over {
+  background: var(--efb-orange);
+  border-color: var(--efb-orange);
 }

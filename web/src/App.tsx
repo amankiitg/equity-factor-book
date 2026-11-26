@@ -98,12 +98,16 @@ export function SnapshotView({ snapshot, now }: { snapshot: Snapshot; now: Date 
           </div>
         </div>
         <div className="efb-tabs" role="tablist" aria-label="view">
-          {TABS.map((tab) => (
+          {TABS.map((tab, index) => (
             <button
               key={tab.key}
               type="button"
               role="tab"
               data-view={tab.key}
+              // The tab's own number, drawn by the stylesheet beside the label: a
+              // reader who is told "the fourth tab" can find it, and the button's
+              // accessible name stays the word it says.
+              data-index={String(index + 1).padStart(2, "0")}
               aria-selected={view === tab.key}
               aria-controls={`panel-${tab.key}`}
               onClick={() => setView(tab.key)}
