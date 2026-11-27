@@ -15,7 +15,7 @@ import { Fragment } from "react";
 import { HowToRead } from "./Panel";
 import { dateOnly, dollars, percent, signedDollars } from "./format";
 import { legReasonWord } from "./labels";
-import type { MonthlyBlock } from "./types";
+import type { GuardFiring, MonthlyBlock } from "./types";
 
 /** A date as the page writes dates in a sentence: month and day, no year. */
 const dayShort = (value: string | null | undefined): string => (value ? value.slice(5, 10) : "-");
@@ -502,16 +502,23 @@ export function GuardCards({ monthly }: { monthly: MonthlyBlock }) {
   );
 }
 
+/** The window's firings: nothing dated before the current rebalance. */
+function firingsInWindow(monthly: MonthlyBlock): GuardFiring[] {
+  const anchor = monthly.anchor?.close ?? monthly.cadence_strip?.last_rebalance ?? null;
+  const rows = monthly.since_anchor?.guard_history ?? [];
+  return anchor ? rows.filter((row) => !row.date || row.date >= anchor) : rows;
+}
+
 /** The floor legs across the window's firings, the same field the rows print. */
 function firingsUnder(monthly: MonthlyBlock): number {
-  return (monthly.since_anchor?.guard_history ?? []).reduce(
+  return firingsInWindow(monthly).reduce(
     (total, firing) => total + (firing.legs_not_sent ?? firing.legs_under_minimum ?? 0),
     0,
   );
 }
 
 function firingsUnderUsd(monthly: MonthlyBlock): number {
-  return (monthly.since_anchor?.guard_history ?? []).reduce(
+  return firingsInWindow(monthly).reduce(
     (total, firing) => total + (firing.not_sent_usd ?? 0),
     0,
   );
@@ -556,8 +563,7 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
           <tbody>
           {trades.map((row) => {
             const sent = row.sent_legs ?? row.legs;
-            const firings =
-              row.reason === "guard" ? monthly.since_anchor?.guard_history ?? [] : [];
+            const firings = row.reason === "guard" ? firingsInWindow(monthly) : [];
             return (
               <Fragment key={row.reason}>
                 <tr data-reason={row.reason}>
