@@ -423,7 +423,9 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
  * them; a day it does not carry says so instead of printing zero.
  */
 export function GuardCards({ monthly }: { monthly: MonthlyBlock }) {
-  const firings = monthly.since_anchor?.guard_history ?? [];
+  // The firing cards belong to the current rebalance like the rest of this tab:
+  // the older firings are Attribution's cost history, not this page's.
+  const firings = firingsInWindow(monthly);
   if (!firings.length) return null;
   // The estimate the cost-by-era row also quotes, at the rebalance's own rate. The
   // measured figure is the day's fills, and it includes the overnight move; the two
