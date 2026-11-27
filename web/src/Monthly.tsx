@@ -527,9 +527,38 @@ function firingsUnderUsd(monthly: MonthlyBlock): number {
 }
 
 export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
-  const trades = monthly.since_anchor?.trades_by_reason ?? [];
+  const raw = monthly.since_anchor?.trades_by_reason ?? [];
   const notSent = monthly.since_anchor?.not_sent;
-  if (!trades.length) return null;
+  if (!raw.length) return null;
+  // The page applies the window to the document it is given, not only to the block
+  // the builder writes: an older document cannot put a pre-rebalance firing, or a
+  // "rebalance remainder" beside the rebalance, under this table.
+  const window = firingsInWindow(monthly);
+  const guardLegs = window.reduce((total, row) => total + (row.legs_sent ?? 0), 0);
+  const guardUsd = window.reduce((total, row) => total + (row.usd ?? 0), 0);
+  const trades = raw
+    .map((row) =>
+      row.reason === "guard" && guardLegs > 0
+        ? { ...row, legs: guardLegs, usd: guardUsd, sent_legs: guardLegs, sent_usd: guardUsd }
+        : row,
+    )
+    .reduce<typeof raw>((rows, row) => {
+      const target = row.reason === "rebalance remainder" ? "rebalance" : row.reason;
+      if (target === row.reason) {
+        rows.push(row);
+        return rows;
+      }
+      const existing = rows.find((entry) => entry.reason === target);
+      if (!existing) {
+        rows.push({ ...row, reason: target });
+        return rows;
+      }
+      existing.legs += row.legs;
+      existing.usd += row.usd;
+      existing.sent_legs = (existing.sent_legs ?? existing.legs) + (row.sent_legs ?? row.legs);
+      existing.sent_usd = (existing.sent_usd ?? existing.usd) + (row.sent_usd ?? row.usd);
+      return rows;
+    }, []);
   const under = notSent?.under_minimum;
   // The footer counts what the table's own under-$250 rows count: the rebalance's
   // floor legs plus each firing's, from the same fields the rows print. Two
