@@ -1357,8 +1357,22 @@ function CostEras({ period, snapshot }: { period: AttributionPeriod; snapshot?: 
             {guardMeasuredKnown ? `-${guardMeasured.toFixed(1)} bp measured from fills` : "not measured"}
             {guardBp === null || nav === null
               ? ""
-              : `; ${dollars((Math.abs(guardBp) / 1e4) * nav)} est., ${dollars(guardUsd)} of legs`}
+              : `; ${dollars((Math.abs(guardBp) / 1e4) * nav)} est.`}
+            {guardEra
+              ? `; ${guardEra.legs} guard legs, ${dollars(guardUsd)}`
+              : `; ${dollars(guardUsd)} of legs`}
           </dd>
+          {guardEra?.firings?.length ? (
+            <dd data-guard-era-rows="true" className="mt-0.5 font-mono text-xs text-slate-500">
+              {guardEra.firings.map((firing, index) => (
+                <span key={firing.date} className="block" data-guard-era={firing.date}>
+                  {index === 0 ? "" : ""}
+                  {dateOnly(firing.date)?.slice(5)}: {firing.legs_sent ?? 0} legs,{" "}
+                  {dollars(firing.usd)}
+                </span>
+              ))}
+            </dd>
+          ) : null}
         </div>
       </dl>
       <p className="mt-1 text-xs text-slate-500">

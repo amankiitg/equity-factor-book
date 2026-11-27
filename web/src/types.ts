@@ -575,7 +575,9 @@ export interface MonthlyBlock {
   next_session?: string | null;
   /** The guard's whole bill since the monthly switch, in one summary. */
   guard_era?: {
-    firings: number;
+    count?: number;
+    /** Every firing since the monthly switch, in date order. */
+    firings?: GuardFiring[];
     dates: Array<string | null>;
     legs: number;
     usd: number;

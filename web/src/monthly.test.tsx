@@ -129,7 +129,9 @@ describe("the anchored panels", () => {
     expect(table).toContain("1 leg, impossible (under one share)");
     expect(table).toContain("$269");
     const line = document.querySelector("[data-not-sent]")?.textContent ?? "";
-    expect(line).toContain("315 under $250");
+    // One definition now: the rebalance's own floor legs come from the card (16),
+    // and broker refusals are a separate line named by ticker.
+    expect(line).toContain("16 under $250");
     expect(line).toContain("$91,697");
   });
 
@@ -739,7 +741,7 @@ describe("the 11-13 close, from the published block", () => {
     const text = document.body.textContent ?? "";
     expect(text).toContain("97 not sent, under the $250 floor");
     expect(text).not.toContain("97 under the $250 minimum");
-    expect(text).toContain("$10,010");
+    expect(text).toContain("$2,253");
   });
 
   it("7 calls the sixteen unsent legs unsent, and explains the carried one", () => {

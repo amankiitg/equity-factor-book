@@ -551,6 +551,12 @@ details > summary {
     text-align: center;
   }
 
+  /* A cell that holds three facts is three lines on a phone: the table has no
+     width for a wrapped sentence and the numbers are what a reader came for. */
+  .efb-legs .efb-split {
+    display: block;
+  }
+
   /* The masthead is one clean line on a phone: the subtitle is a desktop nicety. */
   .efb-brand small {
     display: none;
