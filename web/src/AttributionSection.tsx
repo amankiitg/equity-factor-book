@@ -1302,7 +1302,17 @@ function CostEras({ period, snapshot }: { period: AttributionPeriod; snapshot?: 
   // The guard's whole bill since the switch, from the block's own era summary, so
   // this row and the guard cards cannot disagree about which firings it covers.
   const guardEra = snapshot?.monthly?.guard_era ?? null;
-  const guardUsd = guardEra ? Math.abs(guardEra.usd) : guard ? Math.abs(guard.usd) : null;
+  // The era's own rows: the block's summary when it carries one, and the firing
+  // history the older documents do carry when it does not. The total is their sum,
+  // so the row and the list under it cannot disagree.
+  const eraRows = guardEra?.firings ?? snapshot?.monthly?.since_anchor?.guard_history ?? [];
+  const eraLegs = eraRows.length
+    ? eraRows.reduce((total, firing) => total + (firing.legs_sent ?? 0), 0)
+    : null;
+  const eraUsd = eraRows.length
+    ? eraRows.reduce((total, firing) => total + (firing.usd ?? 0), 0)
+    : null;
+  const guardUsd = eraUsd ?? (guardEra ? Math.abs(guardEra.usd) : guard ? Math.abs(guard.usd) : null);
   const guardBp = guardUsd === null
     ? null
     : split?.trading && turnover
@@ -1358,13 +1368,13 @@ function CostEras({ period, snapshot }: { period: AttributionPeriod; snapshot?: 
             {guardBp === null || nav === null
               ? ""
               : `; ${dollars((Math.abs(guardBp) / 1e4) * nav)} est.`}
-            {guardEra
-              ? `; ${guardEra.legs} guard legs, ${dollars(guardUsd)}`
+            {eraLegs !== null
+              ? `; ${eraLegs} guard legs, ${dollars(guardUsd)}`
               : `; ${dollars(guardUsd)} of legs`}
           </dd>
-          {guardEra?.firings?.length ? (
+          {eraRows.length ? (
             <dd data-guard-era-rows="true" className="mt-0.5 font-mono text-xs text-slate-500">
-              {guardEra.firings.map((firing, index) => (
+              {eraRows.map((firing, index) => (
                 <span key={firing.date} className="block" data-guard-era={firing.date}>
                   {index === 0 ? "" : ""}
                   {dateOnly(firing.date)?.slice(5)}: {firing.legs_sent ?? 0} legs,{" "}

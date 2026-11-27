@@ -730,7 +730,9 @@ describe("the 11-13 close, from the published block", () => {
   it("5 gives the guard both costs, measured and estimated, negative", () => {
     render(<SnapshotView snapshot={REAL} now={new Date("2026-11-15T14:00:00Z")} />);
     const text = document.body.textContent ?? "";
-    expect(text).toContain("-1.81 bp estimated");
+    // The era is the sum of its firings now, so the rate is priced on the era's own
+    // legs rather than on the trades row: 347 legs here, not 85.
+    expect(text).toContain("-1.83 bp estimated");
     expect(text).toContain("-6.3 bp measured from fills");
     expect(text).toContain("-3.1 bp");
     expect(text).toContain("sits inside the monthly era");
