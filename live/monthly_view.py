@@ -825,7 +825,9 @@ def _guard_era(history: list[dict[str, Any]]) -> dict[str, Any]:
     """The guard's whole bill since the monthly switch: every firing, legs only."""
     sent = [row for row in history if (row.get("legs_sent") or 0) > 0]
     return {
-        "firings": len(history),
+        "count": len(history),
+        # The firings themselves, so the row can list what it is the total of.
+        "firings": history,
         "dates": [row.get("date") for row in history],
         "legs": sum(int(row.get("legs_sent") or 0) for row in history),
         "usd": sum(float(row.get("usd") or 0.0) for row in history),
@@ -1987,17 +1989,12 @@ def _block(
                 # Owed and impossible: the leg is under one share, so there is no
                 # order to place at any price and retrying it never ends.
                 reason = "carried leg"
-            elif close in guard_days and not (
-                ticker in flip_tickers and intent.endswith("_to_open")
-            ) and not (
-                intent.endswith("_to_open")
-                and any(day < close for day in closed_on.get(ticker, set()))
-            ):
+            elif close in guard_days:
                 # The day the guard fired decides it, not the leg's own intent: a
                 # guard day closes and opens in the same evening, and every leg it
-                # sent belongs to that evening's drift repair. A second leg that
-                # reopens a flip is not a guard leg even when it lands on a guard
-                # day: the guard resized the book, it did not change a side.
+                # sent belongs to that evening's drift repair. The table's guard
+                # total is taken from the window's firings themselves, so a leg the
+                # manifest counted is not lost to a label here.
                 reason = "guard"
             elif close in RETRADE_BUG_DAYS and not (
                 ticker in flip_tickers and intent.endswith("_to_open")
@@ -2026,8 +2023,10 @@ def _block(
             else:
                 # A sent leg on a hold day that is neither a guard day nor the open
                 # of a flip: a rebalance leg the account did not take on the anchor
-                # day, sent again on the next close.
-                reason = "rebalance remainder"
+                # day, sent again on the next close. It is the rebalance's own leg, so
+                # it joins that row rather than sitting beside it as a third kind of
+                # remainder a reader has to reconcile by hand.
+                reason = "rebalance"
             item = trades.setdefault(
                 reason,
                 {
@@ -2044,32 +2043,9 @@ def _block(
                 item["sent_legs"] += 1
                 item["sent_usd"] += usd
 
-    # The refused count is about a position, not about the rebalance: KVUE has been
-    # refused since 2026-11-04, so a window that starts at the anchor says one night
-    # for a name that has failed every evening for a month. The window is the same
-    # monthly switch the guard's era uses.
-    switch = _monthly_switch(proposals)
-    if switch and not since.empty:
-        early = orders.loc[
-            (orders["trade_date"].astype(str).str.slice(0, 10) > switch)
-            & (orders["trade_date"].astype(str).str.slice(0, 10) < anchor)
-        ]
-        for row in early.itertuples(index=False):
-            code = str(getattr(row, "reason_code", "") or "").strip()
-            ticker = str(getattr(row, "ticker", "") or "").strip()
-            usd = abs(_number(getattr(row, "intended_notional", None)) or 0.0)
-            if not code or code in {"BELOW_MIN_NOTIONAL", "COVER_UNDER_ONE_SHARE"}:
-                continue
-            close = str(getattr(row, "trade_date", ""))[:10]
-            entry = not_sent["refused_names"].get(ticker or code)
-            if entry is None:
-                continue
-            entry["legs"] += 1
-            if close < entry["first_close"]:
-                entry["first_close"] = close
-            if close > entry["last_close"]:
-                entry["last_close"] = close
-
+    # A refusal is counted in the same window as everything else on this table: the
+    # nights since the current rebalance. The guard's era history is Attribution's,
+    # and it does not leak into this footer.
     unreachable = tonight_manifest.get("unfilled_unreachable") or []
     remainder = tonight_manifest.get("unfilled_remainder") or {}
     forced_usd = sum(abs(_number(v) or 0.0) for v in remainder.values()) + sum(
@@ -2092,7 +2068,32 @@ def _block(
         if isinstance(item, dict)
     ]
     cannot_send_usd = sum(float(item["usd"]) for item in cannot_send)
+    # The table on Since the rebalance is about the current rebalance, so its guard
+    # rows are the firings inside that window and nothing older.
     guard_history_rows = _guard_history(
+        proposals,
+        anchor,
+        today,
+        nav,
+        fills,
+        flip_events,
+        flip_tickers,
+    )
+    # The table's guard reason is the window's own firings, leg for leg, so the row
+    # and its dated sub-rows add up by construction rather than by coincidence.
+    guard_legs = sum(int(row.get("legs_sent") or 0) for row in guard_history_rows)
+    guard_usd = sum(float(row.get("usd") or 0.0) for row in guard_history_rows)
+    if guard_legs > 0:
+        trades["guard"] = {
+            "reason": "guard",
+            "legs": guard_legs,
+            "usd": guard_usd,
+            "sent_legs": guard_legs,
+            "sent_usd": guard_usd,
+        }
+    # Attribution's cost history is the guard's whole bill since the switch, which is
+    # a different question and gets its own summary at the top of the block.
+    guard_era_rows = _guard_history(
         proposals,
         anchor,
         today,
@@ -2145,6 +2146,10 @@ def _block(
         # list: the evening's orders fill then, and the reconciliation sentence says
         # so without a date typed in.
         "next_session": next_session(today),
+        # Attribution's cost history: every firing since the monthly switch, guard
+        # legs only, with the list behind the totals. The table's guard row reads the
+        # window above; this one reads the era, and the two are different questions.
+        "guard_era": _guard_era(guard_era_rows),
         "rebalance_card": rebalance_card(anchor, anchor_manifest, orders, fills, nav),
         "bridge_anchor": bridge_anchor,
         # The anchor rebalance's own trading cost, because that is the trade the
@@ -2168,9 +2173,6 @@ def _block(
             # manifest: the page draws a card per firing, and the leg table splits
             # the guard's row by these dates.
             "guard_history": guard_history_rows,
-            # The guard's whole bill since the switch, in one place, so the
-            # cost-by-era row and the cards cannot disagree about it.
-            "guard_era": _guard_era(guard_history_rows),
             # What the table cannot count as a leg that went: the legs under the
             # order minimum and the ones the broker refused. Stated apart because a
             # reader who adds them to the reasons is adding orders that do not exist.

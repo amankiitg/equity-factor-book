@@ -15,7 +15,7 @@ import { Fragment } from "react";
 import { HowToRead } from "./Panel";
 import { dateOnly, dollars, percent, signedDollars } from "./format";
 import { legReasonWord } from "./labels";
-import type { MonthlyBlock } from "./types";
+import type { GuardFiring, MonthlyBlock } from "./types";
 
 /** A date as the page writes dates in a sentence: month and day, no year. */
 const dayShort = (value: string | null | undefined): string => (value ? value.slice(5, 10) : "-");
@@ -423,7 +423,9 @@ export function DriftCard({ monthly }: { monthly: MonthlyBlock }) {
  * them; a day it does not carry says so instead of printing zero.
  */
 export function GuardCards({ monthly }: { monthly: MonthlyBlock }) {
-  const firings = monthly.since_anchor?.guard_history ?? [];
+  // The firing cards belong to the current rebalance like the rest of this tab:
+  // the older firings are Attribution's cost history, not this page's.
+  const firings = firingsInWindow(monthly);
   if (!firings.length) return null;
   // The estimate the cost-by-era row also quotes, at the rebalance's own rate. The
   // measured figure is the day's fills, and it includes the overnight move; the two
@@ -502,11 +504,43 @@ export function GuardCards({ monthly }: { monthly: MonthlyBlock }) {
   );
 }
 
+/** The window's firings: nothing dated before the current rebalance. */
+function firingsInWindow(monthly: MonthlyBlock): GuardFiring[] {
+  const anchor = monthly.anchor?.close ?? monthly.cadence_strip?.last_rebalance ?? null;
+  const rows = monthly.since_anchor?.guard_history ?? [];
+  return anchor ? rows.filter((row) => !row.date || row.date >= anchor) : rows;
+}
+
+/** The floor legs across the window's firings, the same field the rows print. */
+function firingsUnder(monthly: MonthlyBlock): number {
+  return firingsInWindow(monthly).reduce(
+    (total, firing) => total + (firing.legs_not_sent ?? firing.legs_under_minimum ?? 0),
+    0,
+  );
+}
+
+function firingsUnderUsd(monthly: MonthlyBlock): number {
+  return firingsInWindow(monthly).reduce(
+    (total, firing) => total + (firing.not_sent_usd ?? 0),
+    0,
+  );
+}
+
 export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
   const trades = monthly.since_anchor?.trades_by_reason ?? [];
   const notSent = monthly.since_anchor?.not_sent;
   if (!trades.length) return null;
   const under = notSent?.under_minimum;
+  // The footer counts what the table's own under-$250 rows count: the rebalance's
+  // floor legs plus each firing's, from the same fields the rows print. Two
+  // numbers that describe one set of legs cannot disagree if one is a sum of the
+  // other.
+  const underLegs =
+    (monthly.rebalance_card?.under_minimum_legs ?? under?.legs ?? 0) +
+    firingsUnder(monthly);
+  const underUsd =
+    (monthly.rebalance_card?.under_minimum_usd ?? under?.usd ?? 0) +
+    firingsUnderUsd(monthly);
   // Three shapes, newest first: the refusals counted by name, the tonight line's
   // own list, and the older aggregate by reason code. Each names the position
   // rather than counting the nights it was refused.
@@ -531,8 +565,7 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
           <tbody>
           {trades.map((row) => {
             const sent = row.sent_legs ?? row.legs;
-            const firings =
-              row.reason === "guard" ? monthly.since_anchor?.guard_history ?? [] : [];
+            const firings = row.reason === "guard" ? firingsInWindow(monthly) : [];
             return (
               <Fragment key={row.reason}>
                 <tr data-reason={row.reason}>
@@ -548,9 +581,18 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
                             monthly.rebalance_card?.under_minimum_legs ??
                             row.legs - sent;
                           const refused = row.legs - sent - under;
-                          return `${sent} sent, ${under} not sent (under $250)${
-                            refused > 0 ? `, ${refused} refused` : ""
-                          }`;
+                          // On a phone the three facts get a line each instead of one
+                          // wrapped cell; the string a reader or a test sees is the
+                          // same with the commas in place.
+                          return (
+                            <>
+                              <span className="efb-split">{`${sent} sent, `}</span>
+                              <span className="efb-split">{`${under} not sent (under $250)`}</span>
+                              {refused > 0 ? (
+                                <span className="efb-split">{`, ${refused} refused`}</span>
+                              ) : null}
+                            </>
+                          );
                         })()
                       : row.reason === "carried leg"
                         ? `${row.legs} leg, impossible (under one share)`
@@ -609,8 +651,8 @@ export function TradesSinceAnchor({ monthly }: { monthly: MonthlyBlock }) {
       {under || refusedCount ? (
         <div data-not-sent="true" className="mt-1 text-xs text-slate-500">
           <p>
-            not sent: {notSent?.legs ?? 0} legs. {under?.legs ?? 0} under $250 (
-            {dollars(under?.usd ?? 0)})
+            not sent: {notSent?.legs ?? 0} legs ({dollars(notSent?.usd ?? 0)}). {underLegs}{" "}
+            under $250 ({dollars(underUsd)})
             {refusedCount ? ", and " : ""}
             {refusedNames.length
               ? refusedNames.map((row, index) => (

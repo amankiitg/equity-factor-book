@@ -2128,3 +2128,33 @@ def test_the_holiday_list_is_refreshed_before_it_runs_out():
     assert date.today().year <= max(monthly_view.HOLIDAY_YEARS), (
         "HOLIDAY_YEARS is stale: add the next year's NYSE full closures to HOLIDAYS"
     )
+
+
+def test_the_guard_row_equals_the_sum_of_its_firings() -> None:
+    """The table's guard total is its own dated rows, added up.
+
+    A row that says 85 while its sub-rows say 109, 140, 98 and 113 is the defect
+    this pins: the total is the sum of the firings in the window, never a second
+    count of the same evening.
+    """
+    block = _the_live_leg_table()
+    assert block is not None
+    history = block["since_anchor"]["guard_history"]
+    rows = {row["reason"]: row for row in block["since_anchor"]["trades_by_reason"]}
+    legs = sum(int(row["legs_sent"] or 0) for row in history)
+    # A fixture whose manifests carry no traded legs leaves the row to its orders,
+    # and the identity is about the live shape: only compare when there are legs.
+    if legs:
+        assert rows["guard"]["legs"] == legs
+        assert rows["guard"]["usd"] == pytest.approx(
+            sum(float(row["usd"] or 0.0) for row in history), abs=0.01
+        )
+
+
+def test_the_era_summary_equals_the_sum_of_its_firings() -> None:
+    """Attribution's guard row is every firing since the switch, added up."""
+    block = _the_live_leg_table()
+    assert block is not None
+    era = block["guard_era"]
+    assert era["legs"] == sum(int(row["legs_sent"] or 0) for row in era["firings"])
+    assert era["usd"] == pytest.approx(sum(float(row["usd"] or 0.0) for row in era["firings"]), abs=0.01)
